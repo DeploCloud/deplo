@@ -328,17 +328,37 @@ function oauthProviderOptions() {
     // listed here — so leaving the MCP resource out makes every exchange fail
     // with "requested resource invalid" while everything else looks healthy.
     //
-    // EXACTLY ONE entry, deliberately. GHSA-p2fr-6hmx-4528 (moderate, affects
-    // every 1.6.x): the plugin validates the `resource` parameter but does not
-    // BIND it to the grant, so with two or more valid audiences a client can
-    // obtain a token aimed at a resource server it was not authorised for. The
-    // advisory's own first workaround is to allow a single audience, and deplo
-    // has exactly one resource worth naming. Belt to that brace: an access token
-    // only resolves here by way of the `api_tokens` row its consent minted, so a
-    // token with the wrong audience would still reach the same connection and
-    // nothing else. Revisit when 1.7.0 ships — the fix needs a schema migration
-    // and changes `customAccessTokenClaims`, so it is not a version bump.
-    validAudiences: [`${base}${MCP_RESOURCE_PATH}`],
+    // This WAS `validAudiences`, an in-memory array. 1.7.0 promoted it to a
+    // persisted `oauth_resource` row and - the part that matters - started
+    // BINDING the audience to the grant, which is the fix for
+    // GHSA-p2fr-6hmx-4528 (moderate, every 1.6.x): before it, the plugin
+    // validated the `resource` parameter without recording it, so an AS with two
+    // or more valid audiences could hand a client a token aimed at a resource
+    // server it was never authorised for. deplo was never exposed, because it
+    // has always declared exactly one audience - the advisory's own first
+    // workaround - but the fix is the version.
+    //
+    // Still EXACTLY ONE entry, and now it is a row that can outlive the config:
+    // a panel that changes address seeds a new identifier and leaves the old one
+    // behind. `reconcileOAuthResources` (./oauth-resources.ts) disables the
+    // strays so "one live audience" stays true rather than merely starting true.
+    resources: [`${base}${MCP_RESOURCE_PATH}`],
+
+    // Every client that self-registers is linked to that one resource.
+    //
+    // `enforcePerClientResources` defaults to TRUE in 1.7.0 (RFC 8707 §3): a
+    // client may only request a resource it is linked to through
+    // `oauth_client_resource`. deplo's registration is open by necessity -
+    // claude.ai and ChatGPT cannot pre-register - so nothing else would ever
+    // create that link, and every token exchange would fail on an instance where
+    // registration and consent both looked healthy. Leaving the default ON and
+    // filling in the link is the strict reading; turning enforcement off would
+    // work identically today and quietly stop working the day a second resource
+    // exists.
+    //
+    // No `clientRegistrationAllowedResources`: a client does not get to ASK for
+    // an audience at registration. The server assigns the only one there is.
+    clientRegistrationDefaultResources: [`${base}${MCP_RESOURCE_PATH}`],
 
     // Opaque tokens, hashed with the SAME digest `api_tokens.token_hash` uses.
     // deplo is both the authorization server and the only resource server, in one
@@ -378,10 +398,6 @@ function oauthProviderOptions() {
     }: {
       user: { id: string; name?: string | null; email?: string | null };
     }) => ({ sub: user.id, name: user.name ?? null, email: user.email ?? null }),
-
-    // The root-path documents live in app/.well-known/*; the plugin's own copies
-    // sit under /api/auth and nothing probes them.
-    silenceWarnings: { oauthAuthServerConfig: true, openidConfig: true },
   };
 }
 

@@ -21,6 +21,7 @@ import {
   fullFlow,
   pkcePair,
   registerClient,
+  REGISTRATION_CREATED,
   signIn,
 } from "./oauth-test-helpers";
 
@@ -245,15 +246,76 @@ test("a token cannot be requested for a resource deplo does not serve", async ()
 test("the audience allowlist has exactly one entry", async () => {
   // The runtime test above only proves today's list; this is what makes adding a
   // second audience a decision somebody has to argue for.
+  //
+  // Both keys, because Better Auth 1.7.0 split the old `validAudiences` in two:
+  // `resources` is what the AS will issue tokens for, and
+  // `clientRegistrationDefaultResources` is what a self-registered client is
+  // linked to. A second entry in EITHER one puts two audiences in reach of one
+  // client, which is the shape GHSA-p2fr-6hmx-4528 was about.
   const { readFileSync } = await import("node:fs");
   const src = readFileSync("lib/auth/better-auth.ts", "utf8");
-  const line = /validAudiences:\s*\[([^\]]*)\]/.exec(src);
-  assert.ok(line, "validAudiences is no longer a literal list");
-  assert.equal(
-    line![1].split(",").filter((s) => s.trim()).length,
-    1,
-    "a second audience re-opens GHSA-p2fr-6hmx-4528",
+  for (const key of ["resources", "clientRegistrationDefaultResources"]) {
+    const line = new RegExp(`\\n\\s*${key}:\\s*\\[([^\\]]*)\\]`).exec(src);
+    assert.ok(line, `${key} is no longer a literal list`);
+    assert.equal(
+      line![1].split(",").filter((t) => t.trim()).length,
+      1,
+      `a second audience in ${key} re-opens GHSA-p2fr-6hmx-4528`,
+    );
+  }
+  // And enforcement stays ON. With it off, the link above is decorative: every
+  // client could request every enabled resource.
+  assert.ok(
+    !/enforcePerClientResources:\s*false/.test(src),
+    "per-client resource enforcement must stay on",
   );
+});
+
+test("a moved panel leaves exactly one requestable audience", async () => {
+  // Better Auth 1.7.0 turned the audience list into ROWS, and seeds them
+  // `insertOnly`. deplo's identifier is derived from the panel's address, so an
+  // instance that moved hostnames keeps the old row alongside the new one - two
+  // live audiences, which is the shape GHSA-p2fr-6hmx-4528 needed and the one
+  // the config guard above cannot see, because nothing in the config is wrong.
+  const { reconcileOAuthResources } = await import("./oauth-resources");
+  const current = `${BASE}/api/mcp`;
+  const stale = "https://the-old-address.test/api/mcp";
+
+  // The state a move actually leaves behind: the old audience still enabled...
+  await pg.query(
+    `insert into oauth_resource (id, identifier, name, disabled) values ($1, $2, $3, false)
+       on conflict (identifier) do update set disabled = false`,
+    ["res_stale", stale, "old address"],
+  );
+  // ...and the current one present but DISABLED, which is the A -> B -> A case:
+  // coming back to an address you used before finds the row already there, and
+  // `insertOnly` will not touch it. Without the re-enable half, every token
+  // exchange would then fail on an address that looks perfectly configured.
+  await pg.query(
+    `insert into oauth_resource (id, identifier, name, disabled) values ($1, $2, $3, true)
+       on conflict (identifier) do update set disabled = true`,
+    ["res_current", current, "mcp"],
+  );
+
+  await reconcileOAuthResources();
+
+  const rows = (
+    await pg.query(`select identifier, disabled from oauth_resource`)
+  ).rows as { identifier: string; disabled: boolean | null }[];
+  assert.deepEqual(
+    rows.filter((r) => !r.disabled).map((r) => r.identifier),
+    [current],
+    `exactly one audience may be requestable, got ${JSON.stringify(rows)}`,
+  );
+  // Disabled, not deleted: "which audience was valid last March" is an audit
+  // question and these rows are the only thing that answers it.
+  assert.ok(
+    rows.some((r) => r.identifier === stale && r.disabled),
+    "the old audience must be kept and disabled, not dropped",
+  );
+
+  await pg.query(`delete from oauth_resource where identifier = $1`, [stale]);
+  await pg.query(`update oauth_resource set disabled = false where identifier = $1`, [current]);
 });
 
 test("the discovery documents agree on one issuer, and it resolves", async () => {
@@ -504,10 +566,9 @@ test("a dangerous URL scheme cannot be registered as a redirect", async () => {
     "vbscript:msgbox(1)",
   ]) {
     const res = await registerClient({ redirect_uris: [uri] });
-    assert.notEqual(
-      res.status,
-      200,
-      `registration accepted a ${uri.split(":")[0]} redirect`,
+    assert.ok(
+      res.status >= 400,
+      `registration accepted a ${uri.split(":")[0]} redirect (HTTP ${res.status})`,
     );
   }
 });
@@ -522,12 +583,12 @@ test("dynamic registration cannot grant itself a silent-approval flag", async ()
   // outright rather than defaulting it, which is the stronger guarantee — pin
   // that, so a future "just ignore unknown fields" never quietly relaxes it.
   const refused = await registerClient({ skip_consent: true });
-  assert.notEqual(refused.status, 200, JSON.stringify(refused.body));
+  assert.ok(refused.status >= 400, JSON.stringify(refused.body));
 
   // And a client cannot choose its own id, which would let it collide with one
   // somebody has already approved.
   const res = await registerClient({ client_id: "chosen-by-the-attacker" });
-  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.status, REGISTRATION_CREATED, JSON.stringify(res.body));
   const clientId = String(res.body.client_id);
   assert.notEqual(clientId, "chosen-by-the-attacker");
   const rows = (
@@ -611,7 +672,7 @@ test("/two-factor/* is still refused over HTTP with the OAuth plugin loaded", as
 
 test("the two-factor gate does not catch the OAuth endpoints", async () => {
   const res = await registerClient();
-  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.status, REGISTRATION_CREATED, JSON.stringify(res.body));
 });
 
 test("a normal sign-in still works and still returns a session row", async () => {

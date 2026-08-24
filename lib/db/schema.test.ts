@@ -63,6 +63,16 @@ const PRE_EXISTING = [
   "oauth_consent",
   "oauth_access_token",
   "oauth_refresh_token",
+  // Three more from the Better Auth 1.7.0 bump (migration 0116). `oauth_resource`
+  // is the RFC 8707 audience list, which used to be a config array
+  // (`validAudiences`) and became rows so a grant can RECORD the audience it was
+  // issued for - the fix for GHSA-p2fr-6hmx-4528. `oauth_client_resource` is
+  // which client may request which of them, and `oauth_client_assertion` is the
+  // `jti` replay cache for `private_key_jwt`, empty on every deplo instance but
+  // required because the adapter resolves a model to `schema[modelName]`.
+  "oauth_resource",
+  "oauth_client_resource",
+  "oauth_client_assertion",
 ] as const;
 
 /** The relational control-plane tables added in Step 1 (PLAN §2). */

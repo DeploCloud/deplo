@@ -55,6 +55,17 @@ export interface RegisteredClient {
   redirectUri: string;
 }
 
+/**
+ * The status a SUCCESSFUL dynamic registration answers with.
+ *
+ * RFC 7591 §3.2.1 says 201 Created, and Better Auth 1.7.0 started saying it -
+ * 1.6.x answered 200. Named rather than written out at each call site because
+ * the refusal assertions below have to be able to tell success from failure by
+ * CLASS: `notEqual(status, 200)` passed for both once the success code moved,
+ * which is a security guard that quietly stops guarding.
+ */
+export const REGISTRATION_CREATED = 201;
+
 /** RFC 7591 dynamic registration, unauthenticated — the claude.ai path. */
 export async function registerClient(
   overrides: Record<string, unknown> = {},

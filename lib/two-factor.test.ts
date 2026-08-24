@@ -113,15 +113,33 @@ async function codeFor(totpURI: string): Promise<string> {
   return createOTP(secret, { digits: 6, period: 30 }).totp();
 }
 
+/**
+ * `enableTwoFactor`, narrowed to the shape deplo enrols.
+ *
+ * Since Better Auth 1.7.0 the endpoint answers a DISCRIMINATED union: an OTP
+ * enrolment is `{ method: "otp" }` and carries no secret at all, because the
+ * code is delivered rather than shown. deplo enrols an authenticator app, so it
+ * asks for TOTP by name (`lib/data/two-factor.ts` does the same) and this throws
+ * on anything else - which is also what narrows the type for every reader below.
+ */
+async function enableTotp(
+  headers: Headers,
+): Promise<{ totpURI: string; backupCodes: string[] }> {
+  const res = await requireAuth().api.enableTwoFactor({
+    body: { password: PASSWORD, method: "totp" },
+    headers,
+  });
+  if (res.method !== "totp")
+    throw new Error(`expected a TOTP enrolment, got ${res.method}`);
+  return res;
+}
+
 /** Enrol `USER_1` fully (enable + verify) and return their backup codes. */
 async function enrolUser1(): Promise<{ cookie: string; backupCodes: string[] }> {
   const auth = requireAuth();
   const cookie = await signIn(EMAIL_1, PASSWORD);
   const headers = new Headers({ cookie });
-  const enabled = await auth.api.enableTwoFactor({
-    body: { password: PASSWORD },
-    headers,
-  });
+  const enabled = await enableTotp(headers);
   await auth.api.verifyTOTP({
     body: { code: await codeFor(enabled.totpURI) },
     headers,
@@ -145,10 +163,7 @@ test("enable + verify turns 2FA on; the flag is not set until a code is proved",
   const cookie = await signIn(EMAIL_1, PASSWORD);
   const headers = new Headers({ cookie });
 
-  const enabled = await auth.api.enableTwoFactor({
-    body: { password: PASSWORD },
-    headers,
-  });
+  const enabled = await enableTotp(headers);
   assert.match(enabled.totpURI, /^otpauth:\/\/totp\//);
   assert.equal(enabled.backupCodes.length, 10);
 

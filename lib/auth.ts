@@ -16,6 +16,7 @@ import {
   account as accountTable,
   session as sessionTable,
 } from "./db/schema/auth";
+import { createLocalAccountIssuer } from "better-auth";
 import { hashPassword, passwordNeedsRehash, verifyPassword } from "./crypto";
 import type { Capability, PublicUser, Role, Team, User } from "./types";
 import { capabilitiesForRole, cleanCapabilities } from "./membership-shared";
@@ -41,6 +42,19 @@ import {
 import type { AuthenticationResponseJSON } from "@simplewebauthn/browser";
 import { assertPasswordPolicy } from "./password-policy";
 import { assertPasswordNotPwned } from "./pwned-password";
+
+/**
+ * WHICH authority vouched for a password account - `account.issuer`, required
+ * since Better Auth 1.7.0, which keys an account on `(issuer, accountId)`.
+ *
+ * Taken from the library rather than written out, because the sign-in path
+ * compares it EXACTLY: a row spelled any other way is a credential that stops
+ * matching at login while looking perfectly correct in the table. Every hand-
+ * written `account` INSERT in deplo (here, the admin reset, the recover script,
+ * the test seeder) has to carry it, since `disableSignUp: true` means Better
+ * Auth never writes that row itself.
+ */
+const CREDENTIAL_ISSUER = createLocalAccountIssuer("credential");
 
 // Kept in sync with lib/membership.ts (ACTIVE_TEAM_COOKIE). Set here on
 // signup/setup so the new account lands with an active team immediately,
@@ -178,6 +192,7 @@ async function insertUserCore(
     userId: user.id,
     accountId: user.id,
     providerId: "credential",
+    issuer: CREDENTIAL_ISSUER,
     password: await hashPassword(input.password),
   });
   return user;
@@ -623,6 +638,7 @@ export async function setUserPassword(
       userId,
       accountId: userId,
       providerId: "credential",
+      issuer: CREDENTIAL_ISSUER,
       password: await hashPassword(password),
     });
 }

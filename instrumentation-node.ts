@@ -63,6 +63,13 @@ export async function register(): Promise<void> {
     // returns to the login screen. One indexed SELECT.
     const { hydratePublicBaseUrl } = await import("./lib/data/instance-settings");
     await hydratePublicBaseUrl();
+    // Immediately after, and for the same reason it had to come first: the OAuth
+    // audience is DERIVED from that address, and since Better Auth 1.7.0 it is a
+    // stored row rather than config. An instance whose address changed while it
+    // was down would otherwise boot with the old audience still requestable
+    // alongside the new one. Two SELECT-shaped UPDATEs on a table with one row.
+    const { reconcileOAuthResources } = await import("./lib/auth/oauth-resources");
+    await reconcileOAuthResources();
   } catch (e) {
     // Not fatal: without it the address falls back to DEPLO_PUBLIC_URL, which is
     // what every Deplo did before the setting existed.

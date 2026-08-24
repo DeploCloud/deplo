@@ -113,7 +113,13 @@ before(async () => {
     f.startsWith("0064_") ||
     f.startsWith("0071_") ||
     f.startsWith("0085_") ||
-    f.startsWith("0098_");
+    f.startsWith("0098_") ||
+    // 0115 is `account.issuer` and nothing else - one additive ALTER plus its
+    // backfill, on a table 0055 already created. `seedIdentity` below writes
+    // that column (Better Auth 1.7.0 requires it), so the seed cannot run at a
+    // schema point that predates it. The OAuth half of the same bump is 0116 and
+    // stays in its normal place.
+    f.startsWith("0115_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 

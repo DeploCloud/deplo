@@ -59,7 +59,11 @@ before(async () => {
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 75 ||
     f.startsWith("0085_") ||
-    f.startsWith("0098_");
+    f.startsWith("0098_") ||
+    // Same reason as in shared-env-migration.test.ts: 0115 is the single
+    // additive `account.issuer` ALTER that `seedIdentity` needs, split from the
+    // OAuth half (0116) precisely so it can be pulled forward here.
+    f.startsWith("0115_");
   for (const f of files.filter(preSeed)) await applyFile(f);
 
   // Teams and users through the live schema: 0075 does not touch them.

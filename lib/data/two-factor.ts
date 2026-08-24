@@ -104,10 +104,22 @@ export async function startTwoFactorEnrolment(
     throw new Error(
       "Two-factor is already on for this account. Turn it off first to set up a new device.",
     );
+  // `method` is explicit, and the narrowing below is not ceremony. Since Better
+  // Auth 1.7.0 this endpoint answers a DISCRIMINATED union: OTP enrolment
+  // returns `{ method: "otp" }` with no secret at all, because the code is
+  // mailed rather than shown. deplo enrols an authenticator app, which needs the
+  // `otpauth://` URI to draw a QR - so it asks for TOTP by name and refuses
+  // anything else rather than reading `totpURI` off a shape that does not have
+  // one. ("totp" is also the plugin's default; naming it is what keeps a future
+  // default flip from silently emptying the enrolment wizard.)
   const res = await requireAuth().api.enableTwoFactor({
-    body: { password },
+    body: { password, method: "totp" },
     headers: await authHeaders(),
   });
+  if (res.method !== "totp")
+    throw new Error(
+      "Two-factor setup could not produce a code for your authenticator app. Try again.",
+    );
   return { totpUri: res.totpURI, recoveryCodes: res.backupCodes };
 }
 

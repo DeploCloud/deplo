@@ -5,6 +5,7 @@ import {
   teams,
   users,
 } from "../db/schema/control-plane";
+import { createLocalAccountIssuer } from "better-auth";
 import { account } from "../db/schema/auth";
 import { capabilitiesForRole } from "../membership-shared";
 import { hashPassword, sha256Hex } from "../crypto";
@@ -144,6 +145,7 @@ export async function seedIdentity(
         userId: u.id,
         accountId: u.id,
         providerId: "credential",
+        issuer: createLocalAccountIssuer("credential"),
         password: await seedHash(u.password ?? "password1"),
       })),
     ),

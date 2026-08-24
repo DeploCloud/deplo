@@ -849,6 +849,13 @@ async function rememberPanelUrl(url: string | null): Promise<void> {
   setStoredPublicBaseUrl(url);
   const { resetAuth } = await import("../auth/better-auth");
   resetAuth();
+  // The OAuth audience is `<base>/api/mcp`, so moving the panel mints a NEW
+  // resource identifier and leaves the old row behind (seeding is insertOnly).
+  // Disable the strays now rather than at the next boot: until then both would
+  // be requestable, which is exactly the two-audience shape deplo has always
+  // refused to have.
+  const { reconcileOAuthResources } = await import("../auth/oauth-resources");
+  await reconcileOAuthResources();
 }
 
 /**

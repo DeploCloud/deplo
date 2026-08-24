@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { users } from "./control-plane";
@@ -61,6 +62,19 @@ export const account = pgTable("account", {
     .references(() => users.id, { onDelete: "cascade" }),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
+  /**
+   * WHICH authority vouched for `accountId` - new and REQUIRED since Better Auth
+   * 1.7.0, which keys an account on `(issuer, accountId)` rather than on
+   * `providerId` alone. Two upstreams can hand out the same subject id, and
+   * before this a second one could land on the first one's row.
+   *
+   * The value is the library's own, not a string of ours: `local:credential` for
+   * a password (`createLocalAccountIssuer`), `local:oauth:<id>` for a social
+   * provider. The sign-in path compares it EXACTLY, so a row with the wrong
+   * issuer is a credential that silently stops matching - which is why migration
+   * 0115 backfills every existing row rather than defaulting the column.
+   */
+  issuer: text("issuer").notNull(),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   accessTokenExpiresAt: timestamp("access_token_expires_at"),
@@ -234,11 +248,51 @@ export const oauthClient = pgTable(
     redirectUris: text("redirect_uris").array().notNull(),
     postLogoutRedirectUris: text("post_logout_redirect_uris").array(),
     tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
+    /**
+     * RFC 7591 `application_type` - `web` or `native`, and the ONLY thing that
+     * decides which redirect URIs are legal (1.7.0: web needs HTTPS on a
+     * non-loopback host, native takes a claimed HTTPS URL, an exact loopback, or
+     * a reverse-domain private-use scheme).
+     *
+     * It replaced the 1.6 pair `type` + `public`, and the replacement is not a
+     * rename: whether a client is CONFIDENTIAL is now read from
+     * `tokenEndpointAuthMethod` alone (`none` = public), so deriving this column
+     * from the old `public` flag would conflate two unrelated questions. 0116
+     * therefore maps `type` across by value and never consults `public`.
+     */
+    applicationType: text("application_type"),
     grantTypes: text("grant_types").array(),
     responseTypes: text("response_types").array(),
-    public: boolean("public"),
-    type: text("type"),
     requirePKCE: boolean("require_pkce"),
+    /** Client-supplied JWKS for `private_key_jwt`. deplo registers no such
+     *  client; the columns exist because the adapter resolves every field the
+     *  plugin declares. */
+    jwks: text("jwks"),
+    jwksUri: text("jwks_uri"),
+    /** Where the AS posts an OIDC back-channel logout. Never set: deplo issues
+     *  opaque tokens against its own `api_tokens` rows, so ending a session is
+     *  already the whole revocation. */
+    backchannelLogoutUri: text("backchannel_logout_uri"),
+    backchannelLogoutSessionRequired: boolean(
+      "backchannel_logout_session_required",
+    ),
+    /**
+     * Machine-to-machine scope authority, and it DENIES by construction: missing,
+     * NULL and empty all refuse `client_credentials`. deplo does not advertise
+     * that grant at all (`grantTypes` in ../../auth/better-auth.ts lists
+     * authorization_code + refresh_token), so the empty default is the intended
+     * resting state and nothing should ever write here - an agent always acts for
+     * a person, and a token with no user could not resolve to a connection.
+     */
+    clientCredentialsScopes: text("client_credentials_scopes")
+      .array()
+      .default([]),
+    /** Provenance when a client was resolved through a discovery (CIMD). NULL for
+     *  everything deplo has: plain RFC 7591 registration writes no discovery id. */
+    clientDiscoveryId: text("client_discovery_id"),
+    /** RFC 9449 sender-constrained tokens. Off: deplo's access token is a pointer
+     *  at an `api_tokens` row that is read and re-authorized on every request. */
+    dpopBoundAccessTokens: boolean("dpop_bound_access_tokens").default(false),
     referenceId: text("reference_id"),
     metadata: jsonb("metadata"),
   },
@@ -261,10 +315,26 @@ export const oauthRefreshToken = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    /** The authorization code this grant came from, so a replayed code can be
+     *  traced to the tokens it already minted. */
+    authorizationCodeId: text("authorization_code_id"),
+    /** RFC 8707 audiences the grant was authorized for - the whole point of the
+     *  1.7.0 change: the resource is now BOUND to the grant instead of merely
+     *  validated at request time, which is what GHSA-p2fr-6hmx-4528 was about. */
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
     expiresAt: timestamp("expires_at"),
     createdAt: timestamp("created_at"),
     revoked: timestamp("revoked"),
+    /** Rotation bookkeeping: a refresh token that was already exchanged answers
+     *  the recorded response until it expires, so a client that retries a lost
+     *  reply is not punished for a network failure. */
+    rotatedAt: timestamp("rotated_at"),
+    rotationReplayResponse: text("rotation_replay_response"),
+    rotationReplayExpiresAt: timestamp("rotation_replay_expires_at"),
     authTime: timestamp("auth_time"),
+    /** RFC 9449 confirmation claim (`cnf`). NULL while DPoP stays off. */
+    confirmation: jsonb("confirmation"),
     scopes: text("scopes").array().notNull(),
   },
   (t) => [
@@ -293,11 +363,20 @@ export const oauthAccessToken = pgTable(
     }),
     userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    /** See the twin on `oauthRefreshToken`: the audiences this token may be
+     *  presented to, recorded on the row rather than re-derived per request. */
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
     refreshId: text("refresh_id").references(() => oauthRefreshToken.id, {
       onDelete: "set null",
     }),
     expiresAt: timestamp("expires_at"),
     createdAt: timestamp("created_at"),
+    /** Set when a back-channel logout or an explicit revocation kills the token
+     *  before it expires. Introspection answers `{active:false}` from here. */
+    revoked: timestamp("revoked"),
+    confirmation: jsonb("confirmation"),
     scopes: text("scopes").array().notNull(),
   },
   (t) => [
@@ -319,6 +398,10 @@ export const oauthConsent = pgTable(
       .references(() => oauthClient.clientId, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    /** What the person actually agreed to, audiences included. A consent that
+     *  did not name a resource cannot mint a token aimed at it. */
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
     scopes: text("scopes").array().notNull(),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
@@ -328,3 +411,91 @@ export const oauthConsent = pgTable(
     index("oauth_consent_user_id_idx").on(t.userId),
   ],
 );
+
+/**
+ * A protected resource the authorization server issues access tokens FOR -
+ * RFC 8707's `resource` parameter, promoted in 1.7.0 from a config array
+ * (`validAudiences`) to a persisted row with its own token policy.
+ *
+ * deplo seeds exactly ONE: `<public base>/api/mcp`. That is not a simplification
+ * to revisit later, it is the security posture. GHSA-p2fr-6hmx-4528 (moderate,
+ * every 1.6.x) was unbound resource indicators - the plugin validated `resource`
+ * but did not BIND it to the grant, so with two or more valid audiences a client
+ * could obtain a token aimed at a resource server it was never authorized for.
+ * 1.7.0 binds it (see `resources` on the token rows); one live resource keeps the
+ * blast radius at zero regardless.
+ *
+ * A panel that changes address gets a NEW identifier, and the old row is
+ * DISABLED rather than deleted (`reconcileOAuthResources` in
+ * ../../auth/oauth-resources.ts) - the audit answer to "which audience was valid
+ * in March" has to survive, but only one may be requestable at a time.
+ */
+export const oauthResource = pgTable("oauth_resource", {
+  id: text("id").primaryKey(),
+  /** The RFC 8707 `resource` value itself: an absolute URI with no fragment. */
+  identifier: text("identifier").notNull().unique(),
+  name: text("name").notNull(),
+  accessTokenTtl: integer("access_token_ttl"),
+  refreshTokenTtl: integer("refresh_token_ttl"),
+  signingAlgorithm: text("signing_algorithm"),
+  signingKeyId: text("signing_key_id"),
+  allowedScopes: text("allowed_scopes").array(),
+  customClaims: jsonb("custom_claims"),
+  dpopBoundAccessTokensRequired: boolean("dpop_bound_access_tokens_required")
+    .default(false),
+  disabled: boolean("disabled").default(false),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+  policyVersion: integer("policy_version").default(1),
+  metadata: jsonb("metadata"),
+});
+
+/**
+ * Which clients may request which resources - `enforcePerClientResources` is ON
+ * (1.7.0's default), so a client with no row here can request nothing.
+ *
+ * deplo's registration is open by necessity (claude.ai and ChatGPT cannot
+ * pre-register), so every client that self-registers is linked to the one MCP
+ * resource automatically via `clientRegistrationDefaultResources`. Without that
+ * link the token exchange fails with "requested resource invalid" while
+ * registration and consent both look perfectly healthy.
+ */
+export const oauthClientResource = pgTable(
+  "oauth_client_resource",
+  {
+    id: text("id").primaryKey(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    resourceId: text("resource_id")
+      .notNull()
+      .references(() => oauthResource.identifier, { onDelete: "cascade" }),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at"),
+  },
+  (t) => [
+    // UNIQUE, not merely indexed: 1.7.0 converges concurrent CIMD refreshes on
+    // one link rather than letting the second fail, and it can only do that if
+    // the database says the pair is singular.
+    uniqueIndex("oauth_client_resource_client_resource_key").on(
+      t.clientId,
+      t.resourceId,
+    ),
+    index("oauth_client_resource_resource_id_idx").on(t.resourceId),
+  ],
+);
+
+/**
+ * The replay cache for `private_key_jwt` client assertions: one row per `jti`,
+ * kept until the assertion would have expired anyway.
+ *
+ * Empty on every deplo instance - no client here authenticates with a signed
+ * assertion. It exists because the Drizzle adapter resolves a model to
+ * `schema[modelName]`, so a table the plugin declares and deplo omits is not an
+ * unused table, it is a crash the first time anything touches that path.
+ */
+export const oauthClientAssertion = pgTable("oauth_client_assertion", {
+  /** The assertion's `jti` verbatim - the id IS the thing being deduplicated. */
+  id: text("id").primaryKey(),
+  expiresAt: timestamp("expires_at").notNull(),
+});

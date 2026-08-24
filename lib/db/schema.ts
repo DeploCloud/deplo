@@ -31,6 +31,9 @@ export {
   oauthConsent,
   oauthAccessToken,
   oauthRefreshToken,
+  oauthResource,
+  oauthClientResource,
+  oauthClientAssertion,
 } from "./schema/auth";
 export { schedulerLease } from "./schema/scheduler";
 export * from "./schema/control-plane";
@@ -45,6 +48,9 @@ import {
   oauthConsent,
   oauthAccessToken,
   oauthRefreshToken,
+  oauthResource,
+  oauthClientResource,
+  oauthClientAssertion,
 } from "./schema/auth";
 import { schedulerLease } from "./schema/scheduler";
 import * as controlPlane from "./schema/control-plane";
@@ -65,6 +71,9 @@ export const schema = {
   oauthConsent,
   oauthAccessToken,
   oauthRefreshToken,
+  oauthResource,
+  oauthClientResource,
+  oauthClientAssertion,
   schedulerLease,
   ...controlPlane,
 };

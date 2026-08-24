@@ -24,6 +24,7 @@
  */
 
 import { and, asc, eq } from "drizzle-orm";
+import { createLocalAccountIssuer } from "better-auth";
 import { createInterface } from "node:readline";
 import { randomBytes } from "node:crypto";
 import { getDb } from "../lib/db/client";
@@ -188,6 +189,10 @@ async function cmdPassword(handle: string, given: string | undefined) {
       userId: user.id,
       accountId: user.id,
       providerId: "credential",
+      // `account.issuer` is required since Better Auth 1.7.0 and the sign-in
+      // path matches on it exactly - a recovered password written without it is
+      // a credential that verifies and still cannot log in.
+      issuer: createLocalAccountIssuer("credential"),
       password: await hashPassword(password),
     });
   // Kill every live session: whoever locked this account out must not keep a cookie.
