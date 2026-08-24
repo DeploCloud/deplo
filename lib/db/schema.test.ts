@@ -137,6 +137,10 @@ const CONTROL_PLANE = [
   // and the correction went with it - so every retry re-derived the panel's
   // hostname, which behind a proxy is not the machine at all.
   "dokploy_source_addresses",
+  // What a person chose to migrate, and where each Dokploy machine lands. Read
+  // by the RUNNER, which finishes the job after the tab that started it is gone.
+  "dokploy_run_targets",
+  "dokploy_run_servers",
   // rate limiting - durable fixed-window counters for login, the two-factor
   // challenge and the register link. Un-scoped by design: a bucket is about an
   // ATTEMPT, often against a subject that does not exist, so it has no team and

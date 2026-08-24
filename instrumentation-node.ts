@@ -193,6 +193,17 @@ export async function register(): Promise<void> {
     console.error("[deplo] preview reaper startup failed:", e);
   }
   try {
+    // The migration runner, and its boot tick is the load-bearing part: a
+    // control plane that restarted mid-import is exactly the case this exists
+    // for. The run kept its plan, its credential and its place in the list, so
+    // the tick picks it up where the dead process left it rather than leaving
+    // half an organisation created here and stopped over there.
+    const { startMigrationRunner } = await import("./lib/data/dokploy-runner");
+    startMigrationRunner();
+  } catch (e) {
+    console.error("[deplo] migration runner startup failed:", e);
+  }
+  try {
     // No reconcile to await either, and for a better reason than the reaper's: a
     // cron job runs inside the AGENT's process, so restarting Deplo does not kill
     // it. The scheduler's boot tick REAPS before it fires, and reaping asks the

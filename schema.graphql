@@ -1550,6 +1550,7 @@ One import, kept after the tab that started it is gone. The API key is never sto
 type DokployImport {
   actor: String
   created: Int
+  doneSteps: Int
   error: String
   failed: Int
   finishedAt: String
@@ -1564,6 +1565,11 @@ type DokployImport {
   lastPath: String
   manual: Int
   orgName: String
+
+  """
+  `config` | `data` | `done`. Which half the run is in - the two count different things, so their step numbers are not one scale.
+  """
+  phase: String
   skipped: Int
   sourceUrl: String
   startedAt: String
@@ -1572,6 +1578,13 @@ type DokployImport {
   running | done | failed. A run left open by a closed tab is failed as `Interrupted` by the next one.
   """
   status: String
+  stepLabel: String
+
+  """
+  Somebody asked it to stop. The runner notices between steps - never mid-call, because a call already sent finishes on the far side whatever this row says.
+  """
+  stopRequested: Boolean
+  totalSteps: Int
 }
 
 type DokployImportItem {
@@ -1769,6 +1782,23 @@ type DokployRevertResult {
   failed: [String!]
   projects: Int
   sharedVars: Int
+}
+
+input DokployRunTargetInput {
+  buildServerId: String
+
+  """
+  A database's host port. THREE values, and the difference matters: omitted keeps the source's own, `null` publishes nothing, a number publishes there.
+  """
+  exposedPort: Int
+  projectId: String!
+
+  """
+  Shown while the run works through it, so the runner needs no second read of the API for a name.
+  """
+  projectName: String!
+  serverId: String
+  serviceId: String!
 }
 
 """
@@ -3272,6 +3302,11 @@ type Mutation {
   """
   setUserTeamAccess(input: SetUserTeamAccessInput!): [UserTeamAccess!]
   startApp(id: String!): App
+
+  """
+  Start a migration and hand it to the control plane. Returns the run id as soon as the plan is DURABLE, not when the migration is done: the loop lives here now, under the identity of whoever started it, so the tab can be closed, reloaded or replaced and the run does not notice. The Dokploy key is stored encrypted for the length of the run and wiped the moment it leaves `running` - a deliberate reversal of never storing it, made because the alternative is a migration that cannot survive a page reload.
+  """
+  startDokployImport(input: DokployConnectInput!, orgName: String, servers: [DokployServerChoiceInput!], targets: [DokployRunTargetInput!]!): String
 
   """
   Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.

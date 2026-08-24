@@ -3577,6 +3577,56 @@ export const rateLimits = pgTable(
  * string for the host Dokploy itself runs on, the same key the server map and
  * the cutover already use for it.
  */
+/**
+ * What a person chose to migrate, so the runner can carry it out without them.
+ *
+ * One row per SERVICE, which is the grain the loop works at and the grain a
+ * RESUME has to be honest about: a control plane that restarts mid-run must know
+ * which services are already through, and re-doing one is only safe because the
+ * import skips by name - but re-doing all of them wastes an hour.
+ */
+export const dokployRunTargets = pgTable(
+  "dokploy_run_targets",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => dokployImports.id, { onDelete: "cascade" }),
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
+    projectId: text("project_id").notNull(),
+    /** Shown while the run works through it; the API is not re-read for a name. */
+    projectName: text("project_name").notNull(),
+    serviceId: text("service_id").notNull(),
+    /** Where it LANDS. Where its data is READ from is derived, never chosen. */
+    serverId: text("server_id"),
+    buildServerId: text("build_server_id"),
+    exposedPort: integer("exposed_port"),
+    /**
+     * Whether `exposedPort` is an instruction at all. The field is TRI-state -
+     * absent keeps the source's own port, null publishes nothing, a number
+     * publishes there - and one nullable column can only say two of the three.
+     */
+    exposedPortSet: boolean("exposed_port_set").notNull().default(false),
+    /** `'pending'` | `'done'` | `'failed'`. */
+    state: text("state").notNull().default("pending"),
+  },
+  (t) => [index("dokploy_run_targets_run_idx").on(t.runId, t.seq)],
+);
+
+/** Which Deplo server a whole Dokploy machine's services land on - the fallback
+ *  under the per-service placement. `fromId` is `''` for Dokploy's own host. */
+export const dokployRunServers = pgTable(
+  "dokploy_run_servers",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => dokployImports.id, { onDelete: "cascade" }),
+    fromId: text("from_id").notNull(),
+    toId: text("to_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.fromId] })],
+);
+
 export const dokploySourceAddresses = pgTable(
   "dokploy_source_addresses",
   {
@@ -3616,6 +3666,40 @@ export const dokployImports = pgTable(
     error: text("error"),
     startedAt: isoTimestamptz("started_at").notNull(),
     finishedAt: isoTimestamptz("finished_at"),
+    /**
+     * The Dokploy API key, encrypted, for as long as the run needs it - and
+     * NULL the moment it leaves `running`.
+     *
+     * A deliberate reversal of "the key is never stored". It was never stored
+     * because the loop lived in the browser tab that typed it, and that one
+     * property cost everything else: a reload killed the run mid-flight,
+     * leaving projects created here and services stopped over there. The loop
+     * runs in the control plane now, so the control plane needs the key.
+     */
+    apiKeyEnc: text("api_key_enc"),
+    /** Whether this run may reach a private address (instance-admin only). */
+    allowPrivate: boolean("allow_private").notNull().default(false),
+    /** Progress the SERVER owns, so every viewer sees the same numbers. */
+    totalSteps: integer("total_steps").notNull().default(0),
+    doneSteps: integer("done_steps").notNull().default(0),
+    /** What it is on right now, as a person would say it. */
+    stepLabel: text("step_label"),
+    /** `'config'` | `'data'` | `'done'`. */
+    phase: text("phase").notNull().default("config"),
+    /** Stop is a REQUEST: the thing that stops runs elsewhere and checks between steps. */
+    stopRequested: boolean("stop_requested").notNull().default(false),
+    /** Liveness of whichever process is driving it; cold means take it over. */
+    heartbeatAt: isoTimestamptz("heartbeat_at"),
+    runnerOwner: text("runner_owner"),
+    /**
+     * WHO started it, as an id - `actor` is the display name for the trail.
+     *
+     * The runner re-enters every normal gate under this identity via
+     * `runWithIdentity`, the same way the deploy hook and the MCP server do. A
+     * background job that checked capabilities its own way would be a second
+     * authorization model, and the one thing this repo does not have is two.
+     */
+    actorUserId: text("actor_user_id"),
   },
   (t) => [
     index("dokploy_imports_team_started_idx").on(
@@ -3655,6 +3739,9 @@ export const dokployImportItems = pgTable(
     /** What it was on Dokploy: `application` | `compose` | `postgres` | `domain` | ... */
     sourceKind: text("source_kind").notNull(),
     sourceName: text("source_name").notNull(),
+    /** When it happened. A report read afterwards is a list; read WHILE it runs
+     *  it is a log, and a log with no times is not one. */
+    at: isoTimestamptz("at"),
     /**
      * The Dokploy service id this row came from, when the row IS a service.
      *

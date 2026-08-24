@@ -294,6 +294,17 @@ export interface ImportRunDTO {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+  /** `'config'` | `'data'` | `'done'` - which half it is in. */
+  phase: string;
+  /** Steps done and steps to do IN THE CURRENT PHASE. The two halves count
+   *  different things (projects, then services with data), so one running total
+   *  across both would be a number that means nothing in either. */
+  doneSteps: number;
+  totalSteps: number;
+  /** What it is on right now, as a person would say it. */
+  stepLabel: string | null;
+  /** Somebody asked it to stop; it notices between steps. */
+  stopRequested: boolean;
   /**
    * The path of the last thing this run touched (`Project / Environment /
    * service`), or null before it has touched anything.
@@ -3616,6 +3627,11 @@ function toRunDTO(r: typeof runsTable.$inferSelect): ImportRunDTO {
     error: r.error,
     startedAt: r.startedAt,
     finishedAt: r.finishedAt,
+    phase: r.phase,
+    doneSteps: r.doneSteps,
+    totalSteps: r.totalSteps,
+    stepLabel: r.stepLabel,
+    stopRequested: r.stopRequested,
     lastPath: null,
   };
 }

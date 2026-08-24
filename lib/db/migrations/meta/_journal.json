@@ -862,6 +862,13 @@
       "when": 1784942204006,
       "tag": "0122_dokploy_source_addresses",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1784942205006,
+      "tag": "0123_migration_runs_in_background",
+      "breakpoints": true
     }
   ]
 }

@@ -29,8 +29,11 @@ import {
   type RevertResultDTO,
   scanDokploy,
   setDokployMachineAddress,
-  stopDokployImport,
 } from "@/lib/data/dokploy-import";
+import {
+  requestStopDokployRun,
+  startDokployRun,
+} from "@/lib/data/dokploy-runner";
 
 /**
  * Import from Dokploy — read a Dokploy instance over its API and create the deplo
@@ -245,6 +248,17 @@ const ImportRunRef = builder
       error: t.exposeString("error", { nullable: true }),
       startedAt: t.exposeString("startedAt"),
       finishedAt: t.exposeString("finishedAt", { nullable: true }),
+      phase: t.exposeString("phase", {
+        description:
+          "`config` | `data` | `done`. Which half the run is in - the two count different things, so their step numbers are not one scale.",
+      }),
+      doneSteps: t.exposeInt("doneSteps"),
+      totalSteps: t.exposeInt("totalSteps"),
+      stepLabel: t.exposeString("stepLabel", { nullable: true }),
+      stopRequested: t.exposeBoolean("stopRequested", {
+        description:
+          "Somebody asked it to stop. The runner notices between steps - never mid-call, because a call already sent finishes on the far side whatever this row says.",
+      }),
       lastPath: t.exposeString("lastPath", {
         nullable: true,
         description:
@@ -341,6 +355,29 @@ const DataMoveServiceRef = builder
       notes: t.exposeStringList("notes"),
     }),
   });
+
+/**
+ * One SERVICE to bring over, and where it lands. The grain the runner works at,
+ * and the grain a resume has to be honest about.
+ */
+const RunTargetInput = builder.inputType("DokployRunTargetInput", {
+  fields: (t) => ({
+    projectId: t.string({ required: true }),
+    projectName: t.string({
+      required: true,
+      description:
+        "Shown while the run works through it, so the runner needs no second read of the API for a name.",
+    }),
+    serviceId: t.string({ required: true }),
+    serverId: t.string({ required: false }),
+    buildServerId: t.string({ required: false }),
+    exposedPort: t.int({
+      required: false,
+      description:
+        "A database's host port. THREE values, and the difference matters: omitted keeps the source's own, `null` publishes nothing, a number publishes there.",
+    }),
+  }),
+});
 
 const DataMoveResultRef = builder
   .objectRef<DataMoveResult>("DokployDataMoveResult")
@@ -494,6 +531,10 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
   return (
     a.id === b.id &&
     a.lastPath === b.lastPath &&
+    a.phase === b.phase &&
+    a.doneSteps === b.doneSteps &&
+    a.totalSteps === b.totalSteps &&
+    a.stepLabel === b.stepLabel &&
     a.created === b.created &&
     a.skipped === b.skipped &&
     a.failed === b.failed &&
@@ -633,6 +674,35 @@ builder.mutationFields((t) => ({
         sourceId,
       }),
   }),
+  startDokployImport: t.field({
+    type: "String",
+    authScopes: { capability: "create_projects" },
+    description:
+      "Start a migration and hand it to the control plane. Returns the run id as soon as the plan is DURABLE, not when the migration is done: the loop lives here now, under the identity of whoever started it, so the tab can be closed, reloaded or replaced and the run does not notice. The Dokploy key is stored encrypted for the length of the run and wiped the moment it leaves `running` - a deliberate reversal of never storing it, made because the alternative is a migration that cannot survive a page reload.",
+    args: {
+      input: t.arg({ type: ConnectInputRef, required: true }),
+      orgName: t.arg.string({ required: false }),
+      targets: t.arg({ type: [RunTargetInput], required: true }),
+      servers: t.arg({ type: [ServerChoiceInput], required: false }),
+    },
+    resolve: (_r, { input, orgName, targets, servers }) =>
+      startDokployRun({
+        url: input.url,
+        apiKey: input.apiKey,
+        allowPrivate: input.allowPrivate ?? false,
+        orgName: orgName ?? null,
+        targets: targets.map((t2) => ({
+          projectId: t2.projectId,
+          projectName: t2.projectName,
+          serviceId: t2.serviceId,
+          serverId: t2.serverId ?? null,
+          buildServerId: t2.buildServerId ?? null,
+          exposedPort: t2.exposedPort,
+          exposedPortSet: t2.exposedPort !== undefined,
+        })),
+        servers: (servers ?? []).map((x) => ({ from: x.from, to: x.to })),
+      }),
+  }),
   setDokployMachineAddress: t.string({
     nullable: true,
     authScopes: { instanceAdmin: true },
@@ -665,7 +735,10 @@ builder.mutationFields((t) => ({
       "Close a run somebody stopped part-way, WITHOUT finishing it - the migration sources keep their agents, because re-running is how a stopped migration is resumed.",
     args: { runId: t.arg.string({ required: true }) },
     resolve: async (_r, { runId }) => {
-      await stopDokployImport(runId);
+      // A REQUEST, not a return from a loop: the thing that stops now runs in
+      // the control plane and checks between steps, never mid-call. A run with
+      // no live runner is closed on the spot instead - see the function.
+      await requestStopDokployRun(runId);
       return true;
     },
   }),
