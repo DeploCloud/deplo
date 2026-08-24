@@ -992,12 +992,27 @@ export async function uninstallMigrationSource(
 export interface UpdateServerAddressInput {
   id: string;
   /** The new dial address (IP or DNS name) - written to BOTH `host` and `ip`,
-   *  which nothing else ever makes diverge (addServer copies one into the other). */
+   *  which nothing else ever makes diverge (addServer copies one into the other),
+   *  unless {@link UpdateServerAddressInput.keepHost} says otherwise. */
   address: string;
   /** New agent gRPC port; omit to keep the current one. */
   agentPort?: number | null;
   /** Skip the reachability check - for a host that is not up at the new address yet. */
   force?: boolean;
+  /**
+   * Write only `ip` and leave `host` alone - the MIGRATION WIZARD's flag, and the
+   * one case where the two are meant to diverge.
+   *
+   * A migration source is registered at the address the other platform's PANEL
+   * answers on, which behind Cloudflare or any reverse proxy is the proxy's, not
+   * the machine's. Correcting it has to keep the panel hostname somewhere, because
+   * `planMachines` (lib/data/dokploy-import.ts) pairs a Dokploy machine with our
+   * server BY ADDRESS - `s.ip === a || s.host === a` - so overwriting both makes a
+   * second pass of the wizard fail to recognise the machine and register a SECOND
+   * row for it. `host` keeps where it came from (the match), `ip` is where we dial
+   * (`remoteTarget` reads `server.ip || server.host`).
+   */
+  keepHost?: boolean;
 }
 
 /**
@@ -1068,7 +1083,9 @@ export async function updateServerAddress(
   const updated = await getDb()
     .update(serversTable)
     .set({
-      host: address,
+      // `keepHost` leaves `host` as the address the row was BORN with - see the
+      // field's own doc. Everywhere else the two stay identical.
+      ...(input.keepHost ? {} : { host: address }),
       ip: address,
       // Meaningless before an agent exists - bootstrap sets it when one calls home.
       ...(server.agent && input.agentPort != null ? { agentPort: input.agentPort } : {}),

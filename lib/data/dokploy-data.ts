@@ -79,6 +79,46 @@ const UNREACHABLE_SOURCE_HOST =
   "Deplo has no agent on the machine this service's data is on, so its data cannot be copied. Add that machine as a server first - the Connect step lists it and installs the agent for you.";
 
 /**
+ * Its twin, for the machine that HAS an agent Deplo still cannot talk to.
+ *
+ * Worth telling apart from the one above, because the fix is a different one: the
+ * agent is installed and enrolled, and the thing to change is the address or the
+ * firewall in front of it.
+ */
+const UNREACHABLE_SOURCE_AGENT =
+  "Deplo cannot reach the agent on the machine this service's data is on, so nothing was stopped and no data was copied. Check that machine's address and that its agent port is open to Deplo, then run the copy again.";
+
+/**
+ * Whether the agent holding this service's data answers US.
+ *
+ * A server row reads `online` from the CALL-HOME, which the agent makes OUTBOUND
+ * over 443 - it proves nothing about the direction a copy needs, which is the
+ * control plane dialing the agent's own port. A panel behind Cloudflare or any
+ * reverse proxy hands out the proxy's address, and a host firewall that never
+ * opened the agent port looks identical from here: both leave a machine that
+ * enrolled cleanly and cannot be read from.
+ *
+ * Asked BEFORE `stopService`, the point of no return. Without it the cutover
+ * stopped the service on the old platform and only then found out it could not
+ * copy a byte - and each volume then spent the kernel's full SYN timeout failing,
+ * which outlives the proxy in front of the panel and reads to the browser as the
+ * whole control plane going away.
+ */
+async function sourceAgentReachable(serverId: string): Promise<boolean> {
+  try {
+    const conn = await connectAgent(serverId);
+    try {
+      await conn.hello();
+    } finally {
+      conn.close();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The data half of a Dokploy migration: move a service's volumes over, once its
  * configuration is already here.
  *
@@ -491,6 +531,17 @@ export async function planDokployDataMove(
 
   const machines = await dokployMachines(c, teamId);
   const out: DataMoveService[] = [];
+  // One Hello per distinct machine, not per service: several services share a host
+  // and the answer cannot differ between them.
+  const answered = new Map<string, Promise<boolean>>();
+  const agentAnswers = (serverId: string) => {
+    let p = answered.get(serverId);
+    if (!p) {
+      p = sourceAgentReachable(serverId);
+      answered.set(serverId, p);
+    }
+    return p;
+  };
 
   for (const svc of await sourceServices(c)) {
     const target = targets.get(svc.id);
@@ -509,10 +560,13 @@ export async function planDokployDataMove(
       singleData: landed.targetKind === "database",
     });
     const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
-    // Said HERE, before anything is stopped: a machine Deplo has no agent on is a
+    // Said HERE, before anything is stopped: a machine Deplo cannot read is a
     // machine whose data cannot move at all, and the review screen is where that
-    // has to be read - not the cutover, with the old platform already down.
-    const reachable = machines.find((m) => m.sourceId === svc.serverId)?.deploServerId;
+    // has to be read - not the cutover, with the old platform already down. Having
+    // a server row is not enough: it has to ANSWER, for the reason
+    // `sourceAgentReachable` spells out.
+    const sourceServer = machines.find((m) => m.sourceId === svc.serverId)?.deploServerId;
+    const reachable = sourceServer ? await agentAnswers(sourceServer) : false;
 
     out.push({
       path: `${svc.projectName} / ${svc.environmentName} / ${svc.name}`,
@@ -543,7 +597,7 @@ export async function planDokployDataMove(
       notes: [
         ...state.notes,
         ...paired.notes,
-        ...(reachable ? [] : [UNREACHABLE_SOURCE_HOST]),
+        ...(reachable ? [] : [sourceServer ? UNREACHABLE_SOURCE_AGENT : UNREACHABLE_SOURCE_HOST]),
       ],
     });
   }
@@ -695,6 +749,28 @@ async function runMoveDokployServiceData(
     });
     await refreshCounts(input.runId, teamId);
     return { moved: 0, failed: 0, notes };
+  }
+
+  // Everything below this point either stops something or writes something, and
+  // `stopService` a few lines down is the point of no return. The machine that
+  // holds the bytes has to answer FIRST - see `sourceAgentReachable`.
+  if (!(await sourceAgentReachable(sourceServerId))) {
+    await appendRunItem(input.runId, {
+      path,
+      sourceKind: input.sourceKind,
+      sourceName: svc.name,
+      sourceId: svc.id,
+      outcome: "failed",
+      targetKind: landed.targetKind,
+      targetId: landed.targetId,
+      message: UNREACHABLE_SOURCE_AGENT,
+    });
+    await markDataCopyFailed(
+      { kind: landed.targetKind, id: landed.targetId },
+      `Deplo could not reach the machine ${svc.name}'s data is on, so it was never copied`,
+    );
+    await refreshCounts(input.runId, teamId);
+    return { moved: 0, failed: 1, notes: [...notes, UNREACHABLE_SOURCE_AGENT] };
   }
 
   // A database is provisioned in the BACKGROUND by the import (`createDatabase`

@@ -140,6 +140,21 @@ test("force skips the probe, writes the row, and keeps trust pinned - with the c
   assert.equal(server?.agent?.certFingerprint, "sha256:pinned");
 });
 
+test("keepHost writes only where Deplo dials, leaving the address it was registered at", async () => {
+  // The migration wizard's case: a server registered at the other platform's
+  // PANEL address, which behind a proxy is the proxy's. Correcting where we dial
+  // must not erase where it came from - `planMachines` pairs the Dokploy machine
+  // with this row BY ADDRESS, and losing the panel hostname makes a second pass
+  // register the same machine twice. `remoteTarget` reads `ip || host`, so the
+  // dial follows `ip` alone.
+  await asAdmin(() =>
+    updateServerAddress({ id: BARE, address: "192.0.2.20", keepHost: true }),
+  );
+  const server = await asAdmin(() => getServerById(BARE));
+  assert.equal(server?.ip, "192.0.2.20");
+  assert.equal(server?.host, "192.0.2.10");
+});
+
 test("an unchanged address is a no-op - no probe, no error, even on a dead host", async () => {
   const { warning } = await asAdmin(() =>
     updateServerAddress({ id: PROVISIONED, address: DEAD_LOCAL, agentPort: 1 }),

@@ -66,6 +66,9 @@ const CONNECT = { url: "https://dokploy.acme.test", apiKey: "dk_test_key" };
 /** Every procedure the fake was asked for, in order. */
 let calls: string[] = [];
 
+/** Servers whose agent refuses to answer us - the pre-flight's whole subject. */
+const unreachableAgents = new Set<string>();
+
 const PROJECT_TREE = [
   {
     projectId: "dok-prj-blink",
@@ -199,6 +202,15 @@ let importRefusal = "";
 function fakeAgent(serverId: string) {
   const say = (verb: string, arg: string) => agentCalls.push(`${serverId}:${verb}:${arg}`);
   return {
+    // The pre-flight. A migration source can be enrolled and still unreachable -
+    // the agent enrols by calling home OUTBOUND, and a copy needs the opposite
+    // direction - so the cutover asks before it stops anything.
+    async hello() {
+      say("hello", "");
+      if (unreachableAgents.has(serverId))
+        throw new Error("14 UNAVAILABLE: No connection established");
+      return { contractVersion: 1, dockerAvailable: true, capabilities: [], version: "1.0.0" };
+    },
     async *exportVolume(name: string) {
       say("export", name);
       // Docker CREATES a missing named volume rather than failing, so an export of
@@ -356,6 +368,7 @@ beforeEach(async () => {
   __setDokployFetchForTest(fakeDokploy());
   calls = [];
   agentCalls = [];
+  unreachableAgents.clear();
   importRefusal = "";
   hostPaths = { srv_dokploy_host: { "/etc/dokploy/x": Buffer.alloc(2048, 5) } };
   // The Dokploy host holds both source volumes, with real content in them.
@@ -883,6 +896,45 @@ test("nothing is stopped until Deplo knows which server holds the data", async (
     "the source must still be running after a refusal",
   );
   assert.deepEqual(agentCalls, [], "and nothing of ours may be touched either");
+});
+
+test("a source that is enrolled but will not answer US stops nothing and copies nothing", async () => {
+  // The row says `online`, because that is what the CALL-HOME sets and the
+  // call-home is the agent dialing OUT. The copy needs the other direction, and a
+  // panel behind a proxy or a host firewall that never opened the agent port both
+  // leave exactly this state. Until the pre-flight existed, the cutover trusted
+  // the row: it stopped the service on Dokploy and only then found out it could
+  // not read a byte - the source down, the target empty, and nothing to undo it.
+  await seedDokployHostServer();
+  unreachableAgents.add("srv_dokploy_host");
+  const runId = await openRun();
+  calls = [];
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(res.moved, 0);
+  assert.equal(res.failed, 1);
+  assert.equal(
+    calls.some((p) => p.endsWith(".stop")),
+    false,
+    "the source must still be running on Dokploy",
+  );
+  assert.deepEqual(
+    agentCalls,
+    ["srv_dokploy_host:hello:"],
+    "one question, and it gave up on the answer",
+  );
+
+  const items = await db.select().from(itemsTable);
+  const failure = items.find((i) => i.outcome === "failed");
+  assert.match(failure?.message ?? "", /cannot reach the agent/);
 });
 
 test("a service this run did not import cannot be moved into anything", async () => {

@@ -6,7 +6,10 @@ import { Check, Loader2, Server as ServerIcon, TriangleAlert } from "lucide-reac
 
 import { gqlAction } from "@/lib/graphql-client";
 import { CommandLine } from "@/components/shared/code-block";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
+import { AGENT_PORT_NOTICE } from "@/components/shared/agent-reachability";
 import type { PlanServer } from "./types";
 
 /**
@@ -18,6 +21,24 @@ import type { PlanServer } from "./types";
  * empty and stay empty. Finding that out at the end, with the old platform
  * already stopped, is the failure this screen exists to prevent. There is no
  * "skip this one".
+ *
+ * For a long time the gate did not gate. It waited for the server to leave
+ * `provisioning`, which happens on the CALL-HOME - a request the agent makes
+ * OUTBOUND, over 443, from behind whatever firewall the host has. That proves
+ * the agent is alive; it proves nothing about the direction a copy needs, which
+ * is the control plane dialing the agent's own port. Two very ordinary setups
+ * satisfy the old check and then lose every byte:
+ *
+ *  - the address is the other platform's PANEL hostname, and the panel sits
+ *    behind Cloudflare or another reverse proxy, so it resolves to the proxy;
+ *  - the host has a firewall (any stock cloud image) and the agent port was
+ *    never opened.
+ *
+ * So the step now PROBES - `checkServerHealth`, the same live Hello the Servers
+ * page runs - and a machine counts as connected only when that comes back
+ * `online`. The verdict costs about eight seconds, and when it is bad the row
+ * offers the two things that fix it: the address, and a re-check for after the
+ * firewall was changed.
  *
  * Registering the server is NOT a button. Somebody who has just handed Deplo a
  * working API key has already said yes to the only question ("may Deplo have
@@ -48,20 +69,50 @@ const ADD_SERVER = /* GraphQL */ `
   }
 `;
 
-const SERVER_STATUS = /* GraphQL */ `
-  query MigrationServerStatus($id: String!) {
-    server(id: $id) {
+/**
+ * A live probe, not a read of the stored row - the whole point of the gate. It
+ * also covers the provisioning phase for free: an agent that has not called home
+ * yet has no certificate, and `checkServerHealth` passes an unprovisioned server
+ * straight through untouched.
+ */
+const CHECK_HEALTH = /* GraphQL */ `
+  mutation CheckMigrationServerHealth($id: String!) {
+    checkServerHealth(id: $id, force: true) {
       id
-      name
       status
+      statusMessage
     }
+  }
+`;
+
+/**
+ * `keepHost` is what keeps a corrected machine recognisable: the row was
+ * registered at the panel's address, and that is the address a second pass of
+ * the wizard matches the Dokploy machine by. See the flag's own doc in
+ * `lib/data/servers.ts`.
+ */
+const CHANGE_ADDRESS = /* GraphQL */ `
+  mutation ChangeMigrationServerAddress($id: String!, $address: String!) {
+    updateServerAddress(id: $id, address: $address, keepHost: true)
   }
 `;
 
 /** How long the finished step sits there before it moves on by itself. */
 const SETTLE_MS = 2000;
-/** How often a machine still short of its agent is asked again. */
-const POLL_MS = 5000;
+/**
+ * How often a machine short of its agent is asked again. Above the 5s floor the
+ * forced health check keeps even when asked explicitly - a tick landing exactly
+ * on it would be answered from the previous observation.
+ */
+const POLL_MS = 6000;
+
+/** What the probe said, for a machine that answered badly or not at all. */
+interface Unreachable {
+  /** `offline` (nothing answered) or `error` (answered, but not as itself). */
+  status: string;
+  /** The server's own sentence, shown verbatim. */
+  message: string;
+}
 
 /**
  * A machine Deplo has registered and is now waiting to hear from.
@@ -109,6 +160,9 @@ export function InstallStep({
   onDone: () => void;
 }) {
   const [failed, setFailed] = React.useState<Record<string, string>>({});
+  const [unreachable, setUnreachable] = React.useState<Record<string, Unreachable>>({});
+  const [draft, setDraft] = React.useState<Record<string, string>>({});
+  const [busy, setBusy] = React.useState<Record<string, boolean>>({});
 
   const missing = machines.filter((m) => !m.deploServerId);
   const settled = missing.length === 0;
@@ -193,43 +247,120 @@ export function InstallStep({
     };
   }, [machines, canAddServers, attempted, setPending]);
 
-  // ---- wait for each agent to call home ------------------------------
+  // ---- probe until the agent answers US ------------------------------
+  /**
+   * One machine's verdict. Shared by the poll and the two buttons, so a manual
+   * re-check and an automatic tick can never disagree about what counts as
+   * connected.
+   */
+  const probe = React.useCallback(
+    async (sourceId: string, p: PendingMachine) => {
+      const res = await gqlAction<
+        { checkServerHealth: { status: string; statusMessage: string | null } },
+        { status: string; statusMessage: string | null }
+      >(CHECK_HEALTH, { id: p.serverId }, (d) => d.checkServerHealth);
+      if (!res.ok) {
+        // Includes the row being GONE (removed elsewhere, or the migration was
+        // finished in another tab): the server says so, and saying it here beats
+        // sitting on "Waiting for the agent" with nothing ever coming.
+        setUnreachable((prev) => ({
+          ...prev,
+          [sourceId]: { status: "error", message: res.error },
+        }));
+        return;
+      }
+      const { status, statusMessage } = res.data!;
+      // Still short of its agent: nothing has answered yet, which is the normal
+      // state of a machine whose install command has not been run.
+      if (status === "provisioning") {
+        setUnreachable((prev) => {
+          if (!(sourceId in prev)) return prev;
+          const next = { ...prev };
+          delete next[sourceId];
+          return next;
+        });
+        return;
+      }
+      // ONLINE and nothing else. `warning` is "the agent is up but Docker is
+      // unreachable", and Docker is precisely what exports a volume - a machine
+      // in that state would pass the gate and copy nothing.
+      if (status === "online") {
+        setPending((prev) => {
+          const next = { ...prev };
+          delete next[sourceId];
+          return next;
+        });
+        setUnreachable((prev) => {
+          const next = { ...prev };
+          delete next[sourceId];
+          return next;
+        });
+        onResolved(sourceId, p.serverId, p.name);
+        return;
+      }
+      setUnreachable((prev) => ({
+        ...prev,
+        [sourceId]: {
+          status,
+          message: statusMessage || "The agent did not answer.",
+        },
+      }));
+    },
+    [onResolved, setPending],
+  );
+
   // Stops by itself: a resolved machine is removed from `pending`.
   React.useEffect(() => {
     const waiting = Object.entries(pending);
     if (waiting.length === 0) return;
-    const timer = setInterval(async () => {
-      for (const [sourceId, p] of waiting) {
-        const res = await gqlAction<
-          { server: { status: string } | null },
-          { status: string } | null
-        >(SERVER_STATUS, { id: p.serverId }, (d) => d.server);
-        if (!res.ok) continue;
-        // A null server means the row is GONE (removed elsewhere, or the
-        // migration was finished in another tab). Waiting for it forever would
-        // leave this line stuck on "Waiting for the agent" with nothing coming.
-        if (!res.data) {
-          setPending((prev) => {
-            const next = { ...prev };
-            delete next[sourceId];
-            return next;
-          });
-          attempted.current.delete(sourceId);
-          toast.error(`${p.name} is no longer registered`);
-          continue;
-        }
-        if (res.data.status !== "provisioning") {
-          setPending((prev) => {
-            const next = { ...prev };
-            delete next[sourceId];
-            return next;
-          });
-          onResolved(sourceId, p.serverId, p.name);
-        }
-      }
+    const timer = setInterval(() => {
+      for (const [sourceId, p] of waiting) void probe(sourceId, p);
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [pending, onResolved, setPending, attempted]);
+  }, [pending, probe]);
+
+  // ---- the two things a person can do about a bad verdict -------------
+  const runBusy = React.useCallback(
+    async (sourceId: string, work: () => Promise<void>) => {
+      setBusy((p) => ({ ...p, [sourceId]: true }));
+      try {
+        await work();
+      } finally {
+        setBusy((p) => {
+          const next = { ...p };
+          delete next[sourceId];
+          return next;
+        });
+      }
+    },
+    [],
+  );
+
+  const saveAddress = (sourceId: string, p: PendingMachine) =>
+    runBusy(sourceId, async () => {
+      const address = (draft[sourceId] ?? "").trim();
+      if (!address) return;
+      const res = await gqlAction<{ updateServerAddress: string | null }, string | null>(
+        CHANGE_ADDRESS,
+        { id: p.serverId, address },
+        (d) => d.updateServerAddress,
+      );
+      if (!res.ok) {
+        // Verbatim: `updateServerAddress` dials the new address before it saves,
+        // so its refusal IS the diagnosis - the port is still shut, or nothing
+        // is there.
+        setUnreachable((prev) => ({
+          ...prev,
+          [sourceId]: { status: "offline", message: res.error },
+        }));
+        return;
+      }
+      if (res.data) toast.warning(res.data);
+      await probe(sourceId, p);
+    });
+
+  const checkAgain = (sourceId: string, p: PendingMachine) =>
+    runBusy(sourceId, () => probe(sourceId, p));
 
   // ---- and then move on ---------------------------------------------
   React.useEffect(() => {
@@ -251,6 +382,8 @@ export function InstallStep({
         {machines.map((m) => {
           const p = pending[m.sourceId];
           const error = failed[m.sourceId];
+          const bad = unreachable[m.sourceId];
+          const working = busy[m.sourceId] === true;
           return (
             <div key={m.sourceId || "own"} className="space-y-2 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -273,6 +406,11 @@ export function InstallStep({
                     <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
                     <span className="min-w-0">{error}</span>
                   </span>
+                ) : bad ? (
+                  <span className="flex shrink-0 items-center gap-1.5 text-xs text-destructive">
+                    <TriangleAlert className="size-3.5" />
+                    Deplo cannot reach this machine
+                  </span>
                 ) : p ? (
                   <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                     <Loader2 className="size-3.5 animate-spin" />
@@ -290,7 +428,64 @@ export function InstallStep({
                 )}
               </div>
 
-              {p && <CommandLine command={p.installCommand} truncate />}
+              {p && !bad && (
+                <>
+                  <CommandLine command={p.installCommand} truncate />
+                  <p className="text-xs text-muted-foreground">{AGENT_PORT_NOTICE}</p>
+                </>
+              )}
+
+              {p && bad && (
+                <div className="space-y-2">
+                  <CommandLine command={p.installCommand} truncate />
+                  <p className="text-xs text-muted-foreground">{bad.message}</p>
+                  {bad.status === "offline" ? (
+                    canAddServers ? (
+                      <form
+                        className="flex flex-wrap items-center gap-2"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void saveAddress(m.sourceId, p);
+                        }}
+                      >
+                        <Input
+                          value={draft[m.sourceId] ?? m.ipAddress ?? ""}
+                          onChange={(e) =>
+                            setDraft((prev) => ({ ...prev, [m.sourceId]: e.target.value }))
+                          }
+                          placeholder="The machine's own address"
+                          className="w-56"
+                          disabled={working}
+                        />
+                        <Button type="submit" disabled={working}>
+                          Save
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={working}
+                          onClick={() => void checkAgain(m.sourceId, p)}
+                        >
+                          {working ? <Loader2 className="size-4 animate-spin" /> : "Check again"}
+                        </Button>
+                      </form>
+                    ) : (
+                      <p className="text-xs text-warning">
+                        Ask an instance admin to change its address.
+                      </p>
+                    )
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={working}
+                      onClick={() => void checkAgain(m.sourceId, p)}
+                    >
+                      {working ? <Loader2 className="size-4 animate-spin" /> : "Check again"}
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

@@ -55,6 +55,7 @@ import { __setAgentConnectorForTest } from "../infra/agent-client";
 import {
   appendRunItem,
   beginDokployImport,
+  dokployMachines,
   drainMigrationSourceUninstalls,
   finishDokployImport,
   getDokployImport,
@@ -68,7 +69,7 @@ import { activeMigrationStream } from "../graphql/types/dokploy";
 import { createProject, renameProject } from "./projects";
 import { startApp } from "./apps";
 import { startDeployment } from "../deploy/build";
-import { addServer, getServerById } from "./servers";
+import { addServer, getServerById, updateServerAddress } from "./servers";
 import { listEnvironmentsForProject } from "./environments";
 
 /**
@@ -1649,4 +1650,45 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
   assert.equal((await ending).value, null, "a stopped run is not in progress");
 
   await gen.return(undefined as never);
+});
+
+/* ------------------------------------------------------------------ */
+/* Where the machine is, and where we dial it                          */
+/* ------------------------------------------------------------------ */
+
+test("a corrected dial address keeps the machine recognisable by the one it came from", async () => {
+  // A Dokploy panel behind Cloudflare (or any reverse proxy) answers on the
+  // proxy's address, so the row the wizard registers is unreachable and has to be
+  // corrected. What must survive the correction is the MATCH: `planMachines`
+  // pairs a Dokploy machine with our server by address, and if the panel hostname
+  // is overwritten too, a second pass of the wizard sees an unknown machine and
+  // registers a SECOND row for the same box.
+  const panelHost = new URL(URL_BASE).hostname;
+  const credential = { baseUrl: URL_BASE, apiKey: CONNECT.apiKey };
+  const added = await asOwner(() =>
+    addServer({ name: "dokploy-host", host: panelHost, importOnly: true }),
+  );
+
+  const before = await asOwner(() => dokployMachines(credential, TEAM_A));
+  assert.equal(before[0]?.sourceId, "", "the Dokploy host itself comes first");
+  assert.equal(before[0]?.deploServerId, added.server.id);
+
+  await asOwner(() =>
+    updateServerAddress({
+      id: added.server.id,
+      address: "203.0.113.7",
+      keepHost: true,
+    }),
+  );
+
+  const server = await asOwner(() => getServerById(added.server.id));
+  assert.equal(server?.ip, "203.0.113.7", "we dial the machine");
+  assert.equal(server?.host, panelHost, "we remember where it came from");
+
+  const after = await asOwner(() => dokployMachines(credential, TEAM_A));
+  assert.equal(
+    after[0]?.deploServerId,
+    added.server.id,
+    "still the same machine, not a second registration",
+  );
 });
