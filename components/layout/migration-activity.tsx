@@ -32,6 +32,12 @@ export type ActiveMigration = {
   skipped: number;
   failed: number;
   manual: number;
+  /**
+   * The last thing the run touched, `Project / Environment / service`. The only
+   * record of WHERE a run is that outlives the tab driving it - see the field's
+   * own doc in the schema.
+   */
+  lastPath: string | null;
 };
 
 const ACTIVE_MIGRATION_SUBSCRIPTION = /* GraphQL */ `
@@ -46,6 +52,7 @@ const ACTIVE_MIGRATION_SUBSCRIPTION = /* GraphQL */ `
       skipped
       failed
       manual
+      lastPath
     }
   }
 `;

@@ -69,6 +69,9 @@ let calls: string[] = [];
 /** Servers whose agent refuses to answer us - the pre-flight's whole subject. */
 const unreachableAgents = new Set<string>();
 
+/** Servers that answer the pre-flight and then drop the copy half way through. */
+const hostDiesMidCopy = new Set<string>();
+
 const PROJECT_TREE = [
   {
     projectId: "dok-prj-blink",
@@ -238,6 +241,14 @@ function fakeAgent(serverId: string) {
     },
     async *exportVolume(name: string) {
       say("export", name);
+      if (hostDiesMidCopy.has(serverId)) {
+        // What a connection reset looks like by the time it reaches this code:
+        // the gRPC status, not the socket error underneath it.
+        yield Buffer.alloc(64, 1);
+        throw Object.assign(new Error("14 UNAVAILABLE: read ECONNRESET"), {
+          code: 14,
+        });
+      }
       // Docker CREATES a missing named volume rather than failing, so an export of
       // one that is not here answers with a complete, empty archive.
       yield volumes[serverId]?.[name] ?? EMPTY_ARCHIVE;
@@ -409,6 +420,7 @@ beforeEach(async () => {
   calls = [];
   agentCalls = [];
   unreachableAgents.clear();
+  hostDiesMidCopy.clear();
   importRefusal = "";
   hostPaths = { srv_dokploy_host: { "/etc/dokploy/x": Buffer.alloc(2048, 5) } };
   // The Dokploy host holds both source volumes, with real content in them.
@@ -1022,6 +1034,48 @@ test("a source that is enrolled but will not answer US stops nothing and copies 
   const items = await db.select().from(itemsTable);
   const failure = items.find((i) => i.outcome === "failed");
   assert.match(failure?.message ?? "", /cannot reach the agent/);
+});
+
+test("a source that dies MID-COPY says so, so the caller can stop the whole run", async () => {
+  // The pre-flight cannot see this one: the machine answered, the service was
+  // stopped on Dokploy, and the connection died with bytes in flight. What must
+  // not happen next is the loop moving on to the next service - every one of
+  // them is on the same machine, each gets stopped over there before its copy is
+  // tried, and a run that grinds through them hands back an organisation with no
+  // data and its services down on both sides.
+  await seedDokployHostServer();
+  hostDiesMidCopy.add("srv_dokploy_host");
+  const runId = await openRun();
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(res.sourceGone, true, "the MACHINE went, not just this volume");
+  assert.ok(res.failed > 0);
+});
+
+test("an ordinary failed copy does NOT claim the machine went away", async () => {
+  // The other half of the flag, and the half that keeps it meaningful: a volume
+  // that is simply not on that host is one report line and the run carries on.
+  // If everything raised `sourceGone` the caller would stop on the first
+  // service that has nothing to copy.
+  await seedDokployHostServer();
+  delete volumes.srv_dokploy_host["blink-web-abc_uploads"];
+  const runId = await openRun();
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(res.sourceGone, false);
 });
 
 test("a service this run did not import cannot be moved into anything", async () => {

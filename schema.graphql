@@ -1496,6 +1496,11 @@ type DokployDataMoveResult {
   failed: Int
   moved: Int
   notes: [String!]
+
+  """
+  The source machine stopped answering part way through - a connection that died, not a volume that could not be read. The caller MUST stop: every service still to come is on the same machine, each one gets stopped on the other platform before its copy is attempted, and carrying on turns one broken host into a whole organisation with no data and its services down on both sides.
+  """
+  sourceGone: Boolean
 }
 
 """
@@ -1552,6 +1557,11 @@ type DokployImport {
 
   """The report. Only loaded by the single-run query."""
   items: [DokployImportItem!]
+
+  """
+  The last thing this run touched, as `Project / Environment / service`. Filled in only by the live `activeMigration` feed - the history list leaves it null, because a finished run says where it got to with its whole report. It is the only record of a run's POSITION that survives the tab: the loop lives in the browser, and so does the plan that knew how many projects there were.
+  """
+  lastPath: String
   manual: Int
   orgName: String
   skipped: Int

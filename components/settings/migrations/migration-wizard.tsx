@@ -13,7 +13,7 @@ import {
 
 import { gqlAction } from "@/lib/graphql-client";
 import { lockPageAround } from "@/lib/page-lock";
-import { timeAgo } from "@/lib/utils";
+import { formatBuildDuration, timeAgo } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -102,6 +102,21 @@ function stepsFor(canInvite: boolean): WizardStep<StepId>[] {
 
 /** Dokploy's own host has no server row over there; it is the empty id. */
 const OWN_HOST = "";
+
+/**
+ * The tail of a run item's path - `Backups / production / jellyfin` becomes
+ * `jellyfin`.
+ *
+ * What the panel wants is the thing being worked on, and the project and
+ * environment in front of it are already said by the step around it. Null when
+ * the run has not written a row yet, which is a real state: a run is open for a
+ * beat before its first object lands.
+ */
+function lastStep(path: string | null | undefined): string {
+  if (!path) return "";
+  const tail = path.split(" / ").pop()?.trim();
+  return tail ?? "";
+}
 
 /* ------------------------------------------------------------------ */
 /* GraphQL                                                            */
@@ -231,6 +246,7 @@ const MOVE_DATA = /* GraphQL */ `
       moved
       failed
       notes
+      sourceGone
     }
   }
 `;
@@ -297,6 +313,8 @@ interface MoveResult {
   moved: number;
   failed: number;
   notes: string[];
+  /** The machine went away mid-copy. Everything after it is on that machine. */
+  sourceGone: boolean;
 }
 
 /**
@@ -389,6 +407,14 @@ export function MigrationWizard({
   const [items, setItems] = React.useState<ReportItem[]>([]);
   const [runId, setRunId] = React.useState<string | null>(null);
   const [failure, setFailure] = React.useState<string | null>(null);
+  /**
+   * When THIS tab started driving, in epoch ms - the clock's zero.
+   *
+   * Not the run's `startedAt`: that survives a reload and the loop does not, so
+   * timing a dead loop against it would count a lunch break as work. Null on a
+   * resumed run for the same reason, which is what turns the estimate off.
+   */
+  const [runStartedAt, setRunStartedAt] = React.useState<number | null>(null);
   const [running, setRunning] = React.useState(false);
   /**
    * Somebody pressed Stop. A ref, not state: the loop below reads it between
@@ -531,6 +557,7 @@ export function MigrationWizard({
       total: targets.length,
       current: targets[0].project.name,
     });
+    setRunStartedAt(Date.now());
     setRunning(true);
 
     // Visible to the `finally` below, which has to close the row when somebody
@@ -689,8 +716,9 @@ export function MigrationWizard({
           },
           (d2) => d2.moveDokployServiceData,
         );
-        // One failed copy never stops the rest: the others are already stopped on
-        // Dokploy, and leaving them half-moved is worse than finishing the list.
+        // One failed VOLUME never stops the rest: the others are already stopped
+        // on Dokploy, and leaving them half-moved is worse than finishing the
+        // list.
         setItems((prev) => [
           ...prev,
           res.ok
@@ -703,6 +731,19 @@ export function MigrationWizard({
               )
             : dataNote(`${d.sourceName}: ${res.error}`, "failed"),
         ]);
+
+        // A failed MACHINE stops everything, and the difference is the whole
+        // point. Every service still on the list lives on the host that just
+        // went away, and each one gets STOPPED on Dokploy before its copy is
+        // attempted - so carrying on would take a whole organisation down on
+        // both sides and hand back a report where nothing came across. One
+        // broken host, one refusal.
+        if (res.ok && res.data?.sourceGone) {
+          setFailure(
+            `Deplo lost the connection to the machine ${d.sourceName}'s data is on, so the migration stopped there. Nothing after it was touched. Get that machine reachable again and start the migration over - everything already here is skipped by name.`,
+          );
+          return;
+        }
       }
 
       setProgress({ done: movable.length, total: movable.length, current: "" });
@@ -1151,10 +1192,21 @@ export function MigrationWizard({
                           // many projects there were died with the tab. The bar
                           // sweeps instead of filling, which is honest.
                           total: 0,
-                          current: watched.orgName ?? watched.sourceUrl,
+                          // The last row the run wrote, which the server keeps.
+                          // It used to be the ORGANISATION's name here, which is
+                          // the one thing on the screen that never changes: a
+                          // reload turned "Copying jellyfin" into "My
+                          // Organization" and the panel stopped saying anything
+                          // at all about where the run had got to.
+                          current: lastStep(watched.lastPath),
                         }
                       : progress
                   }
+                  // The loop lived in the tab, and a reload took it. Nothing is
+                  // driving this run any more, so the panel must not spin as if
+                  // something were - it says so, and offers the way out.
+                  stalled={resumed}
+                  startedAt={null}
                   failure={failure}
                   running={resumed}
                   reverting={reverting}
@@ -1200,6 +1252,8 @@ export function MigrationWizard({
                 (moving ? (
                   <MovingPanel
                     progress={progress}
+                    stalled={false}
+                    startedAt={runStartedAt}
                     failure={failure}
                     running={running}
                     reverting={reverting}
@@ -1481,6 +1535,8 @@ function WatchingPanel({ run }: { run: ActiveMigration }) {
  */
 function MovingPanel({
   progress,
+  stalled,
+  startedAt,
   failure,
   running,
   reverting,
@@ -1491,6 +1547,15 @@ function MovingPanel({
   canRevert,
 }: {
   progress: MigrationProgress;
+  /**
+   * The run is open and NOBODY is driving it - what a reload leaves behind, since
+   * the loop lives in the tab. The panel must not spin as if work were happening:
+   * a bar sweeping over a dead run is the most convincing lie this screen can
+   * tell, and somebody watching it wait is somebody not pressing Stop.
+   */
+  stalled: boolean;
+  /** Epoch ms this tab started driving, or null when there is no live loop. */
+  startedAt: number | null;
   failure: string | null;
   running: boolean;
   reverting: boolean;
@@ -1557,35 +1622,56 @@ function MovingPanel({
 
   return (
     <StepShell
-      title="Migration in progress..."
-      lead="Deplo is creating your projects here and copying their data across. Stay on this page."
+      title={
+        stalled ? "This migration is not running" : "Migration in progress..."
+      }
+      lead={
+        stalled
+          ? "The tab that was driving it is gone, so nothing is moving. Deplo cannot pick it up from here - it needs the Dokploy key, which is never stored. Stop it, then start it again: everything already here is skipped by name."
+          : "Deplo is creating your projects here and copying their data across. Stay on this page."
+      }
     >
       <div className="space-y-2">
         {/* The bar alone stalls for minutes on a big volume - same fill, no
             movement, and it reads as hung. The sweep and the spinner are the
-            only two things on screen saying the work is still going. */}
+            only two things on screen saying the work is still going - so a
+            STALLED run gets neither. */}
         <div className="flex items-center gap-3">
-          <Progress value={pct} className="deplo-progress-working" />
-          <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+          <Progress
+            value={pct}
+            className={stalled ? undefined : "deplo-progress-working"}
+          />
+          {!stalled && (
+            <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+          )}
         </div>
         <p className="text-sm text-muted-foreground">
-          {progress.total > 0 &&
-            `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`}
-          {progress.current && progress.total > 0 && " · "}
-          {progress.current}
+          {stalled
+            ? [
+                `${progress.done} thing(s) across`,
+                progress.current && `last: ${progress.current}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : [
+                progress.total > 0 &&
+                  `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`,
+                progress.current,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
         </p>
+        {!stalled && <ElapsedLine startedAt={startedAt} progress={progress} />}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={onShowLog}>
-          <ScrollText className="size-4" />
-          Show log
-        </Button>
+      {/* Both at the end of the row, Stop first: it is the one somebody is
+          reaching for while they watch this, and the log is the afterthought. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {/* Stop, not Cancel: the call in flight finishes either way, so this
             asks for no confirmation - it is the safe half of the decision, and
             the destructive one (take it back out) comes after, with its own. */}
         <Button
-          variant="ghost"
+          variant="outline"
           onClick={() => {
             setStopping(true);
             onStop();
@@ -1599,8 +1685,58 @@ function MovingPanel({
           )}
           {stopping ? "Stopping" : "Stop"}
         </Button>
+        <Button variant="ghost" onClick={onShowLog}>
+          <ScrollText className="size-4" />
+          Show log
+        </Button>
       </div>
     </StepShell>
+  );
+}
+
+/**
+ * How long it has been going, and roughly how much is left.
+ *
+ * The estimate divides the time spent evenly across the steps done, which is
+ * exactly as wrong as it sounds on a run where one service holds a 40 GB volume
+ * and the next holds none - so it says "about", it only appears once a step has
+ * actually finished, and it never replaces the position line. A number that is
+ * roughly right beats the thing it replaced, which was nothing at all: a bar
+ * that has not moved in four minutes reads as hung, and the only cure is a
+ * second that keeps ticking.
+ *
+ * Its own component so the per-second tick re-renders two lines of text rather
+ * than the whole panel, log dialog and all.
+ */
+function ElapsedLine({
+  startedAt,
+  progress,
+}: {
+  startedAt: number | null;
+  progress: MigrationProgress;
+}) {
+  // Lazily, so the clock reads once per mount rather than on every render. This
+  // never renders on the server: it exists only while a loop this tab started is
+  // running, which is client state set by a click.
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (startedAt == null) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [startedAt]);
+
+  if (startedAt == null) return null;
+  const elapsed = Math.max(0, now - startedAt);
+  const left =
+    progress.done > 0 && progress.total > progress.done
+      ? Math.round((elapsed / progress.done) * (progress.total - progress.done))
+      : null;
+
+  return (
+    <p className="text-xs text-muted-foreground">
+      Running for {formatBuildDuration(elapsed)}
+      {left != null && ` · about ${formatBuildDuration(left)} left`}
+    </p>
   );
 }
 

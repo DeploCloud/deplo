@@ -244,6 +244,11 @@ const ImportRunRef = builder
       error: t.exposeString("error", { nullable: true }),
       startedAt: t.exposeString("startedAt"),
       finishedAt: t.exposeString("finishedAt", { nullable: true }),
+      lastPath: t.exposeString("lastPath", {
+        nullable: true,
+        description:
+          "The last thing this run touched, as `Project / Environment / service`. Filled in only by the live `activeMigration` feed - the history list leaves it null, because a finished run says where it got to with its whole report. It is the only record of a run's POSITION that survives the tab: the loop lives in the browser, and so does the plan that knew how many projects there were.",
+      }),
       items: t.field({
         type: [ImportItemRef],
         description: "The report. Only loaded by the single-run query.",
@@ -343,6 +348,10 @@ const DataMoveResultRef = builder
       moved: t.exposeInt("moved"),
       failed: t.exposeInt("failed"),
       notes: t.exposeStringList("notes"),
+      sourceGone: t.exposeBoolean("sourceGone", {
+        description:
+          "The source machine stopped answering part way through - a connection that died, not a volume that could not be read. The caller MUST stop: every service still to come is on the same machine, each one gets stopped on the other platform before its copy is attempted, and carrying on turns one broken host into a whole organisation with no data and its services down on both sides.",
+      }),
     }),
   });
 
@@ -483,6 +492,7 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
   if (a === null || b === null) return a === b;
   return (
     a.id === b.id &&
+    a.lastPath === b.lastPath &&
     a.created === b.created &&
     a.skipped === b.skipped &&
     a.failed === b.failed &&

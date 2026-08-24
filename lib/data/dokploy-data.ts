@@ -197,6 +197,32 @@ export interface DataMoveResult {
   moved: number;
   failed: number;
   notes: string[];
+  /**
+   * The source machine stopped answering PART WAY THROUGH - a gRPC UNAVAILABLE,
+   * which is a connection that died, not a volume that could not be read.
+   *
+   * The difference decides whether the caller keeps going. One volume failing is
+   * one line in a report and the next service is unaffected; the HOST going away
+   * means every service after this one will fail the same way, and each of them
+   * gets stopped on the other platform first. A run that keeps going through that
+   * turns one broken machine into a whole organisation with its data left behind
+   * and its services down on both sides.
+   *
+   * The pre-flight catches the machine that is already gone; this catches the one
+   * that leaves mid-copy, which no check before the first byte can see.
+   */
+  sourceGone: boolean;
+}
+
+/**
+ * A gRPC UNAVAILABLE (14): the connection to the host died, however it died -
+ * refused, reset mid-stream, or never established. Anything else is about the
+ * volume, not the machine.
+ */
+function isHostGone(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === 14) return true;
+  return e instanceof Error && /\b14 UNAVAILABLE\b/.test(e.message);
 }
 
 /* ------------------------------------------------------------------ */
@@ -789,7 +815,7 @@ async function runMoveDokployServiceData(
         "Nothing to move: this service has no data of its own on Dokploy.",
     });
     await refreshCounts(input.runId, teamId);
-    return { moved: 0, failed: 0, notes };
+    return { moved: 0, failed: 0, notes, sourceGone: false };
   }
 
   // Everything below this point either stops something or writes something, and
@@ -811,7 +837,14 @@ async function runMoveDokployServiceData(
       `Deplo could not reach the machine ${svc.name}'s data is on, so it was never copied`,
     );
     await refreshCounts(input.runId, teamId);
-    return { moved: 0, failed: 1, notes: [...notes, UNREACHABLE_SOURCE_AGENT] };
+    // Nothing was stopped and nothing was copied, and every other service on
+    // this machine is about to hit the same wall - so it counts as gone.
+    return {
+      moved: 0,
+      failed: 1,
+      notes: [...notes, UNREACHABLE_SOURCE_AGENT],
+      sourceGone: true,
+    };
   }
 
   // A database is provisioned in the BACKGROUND by the import (`createDatabase`
@@ -837,7 +870,7 @@ async function runMoveDokployServiceData(
         `${landed.targetName} was still being created when the migration reached it, so its data was never copied`,
       );
       await refreshCounts(input.runId, teamId);
-      return { moved: 0, failed: 1, notes };
+      return { moved: 0, failed: 1, notes, sourceGone: false };
     }
   }
 
@@ -858,6 +891,9 @@ async function runMoveDokployServiceData(
   let moved = 0;
   let failed = 0;
   let empty = 0;
+  // Set by either loop below. See DataMoveResult.sourceGone: it is the difference
+  // between "this volume did not come across" and "stop the whole migration".
+  let sourceGone = false;
   // What did NOT arrive, kept apart from `notes` (which also carries advice) so
   // it can be written onto the app or database itself at the end. A report line
   // is read by whoever is watching the migration; this is read by whoever presses
@@ -908,6 +944,7 @@ async function runMoveDokployServiceData(
         });
       } catch (e) {
         failed++;
+        if (isHostGone(e)) sourceGone = true;
         const message = e instanceof Error ? e.message : "the copy failed";
         notes.push(`${pair.sourceVolume}: ${message}`);
         lost.push(`${pair.sourceVolume} (${pair.mountPath}): ${message}`);
@@ -985,6 +1022,7 @@ async function runMoveDokployServiceData(
         });
       } catch (e) {
         failed++;
+        if (isHostGone(e)) sourceGone = true;
         const message = e instanceof Error ? e.message : "the copy failed";
         notes.push(`${bind.sourcePath}: ${message}`);
         lost.push(`${bind.sourcePath} (${bind.mountPath}): ${message}`);
@@ -1068,7 +1106,7 @@ async function runMoveDokployServiceData(
     teamId,
   );
 
-  return { moved, failed, notes };
+  return { moved, failed, notes, sourceGone };
 }
 
 /* ------------------------------------------------------------------ */

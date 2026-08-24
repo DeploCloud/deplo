@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import yaml from "js-yaml";
 
 import { getDb } from "../db/client";
@@ -292,6 +292,20 @@ export interface ImportRunDTO {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+  /**
+   * The path of the last thing this run touched (`Project / Environment /
+   * service`), or null before it has touched anything.
+   *
+   * Only the ACTIVE-run read fills it in; the history list leaves it null,
+   * because a finished run says where it got to with its whole report.
+   *
+   * It exists because a wizard that reloads loses everything: the loop lives in
+   * the tab, and so did the only record of which project it was on. The server
+   * has never known the DENOMINATOR - what somebody selected is not stored - but
+   * it has always known the last row written, and "last: jellyfin" is the half
+   * that answers "where is it".
+   */
+  lastPath: string | null;
 }
 
 export interface ImportProjectResult {
@@ -3428,7 +3442,17 @@ export async function activeDokployImportForTeam(
     .select()
     .from(runsTable)
     .where(and(eq(runsTable.teamId, teamId), eq(runsTable.status, "running")));
-  return rows.length > 0 ? toRunDTO(rows[0]) : null;
+  if (rows.length === 0) return null;
+  // One row, by the same ordering the report reads in. Cheap enough to run on
+  // every tick of the live feed: the index on (run_id, seq) makes it a lookup,
+  // and the feed only re-reads when something actually changed.
+  const [last] = await getDb()
+    .select({ path: itemsTable.path })
+    .from(itemsTable)
+    .where(eq(itemsTable.runId, rows[0].id))
+    .orderBy(desc(itemsTable.seq))
+    .limit(1);
+  return { ...toRunDTO(rows[0]), lastPath: last?.path ?? null };
 }
 
 export async function listDokployImports(): Promise<ImportRunDTO[]> {
@@ -3492,5 +3516,6 @@ function toRunDTO(r: typeof runsTable.$inferSelect): ImportRunDTO {
     error: r.error,
     startedAt: r.startedAt,
     finishedAt: r.finishedAt,
+    lastPath: null,
   };
 }

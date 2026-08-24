@@ -1116,10 +1116,23 @@ export async function updateServerAddress(
     } catch (e) {
       // Soft on purpose: the force path exists precisely because the old address
       // may already be dead, and an IP-dialed host never consults these SANs.
+      //
+      // Worded as the small thing it is. It used to open with "Could not refresh
+      // the agent certificate", which reads as "the trust is broken" on an
+      // operation that then SUCCEEDS - and it succeeds having proven the point,
+      // because unless `force` the probe below reaches the agent at the new
+      // address over that very certificate. Leading with the failure made people
+      // stop and go looking for a problem that the next line had already ruled
+      // out.
       warning =
-        `Could not refresh the agent certificate for the new address ` +
-        `(${e instanceof Error ? e.message : String(e)}). Dialing by IP still works; ` +
-        `a DNS-name address may fail TLS until the certificate renews.`;
+        (input.force
+          ? `The address was saved without checking it (force). `
+          : `The address is saved and Deplo reached the agent there. `) +
+        `One thing did not happen: the certificate's list of names could not be ` +
+        `refreshed (${e instanceof Error ? e.message : String(e)}). That list is ` +
+        `only consulted when this server is dialed by a DNS NAME - an IP verifies ` +
+        `by fingerprint and does not touch it - so switch this server to a name ` +
+        `before the certificate renews and TLS will fail until it does.`;
     }
     if (!input.force) {
       const { connectAgentAt } = await import("../infra/agent-client");
