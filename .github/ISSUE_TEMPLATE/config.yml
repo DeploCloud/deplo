@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/DeploCloud/deplo/discussions
+    about: Anything that is not a bug report or a feature request. Ask here, you will get an answer faster.
+  - name: Security vulnerability
+    url: https://github.com/DeploCloud/deplo/security/advisories/new
+    about: Report it privately. Please do not open a public issue for a vulnerability.

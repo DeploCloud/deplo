@@ -1,0 +1,90 @@
+name: Bug report
+description: Something in deplo does not work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The fields below are the ones we would otherwise have to ask
+        you for, which costs both of us a day.
+
+        **Found a security vulnerability?** Close this and
+        [report it privately](https://github.com/DeploCloud/deplo/security/advisories/new)
+        instead.
+
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+      description: What you did, and what deplo did instead of what you expected.
+      placeholder: |
+        I clicked Deploy on an app built from a GitHub repository.
+        The deployment sits at "Building" forever and no logs appear.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered, starting from a fresh install where you can.
+      placeholder: |
+        1. Create an app from a public repository
+        2. Set the build command to `npm run build`
+        3. Click Deploy
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: deplo version
+      description: Shown in the dashboard under Settings. Include it even if it is `latest`.
+      placeholder: "1.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: agent-version
+    attributes:
+      label: Server agent version
+      description: Servers, then the server the workload runs on. Write "unknown" if the page will not load.
+      placeholder: "1.30.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install deplo?
+      options:
+        - install.sh
+        - The prebuilt image (ghcr.io/deplocloud/deplo)
+        - From source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Server OS
+      placeholder: "Ubuntu 24.04, x86_64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Deployment logs from the app page, or the control plane's own output. Redact your
+        secrets first. This is pasted into a code block automatically, no backticks needed.
+      render: shell
