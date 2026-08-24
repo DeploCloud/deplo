@@ -69,10 +69,14 @@ about 11 minutes. `next typegen` before `tsc` is not optional on a clean tree, s
 
 ## Two things that are not this
 
-- **The server agent** (`DeploCloud/deplo-agent`) is on its own 1.x line and is **forward only**:
-  `updateServerAgent` cannot install an older version than the one already on a host. Never reset or
-  lower it. If a control-plane release needs a newer agent, the agent ships **first**, and its
-  offline fallback (`FALLBACK_AGENT_VERSION`, `lib/agent/release.ts`) follows the fleet in its own
-  `chore(agent):` commit.
+- **The server agent** (`DeploCloud/deplo-agent`) versions on its own clock, in its own repo. It is
+  on the **0.x line too** since 24 Aug 2026, when its 1.x numbering was reset alongside the control
+  plane, but the two numbers move independently and are not meant to match. The same two buckets
+  apply. Its offline fallback (`FALLBACK_AGENT_VERSION`, `lib/agent/release.ts`) follows the fleet in
+  its own `chore(agent):` commit.
+- **The fleet only ever moves forward.** `updateServerAgent` has no version argument anywhere in the
+  path: it installs `releases/latest`, whatever that resolves to. So a control-plane release that
+  needs a newer agent ships the agent **first**, and the reset above was a deliberate one-off, not a
+  thing to repeat. `docs/agents/fleet-rollout.md` §10 has the rollback options.
 - **The Beta badge** in Settings → Deplo is derived from the version starting with `0.`. Nothing
   turns it off; shipping `1.0.0` does.

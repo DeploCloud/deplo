@@ -565,8 +565,8 @@ language — reconsider, or note the gap.
   migration, needs a newer agent), **patch** for everything else, and `1.0.0` is the launch, which
   is the owner's call. One command does the whole thing and makes tag/file drift impossible:
   `bun pm version minor --message "chore(release): deplo %s"` then `git push --follow-tags`. Full
-  procedure in `docs/agents/releasing.md`. `deplo-agent` versions on its own 1.x line and is
-  forward-only — never reset or lower it (`docs/agents/fleet-rollout.md`).
+  procedure in `docs/agents/releasing.md`. `deplo-agent` versions on its own clock (also `0.x`
+  since 24 Aug 2026) and the fleet only ever moves forward (`docs/agents/fleet-rollout.md`).
 - **Stop what you start — including :3000.** Any build or server you launch to work a task (dev
   server, test server, watcher, Playwright harness) MUST be stopped once the task is 100% done —
   never leave it running in the background. **This includes the control plane on :3000: if YOU
