@@ -111,6 +111,25 @@ const SETTLE_MS = 2000;
  */
 const POLL_MS = 6000;
 
+/**
+ * What Deplo KNOWS when a probe comes back `offline`, and it is worth saying out
+ * loud because the reader has just run a command and cannot tell whether it
+ * worked.
+ *
+ * It worked. A row leaves `provisioning` only through `completeBootstrap`, which
+ * fires on the agent's own call-home: the install ran, the binary started, the
+ * token was consumed and a certificate was minted for it. So a row that has
+ * reached this state has proven the install succeeded, and the ONLY thing that
+ * failed is Deplo dialing back - a distinction the reader cannot make from
+ * "cannot reach this machine" alone, and one that decides whether they go
+ * re-run the installer (pointless) or open a port (the fix).
+ *
+ * Said only for `offline`. The other verdicts mean something answered, so the
+ * install is not what is in question.
+ */
+const INSTALLED_BUT_UNREACHABLE =
+  "The agent is installed and called home, but Deplo cannot reach it back.";
+
 /** What the probe said, for a machine that answered badly or not at all. */
 interface Unreachable {
   /** `offline` (nothing answered) or `error` (answered, but not as itself). */
@@ -423,7 +442,9 @@ export function InstallStep({
                 ) : bad ? (
                   <span className="flex shrink-0 items-center gap-1.5 text-xs text-destructive">
                     <TriangleAlert className="size-3.5" />
-                    Deplo cannot reach this machine
+                    {bad.status === "offline"
+                      ? "Cannot connect"
+                      : "Cannot use this machine"}
                   </span>
                 ) : p ? (
                   <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -448,8 +469,9 @@ export function InstallStep({
                 <div className="space-y-2">
                   <CommandLine command={p.installCommand} truncate />
                   <p className="text-xs text-destructive">
-                    {bad.message}
-                    {bad.status === "offline" ? ` ${AGENT_PORT_NOTICE}` : ""}
+                    {bad.status === "offline"
+                      ? `${INSTALLED_BUT_UNREACHABLE} ${bad.message} ${AGENT_PORT_NOTICE}`
+                      : bad.message}
                   </p>
                   {bad.status === "offline" ? (
                     canAddServers ? (
