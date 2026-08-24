@@ -27,6 +27,7 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { DatabaseLogo } from "@/components/storage/database-logo";
+import { LogoImage } from "@/components/shared/project-logo";
 import type { DatabaseType } from "@/lib/types";
 import {
   importableOf,
@@ -660,17 +661,29 @@ function PortConflictRow({
  * like a Postgres before it has been imported and not only after. `engine` is
  * resolved server-side because Dokploy's `mongo` is Deplo's `mongodb`, and a
  * second copy of that table in the browser is one that drifts.
+ *
+ * A service that has its OWN icon over there shows that instead, since it is the
+ * icon it will have here: the plan then reads as the dashboard it produces, and
+ * the review is a comparison rather than a list of names.
  */
 function ServiceMark({ service }: { service: PlanService }) {
   if (service.targetKind === "database")
     return (
       <DatabaseLogo
         type={service.engine as DatabaseType}
+        logo={service.logo}
         size={16}
         className="rounded-sm bg-transparent"
       />
     );
-  return <Layers className="size-3.5 text-muted-foreground" />;
+  return (
+    <LogoImage
+      src={service.logo}
+      size={16}
+      className="rounded-sm bg-transparent"
+      fallback={<Layers className="size-3.5 text-muted-foreground" />}
+    />
+  );
 }
 
 /* ------------------------------------------------------------------ */

@@ -25,6 +25,8 @@ export interface PlanService {
    */
   exposedPort: number | null;
   domains: string[];
+  /** The icon it would arrive with, inline, or null when it has none. */
+  logo: string | null;
   notes: string[];
 }
 

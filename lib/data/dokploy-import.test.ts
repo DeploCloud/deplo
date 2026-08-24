@@ -104,6 +104,10 @@ let fixtures: Fixtures = {};
 /** Every procedure the importer called, in order — the calls are the contract. */
 let calls: string[] = [];
 
+const DOKPLOY_ICON = `data:image/svg+xml;base64,${Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>',
+).toString("base64")}`;
+
 const COMPOSE_WITH_DOKPLOY_NETWORK = [
   "services:",
   "  web:",
@@ -215,6 +219,9 @@ const APPLICATIONS: Record<string, unknown> = {
     applicationId: "dok-app-web",
     name: "blink-web",
     appName: "blink-web-abc",
+    // Dokploy stores an icon inline, exactly as deplo does - a template's logo
+    // is downloaded and base64'd on ITS side when the service is created.
+    icon: DOKPLOY_ICON,
     sourceType: "github",
     buildType: "nixpacks",
     owner: "acme",
@@ -656,6 +663,36 @@ test("a project lands complete: project, environment, apps, variables", async ()
   const dbRow = report!.items.find((i) => i.sourceKind === "postgres")!;
   assert.equal(dbRow.outcome, "failed");
   assert.match(dbRow.message!, /not provisioned yet/);
+});
+
+test("an app keeps the icon it had, and one without stays iconless", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const apps = await db.select().from(appsTable);
+  // Carried verbatim: Dokploy already stores the inline form deplo stores, so
+  // there is nothing to fetch and nothing to re-encode.
+  assert.equal(apps.find((a) => a.name === "blink-web")!.logo, DOKPLOY_ICON);
+  // The other app has no icon over there, so it lands with none here rather than
+  // borrowing one - favicon detection fills it in on the first deploy.
+  assert.equal(apps.find((a) => a.name === "blink-api")!.logo, null);
+});
+
+test("an icon deplo would refuse is dropped, and the app still lands", async () => {
+  fixtures = defaultFixtures();
+  const web = { ...(APPLICATIONS["dok-app-web"] as Record<string, unknown>) };
+  // A remote URL: the shape the dashboard's CSP refuses to load at all.
+  web.icon = "https://templates.dokploy.com/blueprints/n8n/logo.png";
+  __setDokployFetchForTest(routingFetch({ applications: { "dok-app-web": web } }));
+
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const apps = await db.select().from(appsTable);
+  const row = apps.find((a) => a.name === "blink-web")!;
+  assert.equal(row.logo, null);
+  // The point: a bad icon costs the icon, never the app.
+  assert.equal(row.source, "github");
 });
 
 test("the primary domain is the real hostname, not Dokploy's throwaway one", async () => {
@@ -1104,7 +1141,14 @@ test("an import run belongs to its team", async () => {
  * fake can serve a project with several applications — and can be told to fail
  * exactly one of them.
  */
-function routingFetch(opts: { failApplication?: string } = {}) {
+function routingFetch(
+  opts: {
+    failApplication?: string;
+    /** Per-id overrides for `application.one`, so one test can change a single
+     *  field of an app without editing the shared fixture. */
+    applications?: Record<string, unknown>;
+  } = {},
+) {
   return async (input: string, init?: RequestInit): Promise<Response> => {
     const url = new URL(input);
     const procedure = url.pathname.replace(/^\/api\//, "");
@@ -1115,7 +1159,7 @@ function routingFetch(opts: { failApplication?: string } = {}) {
       const id = url.searchParams.get("applicationId") ?? "";
       if (id === opts.failApplication)
         return new Response("upstream exploded", { status: 500 });
-      const body = APPLICATIONS[id];
+      const body = opts.applications?.[id] ?? APPLICATIONS[id];
       if (!body) return new Response("not found", { status: 404 });
       return json(body);
     }

@@ -30,12 +30,17 @@ export const LOGO_IMAGE_TYPES = [
 export const LOGO_ACCEPT_ATTR = LOGO_IMAGE_TYPES.join(",");
 
 /**
- * Max size of the RAW image file the user picks (bytes). Base64 inflates by
- * ~4/3, so the stored data-URI string is at most ~683 KB — small enough to live
- * inline in the JSON store without bloating it. Keep this conservative: every
- * read of the project document carries the logo.
+ * Max size of the RAW image file (bytes). Base64 inflates by ~4/3, so the stored
+ * data-URI string is at most ~2.8 MB.
+ *
+ * It is 2 MB because that is what the platforms deplo imports from accept, and an
+ * icon that arrives with a migrated app must not be the one thing that does not
+ * survive it. Everything else here pays for that ceiling, so keep it in mind
+ * before raising it again: the same cap bounds the file picker, favicon
+ * detection and the template catalog, and the logo is inline on the row, so
+ * every read of the Overview grid carries one per app.
  */
-export const MAX_LOGO_BYTES = 512 * 1024; // 512 KiB raw
+export const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2 MiB raw
 
 /**
  * Max length of the STORED logo string. Covers the inflated base64 data URI

@@ -1689,6 +1689,11 @@ type DokployPlanService {
   What it is on Dokploy: application, compose, or one of postgres/mysql/mariadb/mongo/redis/libsql.
   """
   kind: String
+
+  """
+  The icon this service would arrive with, as an inline data-URI, or null when it has none. Already validated against what Deplo will store, so a client can render it as-is.
+  """
+  logo: String
   name: String
 
   """What will not come across, or will need a look afterwards."""

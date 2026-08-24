@@ -17,6 +17,7 @@ import {
   mapBuildSettings,
   mapDatabase,
   mapDomains,
+  mapLogo,
   mapMounts,
   mapResources,
   mapSource,
@@ -30,6 +31,7 @@ import {
   declaredSourceVolumes,
 } from "./map";
 import type { DokployApplication, DokployDatabase } from "./client";
+import { MAX_LOGO_STRING_LEN } from "../apps/logo-shared";
 
 /**
  * The pure half of the Dokploy import. Every case here is a shape a real Dokploy
@@ -1312,4 +1314,36 @@ test("mapDomains reports a real internal-path rewrite and ignores the default", 
   // Both routes still come across whole.
   assert.equal(withRewrite.value.length, 2);
   assert.equal(withRewrite.value[0].pathPrefix, "/shop");
+});
+
+/* ------------------------------------------------------------------ */
+/* Icon                                                                */
+/* ------------------------------------------------------------------ */
+
+test("mapLogo carries a Dokploy icon across untouched", () => {
+  // What Dokploy actually stores: a template logo it inlined itself, and the
+  // browser-built SVG its bundled icon set produces.
+  const png = `data:image/png;base64,${Buffer.from("not really a png").toString("base64")}`;
+  const svg = `data:image/svg+xml;base64,${Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg"/>',
+  ).toString("base64")}`;
+  assert.equal(mapLogo(png), png);
+  assert.equal(mapLogo(svg), svg);
+  assert.equal(mapLogo(`  ${png}  `), png);
+});
+
+test("mapLogo drops what deplo would not store, and never throws", () => {
+  assert.equal(mapLogo(null), null);
+  assert.equal(mapLogo(undefined), null);
+  assert.equal(mapLogo(""), null);
+  assert.equal(mapLogo("   "), null);
+  // A remote URL is the shape the strict CSP exists to refuse.
+  assert.equal(mapLogo("https://templates.dokploy.com/blueprints/n8n/logo.png"), null);
+  // An image type outside deplo's allowlist, and a non-image data URI.
+  assert.equal(mapLogo("data:image/avif;base64,AAAA"), null);
+  assert.equal(mapLogo("data:text/html;base64,PHNjcmlwdD4="), null);
+  // Over the cap: Dokploy accepts up to 2MB of raw image, deplo stores the
+  // inflated string, so the ceiling is the string length either way.
+  const huge = `data:image/png;base64,${"A".repeat(MAX_LOGO_STRING_LEN)}`;
+  assert.equal(mapLogo(huge), null);
 });

@@ -34,6 +34,7 @@ function service(over: Partial<PlanService> & { sourceId: string }): PlanService
     engine: null,
     exposedPort: null,
     domains: [],
+    logo: null,
     notes: [],
     ...over,
   };

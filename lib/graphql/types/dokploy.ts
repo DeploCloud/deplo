@@ -105,6 +105,11 @@ const PlanServiceRef = builder
         description:
           "The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.",
       }),
+      logo: t.exposeString("logo", {
+        nullable: true,
+        description:
+          "The icon this service would arrive with, as an inline data-URI, or null when it has none. Already validated against what Deplo will store, so a client can render it as-is.",
+      }),
       notes: t.exposeStringList("notes", {
         description: "What will not come across, or will need a look afterwards.",
       }),

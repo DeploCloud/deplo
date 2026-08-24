@@ -145,6 +145,7 @@ const SCAN = /* GraphQL */ `
             engine
             exposedPort
             domains
+            logo
             notes
           }
         }

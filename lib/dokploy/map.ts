@@ -15,6 +15,8 @@
 
 import yaml from "js-yaml";
 
+import { isValidLogoValue } from "../apps/logo-shared";
+
 import type {
   BuildConfig,
   BuildMethod,
@@ -619,6 +621,27 @@ export function mapResources(row: {
     value: { memoryMb, memoryReservationMb: reservation, cpuMilli },
     notes,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Icon                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The service's icon, carried over as-is.
+ *
+ * There is nothing to fetch: Dokploy already stores an inline data-URI (see
+ * {@link DokployApplication.icon}), which is the same thing deplo stores, so the
+ * only work is refusing what deplo would not accept anyway - a remote URL, an
+ * image type outside the allowlist, or one over the size cap. Those come back
+ * `null` rather than throwing: an icon is decoration, and losing it must never be
+ * the reason a service fails to import. An app that lands without one still picks
+ * one up from favicon detection on its first deploy.
+ */
+export function mapLogo(icon: string | null | undefined): string | null {
+  const value = icon?.trim();
+  if (!value) return null;
+  return isValidLogoValue(value) ? value : null;
 }
 
 /* ------------------------------------------------------------------ */

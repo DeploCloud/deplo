@@ -104,6 +104,14 @@ export interface DokployApplication {
   description?: string | null;
   env?: string | null;
   buildArgs?: string | null;
+  /**
+   * The service's icon, and ALWAYS a base64 data-URI rather than a URL: Dokploy
+   * inlines a template's logo server-side when the service is created, an upload
+   * is read with `FileReader`, and its bundled icon set is an SVG built in the
+   * browser. That is the same shape deplo stores in `apps.logo`, so the icon
+   * crosses the migration as a field copy and never as a download.
+   */
+  icon?: string | null;
   sourceType: DokploySourceType;
   buildType: DokployBuildType;
   applicationStatus?: string | null;
@@ -201,6 +209,14 @@ export interface DokployCompose {
   description?: string | null;
   env?: string | null;
   composeFile?: string | null;
+  /**
+   * The service's icon, and ALWAYS a base64 data-URI rather than a URL: Dokploy
+   * inlines a template's logo server-side when the service is created, an upload
+   * is read with `FileReader`, and its bundled icon set is an SVG built in the
+   * browser. That is the same shape deplo stores in `apps.logo`, so the icon
+   * crosses the migration as a field copy and never as a download.
+   */
+  icon?: string | null;
   composeType?: "docker-compose" | "stack" | null;
   sourceType: "git" | "github" | "gitlab" | "bitbucket" | "gitea" | "raw";
   composePath?: string | null;

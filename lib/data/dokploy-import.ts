@@ -71,6 +71,7 @@ import {
   mapBuildSettings,
   mapDatabase,
   mapDomains,
+  mapLogo,
   mapMounts,
   mapResources,
   mapSource,
@@ -192,6 +193,13 @@ export interface PlanService {
   exposedPort: number | null;
   /** Hostnames that would be imported (the throwaway ones already dropped). */
   domains: string[];
+  /**
+   * The icon this service would arrive with, already validated, or null when it
+   * has none. The scan reads the detail row anyway, so showing the real icon in
+   * the plan costs nothing and lets the review be checked at a glance: what you
+   * are about to see afterwards is what you are looking at now.
+   */
+  logo: string | null;
   notes: string[];
 }
 
@@ -526,6 +534,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           engine: deploEngineFor(svc.kind as DokployDbKind),
           exposedPort: null,
           domains: [],
+          logo: null,
           notes: [],
         };
         // An engine Deplo does not have is settled here, without a detail call:
@@ -560,6 +569,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
         // gives a database nothing but its id, so until now this line may have had
         // no name at all.
         line.name = nameOf(detail, svc);
+        line.logo = mapLogo((detail as DokployApplication).icon);
 
         if (line.targetKind === "database") {
           const key = line.name.trim().toLowerCase();
@@ -1945,6 +1955,11 @@ async function importAppService(
     // a single-image app's config files are written below instead - storing them
     // here would be a row nobody ever turns back into a file.
     mounts: isCompose && mounts.value.files.length > 0 ? mounts.value.files : null,
+    // The icon comes across with everything else. Dokploy stores it inline, which
+    // is what deplo stores too, so there is nothing to fetch - and an app that had
+    // one over there arriving with the generic glyph here is the kind of detail
+    // that makes a migration feel lossy even when nothing was lost.
+    logo: mapLogo(detail.icon),
     deploy: false,
   });
 
