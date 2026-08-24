@@ -4,6 +4,7 @@ import * as React from "react";
 import { ContainerLogs } from "@/components/apps/container-logs";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
+import { runtimeNotice } from "@/components/apps/live-logs";
 import type { ConsoleInstance } from "@/lib/data/console";
 import type { DatabaseStatus } from "@/lib/types";
 
@@ -27,10 +28,14 @@ export function DatabaseLogs({
   const runtime = useDatabaseRuntime(id, { enabled: status === "running" });
 
   if (!streamable && !instances.length) {
+    // Centred in the full-bleed frame: an explanation pinned to the top of a
+    // viewport-tall empty pane reads as a page that half-loaded.
     return (
-      <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-        No container on the host to stream logs from. Redeploy the database to
-        recreate it.
+      <div className="flex min-h-0 flex-1 items-center justify-center p-8">
+        <p className="max-w-100 text-center text-sm text-muted-foreground">
+          No container on the host to stream logs from. Redeploy the database to
+          recreate it.
+        </p>
       </div>
     );
   }
@@ -40,6 +45,7 @@ export function DatabaseLogs({
       appId={id}
       instances={instances}
       runtime={runtime}
+      notice={runtimeNotice(runtime)}
       apiBase={`/api/databases/${encodeURIComponent(id)}/logs`}
     />
   );

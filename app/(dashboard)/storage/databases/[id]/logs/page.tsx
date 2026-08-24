@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases";
 import { getDatabaseLogsInfo } from "@/lib/data/database-console";
-import { PageHeader } from "@/components/shared/page-header";
 import { DatabaseLogs } from "@/components/storage/database-logs";
 
 export const metadata = { title: "Logs" };
@@ -15,12 +14,10 @@ export default async function DatabaseLogsPage(
 
   const info = await getDatabaseLogsInfo(id);
 
+  // Full-bleed route: the pane fills the frame, so there is no header above it.
+  // See components/layout/shell-frame.tsx.
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Logs"
-        description="Live output from the database's container — including while it is crash-looping."
-      />
+    <div className="flex min-h-0 flex-1 flex-col">
       <DatabaseLogs
         id={db.id}
         status={db.status}

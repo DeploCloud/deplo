@@ -1,6 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-const LEVEL_CHIP_WIDTHS = ["w-20", "w-12", "w-14", "w-14", "w-16", "w-16"];
 
 const LOG_LINES = [
   "w-3/4",
@@ -61,21 +60,13 @@ export default function Loading() {
 
         {/* Log panel */}
         <div className="flex min-w-0 flex-col rounded-xl border border-border bg-card">
-          {/* Toolbar */}
-          <div className="flex flex-col gap-3 border-b border-border p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-0 flex-1">
-                <Skeleton className="h-9 w-full rounded-md" />
-              </div>
-              <Skeleton className="h-8 w-28 rounded-md" />
-              <Skeleton className="h-8 w-28 rounded-md" />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              {LEVEL_CHIP_WIDTHS.map((width, i) => (
-                <Skeleton key={i} className={`h-7 rounded-md ${width}`} />
-              ))}
-            </div>
+          {/* Toolbar: search, level filter, copy, download — one row now that the
+              six level pills have become a single facet control. */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+            <Skeleton className="h-9 min-w-0 flex-1 rounded-md" />
+            <Skeleton className="h-9 w-36 rounded-md" />
+            <Skeleton className="h-9 w-28 rounded-md" />
+            <Skeleton className="h-9 w-28 rounded-md" />
           </div>
 
           {/* Terminal */}

@@ -266,6 +266,19 @@
   scroll-padding-block: 0.25rem;
 }
 
+/* One row in a log console. `content-visibility` lets the browser skip layout
+   and paint for the rows that are off screen, which is what makes a pane
+   holding thousands of lines scroll smoothly without a virtualizer: a log row
+   is cheap to lay out but there are a great many of them, and the DOM ceiling
+   in container-logs.tsx is 5,000. `contain-intrinsic-size` supplies the size
+   the browser then does NOT measure, so the scrollbar stays honest instead of
+   growing as you scroll; `auto` means the real height is remembered once a row
+   has been rendered, so a wrapped stack trace stops being guessed at. */
+@utility log-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 22px;
+}
+
 /* A horizontal rail that scrolls without showing a scrollbar. The rail is
    driven by its own arrow buttons and by trackpad/touch swipe; a permanent
    bar under every row would be four of them stacked down the store page.

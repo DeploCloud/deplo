@@ -5,7 +5,6 @@ import { getLogsInfo } from "@/lib/data/console";
 import { getLogs } from "@/lib/data/deployments";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
-import { PageHeader } from "@/components/shared/page-header";
 import { LiveLogs } from "@/components/apps/live-logs";
 
 export const metadata = { title: "Logs" };
@@ -40,13 +39,13 @@ export default async function AppLogsPage(
     latest ? getLogs(latest.id) : Promise.resolve([]),
   ]);
 
+  // No title, no description, no padding: this route is full-bleed (see
+  // components/layout/shell-frame.tsx) and the pane fills the frame. Everything
+  // the header used to say is either obvious from the sidebar (which app, which
+  // section) or now lives on the notice chip in the toolbar (why there is no
+  // container, why it keeps restarting).
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Logs"
-        description="Live output from the app's container — including while it is crash-looping — or the most recent build's logs when there is no container at all."
-      />
-
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Seeded with whatever containers the host has, running or not:
           `docker logs` outlives the process, so a dead or restarting container
           still streams. Only an app with NO container falls back to build logs. */}

@@ -701,8 +701,12 @@ function FacetOptionRow({
 }
 
 /** The default facet control: a button stating the filter in its own words —
- *  "Modified by: Ada" / "Modified by · 3" — that opens the multi-select menu. */
-function FacetMenu<T>({
+ *  "Modified by: Ada" / "Modified by · 3" — that opens the multi-select menu.
+ *
+ *  Exported because the log consoles reuse it for their level filter (see
+ *  `components/logs/log-filters.tsx`). It is generic and constraint-free on
+ *  purpose: it reads a facet's options, never its rows. */
+export function FacetMenu<T>({
   facet,
   values,
   counts,

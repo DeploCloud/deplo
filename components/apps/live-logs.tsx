@@ -12,7 +12,7 @@ import {
   useAppRuntime,
   type AppRuntimeView,
 } from "@/components/apps/use-app-runtime";
-import { cn } from "@/lib/utils";
+import type { LogNotice } from "@/components/logs/log-notice";
 import type { ConsoleInstance } from "@/lib/data/console";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
 
@@ -107,10 +107,12 @@ export function LiveLogs({
 
   if (streamable && instances.length) {
     return (
-      <div className="space-y-4">
-        <RuntimeNotice runtime={runtime} />
-        <ContainerLogs appId={appId} instances={instances} runtime={runtime} />
-      </div>
+      <ContainerLogs
+        appId={appId}
+        instances={instances}
+        runtime={runtime}
+        notice={runtimeNotice(runtime)}
+      />
     );
   }
 
@@ -125,173 +127,141 @@ export function LiveLogs({
 
   if (depId && depStatus) {
     return (
-      <div className="space-y-4">
-        <StoppedLogsNotice status={depStatus} />
-        <BuildLogStream
-          // Keyed by id so a redeploy remounts against the new build cleanly
-          // (fresh log buffer, its own polling) rather than appending to the old.
-          key={depId}
-          deploymentId={depId}
-          initialLogs={depId === seededId ? initialBuildLogs : []}
-          initialStatus={depStatus}
-        />
-      </div>
+      <BuildLogStream
+        // Keyed by id so a redeploy remounts against the new build cleanly
+        // (fresh log buffer, its own polling) rather than appending to the old.
+        key={depId}
+        deploymentId={depId}
+        initialLogs={depId === seededId ? initialBuildLogs : []}
+        initialStatus={depStatus}
+        notice={noticeForStatus(depStatus)}
+        fill
+      />
     );
   }
 
+  // Centred in the full-bleed frame rather than pinned to its top edge, which
+  // for an empty state in a viewport-tall pane reads as a page that failed to
+  // load the rest of itself.
   return (
-    <EmptyState
-      graphic={<LogsGraphic />}
-      title="No logs yet"
-      description="Runtime logs stream from the app's container, and this project hasn't been deployed yet. Deploy it to see its build and runtime output here."
-    />
+    <div className="flex min-h-0 flex-1 items-center justify-center">
+      <EmptyState
+        graphic={<LogsGraphic />}
+        title="No logs yet"
+        description="Runtime logs stream from the app's container, and this app hasn't been deployed yet. Deploy it to see its build and runtime output here."
+      />
+    </div>
   );
 }
 
 /**
- * The banner above a live stream whose container is NOT healthy. It exists so the
- * output below is never read as "everything is fine" — and so a crash loop is
- * named as a crash loop, since the logs alone (a stack trace repeating every 60
- * seconds) leave the user to infer it.
+ * What the log pane's notice chip says when the container is NOT healthy. It
+ * exists so the output below is never read as "everything is fine" — and so a
+ * crash loop is named as a crash loop, since the logs alone (a stack trace
+ * repeating every 60 seconds) leave the user to infer it.
+ *
+ * A descriptor rather than a component: the full-screen logs page has no room
+ * above the pane for a banner, so `LogNoticeChip` renders this in the toolbar
+ * instead, headline visible and paragraph one click away.
  */
-function RuntimeNotice({ runtime }: { runtime: AppRuntimeView | null }) {
+export function runtimeNotice(runtime: AppRuntimeView | null): LogNotice | null {
   if (!runtime || runtime.unreachable || runtime.total === 0) return null;
 
   if (runtime.missing.length > 0) {
-    return (
-      <Notice
-        icon={CircleAlert}
-        iconClass="text-destructive"
-        title={`${runtime.missing.join(", ")} has no container on the host`}
-        body="The rest of the stack is up, but this service was never created (or was removed), so it has no logs of its own. Redeploy the app to bring it back."
-      />
-    );
+    return {
+      tone: "error",
+      icon: CircleAlert,
+      short: "No container",
+      title: `${runtime.missing.join(", ")} has no container on the host`,
+      body: "The rest of the stack is up, but this service was never created (or was removed), so it has no logs of its own. Redeploy the app to bring it back.",
+    };
   }
   if (runtime.restarting > 0) {
     const restarts = Math.max(
       ...runtime.containers.map((c) => c.restartCount),
       0,
     );
-    return (
-      <Notice
-        icon={RotateCw}
-        iconClass="text-[var(--warning)] animate-spin [animation-duration:3s]"
-        title={
-          restarts > 0
-            ? `This container is in a restart loop (${restarts} restarts)`
-            : "This container is in a restart loop"
-        }
-        body="Docker starts it, it dies, and Docker starts it again. The output below is its live log across those restarts — the error that kills it is in there."
-      />
-    );
+    return {
+      tone: "warn",
+      icon: RotateCw,
+      iconClass: "animate-spin [animation-duration:3s]",
+      short: restarts > 0 ? `${restarts} restarts` : "Restart loop",
+      title:
+        restarts > 0
+          ? `This container is in a restart loop (${restarts} restarts)`
+          : "This container is in a restart loop",
+      body: "Docker starts it, it dies, and Docker starts it again. The output below is its live log across those restarts: the error that kills it is in there.",
+    };
   }
   if (runtime.unhealthy > 0) {
-    return (
-      <Notice
-        icon={CircleAlert}
-        iconClass="text-[var(--warning)]"
-        title="This container is running but failing its healthcheck"
-        body="The process is up and Docker's healthcheck says it is not working. The output below is live — whatever the check is failing on should be in it."
-      />
-    );
+    return {
+      tone: "warn",
+      icon: CircleAlert,
+      short: "Unhealthy",
+      title: "This container is running but failing its healthcheck",
+      body: "The process is up and Docker's healthcheck says it is not working. The output below is live, so whatever the check is failing on should be in it.",
+    };
   }
   if (runtime.running === 0) {
-    return (
-      <Notice
-        icon={CircleAlert}
-        iconClass="text-destructive"
-        title="This container is not running"
-        body="The app is deployed but nothing is up on the host. Below is the output the container produced before it stopped."
-      />
-    );
+    return {
+      tone: "error",
+      icon: CircleAlert,
+      short: "Not running",
+      title: "This container is not running",
+      body: "The app is deployed but nothing is up on the host. Below is the output the container produced before it stopped.",
+    };
   }
   if (runtime.running < runtime.total) {
-    return (
-      <Notice
-        icon={CircleAlert}
-        iconClass="text-[var(--warning)]"
-        title={`Only ${runtime.running} of ${runtime.total} containers are running`}
-        body="Part of this stack is down. Switch containers with the picker below to read the one that stopped."
-      />
-    );
+    return {
+      tone: "warn",
+      icon: CircleAlert,
+      short: `${runtime.running}/${runtime.total} up`,
+      title: `Only ${runtime.running} of ${runtime.total} containers are running`,
+      body: "Part of this stack is down. Switch containers with the picker in the toolbar to read the one that stopped.",
+    };
   }
   return null;
 }
 
 /**
- * Banner shown above the build logs when the app has no container to stream from,
- * so the user knows the output isn't the live runtime stream. Wording follows the
- * most recent build's status.
+ * What the chip says when the pane is showing BUILD logs because the app has no
+ * container to stream from — so the output is never mistaken for the live
+ * runtime stream. Wording follows the most recent build's status.
  */
-function StoppedLogsNotice({ status }: { status: DeploymentStatus }) {
-  const notice = noticeForStatus(status);
-  return (
-    <Notice
-      icon={notice.icon}
-      iconClass={notice.iconClass}
-      title={notice.title}
-      body={notice.body}
-    />
-  );
-}
-
-function Notice({
-  icon: Icon,
-  iconClass,
-  title,
-  body,
-}: {
-  icon: typeof CircleAlert;
-  iconClass: string;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm">
-      <Icon className={cn("mt-0.5 size-4 shrink-0", iconClass)} />
-      <div className="space-y-0.5">
-        <p className="font-medium">{title}</p>
-        <p className="text-muted-foreground">{body}</p>
-      </div>
-    </div>
-  );
-}
-
-function noticeForStatus(status: DeploymentStatus): {
-  icon: typeof CircleAlert;
-  iconClass: string;
-  title: string;
-  body: string;
-} {
+export function noticeForStatus(status: DeploymentStatus): LogNotice {
   switch (status) {
     case "building":
     case "queued":
       return {
+        tone: "warn",
         icon: Hammer,
-        iconClass: "text-[var(--warning)]",
-        title: "Build in progress — no container yet",
-        body: "Showing this build's logs below. Live runtime logs will stream here as soon as the container exists.",
+        short: "Build in progress",
+        title: "Build in progress, no container yet",
+        body: "Showing this build's logs. Live runtime logs will stream here as soon as the container exists.",
       };
     case "error":
       return {
+        tone: "error",
         icon: XCircle,
-        iconClass: "text-destructive",
-        title: "The last build failed — no container was created",
-        body: "Showing the failed build's logs below. Fix the errors and redeploy to bring the project up.",
+        short: "Build failed",
+        title: "The last build failed, so no container was created",
+        body: "Showing the failed build's logs. Fix the errors and redeploy to bring the app up.",
       };
     case "canceled":
       return {
+        tone: "muted",
         icon: CircleAlert,
-        iconClass: "text-muted-foreground",
-        title: "The last build was canceled — no container was created",
-        body: "Showing the canceled build's logs below. Redeploy to build and start the project.",
+        short: "Build canceled",
+        title: "The last build was canceled, so no container was created",
+        body: "Showing the canceled build's logs. Redeploy to build and start the app.",
       };
     default:
       return {
+        tone: "muted",
         icon: CircleAlert,
-        iconClass: "text-muted-foreground",
-        title: "This project has no container on its server",
-        body: "Showing the most recent build's logs below. These are not live — deploy the project to stream its runtime output.",
+        short: "Build logs",
+        title: "This app has no container on its server",
+        body: "Showing the most recent build's logs. These are not live: deploy the app to stream its runtime output.",
       };
   }
 }

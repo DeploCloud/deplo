@@ -1,118 +1,319 @@
 import type { LogLevel } from "./types";
 
 /**
- * Heuristic log-level detection for RAW log lines that arrive without a level
- * tag — i.e. a container's stdout/stderr from `docker logs -f`. Unlike build
- * logs (whose producer already stamps a {@link LogLevel}), container output is
- * an unstructured byte stream: Docker keeps no severity, so the only signal is
- * the line text itself. We classify it the way Dozzle/Dokploy do — pattern
- * matching — so the runtime-logs pane can render the same level pills/tints as
- * the build-log stream via the shared `lib/log-levels.ts` styling.
+ * Level detection for RAW log lines that arrive without a level tag — a
+ * container's stdout/stderr from `docker logs -f`. Build logs don't come here:
+ * their producer stamps a {@link LogLevel} already.
  *
- * This is a guess, not ground truth. Free-text logs have no universal format, so
- * mis-classification is expected on adversarial lines ("no errors found"); the
- * goal is that the *common* shapes (`[ERROR]`, `level=warn`, a stack-trace `at`
- * frame, an HTTP 5xx) light up usefully.
+ * The rule this file exists to enforce: **colour only on evidence, never on a
+ * guess.** The previous version, like Dokploy's and Coolify's, ran a cascade of
+ * keyword regexes and coloured whatever they hit. That is where the wrong
+ * colours came from, and the failures were not exotic:
+ *
+ *   - `built in 502 ms`      → ERROR   (a bare 3-digit token read as a status)
+ *   - `ready in 200 ms`      → SUCCESS (same, on the other end of the range)
+ *   - `Long running query`   → SUCCESS (`/\brunning\b/` painted it green)
+ *   - `code: 200`            → ERROR   (`code:\s*\d+` meant "errno")
+ *   - `{"level":"error"}`    → INFO    (!) the single most common structured
+ *                                      shape in the wild — pino, zap, bunyan,
+ *                                      Traefik — went UNDETECTED, because the
+ *                                      key had to be followed immediately by
+ *                                      `:` and JSON puts a quote in between.
+ *
+ * So: a line is coloured when the producer SAYS what it is (a structured level,
+ * a bracketed tag, a glog prefix, a syslog priority), when it has an
+ * unmistakable shape (a stack frame, a traceback, a non-zero exit), or when it
+ * is a recognised access log carrying a status code. Everything else is `info`
+ * and renders neutral. A pane where only the real errors are red is worth more
+ * than one where everything is some colour.
  *
  * Vocabulary note: deplo's {@link LogLevel} has no "warning"/"trace"/"fatal" —
- * everything folds into `error | warn | info | debug | success` (the `command`
- * level is producer-only and never inferred here). Order matters: the first
- * matching block wins, mirroring how a reader skims a line.
+ * everything folds into `error | warn | info | debug | success`. The `command`
+ * level is producer-only and is never inferred here.
  */
 
-/** Pull an HTTP status code out of common shapes and map it to a severity. */
-function levelFromStatusCode(message: string): LogLevel | null {
-  // `"statusCode": 503` (JSON), `status=404` / `status:500` (key=value), or a
-  // bare ` 200 ` / `… 502` token as access logs print it (bounded by space or
-  // line edge). The bare-token form deliberately also matches a 3-digit count
-  // ("Loaded 200 routes" reads as success) — we accept that false positive to
-  // colour plain access logs (`GET /x 500`), which is the common, useful case.
-  const match = message.match(
-    /(?:"?status(?:Code)?"?\s*[:=]\s*"?(\d{3})"?)|(?:(?:^|\s)(\d{3})(?:\s|$))/i,
+/**
+ * Level words as every mainstream logger spells them, folded onto deplo's five.
+ * Membership in this map is what makes a tag a tag: `[main]`, `Content-Type:`
+ * and `http:` all parse as "a word before a delimiter" and are rejected here
+ * rather than by yet another regex.
+ *
+ * `notice` maps to info, not warn: in syslog it sits BELOW warning ("normal but
+ * significant"), and Postgres prints it for routine things like an implicit
+ * index creation. Colouring it amber trains people to ignore amber.
+ */
+const LEVEL_WORDS: Record<string, LogLevel> = {
+  trc: "debug",
+  trace: "debug",
+  debug: "debug",
+  dbg: "debug",
+  verbose: "debug",
+  inf: "info",
+  info: "info",
+  information: "info",
+  notice: "info",
+  log: "info",
+  wrn: "warn",
+  warn: "warn",
+  warning: "warn",
+  err: "error",
+  eror: "error",
+  error: "error",
+  fatal: "error",
+  crit: "error",
+  critical: "error",
+  panic: "error",
+  alert: "error",
+  emerg: "error",
+  emergency: "error",
+  severe: "error",
+};
+
+function levelWord(word: string | undefined): LogLevel | null {
+  return word ? (LEVEL_WORDS[word.toLowerCase()] ?? null) : null;
+}
+
+/**
+ * A numeric level, on whichever of the two scales the number can only belong to.
+ * pino/bunyan use 10/20/30/40/50/60; syslog uses 0-7. They overlap nowhere above
+ * 7, so the value itself picks the scale — 8 and 9 belong to neither and are
+ * refused rather than guessed at.
+ */
+function levelFromNumber(n: number): LogLevel | null {
+  if (n >= 10) {
+    if (n >= 50) return "error";
+    if (n >= 40) return "warn";
+    if (n >= 30) return "info";
+    return "debug";
+  }
+  if (n <= 7) {
+    if (n <= 3) return "error"; // emerg / alert / crit / err
+    if (n === 4) return "warn";
+    if (n <= 6) return "info"; // notice / info
+    return "debug";
+  }
+  return null;
+}
+
+const LEVEL_KEY = "level|severity|levelname|loglevel|log\\.level|lvl";
+
+/** `"level":"error"` / `"severity":"WARN"` / `"log.level":"debug"` — JSON. */
+const JSON_LEVEL = new RegExp(`"(?:${LEVEL_KEY})"\\s*:\\s*"([A-Za-z]{3,11})"`, "i");
+
+/** `"level":50` — pino's numeric scale, or syslog's, inside a JSON log line. */
+const JSON_LEVEL_NUM = new RegExp(`"(?:${LEVEL_KEY})"\\s*:\\s*(\\d{1,2})(?![\\d.])`, "i");
+
+/** logfmt, as Go's slog / zap's console encoder / Traefik's text mode print it. */
+const LOGFMT_LEVEL = new RegExp(
+  `(?:^|\\s)(?:${LEVEL_KEY})\\s*=\\s*"?([A-Za-z]{3,11})"?(?=[\\s,;}\\])]|$)`,
+  "i",
+);
+
+/**
+ * Every `[bracketed]` word in the line, in order. Scanned as a LIST rather than
+ * matched once because the level is routinely not the first bracket: logback
+ * prints `[main] INFO com.acme - up`, and Postgres prints `[1] LOG:  ready`.
+ * The first bracket that is a level word wins; the rest are thread names, pids
+ * and module tags, and are left alone.
+ */
+const BRACKET_WORDS = /\[\s*([A-Za-z]{3,11})\s*\]/g;
+
+/**
+ * A `word:` tag, wherever it sits on the line. The boundary before it (start,
+ * space, `]`, `|`, `>`) is what keeps `Content-Type:` and a JSON `"err":` out,
+ * and refusing a following `/` is what keeps `https://` out. A following
+ * non-space is allowed on purpose: Python's default format is `INFO:root:msg`.
+ */
+const TAGGED_WORDS = /(?:^|[\s\]|>])([A-Za-z]{3,11})\s*:(?!\/)/g;
+
+/** glog / klog, which is what Go core tooling, kubelet and containerd emit. */
+const GLOG = /^([EWIF])\d{4}\s+\d{2}:\d{2}:\d{2}/;
+const GLOG_LEVEL: Record<string, LogLevel> = {
+  E: "error",
+  F: "error",
+  W: "warn",
+  I: "info",
+};
+
+/**
+ * A bare UPPERCASE level word standing as its own column — how logback, log4j,
+ * Serilog and Spring Boot lay a line out:
+ * `2026-08-24 10:00:00.000  INFO 1 --- [main] c.a.App : started`.
+ * Read only across the HEAD of the line, where a level column lives; further in
+ * it would start reading shouted prose as a severity.
+ */
+const COLUMN_LEVEL =
+  /(?:^|\s)(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|SEVERE|NOTICE)(?=\s)/;
+const COLUMN_LEVEL_WINDOW = 64;
+
+/** A syslog priority frame, `<11>Aug 24 ...`. severity = PRI mod 8. */
+const SYSLOG_PRI = /^<(\d{1,3})>/;
+
+/** npm/pnpm/yarn write their level as a literal prefix, not a tag. */
+// `\b` is wrong after `ERR!`: `!` and the space that follows are both
+// non-word characters, so there is no boundary between them.
+const NPM_PREFIX = /^\s*(?:npm|pnpm|yarn)\s+(ERR!|WARN|warning|notice)(?=\s|$)/;
+
+/**
+ * Tier 1 — the producer stated the level. This is the only tier that can be
+ * trusted without qualification, so it runs first and nothing overrides it: a
+ * logger that says `"level":"info"` about a line containing the word "panic"
+ * knows something we do not.
+ */
+function declaredLevel(m: string): LogLevel | null {
+  const glog = GLOG.exec(m);
+  if (glog) return GLOG_LEVEL[glog[1]] ?? null;
+
+  const pri = SYSLOG_PRI.exec(m);
+  if (pri) {
+    const byPri = levelFromNumber(Number(pri[1]) % 8);
+    if (byPri) return byPri;
+  }
+
+  const npm = NPM_PREFIX.exec(m);
+  if (npm) {
+    if (npm[1] === "ERR!") return "error";
+    return npm[1] === "notice" ? "info" : "warn";
+  }
+
+  const json = levelWord(JSON_LEVEL.exec(m)?.[1]);
+  if (json) return json;
+
+  const jsonNum = JSON_LEVEL_NUM.exec(m);
+  if (jsonNum) {
+    const byNum = levelFromNumber(Number(jsonNum[1]));
+    if (byNum) return byNum;
+  }
+
+  const logfmt = levelWord(LOGFMT_LEVEL.exec(m)?.[1]);
+  if (logfmt) return logfmt;
+
+  return (
+    firstLevelWord(m, BRACKET_WORDS) ??
+    firstLevelWord(m, TAGGED_WORDS) ??
+    levelWord(COLUMN_LEVEL.exec(m.slice(0, COLUMN_LEVEL_WINDOW))?.[1])
   );
-  if (!match) return null;
-  const code = Number(match[1] ?? match[2]);
-  if (code >= 500) return "error";
-  if (code >= 400) return "warn";
-  if (code >= 200 && code < 300) return "success";
-  if (code >= 300) return "info"; // 3xx redirects
+}
+
+/** Walk a global regex over the line and return the first capture that is a
+ *  known level word, ignoring the ones that are not. */
+function firstLevelWord(m: string, re: RegExp): LogLevel | null {
+  re.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(m)) !== null) {
+    const level = levelWord(match[1]);
+    if (level) return level;
+  }
   return null;
 }
 
 /**
+ * Tier 2 — shapes that mean one thing and nothing else. No bare keywords here:
+ * every pattern is anchored on structure (a frame's `file:line`, a class name
+ * ending in Error/Exception, a non-zero exit) so "no errors found" and "error
+ * handling middleware registered" stay neutral.
+ */
+const KNOWN_ERROR_SHAPES: RegExp[] = [
+  // JS/Java stack frame. Every quantifier after the anchor is bounded: the
+  // unbounded form backtracked O(n^2) on an adversarial `at aaaa...` line with
+  // no `:<digit>`, and this runs per raw log line, client-side.
+  /^\s*at\s+[\w.$<>[\]]{1,200}\s{0,8}\(?[^\n]{0,256}:\d+(?::\d+)?\)?/,
+  /^\s*File\s+"[^"\n]{0,256}",\s+line\s+\d+/, // Python traceback frame
+  /^\s*Caused by:\s/, // Java
+  /^\s*\.{3}\s+\d+\s+more\s*$/, // Java's elided-frames marker
+  /^goroutine\s+\d+\s+\[/, // Go panic dump
+  /\bTraceback \(most recent call last\)/,
+  /(?:^|[\s([])[A-Za-z_][\w.$]*(?:Error|Exception)\s*:/, // TypeError: / java.io.IOException:
+  /\b(?:uncaught|unhandled)\s+(?:exception|error|rejection|promise)/i,
+  /\bSegmentation fault\b|\bcore dumped\b|\bOOMKilled\b/i,
+  /^\s*Killed\s*$/,
+  /\bsignal:\s*killed\b/i,
+  /\bexit(?:ed with)?\s+(?:status|code)\s+[1-9]\d*\b/i,
+  /\bexit\s+code\s+[1-9]\d*\b/i,
+  // errno / a POSIX error constant. Restricted to a NON-ZERO errno and to the
+  // `E[A-Z]+` form of `code`, because the old `code\s*[:=]\s*\d+` turned every
+  // `code: 200` into an error.
+  /\berrno\s*[:=]\s*-?[1-9]\d*\b/i,
+  /\bcode\s*[:=]\s*['"]?(E[A-Z]{2,})\b/,
+];
+
+/** Tier 4 — success is claimed, not inferred. A completion marker the producer
+ *  printed on purpose, and nothing that merely sounds healthy. */
+const SUCCESS_SHAPES: RegExp[] = [
+  /\[\s*(?:ok|success|succeeded|done|pass(?:ed)?)\s*\]/i,
+  /[✓✔√✅]/,
+  /\bcompiled successfully\b/i,
+  /\bbuild succeeded\b/i,
+  /\bready in\s+\d/i,
+];
+
+/** Warn shapes that are not a level tag. Deprecation notices are the whole list:
+ *  the word appears in deprecation notices and nowhere else. */
+const WARN_SHAPES: RegExp[] = [/\bdeprecat(?:ed|ion|ing)\b/i, /[‼⚠]/];
+
+/**
+ * An HTTP method somewhere on the line followed by a 3-digit token — the shape
+ * of every access log, and the ONLY context in which a bare number is read as a
+ * status. Without the method requirement `Loaded 200 routes` is a success and
+ * `built in 502 ms` is an error, which is exactly what used to happen.
+ */
+const ACCESS_LOG =
+  /\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\b[^\n]{0,512}?\s(\d{3})(?=\s|$)/;
+
+/** A status carried in a NAMED field is structured evidence on its own, so it
+ *  needs no method: `"status":500`, `status_code=404`, Traefik's DownstreamStatus. */
+const NAMED_STATUS =
+  /["']?(?:status|statuscode|status_code|http_status|downstreamstatus|response_code)["']?\s*[:=]\s*["']?([1-5]\d{2})\b/i;
+
+/** Tier 3 — a status code, mapped conservatively. 2xx/3xx stay INFO rather than
+ *  going green: a busy access log is thousands of 200s, and a pane that is a
+ *  wall of green says as little as one that is a wall of grey. */
+function levelFromStatus(m: string): LogLevel | null {
+  const code = Number(NAMED_STATUS.exec(m)?.[1] ?? ACCESS_LOG.exec(m)?.[1]);
+  if (!code) return null;
+  if (code >= 500) return "error";
+  if (code >= 400) return "warn";
+  return "info";
+}
+
+/**
  * Classify a single raw log line. Pass the PLAIN line (ANSI already stripped) —
- * escape codes would otherwise leak into the regexes (e.g. a `[0m` reset
- * masquerading as a `[…]`-bracketed tag).
+ * escape codes would otherwise leak into the patterns, e.g. a `[0m` reset
+ * masquerading as a `[…]`-bracketed tag.
  */
 export function detectLogLevel(message: string): LogLevel {
-  // 1. Structured status code first — it's the strongest single signal and a
-  //    2xx line shouldn't read as "error" just because a word later matches.
-  const byStatus = levelFromStatusCode(message);
+  const declared = declaredLevel(message);
+  if (declared) return declared;
+
+  for (const re of KNOWN_ERROR_SHAPES) if (re.test(message)) return "error";
+
+  const byStatus = levelFromStatus(message);
   if (byStatus) return byStatus;
 
-  const m = message;
+  for (const re of WARN_SHAPES) if (re.test(message)) return "warn";
+  for (const re of SUCCESS_SHAPES) if (re.test(message)) return "success";
 
-  // 2. ERROR — checked before warn/info so a genuine failure isn't downgraded.
-  //    Each clause is anchored (bracket tag, key=value, line-start token, or a
-  //    structural shape like a stack frame) to avoid the greedy bare-word
-  //    matching that makes "no failures here" read as an error.
-  if (
-    /(?:^|\s)(?:error|err|fatal|panic|critical)\s*[:=]/i.test(m) || // `error:` `err=`
-    /\[(?:error|err|fatal|critical|panic)\]/i.test(m) || // `[ERROR]`
-    /\b(?:level|lvl|severity)\s*[:=]\s*"?(?:error|err|fatal|critical|panic)\b/i.test(
-      m,
-    ) || // `level=error`
-    /\b(?:uncaught|unhandled)\s+(?:exception|error|rejection)\b/i.test(m) ||
-    /(?:^|\s)(?:exception|traceback)\b/i.test(m) || // Python `Traceback`, Java `Exception`
-    // JS/Java stack frame. Every quantifier after the leading anchor is
-    // bounded: the unbounded `[\w.$]+\s*\(?.*:` form backtracked O(n²) on an
-    // adversarial `at aaaa…` line with no `:<digit>`, and this runs per raw
-    // container log line client-side. Real frames fit the bounds comfortably.
-    /^\s*at\s+[\w.$]{1,200}\s{0,8}\(?[^\n]{0,256}:\d+(?::\d+)?\)?/.test(m) ||
-    /\b[A-Za-z.]*(?:Error|Exception)\b\s*:/.test(m) || // `TypeError:` `IOException:`
-    /\b(?:errno|code)\s*[:=]\s*(?:-?\d+|E[A-Z]+)\b/.test(m) // `errno=2` `code: ECONNREFUSED`
-  ) {
-    return "error";
-  }
-
-  // 3. WARN
-  if (
-    /(?:^|\s)(?:warn(?:ing)?)\s*[:=]/i.test(m) || // `warn:` `warning =`
-    /\[(?:warn(?:ing)?)\]/i.test(m) || // `[WARN]`
-    /\b(?:level|lvl|severity)\s*[:=]\s*"?(?:warn(?:ing)?)\b/i.test(m) ||
-    /\bdeprecat(?:ed|ion)\b/i.test(m) ||
-    /\b(?:caution|notice)\s*[:=]/i.test(m) ||
-    /[‼⚠]️?/.test(m) // ⚠ / ⚠️ / ‼
-  ) {
-    return "warn";
-  }
-
-  // 4. SUCCESS — positive completion phrasing and the "now serving" lines that
-  //    mark a healthy startup, plus check-mark glyphs.
-  if (
-    /\[(?:success|ok|done)\]/i.test(m) ||
-    /\b(?:successfully|completed?)\s+(?:initialized|started|created|deployed|built|connected|compiled)\b/i.test(
-      m,
-    ) ||
-    /\b(?:listening|running|serving)\s+(?:on|at)\b/i.test(m) || // `listening on :8080`
-    /\brunning\b/i.test(m) || // any "running" line — healthy/up state
-    /\b(?:server\s+(?:is\s+)?ready|ready\s+in|compiled\s+successfully)\b/i.test(
-      m,
-    ) ||
-    /[✓√✔✅]/.test(m)
-  ) {
-    return "success";
-  }
-
-  // 5. DEBUG / TRACE — explicit debug tags only; everything else falls to info.
-  if (
-    /(?:^|\s)(?:debug|trace|verbose|dbg)\s*[:=]/i.test(m) ||
-    /\[(?:debug|trace|verbose)\]/i.test(m) ||
-    /\b(?:level|lvl|severity)\s*[:=]\s*"?(?:debug|trace|verbose)\b/i.test(m)
-  ) {
-    return "debug";
-  }
-
-  // 6. INFO — explicit info/notice tags; the default for anything unmatched.
   return "info";
+}
+
+/**
+ * Is this line the CONTINUATION of the one above it rather than a record of its
+ * own? A stack trace is one event printed across a dozen lines, and classifying
+ * each line alone makes it render as one red line followed by eleven grey ones.
+ * The caller keeps the previous level and lets a continuation inherit it, which
+ * is what paints a trace as the single block a reader sees it as.
+ *
+ * Deliberately narrow: an indent, a frame, or a closing brace. A line that
+ * starts flush left starts a new record, whatever it says.
+ */
+export function isLogContinuation(line: string): boolean {
+  return (
+    /^(?:\s{2,}|\t)/.test(line) ||
+    /^\s*at\s/.test(line) ||
+    /^\s*File\s+"/.test(line) ||
+    /^\s*Caused by:/.test(line) ||
+    /^\s*\.{3}\s+\d+\s+more/.test(line) ||
+    /^goroutine\s+\d+\s+\[/.test(line) ||
+    /^[}\])]/.test(line)
+  );
 }

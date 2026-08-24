@@ -29,6 +29,24 @@ export const LEVEL_BADGE_CLASS: Record<LogLevel, string> = {
   success: "bg-success/15 text-success",
 };
 
+/**
+ * The 2px rail down the left edge of a row. Unlike the chip, this one SPANS the
+ * whole row, wrapped lines included: that is the point of it. A stack trace is
+ * one event printed across a dozen lines, and an unbroken rail beside all of
+ * them is what makes it read as a single block instead of a dozen records.
+ *
+ * `info` is deliberately blank. Most lines are info once the level detector
+ * stops guessing, and a rail beside every one of them is a rail beside none.
+ */
+export const LEVEL_BAR_CLASS: Record<LogLevel, string> = {
+  command: "bg-zinc-600",
+  info: "bg-transparent",
+  warn: "bg-[var(--warning)]",
+  error: "bg-destructive",
+  debug: "bg-zinc-700",
+  success: "bg-success",
+};
+
 /** Classes for the log MESSAGE text itself (the pill carries the level color). */
 export const LEVEL_TEXT_CLASS: Record<LogLevel, string> = {
   command: "font-semibold text-white",

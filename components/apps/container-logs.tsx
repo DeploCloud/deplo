@@ -8,9 +8,9 @@ import {
   Pause,
   Play,
   Trash2,
+  FileSearch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -22,11 +22,18 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import { LogLines, LogRow } from "@/components/shared/log-line-row";
+import {
+  LogSearch,
+  LogLevelFilter,
+  useLogFilters,
+  RUNTIME_LEVELS,
+} from "@/components/logs/log-filters";
+import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
 import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { stripAnsi } from "@/lib/ansi";
 import { mergeLogBurst } from "@/lib/logs/merge";
-import { detectLogLevel } from "@/lib/log-level-detect";
+import { detectLogLevel, isLogContinuation } from "@/lib/log-level-detect";
 import type { LogLevel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -72,11 +79,22 @@ function capBuffer(text: string): string {
 }
 
 /** Classify one raw line, scanning only a bounded head (a pathological line is
- *  still RENDERED whole; only the level heuristic is capped). */
-function classifyLine(text: string): { level: LogLevel; text: string } {
+ *  still RENDERED whole; only the level detection is capped).
+ *
+ *  `prev` is the level of the line above. A stack trace is ONE event printed
+ *  across a dozen lines, so a continuation inherits rather than being judged on
+ *  its own — otherwise a Python traceback renders as one red line followed by
+ *  eleven grey ones, which is what both reference implementations do. Nothing
+ *  inherits `info`: that is the neutral default, not a verdict worth spreading. */
+function classifyLine(
+  text: string,
+  prev: LogLevel,
+): { level: LogLevel; text: string } {
   const sample =
     text.length > MAX_DETECT_CHARS ? text.slice(0, MAX_DETECT_CHARS) : text;
-  return { level: detectLogLevel(stripAnsi(sample)), text };
+  const plain = stripAnsi(sample);
+  if (prev !== "info" && isLogContinuation(plain)) return { level: prev, text };
+  return { level: detectLogLevel(plain), text };
 }
 
 /**
@@ -98,10 +116,14 @@ export function ContainerLogs({
   instances,
   runtime,
   apiBase,
+  notice = null,
 }: {
   appId: string;
   instances: ConsoleInstance[];
   runtime?: AppRuntimeView | null;
+  /** Why this output might not be the whole story (restart loop, failing
+   *  healthcheck, half a stack down). Rendered as a chip in the toolbar. */
+  notice?: LogNotice | null;
   /**
    * Override the logs endpoint — the database logs viewer passes
    * `/api/databases/<id>/logs` (same SSE contract). Default: the app route
@@ -172,8 +194,11 @@ export function ContainerLogs({
     if (lastNl >= from) {
       // Blank interior lines are preserved so spacing survives; the final "\n"
       // is excluded, so no trailing empty entry appears.
+      let prev: LogLevel = acc.length ? acc[acc.length - 1]!.level : "info";
       for (const line of text.slice(from, lastNl).split("\n")) {
-        acc.push(classifyLine(line));
+        const classified = classifyLine(line, prev);
+        prev = classified.level;
+        acc.push(classified);
       }
       from = lastNl + 1;
     }
@@ -183,7 +208,8 @@ export function ContainerLogs({
     }
     parseRef.current = { text, parsedTo: from, lines: acc };
     const partial = text.slice(from);
-    setLines(partial ? [...acc, classifyLine(partial)] : [...acc]);
+    const tailLevel: LogLevel = acc.length ? acc[acc.length - 1]!.level : "info";
+    setLines(partial ? [...acc, classifyLine(partial, tailLevel)] : [...acc]);
   }, []);
   // Consecutive auto-reattaches; reset by any manual action or new output.
   const reattachCount = React.useRef(0);
@@ -330,9 +356,19 @@ export function ContainerLogs({
   // colors into styled runs; only the level heuristic (in `publishLines`
   // above) gets the stripped text (escape codes would confuse its regexes).
 
+  // Search + level filter. Runtime levels only: `command` is producer-only and
+  // nothing here can infer it, so offering it would be a permanently empty row.
+  const filters = useLogFilters(lines, RUNTIME_LEVELS);
+
   // Copy/download hand off PLAIN text — pasting `\x1b[33m` into an editor or a
-  // bug report is exactly the garbage the pane itself no longer shows.
-  const plainOutput = React.useMemo(() => stripAnsi(output), [output]);
+  // bug report is exactly the garbage the pane itself no longer shows — and
+  // they hand off what is ON SCREEN, filters applied. Copying a filtered pane
+  // and getting the unfiltered stream back is the kind of surprise that gets
+  // pasted into a bug report unread.
+  const plainOutput = React.useMemo(
+    () => filters.shown.map((l) => stripAnsi(l.text)).join("\n"),
+    [filters.shown],
+  );
 
   function onScroll() {
     const el = scrollRef.current;
@@ -374,6 +410,12 @@ export function ContainerLogs({
     setAttempt((n) => n + 1);
   }
 
+  function clear() {
+    setOutput("");
+    outputRef.current = "";
+    publishLines();
+  }
+
   function resumeFollow() {
     setFollow(true);
     const el = scrollRef.current;
@@ -383,22 +425,29 @@ export function ContainerLogs({
     }
   }
 
+  // The connection's own state, which is not the same thing as the container's
+  // — a stream can be live against a container that is dead, because
+  // `docker logs` reads a file. No ellipsis: a label that animates by growing
+  // three dots also reflows the toolbar next to it.
   const statusLabel: Record<Status, string> = {
-    connecting: "connecting…",
+    connecting: "connecting",
     live: "streaming",
-    reattaching: "container restarted — reattaching…",
+    reattaching: "reattaching",
     ended: "ended",
     error: "failed",
   };
   const busy = status === "connecting" || status === "reattaching";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border">
-      <div className="flex items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
-        <ScrollText className="size-4 text-muted-foreground" />
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* One toolbar row, wrapping on narrow viewports. Everything in it that
+          sits beside the search input is h-9: `size="sm"` is h-8 and lands a
+          button 4px short of an Input, which reads as a broken row. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
+        <ScrollText className="size-4 shrink-0 text-muted-foreground" />
         {instances.length > 1 ? (
           <Select value={active.name} onValueChange={switchInstance}>
-            <SelectTrigger className="h-7 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
+            <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
               <Boxes className="size-3.5 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -439,11 +488,16 @@ export function ContainerLogs({
             </SelectContent>
           </Select>
         ) : (
-          <span className="font-mono text-xs">{active.name}</span>
+          <span className="shrink-0 font-mono text-xs">{active.name}</span>
         )}
+
+        {/* Why the output below might not be the whole story: a restart loop, a
+            failing healthcheck, half a stack that never came up. */}
+        <LogNoticeChip notice={notice} />
+
         <span
           className={cn(
-            "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]",
+            "flex shrink-0 items-center gap-1.5 text-[11px]",
             status === "live"
               ? "text-[var(--success)]"
               : status === "error"
@@ -468,18 +522,27 @@ export function ContainerLogs({
           {statusLabel[status]}
         </span>
 
-        <div className="ml-auto flex items-center gap-1">
-          <Badge variant="muted" className="font-mono text-[10px]">
-            {follow ? "following" : "paused"}
-          </Badge>
+        <LogSearch
+          value={filters.state.q}
+          onChange={(q) => filters.setState((s) => ({ ...s, q }))}
+          className="basis-full sm:basis-auto lg:max-w-100"
+        />
+        <LogLevelFilter
+          facet={filters.facet}
+          values={filters.state.levels}
+          counts={filters.counts}
+          onChange={(levels) => filters.setState((s) => ({ ...s, levels }))}
+        />
+
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <SimpleTooltip
             content={follow ? "Pause auto-scroll" : "Resume auto-scroll"}
           >
             <Button
-              size="sm"
               variant="ghost"
               onClick={() => (follow ? setFollow(false) : resumeFollow())}
-              className="h-7 gap-1.5 px-2 text-xs"
+              aria-label={follow ? "Pause auto-scroll" : "Resume auto-scroll"}
+              className="size-9"
             >
               {follow ? (
                 <Pause className="size-3.5" />
@@ -490,31 +553,27 @@ export function ContainerLogs({
           </SimpleTooltip>
           <SimpleTooltip content="Clear">
             <Button
-              size="sm"
               variant="ghost"
-              onClick={() => {
-                setOutput("");
-                outputRef.current = "";
-                publishLines();
-              }}
-              className="h-7 gap-1.5 px-2 text-xs"
+              onClick={clear}
+              aria-label="Clear"
+              className="size-9"
             >
               <Trash2 className="size-3.5" />
             </Button>
           </SimpleTooltip>
-          <CopyButton value={plainOutput} className="size-7" />
+          <CopyButton value={plainOutput} className="size-9" />
           <DownloadButton
             value={plainOutput}
             filename={`${active.name}.log`}
-            className="size-7"
+            className="size-9"
           />
           {status === "ended" || status === "error" ? (
             <SimpleTooltip content="Reconnect">
               <Button
-                size="sm"
                 variant="ghost"
                 onClick={reconnect}
-                className="h-7 gap-1.5 px-2 text-xs"
+                aria-label="Reconnect"
+                className="size-9"
               >
                 <RotateCcw className="size-3.5" />
               </Button>
@@ -523,15 +582,37 @@ export function ContainerLogs({
         </div>
       </div>
 
-      <LogLines ref={scrollRef} onScroll={onScroll} className="h-[520px]">
-        {lines.map((l, i) => (
+      <LogLines ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1">
+        {filters.shown.map((l, i) => (
           // The level here is INFERRED from the text, not authored, so the
-          // message stays neutral and only the chip carries the guess.
-          <LogRow key={i} level={l.level} text={l.text} tintMessage={false} />
+          // message stays neutral and only the rail and chip carry it. `auto`
+          // hides the chip on info lines, which after the detector stopped
+          // guessing is most of them.
+          <LogRow
+            key={i}
+            level={l.level}
+            text={l.text}
+            tintMessage={false}
+            chip="auto"
+            highlight={filters.highlight}
+          />
         ))}
 
+        {/* Nothing on screen has three different causes, and telling them apart
+            is the difference between "wait" and "clear your filter". */}
+        {lines.length > 0 && filters.shown.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+            <FileSearch className="size-5 text-zinc-500" />
+            <p className="text-[11px] text-zinc-500">
+              No log lines match your filters.
+            </p>
+          </div>
+        ) : null}
+
         {status === "connecting" && !output ? (
-          <p className="text-[11px] text-zinc-500">Connecting to log stream…</p>
+          <p className="text-[11px] text-zinc-500">
+            Connecting to the log stream
+          </p>
         ) : null}
 
         {status === "reattaching" ? (

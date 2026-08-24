@@ -3,12 +3,19 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Ban, Clock } from "lucide-react";
+import { Ban, Clock, FileSearch } from "lucide-react";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import { LogLines, LogRow } from "@/components/shared/log-line-row";
+import {
+  LogSearch,
+  LogLevelFilter,
+  useLogFilters,
+  BUILD_LEVELS,
+} from "@/components/logs/log-filters";
+import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
 import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
@@ -60,10 +67,20 @@ export function BuildLogStream({
   initialStatus,
   initialQueuePosition = null,
   showQueueBanner = false,
+  notice = null,
+  fill = false,
 }: {
   deploymentId: string;
   initialLogs: LogLine[];
   initialStatus: DeploymentStatus;
+  /** Why these are BUILD logs and not the live runtime stream. Rendered as a
+   *  chip in the toolbar; only the app Logs page, which falls back here when
+   *  there is no container, passes one. */
+  notice?: LogNotice | null;
+  /** Fill the height of the frame instead of sitting in a fixed-height card.
+   *  Set on the full-bleed logs page; the deployment detail page leaves it off
+   *  and keeps its card. */
+  fill?: boolean;
   /** Seed for the queued banner's position (detail page only); the poll keeps it
    *  fresh. Omitted where the banner isn't shown. */
   initialQueuePosition?: number | null;
@@ -208,27 +225,45 @@ export function BuildLogStream({
     setFollow(atBottom);
   }
 
+  // Search + level filter. A build log's level is AUTHORED by the producer, so
+  // every level including `command` is real here and worth offering.
+  const filters = useLogFilters(logs, BUILD_LEVELS);
+
   // Copy/download text is de-ANSI'd: the stored lines keep their escapes (the
   // rows render them as colors), but pasted text should never carry `\x1b[33m`.
+  // It follows the FILTERS too — copying a pane narrowed to the errors and
+  // getting the whole build back is a surprise nobody catches before pasting.
   const logText = React.useMemo(
     () =>
-      logs
+      filters.shown
         .map(
           (l) =>
             `[${formatLogTime(l.ts)}] ${levelLabelPadded(l.level)} ${stripAnsi(l.text)}`,
         )
         .join("\n"),
-    [logs],
+    [filters.shown],
   );
 
   return (
-    <div className="space-y-2">
+    <div
+      className={
+        fill ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-2"
+      }
+    >
       {showQueueBanner && status === "queued" && logs.length === 0 && (
         <QueuedBanner position={queuePosition} />
       )}
-      <div className="overflow-hidden rounded-xl border border-border bg-[#0a0a0a]">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2">
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div
+        className={
+          fill
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0a0a0a]"
+            : "overflow-hidden rounded-xl border border-border bg-[#0a0a0a]"
+        }
+      >
+        {/* Every control beside the search input is h-9 — `size="sm"` is h-8,
+            which lands a button 4px short of an Input and reads as a broken row. */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+          <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
             {logs.length} lines
             {live && (
               <span className="flex items-center gap-1.5 text-[var(--warning)]">
@@ -240,17 +275,31 @@ export function BuildLogStream({
               </span>
             )}
           </span>
-          <div className="flex items-center gap-2">
+
+          <LogNoticeChip notice={notice} />
+
+          <LogSearch
+            value={filters.state.q}
+            onChange={(q) => filters.setState((s) => ({ ...s, q }))}
+            className="basis-full sm:basis-auto lg:max-w-100"
+          />
+          <LogLevelFilter
+            facet={filters.facet}
+            values={filters.state.levels}
+            counts={filters.counts}
+            onChange={(levels) => filters.setState((s) => ({ ...s, levels }))}
+          />
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {live && (
               <Button
                 variant="outline"
-                size="sm"
                 onClick={stopBuild}
                 disabled={stopping}
                 className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
               >
                 <Ban className="size-3.5" />
-                {stopping ? "Stopping…" : "Stop build"}
+                {stopping ? "Stopping" : "Stop build"}
               </Button>
             )}
             <CopyButton value={logText} label="Copy logs" />
@@ -264,16 +313,26 @@ export function BuildLogStream({
         <LogLines
           ref={scrollRef}
           onScroll={onScroll}
-          className="max-h-120 text-xs"
+          className={fill ? "min-h-0 flex-1 text-xs" : "max-h-120 text-xs"}
         >
-          {logs.map((l, i) => (
+          {filters.shown.map((l, i) => (
             <LogRow
               key={i}
               level={l.level}
               text={l.text}
               time={formatLogTime(l.ts)}
+              highlight={filters.highlight}
             />
           ))}
+
+          {logs.length > 0 && filters.shown.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+              <FileSearch className="size-5 text-zinc-500" />
+              <p className="text-[11px] text-zinc-500">
+                No log lines match your filters.
+              </p>
+            </div>
+          ) : null}
         </LogLines>
       </div>
     </div>
