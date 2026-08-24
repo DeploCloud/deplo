@@ -206,6 +206,7 @@ const PLAN_DATA = /* GraphQL */ `
       targetKind
       targetName
       running
+      sourceReachable
       volumes {
         sourceVolume
       }
@@ -283,6 +284,9 @@ interface DataService {
   sourceKind: string;
   sourceId: string;
   sourceName: string;
+  sourceServerId: string;
+  /** Whether the machine holding this data answers Deplo. See the guard below. */
+  sourceReachable: boolean;
   volumes: { sourceVolume: string }[];
   /** Why a volume could not be paired, or why this host cannot be read at all.
    *  Shown, never swallowed: it is the line that says what will NOT come over. */
@@ -640,6 +644,30 @@ export function MigrationWizard({
         for (const note of d.notes)
           setItems((prev) => [...prev, dataNote(`${d.sourceName}: ${note}`)]);
       const movable = planned.filter((d) => d.volumes.length > 0);
+
+      // ---- one machine, one refusal --------------------------------
+      // A source that does not answer is not a per-service failure: the cause is a
+      // MACHINE, and copying every other service off it would produce the same red
+      // line once per service while the first one that mattered scrolled away. It
+      // is also the only moment halting is free - `moveDokployServiceData` stops
+      // the service on Dokploy before it dials, so past this point a refusal
+      // always leaves something down. Nothing has been stopped yet, so stop here.
+      const unreachable = movable.filter((d) => !d.sourceReachable);
+      if (unreachable.length > 0) {
+        const names = [
+          ...new Set(
+            unreachable.map(
+              (d) =>
+                plan.servers.find((m) => m.sourceId === d.sourceServerId)
+                  ?.name ?? "that machine",
+            ),
+          ),
+        ];
+        setFailure(
+          `Deplo cannot reach the agent on ${names.join(", ")}, so no data was copied and nothing was stopped on Dokploy. Open the agent's port on it, or correct its address under Install, then start the migration again - what is already here will be skipped.`,
+        );
+        return;
+      }
 
       for (const [i, d] of movable.entries()) {
         if (cancelled.current) return;

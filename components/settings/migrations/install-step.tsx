@@ -442,19 +442,15 @@ export function InstallStep({
                 )}
               </div>
 
-              {p && !bad && (
-                <>
-                  <CommandLine command={p.installCommand} truncate />
-                  <p className="text-xs text-muted-foreground">
-                    {AGENT_PORT_NOTICE}
-                  </p>
-                </>
-              )}
+              {p && !bad && <CommandLine command={p.installCommand} truncate />}
 
               {p && bad && (
                 <div className="space-y-2">
                   <CommandLine command={p.installCommand} truncate />
-                  <p className="text-xs text-muted-foreground">{bad.message}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {bad.message}
+                    {bad.status === "offline" ? ` ${AGENT_PORT_NOTICE}` : ""}
+                  </p>
                   {bad.status === "offline" ? (
                     canAddServers ? (
                       <form

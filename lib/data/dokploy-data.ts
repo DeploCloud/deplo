@@ -177,6 +177,18 @@ export interface DataMoveService {
   targetServerId: string;
   /** Whether the source is still up over there. */
   running: boolean;
+  /**
+   * Whether the machine holding this service's data ANSWERS us - a live Hello,
+   * not the stored status, which goes green on the call-home and so says nothing
+   * about the direction a copy needs (see `sourceAgentReachable`).
+   *
+   * Read by the wizard BEFORE it starts copying anything. One unreachable source
+   * stops the whole data phase in one line rather than turning into one identical
+   * failure per service: the cause is a single machine, and at that point nothing
+   * has been stopped on the other platform yet, so halting costs nothing and
+   * leaves nothing half-moved.
+   */
+  sourceReachable: boolean;
   volumes: DataMoveVolume[];
   notes: string[];
 }
@@ -598,6 +610,7 @@ export async function planDokployDataMove(
       targetName: landed.targetName,
       targetServerId: landed.targetServerId,
       running: state.running,
+      sourceReachable: reachable,
       volumes: [
         ...paired.value,
         // A bind mount is listed as what it is: a host DIRECTORY, copied by a

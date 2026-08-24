@@ -5,6 +5,7 @@ import { CircleHelp, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
+import { AGENT_PORT_NOTICE } from "@/components/shared/agent-reachability";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 import type { ServerStatus } from "@/lib/types";
@@ -96,7 +97,15 @@ export function ServerHealthChip({
     );
   }
 
-  const tip = [state.message, `Checked ${timeAgo(state.checkedAt!)}`]
+  // `offline` means nothing answered, and by far the most common cause on a host
+  // that enrolled fine is a firewall: enrolling is the agent dialing OUT, and this
+  // is us dialing IN. Said only here, on the failure - a line about ports on the
+  // install screen is read by every operator to help the few who need it.
+  const tip = [
+    state.message,
+    state.status === "offline" ? AGENT_PORT_NOTICE : null,
+    `Checked ${timeAgo(state.checkedAt!)}`,
+  ]
     .filter(Boolean)
     .join(" · ");
 

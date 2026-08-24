@@ -590,6 +590,32 @@ test("the plan says so when Deplo has no agent on the machine holding the data",
   );
 });
 
+test("the plan tells an enrolled-but-unreachable machine apart from a missing one", async () => {
+  // Two different problems with two different fixes: "no agent here at all" means
+  // install one, "the agent will not answer us" means the address or the firewall.
+  // Both have to be decided on the REVIEW screen - `sourceReachable` is what stops
+  // the wizard from starting a copy it cannot finish, in one refusal rather than
+  // one per service.
+  await seedDokployHostServer();
+  unreachableAgents.add("srv_dokploy_host");
+  const runId = await openRun();
+
+  const bad = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  assert.ok(bad.length > 0);
+  assert.ok(
+    bad.every((svc) => svc.sourceReachable === false),
+    "a machine that will not answer is not a machine we can read",
+  );
+  assert.ok(
+    bad.every((svc) => svc.notes.some((n) => /cannot reach the agent/.test(n))),
+    JSON.stringify(bad.map((s) => s.notes)),
+  );
+
+  unreachableAgents.delete("srv_dokploy_host");
+  const good = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  assert.ok(good.every((svc) => svc.sourceReachable === true));
+});
+
 test("a resource this run did not create is not reachable at all", async () => {
   // The database is here and its name matches a Dokploy service exactly — which is
   // all the old name-matching needed to offer it up for a copy that WIPES it.

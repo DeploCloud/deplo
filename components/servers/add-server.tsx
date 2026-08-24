@@ -19,7 +19,6 @@ import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { BetaChip } from "@/components/shared/beta-chip";
-import { AGENT_PORT_NOTICE } from "@/components/shared/agent-reachability";
 import { gqlAction } from "@/lib/graphql-client";
 import {
   AccessOption,
@@ -158,15 +157,6 @@ export function AddServer({
                 The command embeds a single-use token that expires in about an
                 hour. It is shown only now; if you lose it, re-mint one from the
                 server&rsquo;s menu.
-              </p>
-              {/* Said HERE because this screen is the one moment the operator is
-                  on the box. The command only proves the OUTBOUND direction works;
-                  everything after it is the control plane dialing in, and the
-                  server goes green either way. The Servers page probes for real on
-                  load, so the check this needs already exists - what was missing
-                  was telling anyone what to open. */}
-              <p className="text-xs text-muted-foreground">
-                {AGENT_PORT_NOTICE}
               </p>
               {/* Over plain http the installer AND its checksum travel on the same
                   unauthenticated channel, so anyone on the network path between the
