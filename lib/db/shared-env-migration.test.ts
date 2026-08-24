@@ -123,6 +123,18 @@ before(async () => {
 
   for (const f of pre27) await applyFile(f);
 
+  // Two columns from 0121 (profile pictures) borrowed forward as bare ALTERs
+  // rather than by pulling the whole file into `preSeed`: 0121 also alters
+  // `instance_settings`, which does not exist yet at this point. Needed because
+  // drizzle NAMES every column the live table object knows in its INSERT, so the
+  // seed helpers below reach for both on a schema frozen at 0026 — the same trap
+  // the raw-SQL `servers` seed further down exists for. Both are `IF NOT EXISTS`
+  // in the migration too, so 0121 still runs cleanly in its own place.
+  await pg.exec(`
+    alter table teams add column if not exists image text;
+    alter table memberships add column if not exists switcher_position integer;
+  `);
+
   // --- Seed old-world fixtures BETWEEN 0026 and 0027 (via the seed helpers so
   // the many required team/app columns stay correct) ---
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });

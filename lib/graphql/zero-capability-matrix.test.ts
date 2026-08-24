@@ -335,27 +335,59 @@ async function run(
 }
 
 /** Everything a mutation could plausibly move, plus the authz backbone itself. */
+const WATCHED = [
+  appsTable,
+  foldersTable,
+  projectsTable,
+  envVarsTable,
+  domainsTable,
+  basicAuthTable,
+  folderGrantsTable,
+  membershipsTable,
+  membershipCapabilitiesTable,
+  teamRolesTable,
+  teamsTable,
+  apiTokensTable,
+];
+
 async function snapshot(): Promise<string> {
-  const rows = await Promise.all([
-    db.select().from(appsTable),
-    db.select().from(foldersTable),
-    db.select().from(projectsTable),
-    db.select().from(envVarsTable),
-    db.select().from(domainsTable),
-    db.select().from(basicAuthTable),
-    db.select().from(folderGrantsTable),
-    db.select().from(membershipsTable),
-    db.select().from(membershipCapabilitiesTable),
-    db.select().from(teamRolesTable),
-    db.select().from(teamsTable),
-    db.select().from(apiTokensTable),
-  ]);
-  return JSON.stringify(rows);
+  return JSON.stringify(
+    await Promise.all(WATCHED.map((t) => db.select().from(t))),
+  );
 }
+
+/** The same snapshot with one table left out — see the carve-out below. */
+async function snapshotWithout(
+  excluded: (typeof WATCHED)[number],
+): Promise<string> {
+  return JSON.stringify(
+    await Promise.all(
+      WATCHED.filter((t) => t !== excluded).map((t) => db.select().from(t)),
+    ),
+  );
+}
+
+/**
+ * Mutations a member with NO capability may still write through, and why.
+ *
+ * Adding a name here is a decision, not a formality: the sweep exists so that a
+ * new mutation cannot quietly become the first one a powerless member can move
+ * a row with. Only a write to the actor's OWN preferences belongs here — never
+ * anything another member, another team, or an authorization check can read.
+ *
+ * `reorderMyTeams` writes `memberships.switcher_position` for the caller's own
+ * rows: the order THEIR topbar switcher puts their teams in. There is no
+ * capability that could gate it sensibly — a member with nothing granted still
+ * sees the switcher, and arranging your own menu is not an act on the team. That
+ * it stays confined to the caller is pinned separately, in
+ * `lib/data/avatars.test.ts` ("the switcher order is per PERSON").
+ */
+const OWN_PREFERENCES_ONLY = ["reorderMyTeams"];
 
 test("a member holding no capability can't move a single row", async () => {
   const touched: string[] = [];
   for (const m of docsFor("mutation")) {
+    if (OWN_PREFERENCES_ONLY.includes(m.name)) continue;
     await seedAll();
     const nobody = await principalFor(NOBODY);
     const before = await snapshot();
@@ -367,6 +399,26 @@ test("a member holding no capability can't move a single row", async () => {
     [],
     `a member whose role grants nothing wrote through: ${touched.join(", ")}`,
   );
+});
+
+test("the carve-out is real: each exempted mutation still only touches its own actor", async () => {
+  // A guard on the guard. If somebody adds a name to OWN_PREFERENCES_ONLY that
+  // does NOT belong there, this is the test that has to catch it — so it pins
+  // the one thing the exemption claims: the powerless member's write reaches
+  // nothing but their own membership row.
+  for (const name of OWN_PREFERENCES_ONLY) {
+    const m = docsFor("mutation").find((d) => d.name === name);
+    assert.ok(m, `${name} is exempted but is not a mutation`);
+    await seedAll();
+    const nobody = await principalFor(NOBODY);
+    const before = await snapshotWithout(membershipsTable);
+    await run(nobody, m!.doc);
+    assert.equal(
+      await snapshotWithout(membershipsTable),
+      before,
+      `${name} is exempted as a personal preference but touched other tables`,
+    );
+  }
 });
 
 test("the sweep can see: the owner moves the same fixture", async () => {

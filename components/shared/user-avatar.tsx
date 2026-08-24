@@ -72,10 +72,6 @@ function Mark({
   size: AvatarSize;
   className?: string;
 }) {
-  // A remote picture arrives after a round trip, so without a delay the monogram
-  // paints first and visibly swaps. A data-URI is already here — delaying that
-  // one would show a monogram for no reason.
-  const remote = Boolean(src && !src.startsWith("data:"));
   return (
     <Avatar className={cn(SIZE[size], className)}>
       <AvatarImage
@@ -85,8 +81,13 @@ function Mark({
         // it was rendered on.
         referrerPolicy="no-referrer"
       />
+      {/* No `delayMs`. It exists to hide the monogram-then-photo swap on a remote
+          image, but the common case here is somebody with NO Gravatar: their
+          address 404s (that is what `d=404` asks for), so a delay would leave
+          an empty ring on every page load and only then draw their initials.
+          Initials-then-photo is what every product does and what people read as
+          normal; an empty circle is not. */}
       <AvatarFallback
-        delayMs={remote ? 300 : undefined}
         className={cn(
           "font-medium",
           !background && "bg-foreground text-background",
