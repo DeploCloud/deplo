@@ -923,6 +923,20 @@ export function MigrationWizard({
   const moving = step === "review" && (running || stopped || failure !== null);
 
   /**
+   * Every machine behind that Dokploy answers Deplo - the same condition the
+   * install step ends on, hoisted here because the step rail needs it too.
+   *
+   * `deploServerId` is only set once a machine has come back `online` from a live
+   * probe, so this is "Deplo can read their disks", not "an agent was installed
+   * there". Empty list is ready: a Dokploy whose machines were all ours already
+   * has nothing to wait for.
+   */
+  const machinesReady = React.useMemo(
+    () => (plan?.servers ?? []).every((m) => m.deploServerId),
+    [plan],
+  );
+
+  /**
    * While it does, everything else on the page is switched off: the sidebar,
    * the topbar with its team switcher and account menu, the banners, the
    * page's own tabs. Not a confirm dialog - switching team is a button, not a
@@ -1095,7 +1109,15 @@ export function MigrationWizard({
                   // there is is the one it is on.
                   if (moving || takenOver) return s === "review";
                   if (s === "connect") return true;
-                  if (s === "install" || s === "review") return plan != null;
+                  if (s === "install") return plan != null;
+                  // Review is where the copy is started, and a copy needs an
+                  // agent that ANSWERS on every machine. The install step already
+                  // refuses to end until it has one - but the rail sat above it
+                  // saying "Review" was reachable the whole time, so one click
+                  // walked straight past the gate and landed on a cutover that
+                  // could not read a single volume. A gate the chrome around it
+                  // does not honour is a suggestion.
+                  if (s === "review") return plan != null && machinesReady;
                   // People and the report are what the migration produces: an
                   // empty one is worse than a chip that does not respond.
                   return items.length > 0;
