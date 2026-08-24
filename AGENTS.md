@@ -190,6 +190,13 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
 ## Commands (Bun) & environment
 
 - `bun install` · `bun run dev` · `bun run build` · `bun run lint` (eslint).
+- **Formatting is Prettier, and it is automatic** - `bun run format` / `format:check`. The
+  pre-commit hook (`.githooks/pre-commit` → lint-staged, wired by `bun install`) formats what
+  you stage, and CI's lint job re-checks it, so **never hand-align code to match a file**: write
+  it and let the hook settle the wrapping. `prettier-plugin-tailwindcss` also sorts the classes
+  in `className`, `cn()` and `cva()`. Generated output is out of scope (`.prettierignore`:
+  `schema.graphql`, `lib/agent/gen/`, `lib/db/migrations/`), and the one-time sweep that
+  reformatted the tree is listed in `.git-blame-ignore-revs`.
 - **Required env to boot:** `DEPLO_DATABASE_URL` (Postgres — the app **fail-fasts at module
   load** if unset), `DEPLO_SECRET` (≥16 chars; derives every crypto key), `DEPLO_PUBLIC_URL`
   (sets the cookie `secure` flag + Better Auth https). See `.env.example`.
