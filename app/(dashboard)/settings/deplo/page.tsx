@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { Badge } from "@/components/ui/badge";
 import { DeploSettingsPanel } from "@/components/settings/deplo-settings-panel";
 import { getInstanceSettings } from "@/lib/data/instance-settings";
 import { viewerIsInstanceOwner } from "@/lib/data/instance-owner";
@@ -50,6 +51,14 @@ export default async function DeploSettingsPage() {
         description={
           <>
             <span className="font-mono">v{settings.version}</span>
+            {/* Derived from the version, not a flag: the badge disappears on its
+                own the day 1.0.0 ships, so there is no line to remember to delete
+                and no env var left switched on in production. */}
+            {settings.version.startsWith("0.") ? (
+              <Badge variant="secondary" className="ml-2 align-middle">
+                Beta
+              </Badge>
+            ) : null}
             {" · "}
             {settings.deploHostId ? (
               <>
