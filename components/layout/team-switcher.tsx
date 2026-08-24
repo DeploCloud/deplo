@@ -177,7 +177,9 @@ export function TeamSwitcher({
  * The handle is separate from the row on purpose: the row's whole job is to
  * switch team on click, and making the row itself the drag surface turns every
  * slightly-imprecise click into a reorder. It appears on hover so it costs
- * nothing to anyone who never rearranges anything.
+ * nothing to anyone who never rearranges anything — out of the flow, so a row
+ * with no handle showing is not a row with a hole in it: the grip fades in over
+ * the item's left edge and the content slides out of its way.
  */
 function TeamRow({
   team,
@@ -205,7 +207,10 @@ function TeamRow({
     <DropdownMenuItem
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("group cursor-pointer", isDragging && "z-10 opacity-80")}
+      className={cn(
+        "group relative cursor-pointer overflow-hidden",
+        isDragging && "z-10 opacity-80",
+      )}
       disabled={disabled}
       onSelect={onSelect}
     >
@@ -213,24 +218,40 @@ function TeamRow({
         <span
           {...attributes}
           {...listeners}
-          // The handle drags; it must never also switch team.
+          // The handle drags; it must never also switch team - and stopping the
+          // CLICK is the whole of what that takes. There used to be an
+          // `onPointerDown` stopper here too, and it broke both halves: the prop
+          // sits after `{...listeners}`, so it REPLACED the pointer sensor's own
+          // activator (nothing ever dragged), and hiding the press from the menu
+          // item made Radix synthesize a click on release, which selected the row
+          // and switched team.
           onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
           aria-label={`Reorder ${team.name}`}
-          className="-ml-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
+          className="absolute left-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
         >
           <GripVertical className="size-3.5" />
         </span>
       )}
-      <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate">{team.name}</span>
-        <span className="text-xs text-muted-foreground capitalize">
-          {team.role} · {team.memberCount} member
-          {team.memberCount === 1 ? "" : "s"}
+      {/* The content slides right to uncover the handle. `pr-4` is the same 16px
+          the hover translate adds, so the Check ends up exactly where a row with
+          no handle puts it and a long name never runs under it. */}
+      <span
+        className={cn(
+          "flex w-full items-center gap-2 transition-transform",
+          sortable &&
+            "pr-4 group-focus-within:translate-x-4 group-hover:translate-x-4",
+        )}
+      >
+        <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate">{team.name}</span>
+          <span className="text-xs text-muted-foreground capitalize">
+            {team.role} · {team.memberCount} member
+            {team.memberCount === 1 ? "" : "s"}
+          </span>
         </span>
+        {active && <Check className="ml-auto size-4" />}
       </span>
-      {active && <Check className="ml-auto size-4" />}
     </DropdownMenuItem>
   );
 }
