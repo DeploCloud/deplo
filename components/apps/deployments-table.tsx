@@ -13,11 +13,12 @@ import {
   Undo2,
   ListFilter,
   ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
+  CalendarClock,
+  Search,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -50,6 +51,7 @@ import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 const DELETE_DEPLOYMENTS = `mutation ($ids: [ID!]!) { deleteDeployments(ids: $ids) }`;
 const DELETE_ALL = `mutation ($appId: ID, $serverId: ID, $environment: String, $status: String) { deleteAllDeployments(appId: $appId, serverId: $serverId, environment: $environment, status: $status) }`;
 const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID, $environment: String, $status: String) { cancelAllDeployments(appId: $appId, serverId: $serverId, environment: $environment, status: $status) }`;
+const CANCEL_ONE = `mutation ($id: String!) { cancelDeployment(id: $id) }`;
 
 /** In-progress deployments (queued/building) are still owned by the queue and the
  *  build job, so they can only be CANCELED — never selected for deletion. */
@@ -66,8 +68,60 @@ const ALL = "__all__";
 const ROW_NAV_EXEMPT =
   'a, button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-no-row-nav]';
 
-/** Rows shown per page (client-side pagination over the filtered set). */
-const PAGE_SIZE = 10;
+/** Rows rendered up front, and how many more each time the sentinel at the end of
+ *  the table scrolls into view. The whole (filtered) set is already in memory —
+ *  this only bounds how much of it the DOM holds. */
+const PAGE_SIZE = 25;
+
+/** Canonical order + labels for the Created filter. Windows are measured against
+ *  one "now" per render, so every option of a pass agrees on where the edges are. */
+const DAY = 86_400_000;
+const DATE_WINDOWS: { value: string; label: string; within: number }[] = [
+  { value: "24h", label: "Last 24 hours", within: DAY },
+  { value: "7d", label: "Last 7 days", within: 7 * DAY },
+  { value: "30d", label: "Last 30 days", within: 30 * DAY },
+];
+const OLDER = "older";
+const OLDER_LABEL = "More than 30 days ago";
+
+/** Does this row fall in the chosen Created window? `now` is passed in, not read
+ *  here, so every option of one pass measures against the same instant. */
+export function matchesDateWindow(
+  createdAt: string,
+  value: string,
+  now: number,
+): boolean {
+  const age = now - new Date(createdAt).getTime();
+  const w = DATE_WINDOWS.find((x) => x.value === value);
+  return w ? age <= w.within : age > 30 * DAY;
+}
+
+/** Everything a row can be found by: its own id, the app and server it belongs
+ *  to, the commit (sha, message, branch, PR number, GitHub URLs) and who ran it.
+ *  One lowercased string per row; the needle's words all have to appear in it. */
+export function searchHaystack(d: DeploymentRow): string {
+  return [
+    d.id,
+    d.appSlug,
+    d.serviceName,
+    d.serverName,
+    d.buildServerName,
+    d.commitMessage,
+    d.commitSha,
+    d.commitUrl,
+    d.branch,
+    d.prNumber != null ? `#${d.prNumber}` : null,
+    d.pullRequestUrl,
+    d.creator,
+    d.creatorUser?.name,
+    d.creatorUser?.username,
+    d.environment,
+    d.status,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
 
 /** Created-column sort. Newest-first matches the server's ordering (the default);
  *  oldest-first is the exact reverse of the fully-ordered set. */
@@ -294,8 +348,17 @@ export function DeploymentsTable({
     React.useState<DeploymentStatus | null>(null);
   const [envFilter, setEnvFilter] =
     React.useState<DeploymentEnvironment | null>(null);
+  const [dateFilter, setDateFilter] = React.useState<string | null>(null);
+  // One "now" for the whole mount: reading the clock during render is impure, and
+  // a Created window whose edge slides between two renders would reshuffle the
+  // table under the reader for no reason.
+  const [now] = React.useState(() => Date.now());
+  const [query, setQuery] = React.useState("");
   const [sortDir, setSortDir] = React.useState<SortDir>("newest");
-  const [page, setPage] = React.useState(0);
+  // How many of the filtered rows the table currently renders. Grows in PAGE_SIZE
+  // steps as the sentinel below the last row scrolls into view (endless scroll),
+  // and resets whenever the filtered set itself changes.
+  const [shown, setShown] = React.useState(PAGE_SIZE);
 
   // Live Status chips: overlays the in-flight build's status onto its row so the
   // badge tracks queued → building → ready/error without a reload (both pages).
@@ -332,6 +395,32 @@ export function DeploymentsTable({
     const present = new Set(deployments.map((d) => d.environment));
     return ENV_ORDER.filter((e) => present.has(e));
   }, [deployments]);
+  // Which Created windows actually hold rows — same "auto-hide until it offers a
+  // real choice" rule as the other narrowers. Options and matching share the one
+  // `now`, so the edges can't drift between the menu and the rows it filters.
+  const { dateOptions, dateMatches } = React.useMemo(() => {
+    const matches = (d: DeploymentRow, value: string) =>
+      matchesDateWindow(d.createdAt, value, now);
+    const options = [
+      ...DATE_WINDOWS.map((w) => ({ value: w.value, label: w.label })),
+      { value: OLDER, label: OLDER_LABEL },
+    ].filter((o) => deployments.some((d) => matches(d, o.value)));
+    return { dateOptions: options, dateMatches: matches };
+  }, [deployments, now]);
+
+  // One lowercased haystack per row, rebuilt only when the rows do — so typing
+  // re-runs a substring test, not a re-serialization of the whole history.
+  const haystacks = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of remaining) m.set(d.id, searchHaystack(d));
+    return m;
+  }, [remaining]);
+  // Every word of the needle has to appear somewhere in the row, in any order:
+  // "github deploy" and "abc123 preview" both narrow the way you'd expect.
+  const terms = React.useMemo(
+    () => query.trim().toLowerCase().split(/\s+/).filter(Boolean),
+    [query],
+  );
 
   // Reconcile the chosen filters against what's still present (a refresh may have
   // dropped the last row on a server/app). Done in render — no effect — so a
@@ -346,11 +435,20 @@ export function DeploymentsTable({
     statusFilter && statusOptions.includes(statusFilter) ? statusFilter : null;
   const effectiveEnvFilter =
     envFilter && envOptions.includes(envFilter) ? envFilter : null;
+  const effectiveDateFilter =
+    dateFilter && dateOptions.some((o) => o.value === dateFilter)
+      ? dateFilter
+      : null;
+  // Search and Created are CLIENT-only narrowers: unlike the four above they have
+  // no equivalent in the server-side sweep args, which is what makes the bulk
+  // buttons switch to an explicit id list while either is active (see `deleteAll`).
+  const hasClientNarrower = terms.length > 0 || effectiveDateFilter != null;
   const hasFilter =
     effectiveServerFilter != null ||
     effectiveAppFilter != null ||
     effectiveStatusFilter != null ||
-    effectiveEnvFilter != null;
+    effectiveEnvFilter != null ||
+    hasClientNarrower;
 
   // The rows matching the filters — everything downstream (selection, counts, bulk
   // scope) keys off this so the buttons act on exactly what's in scope.
@@ -361,7 +459,9 @@ export function DeploymentsTable({
           (!effectiveServerFilter || d.serverId === effectiveServerFilter) &&
           (!effectiveAppFilter || d.appId === effectiveAppFilter) &&
           (!effectiveStatusFilter || d.status === effectiveStatusFilter) &&
-          (!effectiveEnvFilter || d.environment === effectiveEnvFilter),
+          (!effectiveEnvFilter || d.environment === effectiveEnvFilter) &&
+          (!effectiveDateFilter || dateMatches(d, effectiveDateFilter)) &&
+          terms.every((t) => haystacks.get(d.id)?.includes(t)),
       ),
     [
       remaining,
@@ -369,6 +469,10 @@ export function DeploymentsTable({
       effectiveAppFilter,
       effectiveStatusFilter,
       effectiveEnvFilter,
+      effectiveDateFilter,
+      dateMatches,
+      terms,
+      haystacks,
     ],
   );
 
@@ -382,13 +486,30 @@ export function DeploymentsTable({
     [visible, sortDir],
   );
 
-  // Client-side pagination over the filtered+sorted set. Clamp in render (no effect)
-  // so a filter change or a post-delete refresh that shrinks the list never strands
-  // the view on a page that no longer exists.
-  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount - 1);
-  const pageStart = safePage * PAGE_SIZE;
-  const paged = sorted.slice(pageStart, pageStart + PAGE_SIZE);
+  // Endless scroll over the filtered+sorted set: the table renders the first
+  // `shown` rows and the sentinel below it asks for the next batch as it comes
+  // into view. Clamped in render (no effect) so a filter change or a post-delete
+  // refresh that shrinks the list can never leave the count past the end.
+  const paged = sorted.slice(0, Math.min(shown, sorted.length));
+  const hasMore = sorted.length > paged.length;
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    // rootMargin so the next batch is already in the DOM by the time the last row
+    // reaches the fold — the scroll never actually stops at the bottom.
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setShown((n) => n + PAGE_SIZE);
+      },
+      { rootMargin: "400px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+    // `shown` is in the deps on purpose: an observer whose target is STILL in view
+    // after a batch lands never fires again (no threshold crossing), so a tall
+    // viewport would stall one batch in. Re-observing re-fires immediately.
+  }, [hasMore, shown]);
 
   const selectableIds = React.useMemo(
     () => visible.filter((d) => !IN_PROGRESS.has(d.status)).map((d) => d.id),
@@ -449,34 +570,47 @@ export function DeploymentsTable({
   const scopeQualifiers = [
     effectiveEnvFilter ? ENV_LABELS[effectiveEnvFilter] : null,
     effectiveStatusFilter ? STATUS_LABELS[effectiveStatusFilter] : null,
+    effectiveDateFilter
+      ? (dateOptions.find((o) => o.value === effectiveDateFilter)?.label ??
+        null)
+      : null,
+    terms.length > 0 ? `matching "${query.trim()}"` : null,
   ].filter(Boolean);
   const scopeText =
     scopeQualifiers.length > 0
       ? `${scopeWho} (${scopeQualifiers.join(", ")})`
       : scopeWho;
 
-  // Reset to the first page whenever the filter set changes — otherwise a narrowed
-  // list could open on a now-empty tail page.
+  // Every filter change collapses the endless scroll back to one batch — otherwise
+  // a narrowed list would keep rendering however deep the previous scroll had got.
   function applyServerFilter(v: string) {
     setServerFilter(v === ALL ? null : v);
-    setPage(0);
+    setShown(PAGE_SIZE);
   }
   function applyAppFilter(v: string) {
     setAppFilter(v === ALL ? null : v);
-    setPage(0);
+    setShown(PAGE_SIZE);
   }
   function applyStatusFilter(v: string) {
     setStatusFilter(v === ALL ? null : (v as DeploymentStatus));
-    setPage(0);
+    setShown(PAGE_SIZE);
   }
   function applyEnvFilter(v: string) {
     setEnvFilter(v === ALL ? null : (v as DeploymentEnvironment));
-    setPage(0);
+    setShown(PAGE_SIZE);
   }
-  // Re-sorting jumps back to the first page so the newly-first rows are in view.
+  function applyDateFilter(v: string) {
+    setDateFilter(v === ALL ? null : v);
+    setShown(PAGE_SIZE);
+  }
+  function applyQuery(v: string) {
+    setQuery(v);
+    setShown(PAGE_SIZE);
+  }
+  // Re-sorting starts the scroll over so the newly-first rows are the ones in view.
   function applySort(v: string) {
     setSortDir(v as SortDir);
-    setPage(0);
+    setShown(PAGE_SIZE);
   }
   // "Clear filters" resets the narrowing filters only; the Created sort is an
   // ordering, not a filter, so it deliberately stays put.
@@ -485,7 +619,9 @@ export function DeploymentsTable({
     setAppFilter(null);
     setStatusFilter(null);
     setEnvFilter(null);
-    setPage(0);
+    setDateFilter(null);
+    setQuery("");
+    setShown(PAGE_SIZE);
   }
 
   // Whole-row navigation: clicking a row anywhere that isn't a dedicated control
@@ -546,16 +682,25 @@ export function DeploymentsTable({
     const swept = selectableIds;
     swept.forEach(remove);
     setSelected(new Set());
-    const res = await gqlAction<{ deleteAllDeployments: number }, number>(
-      DELETE_ALL,
-      {
-        appId: sweepAppId,
-        serverId: sweepServerId,
-        environment: sweepEnv,
-        status: sweepStatus,
-      },
-      (d) => d.deleteAllDeployments,
-    );
+    // Search and Created narrow the view but have no sweep argument, so with
+    // either active the button deletes the ids in view instead — "Delete all"
+    // must never reach a row the filters are hiding.
+    const res = hasClientNarrower
+      ? await gqlAction<{ deleteDeployments: number }, number>(
+          DELETE_DEPLOYMENTS,
+          { ids: swept },
+          (d) => d.deleteDeployments,
+        )
+      : await gqlAction<{ deleteAllDeployments: number }, number>(
+          DELETE_ALL,
+          {
+            appId: sweepAppId,
+            serverId: sweepServerId,
+            environment: sweepEnv,
+            status: sweepStatus,
+          },
+          (d) => d.deleteAllDeployments,
+        );
     if (res.ok) {
       toast.success(
         `Deleted ${res.data} deployment${res.data === 1 ? "" : "s"}`,
@@ -568,6 +713,29 @@ export function DeploymentsTable({
   }
 
   async function cancelAll() {
+    // Same reason as `deleteAll`: with a client-only narrower active the sweep
+    // args can't express the view, so each build in view is stopped by id. There
+    // are only ever a handful in flight, so the fan-out stays small.
+    if (hasClientNarrower) {
+      const ids = visible
+        .filter((d) => IN_PROGRESS.has(d.status))
+        .map((d) => d.id);
+      const results = await Promise.all(
+        ids.map((id) =>
+          gqlAction<{ cancelDeployment: boolean }, boolean>(
+            CANCEL_ONE,
+            { id },
+            (d) => d.cancelDeployment,
+          ),
+        ),
+      );
+      const failed = results.find((r) => !r.ok);
+      if (failed) return failed;
+      const stopped = results.filter((r) => r.ok && r.data).length;
+      toast.success(`Stopped ${stopped} build${stopped === 1 ? "" : "s"}`);
+      router.refresh();
+      return { ok: true as const, data: stopped };
+    }
     const res = await gqlAction<{ cancelAllDeployments: number }, number>(
       CANCEL_ALL,
       {
@@ -601,13 +769,20 @@ export function DeploymentsTable({
   const showAppFilter = showServer && appOptions.length >= 2;
   const showStatusFilter = statusOptions.length >= 2;
   const showEnvFilter = envOptions.length >= 2;
+  const showDateFilter = dateOptions.length >= 2;
+  // Search earns its place the moment there is more than one row to tell apart.
+  const showSearch = deployments.length > 1;
   const showSort = deployments.length > 1;
   // Any actual narrower present? The funnel glyph rides on this, not on the whole
   // bar, so a sort-only row (e.g. an app whose history is all one status+env)
   // doesn't display a filter icon over a control that only sorts.
   const showNarrowers =
-    showServerFilter || showAppFilter || showStatusFilter || showEnvFilter;
-  const showFilters = showNarrowers || showSort;
+    showServerFilter ||
+    showAppFilter ||
+    showStatusFilter ||
+    showEnvFilter ||
+    showDateFilter;
+  const showFilters = showNarrowers || showSearch || showSort;
 
   return (
     <div className="space-y-4">
@@ -654,6 +829,18 @@ export function DeploymentsTable({
           component. */}
       {showFilters && (
         <div className="flex min-h-9 flex-wrap items-center gap-2">
+          {showSearch && (
+            <div className="relative w-full min-w-0 sm:w-64">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => applyQuery(e.target.value)}
+                placeholder="Search deployments"
+                aria-label="Search deployments"
+                className="h-9 pl-9"
+              />
+            </div>
+          )}
           {showNarrowers && (
             <ListFilter className="size-4 text-muted-foreground" />
           )}
@@ -733,6 +920,32 @@ export function DeploymentsTable({
                 {envOptions.map((e) => (
                   <SelectItem key={e} value={e}>
                     {ENV_LABELS[e]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {showDateFilter && (
+            <Select
+              value={effectiveDateFilter ?? ALL}
+              onValueChange={applyDateFilter}
+            >
+              <SelectTrigger
+                className="w-[205px]"
+                aria-label="Filter by created date"
+              >
+                {/* Same `flex!` trick as the sort trigger below — see the note
+                    there for why the plain class loses to `line-clamp-1`. */}
+                <span className="flex! items-center gap-2">
+                  <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
+                  <SelectValue />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Any time</SelectItem>
+                {dateOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1018,37 +1231,15 @@ export function DeploymentsTable({
         </Table>
       </Card>
 
-      {/* Pagination — only when the filtered set spills past one page. */}
-      {pageCount > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Endless scroll: the sentinel loads the next batch as it nears the fold,
+          and the count says where you are in the filtered set. Both only exist
+          while there is more than one batch to show. */}
+      {(hasMore || paged.length > PAGE_SIZE) && (
+        <div className="flex items-center justify-center">
+          <div ref={sentinelRef} aria-hidden className="h-px w-px" />
           <span className="text-sm text-muted-foreground">
-            Showing {pageStart + 1}–
-            {Math.min(pageStart + PAGE_SIZE, visible.length)} of{" "}
-            {visible.length}
+            Showing {paged.length} of {visible.length}
           </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={safePage === 0}
-              onClick={() => setPage(safePage - 1)}
-            >
-              <ChevronLeft className="size-4" />
-              Previous
-            </Button>
-            <span className="px-1 text-sm text-muted-foreground">
-              Page {safePage + 1} of {pageCount}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={safePage >= pageCount - 1}
-              onClick={() => setPage(safePage + 1)}
-            >
-              Next
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
         </div>
       )}
 
