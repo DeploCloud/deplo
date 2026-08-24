@@ -698,6 +698,23 @@ async function publicBaseUrl(): Promise<string> {
   return instancePublicBaseUrl();
 }
 
+/**
+ * The paste-on-the-host command that takes Deplo's agent back off a machine.
+ *
+ * Instance-wide, not per server: it is `<panel>/uninstall-agent.sh` and nothing
+ * else, so a caller showing it next to five stuck migration sources asks once.
+ * It carries no secret - the installer it points at is served unauthenticated by
+ * design - which is why it is readable by whoever is looking at a source they
+ * cannot get rid of, rather than by instance admins only.
+ *
+ * Exists because the row that needs it is exactly the row Deplo cannot act on:
+ * an unreachable host's agent can only be removed from the host.
+ */
+export async function agentUninstallCommand(): Promise<string> {
+  await requireActiveTeamId();
+  return uninstallCommand({ baseUrl: await publicBaseUrl() });
+}
+
 /** Format a blocked-by list for an error message: at most `max` names, then a count. */
 function nameList(names: string[], max = 5): string {
   const shown = names.slice(0, max).join(", ");

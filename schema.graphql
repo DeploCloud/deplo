@@ -3573,6 +3573,11 @@ type Query {
   """Recent activity in the active team, newest first."""
   activity(limit: Int): [Activity!]
 
+  """
+  The paste-on-the-host command that removes Deplo's agent from a machine. Instance-wide, identical for every host, and carrying no secret - the installer it points at is served unauthenticated by design. Shown next to a migration source Deplo could not reach, because an unreachable host's agent can only be taken off from the host.
+  """
+  agentUninstallCommand: String
+
   """Every app's env vars in the active team, grouped by project."""
   allAppEnv: [AppEnvGroup!]
 

@@ -16,6 +16,7 @@ import {
   setServerRole,
   serverRole,
   updateServerAddress,
+  agentUninstallCommand,
   type ServerRole,
   type ServerRemoval,
   type ServerUninstall,
@@ -639,6 +640,11 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => getServer(id),
+  }),
+  agentUninstallCommand: t.string({
+    description:
+      "The paste-on-the-host command that removes Deplo's agent from a machine. Instance-wide, identical for every host, and carrying no secret - the installer it points at is served unauthenticated by design. Shown next to a migration source Deplo could not reach, because an unreachable host's agent can only be taken off from the host.",
+    resolve: () => agentUninstallCommand(),
   }),
   primaryServer: t.field({
     type: ServerRef,

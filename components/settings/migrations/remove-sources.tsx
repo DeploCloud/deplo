@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { CommandLine } from "@/components/shared/code-block";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -28,6 +29,7 @@ import { gql, gqlAction } from "@/lib/graphql-client";
  */
 const SOURCES = /* GraphQL */ `
   query MigrationSources {
+    agentUninstallCommand
     servers {
       id
       name
@@ -46,6 +48,24 @@ const UNINSTALL = /* GraphQL */ `
   }
 `;
 
+/**
+ * The exit that needs no network. `removeServer` revokes the pin and forgets the
+ * row without dialing anything, which is the only thing that still works once the
+ * host cannot be reached - and this card exists precisely because it could not be.
+ *
+ * Without it the card was a dead end that told you to "try again once that machine
+ * is reachable", which for a host behind a firewall nobody will open is advice
+ * that cannot be followed. Worse, uninstalling the agent BY HAND made it more
+ * stuck, not less: there is then even less answering than before.
+ */
+const FORGET = /* GraphQL */ `
+  mutation ForgetMigrationSource($id: String!) {
+    removeServer(id: $id) {
+      warning
+    }
+  }
+`;
+
 interface Source {
   id: string;
   name: string;
@@ -57,27 +77,46 @@ interface Source {
 export function RemoveMigrationSources() {
   const router = useRouter();
   const [sources, setSources] = React.useState<Source[]>([]);
+  const [command, setCommand] = React.useState("");
+  const [forgetting, setForgetting] = React.useState<string | null>(null);
 
   // Read on mount rather than passed as a prop: this component has two homes (the
   // wizard's last step and the report page opened days later), and in the first
   // one the sources are created by the very run that is finishing.
-  const load = React.useCallback(async (): Promise<Source[]> => {
+  const load = React.useCallback(async (): Promise<{
+    rows: Source[];
+    command: string;
+  }> => {
     try {
-      const data = await gql<{ servers: Source[] | null }>(SOURCES);
-      return (data.servers ?? []).filter(
-        (s) => s.role === "import" && s.uninstallError,
-      );
+      const data = await gql<{
+        servers: Source[] | null;
+        agentUninstallCommand: string | null;
+      }>(SOURCES);
+      return {
+        rows: (data.servers ?? []).filter(
+          (s) => s.role === "import" && s.uninstallError,
+        ),
+        command: data.agentUninstallCommand ?? "",
+      };
     } catch {
       // The report is worth reading on its own; a failed side query must not
       // take it down.
-      return [];
+      return { rows: [], command: "" };
     }
   }, []);
 
+  const reload = React.useCallback(async () => {
+    const next = await load();
+    setSources(next.rows);
+    setCommand(next.command);
+  }, [load]);
+
   React.useEffect(() => {
     let live = true;
-    void load().then((rows) => {
-      if (live) setSources(rows);
+    void load().then((next) => {
+      if (!live) return;
+      setSources(next.rows);
+      setCommand(next.command);
     });
     return () => {
       live = false;
@@ -99,7 +138,7 @@ export function RemoveMigrationSources() {
           `${s.name}: ${res.data?.error ?? "the agent is still installed"}`,
         );
     }
-    setSources(await load());
+    await reload();
     router.refresh();
     if (failures.length > 0) {
       // Named, one by one: "some of them failed" is not something anyone can act
@@ -111,6 +150,27 @@ export function RemoveMigrationSources() {
       };
     }
     return { ok: true as const, data: null };
+  }
+
+  /**
+   * Stop tracking one machine. The agent stays where it is - the command below
+   * takes it off - but the row goes, which is the part Deplo can still do.
+   */
+  async function forget(id: string) {
+    setForgetting(id);
+    const res = await gqlAction<
+      { removeServer: { warning: string | null } },
+      { warning: string | null }
+    >(FORGET, { id }, (d) => d.removeServer);
+    setForgetting(null);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    if (res.data?.warning) toast.warning(res.data.warning);
+    await reload();
+    router.refresh();
+    toast.success("Deplo stopped tracking it");
   }
 
   const names = sources.map((s) => s.name).join(", ");
@@ -125,8 +185,8 @@ export function RemoveMigrationSources() {
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             {one
-              ? "Deplo tried three times to take its agent off the machine it imported from, and could not. Try again once that machine is reachable."
-              : "Deplo tried three times to take its agent off the machines it imported from, and could not. Try again once they are reachable."}
+              ? "Deplo tried three times to take its agent off the machine it imported from, and could not. Take it off from the host, or stop tracking the machine."
+              : "Deplo tried three times to take its agent off the machines it imported from, and could not. Take them off from each host, or stop tracking them."}
           </p>
         </div>
         <ConfirmAction
@@ -159,9 +219,31 @@ export function RemoveMigrationSources() {
               <p className="mt-1 font-mono text-xs break-words text-muted-foreground">
                 {s.uninstallError}
               </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                disabled={forgetting !== null}
+                onClick={() => void forget(s.id)}
+              >
+                Remove from Deplo
+              </Button>
             </li>
           ))}
         </ul>
+        {/* One command for every host: it is `<panel>/uninstall-agent.sh` and
+            nothing else, so asking once is honest and asking per row would be
+            noise. Shown up front rather than behind a press, because running it
+            by hand is a legitimate first move - and it is the only move that
+            actually takes the agent off a machine Deplo cannot reach. */}
+        {command && (
+          <div className="mt-4 space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Run this on each of those hosts, as root, to take the agent off.
+            </p>
+            <CommandLine command={command} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -391,6 +391,33 @@ test("an agent that cannot uninstall itself KEEPS the row, and hands over the co
   }
 });
 
+test("a migration source Deplo cannot reach can still be forgotten", async () => {
+  // The dead end this closes: uninstalling needs the agent to ANSWER, and this
+  // row exists because it does not. Running the host-side command by hand makes
+  // it worse - there is then even less answering - so without a path that dials
+  // nothing, the row is immortal. `removeServer` is that path: it revokes the pin
+  // and forgets the row without a single RPC, which is why the UI offers it right
+  // next to the failure.
+  const id = await seedMigrationSource();
+  const calls = fakeAgent({ capabilities: ["self-update"] });
+  try {
+    const stuck = await asAdmin(() => uninstallServerAgent(id));
+    assert.equal(
+      stuck.removed,
+      false,
+      "the precondition: it will not uninstall",
+    );
+    assert.ok(await getServerById(id));
+
+    const gone = await asAdmin(() => removeServer(id));
+    assert.match(gone.uninstallCommand, /uninstall-agent\.sh/);
+    assert.equal(await getServerById(id), null, "the row is gone");
+    assert.equal(calls.uninstall, 0, "and nothing was dialed to get there");
+  } finally {
+    __setAgentConnectorForTest();
+  }
+});
+
 test("a blocked removal fails BEFORE the host is touched", async () => {
   const id = await seedMigrationSource();
   // A destination pointing at the host: server_id is ON DELETE RESTRICT, so
