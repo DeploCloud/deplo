@@ -1112,7 +1112,25 @@ export async function updateServerAddress(
     ];
     try {
       const { renewAgentCert } = await import("../agent/cert-renewal");
-      await renewAgentCert(server.id, sans);
+      // The NEW address first. This edit exists because an address is wrong, and
+      // the most common way for it to be wrong is that nothing answers there any
+      // more - so delivering the renewal over the address being REPLACED failed
+      // by construction on the very path people take most, and warned about
+      // broken TLS on an edit that was about to succeed. Which side carries the
+      // certificate changes nothing about what gets installed: the agent gets
+      // the same signed leaf, and the pinned fingerprint means no other machine
+      // could accept it.
+      try {
+        await renewAgentCert(server.id, sans, {
+          ip: address,
+          host: address,
+          agentPort: port,
+        });
+      } catch {
+        // The current dial, for the orderly move this was written for - and for
+        // `force`, where the new address is not expected to answer yet.
+        await renewAgentCert(server.id, sans);
+      }
     } catch (e) {
       // Soft on purpose: the force path exists precisely because the old address
       // may already be dead, and an IP-dialed host never consults these SANs.

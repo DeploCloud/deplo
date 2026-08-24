@@ -6,7 +6,7 @@ import { eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { servers as serversTable } from "../db/schema/control-plane";
-import { connectAgent } from "../infra/agent-client";
+import { connectAgent, connectAgentAt } from "../infra/agent-client";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
 
@@ -98,18 +98,31 @@ export async function renewAgentCertIfDue(
 
 /**
  * Renew a server's agent leaf NOW, signing it with `dialHosts` as its SANs -
- * the address edit's half of renewal (updateServerAddress), driven over the
- * CURRENT (still-pinned, still-working) dial before the row flips. The caller
- * passes old + new addresses unioned, so the cert verifies from either side of
- * the flip - cancelling after a failed reachability probe must leave the
- * current address dialable. Throws on any failure (no window check, no
+ * the address edit's half of renewal (updateServerAddress). The caller passes
+ * old + new addresses unioned, so the cert verifies from either side of the
+ * flip: cancelling after a failed reachability probe must leave the current
+ * address dialable. Throws on any failure (no window check, no
  * capability-as-reason softening: the caller decides how soft the failure is).
+ *
+ * `at` overrides where the new certificate is DELIVERED, and the caller uses it
+ * to try the new address first. Which connection carries it does not change what
+ * gets installed - the agent receives the same signed leaf either way, and the
+ * pinned fingerprint means no other machine could accept it - but it decides
+ * whether the delivery happens at all. Driving it over the CURRENT address was
+ * right for the case this was written for, an orderly move where the old address
+ * still answers; it is exactly wrong for the one that turned out to be common,
+ * where the address is being changed BECAUSE the current one is dead. There the
+ * renewal could not help but fail, and it put a paragraph about broken TLS in
+ * front of an edit that had just succeeded.
  */
 export async function renewAgentCert(
   serverId: string,
   dialHosts: string[],
+  at?: { ip?: string; host?: string; agentPort?: number },
 ): Promise<void> {
-  const conn = await connectAgent(serverId);
+  const conn = at
+    ? await connectAgentAt(serverId, at)
+    : await connectAgent(serverId);
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(CERT_RENEWAL_CAPABILITY))
