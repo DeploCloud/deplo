@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { EyeOff, MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -25,33 +25,31 @@ import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * What a migration source can have done to it.
+ * The ONE action a migration source has: get rid of it.
  *
  * It has no management page - it is not a server anyone operates, it is another
  * platform's machine Deplo is reading volumes from - so this menu is the whole
- * surface.
+ * surface, and one item is the right number. Uninstalling the agent and forgetting
+ * the row were briefly two, and that was a choice nobody has the information to
+ * make: both are "I am done with this machine", and which one is possible depends
+ * on whether the host answers, which is not the reader's problem to solve.
  *
- * It held ONE item for a while, on the reasoning that a second ("remove without
- * uninstalling") would be a choice nobody has the information to make, and that
- * the one item degrades: with an agent it uninstalls and then forgets the host,
- * without one it just forgets it. That is true right up until the host cannot be
- * DIALED, and then it does not degrade, it dead-ends:
+ * So it is one verb that always finishes:
  *
- *  - uninstalling needs the agent to answer, and this row exists precisely
- *    because Deplo could not reach it;
- *  - so the operator runs the host-side command themselves, which takes the agent
- *    off - and now there is even less answering than before;
- *  - every further attempt fails the same way, and the row is immortal.
+ *  1. ask the agent to uninstall itself, and forget the row - the clean ending;
+ *  2. if the host does not answer, forget the row ANYWAY and hand over the
+ *     host-side command.
  *
- * Which made "The server stays in this list until the agent is gone" a promise
- * nothing could keep. So the second item is here after all, and the information
- * needed to choose it is the failure that is already on screen. `removeServer`
- * dials NOTHING - it revokes the pin, forgets the row, and hands back the
- * host-side command - so it is the one action that always works.
+ * Step 2 exists because without it the row was immortal. Uninstalling needs the
+ * agent to ANSWER, and the rows that need it most are the ones where it does not;
+ * running the command by hand then makes it worse, because there is even less
+ * answering than before. "Remove from Deplo" that leaves the row behind is not a
+ * removal, so the confirm says both endings up front and the press delivers one
+ * of them.
  *
- * Offered only for a host that was actually provisioned: with no agent, the first
- * item already does exactly this, and two entries doing the same thing is the
- * choice-nobody-can-make problem for real.
+ * What it never does is bypass a genuine blocker: both halves go through
+ * `assertServerRemovable`, so a host something still depends on refuses twice and
+ * the refusal is what the reader sees.
  */
 const UNINSTALL = /* GraphQL */ `
   mutation UninstallServerAgent($id: String!) {
@@ -64,6 +62,7 @@ const UNINSTALL = /* GraphQL */ `
   }
 `;
 
+/** The half that dials nothing: revoke the pin, drop the row, hand the command. */
 const FORGET = /* GraphQL */ `
   mutation ForgetMigrationSource($id: String!) {
     removeServer(id: $id) {
@@ -80,18 +79,11 @@ interface Result {
   warning: string | null;
 }
 
-/**
- * The host-side command, and why it is being shown. One dialog for both endings:
- * "the agent is still there because we could not reach it" and "the agent is
- * still there because you told Deplo to stop tracking it". The command is the
- * same, and so is what the reader has to do with it.
- */
+/** The row is gone and the agent is not. What is left to do, and why. */
 interface Leftover {
-  title: string;
+  /** The host's own words for why Deplo could not take the agent off. */
   detail: string;
   command: string;
-  /** Whether the way out is still available - false once the row is gone. */
-  offerForget: boolean;
 }
 
 export function UninstallAgentMenu({
@@ -106,70 +98,37 @@ export function UninstallAgentMenu({
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [forgetOpen, setForgetOpen] = React.useState(false);
   const [leftover, setLeftover] = React.useState<Leftover | null>(null);
-  const [forgetting, setForgetting] = React.useState(false);
 
-  async function uninstall() {
-    const res = await gqlAction<{ uninstallServerAgent: Result }, Result>(
+  async function remove() {
+    const un = await gqlAction<{ uninstallServerAgent: Result }, Result>(
       UNINSTALL,
       { id: serverId },
       (d) => d.uninstallServerAgent,
     );
-    if (!res.ok) return res;
-    const data = res.data!;
-    // A refusal comes back as a successful mutation carrying `removed: false` -
-    // the host still has the agent, so say so and hand over the command rather
-    // than reporting a clean removal.
-    if (!data.removed) {
-      // Close the confirm dialog first: this is a controlled one, and it only
-      // closes itself on success - leaving it open would stack the two.
-      setOpen(false);
-      setLeftover({
-        title: `${serverName} still has the agent`,
-        detail: data.error ?? "The agent is still installed",
-        command: data.uninstallCommand,
-        offerForget: true,
-      });
-      return {
-        ok: false as const,
-        error: data.error ?? "The agent is still installed",
-      };
+    // The clean ending: the agent took itself off and the row went with it.
+    if (un.ok && un.data?.removed) {
+      if (un.data.warning) toast.warning(un.data.warning);
+      toast.success(`Deplo removed itself from ${serverName}`);
+      router.refresh();
+      return un;
     }
-    if (data.warning) toast.warning(data.warning);
-    // The row is gone server-side; re-run the page's reads so the card goes with
-    // it (ConfirmAction only toasts - it does not refresh).
-    router.refresh();
-    return res;
-  }
-
-  async function forget() {
-    const res = await gqlAction<
+    // A refusal comes back as a successful mutation carrying `removed: false`
+    // (the host did not answer); a thrown one is a blocker, and the forget below
+    // hits the same one and reports it.
+    const why = un.ok
+      ? (un.data?.error ?? "The agent did not answer")
+      : un.error;
+    const rm = await gqlAction<
       { removeServer: { uninstallCommand: string; warning: string | null } },
       { uninstallCommand: string; warning: string | null }
     >(FORGET, { id: serverId }, (d) => d.removeServer);
-    if (!res.ok) return res;
-    if (res.data?.warning) toast.warning(res.data.warning);
+    if (!rm.ok) return rm;
+    if (rm.data?.warning) toast.warning(rm.data.warning);
+    toast.success(`Deplo stopped tracking ${serverName}`);
     router.refresh();
-    setForgetOpen(false);
-    // The agent is still on that machine and Deplo can no longer take it off, so
-    // the command is not a footnote here - it is the rest of the job.
-    setLeftover({
-      title: `Deplo stopped tracking ${serverName}`,
-      detail:
-        "Its agent is still installed on that machine, and Deplo can no longer remove it for you.",
-      command: res.data!.uninstallCommand,
-      offerForget: false,
-    });
-    return res;
-  }
-
-  /** The same action from inside the leftover dialog, which is its own context. */
-  async function forgetFromDialog() {
-    setForgetting(true);
-    const res = await forget();
-    setForgetting(false);
-    if (!res.ok) toast.error(res.error);
+    setLeftover({ detail: why, command: rm.data!.uninstallCommand });
+    return rm;
   }
 
   return (
@@ -191,70 +150,44 @@ export function UninstallAgentMenu({
             onSelect={() => setOpen(true)}
           >
             <Trash2 className="size-4" />
-            Uninstall agent
+            Remove from Deplo
           </DropdownMenuItem>
-          {provisioned && (
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={() => setForgetOpen(true)}
-            >
-              <EyeOff className="size-4" />
-              Remove from Deplo
-            </DropdownMenuItem>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
+      {/* Both endings are named BEFORE the press. The second one leaves an agent
+          running on somebody's machine, which is not a thing to discover after
+          the fact. */}
       <ConfirmAction
         open={open}
         onOpenChange={setOpen}
-        title={`Uninstall the agent from ${serverName}?`}
+        title={`Remove ${serverName} from Deplo?`}
         description={
           provisioned
-            ? "Deplo removes its agent from that host and stops tracking the machine. Any data still there can no longer be copied, so finish the import first."
+            ? "Deplo uninstalls its agent from that host and stops tracking the machine. If it cannot reach the host, it stops tracking it anyway and gives you the command to run there yourself. Any data still there can no longer be copied, so finish the import first."
             : "Nothing was installed on this host yet - this only removes it from Deplo."
         }
-        confirmLabel="Uninstall agent"
-        successMessage={`Deplo removed itself from ${serverName}`}
-        onConfirm={uninstall}
-      />
-
-      <ConfirmAction
-        open={forgetOpen}
-        onOpenChange={setForgetOpen}
-        title={`Stop tracking ${serverName}?`}
-        description="Deplo forgets this machine and revokes its agent's access here. The agent stays installed on the host until you run the command Deplo gives you next. Use this when the machine cannot be reached and the row will not go away on its own."
         confirmLabel="Remove from Deplo"
-        successMessage={`Deplo stopped tracking ${serverName}`}
-        onConfirm={forget}
+        onConfirm={remove}
       />
 
-      {/* The agent is still on that host. The honest end of this path is the
-          host-side command - the same one an unreachable or already-de-trusted
-          server has always needed - plus, while the row is still here, the way to
-          get rid of it. */}
+      {/* The row is gone; the agent is not. The command is the rest of the job,
+          and it is the only thing that can take the agent off a host Deplo could
+          not reach. */}
       <Dialog open={leftover !== null} onOpenChange={() => setLeftover(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{leftover?.title}</DialogTitle>
+            <DialogTitle>{serverName} still has the agent</DialogTitle>
             <DialogDescription>{leftover?.detail}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {leftover ? <CommandLine command={leftover.command} /> : null}
             <p className="mt-1 text-xs text-muted-foreground">
-              Run it on the host, as root.
+              Deplo has stopped tracking this machine and can no longer remove
+              the agent for you. Run this on the host, as root.
             </p>
           </div>
           <DialogFooter>
-            {leftover?.offerForget && (
-              <Button
-                variant="outline"
-                disabled={forgetting}
-                onClick={() => void forgetFromDialog()}
-              >
-                Remove from Deplo
-              </Button>
-            )}
             <Button onClick={() => setLeftover(null)}>Done</Button>
           </DialogFooter>
         </DialogContent>

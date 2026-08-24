@@ -78,7 +78,8 @@ export function RemoveMigrationSources() {
   const router = useRouter();
   const [sources, setSources] = React.useState<Source[]>([]);
   const [command, setCommand] = React.useState("");
-  const [forgetting, setForgetting] = React.useState<string | null>(null);
+  /** Machines Deplo has stopped tracking whose agent is still on them. */
+  const [leftovers, setLeftovers] = React.useState<string[]>([]);
 
   // Read on mount rather than passed as a prop: this component has two homes (the
   // wizard's last step and the report page opened days later), and in the first
@@ -123,26 +124,46 @@ export function RemoveMigrationSources() {
     };
   }, [load]);
 
-  if (sources.length === 0) return null;
+  // Stays up after the rows are gone, when any of them kept its agent: the
+  // command is the rest of the job, and losing it the instant the button works
+  // would be the same dead end in a new shape.
+  if (sources.length === 0 && leftovers.length === 0) return null;
 
+  /**
+   * The same verb the Servers page offers, in bulk: uninstall where the host
+   * answers, and stop tracking the ones it does not. It has to FINISH - this card
+   * is the fallback after three failed attempts, so "try again" is what already
+   * did not work, and a button that leaves the same rows behind is a button
+   * nobody can use.
+   */
   async function finish() {
     const failures: string[] = [];
+    const kept: string[] = [];
     for (const s of sources) {
-      const res = await gqlAction<
+      const un = await gqlAction<
         { uninstallServerAgent: { removed: boolean; error: string | null } },
         { removed: boolean; error: string | null }
       >(UNINSTALL, { id: s.id }, (d) => d.uninstallServerAgent);
-      if (!res.ok) failures.push(`${s.name}: ${res.error}`);
-      else if (!res.data?.removed)
-        failures.push(
-          `${s.name}: ${res.data?.error ?? "the agent is still installed"}`,
-        );
+      if (un.ok && un.data?.removed) continue;
+      const rm = await gqlAction<
+        { removeServer: { warning: string | null } },
+        { warning: string | null }
+      >(FORGET, { id: s.id }, (d) => d.removeServer);
+      // Both halves go through the same removable check, so this is a genuine
+      // blocker (something still depends on that host), not an unreachable one.
+      if (!rm.ok) {
+        failures.push(`${s.name}: ${rm.error}`);
+        continue;
+      }
+      if (rm.data?.warning) toast.warning(`${s.name}: ${rm.data.warning}`);
+      kept.push(s.name);
     }
+    setLeftovers((prev) => [...new Set([...prev, ...kept])]);
     await reload();
     router.refresh();
     if (failures.length > 0) {
       // Named, one by one: "some of them failed" is not something anyone can act
-      // on. Each one stays in Settings → Servers with its own uninstall command.
+      // on.
       for (const f of failures) toast.error(f);
       return {
         ok: false as const,
@@ -152,29 +173,11 @@ export function RemoveMigrationSources() {
     return { ok: true as const, data: null };
   }
 
-  /**
-   * Stop tracking one machine. The agent stays where it is - the command below
-   * takes it off - but the row goes, which is the part Deplo can still do.
-   */
-  async function forget(id: string) {
-    setForgetting(id);
-    const res = await gqlAction<
-      { removeServer: { warning: string | null } },
-      { warning: string | null }
-    >(FORGET, { id }, (d) => d.removeServer);
-    setForgetting(null);
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    if (res.data?.warning) toast.warning(res.data.warning);
-    await reload();
-    router.refresh();
-    toast.success("Deplo stopped tracking it");
-  }
-
   const names = sources.map((s) => s.name).join(", ");
   const one = sources.length === 1;
+  // The rows are gone and their agents are not: nothing left to press, only
+  // something left to run.
+  const done = sources.length === 0;
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
@@ -184,29 +187,32 @@ export function RemoveMigrationSources() {
             Agent still installed
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            {one
-              ? "Deplo tried three times to take its agent off the machine it imported from, and could not. Take it off from the host, or stop tracking the machine."
-              : "Deplo tried three times to take its agent off the machines it imported from, and could not. Take them off from each host, or stop tracking them."}
+            {done
+              ? "Deplo has stopped tracking these machines and can no longer remove their agents for you."
+              : one
+                ? "Deplo tried three times to take its agent off the machine it imported from, and could not."
+                : "Deplo tried three times to take its agent off the machines it imported from, and could not."}
           </p>
         </div>
-        <ConfirmAction
-          trigger={
-            <Button variant="outline" size="sm">
-              {one ? "Remove the agent" : "Remove the agents"}
-            </Button>
-          }
-          title={one ? `Remove the agent from ${names}?` : "Remove the agents?"}
-          description={`Deplo uninstalls itself from ${names} and stops tracking ${
-            one ? "that machine" : "those machines"
-          }. Any data still there can no longer be copied, so finish importing first.`}
-          confirmLabel={one ? "Remove the agent" : "Remove the agents"}
-          successMessage={
-            one
-              ? "Deplo removed itself from the migration source"
-              : "Deplo removed itself from the migration sources"
-          }
-          onConfirm={finish}
-        />
+        {!done && (
+          <ConfirmAction
+            trigger={
+              <Button variant="outline" size="sm">
+                Remove from Deplo
+              </Button>
+            }
+            title={
+              one
+                ? `Remove ${names} from Deplo?`
+                : "Remove these machines from Deplo?"
+            }
+            description={`Deplo uninstalls itself from ${names} and stops tracking ${
+              one ? "that machine" : "those machines"
+            }. Where it cannot reach the host it stops tracking it anyway and leaves you the command below. Any data still there can no longer be copied, so finish importing first.`}
+            confirmLabel="Remove from Deplo"
+            onConfirm={finish}
+          />
+        )}
       </CardHeader>
       <CardContent>
         <ul className="space-y-2 text-sm">
@@ -219,15 +225,14 @@ export function RemoveMigrationSources() {
               <p className="mt-1 font-mono text-xs break-words text-muted-foreground">
                 {s.uninstallError}
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                disabled={forgetting !== null}
-                onClick={() => void forget(s.id)}
-              >
-                Remove from Deplo
-              </Button>
+            </li>
+          ))}
+          {leftovers.map((name) => (
+            <li key={name}>
+              <p className="font-medium">{name}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                No longer tracked. Its agent is still on that machine.
+              </p>
             </li>
           ))}
         </ul>
