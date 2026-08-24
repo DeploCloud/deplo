@@ -386,6 +386,24 @@ export function __resetDokployFetchForTest(): void {
  * typo in the host. All three read the same otherwise, so the user is left
  * guessing on the one screen where guessing costs the most.
  */
+/**
+ * An https URL whose host is a bare IP. Deliberately not "any IP": `http://` on an
+ * IP is the everyday same-machine case, and the placeholder on that very field
+ * suggests one.
+ */
+function isBareIpHttps(baseUrl: string): boolean {
+  try {
+    const u = new URL(baseUrl);
+    if (u.protocol !== "https:") return false;
+    // `hostname` strips the brackets an IPv6 literal is written with.
+    return (
+      /^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname) || u.hostname.includes(":")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function describeDokployTransportError(
   err: unknown,
   baseUrl: string,
@@ -422,7 +440,17 @@ export function describeDokployTransportError(
     case "DEPTH_ZERO_SELF_SIGNED_CERT":
     case "SELF_SIGNED_CERT_IN_CHAIN":
     case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
-      return `The https certificate ${at} is not one this machine trusts (${code}).`;
+    case "ERR_TLS_CERT_ALTNAME_INVALID":
+      // The trap, named. Somebody whose panel sits behind a proxy is told - by
+      // the NEXT step - to give the machine's own address, and a fair number of
+      // them come back and put it HERE instead. Over https a bare IP reaches
+      // whatever the proxy serves when no name matches, which is its default
+      // self-signed certificate, and the honest-but-useless answer was "not one
+      // this machine trusts". They did not mistype an address; they filled in
+      // the wrong field, and only this sentence can say so.
+      return isBareIpHttps(baseUrl)
+        ? `${baseUrl} answered with a certificate this machine does not trust (${code}) - which is what an IP address gets, because the certificate is issued for the panel's NAME. Put the address you open Dokploy on in your browser here. The machine's own address is asked for at the next step, and it is not this field.`
+        : `The https certificate ${at} is not one this machine trusts (${code}).`;
     case "ERR_SSL_WRONG_VERSION_NUMBER":
     case "EPROTO":
       return `${baseUrl} answered, but not over https. Try http:// instead.`;

@@ -1293,11 +1293,17 @@ function ConnectStep({
     >
       <form className="grid gap-4" onSubmit={onSubmit}>
         <div className="grid gap-2">
+          {/* "Panel address", not "Address". The install step asks for an
+              address too - the MACHINE's - and two fields with the same label
+              two screens apart is how somebody fixes the wrong one: put the
+              host's IP here and the scan dies on a certificate issued for the
+              panel's name, which reads as "the IP is wrong" when it is the
+              field that is. */}
           <FieldLabel
             htmlFor="dokploy-url"
-            info="The address you open Dokploy on. Deplo adds /api itself."
+            info="The address you open Dokploy on, exactly as it is in your browser. Deplo adds /api itself. This is not the machine's own address - the next step asks for that separately."
           >
-            Address
+            Panel address
           </FieldLabel>
           <Input
             id="dokploy-url"

@@ -87,6 +87,36 @@ test("a connection failure says which one it was", () => {
   );
 });
 
+test("an https IP with a bad certificate is told it is the wrong field", () => {
+  // The trap this exists for: the NEXT step asks for the machine's own address,
+  // and a fair number of people come back and put it in the PANEL field. Over
+  // https a bare IP reaches whatever the proxy serves with no name to match, i.e.
+  // its default self-signed certificate - so the honest-but-useless answer used
+  // to be "not one this machine trusts", when what actually happened is that they
+  // filled in the wrong box.
+  const certFail = (baseUrl: string) =>
+    describeDokployTransportError(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: { code: "DEPTH_ZERO_SELF_SIGNED_CERT" },
+      }),
+      baseUrl,
+    );
+
+  const onIp = certFail("https://185.58.122.151");
+  assert.match(onIp, /issued for the panel's NAME/);
+  assert.match(onIp, /asked for at the next step/);
+
+  // A NAME with a bad certificate is a certificate problem and nothing else -
+  // saying "wrong field" there would send someone to edit a field that is right.
+  const onName = certFail("https://dokploy.acme.com");
+  assert.doesNotMatch(onName, /next step/);
+  assert.match(onName, /certificate/);
+
+  // http on an IP is the same-machine case the field's own placeholder suggests,
+  // so it never gets the lecture.
+  assert.doesNotMatch(certFail("http://172.17.0.1:3000"), /next step/);
+});
+
 test("a failure raised by the transport reaches the caller readable", async (t) => {
   t.after(__resetDokployFetchForTest);
   __setDokployFetchForTest(async () => {

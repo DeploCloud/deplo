@@ -475,51 +475,68 @@ export function InstallStep({
                   </p>
                   {bad.status === "offline" ? (
                     canAddServers ? (
-                      <form
-                        className="flex flex-wrap items-center gap-2"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          void saveAddress(m.sourceId, p);
-                        }}
-                      >
-                        {/* EMPTY, not prefilled with the address we already have:
+                      <>
+                        <form
+                          className="flex flex-row items-center gap-2"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            void saveAddress(m.sourceId, p);
+                          }}
+                        >
+                          {/* EMPTY, not prefilled with the address we already have:
                             that address is the one that just failed, and handing it
                             back invites a Save that changes nothing. The placeholder
-                            carries the shape instead - what goes here is an IP, and
-                            showing one is quicker to read than a sentence saying so. */}
-                        <Input
-                          value={draft[m.sourceId] ?? ""}
-                          onChange={(e) =>
-                            setDraft((prev) => ({
-                              ...prev,
-                              [m.sourceId]: e.target.value,
-                            }))
-                          }
-                          placeholder="1.1.1.1"
-                          className="w-56"
-                          disabled={working}
-                        />
-                        <Button
-                          type="submit"
-                          disabled={
-                            working || !(draft[m.sourceId] ?? "").trim()
-                          }
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={working}
-                          onClick={() => void checkAgain(m.sourceId, p)}
-                        >
-                          {working ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            "Check again"
-                          )}
-                        </Button>
-                      </form>
+                            carries the shape instead, and it carries BOTH shapes -
+                            an IP is the usual answer but a second DNS name that
+                            skips the proxy is just as good, and a lone `1.1.1.1`
+                            reads as "IP only". */}
+                          <Input
+                            value={draft[m.sourceId] ?? ""}
+                            onChange={(e) =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                [m.sourceId]: e.target.value,
+                              }))
+                            }
+                            placeholder="1.1.1.1 or host.example.com"
+                            className="w-full"
+                            disabled={working}
+                          />
+                          <Button
+                            type="submit"
+                            disabled={
+                              working || !(draft[m.sourceId] ?? "").trim()
+                            }
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={working}
+                            onClick={() => void checkAgain(m.sourceId, p)}
+                          >
+                            {working ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              "Check again"
+                            )}
+                          </Button>
+                        </form>
+                        {/* The one mistake this screen invites, said where it would
+                          be made. The other platform's PANEL is reached at a name;
+                          this MACHINE is reached at an address, and the two are
+                          only the same thing when nothing sits in front. Somebody
+                          who goes back and fixes the panel's address instead lands
+                          on a scan that dies verifying a certificate issued for the
+                          name they just replaced - which reads as "the IP is wrong"
+                          when it is the field that is. */}
+                        <p className="text-xs text-muted-foreground">
+                          The machine&rsquo;s own address, an IP or a hostname
+                          that points straight at it. Not the panel&rsquo;s
+                          address - leave that one as it is.
+                        </p>
+                      </>
                     ) : (
                       <p className="text-xs text-warning">
                         Ask an instance admin to change its address.
