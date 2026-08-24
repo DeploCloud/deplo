@@ -11,6 +11,12 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
+# The default GITHUB_TOKEN can write to the repository. Nothing here needs that:
+# lint, tests, audit and typecheck only read the checkout. A pull request from a
+# fork gets no secrets either way, but a compromised action in the tree would.
+permissions:
+  contents: read
+
 # Node.js 20 is deprecated on the runners; force JS-based actions onto Node 24.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"

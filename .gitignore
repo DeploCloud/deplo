@@ -53,3 +53,13 @@ control-plane.log
 # Audit report work file (not versioned)
 DEPLO_TEST_OPUS.md
 DEPLO_TEST_FABLE.md
+
+# Security assessment work files. These name live function paths and, in the case
+# of the scratch exploit, contain a working proof of concept. They stay out of a
+# public tree; the copy lives outside the repo.
+SECURITY_AUDIT.md
+inj-scratch.ts
+
+# Migration scratch dir. It holds a live API token, is untracked, and used to be
+# unignored - one `git add -A` away from being published.
+/.tmp-mig/
