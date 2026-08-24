@@ -345,13 +345,23 @@ test("authorship: create stamps both columns, an edit only touches updatedBy", a
   const [edited] = await asUser1(() => listSharedVars());
   assert.equal(edited!.createdBy?.id, USER_1);
   assert.equal(edited!.updatedBy?.id, "user_3");
-  // Identity only — never an email.
-  assert.deepEqual(edited!.updatedBy, {
+  // Identity only — never an email. `avatarUrl` is DERIVED from the address
+  // server-side (a Gravatar hash) precisely so the address itself never leaves
+  // the data layer, so it is asserted apart from the rest: pinning the hash here
+  // would only re-state the seed's email in a second place, and what this test
+  // is actually guarding is that the email is not in the DTO at all.
+  const { avatarUrl, ...identity } = edited!.updatedBy!;
+  assert.deepEqual(identity, {
     id: "user_3",
     name: "user_3",
     username: "user_3",
     avatarColor: "#abc",
   });
+  assert.ok(
+    avatarUrl === null || /^https:\/\/gravatar\.com\/avatar\/[0-9a-f]{64}\?/.test(avatarUrl),
+    `avatarUrl is a derived gravatar URL or nothing, got ${avatarUrl}`,
+  );
+  assert.ok(!JSON.stringify(edited!.updatedBy).includes("@"), "no email anywhere");
 });
 
 test("linking a var to an app stamps the author (a scope change IS a modification)", async () => {

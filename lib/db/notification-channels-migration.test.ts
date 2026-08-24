@@ -63,7 +63,11 @@ before(async () => {
     // Same reason as in shared-env-migration.test.ts: 0115 is the single
     // additive `account.issuer` ALTER that `seedIdentity` needs, split from the
     // OAuth half (0116) precisely so it can be pulled forward here.
-    f.startsWith("0115_");
+    f.startsWith("0115_") ||
+    // 0121 adds `teams.image` (profile pictures), and the live-drizzle seed
+    // below names it. Every ALTER in 0121 is an additive
+    // `ADD COLUMN IF NOT EXISTS`, so pulling the whole file forward is safe.
+    f.startsWith("0121_");
   for (const f of files.filter(preSeed)) await applyFile(f);
 
   // Teams and users through the live schema: 0075 does not touch them.
