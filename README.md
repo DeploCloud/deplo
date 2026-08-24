@@ -4,14 +4,14 @@
 
 # Deplo
 
-**push a repo, pick a server, get a deployment — on your own infrastructure**
+**push a repo, pick a server, get a deployment - on your own infrastructure**
 
 [![Release](https://img.shields.io/github/v/release/DeploCloud/deplo?color=0a0a0a)](https://github.com/DeploCloud/deplo/releases)
 [![Stars](https://img.shields.io/github/stars/DeploCloud/deplo?style=flat)](https://github.com/DeploCloud/deplo/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/DeploCloud/deplo)](https://github.com/DeploCloud/deplo/commits)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-[Features](#-features) · [Quick start](#-quick-start) · [Configuration](#%EF%B8%8F-configuration) · [Security](#-security) · [Stack](#-tech-stack)
+[Features](#-features) · [Quick start](#-quick-start) · [How it works](#-how-it-works) · [Configuration](#%EF%B8%8F-configuration) · [Security](#-security) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -19,169 +19,226 @@
 
 ## 💡 Why
 
-I wanted the **developer experience of Vercel** with the **feature set of a self-hosted platform** — but running entirely on **my own infrastructure**, with **zero vendor lock-in**. No per-seat pricing, no build minutes, no black box. Just a VPS, a Docker socket and a domain.
+**You should not have to learn Docker or SSH to deploy your own app.**
 
-Deplo is that: a self-hostable control plane. Push a repository or pick a template, and Deplo builds it in Docker and exposes it through Traefik with automatic HTTPS — on your master host or any remote server you connect.
+That is the whole point. The big clouds figured out the experience years ago: push, and it
+is live, with someone else doing the operations. Self-hosting has never matched it. Every
+platform you can run yourself still assumes you live in a shell, and hands you a compose
+file the moment anything gets interesting.
+
+Deplo is that experience on hardware you own and a bill you control. A VPS and a domain,
+and the platform does the operator's job: builds, routing, TLS, databases, backups,
+monitoring, rollbacks. No per-seat pricing, no build minutes, no black box, no vendor
+lock-in. **The shell stays available for experts and is never required to get full value.**
 
 ## ✨ Features
 
 | | Feature | What you get |
 | :-: | --- | --- |
-| 🚀 | **Deploys** | Git, any Git URL, a registry image, a Dockerfile, or an upload — with automatic framework detection and editable build commands. |
-| 🧩 | **Templates** | One-click deploys for a large catalog (WordPress, Ghost, Plausible, n8n, Supabase, MinIO, Uptime Kuma, Postgres, Redis…). |
-| 🖥️ | **Multi-server** | A master host plus remote servers connected over SSH. Every deploy targets a server you pick. |
-| 📊 | **Live monitoring** | Real-time CPU, memory, disk and network per server (master + remotes) with rolling charts. |
-| 🔔 | **Alerts** | Anomaly notifications via browser push, email, Discord webhook and a generic webhook. |
-| 🔑 | **Variables** | Per-project env vars plus **shared groups** reused across projects from one source of truth. |
-| 🗄️ | **Storage** | Managed databases (Postgres, MySQL, MariaDB, MongoDB, Redis, ClickHouse), backup destinations (a server's disk or any S3 bucket) and scheduled backups. |
-| 🌐 | **Domains** | Custom domains with automatic TLS via Let's Encrypt. |
-| 📦 | **Registries** | Connect GHCR / Docker Hub / GitLab / generic registries for private images. |
-| 🔄 | **Self-update aware** | Checks this repo for newer releases and notifies you in-app. |
+| 🚀 | **Deploys** | Git (GitHub, GitLab, Bitbucket, Gitea or any Git URL), a registry image, a Dockerfile, a Compose file, or a plain upload. Framework detection picks the build for you and every command stays editable. |
+| 🧩 | **Templates** | One-click deploys from a live catalog (WordPress, Ghost, Plausible, n8n, Supabase, MinIO, Uptime Kuma, Postgres, Redis and many more), each with its own variants. |
+| 👥 | **Teams** | Several people, one instance, least privilege. **46 fine-grained Capabilities**, per-team editable Roles, per-folder grants, an Activity trail that answers "who did this and when" in the UI. |
+| 🖥️ | **Any number of servers** | One host or a fleet. Each one runs the server agent and every deploy targets a server you pick. Adding a host is one command, printed for you in the dashboard. |
+| 🔀 | **Preview deployments** | Every pull request gets its own URL and tears itself down on merge. A preview of a fork never receives your secrets. |
+| ⏪ | **Rollbacks** | Re-run any past build's exact image. No rebuild, no waiting, no hoping the dependency tree resolves the same way twice. |
+| 🗄️ | **Storage** | Managed databases (Postgres, MySQL, MariaDB, MongoDB, Redis, ClickHouse), volumes, and file mounts edited in the browser. |
+| 💾 | **Backups** | Scheduled, encrypted at rest with age, to any S3 bucket **or to another server's disk** - so disaster recovery uses hardware you already have instead of a cloud account you do not want. |
+| ⏰ | **Cron** | Scheduled jobs that run in the agent, so restarting the panel never kills a run. |
+| 📊 | **Live monitoring** | Streaming CPU, memory, disk and network per server and per app, with history and anomaly alerts over browser push, email, Discord or a webhook. |
+| 🌐 | **Domains** | Custom domains with automatic Let's Encrypt TLS, path-based routing, basic auth, and a working URL out of the box before you own a domain at all. |
+| 🔑 | **Variables** | Per-app, per-environment and shared groups, encrypted at rest, available at build time and run time. |
+| 🔐 | **Account security** | Passwords checked against known breaches, passkeys, TOTP two-factor that a team or a role can **require**, scoped API tokens that expire. |
+| 🤖 | **MCP server** | Point an AI agent at your infrastructure through the same authorization gates a human gets. Off by default for a new team. |
 
 ## 🚀 Quick start
 
 ### Install on a server
 
-Run one command on a fresh Linux box — it installs Docker, Traefik (automatic HTTPS), a private Postgres and the Deplo control plane:
+One command on a fresh Linux box. It installs Docker, Traefik with automatic HTTPS, a
+private Postgres, the Deplo control plane, and the server agent on that same host, so you
+have somewhere to deploy the moment it finishes:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
 ```
 
-The installer is idempotent: secrets are generated once and stored in `/opt/deplo/.env`, so re-running never rotates them. Override defaults with env vars:
+The dashboard always answers on `http://<server-ip>:3000`. That address is the way back in
+when a domain, a certificate or the proxy is what broke. Pass a domain to route it through
+Traefik with HTTPS as well:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | \
   DEPLO_DOMAIN=deplo.example.com ACME_EMAIL=you@example.com bash
 ```
 
+The installer is idempotent: secrets are generated once into `/opt/deplo/.env`, so
+re-running updates in place and never rotates them.
+
 > [!TIP]
-> Point your domain at the server's IP, then open the dashboard and finish setup in the browser.
+> You do not need a domain to start. Every deployment gets a working
+> `<app>.<server-ip>.sslip.io` URL with a real certificate until you point one at it.
 
-### Run the prebuilt image
+### Run it with Compose
 
-Each tagged release publishes a multi-arch image to GitHub Container Registry:
+[`docker-compose.yml`](docker-compose.yml) in this repository runs the control plane and
+its Postgres behind Traefik. It is what `install.sh` writes out, kept readable on purpose:
 
 ```bash
-docker run -d --name deplo \
-  -p 3000:3000 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v deplo-data:/data \
-  ghcr.io/deplocloud/deplo:latest
+docker network create deplo
+export DEPLO_DOMAIN=deplo.example.com
+export DEPLO_SECRET=$(openssl rand -base64 48)
+export DEPLO_DB_PASSWORD=$(openssl rand -base64 24)
+docker compose up -d
 ```
 
-### Run locally
+> [!IMPORTANT]
+> **The control plane never mounts the Docker socket, and you should never give it one.**
+> It is the container here reachable from the internet, and that mount is root on the box
+> for whoever reaches it. Everything host-coupled goes over mTLS to the server agent.
+
+### Run it locally
 
 ```bash
 bun install
 export DEPLO_DATABASE_URL=postgres://deplo:password@localhost:5432/deplo
-bun run db:push      # create the Better Auth and state tables
-bun run dev          # http://localhost:3000
+export DEPLO_SECRET=$(openssl rand -base64 48)
+bun run db:push     # create the tables
+bun run dev         # http://localhost:3000
 ```
 
-PostgreSQL is the only control-plane data store, so `DEPLO_DATABASE_URL` (or `DATABASE_URL`) is required — the app fails fast at startup without it. On first run the database is seeded with a demo team, servers and projects.
-
-| | Development login |
-| --- | --- |
-| **Email** | `admin@acme.com` |
-| **Password** | `deplo-admin-2026` *(development convenience only)* |
-
-> [!IMPORTANT]
-> A real install starts **empty** — no demo data. The first visit opens a **setup wizard** that creates your workspace and admin account; the demo login above is development-only (`DEPLO_SEED_DEMO=true|false` overrides seeding). Set `DEPLO_SECRET` in production to derive all encryption and signing keys.
+Postgres is the only control-plane data store, so `DEPLO_DATABASE_URL` is required and the
+app fails fast at startup without it. A real install starts **empty**: the first visit
+opens a setup wizard that creates your team and admin account.
 
 ## 🧱 How it works
 
+Two planes, and one boundary that is never crossed.
+
 ```
-                +--------------------------------------------+
-   Browser ---> |  Deplo control plane (this Next.js app)    |
-                |  UI + API + auth + Postgres data store     |
-                +-----------------------+--------------------+
-                                        | talks to the Docker socket
-                                        v
-        +---------------------------------------------------+
-        |  Your Linux server (master or a remote)           |
-        |    +---------+   routes + TLS   +--------------+   |
-        |    | Traefik | <==============> | app          |   |
-        |    |  :80    |                  | db           |   |
-        |    |  :443   |   Let's Encrypt  | services     |   |
-        |    +---------+                  +--------------+   |
-        |        all on the shared `deplo` docker network   |
-        +---------------------------------------------------+
+                   +--------------------------------------------------+
+   Browser  <--->  |  Deplo control plane  (this repository)          |
+                   |  UI · GraphQL API · auth · Postgres · rendering  |
+                   +----------------------+---------------------------+
+                                          |
+                                gRPC over mTLS, cert pinned
+                                          |
+              +---------------------------+---------------------------+
+              |                           |                           |
+     +--------v--------+         +--------v--------+         +--------v--------+
+     |  deplo-agent    |         |  deplo-agent    |         |  deplo-agent    |
+     |  your server 1  |         |  your server 2  |         |  a friend's box |
+     |  +-----------+  |         |                 |         |                 |
+     |  | Traefik   |  |         |   containers    |         |   containers    |
+     |  | :80 :443  |  |         |   volumes       |         |   volumes       |
+     |  +-----------+  |         |   builds        |         |   builds        |
+     |   containers    |         |                 |         |                 |
+     +-----------------+         +-----------------+         +-----------------+
 ```
 
-1. **Docker** — every app, database and service is a container; Deplo generates a `docker-compose.yml` per workload (`lib/deploy/compose.ts`).
-2. **Traefik** — one reverse proxy routes each domain to the right container and issues TLS via Let's Encrypt (`lib/deploy/traefik.ts`).
-3. **Postgres** — the one system of record for all control-plane data and Better Auth. `DEPLO_DATABASE_URL` is required; there is no file-based fallback.
+1. **The control plane decides.** It renders the Compose YAML, the Traefik routing labels
+   and the ports, resolves and decrypts the environment, and hands the result over. It
+   never runs `docker`, never opens a shell, never touches a host.
+2. **[The server agent](https://github.com/DeploCloud/deplo-agent) executes.** One Go
+   binary per host, the only thing that runs Docker anywhere. Reached over gRPC with
+   mutual TLS, the certificate fingerprint pinned at enrollment.
+3. **Traefik routes.** One reverse proxy per host maps every domain to the right container
+   and issues certificates through Let's Encrypt.
+4. **Postgres remembers.** The single system of record for the control plane. No file
+   store, no fallback.
+
+The machine Deplo itself runs on is just another server in the fleet, agent and all. There
+is no privileged local shortcut, which means the path you use every day is the same one a
+remote host uses, and it is tested by everything.
+
+Decisions behind this live in [`docs/adr/`](docs/adr/), the vocabulary in
+[`CONTEXT.md`](CONTEXT.md), and the architecture rules in [`AGENTS.md`](AGENTS.md).
 
 ## ⚙️ Configuration
 
-`DEPLO_DATABASE_URL` is **required** — Deplo stores all control-plane data in PostgreSQL and enables Better Auth at `/api/auth/*`. Set it (and `DEPLO_SECRET`) before running:
-
-```bash
-export DEPLO_DATABASE_URL=postgres://deplo:password@localhost:5432/deplo
-export DEPLO_SECRET=$(openssl rand -base64 48)
-bun run db:push      # create the Better Auth and state tables
-bun run dev
-```
-
-Copy `.env.example` to `.env` and fill in the important variables:
+Copy [`.env.example`](.env.example) to `.env`. Only two are required:
 
 | Variable | Purpose |
 | --- | --- |
-| `DEPLO_SECRET` | **Required in production.** Root secret deriving all session-signing and AES-256-GCM encryption keys; reused as the Better Auth secret. |
-| `DEPLO_PUBLIC_URL` | Public URL the dashboard is served from (cookies, TLS detection, install command). |
-| `DEPLO_DATABASE_URL` | **Required.** Postgres connection string. Deplo's only control-plane data store; also backs Better Auth. |
-| `DEPLO_DATABASE_POOL_MAX` | Optional cap on the Postgres connection pool (default 10). |
-| `DEPLO_DATA_DIR` | Host-visible directory for build/upload staging the Docker daemon must see (default `/data`, `./.deplo` in dev). Not a data store. |
+| `DEPLO_DATABASE_URL` | **Required.** Postgres connection string. The only control-plane data store; also backs Better Auth. The app fails fast without it. |
+| `DEPLO_SECRET` | **Required in production.** Root secret, at least 16 characters, deriving every session-signing and AES-256-GCM encryption key. Rotating it is destructive. |
+| `DEPLO_PUBLIC_URL` | Public URL the dashboard is served from. Sets the cookie `secure` flag and the install command it prints. |
+| `DEPLO_SERVER_IP` | Public IPv4 of this server, used for the zero-config `sslip.io` hostnames. Detected automatically; set it by hand for a manual run. |
+| `DEPLO_HOST_BOOTSTRAP_TOKEN` | One-time token that enrolls the machine Deplo runs on as a server. `install.sh` generates it. Unset means "do not enroll", which is what a dev run wants. |
+| `DEPLO_HOST_NAME` | Name shown on that server's card. Deplo runs in a container and cannot read the host's own hostname. |
+| `DEPLO_TEMPLATES_API_URL` | Template catalog. Defaults to the public one; set it to mirror the catalog yourself. |
 | `DEPLO_ACME_EMAIL` | Email used for Let's Encrypt in the generated installer. |
-
-## 🔄 Releases & CI
-
-Pushing a `v*.*` tag triggers [`.github/workflows/docker-image.yml`](.github/workflows/docker-image.yml): it creates a GitHub Release and builds + pushes the image to `ghcr.io/deplocloud/deplo:<version>` and `:latest`.
-
-Bump `version` in `package.json` **before** tagging: it is the version the
-dashboard reports (`lib/version.ts` reads it), so a tag without the bump leaves
-every install announcing the previous one forever.
-
-```bash
-# package.json → "version": "1.3.0", committed
-git tag v1.3.0 && git push origin v1.3.0
-```
+| `DEPLO_CERT_RESOLVER` | Name of the Traefik ACME resolver baked into every router. Defaults to `letsencrypt`. |
+| `DEPLO_DATABASE_POOL_MAX` | Cap on the Postgres connection pool. Defaults to 10. |
+| `DEPLO_DATA_DIR` | Host-visible directory for build and upload staging. Not a data store. |
 
 ## 🔐 Security
 
-- **Stateless sessions** — HMAC-signed cookies (`HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS, 7-day expiry). Better Auth manages credentials when Postgres is configured.
-- **Secrets at rest** — env vars, DB connection strings, S3 keys and registry credentials are AES-256-GCM encrypted and only ever returned to the client masked.
-- **Passwords** — hashed with scrypt using constant-time comparisons.
-- **Hardened headers** — per-request CSP nonce plus HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` and `Permissions-Policy` (`proxy.ts`).
-- **Defense in depth** — every server action validates input with Zod and re-checks auth in the data layer (`assertUser`); page-level auth is never trusted alone. Rate limiting protects the auth endpoints.
+- **The control plane cannot touch a host.** Deploys, builds, logs, consoles, metrics,
+  files and backups all leave over gRPC with mutual TLS to the server agent, whose
+  certificate is pinned at enrollment. There is no local shortcut to abuse.
+- **Every mutating action is Capability-gated server-side**, inside the data layer, not in
+  the UI. Interface checks only hide buttons. Cross-team ids resolve to nothing rather
+  than to an error that confirms they exist.
+- **Secrets are write-only.** Environment values, database URLs, S3 keys, registry and Git
+  credentials are AES-256-GCM encrypted, never projected into an API response, and masked
+  in any rendered stack shown back to you. The agent never holds the encryption key.
+- **Authored Compose is treated as hostile.** Everything that reaches out of a container -
+  bind mounts, `privileged`, capabilities, devices, host namespaces, foreign networks and
+  volumes - is gated behind an explicit grant, and hardening is never gated.
+- **Passwords** use scrypt with the cost stored per hash, and every password a person
+  chooses is checked against Have I Been Pwned, k-anonymously and failing open so an
+  instance with no outbound access still works.
+- **Two-factor is a policy, not a setting.** A team or a role can require it, and a member
+  who has not enrolled resolves nothing in that team, in the UI and over the API alike.
+- **Hardened by default**: per-request CSP nonce, HSTS, `X-Frame-Options: DENY`, `nosniff`,
+  a referrer policy, a Postgres-backed rate limiter that survives restarts, and API tokens
+  that carry a scope and an expiry.
+
+Found a hole? **[SECURITY.md](SECURITY.md)** - report it privately, never in an issue.
+
+## 🤝 Contributing
+
+Pull requests are welcome. **[CONTRIBUTING.md](CONTRIBUTING.md)** covers running it
+locally, the three commands CI runs, and how contributions are licensed.
+
+- Questions and ideas: [Discussions](https://github.com/DeploCloud/deplo/discussions)
+- Bugs and feature requests: [Issues](https://github.com/DeploCloud/deplo/issues)
+- Vulnerabilities: [privately](https://github.com/DeploCloud/deplo/security/advisories/new)
 
 ## 🛠️ Tech stack
 
-Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Lucide · Docker · Traefik · Postgres · Drizzle · Better Auth · Bun
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Pothos
+GraphQL · Drizzle · Postgres · Better Auth · Bun · Go (the agent) · Docker · Traefik
 
 ## 🗂️ Project layout
 
 ```
-app/(auth)        login and signup
-app/(dashboard)   the product (overview, projects, variables, monitoring…)
-app/api/auth      Better Auth endpoints (active when Postgres is configured)
-app/install       alias that redirects to install.sh on GitHub
-install.sh        the installer (single source of truth, served from GitHub)
-components/ui     shadcn primitives
-components/*      feature components
-lib/data          data access layer (server only, auth checked)
-lib/actions       server actions (Zod validated)
-lib/db            Postgres pool, Drizzle schema and document store
-lib/deploy        docker-compose and Traefik generation
-lib/frameworks.ts framework detection engine
-templates/        one-click template catalog client (the catalog itself is remote)
-lib/crypto.ts     hashing, encryption and session signing
-proxy.ts          CSP, security headers and the optimistic auth gate
+app/(auth)          login and first-run setup
+app/(dashboard)     the product (overview, apps, storage, monitoring, members, activity)
+app/api/graphql     the single API endpoint
+app/api/*           the REST exceptions (uploads, log and console streams, webhooks, MCP)
+lib/data            the data layer, and the authorization boundary
+lib/graphql         Pothos builder, context and the domain types
+lib/deploy          Compose, Traefik label and port rendering
+lib/infra           the agent client (mTLS, one entry point)
+lib/agent           mTLS PKI and the generated gRPC stubs
+lib/db              Postgres pool, Drizzle schema and migrations
+lib/mcp             the MCP server, one row per tool
+components          UI, with shadcn primitives under components/ui
+install.sh          the installer, served from this repository
+docs/adr            numbered architecture decisions
 ```
 
 ## 📄 License
 
-MIT © [DeploCloud](https://github.com/DeploCloud)
+**[AGPL-3.0-only](LICENSE)** © 2026 DeploCloud
+
+Run it, modify it, redistribute it. If you offer a modified version to other people over a
+network, publish your changes. Commercial licensing is available for anyone who needs
+different terms.
+
+The **code** is AGPL. The **name "deplo" and the logo are not** - the license covers
+copyright, not trademarks. Fork it freely and please rename your fork. Details in
+[CONTRIBUTING.md](CONTRIBUTING.md#the-name-is-not-part-of-the-license).
 
 <div align="center"><sub>Built for people who'd rather own their deploys.</sub></div>
