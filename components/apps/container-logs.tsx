@@ -760,7 +760,7 @@ export function ContainerLogs({
             <PlugZap className="size-5 text-zinc-500" />
             <p className="max-w-100 text-[11px] text-zinc-500">
               The log stream could not be opened. The container may be gone, or
-              its server unreachable — use Reconnect to try again.
+              its server unreachable. Use Reconnect to try again.
             </p>
           </div>
         ) : null}
