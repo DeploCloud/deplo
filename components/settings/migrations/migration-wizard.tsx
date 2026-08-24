@@ -325,6 +325,7 @@ export function MigrationWizard({
   buildServers,
   isInstanceAdmin,
   canExposePorts,
+  viewerName,
   prefill,
 }: {
   teamId: string;
@@ -334,6 +335,12 @@ export function MigrationWizard({
   isInstanceAdmin: boolean;
   /** The publish-ports grant. Without it a database's port cannot come over at all. */
   canExposePorts: boolean;
+  /**
+   * Who is looking. Compared against a running migration's `actor` to tell the
+   * person who started it from a teammate who walked in on it - the first gets
+   * their wizard back, the second gets the read-only panel.
+   */
+  viewerName: string;
   /**
    * An address handed over from the History tab. The nonce is what makes
    * picking the same run twice still land in the field.
@@ -384,6 +391,9 @@ export function MigrationWizard({
    */
   const cancelled = React.useRef(false);
   const [stopped, setStopped] = React.useState(false);
+  /** The run this tab took over rather than started. Set when it is stopped from
+   *  here, so revert/keep act on it exactly as they do for the driver. */
+  const [adoptedId, setAdoptedId] = React.useState<string | null>(null);
   const [reverting, setReverting] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
 
@@ -746,6 +756,40 @@ export function MigrationWizard({
     return res;
   }
 
+  /**
+   * Stop a run this tab did not start.
+   *
+   * The driver's Stop only raises a flag its loop reads between calls; there is
+   * no loop here, so this IS the call. Taking the run's id afterwards is what
+   * makes the rest of the panel work: "remove what came over" and "keep it" are
+   * the same two server calls the driver gets, and both only need that id.
+   */
+  async function stopResumed(id: string) {
+    const res = await gqlAction(STOP, { runId: id });
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    setAdoptedId(id);
+    setRunId(id);
+    setStopped(true);
+    router.refresh();
+  }
+
+  /** The log of a run this tab did not start: read off its own ledger. */
+  async function loadResumedLog(id: string) {
+    setLogOpen(true);
+    const res = await gqlAction<
+      { dokployImport: { items: ReportItem[] } | null },
+      { items: ReportItem[] } | null
+    >(RUN_REPORT_QUERY, { id }, (d) => d.dokployImport);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    setItems(res.data?.items ?? []);
+  }
+
   /** Keep what landed and read the report on it. */
   function keepPartial() {
     setStopped(false);
@@ -898,19 +942,48 @@ export function MigrationWizard({
    * this tab holds of its own wins: the driver keeps its panel with Stop on it.
    */
   const watched = useActiveMigration();
-  const watching =
+  /**
+   * Whether the run in flight is THIS person's. `actor` is a display name rather
+   * than an id, which is as much as the run row carries - and it is enough here,
+   * because both panels' actions are gated `create_projects` server-side and the
+   * whole page already is: guessing wrong costs a visible button, never an
+   * action somebody was not allowed to take.
+   */
+  const mine = watched != null && watched.actor === viewerName;
+  /**
+   * The run this tab started, come back to after a reload (or opened from the
+   * header chip). The loop is gone - it held the API key, which is never stored
+   * - but every button on the panel is a server call that needs only the run's
+   * id, so the person who started it gets the SAME screen they left, Stop and
+   * all, rather than a second kind of screen that only watches.
+   */
+  const resumed =
     watched != null &&
+    mine &&
     runId == null &&
     !running &&
     !stopped &&
     failure === null &&
     step !== "done";
+  /** The same run once this tab has stopped it: `runId` is set now, so the
+   *  panel's second half - remove what came over, or keep it - is the driver's. */
+  const resumedStopped = adoptedId != null && stopped && !running;
+  const watching =
+    watched != null &&
+    !mine &&
+    runId == null &&
+    !running &&
+    !stopped &&
+    failure === null &&
+    step !== "done";
+  /** A migration owns the screen, whoever is looking and however they got here. */
+  const takenOver = watching || resumed || resumedStopped;
 
   // One derived value drives the picture. A run in flight wins over the step -
   // driven here or watched from here - because the cable full of packets is the
   // truest thing on the screen at that moment.
   const pose: MigrationState =
-    running || watching
+    running || takenOver
       ? "moving"
       : step === "done"
         ? "done"
@@ -984,13 +1057,13 @@ export function MigrationWizard({
             <div className="flex justify-center">
               <WizardStepper
                 steps={STEPS}
-                current={watching ? "review" : step}
+                current={takenOver ? "review" : step}
                 reachable={(s) => {
                   // The rail is inside the panel, so the lock cannot switch it
                   // off - it says so itself instead: while a migration owns the
                   // screen, driven here or watched from here, the only step
                   // there is is the one it is on.
-                  if (moving || watching) return s === "review";
+                  if (moving || takenOver) return s === "review";
                   if (s === "connect") return true;
                   if (s === "install" || s === "review") return plan != null;
                   // People and the report are what the migration produces: an
@@ -1000,7 +1073,7 @@ export function MigrationWizard({
                 onSelect={(s) => {
                   // Nothing moves while the loop is mid-flight, or while a
                   // stopped run is still waiting to be undone or kept.
-                  if (moving || watching) return;
+                  if (moving || takenOver) return;
                   setStep(s);
                 }}
               />
@@ -1009,7 +1082,41 @@ export function MigrationWizard({
             <div>
               {watching && <WatchingPanel run={watched} />}
 
-              {!watching && step === "connect" && (
+              {/* The same panel the driver sees, for the person who started this
+                  run and came back to it. Not a second kind of screen: the step
+                  they left is the step they get, with the Stop still on it. */}
+              {(resumed || resumedStopped) && (
+                <MovingPanel
+                  progress={
+                    resumed && watched
+                      ? {
+                          done:
+                            watched.created +
+                            watched.skipped +
+                            watched.failed +
+                            watched.manual,
+                          // No denominator from out here: the plan that knew how
+                          // many projects there were died with the tab. The bar
+                          // sweeps instead of filling, which is honest.
+                          total: 0,
+                          current: watched.orgName ?? watched.sourceUrl,
+                        }
+                      : progress
+                  }
+                  failure={failure}
+                  running={resumed}
+                  reverting={reverting}
+                  onShowLog={() =>
+                    void loadResumedLog(adoptedId ?? watched?.id ?? "")
+                  }
+                  onStop={() => void stopResumed(watched?.id ?? "")}
+                  onRevert={revertRun}
+                  onKeep={keepPartial}
+                  canRevert={runId != null}
+                />
+              )}
+
+              {!takenOver && step === "connect" && (
                 <ConnectStep
                   url={url}
                   setUrl={setUrl}
@@ -1023,7 +1130,7 @@ export function MigrationWizard({
                 />
               )}
 
-              {!watching && step === "install" && plan && (
+              {!takenOver && step === "install" && plan && (
                 <InstallStep
                   machines={plan.servers}
                   canAddServers={isInstanceAdmin}
@@ -1035,7 +1142,7 @@ export function MigrationWizard({
                 />
               )}
 
-              {!watching &&
+              {!takenOver &&
                 step === "review" &&
                 plan &&
                 (moving ? (
@@ -1069,7 +1176,7 @@ export function MigrationWizard({
                   />
                 ))}
 
-              {!watching && step === "people" && (
+              {!takenOver && step === "people" && (
                 <PeopleStep
                   people={(plan?.members ?? []).filter((m) => !m.inTeam)}
                   invites={invites}

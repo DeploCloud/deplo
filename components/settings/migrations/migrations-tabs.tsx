@@ -43,6 +43,7 @@ export function MigrationsTabs({
   runs,
   isInstanceAdmin,
   canExposePorts,
+  viewerName,
 }: {
   teamId: string;
   teamName: string;
@@ -51,6 +52,8 @@ export function MigrationsTabs({
   runs: ImportRun[];
   isInstanceAdmin: boolean;
   canExposePorts: boolean;
+  /** Who is looking, matched against a running migration's actor. */
+  viewerName: string;
 }) {
   const params = useSearchParams();
   const requested = params.get("tab");
@@ -113,6 +116,7 @@ export function MigrationsTabs({
           buildServers={buildServers}
           isInstanceAdmin={isInstanceAdmin}
           canExposePorts={canExposePorts}
+          viewerName={viewerName}
           prefill={prefill}
         />
       </TabsContent>

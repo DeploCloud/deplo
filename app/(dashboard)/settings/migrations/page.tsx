@@ -5,6 +5,7 @@ import {
   reachesWholeTeam,
 } from "@/lib/membership";
 import { getTeamIdentity } from "@/lib/data/teams";
+import { getCurrentUser } from "@/lib/auth";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import { listDokployImports } from "@/lib/data/dokploy-import";
 import { PageHeader } from "@/components/shared/page-header";
@@ -36,7 +37,7 @@ export default async function SettingsMigrationsPage() {
       />
     );
 
-  const [team, servers, buildServers, runs, admin, mayExposePorts] =
+  const [team, servers, buildServers, runs, admin, mayExposePorts, viewer] =
     await Promise.all([
       getTeamIdentity(),
       listServerChoices(),
@@ -49,6 +50,9 @@ export default async function SettingsMigrationsPage() {
       // published port like any other - so the review only offers to sort one out
       // for somebody who could publish it.
       canExposePorts(),
+      // Who is looking, so a migration already in flight can tell the person who
+      // started it apart from a teammate who just walked in on it.
+      getCurrentUser(),
     ]);
 
   return (
@@ -70,6 +74,7 @@ export default async function SettingsMigrationsPage() {
         runs={runs}
         isInstanceAdmin={admin}
         canExposePorts={mayExposePorts}
+        viewerName={viewer?.name ?? ""}
       />
     </div>
   );
