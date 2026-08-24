@@ -9,6 +9,7 @@ import {
   databases as databasesTable,
   dokployImportItems as itemsTable,
   dokployImports as runsTable,
+  dokploySourceAddresses as sourceAddressesTable,
   domains as domainsTable,
   environments as environmentsTable,
   projects as projectsTable,
@@ -112,6 +113,7 @@ import {
   getServerById,
   listServersForTeam,
   uninstallMigrationSource,
+  updateServerAddress,
 } from "./servers";
 import {
   deploHostSelfAddresses,
@@ -861,6 +863,98 @@ export async function dokployMachines(
   return planMachines(c, teamId, await listServers(c).catch(() => []));
 }
 
+/**
+ * The addresses somebody has already corrected for this Dokploy, by machine.
+ *
+ * Read before every plan, because the correction has to outlive the server row
+ * it was made on - that row is removed at the end of each attempt, and without
+ * this the next attempt re-derived the panel's name and asked for the same fix
+ * again.
+ */
+async function rememberedAddresses(
+  teamId: string,
+  sourceUrl: string,
+): Promise<Map<string, string>> {
+  const rows = await getDb()
+    .select({
+      sourceId: sourceAddressesTable.sourceId,
+      address: sourceAddressesTable.address,
+    })
+    .from(sourceAddressesTable)
+    .where(
+      and(
+        eq(sourceAddressesTable.teamId, teamId),
+        eq(sourceAddressesTable.sourceUrl, sourceUrl),
+      ),
+    );
+  return new Map(rows.map((r) => [r.sourceId, r.address]));
+}
+
+/**
+ * Remember where a machine of this Dokploy is reached, so the next attempt
+ * registers it there instead of at the panel's name. Overwrites: the last answer
+ * is the one somebody just proved.
+ */
+export async function rememberDokployMachineAddress(
+  sourceUrl: string,
+  sourceId: string,
+  address: string,
+): Promise<void> {
+  const teamId = await requireActiveTeamId();
+  const value = address.trim();
+  if (!value) throw new Error("Address is required");
+  await getDb()
+    .insert(sourceAddressesTable)
+    .values({
+      teamId,
+      sourceUrl,
+      sourceId,
+      address: value,
+      updatedAt: nowIso(),
+    })
+    .onConflictDoUpdate({
+      target: [
+        sourceAddressesTable.teamId,
+        sourceAddressesTable.sourceUrl,
+        sourceAddressesTable.sourceId,
+      ],
+      set: { address: value, updatedAt: nowIso() },
+    });
+}
+
+/**
+ * Point Deplo at where a machine of this Dokploy really is, and REMEMBER it.
+ *
+ * One verb for what used to be two halves that came apart: the server row got
+ * the new address and the knowledge died with the row, which is removed at the
+ * end of every attempt. Now the same call proves the address and writes it down,
+ * so the next attempt registers the machine there instead of asking again.
+ *
+ * Proof first, memory second, and never the other way round: a remembered
+ * address is used AUTOMATICALLY next time, so remembering one nobody reached
+ * would turn one bad guess into a permanent one.
+ */
+export async function setDokployMachineAddress(input: {
+  sourceUrl: string;
+  sourceId: string;
+  serverId: string;
+  address: string;
+}): Promise<{ warning: string | null }> {
+  const { warning } = await updateServerAddress({
+    id: input.serverId,
+    address: input.address,
+    // The panel's name stays in `host`: it is what pairs this row with the
+    // Dokploy machine on a second pass. See the flag's own doc.
+    keepHost: true,
+  });
+  await rememberDokployMachineAddress(
+    input.sourceUrl,
+    input.sourceId,
+    input.address,
+  );
+  return { warning };
+}
+
 async function planMachines(
   c: DokployCredential,
   teamId: string,
@@ -871,6 +965,7 @@ async function planMachines(
   // pass of the same import has to find the one the first pass registered.
   const mine = (await listServersForTeam(teamId)).filter((s) => !s.storageOnly);
   const self = deploHostSelfAddresses();
+  const remembered = await rememberedAddresses(teamId, c.baseUrl);
   const at = (address: string | null) => {
     const a = address?.trim().toLowerCase();
     if (!a) return null;
@@ -900,23 +995,28 @@ async function planMachines(
     /* the client already normalised this; a bad one just matches nothing */
   }
 
+  /**
+   * A remembered correction wins over the derived address, and BOTH are tried
+   * for the match. A row registered before the correction existed still carries
+   * the panel's name, and missing it would register the same machine twice -
+   * `assertImportHostIsNew` only refuses an address it already knows, and these
+   * two are different strings for one box.
+   */
+  const machine = (sourceId: string, name: string, derived: string | null) => {
+    const address = remembered.get(sourceId) ?? derived;
+    return {
+      sourceId,
+      name,
+      ipAddress: address,
+      deploServerId: null as string | null,
+      deploServerName: null as string | null,
+      ...(at(address) ?? at(derived) ?? {}),
+    };
+  };
+
   return [
-    {
-      sourceId: "",
-      name: "The Dokploy host",
-      ipAddress: ownAddress,
-      deploServerId: null,
-      deploServerName: null,
-      ...(at(ownAddress) ?? {}),
-    },
-    ...servers.map((s) => ({
-      sourceId: s.serverId,
-      name: s.name,
-      ipAddress: s.ipAddress ?? null,
-      deploServerId: null,
-      deploServerName: null,
-      ...(at(s.ipAddress ?? null) ?? {}),
-    })),
+    machine("", "The Dokploy host", ownAddress),
+    ...servers.map((s) => machine(s.serverId, s.name, s.ipAddress ?? null)),
   ];
 }
 

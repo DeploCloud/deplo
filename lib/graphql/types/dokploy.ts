@@ -28,6 +28,7 @@ import {
   revertDokployImport,
   type RevertResultDTO,
   scanDokploy,
+  setDokployMachineAddress,
   stopDokployImport,
 } from "@/lib/data/dokploy-import";
 
@@ -631,6 +632,31 @@ builder.mutationFields((t) => ({
         sourceKind,
         sourceId,
       }),
+  }),
+  setDokployMachineAddress: t.string({
+    nullable: true,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Point Deplo at where a machine of this Dokploy really is, and remember it for the next attempt. The address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.",
+    args: {
+      url: t.arg.string({ required: true }),
+      sourceId: t.arg.string({
+        required: true,
+        description:
+          "Dokploy's own machine id. Empty string for the host Dokploy itself runs on.",
+      }),
+      serverId: t.arg.string({ required: true }),
+      address: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, args) =>
+      (
+        await setDokployMachineAddress({
+          sourceUrl: args.url,
+          sourceId: args.sourceId,
+          serverId: args.serverId,
+          address: args.address,
+        })
+      ).warning,
   }),
   stopDokployImport: t.field({
     type: "Boolean",

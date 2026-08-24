@@ -3559,6 +3559,41 @@ export const rateLimits = pgTable(
  * `actor` is free text like `activities.actor`; the row is team-scoped and
  * cascades, because an import belongs to the team it filled.
  */
+/**
+ * Where Deplo dials a machine it imports FROM, remembered across attempts.
+ *
+ * The other platform's own host has no address of its own in its API, so Deplo
+ * derives one from the panel's URL - right only when the panel is served
+ * straight off that machine on a name that resolves to it. Behind a proxy it is
+ * the proxy's address, and the agent is unreachable at it.
+ *
+ * The wizard lets somebody correct that. The correction used to land on the
+ * SERVER row, which is removed at the end of every attempt on purpose: a
+ * migration source is not a server anyone keeps. So the knowledge died with it,
+ * and the next attempt re-derived the wrong address again.
+ *
+ * Keyed by the SOURCE because that is what it is about - this Dokploy, this
+ * machine of it, is reached here. `sourceId` is Dokploy's own machine id, empty
+ * string for the host Dokploy itself runs on, the same key the server map and
+ * the cutover already use for it.
+ */
+export const dokploySourceAddresses = pgTable(
+  "dokploy_source_addresses",
+  {
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    /** The panel origin, normalised: no trailing slash, no `/api`. */
+    sourceUrl: text("source_url").notNull(),
+    /** Dokploy's machine id; `''` is the host Dokploy runs on. */
+    sourceId: text("source_id").notNull(),
+    /** What Deplo dials: an IP, or a name that points straight at the machine. */
+    address: text("address").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.sourceUrl, t.sourceId] })],
+);
+
 export const dokployImports = pgTable(
   "dokploy_imports",
   {

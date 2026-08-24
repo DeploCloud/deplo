@@ -230,6 +230,26 @@ const PLAN_DATA = /* GraphQL */ `
   }
 `;
 
+/**
+ * The last word on "can Deplo reach that machine", asked again the moment before
+ * anything is created.
+ *
+ * The install step already answered it, but that answer has an age: somebody
+ * fills in the review, goes for coffee, and presses Start on a host that dropped
+ * off ten minutes ago. Everything after this point either creates something here
+ * or stops something over there, and the first one is the cheapest thing in the
+ * whole run to get wrong.
+ */
+const CHECK_HEALTH = /* GraphQL */ `
+  mutation CheckMigrationMachine($id: String!) {
+    checkServerHealth(id: $id, force: true) {
+      id
+      status
+      statusMessage
+    }
+  }
+`;
+
 const MOVE_DATA = /* GraphQL */ `
   mutation MoveDokployData(
     $input: DokployConnectInput!
@@ -546,23 +566,71 @@ export function MigrationWizard({
           .map((s) => s.sourceId),
       }))
       .filter((t) => t.serviceIds.length > 0);
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+      setFailure("Nothing is selected, so there is nothing to migrate.");
+      return;
+    }
 
     setItems([]);
     setFailure(null);
     cancelled.current = false;
     setStopped(false);
+    setRunStartedAt(Date.now());
+    setRunning(true);
+
+    // ---- the last check before anything exists ----------------------
+    // The install step answered this, and that answer has an age: the review
+    // takes as long as it takes, and a host can drop off while somebody reads
+    // it. Everything past this line either creates something here or stops
+    // something over there, so it is asked once more while a refusal is still
+    // free.
+    setProgress({ done: 0, total: 0, current: "Checking the machines" });
+    for (const m of plan.servers) {
+      if (cancelled.current) return;
+      if (!m.deploServerId) {
+        setFailure(
+          `Deplo has no agent on ${m.name}. Go back to Install and connect it.`,
+        );
+        return;
+      }
+      const health = await gqlAction<
+        { checkServerHealth: { status: string; statusMessage: string | null } },
+        { status: string; statusMessage: string | null }
+      >(CHECK_HEALTH, { id: m.deploServerId }, (d) => d.checkServerHealth);
+      if (!health.ok) {
+        setFailure(`Could not check ${m.name}: ${health.error}`);
+        return;
+      }
+      if (health.data?.status !== "online") {
+        setFailure(
+          `${m.name} is not answering: ${health.data?.statusMessage ?? "no answer"}. Nothing was created. Fix it under Install and start again.`,
+        );
+        return;
+      }
+    }
+
     setProgress({
       done: 0,
       total: targets.length,
       current: targets[0].project.name,
     });
-    setRunStartedAt(Date.now());
-    setRunning(true);
 
     // Visible to the `finally` below, which has to close the row when somebody
     // stops the run - `openRunId` inside the try is not in scope there.
     let openRun: string | null = null;
+    /**
+     * Set by every failing exit, and read by the `finally`.
+     *
+     * A run that fails leaves its row `running` otherwise, so the header chip
+     * tells the whole team a migration is in flight until somebody starts
+     * another one and `beginDokployImport` closes it as interrupted. One stray
+     * exit was survivable; this function now has nine of them.
+     */
+    let died = false;
+    const die = (why: string) => {
+      died = true;
+      setFailure(why);
+    };
     try {
       const begun = await gqlAction<{ beginDokployImport: string }, string>(
         BEGIN,
@@ -570,11 +638,11 @@ export function MigrationWizard({
         (d) => d.beginDokployImport,
       );
       if (!begun.ok) {
-        setFailure(begun.error);
+        die(begun.error);
         return;
       }
       if (!begun.data) {
-        setFailure("Deplo could not open an import run.");
+        die("Deplo could not open an import run.");
         return;
       }
       const openRunId = begun.data;
@@ -584,6 +652,16 @@ export function MigrationWizard({
       const serverChoices = Object.entries(serverMap)
         .filter(([, to]) => to)
         .map(([from, to]) => ({ from, to }));
+
+      // A project call that THROWS is not a project that had a problem: the
+      // resolver catches those one by one and reports them as items. It means
+      // the whole call failed - the key was revoked, the panel went down, the
+      // run stopped being ours - and every project after it is about to fail the
+      // same way. Two in a row is the line: one is a hiccup, two is the
+      // situation, and grinding through eight of them to arrive at a report
+      // where nothing came across is the thing this run must never do.
+      let inARow = 0;
+      let created = 0;
 
       for (const [i, target] of targets.entries()) {
         // Between projects, never mid-request: a call already sent is finishing
@@ -630,9 +708,28 @@ export function MigrationWizard({
               message: res.error,
             },
           ]);
+          if (++inARow >= 2) {
+            die(
+              `Two projects in a row failed the same way, so Deplo stopped. Last error: ${res.error}`,
+            );
+            return;
+          }
           continue;
         }
-        setItems((prev) => [...prev, ...(res.data?.items ?? [])]);
+        inARow = 0;
+        const landed = res.data?.items ?? [];
+        created += landed.filter((it) => it.outcome === "created").length;
+        setItems((prev) => [...prev, ...landed]);
+      }
+
+      // Nothing at all came across. The data phase would copy into nothing and
+      // the wizard would land on Done with confetti over an empty report, which
+      // is the worst ending this screen has.
+      if (created === 0) {
+        die(
+          "Nothing came across, so Deplo stopped before touching any data. The report says what refused.",
+        );
+        return;
       }
 
       // ---- the data ------------------------------------------------
@@ -653,7 +750,11 @@ export function MigrationWizard({
         { input: connectInput, runId: openRunId },
         (d) => d.planDokployDataMove,
       );
-      if (!dataPlan.ok)
+      // Not a note and not an empty list. Failing to READ what data exists is
+      // indistinguishable, from here, from there being none - and treating it as
+      // none copied nothing, finished clean, and left every app that just landed
+      // with an empty volume and a green tick over it.
+      if (!dataPlan.ok) {
         setItems((prev) => [
           ...prev,
           dataNote(
@@ -661,7 +762,12 @@ export function MigrationWizard({
             "failed",
           ),
         ]);
-      const planned = dataPlan.ok ? (dataPlan.data ?? []) : [];
+        die(
+          `Deplo could not read what data is on Dokploy, so it copied none of it: ${dataPlan.error}`,
+        );
+        return;
+      }
+      const planned = dataPlan.data ?? [];
       // Every reason a service will not have its data copied is SAID. These notes
       // are the whole value of the report - "no volume of this app mounts that
       // path", "Deplo has no agent on that machine" - and they used to be fetched
@@ -690,7 +796,7 @@ export function MigrationWizard({
             ),
           ),
         ];
-        setFailure(
+        die(
           `Deplo cannot reach the agent on ${names.join(", ")}, so no data was copied and nothing was stopped on Dokploy. Open the agent's port on it, or correct its address under Install, then start the migration again - what is already here will be skipped.`,
         );
         return;
@@ -739,27 +845,38 @@ export function MigrationWizard({
         // both sides and hand back a report where nothing came across. One
         // broken host, one refusal.
         if (res.ok && res.data?.sourceGone) {
-          setFailure(
-            `Deplo lost the connection to the machine ${d.sourceName}'s data is on, so the migration stopped there. Nothing after it was touched. Get that machine reachable again and start the migration over - everything already here is skipped by name.`,
+          die(
+            `Lost the connection to the machine ${d.sourceName}'s data is on. Stopped there, and nothing after it was touched.`,
           );
           return;
         }
       }
 
       setProgress({ done: movable.length, total: movable.length, current: "" });
-      await gqlAction(FINISH, { runId: openRunId });
+      // Closing the run also takes Deplo's agent back off the source machines.
+      // A failure here leaves the run open and the agents installed, which is
+      // the one thing nobody discovers on their own.
+      const finished = await gqlAction(FINISH, { runId: openRunId });
+      if (!finished.ok) {
+        die(
+          `Everything came across, but Deplo could not close the run: ${finished.error}`,
+        );
+        return;
+      }
       router.refresh();
     } finally {
       setRunning(false);
-      // Every early return above lands here: a failure, or a Stop. Either way
-      // the wizard stays on this panel, which is where the way out of a
-      // half-finished migration is.
+      // Every early return above lands here: a failure, or a Stop. The wizard
+      // stays on this panel either way, because that is where the way out of a
+      // half-finished migration is - and the ROW is closed either way, or the
+      // header chip tells the whole team a migration is in flight until somebody
+      // starts another one and `beginDokployImport` cleans it up. NOT
+      // `finishDokployImport`: that also takes the agents off the source
+      // machines, and re-running is how a stopped migration is resumed.
+      if (openRun && (died || cancelled.current))
+        await gqlAction(STOP, { runId: openRun });
       if (cancelled.current) {
         setStopped(true);
-        // Close the row so History does not read "running" for a run nobody is
-        // running. NOT `finishDokployImport`: that also takes the agents off the
-        // source machines, and re-running is how a stopped migration is resumed.
-        if (openRun) await gqlAction(STOP, { runId: openRun });
         router.refresh();
       }
     }
@@ -1237,6 +1354,7 @@ export function MigrationWizard({
               {!takenOver && step === "install" && plan && (
                 <InstallStep
                   machines={plan.servers}
+                  sourceUrl={url}
                   canAddServers={isInstanceAdmin}
                   pending={pendingMachines}
                   setPending={setPendingMachines}
@@ -1355,7 +1473,7 @@ function ConnectStep({
               field that is. */}
           <FieldLabel
             htmlFor="dokploy-url"
-            info="The address you open Dokploy on, exactly as it is in your browser. Deplo adds /api itself. This is not the machine's own address - the next step asks for that separately."
+            info="The address you open Dokploy on. Deplo adds /api. Not the machine's address - the next step asks for that."
           >
             Panel address
           </FieldLabel>
@@ -1627,8 +1745,8 @@ function MovingPanel({
       }
       lead={
         stalled
-          ? "The tab that was driving it is gone, so nothing is moving. Deplo cannot pick it up from here - it needs the Dokploy key, which is never stored. Stop it, then start it again: everything already here is skipped by name."
-          : "Deplo is creating your projects here and copying their data across. Stay on this page."
+          ? "Nothing is moving: the tab driving it is gone. Stop it and start again - what is already here is skipped."
+          : "Creating your projects and copying their data across. Stay on this page."
       }
     >
       <div className="space-y-2">

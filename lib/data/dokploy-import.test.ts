@@ -56,6 +56,7 @@ import {
   appendRunItem,
   beginDokployImport,
   dokployMachines,
+  setDokployMachineAddress,
   drainMigrationSourceUninstalls,
   finishDokployImport,
   getDokployImport,
@@ -69,7 +70,12 @@ import { activeMigrationStream } from "../graphql/types/dokploy";
 import { createProject, renameProject } from "./projects";
 import { startApp } from "./apps";
 import { startDeployment } from "../deploy/build";
-import { addServer, getServerById, updateServerAddress } from "./servers";
+import {
+  addServer,
+  getServerById,
+  removeServer,
+  updateServerAddress,
+} from "./servers";
 import { listEnvironmentsForProject } from "./environments";
 
 /**
@@ -1775,4 +1781,75 @@ test("a corrected dial address keeps the machine recognisable by the one it came
     added.server.id,
     "still the same machine, not a second registration",
   );
+});
+
+test("a corrected address outlives the server row it was made on", async () => {
+  // The cycle this closes, seen four times in one evening: correct the address,
+  // migrate, revert - and the source row is removed, on purpose, because a
+  // migration source is not a server anyone keeps. The correction lived on that
+  // row, so the next attempt re-derived the panel's name and asked for the same
+  // fix again, forever.
+  const panelHost = new URL(URL_BASE).hostname;
+  const credential = { baseUrl: URL_BASE, apiKey: CONNECT.apiKey };
+  const added = await asOwner(() =>
+    addServer({ name: "dokploy-host", host: panelHost, importOnly: true }),
+  );
+
+  await asOwner(() =>
+    setDokployMachineAddress({
+      sourceUrl: URL_BASE,
+      sourceId: "",
+      serverId: added.server.id,
+      address: "203.0.113.7",
+    }),
+  );
+
+  // Still one machine, still matched: `keepHost` left the panel name on the row.
+  const during = await asOwner(() => dokployMachines(credential, TEAM_A));
+  assert.equal(during[0]?.deploServerId, added.server.id);
+  assert.equal(during[0]?.ipAddress, "203.0.113.7");
+
+  // Now the migration ends and the source goes, which is the bug in one line:
+  // everything Deplo knew about that machine used to go with it.
+  await asOwner(() => removeServer(added.server.id));
+
+  const after = await asOwner(() => dokployMachines(credential, TEAM_A));
+  assert.equal(after[0]?.sourceId, "");
+  assert.equal(
+    after[0]?.ipAddress,
+    "203.0.113.7",
+    "the next attempt must register it where it actually is",
+  );
+  assert.equal(
+    after[0]?.deploServerId,
+    null,
+    "and register it, since it is gone",
+  );
+});
+
+test("a remembered address belongs to one team and one panel", async () => {
+  const added = await asOwner(() =>
+    addServer({
+      name: "dokploy-host",
+      host: new URL(URL_BASE).hostname,
+      importOnly: true,
+    }),
+  );
+  await asOwner(() =>
+    setDokployMachineAddress({
+      sourceUrl: URL_BASE,
+      sourceId: "",
+      serverId: added.server.id,
+      address: "203.0.113.7",
+    }),
+  );
+  // A DIFFERENT Dokploy, same team: its host is its own machine, and borrowing
+  // this address would point a migration at the wrong box.
+  const other = await asOwner(() =>
+    dokployMachines(
+      { baseUrl: "https://dokploy.other.test", apiKey: "k" },
+      TEAM_A,
+    ),
+  );
+  assert.equal(other[0]?.ipAddress, "dokploy.other.test");
 });

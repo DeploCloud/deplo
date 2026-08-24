@@ -132,6 +132,11 @@ const CONTROL_PLANE = [
   // stored; it rides each call.
   "dokploy_imports",
   "dokploy_import_items",
+  // Where a machine of a given Dokploy is actually REACHED, remembered across
+  // attempts. Not on the server row: that row is removed when a migration ends,
+  // and the correction went with it - so every retry re-derived the panel's
+  // hostname, which behind a proxy is not the machine at all.
+  "dokploy_source_addresses",
   // rate limiting - durable fixed-window counters for login, the two-factor
   // challenge and the register link. Un-scoped by design: a bucket is about an
   // ATTEMPT, often against a subject that does not exist, so it has no team and
