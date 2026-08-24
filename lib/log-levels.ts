@@ -77,6 +77,44 @@ export const LEVEL_TEXT_CLASS: Record<LogLevel, string> = {
   success: "text-[var(--success)]",
 };
 
+/**
+ * How a level reads in the FILTER MENU, as a word rather than a shout.
+ *
+ * Separate from {@link LEVEL_LABEL} on purpose. That one is a fixed-width tag
+ * stamped on a line of monospace output and pasted into a bug report, where
+ * `ERROR` is the convention and the alignment is the point. This one is an
+ * option in a dropdown, sitting next to `All levels` and `Search` — sentence
+ * case, like every other menu in the product. `Warning` rather than `Warn`
+ * because the menu has the room and that is the word people know.
+ */
+export const LEVEL_MENU_LABEL: Record<LogLevel, string> = {
+  command: "Command",
+  info: "Info",
+  warn: "Warning",
+  error: "Error",
+  debug: "Debug",
+  success: "Success",
+};
+
+/**
+ * The level's own colour, for that menu.
+ *
+ * Token utilities, not the console's {@link LEVEL_TEXT_CLASS}: those are tuned
+ * for light text on the log pane's permanent dark background (`text-white`,
+ * `text-zinc-300`) and would be invisible in a dropdown, which follows the
+ * theme. `command` and `info` stay `text-foreground` for the same reason `info`
+ * gets no rail and no row wash — they are the majority of any log, and colouring
+ * everything colours nothing.
+ */
+export const LEVEL_MENU_CLASS: Record<LogLevel, string> = {
+  command: "text-foreground",
+  info: "text-foreground",
+  warn: "text-warning",
+  error: "text-destructive",
+  debug: "text-muted-foreground",
+  success: "text-success",
+};
+
 /** Width to pad every label to so copied lines align in a column. */
 const LABEL_WIDTH = Math.max(...Object.values(LEVEL_LABEL).map((l) => l.length));
 

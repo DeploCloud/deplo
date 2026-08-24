@@ -5,7 +5,7 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { FacetMenu, type EnvFacet } from "@/components/env/env-filters";
 import { stripAnsi } from "@/lib/ansi";
-import { LEVEL_LABEL } from "@/lib/log-levels";
+import { LEVEL_MENU_CLASS, LEVEL_MENU_LABEL } from "@/lib/log-levels";
 import { cn } from "@/lib/utils";
 import type { LogLevel } from "@/lib/types";
 
@@ -66,7 +66,11 @@ function levelFacet(levels: LogLevel[]): EnvFacet<FilterableLogLine> {
     icon: SlidersHorizontal,
     options: levels.map((value) => ({
       value,
-      label: LEVEL_LABEL[value] ?? value,
+      // The menu says "Error", not "ERROR": the shouted, fixed-width form belongs
+      // to the pill on a line of monospace output, not to a dropdown row. And it
+      // wears the level's own colour, because severity is what you are picking.
+      label: LEVEL_MENU_LABEL[value] ?? value,
+      labelClassName: LEVEL_MENU_CLASS[value],
     })),
     match: (row, value) => row.level === value,
   };

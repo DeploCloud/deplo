@@ -88,6 +88,10 @@ export interface FacetOption {
   label: string;
   hint?: string;
   author?: VarAuthor;
+  /** Classes for the label itself, when the option's own colour IS information —
+   *  a log level reads as its severity in the menu, the same way it does in the
+   *  pane. Left unset by every facet whose options are just names. */
+  labelClassName?: string;
 }
 
 /**
@@ -685,7 +689,7 @@ function FacetOptionRow({
           </AvatarFallback>
         </Avatar>
       )}
-      <span className="truncate">{opt.label}</span>
+      <span className={cn("truncate", opt.labelClassName)}>{opt.label}</span>
       {opt.hint && (
         <span className="truncate text-xs text-muted-foreground">
           {opt.hint}
