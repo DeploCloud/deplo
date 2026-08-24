@@ -65,7 +65,9 @@ import {
   stopDokployImport,
 } from "./dokploy-import";
 import { activeMigrationStream } from "../graphql/types/dokploy";
-import { createProject } from "./projects";
+import { createProject, renameProject } from "./projects";
+import { startApp } from "./apps";
+import { startDeployment } from "../deploy/build";
 import { addServer, getServerById } from "./servers";
 import { listEnvironmentsForProject } from "./environments";
 
@@ -666,6 +668,73 @@ test("a project lands complete: project, environment, apps, variables", async ()
   assert.match(dbRow.message!, /not provisioned yet/);
 });
 
+test("what a running migration created is nobody else's to touch", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const rows = await db.execute(
+    "select id, name, migration_run_id from apps order by name",
+  );
+  assert.ok(rows.rows.length > 0);
+  for (const r of rows.rows)
+    assert.equal(
+      r.migration_run_id,
+      runId,
+      `${r.name} must be marked as the run's while it is still running`,
+    );
+  const projects = await db.execute("select migration_run_id from projects");
+  assert.equal(projects.rows[0].migration_run_id, runId);
+
+  // Every door: the deploy pipeline, the compose start, and the container the
+  // app lives in are all one refusal, because they all pass the same gate.
+  const appId = String(rows.rows[0].id);
+  await assert.rejects(
+    () => asOwner(() => startApp(appId)),
+    /still being brought over by a migration/,
+  );
+  await assert.rejects(
+    () => asOwner(() => startDeployment(appId, { creator: "test" })),
+    /still being brought over by a migration/,
+  );
+  // The container it arrived in, too: deleting the project mid-run would take
+  // the apps the migration is still filling with it.
+  await assert.rejects(
+    () => asOwner(() => renameProject("prc_blink_missing", "x")),
+    /not found|still being brought over/i,
+  );
+});
+
+test("finishing the migration hands everything back", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await asOwner(() => finishDokployImport(runId));
+
+  const rows = await db.execute("select migration_run_id from apps");
+  for (const r of rows.rows) assert.equal(r.migration_run_id, null);
+  const projects = await db.execute("select migration_run_id from projects");
+  for (const r of projects.rows) assert.equal(r.migration_run_id, null);
+  const envs = await db.execute("select migration_run_id from environments");
+  for (const r of envs.rows) assert.equal(r.migration_run_id, null);
+});
+
+test("stopping it hands everything back too, and so does the next run", async () => {
+  const first = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(first, "dok-prj-blink");
+  await asOwner(() => stopDokployImport(first));
+  let rows = await db.execute("select migration_run_id from apps");
+  for (const r of rows.rows) assert.equal(r.migration_run_id, null);
+
+  // And the abandoned-tab case: a run left `running` is closed as Interrupted by
+  // the next one, which must let go of everything it was holding.
+  const second = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(second, "dok-prj-other");
+  await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  rows = await db.execute(
+    "select migration_run_id from apps where migration_run_id is not null",
+  );
+  assert.equal(rows.rows.length, 0);
+});
+
 test("an app keeps the icon it had, and one without stays iconless", async () => {
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
@@ -739,6 +808,9 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
 test("dismissing the notice clears it for that app only", async () => {
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
+  // Finished, because that is when somebody reads this notice: while the run is
+  // open its apps are the migration's, and every mutation on them is refused.
+  await asOwner(() => finishDokployImport(runId));
   const apps = await db.select().from(appsTable);
   const web = apps.find((a) => a.name === "blink-web")!;
 

@@ -17,6 +17,7 @@ import {
 } from "../membership";
 import { inProjectScope } from "../auth/request-context";
 import { projectInScope } from "./node-scope";
+import { assertContainerNotMigrating } from "./migration-guard";
 import type { Environment, EnvironmentKind } from "../types";
 
 /**
@@ -204,6 +205,9 @@ export async function createEnvironment(
 ): Promise<Environment> {
   await requireCapability("manage_environments");
   await requireOwnedProject(projectId);
+  // Adding to a project a migration is still building: the run decides what
+  // environments that project has until it is done.
+  await assertContainerNotMigrating("project", projectId);
   const clean = cleanName(name);
   const slug = await uniqueEnvSlug(projectId, clean);
   const existing = await getDb()
@@ -230,6 +234,7 @@ export async function createEnvironment(
 
 export async function renameEnvironment(id: string, name: string): Promise<void> {
   await requireCapability("manage_environments");
+  await assertContainerNotMigrating("environment", id);
   const clean = cleanName(name);
   const env = (
     await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
@@ -245,6 +250,7 @@ export async function renameEnvironment(id: string, name: string): Promise<void>
 /** Set the git branch this environment builds from ("" ⇒ the app default). */
 export async function setEnvironmentBranch(id: string, branch: string): Promise<void> {
   await requireCapability("manage_environments");
+  await assertContainerNotMigrating("environment", id);
   const env = (
     await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
   )[0];
@@ -259,6 +265,7 @@ export async function setEnvironmentBranch(id: string, branch: string): Promise<
 /** Make `id` the project's default environment (unsets the previous default). */
 export async function setDefaultEnvironment(id: string): Promise<void> {
   await requireCapability("manage_environments");
+  await assertContainerNotMigrating("environment", id);
   const env = (
     await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
   )[0];
@@ -290,6 +297,8 @@ export async function setDefaultEnvironment(id: string): Promise<void> {
  */
 export async function deleteEnvironment(id: string): Promise<void> {
   await requireCapability("manage_environments");
+  // Takes the apps in it with it, and a run may still be creating them.
+  await assertContainerNotMigrating("environment", id);
   const env = (
     await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
   )[0];

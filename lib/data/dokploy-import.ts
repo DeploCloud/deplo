@@ -11,6 +11,7 @@ import {
   dokployImports as runsTable,
   domains as domainsTable,
   environments as environmentsTable,
+  projects as projectsTable,
   serverTeams as serverTeamsTable,
   servers as serversTable,
   sharedEnvVars as sharedVarsTable,
@@ -111,6 +112,7 @@ import {
 import { deploHostSelfAddresses, isDeploHostServer, resolveServerIp } from "../deploy/domains";
 import { saveSharedVar } from "./shared-vars";
 import { recordActivity } from "./activity";
+import { runAsMigration } from "./migration-guard";
 import { publishMigrationChanged } from "../graphql/pubsub";
 
 /**
@@ -955,10 +957,15 @@ export async function beginDokployImport(input: {
   const db = getDb();
   const now = nowIso();
 
-  await db
+  const interrupted = await db
     .update(runsTable)
     .set({ status: "failed", error: "Interrupted", finishedAt: now })
-    .where(and(eq(runsTable.teamId, teamId), eq(runsTable.status, "running")));
+    .where(and(eq(runsTable.teamId, teamId), eq(runsTable.status, "running")))
+    .returning({ id: runsTable.id });
+  // A run nobody is running must not go on holding its services hostage: this is
+  // the door an abandoned tab leaves by, and everything it created is handed back
+  // the moment somebody starts the next migration.
+  for (const r of interrupted) await releaseMigrating(r.id);
 
   const id = newId("dimp");
   await db.insert(runsTable).values({
@@ -1225,7 +1232,13 @@ export async function finishDokployImport(runId: string): Promise<void> {
       ),
     )
     .returning({ id: runsTable.id });
-  if (closed.length > 0) await removeMigrationSources(runId, teamId);
+  if (closed.length > 0) {
+    // The services are the team's again before anything else happens: the sweep
+    // below dials hosts and can take a minute, and none of that is a reason to
+    // keep a finished migration's apps frozen.
+    await releaseMigrating(runId);
+    await removeMigrationSources(runId, teamId);
+  }
   await refreshCounts(runId, teamId);
 }
 
@@ -1315,6 +1328,12 @@ class Report {
     await getDb()
       .insert(itemsTable)
       .values({ id: newId("dimi"), runId: this.runId, ...row });
+    // Everything this run CREATES is the run's to write until it ends. Marked
+    // here rather than at each create call because this is the one place that
+    // already knows all three things it takes - which run, which kind, which id
+    // - so a new kind of thing an import can create cannot forget to say so.
+    // Never on `skipped`: a project that was already here goes on working.
+    if (row.outcome === "created") await markMigrating(this.runId, row);
   }
 
   /** Every note from a mapper, as its own `manual` line. */
@@ -1359,6 +1378,42 @@ export async function appendRunItem(
   await new Report(runId).add(entry);
 }
 
+/** Which table holds a target of each kind. Unknown kinds are simply not marked. */
+const MIGRATING_TABLES = {
+  app: appsTable,
+  database: databasesTable,
+  project: projectsTable,
+  environment: environmentsTable,
+} as const;
+
+/** Stamp a freshly created row with the run that is still writing to it. */
+async function markMigrating(
+  runId: string,
+  row: { targetKind: string | null; targetId: string | null },
+): Promise<void> {
+  const table = MIGRATING_TABLES[row.targetKind as keyof typeof MIGRATING_TABLES];
+  if (!table || !row.targetId) return;
+  await getDb()
+    .update(table)
+    .set({ migrationRunId: runId })
+    .where(eq(table.id, row.targetId));
+}
+
+/**
+ * Hand everything this run created back to the people who own it.
+ *
+ * Called from every door out of `running` - finished, stopped, and interrupted
+ * by the next run - because a row left marked by a run nobody is running is a
+ * service frozen for good, and the only way back would be the database.
+ */
+async function releaseMigrating(runId: string): Promise<void> {
+  for (const table of Object.values(MIGRATING_TABLES))
+    await getDb()
+      .update(table)
+      .set({ migrationRunId: null })
+      .where(eq(table.migrationRunId, runId));
+}
+
 /* ------------------------------------------------------------------ */
 /* Import                                                             */
 /* ------------------------------------------------------------------ */
@@ -1394,7 +1449,21 @@ export interface ImportProjectInput extends ConnectInput {
  * the client holds is a rendering, and app configuration must never arrive from a
  * browser.
  */
+/**
+ * The import's own writes are exempt from the marker they set.
+ *
+ * It creates apps through `createApp` and writes their volumes through
+ * `setAppVolumes` - the same functions, through the same gates, that a person
+ * clicking goes through. Without this the run would be refused by its own
+ * marker on everything after the first write.
+ */
 export async function importDokployProject(
+  input: ImportProjectInput,
+): Promise<ImportProjectResult> {
+  return runAsMigration(() => runImportDokployProject(input));
+}
+
+async function runImportDokployProject(
   input: ImportProjectInput,
 ): Promise<ImportProjectResult> {
   const { teamId } = await assertImportGate();
@@ -3036,6 +3105,7 @@ export async function stopDokployImport(runId: string): Promise<void> {
         eq(runsTable.status, "running"),
       ),
     );
+  await releaseMigrating(runId);
   await refreshCounts(runId, teamId);
 }
 
@@ -3081,7 +3151,14 @@ export interface RevertResultDTO {
  * here as a `failed` line rather than as an exception, because one unreachable
  * host must not strand the other ten objects.
  */
+/** Undoing a migration deletes the very rows it marked, so it is exempt too. */
 export async function revertDokployImport(
+  runId: string,
+): Promise<RevertResultDTO> {
+  return runAsMigration(() => runRevertDokployImport(runId));
+}
+
+async function runRevertDokployImport(
   runId: string,
 ): Promise<RevertResultDTO> {
   const { teamId } = await assertImportGate();

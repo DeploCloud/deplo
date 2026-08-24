@@ -906,6 +906,8 @@ export async function createApp(
     // A new app's data is wherever the app puts it. Only a migration can start one
     // whose volumes were meant to arrive from somewhere else and did not.
     dataCopyError: "",
+    // Only an import marks an app as still arriving.
+    migrationRunId: null,
     // Born on Automatic unless a caller placed it deliberately: a new app uses a
     // build server if the fleet has one and says nothing about it otherwise.
     // Choosing a builder is an Advanced setting and the create flow does not ask;

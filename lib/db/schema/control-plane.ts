@@ -244,6 +244,8 @@ export const projects = pgTable(
     ownerUserId: text("owner_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // The migration still creating this project. See the apps column.
+    migrationRunId: text("migration_run_id"),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
@@ -299,6 +301,8 @@ export const environments = pgTable(
     gitBranch: text("git_branch").notNull().default(""),
     isDefault: boolean("is_default").notNull().default(false),
     position: integer("position").notNull(),
+    // The migration still creating this environment. See the apps column.
+    migrationRunId: text("migration_run_id"),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
@@ -978,6 +982,18 @@ export const apps = pgTable(
     // one difference between a migration that failed loudly and one that failed
     // the next morning.
     dataCopyError: text("data_copy_error").notNull().default(""),
+    // The migration that is creating this row, while it is still running
+    // (migration 0119). Set on everything an import CREATES - never on something
+    // it merely reused - and cleared the moment that run leaves `running`, by
+    // any door: finished, stopped, or interrupted by the next one.
+    //
+    // While it is set the row is not something to act on: the import is still
+    // writing to it, its data may be half copied, and the run can still be
+    // reverted wholesale. So every mutation refuses and the UI draws it pulsing,
+    // the same shape `deleting_at` uses for a row on its way out. The import's
+    // own writes are exempt - see runAsMigration in lib/data/migration-guard.ts,
+    // without which the migration would be refused by its own marker.
+    migrationRunId: text("migration_run_id"),
     // Which server BUILDS this app's image, when that is not the one that runs it.
     // NULL is "Automatic": use a build-only server if the fleet has one this team
     // can reach and its arch matches, otherwise build where the app runs - which is
@@ -1988,6 +2004,8 @@ export const databases = pgTable(
     // INITIALISES - a brand new empty database, over the place the old one was
     // meant to be. See the comment on the apps column.
     dataCopyError: text("data_copy_error").notNull().default(""),
+    // The migration still creating this database. See the apps column.
+    migrationRunId: text("migration_run_id"),
     serverId: text("server_id")
       .notNull()
       .references(() => servers.id, { onDelete: "restrict" }),

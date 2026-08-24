@@ -46,6 +46,9 @@ export interface ProjectCardData {
   /** The CURRENT caller's effective capabilities on this project (grants
    *  included): gates the "All apps" actions. Absent means none. */
   capabilities?: string[];
+  /** The migration still creating this project, or null. Pulsing and inert
+   *  while it is set - the run decides what is inside it until it ends. */
+  migrationRunId?: string | null;
 }
 
 /** Menu items for the ⋯ dropdown. */
@@ -420,6 +423,19 @@ export function ProjectContainerCard({
         </div>
         {dialogs}
       </Card>
+    );
+
+  // Still arriving: the run is still deciding what environments and apps this
+  // project has, and every mutation on it is refused server-side until it ends.
+  if (project.migrationRunId)
+    return (
+      <div
+        aria-busy
+        title="This is still being brought over by a migration"
+        className="pointer-events-none animate-pulse select-none opacity-70"
+      >
+        {card}
+      </div>
     );
 
   return (

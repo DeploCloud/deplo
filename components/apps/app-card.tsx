@@ -753,5 +753,21 @@ export function AppCard({
       </Card>
     );
 
+  // Still arriving: a migration is writing this app and copying data into its
+  // volumes, and every mutation on it is refused server-side until that run
+  // ends. The card says so the way the rest of the product says "this row is
+  // not yours to act on yet" - pulsing, and inert rather than merely disabled,
+  // so there is nothing to click into and be refused from.
+  if (project.migrationRunId)
+    return (
+      <div
+        aria-busy
+        title="This is still being brought over by a migration"
+        className="pointer-events-none animate-pulse select-none opacity-70"
+      >
+        {cardInner}
+      </div>
+    );
+
   return cardInner;
 }

@@ -39,7 +39,7 @@ import {
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
-import { beginDokployImport } from "./dokploy-import";
+import { beginDokployImport, stopDokployImport } from "./dokploy-import";
 import { moveDokployServiceData, planDokployDataMove } from "./dokploy-data";
 import { acceptDataCopyLoss } from "./data-copy";
 import { startApp } from "./apps";
@@ -656,6 +656,10 @@ test("a copy that fails marks the app, and the marker holds the deploy", async (
   );
   assert.match(String(rows.rows[0].data_copy_error), /no space left on device/);
 
+  // Close the run first: while it is open the app is the migration's and every
+  // door refuses for THAT reason. This is about the reason that outlives it.
+  await asOwner(() => stopDokployImport(runId));
+
   // And that is what refuses the deploy, from every door.
   await assert.rejects(
     () => asOwner(() => startDeployment("prj_web", { creator: "test" })),
@@ -708,6 +712,7 @@ test("accepting the loss unblocks the app, and says so in the trail", async () =
     }),
   );
 
+  await asOwner(() => stopDokployImport(runId));
   await asOwner(() => acceptDataCopyLoss({ kind: "app", id: "prj_web" }));
 
   const rows = await db.execute(

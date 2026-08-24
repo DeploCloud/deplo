@@ -36,6 +36,7 @@ import {
   type NodeScope,
 } from "./node-scope";
 import { CAPABILITY_META } from "../membership-shared";
+import { assertNotMigrating } from "./migration-guard";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
@@ -734,6 +735,11 @@ export async function requireAppCapability(
   // left to act on. THE gate for every app-shaped mutation, so this one refusal
   // covers every one of them, and it says what happened rather than "not found".
   if (gate.deleting) throw new Error("This app is being deleted");
+  // Still arriving: a migration is writing this row and copying data into its
+  // volumes, and the whole run can still be taken back out. Same placement as
+  // the refusal above, and for the same reason - one gate, every app-shaped
+  // mutation, including the REST edges and MCP.
+  assertNotMigrating("app", gate.name, gate.migrationRunId);
   if (!gate.caps.includes(cap)) {
     throw new Error(
       gate.folderId
@@ -785,6 +791,8 @@ async function appGate(appId: string): Promise<{
   folderId: string | null;
   caps: Capability[];
   deleting: boolean;
+  name: string;
+  migrationRunId: string | null;
 } | null> {
   const ctx = await requireMembership();
   const rows = await getDb()
@@ -795,6 +803,12 @@ async function appGate(appId: string): Promise<{
       // Confirmed for deletion: the row is still here, the app is not. See the
       // refusal in requireAppCapability.
       deletingAt: appsTable.deletingAt,
+      // Still being brought over by a migration: same idea as `deleting_at` one
+      // line up, and the same refusal below. The name rides along because that
+      // refusal names the app - "this app" reads as a bug when three of them
+      // arrive at once.
+      name: appsTable.name,
+      migrationRunId: appsTable.migrationRunId,
       // An app lives in exactly one place, and for an app inside a project that
       // place is its ENVIRONMENT. Omitting it here refused an
       // environment-scoped role every app it actually reaches, through every
@@ -826,5 +840,7 @@ async function appGate(appId: string): Promise<{
     folderId: app.folderId ?? null,
     caps: caps.get(appId) ?? [],
     deleting: app.deletingAt != null,
+    name: app.name,
+    migrationRunId: app.migrationRunId ?? null,
   };
 }

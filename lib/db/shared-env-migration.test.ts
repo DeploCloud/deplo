@@ -12,8 +12,6 @@ import { schema } from "./schema";
 import { __setTestDb, __resetTestDb } from "./client";
 import {
   envVarTargets as envVarTargetsTable,
-  projects as projectsTable,
-  environments as environmentsTable,
   apps as appsTable,
 } from "./schema/control-plane";
 import {
@@ -143,20 +141,18 @@ before(async () => {
       4, 8192, 100, 1, 1, 1,
       true, 1, '${T0}'
     ) on conflict do nothing;`);
-  await db.insert(projectsTable).values({
-    id: "prc_1",
-    teamId: TEAM_A,
-    name: "P",
-    slug: "p",
-    color: null,
-    ownerUserId: USER_1,
-    createdAt: T0,
-    updatedAt: T0,
-  });
-  await db.insert(environmentsTable).values([
-    { id: "env_dev", projectId: "prc_1", name: "Development", slug: "development", kind: "development", gitBranch: "", isDefault: true, position: 0, createdAt: T0, updatedAt: T0 },
-    { id: "env_prod", projectId: "prc_1", name: "Production", slug: "production", kind: "production", gitBranch: "", isDefault: false, position: 1, createdAt: T0, updatedAt: T0 },
-  ]);
+  // RAW SQL for the same reason as the servers seed above, and now for a second
+  // column: drizzle names every column the LIVE table object knows, and
+  // `migration_run_id` (0119) does not exist at this 0026 freeze either. Naming
+  // only the 0026-era columns keeps the seed pinned to the era it is seeding.
+  await pg.exec(`
+    insert into projects (id, team_id, name, slug, color, owner_user_id, created_at, updated_at)
+    values ('prc_1', '${TEAM_A}', 'P', 'p', null, '${USER_1}', '${T0}', '${T0}');`);
+  await pg.exec(`
+    insert into environments (id, project_id, name, slug, kind, git_branch, is_default, position, created_at, updated_at)
+    values
+      ('env_dev',  'prc_1', 'Development', 'development', 'development', '', true,  0, '${T0}', '${T0}'),
+      ('env_prod', 'prc_1', 'Production',  'production',  'production',  '', false, 1, '${T0}', '${T0}');`);
   // app_p lives in the project's Development env; app_top is top-level. Seeded
   // via RAW SQL (not the drizzle `seedApp` helper): `appToRow` names the
   // resource_* columns that migration 0032 adds, which don't exist yet at this

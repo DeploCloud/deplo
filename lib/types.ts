@@ -381,6 +381,8 @@ export interface Project {
   color?: string | null;
   /** The owner (creator); same ownership model as {@link Folder.ownerUserId}. */
   ownerUserId?: ID | null;
+  /** The migration still creating this project. See {@link App.migrationRunId}. */
+  migrationRunId?: ID | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1019,6 +1021,15 @@ export interface App {
    */
   dataCopyError: string;
   /**
+   * The migration still creating this app, or null - which is every app that is
+   * not arriving right now.
+   *
+   * While it is set the app belongs to that run: every mutation refuses, and the
+   * UI draws it pulsing rather than as something to click. Cleared the moment
+   * the run leaves `running`, by any door.
+   */
+  migrationRunId: ID | null;
+  /**
    * Which server BUILDS this app's image, when that is not `serverId`. null is
    * "Automatic": a build-only server if the fleet has one this team can reach and
    * its arch matches, otherwise build where the app runs. Pinning `serverId` itself
@@ -1174,6 +1185,19 @@ export const DEFAULT_ROLLBACK_KEEP = 3;
  *  is hoarding gigabytes of images nobody will ever roll back to. `0` is the
  *  floor and means "keep nothing to go back to". */
 export const MAX_ROLLBACK_KEEP = 20;
+
+/**
+ * How far back the log viewer's time range reaches out of the box, in days, and
+ * the ceiling an instance admin may raise it to.
+ *
+ * A bound on what may be ASKED for. Docker rotates its json-file logs by SIZE,
+ * so nothing here makes the host actually hold that much; 90 is where asking
+ * stops being a question anyone can answer, and 1 is the floor because the
+ * picker's fixed rows already reach a day.
+ */
+export const DEFAULT_LOG_RANGE_DAYS = 7;
+export const MAX_LOG_RANGE_DAYS = 90;
+export const MIN_LOG_RANGE_DAYS = 1;
 
 export type DeploymentStatus =
   | "queued"
@@ -1610,6 +1634,8 @@ export interface Database {
    * fail, it initialises a brand new database over the place the old one was.
    */
   dataCopyError: string;
+  /** The migration still creating this database. See {@link App.migrationRunId}. */
+  migrationRunId: ID | null;
   serverId: ID;
   host: string;
   port: number;

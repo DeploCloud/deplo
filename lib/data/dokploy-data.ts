@@ -58,6 +58,7 @@ import {
 } from "./volume-migration";
 import { recordActivity } from "./activity";
 import { clearDataCopyError, markDataCopyFailed } from "./data-copy";
+import { runAsMigration } from "./migration-guard";
 import { listServersForTeam } from "./servers";
 import {
   appendRunItem,
@@ -612,7 +613,14 @@ async function recordStoppedForCopy(landed: Landed, teamId: string): Promise<voi
  * sides is the same one, so the uid already matches. Do not add a chown step here
  * expecting to need it.
  */
+/** The copy stops, starts and rewrites the very rows the import marked. */
 export async function moveDokployServiceData(
+  input: MoveInput,
+): Promise<DataMoveResult> {
+  return runAsMigration(() => runMoveDokployServiceData(input));
+}
+
+async function runMoveDokployServiceData(
   input: MoveInput,
 ): Promise<DataMoveResult> {
   const { teamId } = await assertImportGate();

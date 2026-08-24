@@ -101,6 +101,7 @@ import {
 } from "../infra/agent-client";
 import { enqueueDeployment } from "./deploy-queue";
 import { assertDataCopyIntact } from "../data/data-copy";
+import { assertNotMigrating } from "../data/migration-guard";
 import type {
   App,
   BuildMethod,
@@ -1168,6 +1169,10 @@ export async function startDeployment(
   // A PREVIEW is exempt: it is a stack of its own with its own volumes, and the
   // pull request is not what lost the data.
   if (!preview) assertDataCopyIntact(project.name, project.dataCopyError);
+  // Still being created by a migration. Here as well as in the capability gate,
+  // because the git webhook reaches this function with no gate at all: a push
+  // landing mid-import would deploy an app whose volumes are still filling.
+  assertNotMigrating("app", project.name, project.migrationRunId);
   const rollback = opts.rollback ?? null;
   const environment = opts.environment ?? (preview ? "preview" : "production");
   if (preview && environment !== "preview") {

@@ -71,6 +71,42 @@ export function DatabaseCard({
   /** The viewer holds `manage_infra` — the capability `revealConnection` needs. */
   canReveal?: boolean;
 }) {
+  // Still arriving: a migration is creating this database and copying its volume
+  // across, and every mutation on it is refused server-side until that run ends.
+  // Pulsing and inert, the same treatment an App gets - and for the sharper
+  // reason: an engine started on a half-copied data directory initialises over
+  // it. Nothing here should be one click from that.
+  if (db.migrationRunId)
+    return (
+      <div
+        aria-busy
+        title="This is still being brought over by a migration"
+        className="pointer-events-none animate-pulse select-none opacity-70"
+      >
+        <DatabaseLiveStatusProvider
+          initial={{ id: db.id, name: db.name, status: db.status }}
+        >
+          {view === "list" ? (
+            <DatabaseCardList
+              db={db}
+              serverName={serverName}
+              dragActive
+              pollMs={pollMs}
+              canReveal={canReveal}
+            />
+          ) : (
+            <DatabaseCardGrid
+              db={db}
+              serverName={serverName}
+              dragActive
+              pollMs={pollMs}
+              canReveal={canReveal}
+            />
+          )}
+        </DatabaseLiveStatusProvider>
+      </div>
+    );
+
   return (
     <DatabaseLiveStatusProvider
       initial={{ id: db.id, name: db.name, status: db.status }}

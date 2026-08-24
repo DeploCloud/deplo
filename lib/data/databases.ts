@@ -57,6 +57,7 @@ import { isValidLogoValue } from "../apps/logo-shared";
 import { withKeyedLock } from "./keyed-mutex";
 import { enqueueTeardowns } from "./teardown-queue";
 import { assertDataCopyIntact, clearDataCopyError } from "./data-copy";
+import { assertNotMigrating } from "./migration-guard";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { assertPasswordPolicy } from "../password-policy";
 import { publishDatabaseChanged } from "../graphql/pubsub";
@@ -428,7 +429,7 @@ export async function loadDatabaseForTeam(
   id: string,
   teamId: string,
 ): Promise<Database | null> {
-  return loadDatabase(id, teamId);
+  return loadDatabase(id, teamId, { forRead: true });
 }
 
 /** Cookie-free team-scoped DTO load — the `databaseStatus` subscription
@@ -465,9 +466,21 @@ export async function getDatabaseForTeam(
  * them. It reads as NOT FOUND rather than as a scope error, so a scope can never
  * become an oracle for which database ids exist.
  */
+/**
+ * A database row for the active team, and - by default - a REFUSAL while a
+ * migration is still creating it.
+ *
+ * Deny by default, opt out to read: there is no single gate a database mutation
+ * passes through the way an app has `requireAppCapability`, so the loader every
+ * one of them calls is the choke point. A new mutation therefore inherits the
+ * refusal by writing no code at all, which is the only version of this that
+ * stays true. The three READ callers say so explicitly, because watching a
+ * service arrive is exactly what somebody should be able to do.
+ */
 async function loadDatabase(
   id: string,
   teamId: string,
+  opts: { forRead?: boolean } = {},
 ): Promise<Database | null> {
   // A database belongs to the team and to no project, so a principal who
   // reaches only part of the team reaches none of them — a token narrowed to a
@@ -482,6 +495,8 @@ async function loadDatabase(
     .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)))
     .limit(1);
   if (!rows[0]) return null;
+  if (!opts.forRead)
+    assertNotMigrating("database", rows[0].name, rows[0].migrationRunId);
   return assembleDatabase(rows[0], await mountsFor(rows[0].id));
 }
 
@@ -572,7 +587,7 @@ export async function reorderDatabases(orderedIds: string[]): Promise<void> {
 
 export async function getDatabase(id: string): Promise<DatabaseDTO | null> {
   const teamId = await requireActiveTeamId();
-  const db = await loadDatabase(id, teamId);
+  const db = await loadDatabase(id, teamId, { forRead: true });
   return db ? toDTO(db) : null;
 }
 
@@ -582,7 +597,9 @@ export async function getConnectionString(id: string): Promise<string> {
   // the revealConnection field's authScope alone (keep BOTH gates). Matches
   // revealEnv/rotateDatabasePassword, which self-gate their secret reveals.
   const { teamId } = await requireCapability("reveal_secrets");
-  const db = await loadDatabase(id, teamId);
+  // A read: the credentials of a database still arriving are the same
+  // credentials it will have, and somebody watching it land may want them.
+  const db = await loadDatabase(id, teamId, { forRead: true });
   if (!db) throw new Error("Not found");
   return decryptSecret(db.connectionStringEnc);
 }
@@ -787,6 +804,7 @@ export async function createDatabase(input: {
     // Provisioned here, from nothing. Only a migration can hand a database a
     // volume that was supposed to arrive from another host and did not.
     dataCopyError: "",
+    migrationRunId: null,
     // No logo of its own: the UI shows the engine's real brand mark until
     // someone uploads one in Settings → General.
     logo: null,

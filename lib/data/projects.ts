@@ -29,6 +29,7 @@ import { normalizeHexColor } from "../utils";
 import { inProjectScope } from "../auth/request-context";
 import { appInScope, folderInScope, projectInScope } from "./node-scope";
 import { appScopeWhere } from "./app-graph-load";
+import { assertContainerNotMigrating } from "./migration-guard";
 import type { Project, AppStatus } from "../types";
 
 /**
@@ -79,6 +80,7 @@ function assembleProject(r: typeof projectsTable.$inferSelect): Project {
     slug: r.slug,
     color: r.color ?? null,
     ownerUserId: r.ownerUserId ?? null,
+    migrationRunId: r.migrationRunId ?? null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
@@ -357,6 +359,7 @@ export async function createProject(
 
 export async function renameProject(id: string, name: string): Promise<void> {
   const { teamId } = await requireCapability("organize_projects");
+  await assertContainerNotMigrating("project", id);
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
   const updated = await getDb()
@@ -382,6 +385,7 @@ export async function setProjectColor(
   color: string | null,
 ): Promise<void> {
   const { teamId } = await requireCapability("organize_projects");
+  await assertContainerNotMigrating("project", id);
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const next = color ? normalizeHexColor(color) : null;
   const rows = await getDb()
@@ -421,6 +425,9 @@ export async function deleteProject(
   opts: { deleteApps?: boolean } = {},
 ): Promise<void> {
   const { teamId } = await requireCapability("delete_projects");
+  // The destructive half is the one that matters most: this takes the
+  // environments and the apps with it, and a run is still filling them.
+  await assertContainerNotMigrating("project", id);
   const userName = (await getCurrentUser())?.name ?? "Someone";
   // Before the project row goes, while its apps still resolve through it
   // (ADR-0016). Lazy import: apps.ts imports this module.
