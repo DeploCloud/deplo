@@ -16,7 +16,7 @@
     "db:migrate": "drizzle-kit migrate",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"

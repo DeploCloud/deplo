@@ -45,6 +45,10 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run lint
+      # The pre-commit hook formats what is staged, so this only ever fires for a
+      # commit made with --no-verify or from a checkout that never ran `bun
+      # install`. It is the backstop, not the mechanism.
+      - run: bun run format:check
 
   test:
     name: Tests
