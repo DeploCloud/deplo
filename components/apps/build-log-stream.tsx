@@ -247,17 +247,18 @@ export function BuildLogStream({
             {live && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={stopBuild}
                 disabled={stopping}
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
               >
-                <Ban className="size-3.5" />
+                <Ban />
                 {stopping ? "Stopping" : "Stop build"}
               </Button>
             )}
-            {/* h-9 like everything else on this row: the labelled variants of
-                both buttons are `size="sm"`, which is h-8 and lands them 4px
-                short of the search input beside them. */}
+            {/* h-9 like everything else on this row: the labelled buttons are
+                `size="sm"`, which is h-8 and lands them 4px short of the search
+                input beside them. */}
             <CopyButton value={logText} label="Copy logs" className="h-9" />
             <DownloadButton
               value={logText}
