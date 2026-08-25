@@ -4,6 +4,7 @@ import { listGitConnections } from "@/lib/data/git-connections";
 import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers";
 import type { GitProviderId } from "@/lib/types";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
+import { safeReturnPath } from "@/lib/utils";
 import { GitPanel } from "@/components/settings/git-panel";
 
 export const metadata = { title: "Settings · Git" };
@@ -12,8 +13,10 @@ export default async function SettingsGitPage(props: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const sp = await props.searchParams;
-  // One-shot status from the GitHub OAuth-style redirect (?git=connected|error).
-  const gitStatus = Array.isArray(sp.git) ? sp.git[0] : sp.git;
+  // The page that sent the user here to connect something (?next=), so the
+  // detour can end where it started instead of on this page. The `?git=` flag
+  // the GitHub redirects carry is handled in the app shell, for every page.
+  const next = safeReturnPath(Array.isArray(sp.next) ? sp.next[0] : sp.next);
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess
@@ -47,7 +50,7 @@ export default async function SettingsGitPage(props: {
       connections={connections}
       providers={providers}
       previewReadiness={previewReadiness}
-      gitStatus={gitStatus}
+      next={next}
       isInstanceAdmin={await isInstanceAdmin()}
     />
   );

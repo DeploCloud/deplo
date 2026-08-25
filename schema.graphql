@@ -3325,7 +3325,14 @@ type Mutation {
   """
   Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.
   """
-  startGithubConnect(org: String): GithubConnectStart
+  startGithubConnect(
+    org: String
+
+    """
+    In-app path to send the browser back to once the App is installed. Anything that is not a plain in-app route is ignored, and the flow ends on Settings → Git as before.
+    """
+    returnTo: String
+  ): GithubConnectStart
 
   """
   Options for `navigator.credentials.create`. Requires the account password.

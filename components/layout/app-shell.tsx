@@ -4,6 +4,7 @@ import { Topbar } from "./topbar";
 import { ShellFrame } from "./shell-frame";
 import { UpdateBanner } from "./update-banner";
 import { NavigationHistoryTracker } from "./navigation-history";
+import { GitConnectToast } from "@/components/shared/git-connect-toast";
 import { DeployActivityProvider } from "./deploy-activity";
 import { MigrationActivityProvider } from "./migration-activity";
 import { TwoFactorReminder } from "@/components/security/two-factor-reminder";
@@ -59,6 +60,10 @@ export function AppShell({
                 browser's back when there's a page to return to (see
                 navigation-history). */}
                 <NavigationHistoryTracker />
+                {/* Connecting a git host ends on whatever page started it, so
+                    its one-shot confirmation is mounted once here rather than
+                    on Settings → Git. */}
+                <GitConnectToast />
                 <Sidebar capabilities={capabilities} isAdmin={isAdmin} />
               </>
             }

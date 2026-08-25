@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { resolveInstallationAccount } from "@/lib/github/app";
+import { readConnectState } from "@/lib/github/manifest";
 import { upsertInstallation } from "@/lib/data/github";
 import { resolvePublicBaseUrl } from "@/lib/public-url";
 
@@ -10,14 +11,20 @@ import { resolvePublicBaseUrl } from "@/lib/public-url";
  * it, read the account it was installed on, and record the installation so its
  * repositories become available as deploy sources.
  *
- * No CSRF/state check here (unlike github/callback): GitHub's post-install
- * setup redirect carries only `installation_id` + `setup_action`, never a
- * `state` we minted, so there is nothing to verify against. A forged/replayed
- * `installation_id` is instead defused downstream: this handler requires an
- * authenticated session (below), and `upsertInstallation` re-gates on
- * `manage_git` AND verifies the resolved App belongs to the caller's active
- * team, so a foreign installation_id resolves to an App the caller cannot write
- * and is rejected. Do not treat the raw param as authorization on its own.
+ * The `state` here is NOT a CSRF check: an install started on github.com (or
+ * `setup_on_update`, when someone edits repository access later) carries none,
+ * and refusing those would break a legitimate flow. It is only the return
+ * address the connect flow put on the installation URL, so someone who started
+ * from the create-app wizard lands back in the wizard instead of on
+ * Settings → Git. Unsigned, expired or another user's state simply means "no
+ * return address" and the flow ends where it always did.
+ *
+ * A forged/replayed `installation_id` is defused downstream instead: this
+ * handler requires an authenticated session (below), and `upsertInstallation`
+ * re-gates on `manage_git` AND verifies the resolved App belongs to the
+ * caller's active team, so a foreign installation_id resolves to an App the
+ * caller cannot write and is rejected. Do not treat the raw param as
+ * authorization on its own.
  */
 export async function GET(request: NextRequest) {
   // Build redirects against the public base URL, NOT request.nextUrl.origin:
@@ -49,8 +56,14 @@ export async function GET(request: NextRequest) {
       accountType: resolved.account.accountType,
       avatarUrl: resolved.account.avatarUrl,
     });
-    settings.searchParams.set("git", "connected");
-    return NextResponse.redirect(settings);
+    // Back where the connect started, with the same one-shot flag the panel
+    // uses — the toast lives in the app shell, so it fires on any page.
+    const back =
+      readConnectState(request.nextUrl.searchParams.get("state"), user.id)
+        ?.returnTo ?? null;
+    const done = back ? new URL(back, origin) : settings;
+    done.searchParams.set("git", "connected");
+    return NextResponse.redirect(done);
   } catch {
     settings.searchParams.set("git", "error");
     return NextResponse.redirect(settings);

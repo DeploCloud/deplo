@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
-  Building2,
   CheckCircle2,
   ChevronDown,
   ExternalLink,
@@ -14,7 +13,6 @@ import {
   Pencil,
   Plug,
   Trash2,
-  User,
 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -46,7 +44,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { GitProviderMark } from "@/components/shared/brand-icons";
-import { useGithubConnect } from "@/components/apps/github-connect-button";
+import { useGithubOwnerConnect } from "@/components/apps/github-connect-button";
 import { GitGraphic } from "@/components/settings/git-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
@@ -65,15 +63,6 @@ export interface GitProviderChoice {
 
 /** Whether an App can drive pull request previews, and where to fix it. */
 type PreviewReadiness = Record<string, { ready: boolean; settingsUrl: string }>;
-
-const GIT_FEEDBACK: Record<string, { ok: boolean; msg: string }> = {
-  connected: { ok: true, msg: "GitHub App connected" },
-  error: { ok: false, msg: "GitHub connection failed. Please try again." },
-  state_error: {
-    ok: false,
-    msg: "GitHub connection expired or was tampered with. Try again.",
-  },
-};
 
 /**
  * The whole Git settings page: one header, one grid of connected hosts, one
@@ -94,7 +83,7 @@ export function GitPanel({
   connections,
   providers,
   previewReadiness,
-  gitStatus,
+  next,
   isInstanceAdmin,
 }: {
   githubApps: GithubAppDTO[];
@@ -102,7 +91,13 @@ export function GitPanel({
   /** The provider catalogue, passed down rather than fetched: it is static. */
   providers: GitProviderChoice[];
   previewReadiness?: PreviewReadiness;
-  gitStatus?: string;
+  /**
+   * Where to send the browser once a provider is connected: the page that
+   * linked here (`?next=`), already validated server-side. Connecting is almost
+   * never the errand — picking a repo in the create-app wizard is — so the
+   * detour ends by handing the user back to it.
+   */
+  next?: string | null;
   /** Gates the one advanced option: pointing a connection inside the network. */
   isInstanceAdmin: boolean;
 }) {
@@ -116,15 +111,6 @@ export function GitPanel({
     null,
   );
   const [testingId, setTestingId] = React.useState<string | null>(null);
-
-  // One-shot feedback from the OAuth-style redirect (?git=connected|error).
-  React.useEffect(() => {
-    if (!gitStatus) return;
-    const fb = GIT_FEEDBACK[gitStatus];
-    if (fb) (fb.ok ? toast.success : toast.error)(fb.msg);
-    router.replace("/settings/git", { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function test(conn: GitConnectionDTO) {
     setTestingId(conn.id);
@@ -206,6 +192,7 @@ export function GitPanel({
         <ConnectDialog
           provider={connectProvider}
           isInstanceAdmin={isInstanceAdmin}
+          next={next}
           onClose={() => setConnectProviderId(null)}
         />
       )}
@@ -278,8 +265,7 @@ function ConnectMenu({
   providers: GitProviderChoice[];
   onPick: (id: string) => void;
 }) {
-  const { connect, pending } = useGithubConnect();
-  const [orgOpen, setOrgOpen] = React.useState(false);
+  const { items, dialog, pending } = useGithubOwnerConnect();
 
   return (
     <>
@@ -308,14 +294,7 @@ function ConnectMenu({
               GitHub
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="w-52">
-              <DropdownMenuItem onSelect={() => connect()}>
-                <User className="size-4" />
-                Personal account
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setOrgOpen(true)}>
-                <Building2 className="size-4" />
-                Organization
-              </DropdownMenuItem>
+              {items}
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSeparator />
@@ -334,77 +313,8 @@ function ConnectMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {orgOpen && (
-        <GithubOrgDialog
-          onClose={() => setOrgOpen(false)}
-          onConnect={(org) => connect(org)}
-        />
-      )}
+      {dialog}
     </>
-  );
-}
-
-/**
- * GitHub has no API to list the organizations of someone who has not connected
- * yet, so the name is typed once here and becomes the address the manifest is
- * POSTed to. Only members who can create Apps there will get past GitHub.
- */
-function GithubOrgDialog({
-  onClose,
-  onConnect,
-}: {
-  onClose: () => void;
-  onConnect: (org: string) => void;
-}) {
-  const [org, setOrg] = React.useState("");
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2.5">
-            <GitProviderMark provider="github" className="size-7" />
-            Connect an organization
-          </DialogTitle>
-          <DialogDescription>
-            GitHub asks you to create the App inside the organization you name.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="grid gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!org.trim()) return;
-            onConnect(org.trim());
-          }}
-        >
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="github-org"
-              info="The name in the organization's address on github.com, like github.com/acme."
-            >
-              Organization
-            </FieldLabel>
-            <Input
-              id="github-org"
-              value={org}
-              onChange={(e) => setOrg(e.target.value)}
-              placeholder="acme"
-              autoFocus
-              autoComplete="off"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!org.trim()}>
-              Continue
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -637,10 +547,12 @@ function ConnectionCard({
 function ConnectDialog({
   provider,
   isInstanceAdmin,
+  next,
   onClose,
 }: {
   provider: GitProviderChoice;
   isInstanceAdmin: boolean;
+  next?: string | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -678,7 +590,12 @@ function ConnectDialog({
       }
       toast.success("Provider connected");
       onClose();
-      router.refresh();
+      // Straight back to whatever sent the user here (the create-app wizard's
+      // source picker, an app's source settings), where the new connection is
+      // now in the list. `router.push` re-runs the reads on the way, so no
+      // refresh is needed on top of it.
+      if (next) router.push(next);
+      else router.refresh();
     });
   }
 

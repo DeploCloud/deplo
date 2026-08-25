@@ -9,6 +9,7 @@ import {
   pickerInstallationId,
   readableTextColor,
   repoCredentialMissing,
+  safeReturnPath,
 } from "./utils";
 import { FOLDER_COLORS } from "./folder-colors";
 
@@ -173,4 +174,37 @@ test("only a row that claims a GitHub App it lacks is flagged", () => {
     false,
   );
   assert.equal(repoCredentialMissing({ source: "github", repo: null }), false);
+});
+
+/**
+ * `safeReturnPath` is what stands between "come back where you were" and an
+ * open redirect: the return address arrives from the browser (a `?next=`, a
+ * `returnTo` argument), so anything that could leave the app has to answer
+ * `null` rather than being trusted because it was signed later.
+ */
+test("safeReturnPath keeps in-app paths and refuses anything that leaves the app", () => {
+  for (const ok of [
+    "/new",
+    "/new?template=ghost&variant=sqlite",
+    "/apps/blog/settings/deployments",
+    "  /new  ",
+  ]) {
+    assert.equal(safeReturnPath(ok), ok.trim(), `expected ${ok} to be kept`);
+  }
+  for (const bad of [
+    "",
+    "   ",
+    null,
+    undefined,
+    "new",
+    "https://evil.example.com",
+    "//evil.example.com",
+    "/\\evil.example.com",
+    "javascript:alert(1)",
+    // An API route is never a page to land on, and the GitHub routes in
+    // particular would re-enter the flow that issued the address.
+    "/api/github/setup",
+  ]) {
+    assert.equal(safeReturnPath(bad), null, `expected ${bad} to be refused`);
+  }
 });

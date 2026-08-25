@@ -19,11 +19,17 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { GitHubIcon } from "@/components/shared/brand-icons";
-import { useGithubConnect } from "@/components/apps/github-connect-button";
+import {
+  GithubConnectButton,
+  useGithubOwnerConnect,
+} from "@/components/apps/github-connect-button";
 import {
   RepoBrowser,
   type RepoSelection,
@@ -79,13 +85,7 @@ function AccountAvatar({
 }
 
 /** The connect-your-first-App empty state, shown when no App is connected yet. */
-function ConnectPanel({
-  connect,
-  connecting,
-}: {
-  connect: () => void;
-  connecting: boolean;
-}) {
+function ConnectPanel() {
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
       <GitHubIcon className="size-6 text-muted-foreground" />
@@ -96,10 +96,7 @@ function ConnectPanel({
           you pick which repositories it can access.
         </p>
       </div>
-      <Button type="button" size="sm" onClick={connect} disabled={connecting}>
-        <GitHubIcon className="size-4" />
-        Connect GitHub
-      </Button>
+      <GithubConnectButton size="sm" />
     </div>
   );
 }
@@ -140,7 +137,9 @@ export function GithubRepoPicker({
   /** When set, show a "Manage connected apps" link pointing here (e.g. /settings/git). */
   manageHref?: string;
 }) {
-  const { connect, pending: connecting } = useGithubConnect();
+  // The same owner choice Settings → Git offers: an App created from here can
+  // belong to an organization too, which is where a team's repositories live.
+  const { items: ownerItems, dialog: ownerDialog } = useGithubOwnerConnect();
   // Never seed an App the user did not choose: for an app that already has a
   // repo, falling back to the first one claims a connection the row does not
   // have. See `pickerInstallationId`.
@@ -248,16 +247,17 @@ export function GithubRepoPicker({
                   <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuItem
-                onSelect={() => connect()}
-                disabled={connecting}
-                className="gap-2"
-              >
-                <Plus className="size-4" />
-                {hasInstallations
-                  ? "Connect another GitHub App"
-                  : "Connect GitHub"}
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Plus className="size-4" />
+                  {hasInstallations
+                    ? "Connect another GitHub App"
+                    : "Connect GitHub"}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-52">
+                  {ownerItems}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               {manageHref && (
                 <DropdownMenuItem asChild className="gap-2">
                   <Link href={manageHref}>
@@ -292,7 +292,7 @@ export function GithubRepoPicker({
       )}
 
       {!hasInstallations ? (
-        <ConnectPanel connect={connect} connecting={connecting} />
+        <ConnectPanel />
       ) : (
         <RepoBrowser
           kind="github"
@@ -322,6 +322,8 @@ export function GithubRepoPicker({
           }
         />
       )}
+
+      {ownerDialog}
     </div>
   );
 }

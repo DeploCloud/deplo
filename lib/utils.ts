@@ -400,3 +400,18 @@ export function generatePassword(length = 20): string {
   for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
   return out;
 }
+
+/**
+ * A path this app may send the browser back to after a detour off-site (the
+ * GitHub App manifest flow) or off-page (Settings → Git). Answers `null` for
+ * anything that is not a plain in-app route, so a return address can never
+ * become an open redirect: an absolute URL, a protocol-relative `//host`, a
+ * backslash Windows-style `/\host`, or an API route nobody should land on.
+ */
+export function safeReturnPath(raw: string | null | undefined): string | null {
+  const p = raw?.trim();
+  if (!p || !p.startsWith("/")) return null;
+  if (p.startsWith("//") || p.startsWith("/\\")) return null;
+  if (p.startsWith("/api/")) return null;
+  return p;
+}

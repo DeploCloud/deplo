@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ChevronsUpDown,
   Check,
@@ -87,6 +87,7 @@ export function GitSourcePicker({
   onChange: (value: GitSourceValue) => void;
   manageHref?: string;
 }) {
+  const router = useRouter();
   const urlFieldId = React.useId();
   const branchFieldId = React.useId();
   const [connectionId, setConnectionId] = React.useState<string | null>(
@@ -246,11 +247,24 @@ export function GitSourcePicker({
               </>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="gap-2">
-              <Link href={manageHref}>
-                <Plus className="size-4" />
-                Connect a git provider
-              </Link>
+            {/* Carries where we are, so connecting a provider hands the user
+                back to this page - with the new connection in the list - instead
+                of leaving them in Settings to find their way back. Not a
+                `<Link>`: the href would need the current query, and reading it
+                with `useSearchParams` would put a Suspense boundary around every
+                screen this picker sits on. */}
+            <DropdownMenuItem
+              className="gap-2"
+              onSelect={() =>
+                router.push(
+                  `${manageHref}?next=${encodeURIComponent(
+                    window.location.pathname + window.location.search,
+                  )}`,
+                )
+              }
+            >
+              <Plus className="size-4" />
+              Connect a git provider
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

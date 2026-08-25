@@ -2,6 +2,9 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 
+import { signState, verifyState } from "@/lib/crypto";
+import { safeReturnPath } from "@/lib/utils";
+
 /**
  * GitHub App Manifest flow helpers.
  *
@@ -108,4 +111,48 @@ export async function exchangeManifestCode(
     throw new Error(`GitHub manifest exchange failed (${res.status})`);
   }
   return (await res.json()) as ManifestConversion;
+}
+
+/* ------------------------------------------------------------------ */
+/* Connect state (CSRF + where to send the browser back)               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The signed `state` that rides both hops of the connect flow: the manifest
+ * POST (GitHub echoes it to `/api/github/callback`) and the install link
+ * (`installations/new?state=…`, which GitHub echoes to `/api/github/setup` —
+ * documented as the way to "return people back to that state after they
+ * install").
+ *
+ * It carries two things: WHO started the flow, so a state minted for someone
+ * else is refused, and WHERE they were, so connecting from the create-app
+ * wizard lands back in the wizard instead of Settings → Git. The payload is
+ * HMAC'd by `signState`, so the return path cannot be tampered with in flight —
+ * `safeReturnPath` still runs on both ends, because the same value is what a
+ * caller handed us in the first place.
+ */
+export function signConnectState(
+  userId: string,
+  returnTo?: string | null,
+): string {
+  const back = safeReturnPath(returnTo);
+  return signState(back ? `github:${userId}:${back}` : `github:${userId}`);
+}
+
+/**
+ * Verify a state minted by {@link signConnectState}. `null` means "not this
+ * user's state" (forged, expired, or replayed from another account) and is the
+ * refusal both routes act on; a valid state answers with the page to return to,
+ * `null` when the flow started without one.
+ */
+export function readConnectState(
+  token: string | null | undefined,
+  userId: string,
+): { returnTo: string | null } | null {
+  const data = verifyState(token ?? undefined);
+  if (!data) return null;
+  const prefix = `github:${userId}`;
+  if (data === prefix) return { returnTo: null };
+  if (!data.startsWith(`${prefix}:`)) return null;
+  return { returnTo: safeReturnPath(data.slice(prefix.length + 1)) };
 }

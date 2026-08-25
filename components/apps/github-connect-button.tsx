@@ -2,15 +2,32 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+import { Building2, Loader2, User } from "lucide-react";
 import type { VariantProps } from "class-variance-authority";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { GitHubIcon } from "@/components/shared/brand-icons";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { FieldLabel } from "@/components/ui/info-tip";
+import { GitHubIcon, GitProviderMark } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * Kicks off GitHub's App Manifest flow: asks the server for a manifest + signed
  * state, then POSTs them to GitHub via a transient form so the browser navigates
- * to GitHub to create (and then install) the App  no manual id/key copy/paste,
+ * to GitHub to create (and then install) the App — no manual id/key copy/paste,
  * the way Dokploy does it. Exposed as a hook so surfaces that aren't a button
  * (e.g. a menu item in the repo picker's account switcher) can trigger the exact
  * same flow.
@@ -34,8 +51,17 @@ export function useGithubConnect() {
           },
           { actionUrl: string; manifest: string; state: string } | null
         >(
-          `mutation ($org: String) { startGithubConnect(org: $org) { actionUrl manifest state } }`,
-          { org: owner },
+          `mutation ($org: String, $returnTo: String) { startGithubConnect(org: $org, returnTo: $returnTo) { actionUrl manifest state } }`,
+          {
+            org: owner,
+            // Where to come back to once GitHub is done. Read here rather than
+            // passed in by each call site, so every surface that connects — the
+            // create-app wizard, an app's source settings, Settings → Git —
+            // returns the user to the page they were on instead of stranding
+            // them in Settings. The server drops anything that is not an in-app
+            // path, and a flow with no return address ends where it always did.
+            returnTo: window.location.pathname + window.location.search,
+          },
           (d) => d.startGithubConnect,
         );
         if (!res.ok || !res.data) {
@@ -66,6 +92,104 @@ export function useGithubConnect() {
   return { connect, pending };
 }
 
+/**
+ * The owner choice every connect surface shares: GitHub creates the App under
+ * whoever owns it, and the two owners live at different addresses on github.com,
+ * so it is picked here, before the browser leaves. Returns the menu items to
+ * drop into any menu plus the dialog to render beside it, so no screen has to
+ * re-implement the pair.
+ */
+export function useGithubOwnerConnect() {
+  const { connect, pending } = useGithubConnect();
+  const [orgOpen, setOrgOpen] = React.useState(false);
+
+  const items = (
+    <>
+      <DropdownMenuItem onSelect={() => connect()}>
+        <User className="size-4" />
+        Personal account
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => setOrgOpen(true)}>
+        <Building2 className="size-4" />
+        Organization
+      </DropdownMenuItem>
+    </>
+  );
+
+  const dialog = orgOpen ? (
+    <GithubOrgDialog
+      onClose={() => setOrgOpen(false)}
+      onConnect={(org) => connect(org)}
+    />
+  ) : null;
+
+  return { items, dialog, pending, connect };
+}
+
+/**
+ * GitHub has no API to list the organizations of someone who has not connected
+ * yet, so the name is typed once here and becomes the address the manifest is
+ * POSTed to. Only members who can create Apps there will get past GitHub.
+ */
+function GithubOrgDialog({
+  onClose,
+  onConnect,
+}: {
+  onClose: () => void;
+  onConnect: (org: string) => void;
+}) {
+  const [org, setOrg] = React.useState("");
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2.5">
+            <GitProviderMark provider="github" className="size-7" />
+            Connect an organization
+          </DialogTitle>
+          <DialogDescription>
+            GitHub asks you to create the App inside the organization you name.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!org.trim()) return;
+            onConnect(org.trim());
+          }}
+        >
+          <div className="space-y-2">
+            <FieldLabel
+              htmlFor="github-org"
+              info="The name in the organization's address on github.com, like github.com/acme."
+            >
+              Organization
+            </FieldLabel>
+            <Input
+              id="github-org"
+              value={org}
+              onChange={(e) => setOrg(e.target.value)}
+              placeholder="acme"
+              autoFocus
+              autoComplete="off"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!org.trim()}>
+              Continue
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function GithubConnectButton({
   label = "Connect GitHub",
   variant = "default",
@@ -77,19 +201,32 @@ export function GithubConnectButton({
   size?: VariantProps<typeof buttonVariants>["size"];
   className?: string;
 }) {
-  const { connect, pending } = useGithubConnect();
+  const { items, dialog, pending } = useGithubOwnerConnect();
 
   return (
-    <Button
-      type="button"
-      variant={variant}
-      size={size}
-      className={className}
-      onClick={() => connect()}
-      disabled={pending}
-    >
-      <GitHubIcon className="size-4" />
-      {pending ? "Redirecting…" : label}
-    </Button>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant={variant}
+            size={size}
+            className={className}
+            disabled={pending}
+          >
+            {pending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <GitHubIcon className="size-4" />
+            )}
+            {label}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="center" className="w-52">
+          {items}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {dialog}
+    </>
   );
 }

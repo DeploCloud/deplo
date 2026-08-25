@@ -7,12 +7,15 @@ import {
   type GithubInstallationDTO,
 } from "@/lib/data/github";
 import { assertUser } from "@/lib/auth";
-import { signState } from "@/lib/crypto";
 import {
   resolveManifestBaseUrl,
   PUBLIC_URL_PLACEHOLDER,
 } from "@/lib/public-url";
-import { buildManifest, manifestCreateUrl } from "@/lib/github/manifest";
+import {
+  buildManifest,
+  manifestCreateUrl,
+  signConnectState,
+} from "@/lib/github/manifest";
 import {
   listInstallationRepos,
   listRepoBranches,
@@ -148,8 +151,15 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "manage_git" },
     description:
       "Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.",
-    args: { org: t.arg.string({ required: false }) },
-    resolve: async (_r, { org }): Promise<GithubConnectStart> => {
+    args: {
+      org: t.arg.string({ required: false }),
+      returnTo: t.arg.string({
+        required: false,
+        description:
+          "In-app path to send the browser back to once the App is installed. Anything that is not a plain in-app route is ignored, and the flow ends on Settings → Git as before.",
+      }),
+    },
+    resolve: async (_r, { org, returnTo }): Promise<GithubConnectStart> => {
       const user = await assertUser();
       // The manifest base is baked permanently into the App on GitHub, so it
       // must be an explicit, externally-reachable URL — never a host guess.
@@ -162,7 +172,7 @@ builder.mutationFields((t) => ({
       return {
         actionUrl: manifestCreateUrl(org ?? undefined),
         manifest: JSON.stringify(buildManifest(base)),
-        state: signState(`github:${user.id}`),
+        state: signConnectState(user.id, returnTo),
       };
     },
   }),
