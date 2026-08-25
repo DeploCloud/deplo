@@ -31,6 +31,7 @@ export function Combobox<T>({
   matches,
   renderOption,
   renderLeading,
+  renderTrailing,
   displayValue,
   selectable,
   id,
@@ -51,6 +52,14 @@ export function Combobox<T>({
   /** Whether `item` survives the typed query (already lower-cased, trimmed). */
   matches: (item: T, query: string) => boolean;
   renderOption: (item: T) => React.ReactNode;
+  /**
+   * An affordance at the RIGHT EDGE of a row — a link out to the thing, say.
+   * Rendered as a SIBLING of the option button, never inside it: a control
+   * nested in a button is neither valid HTML nor reachable, and the row would
+   * pick the item out from under the click. Return null for the rows that get
+   * none, which is usually all but one.
+   */
+  renderTrailing?: (item: T) => React.ReactNode;
   /**
    * Which items can actually be chosen. Everything, unless the caller says
    * otherwise — the tree pickers pass a predicate so their headings are drawn as
@@ -371,16 +380,19 @@ export function Combobox<T>({
                 </p>
               ) : (
                 <ul className="max-h-72 overflow-auto p-1">
-                  {filtered.map((item, i) =>
-                    selectable && !selectable(item) ? (
+                  {filtered.map((item, i) => {
+                    if (selectable && !selectable(item))
                       // A heading: drawn, never landed on. Not a button and not
                       // an option, so the keyboard and the screen reader agree
                       // with the pointer about what can be picked.
-                      <li key={getKey(item)} role="presentation">
-                        {renderOption(item)}
-                      </li>
-                    ) : (
-                      <li key={getKey(item)}>
+                      return (
+                        <li key={getKey(item)} role="presentation">
+                          {renderOption(item)}
+                        </li>
+                      );
+                    const trailing = renderTrailing?.(item);
+                    return (
+                      <li key={getKey(item)} className="relative">
                         <button
                           type="button"
                           role="option"
@@ -395,6 +407,7 @@ export function Combobox<T>({
                           }}
                           className={cn(
                             "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
+                            trailing && "pr-9",
                             i === activeIndex
                               ? "bg-accent"
                               : "hover:bg-accent/60",
@@ -402,9 +415,16 @@ export function Combobox<T>({
                         >
                           {renderOption(item)}
                         </button>
+                        {trailing ? (
+                          // On top of the row, not in it: the button fills the
+                          // width so the whole row still picks the item.
+                          <span className="absolute top-1/2 right-1.5 -translate-y-1/2">
+                            {trailing}
+                          </span>
+                        ) : null}
                       </li>
-                    ),
-                  )}
+                    );
+                  })}
                 </ul>
               )}
             </div>,

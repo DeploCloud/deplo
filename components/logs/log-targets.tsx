@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Boxes,
@@ -38,13 +39,6 @@ function TargetMark({ target, size }: { target: LogTarget; size: number }) {
     <AppLogo logo={target.logo} size={size} />
   );
 }
-
-/** A row of the picker: a line of the tree, or an action parked at its end. */
-type PickerItem =
-  | { kind: "row"; row: LogTreeRow }
-  | { kind: "action"; key: string; label: string; icon: React.ReactNode };
-
-type PickerAction = Extract<PickerItem, { kind: "action" }>;
 
 /** How much one level of the tree steps in, in px. Inline, because Tailwind has
  *  no dynamic `pl-`. */
@@ -107,7 +101,6 @@ export function LogTreePicker({
   rows,
   value,
   onChange,
-  actions = [],
   autoFocus = false,
   className,
 }: {
@@ -115,51 +108,62 @@ export function LogTreePicker({
   /** The key of the target on screen, or "" while nothing is picked. */
   value: string;
   onChange: (key: string) => void;
-  /** Parked at the END of the list and matching only the empty query, so they
-   *  are one keystroke from gone and never come between somebody and the app
-   *  they are typing. */
-  actions?: PickerAction[];
   autoFocus?: boolean;
   className?: string;
 }) {
-  const items: PickerItem[] = [
-    ...rows.map((row) => ({ kind: "row" as const, row })),
-    ...actions,
-  ];
-
   return (
     <div className={className}>
-      <Combobox<PickerItem>
-        items={items}
+      <Combobox<LogTreeRow>
+        items={rows}
         value={value}
         onChange={onChange}
         autoFocus={autoFocus}
-        getKey={(i) => (i.kind === "row" ? i.row.key : i.key)}
-        selectable={(i) => (i.kind === "row" ? !!i.row.target : true)}
-        matches={(i, q) =>
-          i.kind === "row" ? logTreeMatches(i.row, q) : q.length === 0
+        getKey={(r) => r.key}
+        selectable={(r) => !!r.target}
+        matches={logTreeMatches}
+        displayValue={(r) => r.name}
+        renderLeading={(r) =>
+          r.target ? <TargetMark target={r.target} size={20} /> : null
         }
-        displayValue={(i) => (i.kind === "row" ? i.row.name : i.label)}
-        renderLeading={(i) =>
-          i.kind === "row" && i.row.target ? (
-            <TargetMark target={i.row.target} size={20} />
-          ) : null
-        }
-        renderOption={(i) =>
-          i.kind === "row" ? (
-            <TreeRowContent row={i.row} />
-          ) : (
-            <span className="flex items-center gap-2 border-t border-border pt-2 text-sm text-muted-foreground">
-              {i.icon}
-              {i.label}
-            </span>
-          )
+        renderOption={(r) => <TreeRowContent row={r} />}
+        renderTrailing={(r) =>
+          r.key === value && value ? <OpenTargetLink row={r} /> : null
         }
         placeholder="Search apps and databases"
         searchPlaceholder="Search apps and databases"
         emptyLabel={() => "No app or database goes by that name"}
       />
     </div>
+  );
+}
+
+/**
+ * The way back to the thing itself, on the row of the thing you are already
+ * watching.
+ *
+ * It used to be an "Open <name>" row at the end of the list, which read as one
+ * more app to pick — a menu footer wearing an app's clothes. As an icon at the
+ * end of the active row it is where the eye already is, and it says what it
+ * does: a new tab, so the logs you are watching stay where they are.
+ */
+function OpenTargetLink({ row }: { row: LogTreeRow }) {
+  const label = `Open ${row.name} in a new tab`;
+  return (
+    <Link
+      href={logTargetOverviewHref(row.key)}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={label}
+      // The native tooltip, not `SimpleTooltip`: the menu is `z-[60]` and the
+      // tooltip is `z-50`, so a real one renders BEHIND the list it belongs to.
+      title={label}
+      // The row underneath picks on mousedown; without this the click would
+      // land on a menu that has already closed and swapped the page.
+      onMouseDown={(e) => e.stopPropagation()}
+      className="flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+    >
+      <ExternalLink className="size-3.5" />
+    </Link>
   );
 }
 
@@ -218,11 +222,8 @@ export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
  *
  * The pane's usual heading is `PaneTitleLink` — the name, and the way back to
  * the thing. Here the name is said by the picker's own field (logo, name,
- * chevron), so drawing both would say it twice; the way back moves into the
- * menu instead, at the END of the list where it matches only the empty query.
- *
- * The menu's own footer slot is NOT used for it: it renders outside the field,
- * so anything hung there dangles under the toolbar row forever.
+ * chevron), so drawing both would say it twice; the way back is the icon on the
+ * open target's own row inside the menu (see {@link OpenTargetLink}).
  */
 export function LogTargetPicker({
   rows,
@@ -234,7 +235,6 @@ export function LogTargetPicker({
   value: string;
 }) {
   const router = useRouter();
-  const current = rows.find((r) => r.key === value)?.target ?? null;
 
   // Remember the target so the sidebar's Logs entry reopens it. Written here,
   // after the server resolved it, so a stale or forbidden one is never stored;
@@ -250,29 +250,13 @@ export function LogTargetPicker({
     }
   }, [value]);
 
-  const actions: PickerAction[] = current
-    ? [
-        {
-          kind: "action",
-          key: "action:open",
-          label: `Open ${current.name}`,
-          icon: <ExternalLink className="size-4 text-muted-foreground" />,
-        },
-      ]
-    : [];
-
-  function go(key: string) {
-    if (key === "action:open" && current)
-      return router.push(logTargetOverviewHref(current.key));
-    if (key !== value) router.push(logTargetHref(key));
-  }
-
   return (
     <LogTreePicker
       rows={rows}
       value={value}
-      onChange={go}
-      actions={actions}
+      onChange={(key) => {
+        if (key !== value) router.push(logTargetHref(key));
+      }}
       className="w-64 shrink-0"
     />
   );
