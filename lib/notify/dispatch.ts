@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/notifications-and-alerts
+// https://deplo.build/docs/guides/observability/notifications-and-alerts
 
 import { channelsForAlert } from "../data/notifications";
 import { publicBaseUrl } from "../public-url";

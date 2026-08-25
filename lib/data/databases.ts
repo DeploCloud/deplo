@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/databases
+// https://deplo.build/docs/guides/data/databases
 
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 

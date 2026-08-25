@@ -1,4 +1,4 @@
-// https://deplo.build/docs/guides/persistent-storage
+// https://deplo.build/docs/guides/data/persistent-storage
 
 import { hostVolumeName } from "../utils";
 import {

@@ -581,7 +581,7 @@ language — reconsider, or note the gap.
 - **Comments are few and short - hard cap about 3 lines per block.** No file-header essays, no
   design narratives, no numbered rationale lists, no art direction above an illustration. Where a
   feature has a docs page, one link replaces the explanation
-  (`// https://deplo.build/docs/guides/backups-and-restore`). Cite an ADR in one line when it is
+  (`// https://deplo.build/docs/guides/data/backups-and-restore`). Cite an ADR in one line when it is
   the reason; pragmas, `@ts-expect-error`, `eslint-disable` and its paired `eslint-enable`,
   `/* GraphQL */` and `ponytail:` markers are code and stay untouched.
 - **Never name a competitor in source.** Not in a comment, not in a string, not in UI copy: deplo

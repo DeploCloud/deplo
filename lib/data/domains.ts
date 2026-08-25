@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/domains-and-https
+// https://deplo.build/docs/guides/networking/domains-and-https
 
 import { resolve4 } from "node:dns/promises";
 import { and, count, eq, sql } from "drizzle-orm";

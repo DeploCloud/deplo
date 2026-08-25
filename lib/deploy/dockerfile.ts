@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/build-settings
+// https://deplo.build/docs/guides/releases/build-settings
 
 import type { BuildConfig } from "../types";
 

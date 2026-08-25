@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/automatic-deployments
+// https://deplo.build/docs/guides/releases/automatic-deployments
 
 import { and, eq } from "drizzle-orm";
 

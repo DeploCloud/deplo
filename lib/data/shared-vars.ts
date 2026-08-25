@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/shared-variables
+// https://deplo.build/docs/guides/config/shared-variables
 
 import { and, eq, inArray } from "drizzle-orm";
 

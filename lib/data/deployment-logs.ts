@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/logs
+// https://deplo.build/docs/guides/observability/logs
 
 import { asc, eq } from "drizzle-orm";
 

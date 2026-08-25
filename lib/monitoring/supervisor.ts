@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/monitoring
+// https://deplo.build/docs/guides/observability/monitoring
 
 import { status as GrpcStatus } from "@grpc/grpc-js";
 

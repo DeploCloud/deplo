@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/cron-jobs
+// https://deplo.build/docs/guides/observability/cron-jobs
 
 import { and, eq, ne, or, sql } from "drizzle-orm";
 

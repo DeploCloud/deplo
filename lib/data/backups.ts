@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/backups-and-restore
+// https://deplo.build/docs/guides/data/backups-and-restore
 
 import {
   and,

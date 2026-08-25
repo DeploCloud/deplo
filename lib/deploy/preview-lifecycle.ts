@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/pull-request-previews
+// https://deplo.build/docs/guides/networking/pull-request-previews
 
 import { and, asc, eq, isNull, ne, notInArray, sql } from "drizzle-orm";
 

@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/environment-variables
+// https://deplo.build/docs/guides/config/environment-variables
 
 import { and, eq, inArray } from "drizzle-orm";
 

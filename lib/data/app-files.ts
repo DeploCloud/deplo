@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/console-and-files
+// https://deplo.build/docs/guides/observability/console-and-files
 
 import { realpath } from "node:fs/promises";
 import { join, sep } from "node:path";

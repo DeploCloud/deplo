@@ -1,7 +1,15 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/console-and-files
+// https://deplo.build/docs/guides/observability/console-and-files
 
+import { and, eq } from "drizzle-orm";
+
+import { getCurrentUser } from "../auth";
+import { getDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane";
+import { nowIso } from "../ids";
+import { recordActivity } from "./activity";
+import { destroyForApp } from "../attach/session";
 import { getServerById } from "./servers";
 import { requireActiveTeamId } from "../membership";
 import { hasAppCapability, requireAppCapability } from "./node-access";

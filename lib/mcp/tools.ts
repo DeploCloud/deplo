@@ -1,4 +1,4 @@
-// https://deplo.build/docs/advanced/mcp-server
+// https://deplo.build/docs/guides/mcp-server
 
 import * as z from "zod";
 import type { Capability } from "../types";

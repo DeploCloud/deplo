@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/container-registries
+// https://deplo.build/docs/guides/server/container-registries
 
 /**
  * Server-side container-registry client: image-name search, tag listing, and

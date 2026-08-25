@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/account-security
+// https://deplo.build/docs/guides/team/account-security
 
 import {
   assertUser,

@@ -1,4 +1,4 @@
-// https://deplo.build/docs/guides/databases
+// https://deplo.build/docs/guides/data/databases
 
 /**
  * docker-compose generation for databases.

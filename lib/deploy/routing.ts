@@ -1,4 +1,4 @@
-// https://deplo.build/docs/guides/domains-and-https
+// https://deplo.build/docs/guides/networking/domains-and-https
 
 /**
  * Traefik routing labels — the one module that knows the label grammar.

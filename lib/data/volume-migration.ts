@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/persistent-storage
+// https://deplo.build/docs/guides/data/persistent-storage
 
 import { createHash } from "node:crypto";
 

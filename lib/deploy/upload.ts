@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/upload-your-code
+// https://deplo.build/docs/guides/deploy/upload-code
 
 import { mkdir, rm, readdir, stat } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";

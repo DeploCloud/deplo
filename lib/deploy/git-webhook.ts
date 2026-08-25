@@ -1,4 +1,4 @@
-// https://deplo.build/docs/guides/automatic-deployments
+// https://deplo.build/docs/guides/releases/automatic-deployments
 
 import type { GitTriggerType } from "@/lib/types";
 

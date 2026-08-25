@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/teams-and-members
+// https://deplo.build/docs/guides/team/members
 
 import {
   and,
