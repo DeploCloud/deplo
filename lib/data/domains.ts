@@ -628,7 +628,7 @@ export async function addDomain(
   // On a compose stack the port is required (the chosen service's container
   // port); single-image keeps it optional (blank ⇒ the project's default port).
   if (isCompose && config.port == null)
-    throw new Error("Container port is required");
+    throw new Error("Application port is required");
   const middlewares = normalizeMiddlewares(config.middlewares);
   // Strip is only meaningful with a path (a stripprefix middleware needs a
   // prefix to strip), so drop it otherwise — the router grammar does the same.
@@ -893,7 +893,7 @@ export async function updateDomain(
     patch.port !== undefined ? patch.port : (current.port ?? null);
   if (isCompose) {
     if (!nextApp) throw new Error("Select the container this domain routes to");
-    if (nextPort == null) throw new Error("Container port is required");
+    if (nextPort == null) throw new Error("Application port is required");
   }
   // Uniqueness on (host + path) against every OTHER domain (the partial-unique
   // index is the real guard; this is the friendly pre-check).

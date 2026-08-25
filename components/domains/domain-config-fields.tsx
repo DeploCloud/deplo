@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Cloud, CornerDownRight, Lock, Route, Signpost } from "lucide-react";
+import { CornerDownRight, Lock, Route, Signpost } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { CloudflareIcon } from "@/components/shared/brand-icons";
+import { CopyButton } from "@/components/shared/copy-button";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -138,7 +140,7 @@ export function resolveDomainConfig(
   }
   const rawPort = state.port.trim();
   if (isCompose && !rawPort) {
-    return { ok: false, error: "Container port is required" };
+    return { ok: false, error: "Application port is required" };
   }
   const port = rawPort ? Number(rawPort) : null;
   if (rawPort && (!Number.isInteger(port) || port! < 1 || port! > 65535)) {
@@ -196,15 +198,6 @@ export function advancedSummary(
           ? `redirects to ${counterpart}`
           : "redirects to www",
     );
-  }
-  if (state.certProvider === "letsencrypt") parts.push("Let's Encrypt");
-  else if (state.certProvider === "cloudflare")
-    parts.push("Cloudflare certificate");
-  else if (state.certProvider === "custom") parts.push("Server certificate");
-  // Mirrors `resolveDomainConfig`'s `manual` gate: with no certificate the
-  // stored override is discarded, so naming it here would be a lie.
-  if (state.certProvider !== "none" && state.manualEntrypoint) {
-    parts.push(state.entrypoint === "web" ? "web (:80)" : "websecure (:443)");
   }
   const path = state.path.trim();
   if (path) parts.push(state.stripPath ? `${path} (stripped)` : path);
@@ -295,11 +288,10 @@ function RoutePreview({
 }
 
 /**
- * A titled group inside the advanced panel — the same fieldset/legend rhythm
- * `LimitGroup` uses in `components/apps/settings/resource-limits-form.tsx`, so
- * "advanced" looks the same everywhere in deplo.
+ * A titled group of fields - the same fieldset/legend rhythm
+ * `LimitGroup` uses in `components/apps/settings/resource-limits-form.tsx`.
  */
-function AdvancedGroup({
+function FieldGroup({
   icon: Icon,
   title,
   children,
@@ -330,6 +322,7 @@ export function DomainConfigFields({
   services = [],
   proxied = false,
   hostname,
+  serverIp,
 }: {
   state: DomainConfigState;
   onChange: (next: DomainConfigState) => void;
@@ -341,6 +334,9 @@ export function DomainConfigFields({
    * `cloudflare`).
    */
   proxied?: boolean;
+  /** The public IPv4 of the server this app runs on, so the Cloudflare note can
+   * name the address the proxied record must point at. */
+  serverIp?: string;
   /** The hostname currently typed in the dialog's Domain field, so the route
    * preview shows the real URL as it is typed. Purely presentational — it never
    * enters `DomainConfigState` nor the mutation payload. */
@@ -386,6 +382,29 @@ export function DomainConfigFields({
 
   return (
     <>
+      {proxied && (
+        <div className="flex items-start gap-3 rounded-md border border-[#f38020]/30 bg-[#f38020]/10 px-3 py-2.5">
+          <CloudflareIcon className="mt-0.5 size-5 shrink-0 text-[#f38020]" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Cloudflare detected</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Cloudflare serves this domain and its HTTPS, so there is nothing
+              else to set up here. Just keep its A record pointed at{" "}
+              {serverIp ? (
+                <span className="inline-flex items-baseline gap-1">
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+                    {serverIp}
+                  </code>
+                  <CopyButton value={serverIp} className="size-5" />
+                </span>
+              ) : (
+                "this app's server"
+              )}{" "}
+              with the proxy on.
+            </p>
+          </div>
+        </div>
+      )}
       {isCompose && (
         <div className="space-y-2">
           {/**
@@ -422,10 +441,10 @@ export function DomainConfigFields({
           info={
             isCompose
               ? "The port the selected container listens on."
-              : "The container port this domain routes to. Defaults to the app's port."
+              : "The port your app listens on inside its container. Defaults to the app's port."
           }
         >
-          Container port
+          Application port
         </FieldLabel>
         <Input
           id={`${idPrefix}-port`}
@@ -441,6 +460,91 @@ export function DomainConfigFields({
           className="[appearance:textfield] font-mono text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
+
+      <FieldGroup icon={Lock} title="HTTPS">
+        <div className="space-y-2">
+          <FieldLabel
+            htmlFor={`${idPrefix}-cert`}
+            info="The source of this domain's TLS certificate. A domain proxied through Cloudflare is set to Cloudflare automatically, since Cloudflare already serves it over HTTPS. Pick Installed on the server when you added the certificate yourself under Settings, Servers. Choosing None serves the domain over plain HTTP with no TLS."
+          >
+            Certificate
+          </FieldLabel>
+          <Select
+            value={state.certProvider}
+            onValueChange={(v) =>
+              // Written as ONE onChange, never two set() calls: a second set() would spread the
+              // stale `state` and drop the first key.
+              onChange({
+                ...state,
+                certProvider: v as CertProvider,
+                manualEntrypoint: v === "none" ? false : state.manualEntrypoint,
+              })
+            }
+          >
+            <SelectTrigger id={`${idPrefix}-cert`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CERT_PROVIDERS.map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <FieldLabel
+            htmlFor={`${idPrefix}-entrypoint`}
+            info={
+              <>
+                The proxy entrypoint this domain binds to —{" "}
+                <code className="font-mono">websecure</code> (:443) serves
+                HTTPS, <code className="font-mono">web</code> (:80) serves plain
+                HTTP. Leave it Automatic and deplo follows the certificate. Pick{" "}
+                <code className="font-mono">web</code> only when something in
+                front already terminates TLS, e.g. Cloudflare in Flexible mode.
+              </>
+            }
+          >
+            Entrypoint
+          </FieldLabel>
+          {/**
+           * One stable control replaces a disabled checkbox, a conditionally-mounted Select
+           * and two muted paragraphs that used to swap in the same slot.
+           */}
+          <Select
+            value={entrypointValue}
+            disabled={noCert}
+            onValueChange={(v) =>
+              v === ENTRYPOINT_AUTO
+                ? onChange({ ...state, manualEntrypoint: false })
+                : onChange({
+                    ...state,
+                    manualEntrypoint: true,
+                    entrypoint: v as DomainEntrypoint,
+                  })
+            }
+          >
+            <SelectTrigger id={`${idPrefix}-entrypoint`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ENTRYPOINT_AUTO}>
+                {noCert
+                  ? "Automatic — HTTP on web (:80)"
+                  : "Automatic — HTTPS on websecure (:443)"}
+              </SelectItem>
+              {ENTRYPOINTS.map((e) => (
+                <SelectItem key={e.value} value={e.value}>
+                  {e.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </FieldGroup>
 
       <RoutePreview hostname={hostname} state={state} isCompose={isCompose} />
 
@@ -466,107 +570,8 @@ export function DomainConfigFields({
           </AccordionTrigger>
 
           <AccordionContent className="space-y-6 pt-2 text-foreground">
-            <AdvancedGroup icon={Lock} title="HTTPS">
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor={`${idPrefix}-cert`}
-                  info="The source of this domain's TLS certificate. A domain proxied through Cloudflare is set to Cloudflare automatically, since Cloudflare already serves it over HTTPS. Pick Installed on the server when you added the certificate yourself under Settings, Servers. Choosing None serves the domain over plain HTTP with no TLS."
-                >
-                  Certificate
-                </FieldLabel>
-                <Select
-                  value={state.certProvider}
-                  onValueChange={(v) =>
-                    // Written as ONE onChange, never two set() calls: a second set() would spread the
-                    // stale `state` and drop the first key.
-                    onChange({
-                      ...state,
-                      certProvider: v as CertProvider,
-                      manualEntrypoint:
-                        v === "none" ? false : state.manualEntrypoint,
-                    })
-                  }
-                >
-                  <SelectTrigger id={`${idPrefix}-cert`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CERT_PROVIDERS.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {proxied && state.certProvider === "cloudflare" && (
-                  // Not field help (that lives in the tooltip): this names a decision DEPLO made,
-                  // said once, next to the dropdown that undoes it.
-                  <p className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <Cloud className="mt-px size-3.5 shrink-0" aria-hidden />
-                    <span>
-                      Selected automatically — this domain is proxied through
-                      Cloudflare, which issues its certificate. Change it only
-                      to give the origin a certificate of its own.
-                    </span>
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor={`${idPrefix}-entrypoint`}
-                  info={
-                    <>
-                      The proxy entrypoint this domain binds to —{" "}
-                      <code className="font-mono">websecure</code> (:443) serves
-                      HTTPS, <code className="font-mono">web</code> (:80) serves
-                      plain HTTP. Leave it Automatic and deplo follows the
-                      certificate. Pick <code className="font-mono">web</code>{" "}
-                      only when something in front already terminates TLS, e.g.
-                      Cloudflare in Flexible mode.
-                    </>
-                  }
-                >
-                  Entrypoint
-                </FieldLabel>
-                {/**
-                 * One stable control replaces a disabled checkbox, a conditionally-mounted Select
-                 * and two muted paragraphs that used to swap in the same slot.
-                 */}
-                <Select
-                  value={entrypointValue}
-                  disabled={noCert}
-                  onValueChange={(v) =>
-                    v === ENTRYPOINT_AUTO
-                      ? onChange({ ...state, manualEntrypoint: false })
-                      : onChange({
-                          ...state,
-                          manualEntrypoint: true,
-                          entrypoint: v as DomainEntrypoint,
-                        })
-                  }
-                >
-                  <SelectTrigger id={`${idPrefix}-entrypoint`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ENTRYPOINT_AUTO}>
-                      {noCert
-                        ? "Automatic — HTTP on web (:80)"
-                        : "Automatic — HTTPS on websecure (:443)"}
-                    </SelectItem>
-                    {ENTRYPOINTS.map((e) => (
-                      <SelectItem key={e.value} value={e.value}>
-                        {e.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </AdvancedGroup>
-
             {showWww && (
-              <AdvancedGroup icon={Signpost} title="Redirect">
+              <FieldGroup icon={Signpost} title="Redirect">
                 <div className="space-y-2">
                   <FieldLabel
                     htmlFor={`${idPrefix}-www`}
@@ -614,10 +619,10 @@ export function DomainConfigFields({
                     </p>
                   )}
                 </div>
-              </AdvancedGroup>
+              </FieldGroup>
             )}
 
-            <AdvancedGroup icon={Route} title="Request routing">
+            <FieldGroup icon={Route} title="Request routing">
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor={`${idPrefix}-path`}
@@ -719,7 +724,7 @@ export function DomainConfigFields({
                   className="font-mono text-sm"
                 />
               </div>
-            </AdvancedGroup>
+            </FieldGroup>
           </AccordionContent>
         </AccordionItem>
       </Accordion>

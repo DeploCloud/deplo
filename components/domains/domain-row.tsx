@@ -222,8 +222,8 @@ export function DomainRow({
         if (trimmedName === domain.name || status === "valid")
           toast.success("Domain updated");
         else if (status === "cloudflare")
-          toast.warning(
-            "Domain updated - proxied through Cloudflare, so deplo can’t confirm it reaches this app; check its origin IP on the row",
+          toast.success(
+            "Domain updated - Cloudflare is proxying it. Make sure its record points at this server.",
           );
         else if (status === "misconfigured")
           toast.warning(
@@ -379,39 +379,6 @@ export function DomainRow({
             )}
           </div>
         )}
-        {proxied && (
-          // The one status deplo cannot settle for the user. Rather than imply a verification
-          // that never happened, say so and hand over the two things only the user can check,
-          // both in the Cloudflare dashboard: the record's origin IP and the SSL/TLS mode.
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-            {serverIp ? (
-              <>
-                <span>
-                  Proxied through Cloudflare, which hides where this domain
-                  really points — deplo can’t confirm it reaches this app. In
-                  Cloudflare, this record’s origin must be
-                </span>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
-                  {serverIp}
-                </code>
-                <CopyButton value={serverIp} className="size-6" />
-                <span>
-                  with SSL/TLS set to{" "}
-                  <span className="font-medium text-foreground">Full</span>.
-                </span>
-              </>
-            ) : (
-              <span>
-                Proxied through Cloudflare, which hides where this domain really
-                points — deplo can’t confirm it reaches this app. In Cloudflare,
-                point this record’s origin at the IP of the server this app runs
-                on, with SSL/TLS set to{" "}
-                <span className="font-medium text-foreground">Full</span>.
-              </span>
-            )}
-          </div>
-        )}
       </TableCell>
       {showContainer && (
         <TableCell className="w-56">
@@ -491,8 +458,8 @@ export function DomainRow({
                     if (status === "valid")
                       toast.success("Domain verified — routing is live");
                     else if (status === "cloudflare")
-                      toast.warning(
-                        "Proxied through Cloudflare — deplo can’t confirm this domain reaches this app; check its origin IP on the row",
+                      toast.success(
+                        "Cloudflare is proxying this domain. Make sure its record points at this server.",
                       );
                     else if (status === "misconfigured")
                       toast.warning(
@@ -605,6 +572,7 @@ export function DomainRow({
                   idPrefix={`edit-${domain.id}`}
                   proxied={proxied}
                   hostname={name}
+                  serverIp={serverIp}
                 />
               </div>
               <DialogFooter>
