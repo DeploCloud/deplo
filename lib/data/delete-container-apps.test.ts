@@ -25,12 +25,6 @@ import { createEnvironment } from "./environments";
 /**
  * The "Delete all apps" option on a folder's / project's delete: which apps it
  * actually takes with it, and what the default delete still keeps.
- *
- * An app is deleted in two beats - stamped `deleting_at` under the caller's
- * gate, then torn down and dropped behind the response - so both halves are
- * asserted: `doomed()` reads the stamp (or the already-dropped row), and each
- * test waits for the rows to actually go, which is also what keeps the seeded
- * server's failing agent calls from running into the next test.
  */
 
 let db: TestDb;

@@ -10,17 +10,9 @@ import {
 import type { VolumeMount } from "../types";
 
 /**
- * The descriptor's volume-name resolution is the load-bearing correctness point
- * of project backup: the agent tars/wipes each name VERBATIM (`-v <name>:/v`), so
- * a wrong name silently backs up nothing — or, on restore, wipes the wrong
- * volume. Two render paths produce two naming schemes:
- *
- *  - single-container (renderCompose): each named volume is pinned to
- *    `deplo-<slug>-<name>` via `hostVolumeName`; host + project mounts are NOT
- *    docker named volumes and must be excluded.
- *  - compose-stack (buildComposeStack): the user's `volumes:` pass through
- *    untouched, so Docker Compose names each `deplo-<slug>_<key>` unless an
- *    explicit `name:` (or `external:`) overrides.
+ * The descriptor's volume-name resolution is the load-bearing correctness point of
+ * project backup: the agent tars/wipes each name VERBATIM (`-v <name>:/v`), so a
+ * wrong name silently backs up nothing — or, on restore, wipes the wrong volume.
  */
 
 const vol = (v: Partial<VolumeMount>): VolumeMount => ({

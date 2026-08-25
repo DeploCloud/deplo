@@ -46,14 +46,8 @@ import {
 
 /**
  * The two axes 0062 added: WHICH teams a token reaches, and how far down inside
- * one it can be narrowed — to a whole project, or to a single app.
- *
- * The rule the whole feature turns on is that breadth and depth are different
- * questions. Holding two whole teams restricts nothing inside either of them;
- * naming a project or an app is what strips that team's team-wide capabilities.
- *
- * Fixture: USER_1 is an owner of TEAM_A and TEAM_B. TEAM_A holds `prc_in` with
- * `prj_in` and `prj_sibling`, plus a top-level `prj_top`. TEAM_B holds `prj_b`.
+ * one it can be narrowed — to a whole project, or to a single app. The rule the
+ * whole feature turns on is that breadth and depth are different questions.
  */
 
 let db: TestDb;
@@ -350,10 +344,6 @@ test("a foreign team can't be put in a scope", async () => {
  * Filing an app into a folder CLEARS its `project_id`, so before folders were in
  * the tree a project scope reached almost nothing people expected it to, and the
  * picker showed nearly every app as "outside a project".
- *
- * Fixture on top of the one above: TEAM_A gains `fld_root` (filed under
- * `prc_in`) with `fld_child` nested inside it, and `fld_loose` at the team top
- * level. One app in each.
  */
 async function seedFolders() {
   await db.insert(foldersTable).values([
@@ -561,13 +551,7 @@ test("a folder in a team you don't belong to can't be put in a scope", async () 
 /* ------------------------------------------------------------------ */
 
 /**
- * A folder is private to its owner and its grantees. The picker draws the tree
- * the scope is ticked in, and the tree is bounded by the AUTHOR's memberships —
- * but membership of the team is not access to every folder in it, so the picker
- * has to ask the per-node question too. It used to list every private folder in
- * the team by name, with the apps inside it; and because the list paths then
- * exempted a narrowed token from the per-app access check, a token ticked onto
- * one read those apps in full.
+ * A folder is private to its owner and its grantees.
  */
 async function seedPrivateFolder(): Promise<void> {
   await db.insert(foldersTable).values({

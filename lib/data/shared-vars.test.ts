@@ -33,8 +33,7 @@ import {
 /**
  * Data-layer tests for the unified shared-variable model (ADR-0010, opt-in per
  * ADR-0012): the three availability scopes + per-app link, ≥1-scope validation,
- * secret masking, team isolation, and the deploy loader — which injects ONLY
- * the vars an app is explicitly linked to (scopes never inject).
+ * secret masking, team isolation, and the deploy loader — which injects ONLY the
  */
 
 let db: TestDb;
@@ -229,10 +228,9 @@ test("a var with neither a mode nor a link is rejected", async () => {
 });
 
 test("an omitted target set means every runtime", async () => {
-  // An App belongs to exactly ONE Environment, so the legacy
-  // production/preview picker is gone from every dialog. A save that
-  // names no target is no longer an error — it reaches every runtime, which is
-  // what the picker defaulted to anyway.
+  // An App belongs to exactly ONE Environment, so the legacy production/preview
+  // picker is gone from every dialog. A save that names no target is no longer an
+  // error — it reaches every runtime, which is what the picker defaulted to anyway.
   await asUser1(() =>
     saveSharedVar({
       key: "NOTARGET",
@@ -248,11 +246,9 @@ test("an omitted target set means every runtime", async () => {
 });
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
-  // The dialogs no longer send targets. A legacy production-only variable must
-  // not silently widen to every runtime on a value edit. (Plain on purpose: a
-  // secret takes no value edit at all — env-secret-immutable.test.ts.)
-  // Linked to app_p so the deploy-loader assertion below has an injecting row
-  // to read (a scope alone no longer injects — ADR-0012).
+  // The dialogs no longer send targets. A legacy production-only variable must not
+  // silently widen to every runtime on a value edit. (Plain on purpose: a secret
+  // takes no value edit at all — env-secret-immutable.test.ts.)
   const id = await asUser1(() =>
     mkVar({
       key: "STRIPE_LIVE_KEY",
@@ -707,9 +703,8 @@ test("a secret is frozen: the mask round-trip can no longer downgrade it", async
     );
 
     // THE hole this test used to assert as correct: flip secret → plain without
-    // touching the prefilled mask, and the row kept its ciphertext while the
-    // label changed — so the very next list decrypted it for anyone holding
-    // `manage_env`.
+    // touching the prefilled mask, and the row kept its ciphertext while the label
+    // changed — so the very next list decrypted it for anyone holding `manage_env`.
     await assert.rejects(
       () => editValueLikeDialog(masked, { type: "plain" }),
       /cannot be edited/i,

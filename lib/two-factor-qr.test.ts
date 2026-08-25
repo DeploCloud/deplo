@@ -9,14 +9,7 @@ import { deploMarkDataUri } from "../components/logo";
 
 /**
  * The enrolment QR carries the Deplo mark in the middle, which means modules are
- * CARVED OUT of a code a phone camera still has to read off a screen. That trade
- * is only safe while the hole stays inside the error-correction budget, and the
- * failure mode if it does not is silent: the SVG renders, looks right, and no
- * authenticator can scan it.
- *
- * So this pins the two numbers that buy the logo — the error-correction level and
- * the fraction of the code the badge covers — instead of trusting that whoever
- * next resizes the logo remembers why "H" was there.
+ * CARVED OUT of a code a phone camera still has to read off a screen.
  */
 
 // The real thing: what `enableTwoFactor` hands back, at full length. A shorter
@@ -79,9 +72,8 @@ test("the excavated centre stays well inside level H's error budget", () => {
 
 test("a lower error-correction level would not survive the same hole", () => {
   // The guard rail for the next person who thinks `level` is cosmetic. Level L
-  // recovers 7%; the badge alone is already a meaningful slice of that, before
-  // any real-world loss. If this ever stops being true, the QR is scanning on
-  // luck rather than on budget.
+  // recovers 7%; the badge alone is already a meaningful slice of that, before any
+  // real-world loss.
   const svg = render("L");
   const modules = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)![1]);
   const logoModules = Math.ceil((LOGO_PX / SIZE) * modules);

@@ -28,14 +28,8 @@ test("artifactExt maps each engine to its dump format", () => {
 });
 
 test("an encrypted artifact is named .age; a plaintext one is unchanged", () => {
-  // The suffix is what tells whoever finds the file on disk that
-  // `age -d -i recovery-key.txt` is the next step. Saying "not encrypted", or
-  // saying nothing, must produce EXACTLY the historical extension — existing
-  // keys are stored on backup_runs and still have to resolve.
-  //
-  // It takes a BOOLEAN rather than the destination kind because the kind stopped
-  // being the answer: a bucket destination is encrypted too now, unless it
-  // predates that, and only its keypair knows which.
+  // The suffix is what tells whoever finds the file on disk that `age -d -i
+  // recovery-key.txt` is the next step.
   assert.equal(artifactExt("app", null, true), "tar.gz.age");
   assert.equal(artifactExt("database", "postgres", true), "dump.gz.age");
   assert.equal(artifactExt("database", "redis", true), "rdb.gz.age");

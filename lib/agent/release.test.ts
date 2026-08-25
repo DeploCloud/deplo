@@ -10,10 +10,7 @@ import {
 /**
  * resolveLatestAgentRelease is the single source for "which agent release a new
  * server installs": it reads the latest GitHub release, parses the checksums.txt
- * asset, and returns a per-arch { url, sha256 } map. These tests stub fetch to
- * pin the contract: a leading `v` is stripped, the checksum comes from the
- * checksums asset (not the API), and an unverifiable/empty release collapses to
- * null so callers degrade gracefully.
+ * asset, and returns a per-arch { url, sha256 } map.
  */
 
 interface FetchStub {
@@ -178,9 +175,7 @@ test("null when an asset has no matching checksum line", async () => {
 /**
  * A stub whose served "latest" can change between calls and that counts how many
  * times the release endpoint was hit — so a test can assert the memo coalesces
- * within the TTL and that refreshAgentRelease() forces a fresh hit that surfaces
- * a newly-published version. `version()` is read at fetch time, so flipping the
- * variable mid-test models a release published while the process was running.
+ * within the TTL and that refreshAgentRelease() forces a fresh hit that surfaces a
  */
 function countingStub(version: () => string) {
   const orig = globalThis.fetch;

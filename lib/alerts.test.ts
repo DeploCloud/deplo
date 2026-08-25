@@ -11,10 +11,7 @@ import {
 import { ALL_ALERTS, type AlertKey } from "./types";
 
 /**
- * The alert catalog's own invariants. Cheap, and they catch the two mistakes
- * that are otherwise invisible until a user opens the page: a key that exists in
- * the union but appears in no category (so it can never be ticked), and a
- * category listing a key that was renamed away.
+ * The alert catalog's own invariants.
  */
 
 test("every alert has a label and a one-line description", () => {

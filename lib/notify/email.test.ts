@@ -7,10 +7,6 @@ import { sendEmail, smtpSecure } from "./email";
 /**
  * The Resend branch, which is one outbound POST and therefore worth pinning: the
  * URL, the bearer header and the body shape are a contract with a third party.
- *
- * The SMTP branch is deliberately not unit-tested — it is a five-line
- * pass-through to nodemailer, and a test of it would only assert that nodemailer
- * was called.
  */
 
 let capture: FetchCapture | null = null;

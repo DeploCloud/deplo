@@ -13,22 +13,7 @@ import { nowIso } from "../ids";
 
 /**
  * Step 0 round-trip GATE (relational-store PLAN §8 Step 0: "the round-trip test
- * passes"). Proves the ONE shared `isoTimestampParser` makes a `nowIso()` write
- * read back as a canonical, lexicographically-sortable `T…Z` string — in BOTH
- * regimes the plan installs it in:
- *
- *   1. pglite (the test backend) via its `parsers` constructor option, and
- *   2. node-postgres (production) via the process-global `pg.types.setTypeParser`
- *      that `lib/db/pg.ts` installs at module load.
- *
- * The GATE finding (2026-06-24) is the reason this lives in TWO places sharing
- * one helper: pglite returns a `timestamptz` as a JS `Date` and node-postgres
- * returns a space-separated `'…+00'` string — both break the 15+ lexicographic
- * `createdAt` sorts. Validating the same exported function in both regimes is
- * what guarantees they can't drift.
- *
- * Like `pglite-spike.test.ts`, this constructs its own PGlite, so it needs no
- * real Postgres and coexists with the SQL-free in-memory suite.
+ * passes").
  */
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;

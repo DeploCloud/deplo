@@ -15,22 +15,8 @@ import { userHasPasskey } from "./passkey-policy";
 
 /**
  * The ceremony, end to end, against a software authenticator that produces real
- * signatures over the server's real challenges.
- *
- * This is the half of the feature nothing else can reach. Every other passkey
- * test seeds a row and asks what deplo does with it; these ask whether a
- * credential can be created and used AT ALL, which is where the configuration
- * lives - `origin`, `rpID`, the challenge cookie's round trip, the
- * `userVerified` guard, the replay counter, and the plugin's view of a
- * hand-written table.
- *
- * The endpoints are driven directly with explicit headers, the way
- * `lib/two-factor.test.ts` drives enrolment: `authHeaders()` reads cookies
- * through `next/headers`, which does not exist under `node --test`, while the
- * endpoints take headers as an argument. What that costs is the ONE thing left
- * uncovered - that `nextCookies()` moves the challenge cookie into Next's cookie
- * store between the two GraphQL round trips - and that mechanism is the same one
- * the session cookie has used since ADR-0014.
+ * signatures over the server's real challenges. This is the half of the feature
+ * nothing else can reach.
  */
 
 let db: TestDb;
@@ -368,10 +354,8 @@ test("the replay counter is written back after every assertion", async () => {
 });
 
 test("an authenticator whose counter went backwards is refused", async () => {
-  // What a CLONED authenticator looks like from the server's side: a valid
-  // signature over a fresh challenge, from a credential whose counter has
-  // already been seen. The stored counter is only worth writing back if
-  // something reads it, and this is the something.
+  // What a CLONED authenticator looks like from the server's side: a valid signature
+  // over a fresh challenge, from a credential whose counter has already been seen.
   const { auth } = await enrol();
   const useOnce = async () => {
     const { options, cookie } = await authenticationOptions();
@@ -524,11 +508,8 @@ test("a second device registers alongside the first", async () => {
 /* ------------------------------------------------------------------ */
 
 test("a row the plugin writes on its own is not usable until deplo stamps it", async () => {
-  // `enrol()` drives the endpoints directly, which is everything the plugin
-  // knows how to do - and it does not know about rpIDs. `rp_id` is written by
-  // `finishPasskeyRegistration`, one statement later, and this asserts that the
-  // coupling is load-bearing rather than decorative: drop that statement and
-  // every freshly registered passkey silently stops counting as a second factor.
+  // `enrol()` drives the endpoints directly, which is everything the plugin knows how
+  // to do - and it does not know about rpIDs.
   await enrol();
   const [row] = await db
     .select({ rpId: passkeyTable.rpId })

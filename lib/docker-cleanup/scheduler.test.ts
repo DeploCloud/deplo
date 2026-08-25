@@ -19,22 +19,7 @@ import { runWithIdentity } from "../auth/request-context";
 /**
  * Scheduler-tick tests for the Docker cleanup loop — the sibling of
  * `lib/backups/scheduler.test.ts`, and shaped like it: these exercise the
- * ORCHESTRATION (due selection, the exclusion list, the per-minute dedup guard, the
- * never-stack-runs check, the cross-process lease) and NOT a real `docker` sweep.
- *
- * The proof that a tick FIRED a server is a cleanup-run row: the seeded servers have
- * no agent, so `executeCleanup` gets as far as the provisioning check and records a
- * `failed` run — which is exactly the "history never lies" path, driven here with no
- * request context at all.
- *
- * Two behaviours here have no counterpart in the backup scheduler and are the reason
- * this file exists rather than a copy of it:
- *   - CATCH-UP: a host overdue by >25h fires even on a minute the cron does not match,
- *   - the instance-wide policy + per-server EXCLUSION list (backups are per-schedule).
- *
- * With no DEPLO_DATABASE_URL the lease takes its in-process path — the single-process
- * `next start` shape the scheduler targets — while the data layer reads the injected
- * pglite client (`__setTestDb`).
+ * ORCHESTRATION (due selection, the exclusion list, the per-minute dedup guard,
  */
 
 let db: TestDb;

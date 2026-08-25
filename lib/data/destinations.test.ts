@@ -45,11 +45,7 @@ import {
 } from "./destinations";
 
 /**
- * Data-layer tests for `s3` against pglite (PLAN Step 5, cut-set (d)). Verifies the
- * newest-first SQL list, the masked DTO + decrypted creds for the executor, team
- * isolation, and that `deleteDestination` removes dependent backup schedules AND run history
- * in ONE transaction (the `destination_id` FK is RESTRICT, so the dependents are
- * deleted explicitly — never cascade-orphaned).
+ * Data-layer tests for `s3` against pglite (PLAN Step 5, cut-set (d)).
  */
 
 let db: TestDb;
@@ -871,10 +867,9 @@ test("destinationRemovalImpact counts what the confirm dialog has to name", asyn
 });
 
 test("an encrypted BUCKET has a recovery key, and an older one honestly has none", async () => {
-  // Encryption without a way to get the key back is the trap the whole design
-  // exists to avoid: artifacts nobody can read, locked by a key that lives only
-  // inside the instance they are meant to survive. Gating this on kind ==
-  // "server" recreated it for every bucket the moment buckets were encrypted.
+  // Encryption without a way to get the key back is the trap the whole design exists
+  // to avoid: artifacts nobody can read, locked by a key that lives only inside the
+  // instance they are meant to survive.
   await asUser1(async () => {
     const bucket = await createDestination({
       name: "encrypted bucket",
@@ -914,10 +909,8 @@ test("an encrypted BUCKET has a recovery key, and an older one honestly has none
 });
 
 test("a server destination's key file says which host and which folder", async () => {
-  // Same reason as the bucket's: the one screen that could have told them the
-  // path is not running any more. An untested destination has no resolved path
-  // yet and must still say something an operator can act on, rather than a bare
-  // host name and a shrug.
+  // Same reason as the bucket's: the one screen that could have told them the path is
+  // not running any more.
   await seedDestination(db, {
     id: "dst_where",
     kind: "server",

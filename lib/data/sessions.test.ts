@@ -14,14 +14,8 @@ import { authRequestHeaders } from "../auth/request-headers";
 import { listMySessions, revokeOtherSessions, revokeSession } from "./sessions";
 
 /**
- * The signed-in-devices list, and the two ways it could leak.
- *
- * The interesting assertions are negative ones. A session row holds `token` —
- * the actual credential inside the cookie, not a hash of it — so a DTO that
- * carries it turns this page into a session-hijacking page. And every revoke is
- * addressed by an id supplied by the client, so a missing `userId` in the WHERE
- * clause would let anyone sign anyone else out. Both are one forgotten line away
- * and neither is visible in the UI when it breaks.
+ * The signed-in-devices list, and the two ways it could leak. The interesting
+ * assertions are negative ones.
  */
 
 let db: TestDb;
@@ -228,10 +222,9 @@ async function signInWith(headers: Headers) {
 }
 
 test("a real sign-in stamps the device onto the session row", async () => {
-  // The regression this guards: `login()` used to hand Better Auth a Headers
-  // object containing ONLY the cookie, so `createSession` stamped userAgent ""
-  // and ipAddress "" on every row. The devices table still rendered — it just
-  // said "Unknown device" for everyone, forever, with nothing reporting a fault.
+  // The regression this guards: `login()` used to hand Better Auth a Headers object
+  // containing ONLY the cookie, so `createSession` stamped userAgent "" and ipAddress
+  // "" on every row.
   const row = await signInWith(
     authRequestHeaders(
       new Headers({
@@ -254,11 +247,7 @@ test("a real sign-in stamps the device onto the session row", async () => {
 });
 
 test("the client address survives a Cloudflare-in-front-of-Traefik chain", async () => {
-  // deplo's real shape. Traefik appends Cloudflare's edge address, so
-  // `x-forwarded-for` arrives with TWO hops — and Better Auth discards a
-  // multi-hop chain outright unless `trustedProxies` is configured, which deplo
-  // cannot know for an operator's topology. `cf-connecting-ip` is single-valued
-  // and is why the address still resolves; it is listed first for that reason.
+  // deplo's real shape.
   const row = await signInWith(
     authRequestHeaders(
       new Headers({

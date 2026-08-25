@@ -5,11 +5,6 @@ import { joinNames, revokeDescription } from "./revoke-copy";
 
 /**
  * What Revoke promises, against what `revokeToken` does.
- *
- * The button deletes the credential everywhere, so the one thing this copy must
- * never do is suggest something survives - and, when the token also works in
- * other teams, it has to name them: that is the blast radius of the click.
- * Pure functions, so pinning it costs nothing.
  */
 
 const A = { id: "team_a", name: "Acme" };

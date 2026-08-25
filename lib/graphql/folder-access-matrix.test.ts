@@ -49,29 +49,9 @@ import {
 import { eq } from "drizzle-orm";
 
 /**
- * The PRIVATE-FOLDER matrix: every field of the public API, driven by a member
- * who holds every team capability there is, against an app inside a folder that
- * is not theirs.
- *
- * This is ADR-0016's central promise stated as a test — "holding a TEAM
- * capability is NOT enough to act on an app inside a folder: you also need that
- * capability ON THE FOLDER" — and it is a promise every app-shaped resolver has
- * to keep individually. `requireAppCapability` folds the team check, the
- * ownership check and the folder gate into one call precisely so that no call
- * site has to remember all three; this file is what notices when one of them
- * reaches for `requireCapability` instead. It found `appTransferInfo`, which
- * disclosed the app's name, its server, its counts and — through `homeLabel` —
- * the name of the private folder itself.
- *
- * The intruder deliberately does NOT hold `manage_team`: that capability makes
- * its holder a folder super-user in its own right, which is the documented
- * design and would mask every other question.
- *
- * Reads are checked against sentinels that exist only inside that app, with a
- * CONTROL run as the folder's owner — a sweep that finds nothing proves nothing
- * until you know the queries return something when they should. Writes are
- * checked on effect, with the fixture rebuilt between mutations so one can't
- * mask the next.
+ * The PRIVATE-FOLDER matrix: every field of the public API, driven by a member who
+ * holds every team capability there is, against an app inside a folder that is not
+ * theirs.
  */
 
 let db: TestDb;

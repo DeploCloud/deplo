@@ -32,11 +32,6 @@ import { AgentUnreachableError } from "../infra/agent-client";
 
 /**
  * The cron scheduler's orchestration, against pglite with a fake agent.
- *
- * These cover the parts that are genuinely hard to get right and impossible to
- * eyeball: the double-fire guard, the overlap rule's dependence on reap running
- * first, the retry ladder across ticks, and the three ways a run can end without
- * the command having failed (`skipped`, `lost`, and a stopped container).
  */
 
 let db: TestDb;

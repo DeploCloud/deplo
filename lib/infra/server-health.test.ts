@@ -12,11 +12,6 @@ import { ContractVersion, type HelloResponse } from "../agent/gen/agent";
 
 /**
  * The health classifier, tested without a socket.
- *
- * This is the whole reason the decision is hoisted out of the dial: there is no
- * mocking seam for `connectAgent` in this repo, so a classification welded to the RPC
- * (the shape `metricsFor` uses) is one that can never be exercised. Every row of the
- * state table in lib/types.ts `ServerStatus` is pinned here.
  */
 
 function hello(over: Partial<HelloResponse> = {}): HelloResponse {
@@ -112,10 +107,9 @@ test("an application-level gRPC error is `error`", () => {
 });
 
 test("the persisted message NEVER leaks the pinned fingerprint or the dial address", () => {
-  // `status_message` is stored and served over GraphQL. checkServerIdentity's raw text
-  // carries our trust anchor; grpc-js UNAVAILABLE details routinely carry `10.x.x.x:9443`.
-  // Neither may survive classification — this is the assertion that keeps the closed
-  // message set closed.
+  // `status_message` is stored and served over GraphQL. checkServerIdentity's raw
+  // text carries our trust anchor; grpc-js UNAVAILABLE details routinely carry
+  // `10.x.x.x:9443`.
   const raw =
     "14 UNAVAILABLE: agent cert fingerprint mismatch: pinned deadbeefcafe, got 0badf00d (10.4.2.9:9443)";
   const messages = [

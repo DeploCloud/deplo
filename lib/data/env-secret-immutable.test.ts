@@ -30,16 +30,6 @@ import { listPreviewEnvVars, setPreviewEnvVar } from "./previews";
 
 /**
  * A SECRET variable is write-only AND immutable, on every env layer.
- *
- * Why immutable and not just "masked": the row's `type` column is the sole
- * authority for whether a DTO decrypts the value, and every upsert used to write
- * that column straight from caller input. Combined with the editor's mask
- * round-trip ("send the dots back and the stored ciphertext is kept"), one
- * `manage_env` call relabelled a secret as plain and the very next read handed
- * over the plaintext — with `reveal_secrets` never consulted.
- *
- * So: create it, delete it, never edit it. `plain` -> `secret` stays open, because
- * hardening is never the thing you gate. Each test below is one door.
  */
 
 let db: TestDb;

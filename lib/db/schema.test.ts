@@ -6,19 +6,8 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "./test-harness";
 
 /**
- * Step 1 schema test (relational-store PLAN §9 Step 1: "a `schema.test.ts`
- * asserts the table set matches the design").
- *
- * It applies the REAL generated migrations (0000…0004) to a fresh pglite via the
- * shared test harness, then reads `information_schema` so the assertions are
- * against the DDL production actually runs — not the Drizzle declarations in
- * isolation. This catches a table/enum/constraint that was declared but never made
- * it into a generated migration (the `db:generate` drift the PLAN §10 guards
- * against), and a stray table a migration created that the design never asked for.
- *
- * Migration 0004 (PLAN Step 7) dropped the legacy `deplo_state` JSONB table and
- * the `store_migration` backfill bookkeeping table; neither is in the expected
- * set below, and the test proves they no longer exist after the journal replays.
+ * Step 1 schema test (relational-store PLAN §9 Step 1: "a `schema.test.ts` asserts
+ * the table set matches the design").
  */
 
 let db: TestDb;
@@ -41,9 +30,6 @@ after(async () => {
  * Better-Auth tables (schema/auth) + the live `scheduler_lease` mutex
  * (schema/scheduler) — the non-control-plane tables that survive. The legacy
  * `deplo_state` JSONB table was dropped in PLAN Step 7 (migration 0004).
- *
- * `user` is absent on purpose: migration 0055 dropped it and remapped Better Auth's
- * `user` model onto the control-plane `users` table (ADR-0014).
  */
 const PRE_EXISTING = [
   "account",
@@ -56,20 +42,12 @@ const PRE_EXISTING = [
   "passkey",
   "scheduler_lease",
   // The OAuth 2.1 provider's four (migration 0101): a registered client, what a
-  // person agreed to give it, and the two opaque credentials it presents. Owned
-  // by @better-auth/oauth-provider the way the four above are owned by Better
-  // Auth — deplo's own half of a connection is a row in `api_tokens`.
+  // person agreed to give it, and the two opaque credentials it presents.
   "oauth_client",
   "oauth_consent",
   "oauth_access_token",
   "oauth_refresh_token",
-  // Three more from the Better Auth 1.7.0 bump (migration 0116). `oauth_resource`
-  // is the RFC 8707 audience list, which used to be a config array
-  // (`validAudiences`) and became rows so a grant can RECORD the audience it was
-  // issued for - the fix for GHSA-p2fr-6hmx-4528. `oauth_client_resource` is
-  // which client may request which of them, and `oauth_client_assertion` is the
-  // `jti` replay cache for `private_key_jwt`, empty on every deplo instance but
-  // required because the adapter resolves a model to `schema[modelName]`.
+  // Three more from the Better Auth 1.7.0 bump (migration 0116).
   "oauth_resource",
   "oauth_client_resource",
   "oauth_client_assertion",
@@ -126,25 +104,20 @@ const CONTROL_PLANE = [
   // instance — singleton holding the instance-owner crown (the tier above
   // instance admin, immutable to every other admin).
   "instance_settings",
-  // import from Dokploy — one run per import plus its report lines, team-scoped
-  // and kept: "what came over from the old platform, and what did not" has to be
-  // answerable after the tab that started it is gone. The API key is never
-  // stored; it rides each call.
+  // import from Dokploy — one run per import plus its report lines, team-scoped and
+  // kept: "what came over from the old platform, and what did not" has to be
+  // answerable after the tab that started it is gone.
   "dokploy_imports",
   "dokploy_import_items",
   // Where a machine of a given Dokploy is actually REACHED, remembered across
-  // attempts. Not on the server row: that row is removed when a migration ends,
-  // and the correction went with it - so every retry re-derived the panel's
-  // hostname, which behind a proxy is not the machine at all.
+  // attempts.
   "dokploy_source_addresses",
   // What a person chose to migrate, and where each Dokploy machine lands. Read
   // by the RUNNER, which finishes the job after the tab that started it is gone.
   "dokploy_run_targets",
   "dokploy_run_servers",
-  // rate limiting - durable fixed-window counters for login, the two-factor
-  // challenge and the register link. Un-scoped by design: a bucket is about an
-  // ATTEMPT, often against a subject that does not exist, so it has no team and
-  // no user FK to cascade from.
+  // rate limiting - durable fixed-window counters for login, the two-factor challenge
+  // and the register link.
   "rate_limits",
   // services
   "apps",
@@ -277,11 +250,7 @@ test("schema: the load-bearing constraints from PLAN §2 are present", async () 
   const checks = new Set(chk.rows.map((x) => x.conname));
   assert.ok(checks.has("backups_target_kind_xor"), "backups XOR check");
   assert.ok(checks.has("cron_jobs_target_kind_xor"), "cron jobs XOR check");
-  // The server ROLE flags are exclusive in the database, not just in the UI. It
-  // has been rewritten once already (two columns to three, in 0111): a migration
-  // that adds a fourth role and forgets to widen it would let a host be two
-  // things at once, and `serverRole` would silently answer with whichever it
-  // checks first.
+  // The server ROLE flags are exclusive in the database, not just in the UI.
   assert.ok(
     checks.has("servers_role_exclusive"),
     "server role exclusivity check",

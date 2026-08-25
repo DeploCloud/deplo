@@ -61,11 +61,9 @@ import {
 } from "./shared-vars";
 
 /**
- * Step 4 app-graph data-layer tests (relational-store PLAN §3 cut-set (c) /
- * §9 Step 4): the deleteApp CASCADE (no orphaned deployments/logs/env/
+ * Step 4 app-graph data-layer tests (relational-store PLAN §3 cut-set (c) / §9
+ * Step 4): the deleteApp CASCADE (no orphaned deployments/logs/env/
  * domains/shared-group attachments), the two-concurrent primary-domain race, the
- * ordering-junction reorder, and the cookie-free summary lookups the SSE
- * generator drives. Seeded relationally via the test-seed helpers.
  */
 
 let db: TestDb;
@@ -387,11 +385,9 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
 });
 
 test("re-saving a secret is refused outright, targets and all", async () => {
-  // This used to be the keep-value contract: the edit dialog prefilled a secret
-  // with the MASK, and re-sending it preserved the stored ciphertext so a
-  // targets-only edit couldn't wipe the value. It also made the type flip free —
-  // send the mask, ask for `plain`, and the next read decrypted it. A secret is
-  // frozen now, so there is nothing left to preserve.
+  // This used to be the keep-value contract: the edit dialog prefilled a secret with
+  // the MASK, and re-sending it preserved the stored ciphertext so a targets-only
+  // edit couldn't wipe the value.
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
@@ -582,11 +578,9 @@ test("ensureExtraDomain is idempotent on the SAME project (re-run does not dupli
 });
 
 test("a template's displaced domain gets an address of its own, not silence", async () => {
-  // garage-s3's web-ui variant with `primary = true` on the WEB UI: the UI takes
-  // the generated main host, so the S3 API — which is the entry that declared
-  // that host — is left asking for a name the primary now owns. It must come out
-  // of creation with an address of its own; dropping it puts a service the
-  // template publishes on no URL at all, silently.
+  // garage-s3's web-ui variant with `primary = true` on the WEB UI: the UI takes the
+  // generated main host, so the S3 API — which is the entry that declared that host —
+  // is left asking for a name the primary now owns.
   const serverIp = "10.0.0.1"; // `beforeEach`'s seedServer(db)
   const main = nipDomain("garage-s3", "bold-otter", serverIp);
   const app = await asUser1(() =>

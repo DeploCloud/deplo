@@ -33,17 +33,6 @@ import { membershipFor, requireInstanceAdmin } from "../membership";
 
 /**
  * What an API token limited to Projects can actually reach.
- *
- * The point of the feature is that "limited to a project" means limited for
- * READS too, not just for writes — so most of this file asserts that an app in
- * another project is simply absent, and that asking for it by id answers exactly
- * what an id that never existed answers. A scope that refuses differently from
- * "not found" is an oracle for which ids exist.
- *
- * Fixture: TEAM_A holds `prc_in` and `prc_out`; `prj_in` lives in the first,
- * `prj_out` in the second, and `prj_top` sits at the team top level with no
- * project at all. The token is scoped to `prc_in` and holds every capability, so
- * anything it cannot reach is the SCOPE talking, never a missing permission.
  */
 
 let db: TestDb;

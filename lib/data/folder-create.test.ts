@@ -10,12 +10,7 @@ import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { createFolder } from "./folders";
 
 /**
- * The `createFolder` nesting contract against pglite. This is the data-layer
- * guarantee behind the Overview "New folder / New subfolder" flow: a folder made
- * while a folder is open must land UNDER it (`parentId`), not at the top level —
- * and an unknown/foreign parent must be rejected rather than stranding a subtree.
- * (The UI wiring that actually threads the open folder through as `parentId` lives
- * in `AddNewMenu`; this locks the contract that wiring depends on.)
+ * The `createFolder` nesting contract against pglite.
  */
 
 let db: TestDb;

@@ -8,10 +8,6 @@ import { uninstallCommand } from "./bootstrap";
  * The uninstaller is the ONLY thing that can remove Deplo's footprint from a host
  * (removal in the dashboard revokes trust and forgets the row - it cannot, and no
  * longer claims to, touch the box; and nothing at all can remove the control
- * plane, which is the panel doing the removing). So the script's safety
- * properties are load-bearing: it must be a dry run by default, it must never
- * delete data without an explicit second flag, it must never uninstall Docker,
- * and the copy served at the legacy /uninstall-agent.sh URL must stay agent-only.
  */
 
 test("the uninstall command is a copy-and-run one-liner that only asks for --yes", () => {

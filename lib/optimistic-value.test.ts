@@ -28,10 +28,8 @@ test("someone else's change retires the override too", () => {
 });
 
 test("a change that leaves the served value untouched keeps its override", () => {
-  // Renaming something to the name it already had: the mutation succeeds and
-  // the refresh brings back the identical value. Keeping the override is
-  // harmless (it agrees with the server) and dropping it on a timer is what
-  // used to repaint the old value for a frame.
+  // Renaming something to the name it already had: the mutation succeeds and the
+  // refresh brings back the identical value.
   const override = { base: "api", value: "api" };
   assert.equal(settleOverride(override, "api"), override);
 });

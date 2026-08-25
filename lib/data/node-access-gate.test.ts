@@ -17,13 +17,8 @@ import type { Capability } from "../types";
 
 /**
  * The gate, end to end: `requireAppCapability` is what makes an override usable,
- * and what keeps it from becoming team-wide.
- *
- * DEV's role gives `view` and nothing else. A folder grant of `manage_env` on
- * Prod must be enough to edit the variables of an app in Prod — that is the
- * feature — and must be enough for NOTHING else: not another app, not the team's
- * shared-variable library, not the aggregate Variables tab beyond the one app.
- * Those are the exact leaks that ruled out widening `membershipFor` instead.
+ * and what keeps it from becoming team-wide. DEV's role gives `view` and nothing
+ * else.
  */
 
 let db: TestDb;

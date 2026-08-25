@@ -5,12 +5,7 @@ import { isStaleBuildError, reloadOnce } from "./stale-build";
 
 /**
  * The error boundaries turn a stale-build error into "reload", and anything else
- * into "Something went wrong". Getting this predicate wrong either leaves the
- * dead end in place (the bug this was written for) or hides a real crash behind
- * a reload loop — so both directions are pinned here.
- *
- * The Turbopack case is the exact string a live tab produced after the build it
- * was loaded from was replaced (verified in a browser, 4 Aug 2026).
+ * into "Something went wrong".
  */
 test("recognises a chunk that the current build no longer has", () => {
   const turbopack = new Error(

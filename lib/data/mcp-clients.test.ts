@@ -20,13 +20,6 @@ import type { Capability } from "../types";
 
 /**
  * The consent decision.
- *
- * This is the only place in deplo where an authorization decision CREATES a
- * credential, which makes it the one function where getting a gate wrong hands
- * a third party standing access rather than merely letting a request through.
- *
- * Everything here drives `mintMcpConnection` — the gates plus the mint, split
- * from the OAuth handshake precisely so it can be exercised without a browser.
  */
 
 let db: TestDb;
@@ -73,9 +66,7 @@ beforeEach(async () => {
   });
   await registerClientRow(CLIENT, "Claude");
   // The mint requires a FRESH approval on file — the row `POST /oauth2/consent`
-  // writes after verifying the provider's signature. Both people who approve in
-  // this file therefore start with one; the tests that assert the requirement
-  // delete it first.
+  // writes after verifying the provider's signature.
   await consentRow(CLIENT, OWNER);
   await consentRow(CLIENT, MEMBER);
 });
@@ -89,13 +80,8 @@ async function registerClientRow(clientId: string, name: string) {
 }
 
 /**
- * Seeded the way the APPLICATION writes it — a JS `Date` through the driver —
- * and never with SQL `now()`. These are Better Auth's naive `timestamp` columns:
- * a driver-written value round-trips as the same instant, a `now()`-written one
- * comes back shifted by the server's offset (an hour, on the box this was
- * measured on). Seeding with `now()` makes a fresh consent look stale and the
- * test disagree with production for a reason that has nothing to do with the
- * code under test.
+ * Seeded the way the APPLICATION writes it — a JS `Date` through the driver — and
+ * never with SQL `now()`.
  */
 async function consentRow(clientId: string, userId: string, ageMs = 0) {
   await db.insert(oauthConsent).values({
@@ -204,15 +190,7 @@ test("the minted capabilities are the ones the form submitted, never the client'
 });
 
 test("a connection is scoped to EXACTLY the active team, whoever the approver is", async () => {
-  // The bug this pins reached production. A connection carries no
-  // `X-Deplo-Team` — one endpoint serves one team (ADR-0021 §3) — so a scope
-  // naming several teams has no way to say which one a request acts in, and
-  // `authenticateToken` falls back to the FIRST reachable team: the oldest one
-  // the approver belongs to. An agent then works in a team nobody chose. It
-  // created an app in the wrong one before this was fixed.
-  //
-  // OWNER is a member of both teams here, so nothing but this rule keeps the
-  // second one out.
+  // The bug this pins reached production.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
      values ('mem_owner_b2', $1, $2, 'owner', '2025-01-01T00:00:00.000Z')`,
@@ -244,10 +222,8 @@ test("a connection is scoped to EXACTLY the active team, whoever the approver is
 });
 
 test("no approval on file mints nothing", async () => {
-  // The hole this closes: the mint used to answer to a `client_id` and a session
-  // and nothing else, so a link to `/oauth/consent?client_id=<mine>` was enough
-  // to make somebody with the capabilities click Authorize and mint a live API
-  // token bound to a client they had never heard of.
+  // The hole this closes: the mint used to answer to a `client_id` and a session and
+  // nothing else, so a link to `/oauth/consent?
   await pg.query(`delete from oauth_consent`);
   await assert.rejects(
     as(OWNER, () =>
@@ -284,10 +260,7 @@ test("one person's approval does not let another mint", async () => {
 });
 
 test("a team that drifted between the screen and the submit is refused", async () => {
-  // The screen says which team it showed; the server still decides. They only
-  // ever disagree when something moved underneath — another tab, a half-finished
-  // switch — and connecting a third party to a team nobody read is exactly the
-  // failure this whole area already had once.
+  // The screen says which team it showed; the server still decides.
   await assert.rejects(
     as(OWNER, () =>
       mintMcpConnection({
@@ -559,10 +532,7 @@ test("your own connection follows you into your other teams", async () => {
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
   await grantOwnerIn(TEAM_B);
-  // Settings → MCP is a TEAM screen and stays team-scoped. Settings → API tokens
-  // is the person's OWN list, and losing sight of the credential your AI client
-  // is using, with no team switcher on that page, is how it gets abandoned
-  // rather than revoked.
+  // Settings → MCP is a TEAM screen and stays team-scoped.
   assert.deepEqual(await as(OWNER, () => listMcpConnections(), TEAM_B), []);
   assert.deepEqual(
     (await as(OWNER, () => listTokens(), TEAM_B)).map((t) => t.id),
@@ -767,10 +737,7 @@ test("the connection appears in the API tokens list, marked", async () => {
 
 /**
  * The gap these cover: before `mcp_last_used_at`, `listMcpConnections` joined
- * `oauth_client` and so could only ever see web connectors. A `deplo_` token
- * pasted into Claude Code drove the whole team through `/api/mcp` and appeared
- * on this screen nowhere, which made "who let an agent in, and how do I take it
- * away" answerable for half the clients and unanswerable for the other half.
+ * `oauth_client` and so could only ever see web connectors.
  */
 
 /** Mint an ordinary bearer token, the way the connect wizard does. */
@@ -857,11 +824,8 @@ test("mcpTokenConnected answers only for a token that reaches this team", async 
   await markSpokeMcp(id);
   assert.equal(await as(OWNER, () => mcpTokenConnected(id)), true);
 
-  // A token that does NOT reach the reading team answers FALSE, not an error:
-  // an error would confirm the row exists to somebody with no business knowing
-  // it does. MEMBER belongs only to TEAM_A, so a token they minted reaches only
-  // TEAM_A — OWNER's own unscoped token would legitimately reach both teams
-  // once they joined the second, which is a different (and correct) answer.
+  // A token that does NOT reach the reading team answers FALSE, not an error: an
+  // error would confirm the row exists to somebody with no business knowing it does.
   const theirs = await bearer("Their Cursor", MEMBER);
   await markSpokeMcp(theirs);
   await grantOwnerIn(TEAM_B);

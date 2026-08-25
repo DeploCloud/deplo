@@ -52,21 +52,9 @@ import {
 import { appInTeam } from "./app-graph-load";
 
 /**
- * Does a permission actually PERMIT anything?
- *
- * The role editor, the token editor and the deploy hook all present the same
- * forty capabilities as if each one were a switch. This file is the proof that
- * they are: every claim the UI makes about a capability is asserted here against
- * the real data layer, on the three ways a caller can arrive —
- *
- *  1. a MEMBER acting over a session (their role's set),
- *  2. an API TOKEN acting as its creator (its own set, clamped to theirs),
- *  3. a DEPLOY HOOK, which is a bearer token wearing a URL.
- *
- * The recurring bug class it exists to catch is a capability that is offered but
- * never consulted — a checkbox that changes nothing. {@link
- * "every capability is enforced in the data layer"} is the static backstop for
- * exactly that, and everything else here is the behavioural half.
+ * Does a permission actually PERMIT anything? The role editor, the token editor
+ * and the deploy hook all present the same forty capabilities as if each one were
+ * a switch.
  */
 
 let db: TestDb;

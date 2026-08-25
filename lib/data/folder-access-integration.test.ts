@@ -25,18 +25,8 @@ import {
 import { listFolders } from "./folders";
 
 /**
- * End-to-end authorization tests for the per-folder access model against pglite
- * — the DB-backed twin of the pure-math unit tests in folder-access.test.ts.
- * These prove the load-bearing rule the whole feature exists for: holding a TEAM
- * capability is NOT enough to act on a project inside a folder — you also need
- * that capability ON THE FOLDER (owner, grant, or super-user). Top-level apps
- * stay team-only.
- *
- * Cast of users (all in TEAM_A):
- *  - OWNER   — team owner (all caps) + folder owner. Super-user via manage_team.
- *  - MEMBER  — full member caps (deploy/domains/env/files) but NO folder access.
- *  - GRANTEE — same member caps; granted `deploy` on the folder by the owner.
- *  - INFRA   — a custom member holding manage_infra but no folder access.
+ * End-to-end authorization tests for the per-folder access model against pglite —
+ * the DB-backed twin of the pure-math unit tests in folder-access.test.ts.
  */
 
 let db: TestDb;
@@ -241,9 +231,8 @@ test("a grantee with a folder grant can act; without it they can't", async () =>
 
 test("a grant EXCEEDS the grantee's team caps and holds (ADR-0016)", async () => {
   // GRANTEE has no team `manage_backups`. Granting it on the folder is exactly how
-  // you hand someone one corner of the fleet without widening their role, so it
-  // must survive — that is the invariant ADR-0016 reversed. The granter's own
-  // bound is what still keeps it safe, and it is asserted below.
+  // you hand someone one corner of the fleet without widening their role, so it must
+  // survive — that is the invariant ADR-0016 reversed.
   await as(OWNER, () =>
     setFolderGrant(FLD, GRANTEE, ["deploy_apps", "manage_backups"]),
   );
@@ -263,9 +252,7 @@ test("a grant EXCEEDS the grantee's team caps and holds (ADR-0016)", async () =>
 
 test("a grant can't exceed the GRANTER, and can't name a team-wide capability", async () => {
   // The granter bound is the one that survived: OWNER can only hand out what they
-  // themselves hold on this folder. `manage_members` is team-wide by nature and is
-  // absent from NODE_GRANTABLE_CAPABILITIES, so a node can never become a route
-  // back to team administration however it is asked for.
+  // themselves hold on this folder.
   await as(OWNER, () =>
     setFolderGrant(FLD, GRANTEE, ["manage_members", "deploy_apps"]),
   );

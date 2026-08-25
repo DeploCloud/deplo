@@ -30,19 +30,8 @@ import {
 import { eq } from "drizzle-orm";
 
 /**
- * Profile pictures, and the four things that would hurt if they slipped.
- *
- *  1. **No DTO ever carries an email.** `avatarUrl` is computed server-side
- *     precisely so the address can be hashed and dropped; a query that starts
- *     selecting it into the DTO would leak a whole team's addresses to every
- *     member. (`global-env.test.ts` pins the author DTO's exact key set for the
- *     same reason — this pins the member list.)
- *  2. The instance-wide Gravatar switch is REAL: off must emit no address
- *     anywhere, not merely hide it in one component.
- *  3. A team's picture is `manage_team`, and team-scoped — a cross-team id must
- *     hit zero rows rather than repaint somebody else's team.
- *  4. The switcher order is PERSONAL: one person dragging must not move anyone
- *     else's list.
+ * Profile pictures, and the four things that would hurt if they slipped. 1. **No
+ * DTO ever carries an email.
  */
 
 let db: TestDb;

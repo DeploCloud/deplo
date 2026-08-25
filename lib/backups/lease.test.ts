@@ -11,10 +11,8 @@ import {
 } from "./lease";
 
 /**
- * The scheduler lease is the cross-process mutex that keeps a due backup firing
- * AT MOST ONCE (Step 6). `canAcquire` is the pure CAS rule the Postgres SQL also
- * encodes; the in-process path (no DEPLO_DATABASE_URL in the test env) exercises
- * the dev fallback used by single-process `next start`.
+ * The scheduler lease is the cross-process mutex that keeps a due backup firing AT
+ * MOST ONCE (Step 6).
  */
 
 const NOW = new Date("2026-06-23T12:00:00Z");

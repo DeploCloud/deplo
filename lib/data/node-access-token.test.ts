@@ -16,12 +16,6 @@ import type { Capability } from "../types";
 
 /**
  * The API-token intersection at the NODE level (ADR-0016 §8).
- *
- * A node grant REPLACES the membership capability set, so it never passes through
- * the clamp `membershipFor` applies — `lib/data/node-access.ts` has to apply the
- * same one itself. Without that single line a CI token holding only `deploy_apps`
- * would silently inherit its creator's `manage_env` grant on a folder, which is
- * the exact impersonation ADR-0015 removed. This file is what keeps it honest.
  */
 
 let db: TestDb;

@@ -37,11 +37,8 @@ import { recordActivity, listActivity } from "./activity";
 
 /**
  * Data-layer tests for the infra / integrations cut-set (e) against pglite
- * (relational-store PLAN Step 6): `servers`, `github_apps`(+`github_installation`),
- * `activities`. Verifies the relational reads/writes, the github installation
- * upsert idempotency + cross-tenant guard + app-delete cascade, the
- * `markServerSeen` best-effort heartbeat (incl. the unprovisioned-server guard),
- * and the activity `seq`-ordered list + relational team resolution.
+ * (relational-store PLAN Step 6): `servers`,
+ * `github_apps`(+`github_installation`), `activities`.
  */
 
 let db: TestDb;

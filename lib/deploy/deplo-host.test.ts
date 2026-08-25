@@ -4,15 +4,9 @@ import assert from "node:assert/strict";
 import { deploHostSelfAddresses, isDeploHostServer } from "./domains";
 
 /**
- * `isDeploHostServer` is the DISPLAY-only classifier that tells the one host running
- * Deplo itself ("agent 0") apart from the pure deploy-target remotes on the Servers
- * page. It never gates anything — a wrong answer only mis-badges a card — so the bar
- * is: match the control-plane host when a self-signal names its address, and NEVER
- * mis-tag a remote as the Deplo host.
- *
- * The self-signals come from the environment, so each case sets/clears the two env
- * vars it cares about and restores them, keeping the NIC-derived addresses (which we
- * can't control in a test) out of the way by using addresses no NIC would carry.
+ * `isDeploHostServer` is the DISPLAY-only classifier that tells the one host
+ * running Deplo itself ("agent 0") apart from the pure deploy-target remotes on
+ * the Servers page.
  */
 
 function withEnv(

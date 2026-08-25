@@ -5,9 +5,7 @@ import { parseCron, cronMatches, nextCronRun } from "./cron";
 
 /**
  * The cron matcher is the scheduler's "is this due now?" oracle (Step 6). It is
- * pure and minute-precision UTC, so it tests against fixed Dates. Bad expressions
- * must degrade to "never matches" — never throw — so one malformed schedule can't
- * crash the tick.
+ * pure and minute-precision UTC, so it tests against fixed Dates.
  */
 
 const at = (iso: string) => new Date(iso);

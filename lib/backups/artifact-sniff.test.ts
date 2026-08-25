@@ -7,12 +7,7 @@ import { looksEncrypted, looksGzip } from "./artifact-format";
 
 /**
  * The sniffer is the last thing standing between an uploaded file and an agent
- * that stops the stack, wipes every volume and untars whatever arrives. So the
- * cases that matter here are the destructive mix-ups: the wrong kind of
- * artifact, the wrong key, and a file that is not an artifact at all.
- *
- * Everything is built in memory - a tar-shaped buffer is one with `ustar` at
- * offset 257, which is exactly what the real check reads.
+ * that stops the stack, wipes every volume and untars whatever arrives.
  */
 
 /** A buffer that IS a tar as far as the head check is concerned. */

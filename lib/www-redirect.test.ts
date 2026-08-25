@@ -4,10 +4,7 @@ import assert from "node:assert/strict";
 import { wwwCounterpart, deriveWwwRedirect } from "./www-redirect";
 
 /**
- * The `www` pair rules. Both the data layer (which writes the second domain row)
- * and the domain dialogs (which spell the two hostnames out in their option
- * labels) read them from here, so the option a user picks and the row the server
- * writes can never disagree.
+ * The `www` pair rules.
  */
 
 /* ------------------------------------------------------------------ */

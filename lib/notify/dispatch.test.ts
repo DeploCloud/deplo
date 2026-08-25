@@ -23,14 +23,9 @@ import { dispatchAlertNow } from "./dispatch";
 import type { AlertKey, NotificationChannel } from "../types";
 
 /**
- * The dispatcher end to end against pglite: settings in the database, real
- * channel senders, one stubbed `fetch`.
- *
- * The first test is the regression net for the whole feature — it pins the exact
- * body each channel puts on the wire. Everything below it is about what must NOT
- * go out: an alert nobody subscribed to, a channel that is off, another team's
- * endpoints, and a path that leaked as a bare string because the panel URL was
- * unknown.
+ * The dispatcher end to end against pglite: settings in the database, real channel
+ * senders, one stubbed `fetch`. The first test is the regression net for the whole
+ * feature — it pins the exact body each channel puts on the wire.
  */
 
 let db: TestDb;
@@ -65,10 +60,6 @@ afterEach(() => {
 /**
  * One configured channel per kind that POSTs, so a single alert produces nine
  * comparable calls, each subscribed to the same list.
- *
- * Bare hostnames: they never resolve, so the outbound guard passes them through
- * and the stubbed fetch is what answers. Pushover skips the guard entirely
- * (fixed host, credentials in the body), which is what keeps this hermetic.
  */
 async function seedChannels(alerts: AlertKey[]): Promise<void> {
   const kinds: [NotificationChannel, Partial<Record<string, unknown>>][] = [

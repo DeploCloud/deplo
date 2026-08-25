@@ -126,11 +126,9 @@ test("the legacy split preserves access: the old eight expand, nothing is orphan
     [],
     "a capability no old name expands to — the migration would under-grant it",
   );
-  // The retired names are the only ones that still expand as input: the three
-  // the split dropped, plus `manage_s3`, which was RENAMED to
+  // The retired names are the only ones that still expand as input: the three the
+  // split dropped, plus `manage_s3`, which was RENAMED to
   // `manage_backup_destinations` when a destination stopped necessarily being a
-  // bucket. Renames and splits both land here — an old name a client still sends
-  // has to keep meaning what it meant.
   assert.deepEqual(RETIRED_CAPABILITY_NAMES.sort(), [
     "deploy",
     "manage_files",

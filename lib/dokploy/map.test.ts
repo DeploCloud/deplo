@@ -36,10 +36,7 @@ import type { DokployApplication, DokployDatabase } from "./client";
 import { MAX_LOGO_STRING_LEN } from "../apps/logo-shared";
 
 /**
- * The pure half of the Dokploy import. Every case here is a shape a real Dokploy
- * row takes; the assertions are about what reaches deplo and about what ends up
- * in `notes`, because a note is the only thing standing between a config that
- * could not come across and a config that silently vanished.
+ * The pure half of the Dokploy import.
  */
 
 /** A minimal application row; each test overrides what it cares about. */
@@ -744,9 +741,8 @@ test("mapMounts splits the three Dokploy kinds into deplo's two writers", () => 
 });
 
 // Dokploy writes an APPLICATION's file mount with filePath NULL: there is no
-// compose file to put a bind in, so the container path is the whole address of
-// the file. Requiring filePath dropped the file AND its content - measured on a
-// real instance, on a static site whose only content was the mounted index.html.
+// compose file to put a bind in, so the container path is the whole address of the
+// file.
 test("mapMounts imports an application's file mount, which has no filePath", () => {
   const { value, notes } = mapMounts(
     [
@@ -1172,10 +1168,9 @@ test("portNotes explains why published ports do not come across", () => {
   assert.deepEqual(portNotes(app()), []);
 });
 
-// A platform someone is leaving is usually STOPPED, and Dokploy stops a service
-// by scaling its swarm service to 0 replicas: no container to inspect, while the
-// volume sits untouched on the host. Reading what Dokploy declares is the only
-// way that service's data moves at all.
+// A platform someone is leaving is usually STOPPED, and Dokploy stops a service by
+// scaling its swarm service to 0 replicas: no container to inspect, while the
+// volume sits untouched on the host.
 test("declaredSourceVolumes reads a stopped service's volumes from its mounts", () => {
   const out = declaredSourceVolumes({
     kind: "postgres",
@@ -1225,11 +1220,8 @@ test("declaredSourceVolumes has nothing to say about a service with no volumes",
 });
 
 // A Postgres 18 container on Dokploy reports TWO volumes: its data volume at
-// /var/lib/postgresql/<major>/docker, and the anonymous one Docker creates for
-// the image's own `VOLUME /var/lib/postgresql`, which the first is mounted
-// inside of. Counting both made the source look like it had two data volumes, so
-// pairVolumes' single-data rule (one per side) never fired and the imported
-// database stayed empty.
+// /var/lib/postgresql/<major>/docker, and the anonymous one Docker creates for the
+// image's own `VOLUME /var/lib/postgresql`, which the first is mounted inside of.
 test("sourceVolumesFrom drops the image's own parent mount", () => {
   const out = sourceVolumesFrom({
     Mounts: [
@@ -1274,11 +1266,9 @@ test("pairVolumes stays quiet about an unmatched anonymous volume", () => {
   assert.deepEqual(notes, []);
 });
 
-// mysql/mariadb carry two credentials on Dokploy and deplo models one, using it
-// for BOTH the connection string and its own root-only operations (the backup
-// dump, the console, rotation). A copied volume keeps the source's users, so the
-// credential that has to come across is root's - otherwise every backup of an
-// imported mysql fails with "access denied" long after the import looked fine.
+// mysql/mariadb carry two credentials on Dokploy and deplo models one, using it for
+// BOTH the connection string and its own root-only operations (the backup dump, the
+// console, rotation).
 test("mapDatabase imports mysql as root, because that is who Deplo acts as", () => {
   const { value, notes } = mapDatabase(
     "mysql",
@@ -1322,10 +1312,7 @@ test("mapDatabase keeps the application user for engines with a single credentia
 
 /**
  * `../files/x` is how Dokploy spells "a file next to this stack", and it appears
- * in more than one place. Only `services[].volumes` was rewritten, so an
- * `env_file`, a `secrets: file:`, a `configs: file:` or a `build.context` came
- * across still climbing out of Deplo's per-stack directory - pointing at nothing,
- * which `docker compose up` refuses outright.
+ * in more than one place.
  */
 test("adaptComposeForDeplo rewrites ../files everywhere a compose names a file", () => {
   const { compose, changes } = adaptComposeForDeplo(`services:
@@ -1395,11 +1382,8 @@ test("mapDatabase still asks for a MULTI-LINE start command by hand", () => {
 });
 
 /**
- * Every platform writes a service's variables into a file next to the compose,
- * and they disagree on its name. Deplo's agent writes `.env` in the stack's own
- * directory, so a stack that says `env_file: stack.env` looks for a file nobody
- * creates - and `docker compose up` refuses the WHOLE project over it, which is
- * how a real Paperless stack failed to come up.
+ * Every platform writes a service's variables into a file next to the compose, and
+ * they disagree on its name.
  */
 test("retargetPlatformEnvFiles points a foreign env file at Deplo's own", () => {
   const { compose, changes } = retargetPlatformEnvFiles(

@@ -24,11 +24,9 @@ function build(overrides: Partial<BuildConfig> = {}): BuildConfig {
 }
 
 /**
- * Build-time env parity: the generated Dockerfile must declare each resolved
- * env var as `ARG KEY` + `ENV KEY=$KEY` BEFORE the install/build commands, so
- * build-time-inlined config (NEXT_PUBLIC_* et al.) exists while `npm run
- * build` runs. Only NAMES are rendered — the agent supplies values as build
- * args; a value must never be baked into the Dockerfile text.
+ * Build-time env parity: the generated Dockerfile must declare each resolved env
+ * var as `ARG KEY` + `ENV KEY=$KEY` BEFORE the install/build commands, so
+ * build-time-inlined config (NEXT_PUBLIC_* et al.)
  */
 test("generateDockerfile declares each env key as ARG+ENV before the build steps", () => {
   const df = generateDockerfile(build(), ["NEXT_PUBLIC_API", "DATABASE_URL"]);
@@ -63,10 +61,9 @@ test("dockerfileEnvKeys drops non-identifier names, dedupes and sorts", () => {
 });
 
 /**
- * Layer-cache discipline: on the default path the dependency manifests are
- * copied and installed BEFORE the source (`COPY . .`), so a code-only push
- * reuses the cached install layer instead of reinstalling from scratch — the
- * fix for builds that were a cold `npm install` on every deploy.
+ * Layer-cache discipline: on the default path the dependency manifests are copied
+ * and installed BEFORE the source (`COPY . .`), so a code-only push reuses the
+ * cached install layer instead of reinstalling from scratch — the fix for builds
  */
 test("default path installs from manifests BEFORE copying the source", () => {
   const df = generateDockerfile(build({ installCommand: "" }));

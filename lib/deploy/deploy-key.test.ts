@@ -13,10 +13,9 @@ import {
 } from "./deploy-key";
 
 /**
- * The deploy-key scheme is the load-bearing contract of ADR-0008 Phase 3b:
- * the default environment MUST keep the bare slug (so live stacks are untouched),
- * and non-default environments MUST be collision-proof against every other
- * app's bare key.
+ * The deploy-key scheme is the load-bearing contract of ADR-0008 Phase 3b: the
+ * default environment MUST keep the bare slug (so live stacks are untouched), and
+ * non-default environments MUST be collision-proof against every other app's bare
  */
 
 test("the default environment keeps the bare service slug (zero churn)", () => {

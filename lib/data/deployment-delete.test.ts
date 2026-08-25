@@ -26,10 +26,7 @@ import {
 import { deleteDeployments, deleteAllDeployments } from "./deployments";
 
 /**
- * `deleteDeployments` / `deleteAllDeployments` against pglite. The contract behind
- * the deployments table's multi-select delete: only FINISHED deployments are
- * removed (an in-progress one must be canceled first), the delete is team-scoped,
- * and the FKs do the cleanup — logs cascade, a `latest_deployment_id` pointer NULLs.
+ * `deleteDeployments` / `deleteAllDeployments` against pglite.
  */
 
 let db: TestDb;

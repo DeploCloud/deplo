@@ -39,17 +39,6 @@ import type { Capability } from "../types";
 
 /**
  * The MCP endpoint as a resource server.
- *
- * Two credential shapes reach one route, and the entire claim of the OAuth work
- * is that they arrive at the SAME identity: a `deplo_` token someone pasted into
- * a terminal, and an OAuth access token a web AI client was issued. If those
- * ever diverge there are two authorization paths, which ADR-0021 §2 forbids and
- * which nothing else in the suite would notice — `lib/mcp/protocol.test.ts`
- * starts from a hand-built principal, so everything between the HTTP request and
- * that principal was untested before this file.
- *
- * The first section is the regression net: it passes on the pre-OAuth code and
- * is what says "we did not break deplo".
  */
 
 let db: TestDb;
@@ -203,11 +192,7 @@ async function connect(
 
 test("register → sign in → authorize → mint → consent → exchange → a tool answers", async () => {
   // The test that was missing, and the reason a broken flow shipped twice: every
-  // other test here exercises ONE seam. This drives the sequence the browser
-  // actually performs, in the order it performs it — deplo mints the credential
-  // through the data layer first, then the PAGE posts the consent over HTTP
-  // (which is the only way that endpoint works), then the client redeems its
-  // code and calls a tool.
+  // other test here exercises ONE seam.
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);
@@ -263,10 +248,7 @@ test("register → sign in → authorize → mint → consent → exchange → a
 });
 
 test("a refreshed access token keeps working, and the spent refresh token dies", async () => {
-  // An access token lives an hour. EVERY connection depends on this path, and
-  // nothing exercised it: if a refreshed token did not resolve, every agent
-  // would work for an hour and then quietly go dead, which is the kind of bug
-  // that gets blamed on the AI client.
+  // An access token lives an hour.
   const conn = await connect(["view"]);
   assert.equal((await mcp(conn.accessToken)).status, 200);
   assert.ok(conn.refreshToken, "the flow should have issued a refresh token");
@@ -286,11 +268,8 @@ test("a refreshed access token keeps working, and the spent refresh token dies",
   ).rows as { id: string }[];
   assert.equal(rows.length, 1);
 
-  // The REFRESH token rotates and the spent one is dead — that is the property
-  // that matters, and the one a stolen refresh token would otherwise defeat.
-  // The previous ACCESS token deliberately lives out its hour: refreshing is not
-  // a revocation event, and a real revocation deletes the `api_tokens` row,
-  // which kills every access token for the connection at once (asserted above).
+  // The REFRESH token rotates and the spent one is dead — that is the property that
+  // matters, and the one a stolen refresh token would otherwise defeat.
   assert.notEqual(again.body.refresh_token, conn.refreshToken);
   const replayed = await refresh(conn.refreshToken!, conn.clientId, RESOURCE);
   assert.ok(!replayed.body.access_token, "a spent refresh token was reusable");
@@ -340,10 +319,8 @@ test("the same connection authenticates on the GraphQL API, with the same clamp"
 });
 
 test("an unauthenticated authorize sends the signed query to the login page", async () => {
-  // The login page resumes the flow by re-running authorize, and it recognises
-  // that state by `client_id` + `sig` being on ITS url. If the provider ever
-  // stopped putting them there, a first-time connect would sign in and land on
-  // the dashboard, with the AI client waiting forever.
+  // The login page resumes the flow by re-running authorize, and it recognises that
+  // state by `client_id` + `sig` being on ITS url.
   const reg = await registerClient();
   const res = await authorize("", {
     client_id: String(reg.body.client_id),
@@ -378,10 +355,8 @@ test("a deplo_ token still reaches its tools and resolves as its creator", async
 });
 
 test("a deplo_ token without the capability cannot reach the tool", async () => {
-  // The tool list is filtered per token, so a capability it does not hold makes
-  // the tool unreachable rather than merely refused. The authoritative gate is
-  // still `requireCapability` in lib/data — this asserts the cosmetic filter has
-  // not quietly started exposing everything.
+  // The tool list is filtered per token, so a capability it does not hold makes the
+  // tool unreachable rather than merely refused.
   const { raw } = await mintToken(["view"]);
   const res = await mcp(raw, { tool: "delete_app" });
   assert.ok(res.body.error, JSON.stringify(res.body));
@@ -404,9 +379,7 @@ test("the team kill switch refuses with the sentence that names the setting", as
 
 /**
  * `mcp_last_used_at` is what makes a `deplo_` token visible on Settings → MCP
- * Server at all, and what the connect wizard's last step waits on. It is
- * deliberately NOT `last_used_at`, which rises on GraphQL and the deploy hook
- * too and so cannot tell an AI agent from a nightly CI job.
+ * Server at all, and what the connect wizard's last step waits on.
  */
 
 /** The write is fire-and-forget, so poll rather than assume it landed. */
@@ -672,9 +645,7 @@ test("X-Deplo-Team cannot move an OAuth connection to a team it was not granted"
 test("a connection whose scope names two teams still resolves in the one it was approved for", async () => {
   // The repair for grants minted before the mint was fixed. Without a hint the
   // fallback is `reachable[0]` — the OLDEST team the approver belongs to — so a
-  // connection approved in TEAM_A would act in whichever team happens to sort
-  // first. TEAM_B is seeded older here precisely so the wrong answer wins if
-  // the hint is ever dropped.
+  // connection approved in TEAM_A would act in whichever team happens to sort first.
   const conn = await connect(["view"]);
   await pg.query(`update teams set created_at = $1 where id = $2`, [
     "2020-01-01T00:00:00.000Z",
@@ -732,10 +703,7 @@ test("a deplo_ token still honours X-Deplo-Team", async () => {
 test("a tool that runs outside GraphQL resolves the same identity", async () => {
   // `app_logs` and `database_logs` are the only tools that are not a GraphQL
   // document, so they are the only two that do not get `runGraphql`'s
-  // `runWithIdentity` for free — and the SDK handler runs OUTSIDE the scope
-  // this route opened. Without the wrapper they resolved no team at all and
-  // every log read over MCP answered "No active team", which nothing noticed
-  // because these two tools legitimately fail late for a dozen other reasons.
+  // `runWithIdentity` for free — and the SDK handler runs OUTSIDE the scope this
   const conn = await connect(["view", "view_logs"]);
   const res = await mcp(conn.accessToken, {
     tool: "app_logs",

@@ -6,10 +6,9 @@ import { PROVIDERS, providerFor, tokenHelpUrl } from "./providers";
 import { shouldAutoDeploy } from "../deploy/git-webhook";
 
 /**
- * The two things a provider adapter must not get subtly wrong: deciding a
- * delivery is authentic, and turning that delivery into the ref/tag/file-list
- * shape the (already tested) auto-deploy rules read. Both are pure, so neither
- * needs HTTP or a database.
+ * The two things a provider adapter must not get subtly wrong: deciding a delivery
+ * is authentic, and turning that delivery into the ref/tag/file-list shape the
+ * (already tested) auto-deploy rules read.
  */
 
 const SECRET = "s3cr3t-webhook";
@@ -253,11 +252,7 @@ test("the token help link resolves against a self-hosted base URL", () => {
 
 /**
  * A secret that no longer decrypts (`decryptSecret` fails closed to `""` after a
- * `DEPLO_SECRET` rotation) must never verify. GitLab compares the header against
- * the secret directly, so two empty strings used to MATCH; Gitea and Bitbucket
- * take an HMAC, and one keyed on nothing is one anybody can compute. The route
- * refuses on an empty secret before any of them is called, and this is the
- * second lock on the same door.
+ * `DEPLO_SECRET` rotation) must never verify.
  */
 test("an empty secret never verifies, whatever arrives", () => {
   const headers = (h: Record<string, string>) => new Headers(h);

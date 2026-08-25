@@ -22,19 +22,6 @@ import { HEALTH_MESSAGES } from "../infra/server-health";
 
 /**
  * The health prober's DB behaviour, hermetically: no gRPC, no sockets.
- *
- * Everything asserted here is a rule that, if broken, makes the Servers page LIE — the
- * three that matter most:
- *   - a `provisioning` server is never dialed and never demoted (it has no agent yet;
- *     `resolveTarget` throws for it from a pure DB read, and feeding that to the
- *     classifier would paint every brand-new server red);
- *   - a late-landing probe cannot overwrite a newer observation (probes do not finish
- *     in the order they start);
- *   - the throttle actually throttles, so a reload storm cannot fan out dials.
- *
- * The dialing path itself is covered by the pure classifier in
- * lib/infra/server-health.test.ts — there is no mocking seam for `connectAgent`, which
- * is exactly why the decision lives outside it.
  */
 
 let db: TestDb;
@@ -246,8 +233,6 @@ test("a forced check bypasses the ambient throttle but still respects a floor", 
   // "Force" means "ignore the 15s window", not "dial as fast as you can click" — the
   // floor is the only backstop against a mashed button (or a scripted bearer-token
   // caller) turning the control plane into a fan-out dialer.
-  //
-  // Probed 8 seconds ago: inside the 15s ambient window, outside the 5s force floor.
   const eightSecondsAgo = new Date(Date.now() - 8_000).toISOString();
   await seedServerRow(db, {
     id: "srv_1",

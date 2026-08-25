@@ -36,14 +36,8 @@ import {
 
 /**
  * Members cut-set (b) tests against pglite (relational-store PLAN Step 3): the
- * `SELECT … FOR UPDATE` count-invariants (admin-coverage + active-admin) under
- * two concurrent demotions, and the membership edits via the junction.
- *
- * pglite is single-connection, so `FOR UPDATE` can't block across real
- * connections; the two operations serialize on the JS event loop. The test still
- * validates the LOGIC the lock guarantees — the second operation re-evaluates
- * against the first's committed state and the invariant holds ("exactly one wins,
- * ≥1 holder remains").
+ * `SELECT … FOR UPDATE` count-invariants (admin-coverage + active-admin) under two
+ * concurrent demotions, and the membership edits via the junction.
  */
 
 let db: TestDb;

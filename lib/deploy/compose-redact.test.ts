@@ -9,12 +9,8 @@ import {
 
 /**
  * "View full compose" is served at the `view` floor, so everything the render
- * RESOLVES into the file has to be masked on the way out.
- *
- * The env pass was there from the start. The basic-auth htpasswd line was not:
- * it rides a Traefik LABEL, nowhere near `environment:`, so any member of the
- * team could read `user:$$2y$$10$$<hash>` out of the preview while managing those
- * credentials takes `manage_basic_auth`.
+ * RESOLVES into the file has to be masked on the way out. The env pass was there
+ * from the start.
  */
 
 const HTPASSWD =
@@ -77,10 +73,7 @@ test("a stack with nothing to hide is returned byte-identical", () => {
 });
 
 /**
- * A multi-line value is a value. Masking line by line covered only the header
- * (`KEY: |`) and left the BODY in the clear - GitLab's `GITLAB_OMNIBUS_CONFIG`
- * carries an `smtp_password`, and a PEM key is the same shape - while the
- * orphaned body also made the preview invalid YAML, which is how it was found.
+ * A multi-line value is a value.
  */
 test("a block scalar is masked whole, body and all", () => {
   const out = redactComposeForDisplay(`services:

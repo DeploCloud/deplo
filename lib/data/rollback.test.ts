@@ -32,12 +32,8 @@ import { readFile } from "node:fs/promises";
 
 /**
  * Rollback, at the data layer: which deployments an app can be put back on, and
- * every way a target that LOOKS eligible is not.
- *
- * The window is the interesting part. It has to line up with what the app's
- * server was told to keep (`rollback_keep` + the running one), because Deplo
- * pushes to no registry - offering a rollback whose image was pruned is offering
- * a deploy that cannot work.
+ * every way a target that LOOKS eligible is not. The window is the interesting
+ * part.
  */
 
 let db: TestDb;

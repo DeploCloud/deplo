@@ -8,31 +8,19 @@ import {
 } from "./database-compose";
 import type { DatabaseType } from "../types";
 
-/** The username/dbName the pre-parameterization tests implicitly assumed: the
- *  service name for the DB, `app` for the login. Passed explicitly now that both
- *  are required params, keeping every existing assertion's expected value intact.
- *  `databaseId` stamps the deplo.* labels (required since the detail-page work). */
+/**
+ * The username/dbName the pre-parameterization tests implicitly assumed: the
+ * service name for the DB, `app` for the login. Passed explicitly now that both
+ * are required params, keeping every existing assertion's expected value intact.
+ */
 const DEFAULTS = { username: "app", dbName: "mydb", databaseId: "db_test" };
 
 /**
  * The database compose is the on-host stack the agent provisions for a managed
- * database. Two properties are load-bearing for the backup/restore feature:
- *
- *  1. The named data volume MUST mount at the path the engine's image actually
- *     writes to — otherwise the data is NOT persisted (it lives in the
- *     container's ephemeral layer, lost on recreation) and a backup restore that
- *     writes to the engine's real data dir lands outside the volume. (Redis,
- *     mongodb and mariadb were previously mounted at the wrong path.)
- *  2. Every DB service has `restart: unless-stopped`, so the redis restore's
- *     `SHUTDOWN NOSAVE` is followed by a supervisor-driven reload of the
- *     restored RDB rather than leaving redis down.
+ * database. Two properties are load-bearing for the backup/restore feature: 1.
  */
 
-// A CURRENT major per engine. The suite used to render every engine at
-// `version: "1"`, which is exactly the version at which no image changes its
-// layout — that is how Postgres 18 moving its data dir to
-// `/var/lib/postgresql/<major>/docker` went unnoticed here while every new
-// Postgres 18 database on a real host failed to boot.
+// A CURRENT major per engine.
 const CURRENT_VERSION: Record<DatabaseType, string> = {
   postgres: "18",
   mysql: "8.4",
@@ -99,9 +87,8 @@ test("generateDatabaseCompose: redis still sets requirepass via command override
 });
 
 // The logical database the backup descriptor dumps (dbName == db.host == the
-// compose `name`) MUST be created at provision time, or a backup silently dumps
-// a database that doesn't exist. Postgres/mysql/mariadb/clickhouse create it via
-// an env var; mongo creates it lazily on first write; redis has no logical DB.
+// compose `name`) MUST be created at provision time, or a backup silently dumps a
+// database that doesn't exist.
 const DB_CREATE_ENV: Partial<Record<DatabaseType, string>> = {
   postgres: "POSTGRES_DB=mydb",
   mysql: "MYSQL_DATABASE=mydb",
@@ -129,8 +116,7 @@ for (const [type, envLine] of Object.entries(DB_CREATE_ENV) as [
 
 // "Expose publicly": when a host port is given, the compose publishes it as
 // `0.0.0.0:<hostPort>:<enginePort>` (host:container) so external clients reach the
-// DB on the chosen host port — the whole point of the feature. When no host port
-// is given the DB has NO `ports:` block (internal deplo-network access only).
+// DB on the chosen host port — the whole point of the feature.
 test("generateDatabaseCompose: no ports block when hostPort omitted (internal only)", () => {
   const yaml = generateDatabaseCompose({
     name: "db-internal",
@@ -204,9 +190,7 @@ test("generateDatabaseCompose: threads a custom username + dbName into the engin
 });
 
 // mysql/mariadb: the image ALWAYS needs a root password and treats
-// *_USER/*_PASSWORD as an OPTIONAL non-root user. With the default 'root'
-// username we must emit ONLY the root password + database (no MYSQL_USER — the
-// image rejects MYSQL_USER=root), so the connection string's root login is real.
+// *_USER/*_PASSWORD as an OPTIONAL non-root user.
 for (const [type, prefix] of [
   ["mysql", "MYSQL"],
   ["mariadb", "MARIADB"],
@@ -279,14 +263,9 @@ test("buildConnectionString: per-engine scheme + path", () => {
 });
 
 /**
- * A URL delimiter in the password is not a reason to refuse the password.
- *
- * `@` is about the most common character in a password another platform
- * generated, and it used to be refused outright because the credential rode RAW
- * in this string. An IMPORT is where that was paid for: the import minted a fresh
- * password over data whose users came from the OLD platform, so the database
- * arrived whole and unopenable. The encode is the half that was missing - the
- * reader has always decoded - and only the round trip proves it.
+ * A URL delimiter in the password is not a reason to refuse the password. `@` is
+ * about the most common character in a password another platform generated, and it
+ * used to be refused outright because the credential rode RAW in this string.
  */
 test("buildConnectionString: the credential survives every URL delimiter", () => {
   const password = "p@ss/w:o?r#d%2Fx[]";
@@ -448,10 +427,7 @@ test("parseConnectionPassword: round-trips the embedded password", () => {
 
 // Postgres 18+ defaults PGDATA to `/var/lib/postgresql/<major>/docker` and its
 // entrypoint EXITS when `/var/lib/postgresql/data` is a mount point — which the
-// volume above always is. Pinning PGDATA to the mounted path is what makes a
-// default Postgres bootable at all, and it must not depend on the version: the
-// same line has to cover 15 (where it is a no-op) and 19 (which does not exist
-// yet).
+// volume above always is.
 for (const version of ["15", "16", "17", "18", "19"]) {
   test(`generateDatabaseCompose(postgres ${version}): pins PGDATA to the mounted path`, () => {
     const yaml = generateDatabaseCompose({
@@ -469,9 +445,8 @@ for (const version of ["15", "16", "17", "18", "19"]) {
 }
 
 // An import pins the SOURCE's image on every database it brings over (a cluster
-// must be reopened by the binary that wrote it), so `customImage` is now the
-// normal case. Degrading the probe to `exit 0` for all of them would report
-// health nothing ever checked — the degrade is only for a FOREIGN image.
+// must be reopened by the binary that wrote it), so `customImage` is now the normal
+// case.
 test("generateDatabaseCompose: an official customImage keeps the real healthcheck", () => {
   const yaml = generateDatabaseCompose({
     name: "mydb",

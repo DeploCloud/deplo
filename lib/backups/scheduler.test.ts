@@ -19,17 +19,7 @@ import { runWithIdentity } from "../auth/request-context";
 
 /**
  * Scheduler-tick tests (PLAN Step 5 cut-set (d) — the scheduler-test rewrite off
- * the deleted `store.read/mutate` onto the Drizzle test harness). These exercise
- * the ORCHESTRATION — due selection (now a relational `enabled` query + the
- * in-memory cron match), the per-minute dedup guard, and the cross-process lease —
- * NOT a real dump. The schedules point at a real destination + database, so
- * `executeBackup` runs end to end with NO request context until the owning agent
- * dial fails (the seeded server has no live agent), recording a `failed`
- * `BackupRun`: that run record is our proof the tick fired the schedule.
- *
- * With no DEPLO_DATABASE_URL the lease takes its in-process path — exactly the
- * single-process `next start` shape the scheduler targets — while the data layer
- * reads the injected pglite client (`__setTestDb`).
+ * the deleted `store.read/mutate` onto the Drizzle test harness).
  */
 
 let db: TestDb;
@@ -208,9 +198,8 @@ test("a schedule with an unusable timezone is skipped, not fatal", async () => {
 
 test("a daily schedule fires ONCE across a repeated wall-clock hour", async () => {
   // Fall back replays 02:00-03:00 local, so a daily 02:30 matches at two separate
-  // instants. Keyed on the instant it would fire twice; keyed on the wall clock
-  // it fires once, which is what "every day at 02:30" means. Europe/Rome moved
-  // its clocks back on 2026-10-25.
+  // instants. Keyed on the instant it would fire twice; keyed on the wall clock it
+  // fires once, which is what "every day at 02:30" means.
   await seedDue("nightly", { schedule: "30 2 * * *", timezone: "Europe/Rome" });
 
   await tick(new Date("2026-10-25T00:30:00Z")); // 02:30 CEST

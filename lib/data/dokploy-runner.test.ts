@@ -21,18 +21,6 @@ import {
 
 /**
  * The runner's lease, which decides whether a migration may move.
- *
- * It went missing from the shutdown list when the runner was added, and its
- * staleness was the schedulers' two hours - so a control plane killed during an
- * import left the migration frozen until the window aged out, with nothing on
- * screen saying so.
- *
- * And it was ONE lease for the whole instance, which is the bug this file mostly
- * exists for now: renewed on every beat of whatever run was being driven, it was
- * held for as long as that run took - an hour, on a 15 GB volume - so a
- * migration somebody started meanwhile sat at "Migration in progress" with no
- * runner, no heartbeat and not one line of log. Per RUN, it means the only thing
- * a lease ever meant: two processes must not drive the same one.
  */
 
 let harness: Awaited<ReturnType<typeof makeTestDb>>;
@@ -128,9 +116,7 @@ test("a runner that died is taken over in 90s, not in the schedulers' two hours"
 test("overlapping ticks settle a run once and leave no lease behind", async () => {
   // The timer fires every 15s whether or not the last pass is still going, so
   // overlapping ticks are the normal case - and the lease cannot separate two of
-  // them: same process, same owner, and a lease renews for its owner by
-  // definition. What keeps a run from being driven twice is `drive` marking it
-  // claimed before its first `await`; this is the end-to-end shape of that.
+  // them: same process, same owner, and a lease renews for its owner by definition.
   const id = await seedRun("dimp_race");
 
   await Promise.all([

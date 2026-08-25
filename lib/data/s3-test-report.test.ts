@@ -13,12 +13,7 @@ import {
 } from "./s3-test-report";
 
 /**
- * The connection-test report. The load-bearing property is HONESTY: the agent
- * returns only `{ ok, error }`, so every step verdict here is derived from the
- * message prefixes deplo-agent's `s3client.Check` actually produces
- * (internal/s3client/s3client.go). A prefix we don't recognise must blame NO
- * step rather than the wrong one, and no report may ever claim a step passed
- * after the one that failed.
+ * The connection-test report.
  */
 
 const target: S3TestTarget = {
@@ -304,11 +299,9 @@ test("a non-AWS provider is told to use path-style addressing; AWS is not", () =
 /* ---- a server destination is a FOLDER, not a bucket ----------------- */
 
 /**
- * The report used to be S3-shaped for every destination, so testing a folder on
- * a server printed "Check the bucket exists", "PutObject /.deplo-s3check" and an
- * `aws s3api head-bucket --bucket ` with nothing after it. That is not a wording
- * problem: it tells the reader deplo went looking for a bucket, which is not
- * what happened, and the reproduce block is unrunnable.
+ * The report used to be S3-shaped for every destination, so testing a folder on a
+ * server printed "Check the bucket exists", "PutObject /.deplo-s3check" and an
+ * `aws s3api head-bucket --bucket ` with nothing after it.
  */
 const serverReport = (
   over: Partial<Parameters<typeof buildS3TestReport>[0]> = {},

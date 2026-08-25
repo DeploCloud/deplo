@@ -14,11 +14,8 @@ import { pickBestFavicon } from "./favicon-shared";
 
 /**
  * Compose-stack favicon detection talks to the owning agent through two narrow
- * seams, so a fake agent pins both halves without a server:
- *  - the WALK drives ListFiles one directory at a time — what it descends into,
- *    what it prunes, what it collects, and where it stops;
- *  - the READ decides between the text RPC and the ExportFiles tar, which is
- *    where an icon would quietly get corrupted if the choice were wrong.
+ * seams, so a fake agent pins both halves without a server: - the WALK drives
+ * ListFiles one directory at a time — what it descends into, what it prunes, what
  */
 
 interface FakeEntry {

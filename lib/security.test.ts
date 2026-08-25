@@ -9,16 +9,8 @@ import { rateLimit, sweepRateLimits } from "./security";
 
 /**
  * The rate limiter, which is what stands between a public mutation and an
- * unlimited number of password guesses.
- *
- * These tests exist because of what the previous implementation could not do,
- * not because counting to eight is hard. It kept its buckets in a
- * process-global `Map`, so a restart handed every account a fresh allowance -
- * "8 attempts per address per minute" was really "8 per restart" to anyone who
- * could make the control plane restart - and two instances against one database
- * each kept their own, silently multiplying every limit. So the load-bearing
- * case here is `survives a restart`: it drops the whole module's state the way a
- * restart does and asserts the count carried on.
+ * unlimited number of password guesses. These tests exist because of what the
+ * previous implementation could not do, not because counting to eight is hard.
  */
 
 let db: TestDb;
@@ -60,10 +52,7 @@ test("separate keys are separate buckets", async () => {
 });
 
 test("the count SURVIVES a restart", async () => {
-  // The whole reason this moved out of memory. `__resetTestDb` + `__setTestDb`
-  // is as close as this harness gets to dropping every module-level variable
-  // the process was holding; if the counter lived in one, the second half of
-  // this test would start from zero and pass three more attempts.
+  // The whole reason this moved out of memory.
   const key = "test:restart";
   for (let i = 0; i < 3; i++)
     await rateLimit(key, { limit: 3, windowMs: 60_000 });
@@ -97,10 +86,8 @@ test("a closed window starts a fresh allowance", async () => {
 
 test("concurrent attempts are all counted", async () => {
   // The old read-modify-write on a Map was only ever safe because of the
-  // single-threaded event loop; two instances would both have read the same
-  // count and both written count+1. One UPSERT cannot do that, and this is what
-  // says so: ten parallel attempts against a limit of ten leave exactly one
-  // refusal for the eleventh, never a bucket that lost writes.
+  // single-threaded event loop; two instances would both have read the same count and
+  // both written count+1.
   const key = "test:concurrent";
   await Promise.all(
     Array.from({ length: 10 }, () =>

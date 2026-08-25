@@ -23,12 +23,6 @@ import type { Server } from "../types";
 
 /**
  * The readiness classifier, tested without a socket and without a DB.
- *
- * This is the whole reason the decision is hoisted out of the dial: there is no mocking seam
- * for `connectAgent` in this repo, so a classification welded to the RPC is one that can never
- * be exercised. Every honesty rule the feature makes — a Hello flag is not proof of an
- * installed binary, Docker-down means we never LOOKED for Traefik, a raw error never reaches
- * an operator-facing string — is pinned here.
  */
 
 const ALL_CAPS = [

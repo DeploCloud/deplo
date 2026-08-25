@@ -10,12 +10,8 @@ import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
 import { ensureDeploHostServer, listAllServers } from "./servers";
 
 /**
- * Enrolling the machine Deplo runs on - "agent 0" - is what stops a fresh
- * install from coming up with an empty server list and no way to deploy without
- * SSH. It is the one write in the codebase with NO auth gate (it runs at boot,
- * before any user exists), so the boundary it has instead is pinned here: it
- * acts only on the environment the installer wrote, it never touches a server
- * that already finished its call-home, and the token it arms is stored hashed.
+ * Enrolling the machine Deplo runs on - "agent 0" - is what stops a fresh install
+ * from coming up with an empty server list and no way to deploy without SSH.
  */
 
 const TOKEN = "host-token-for-tests-aaaaaaaaaaaaaaaa";

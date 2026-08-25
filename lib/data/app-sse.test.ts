@@ -32,11 +32,7 @@ import { appStatusStream, activeDeploymentsStream } from "../graphql/types/app";
 /**
  * Step 4 SSE generator test (relational-store PLAN §6 "SSE generators must stay
  * cookie-free"): the appStatus subscription generator must paint the initial
- * snapshot AND forward >1 change ping WITHOUT ever calling a cookie-reading
- * helper — `cookies()` is not callable across the async-iteration ticks of a
- * long-lived SSE response, so a cookie read would crash the stream after the
- * first ping. The generator is driven here with an explicit teamId and NO request
- * scope (no `runWithIdentity`), proving it is cookie-free.
+ * snapshot AND forward >1 change ping WITHOUT ever calling a cookie-reading helper
  */
 
 let db: TestDb;
@@ -137,13 +133,6 @@ test("appStatusStream ends when the project is deleted mid-stream", async () => 
 
 /**
  * The identity seam for subscriptions.
- *
- * An async generator body does NOT inherit the async context of whoever created
- * it — it runs in the context of whoever calls `next()`, which for a long-lived
- * SSE response is the event loop, long after the request handler returned. So
- * the yoga plugin re-applies `runWithIdentity` around every tick; this asserts
- * the shape it relies on, and that a project scope survives into tick 2 (where
- * an unscoped tick would have streamed an app the token cannot otherwise see).
  */
 test("a project scope holds on EVERY tick of the stream, not just the first", async () => {
   await db.insert(projectsTable).values({

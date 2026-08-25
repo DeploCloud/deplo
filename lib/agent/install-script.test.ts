@@ -7,17 +7,9 @@ import { renderInstallScript } from "./install-script";
 import { __resetReleaseCacheForTests } from "./release";
 
 /**
- * The install script is a TEMPLATE: the control plane fills in the per-arch
- * binary URLs + sha256s via a plain replaceAll of the `__…__` sentinels at serve
- * time, reading them from the latest GitHub release of DeploCloud/deplo-agent.
- * The script carries a self-guard that refuses to run the UNSUBSTITUTED repo copy.
- *
- * The trap (regression guarded here): if that guard compares against the literal
- * sentinel token, the same replaceAll rewrites the guard line too — so the
- * RENDERED script always trips its own guard and can never install. These tests
- * pin both halves of the contract: the rendered script must PASS its guard, and
- * the raw template must FAIL it. They render through the real renderInstallScript
- * (with a stubbed release fetch), so a future edit reintroducing the bug fails CI.
+ * The install script is a TEMPLATE: the control plane fills in the per-arch binary
+ * URLs + sha256s via a plain replaceAll of the `__…__` sentinels at serve time,
+ * reading them from the latest GitHub release of DeploCloud/deplo-agent.
  */
 
 const FAKE = {
@@ -179,9 +171,7 @@ function guardMatches(url: string): boolean {
 /**
  * Where the installer INVOKES the pool step. Matched by regex rather than by the
  * literal "\nconfigure_docker_address_pools\n": install-agent.sh wraps the call in
- * a storage-only guard, so it is indented there and bare in install.sh. What
- * these tests protect is that the call exists and runs early enough — not how it
- * is formatted.
+ * a storage-only guard, so it is indented there and bare in install.sh.
  */
 function poolCallIndex(script: string): number {
   return script.search(/^[ \t]*configure_docker_address_pools$/m);

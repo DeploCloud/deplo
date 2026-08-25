@@ -21,10 +21,7 @@ import { prepareUploadRestore, uploadRestoreRefusal } from "./backups";
 /**
  * `prepareUploadRestore` is the only restore that does not start from a run this
  * instance recorded, so it is also the only one whose input is entirely the
- * caller's. These tests cover the refusals - and specifically that every one of
- * them happens BEFORE an agent is dialed, which is what keeps a wrong file or a
- * wrong key from being discovered after the stack is stopped and the volumes are
- * wiped. None of them needs an agent, because none of them should ever reach one.
+ * caller's.
  */
 
 let db: TestDb;
@@ -275,12 +272,9 @@ test("a refusal releases the lock, so the next attempt is judged on its own", as
 /* ------------------------------------------------------------------ */
 
 test("an app with no stack on its host refuses an uploaded archive", () => {
-  // The escalation this closes: with no recorded digest the agent prefers the
-  // control plane's compose, but falls back to the ARCHIVE's when the control
-  // plane has none - and it has none exactly when the app was never deployed on
-  // that host. That fallback would run a `docker compose up` on YAML the
-  // uploader wrote, which is root on the machine for someone holding one
-  // capability on one app.
+  // The escalation this closes: with no recorded digest the agent prefers the control
+  // plane's compose, but falls back to the ARCHIVE's when the control plane has none
+  // - and it has none exactly when the app was never deployed on that host.
   assert.match(
     uploadRestoreRefusal({ kind: "app", project: { composeYaml: "" } }) ?? "",
     /never been deployed/,

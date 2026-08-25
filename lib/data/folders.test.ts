@@ -7,8 +7,6 @@ import { join } from "node:path";
 // No DEPLO_DATABASE_URL → the store runs in its test-only in-memory mode (no
 // Postgres, no disk). DEPLO_DATA_DIR points build/upload staging at a throwaway
 // dir, set BEFORE the store module loads (folders.ts pulls it in transitively).
-// The module is imported lazily inside each test because the runner transpiles
-// to CJS (no top-level await).
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-folders-"));
 delete process.env.DEPLO_DATABASE_URL;
 delete process.env.DATABASE_URL;

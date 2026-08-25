@@ -34,13 +34,6 @@ import { eq } from "drizzle-orm";
 
 /**
  * Rollback as an ATTACKER sees it.
- *
- * The feature puts production back on an older build, so every one of its gates
- * is load-bearing: the permission that allows it, the team the app belongs to,
- * the folder it sits in, and the scope of the token asking. Each test here tries
- * to reach a rollback the caller should not have, and the assertion is that it
- * fails AND that nothing was queued as a side effect - a refusal that still
- * enqueued the deploy would be the worst of both.
  */
 
 let db: TestDb;

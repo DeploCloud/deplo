@@ -4,11 +4,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Same in-memory harness as folders.test.ts: no DEPLO_DATABASE_URL → the store
-// runs in its test-only in-memory mode. We only exercise the PURE capability-
-// bounding helpers here (boundedBy / withView), which is where the escalation
-// math lives; the DB-touching authorization paths are integration-level and not
-// covered by this no-Postgres runner. Imports are lazy (runner transpiles to CJS).
+// Same in-memory harness as folders.test.ts: no DEPLO_DATABASE_URL → the store runs
+// in its test-only in-memory mode.
 process.env.DEPLO_DATA_DIR = mkdtempSync(
   join(tmpdir(), "deplo-folder-access-"),
 );

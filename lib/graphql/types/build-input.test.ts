@@ -6,10 +6,7 @@ import { remapBuildInput } from "./build-input";
 /**
  * Regression coverage for the "build settings don't save" bug: the GraphQL
  * `BuildConfigInput` names three fields differently from the stored BuildConfig
- * (`settings`/`rootDir`/`outputDir`), and the shallow merge in updateAppBuild
- * keys off the BuildConfig names. If the remap misses any of them, that edit is
- * silently dropped and reverts to the stored value on reload — which is exactly
- * how Root Directory / Output Directory regressed.
+ * (`settings`/`rootDir`/`outputDir`), and the shallow merge in updateAppBuild keys
  */
 
 test("remapBuildInput re-keys rootDir → rootDirectory", () => {

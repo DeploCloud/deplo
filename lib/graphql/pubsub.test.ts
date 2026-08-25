@@ -5,13 +5,6 @@ import { decodeRemote, PUBSUB_INSTANCE } from "./pubsub";
 
 /**
  * What a peer control plane is allowed to make this one publish.
- *
- * The bridge exists because a second process on the same database used to leave
- * every open page showing the last thing IT had heard - a migration that had
- * finished forty minutes earlier still reading "in progress". The decoder is the
- * only place a peer's bytes turn into a local event, so it is where "peer" has
- * to mean peer: not our own echo, not a channel we don't have, and not whatever
- * else happens to NOTIFY on a channel name that is just a string.
  */
 
 const peer = (over: Record<string, unknown> = {}) =>

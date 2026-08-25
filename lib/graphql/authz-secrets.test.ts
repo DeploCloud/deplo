@@ -33,15 +33,8 @@ import {
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
- * Secrets are write-only: `reveal_secrets` is a permission of its own precisely
- * so that a member who configures variables cannot read them back. That only
- * holds if NO read anywhere returns a plaintext - so this sweeps every query the
- * API exposes, as a member holding all thirty-nine OTHER permissions, and fails
- * on any response that contains a value the fixture planted.
- *
- * Where `authz-matrix.test.ts` asks "was the gate applied", this asks the
- * question a gate can't answer on its own: did the value leak through a read
- * that never needed a gate.
+ * Secrets are write-only: `reveal_secrets` is a permission of its own precisely so
+ * that a member who configures variables cannot read them back.
  */
 
 let db: TestDb;

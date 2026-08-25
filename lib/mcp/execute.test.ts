@@ -19,16 +19,9 @@ import { runGraphql } from "./execute";
 import { MCP_TOOLS } from "./tools";
 
 /**
- * The one thing in `lib/mcp` that would be catastrophic to get wrong.
- *
- * Every tool's authorization comes from running its document as the token's own
- * principal — there is no second check anywhere. So if `runGraphql` ever stopped
- * wrapping `execute` in `runWithIdentity`, tools would keep working, keep
- * returning data, and quietly return it as the wrong caller. Nothing else in the
- * suite would notice, because every other test drives the data layer directly.
- *
- * These tests therefore assert the WIRING, not the tools: that the document
- * resolves as the token, in the token's team, with the token's capabilities.
+ * The one thing in `lib/mcp` that would be catastrophic to get wrong. Every tool's
+ * authorization comes from running its document as the token's own principal —
+ * there is no second check anywhere.
  */
 
 let db: TestDb;

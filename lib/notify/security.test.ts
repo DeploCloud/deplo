@@ -18,14 +18,9 @@ import { __resetCooldowns } from "./cooldown";
 import { noteFailedLogin } from "./security";
 
 /**
- * The failed-sign-in alert, driven the way an attacker drives it: through a
- * PUBLIC mutation, with an address of their choosing.
- *
- * The rule this file exists to hold is the one the alert broke: an address that
- * matches no account tells NOBODY. Falling back to the oldest team handed an
- * unauthenticated stranger a way to put an address of their choosing into an
- * unrelated tenant's chat room, and one outbound POST per configured channel for
- * every handful of requests they sent.
+ * The failed-sign-in alert, driven the way an attacker drives it: through a PUBLIC
+ * mutation, with an address of their choosing. The rule this file exists to hold
+ * is the one the alert broke: an address that matches no account tells NOBODY.
  */
 
 let db: TestDb;

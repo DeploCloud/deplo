@@ -13,18 +13,6 @@ import { loadInstanceEnv } from "./global-env";
 
 /**
  * EVERY env layer carries its `plain`/`secret` type to the deploy edge.
- *
- * `appEnv` in lib/deploy/build.ts drops secret-typed values from a preview whose
- * pull request came from a FORK - the code there, the comment on
- * `lib/data/previews.ts:approvePreview` and `schema.graphql` all say so. The
- * filter asked `e.type !== "secret"`, and two of the four loaders never
- * projected the column: `undefined !== "secret"` is true, so a team's shared
- * secrets and every instance-global secret went straight through the one thing
- * meant to stop them.
- *
- * The types now REQUIRE `type`, so the compiler catches a loader that forgets.
- * This is the runtime half: the column has to arrive with the right VALUE, and
- * no cast can prove that.
  */
 
 let db: TestDb;
@@ -93,10 +81,6 @@ test("a fork preview drops INSTANCE-GLOBAL secrets, which cross every team", asy
 
 /**
  * The classifier that decides the type in the first place.
- *
- * A framework's public prefix is the one thing that settles the question by
- * itself: those values are compiled into the bundle the browser downloads, so
- * marking one secret hides nothing and costs a fork's preview its own config.
  */
 test("a name that announces itself as public is never typed secret", async () => {
   const { isSecretKey } = await import("./apps");

@@ -6,13 +6,8 @@ import { CleanupScope, ContractVersion } from "../agent/gen/agent";
 import type { DockerCleanupRequest, HelloResponse } from "../agent/gen/agent";
 
 /**
- * Per-app image retention across an agent that predates it.
- *
- * `keep_per_slug` is how an app's ROLLBACK DEPTH reaches its host. An agent
- * without the capability does not reject the field, it ignores it - so the
- * dangerous outcome is silent: the sweep falls back to the host-wide scalar and
- * prunes the images a rollback was about to run. The compensation trades disk for
- * that, and only in the direction that cannot lose anything.
+ * Per-app image retention across an agent that predates it. `keep_per_slug` is how
+ * an app's ROLLBACK DEPTH reaches its host.
  */
 
 const hello = (caps: string[]): HelloResponse => ({

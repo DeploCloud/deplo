@@ -63,31 +63,8 @@ import {
 } from "../deploy/deploy-queue";
 
 /**
- * The CROSS-TEAM matrix: every mutation and every query of the public API,
- * driven by a full-powered owner of team A, handed team B's ids.
- *
- * The sibling matrix in `authz-matrix.test.ts` asks whether a field checks the
- * right CAPABILITY, and deliberately feeds it ids that exist nowhere — so a
- * resolver that authorizes correctly but forgets to scope its query by team
- * passes it. This file asks the other half: the caller holds every capability
- * there is, and the only thing standing between them and another team's rows is
- * the team scoping itself.
- *
- * Both directions are covered, because they fail differently:
- *  - a WRITE is judged on effect, not on the error — several mutations are
- *    documented to sanitise foreign ids and return a count, so "no error" is a
- *    legitimate answer and only a changed row is a leak. Team B is fingerprinted
- *    before and after each call, with the fixture rebuilt in between so one
- *    mutation can't mask the next;
- *  - a READ is judged on the payload, against sentinel strings that exist only
- *    inside team B — with a CONTROL run as team B's own owner, because a sweep
- *    that finds nothing proves nothing until you know the queries return
- *    something when they should.
- *
- * The caller is deliberately NOT an instance admin: instance administration is
- * global by design, so an admin reaching another team is the feature and would
- * drown the signal. Servers are excluded from the sentinels for the same reason
- * — they are the one resource shared across teams (ADR-0006).
+ * The CROSS-TEAM matrix: every mutation and every query of the public API, driven
+ * by a full-powered owner of team A, handed team B's ids.
  */
 
 let db: TestDb;
@@ -101,11 +78,6 @@ const TRUNCATE_ALL = `DO $$ DECLARE r record; BEGIN
 
 /**
  * Team B's resources — everything an argument could name.
- *
- * The `_teamb` marker is load-bearing: the read sweep looks for these strings
- * INSIDE a JSON payload (a hostname or a slug can be embedded in a URL), and a
- * bare `role_b` would also match a freshly-minted `role_bX9k…` whose random tail
- * happens to start with a `b`. That made the sweep fail at random.
  */
 const B = {
   app: "prj_teamb_app",

@@ -10,12 +10,6 @@ import type { RoutableDomain } from "../data/domains";
  * The load-bearing property of the deploy key: a PRODUCTION render is
  * byte-identical to what it has always been (the key is the app slug), while a
  * pull request preview shares nothing with it — not the container, not a volume,
- * not the files dir.
- *
- * The first half is what protects every running stack: `renderCompose`'s output
- * is compared against the stored one on a reroute, and an identical render skips
- * the container restart (ADR-0006 §D6). The second half is what makes previews
- * safe at all.
  */
 
 const ROUTE: RoutableDomain = {
@@ -185,10 +179,9 @@ services:
 `;
 
 /**
- * `buildComposeStack` skips every route that names no service — so a preview
- * route built with `service: null` produced a stack with NO Traefik router at
- * all. The containers came up, and the URL posted on the pull request answered
- * 404. This pins that a compose preview routes to a real service.
+ * `buildComposeStack` skips every route that names no service — so a preview route
+ * built with `service: null` produced a stack with NO Traefik router at all. The
+ * containers came up, and the URL posted on the pull request answered 404.
  */
 test("a compose preview emits a router that names a service", () => {
   const key = previewDeployKey("blog", 42);

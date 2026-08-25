@@ -51,21 +51,8 @@ import {
 
 /**
  * The CROSS-TEAM matrix: every field of the public API, driven by a bearer token
- * that authenticated into team ALPHA holding nothing but `view`, aimed squarely
- * at team BETA's ids - a team its creator owns outright.
- *
- * This is the one direction the per-app gates can't be asked about, because
- * `requireAppCapability` refuses a foreign-team app before it resolves anything.
- * The gates that instead resolve a resource's OWN team and answer from the
- * caller's membership there are the ones under test, and the token clamp is what
- * they have to keep: `clampToToken` keys on the (user, team) PAIR and returns the
- * capabilities UNTOUCHED whenever the team being asked about isn't the team the
- * token authenticated into. A gate that trusts it while asking about another team
- * is not asking about the token at all - it is asking about the person, which
- * turns every credential they ever minted back into an impersonation of them.
- *
- * A CONTROL run proves the sweep can see: the same documents, run as beta's owner
- * over a cookie session, must actually move the fixture.
+ * that authenticated into team ALPHA holding nothing but `view`, aimed squarely at
+ * team BETA's ids - a team its creator owns outright.
  */
 
 let db: TestDb;
@@ -261,12 +248,9 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
 }
 
 /**
- * Skipped by name, and each for a reason that is not "it fails":
- *  - the auth verbs own the session itself and take no team;
- *  - `deleteTeam` / `deleteUser` / `removeUserFromTeam` tear down the fixture the
- *    remaining documents are measured against (they have their own tests);
- *  - `switchTeam` is the SUPPORTED way to change teams - the whole point of the
- *    cookie - and a token that carries a team is refused by it anyway.
+ * Skipped by name, and each for a reason that is not "it fails": - the auth verbs
+ * own the session itself and take no team; - `deleteTeam` / `deleteUser` /
+ * `removeUserFromTeam` tear down the fixture the remaining documents are measured
  */
 const SKIP = new Set([
   "me",

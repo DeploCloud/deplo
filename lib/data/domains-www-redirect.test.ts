@@ -31,18 +31,8 @@ import {
 } from "./domains";
 
 /**
- * The `www` ⇄ non-`www` pairing: one hostname serves the app, the other answers
- * a permanent 301 to it.
- *
- * What these tests pin down is that the redirect is a REAL second domain row —
- * with its own DNS status, its own certificate and its own place in the list —
- * and that the pairing is DERIVED from those rows rather than stored twice. That
- * is what makes it safe for someone who has never touched Traefik: a `www`
- * hostname whose DNS isn't pointed here shows up as `pending` instead of
- * silently poisoning the certificate of the host that does work.
- *
- * The resolver is stubbed ({@link __setDnsResolve4ForTest}); the seeded server's
- * IP is 10.0.0.1, so that is the "points here" answer.
+ * The `www` ⇄ non-`www` pairing: one hostname serves the app, the other answers a
+ * permanent 301 to it.
  */
 
 const SERVER_IP = "10.0.0.1";

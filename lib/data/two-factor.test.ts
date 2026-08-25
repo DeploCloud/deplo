@@ -24,12 +24,6 @@ import { resetUserTwoFactor } from "./members";
 
 /**
  * The step-up rules around two-factor, and the door they were put in front of.
- *
- * Two things here are only ever true by construction and silently stop being
- * true: that `/api/auth/two-factor/*` cannot be reached over the network (a
- * password-only disable is exactly the attack 2FA exists to survive), and that
- * an instance admin cannot use the recovery hatch on their own account (which
- * would be that same password-only disable, wearing an admin badge).
  */
 
 let db: TestDb;
@@ -110,13 +104,8 @@ for (const path of [
 }
 
 test("the gate leaves the rest of Better Auth alone", async () => {
-  // A neighbouring endpoint proves the matcher is scoped to /two-factor/ and
-  // has not quietly closed the whole auth surface.
-  //
-  // It used to probe `/sign-in/email`, which `deploOwnedGate` now closes for its
-  // own reasons (deplo's sign-in is the only one that limits per account and
-  // alerts) - so a 403 there would no longer say anything about THIS matcher.
-  // `/get-session` is the neighbour that stays open, and it has no side effect.
+  // A neighbouring endpoint proves the matcher is scoped to /two-factor/ and has not
+  // quietly closed the whole auth surface.
   const res = await requireAuth().handler(
     new Request("http://localhost/api/auth/get-session", { method: "GET" }),
   );

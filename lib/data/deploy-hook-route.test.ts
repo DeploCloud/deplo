@@ -43,18 +43,6 @@ import { GET, POST } from "@/app/api/apps/[id]/deploy-hook/[token]/route";
 
 /**
  * The deploy hook END TO END - the HTTP handler, not the helpers under it.
- *
- * It is the one route in the product authenticated by API token instead of the
- * session cookie, which makes it the only place where a URL someone pasted into
- * GitLab / a CI runner / a registry decides whether a deploy happens. Two
- * secrets have to line up (the URL's last segment says WHICH app, the bearer
- * token says WHO), and then the ordinary gates still apply: the token's own
- * capabilities, its creator's live ones, the app's folder, the two-factor
- * policy. Every one of those is asserted here through a real `Request`.
- *
- * The other half - that a wrong URL and an unknown app are indistinguishable -
- * matters just as much: a hook URL is handed to third parties, so the endpoint
- * must never become an oracle for which app ids exist.
  */
 
 let db: TestDb;
@@ -80,10 +68,9 @@ before(async () => {
 });
 
 after(async () => {
-  // The queue re-drains its lane once a deploy finishes (`startOne`'s finally),
-  // so give that last pass a tick to run while the database is still there -
-  // otherwise it fails on a torn-down fixture and re-arms itself on a timer,
-  // which keeps the test process alive forever.
+  // The queue re-drains its lane once a deploy finishes (`startOne`'s finally), so
+  // give that last pass a tick to run while the database is still there - otherwise
+  // it fails on a torn-down fixture and re-arms itself on a timer, which keeps the
   await new Promise((r) => setTimeout(r, 100));
   __resetQueueForTest();
   __resetTestDb();

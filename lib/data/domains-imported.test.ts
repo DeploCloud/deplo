@@ -26,17 +26,9 @@ import {
 } from "./domains";
 
 /**
- * Re-hosting the addresses an import could not keep.
- *
- * The failure this exists to prevent is arithmetic: an app that answered on two
- * addresses over there must not arrive answering on none. Its old names cannot
- * come across - a throwaway host carries the SOURCE server's IP - so each route
- * is put on an address Deplo mints, and the row remembers what it replaced.
- *
- * Two rules carry the weight and are pinned here: one new address per SOURCE
- * host (not per row, or an address with two paths would silently become two
- * addresses), and a `seed` so a row that shares its source host with the app's
- * primary joins THAT address instead of minting a second one.
+ * Re-hosting the addresses an import could not keep. The failure this exists to
+ * prevent is arithmetic: an app that answered on two addresses over there must not
+ * arrive answering on none.
  */
 
 let db: TestDb;

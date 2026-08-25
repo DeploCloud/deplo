@@ -18,15 +18,8 @@ import { __setAgentConnectorForTest } from "../infra/agent-client";
 import { writeAppFile, deleteAppFile, renameAppFile } from "./app-files";
 
 /**
- * A compose stack's config files live in `app_mounts` and the agent re-writes
- * them from there on EVERY bring-up. So editing one through Files (or through
- * the Storage editor, which is the same write) and leaving the row alone was not
- * an edit at all - the next deploy put the old bytes back, and the only symptom
- * was a change that "did not take". A rename resurrected the old name next to
- * the new one; a delete brought the file back from the dead.
- *
- * The row is the durable copy, the disk is the live one, and these three writers
- * are where they are kept the same thing.
+ * A compose stack's config files live in `app_mounts` and the agent re-writes them
+ * from there on EVERY bring-up.
  */
 
 let db: TestDb;

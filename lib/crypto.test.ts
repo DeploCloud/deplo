@@ -17,10 +17,7 @@ import {
 /**
  * `htpasswdLine` produces a Traefik-compatible `user:$2b$<cost>$<salt+hash>`
  * credential — bcrypt, which Traefik's `go-htpasswd` reads alongside the MD5
- * (apr1) scheme this used to emit. The hash lands in the proxy's compose file on
- * the host, so what matters is that it is bcrypt at a real cost and that it
- * verifies; both are asserted against bcrypt's own verifier rather than a
- * re-implementation.
+ * (apr1) scheme this used to emit.
  */
 
 test("htpasswdLine: shape is user:$2b$<cost>$…", async () => {
@@ -54,17 +51,7 @@ test("htpasswdLine: username is preserved verbatim", async () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * The point of these is the MIGRATION, not the algorithm. The original format
- * (`scrypt$<salt>$<hash>`) recorded no cost, so verification had to assume
- * node's defaults forever and the work factor could never be raised without
- * invalidating every account at once. The current format carries `N`, `r` and
- * `p`, and the rule that makes it usable is that both shapes keep verifying -
- * anything less is a mass password reset dressed up as a security improvement.
- *
- * The legacy sample below is built the way the old `hashPassword` built it,
- * from node's own defaults, rather than being pasted in: a hardcoded digest
- * would still pass if the parser silently stopped honouring the legacy
- * parameters and started deriving with the new ones.
+ * The point of these is the MIGRATION, not the algorithm.
  */
 const legacyHash = (password: string, salt: Buffer) =>
   `scrypt$${salt.toString("hex")}$${scryptSync(password, salt, 64).toString("hex")}`;
@@ -152,14 +139,6 @@ test("hashPassword: the same password twice gives different stored values", asyn
  * `decryptSecret` answers `""` for both "the stored secret IS empty" and "this
  * ciphertext will not open", and every caller that acted on the difference read
  * the second as the first - an app deployed with a blank API key, a destination
- * that looked unconfigured, a restore that would have treated an encrypted
- * artifact as plaintext. `tryDecryptSecret` is the seam that separates them, so
- * the tests that matter are the two that used to be indistinguishable.
- *
- * The unreadable sample is produced by ROTATING `DEPLO_SECRET` between encrypt
- * and decrypt rather than by corrupting bytes by hand: that is the actual way
- * this happens in production, and `deriveKey` caches per root secret precisely
- * so the swap derives fresh material instead of serving the old key.
  */
 function underSecret<T>(secret: string, fn: () => T): T {
   const before = process.env.DEPLO_SECRET;

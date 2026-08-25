@@ -41,25 +41,7 @@ import {
 } from "./docker-cleanup";
 
 /**
- * Data-layer tests for `docker-cleanup` against pglite. They cover the four things
- * that make this feature safe rather than merely working:
- *
- *  - the WRITE path's asymmetry — an unparseable cron is REJECTED (it would silently
- *    never fire) while the numeric bounds are merely CLAMPED,
- *  - the scopes junction being a whole-set replace (an unchecked scope must not survive
- *    a save, or the sweep deletes things the operator refused),
- *  - the defaults a never-configured instance reads: ENABLED, with EVERY scope — the
- *    daily sweep is on unless an operator turns it off,
- *  - INSTANCE-ADMIN gating every entry point — a team capability, `manage_infra`
- *    included, is not authority over an instance-wide policy or another team's host —
- *    and the "history never lies" invariant: a sweep that could not even reach an
- *    agent still lands as a `failed` run,
- *  - retention: the history is capped at 3 runs × server count, pruned by the executor
- *    itself, with `running` rows immortal to the pruner.
- *
- * The seeded server has no agent (no cert fingerprint), so the executor fails at the
- * provisioning check without ever dialling — the same trick the backup tests use to
- * drive `executeBackup` end to end without a live agent.
+ * Data-layer tests for `docker-cleanup` against pglite.
  */
 
 let db: TestDb;

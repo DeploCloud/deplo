@@ -10,9 +10,7 @@ import { volumeSource, isEscapingSource } from "./compose-lint";
 /**
  * Guard the convention swap: every bundled blueprint must use the app-files
  * `./<x>` convention for its bind mounts — never the legacy `../files/<x>` /
- * `./files/<x>` form, and never a `..` escape (which the host-bind gate would
- * now block on deploy, breaking the one-click template for a non-privileged
- * user). This fails loudly if a newly-added template reintroduces the old shape.
+ * `./files/<x>` form, and never a `..` escape (which the host-bind gate would now
  */
 
 const BLUEPRINTS = join(process.cwd(), "templates", "blueprints");

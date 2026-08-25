@@ -53,17 +53,8 @@ import {
 
 /**
  * The ROLE FLOOR: every field of the public API, driven by a real member of the
- * team whose role grants nothing at all.
- *
- * `view` is the always-on floor, so this member is entitled to LOOK. The claim
- * under test is that looking is the whole of it: not one mutation in the schema
- * may move a row for someone holding no capability, whether it gates through
- * `requireCapability`, `requireAppCapability`, a folder gate, or an
- * instance-admin check. A resolver that forgot its gate shows up here as a
- * fixture that changed, no matter which of the four shapes it should have used.
- *
- * The team's OWNER runs the identical documents as a control - a sweep that
- * finds nothing proves nothing until you know the documents actually write.
+ * team whose role grants nothing at all. `view` is the always-on floor, so this
+ * member is entitled to LOOK.
  */
 
 let db: TestDb;
@@ -268,10 +259,7 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
 }
 
 /**
- * Skipped by name. The auth verbs own the session rather than the team; the
- * account verbs are a member's own business (renaming YOURSELF is not a
- * capability); `deleteTeam`/`deleteUser` tear down the fixture the rest of the
- * sweep is measured against and carry their own tests.
+ * Skipped by name.
  */
 const SKIP = new Set([
   "me",
@@ -378,18 +366,6 @@ async function snapshotWithout(
 
 /**
  * Mutations a member with NO capability may still write through, and why.
- *
- * Adding a name here is a decision, not a formality: the sweep exists so that a
- * new mutation cannot quietly become the first one a powerless member can move
- * a row with. Only a write to the actor's OWN preferences belongs here — never
- * anything another member, another team, or an authorization check can read.
- *
- * `reorderMyTeams` writes `memberships.switcher_position` for the caller's own
- * rows: the order THEIR topbar switcher puts their teams in. There is no
- * capability that could gate it sensibly — a member with nothing granted still
- * sees the switcher, and arranging your own menu is not an act on the team. That
- * it stays confined to the caller is pinned separately, in
- * `lib/data/avatars.test.ts` ("the switcher order is per PERSON").
  */
 const OWN_PREFERENCES_ONLY = ["reorderMyTeams"];
 
@@ -411,10 +387,7 @@ test("a member holding no capability can't move a single row", async () => {
 });
 
 test("the carve-out is real: each exempted mutation still only touches its own actor", async () => {
-  // A guard on the guard. If somebody adds a name to OWN_PREFERENCES_ONLY that
-  // does NOT belong there, this is the test that has to catch it — so it pins
-  // the one thing the exemption claims: the powerless member's write reaches
-  // nothing but their own membership row.
+  // A guard on the guard.
   for (const name of OWN_PREFERENCES_ONLY) {
     const m = docsFor("mutation").find((d) => d.name === name);
     assert.ok(m, `${name} is exempted but is not a mutation`);

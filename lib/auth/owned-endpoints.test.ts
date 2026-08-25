@@ -5,17 +5,7 @@ import { isDeploOwnedAuthPath } from "./better-auth";
 
 /**
  * `app/api/auth/[...all]/route.ts` mounts Better Auth WHOLE, because the OAuth
- * surface has to be reachable. That also published a complete parallel account
- * API next to deplo's own, and `/sign-in/email` was the one that mattered:
- * deplo's sign-in is the only place that counts an attempt per ACCOUNT (8/min,
- * Postgres-backed), raises `failed_logins`, and refuses a suspended account
- * before a session row exists. The plugin's own endpoint does none of it, behind
- * an in-memory 3-per-10s limiter keyed on a caller-writable IP header.
- *
- * The gate is the same shape `/two-factor/*` and `/passkey/*` already use: an
- * in-process `auth.api.*({ body, headers })` call has no `ctx.request` and is
- * untouched, so this list is only about the NETWORK surface. These tests pin
- * both halves - what must be shut, and what must stay open.
+ * surface has to be reachable.
  */
 
 test("the account surface deplo drives itself is shut", () => {

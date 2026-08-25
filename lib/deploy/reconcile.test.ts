@@ -32,10 +32,7 @@ import { __resetDeploymentLogBuffers } from "../data/deployment-logs";
 /**
  * Step 4 deployment-reconcile test (relational-store PLAN §8 "Rewrite the
  * store-coupled tests inside the cut-sets"). The reconcile marks orphaned
- * `building` deployments + their apps `error` at boot. `queued` deployments
- * are DURABLE (no build started, nothing lost): reconcile leaves them queued for
- * the per-server deploy queue to re-drain at boot. Seeded via the Drizzle
- * test-seed helpers against pglite.
+ * `building` deployments + their apps `error` at boot.
  */
 
 let db: TestDb;

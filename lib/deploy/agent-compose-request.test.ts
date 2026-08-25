@@ -25,12 +25,8 @@ function baseBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
 }
 
 /**
- * A multi-service compose stack deploys to a REMOTE server through the agent
- * (Part C). buildDeployRequest is the wire contract: the agent dispatches on
- * source_kind, writes env to a --env-file (the compose interpolates `${VAR}` —
- * NOT a baked `environment:` map like the single-image path), and materialises
- * the mount files. These assertions pin that mapping so the agent's COMPOSE case
- * keeps matching what the control plane sends.
+ * A multi-service compose stack deploys to a REMOTE server through the agent (Part
+ * C).
  */
 
 const base = {
@@ -92,10 +88,6 @@ test("compose plan with no mounts sends an empty mounts list", async () => {
 
 /**
  * Heavy build methods (static/nixpacks/buildpacks/railpack) now run agent-side.
- * buildDeployRequest must map them to the matching heavy BuildKind + a BuildSpec
- * (NOT BUILD_KIND_DOCKERFILE + a dockerfile descriptor) so the agent dispatches to
- * the ported builder. The git arm can't probe the tree, so it
- * keys purely off the method — these pin that mapping.
  */
 
 test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfile", async () => {
@@ -126,9 +118,7 @@ test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfil
 /**
  * Build-time env parity: when the control plane renders a GENERATED Dockerfile
  * (legacy/auto method, tree not probeable here), the resolved env-var NAMES must
- * ride into the body as ARG/ENV declarations — the agent then feeds the values
- * as build args, so build-time-inlined config (NEXT_PUBLIC_*) works. Values must
- * never appear in the body (it crosses the wire and lands on disk as text).
+ * ride into the body as ARG/ENV declarations — the agent then feeds the values as
  */
 test("git plan with a legacy/auto method embeds the env NAMES (not values) in the generated Dockerfile", async () => {
   const req = await buildDeployRequest({
@@ -213,9 +203,6 @@ test("no-cache and force-recreate ride the request independently", async () => {
 
 /**
  * The IMAGE plan serves two opposite jobs, and `pull` is what tells them apart.
- * Getting it wrong is not a subtle bug: a rollback that pulls goes looking for
- * `deplo/<slug>:<deployment>` in a registry that has never existed, and fails on
- * something that was sitting on the host the whole time.
  */
 test("a prebuilt docker-image source PULLS its registry ref", async () => {
   const req = await buildDeployRequest({

@@ -13,12 +13,9 @@ import {
 import { AgentUnreachableError } from "../infra/agent-client";
 
 /**
- * The file explorer hands user-supplied relative paths straight to the
- * filesystem, so its two containment guards are the whole security story: a
- * traversal must be rejected before it forms a path, and a path that resolves
- * (through symlinks) outside the sandbox must be refused. Both are tested here
- * against a real temp tree — string checks alone wouldn't catch the symlink
- * escape, which is the one that matters.
+ * The file explorer hands user-supplied relative paths straight to the filesystem,
+ * so its two containment guards are the whole security story: a traversal must be
+ * rejected before it forms a path, and a path that resolves (through symlinks)
  */
 
 test("normalizeRel: cleans separators and trims slashes", () => {

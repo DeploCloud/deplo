@@ -34,8 +34,6 @@ import type { ServerMetrics } from "./monitoring";
  * Tests for the "save metrics on server" feature: the `monitoring_settings`
  * singleton (missing row = default ON, `manage_infra`-gated write) and the
  * in-memory history ring buffer it controls (lib/monitoring/history.ts) —
- * online-samples-only, min-gap dedupe, window eviction, and the OFF switch
- * dropping what was buffered.
  */
 
 let db: TestDb;
@@ -215,16 +213,8 @@ test("the poll-path memo is busted by a write", async () => {
 /* ------------------------------------------------------------------ */
 
 test("a reconcile starts no stream for a server with no enrolled agent", async () => {
-  // The seeded server never called home, so it has no agent cert and there is
-  // nothing to dial. Reconcile must pass over it quietly — opening a stream (or
-  // recording an "offline" snapshot) for a host still provisioning would write a
-  // false failure for a server that has never yet been asked anything.
-  //
-  // The rest of the supervisor's behaviour — mode selection, frame demux, the
-  // reconnect backoff and the health-write throttle — is covered against a fake
-  // agent connection in lib/monitoring/supervisor.test.ts. The two
-  // `runMetricsCollectorTick` smoke tests that used to sit here went with the
-  // collector itself.
+  // The seeded server never called home, so it has no agent cert and there is nothing
+  // to dial.
   await reconcileMetricsStreams();
   assert.deepEqual(__streamModes(), {}, "no loop for an agentless server");
   assert.deepEqual(getMetricsHistory(SERVER_1), []);

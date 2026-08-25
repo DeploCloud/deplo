@@ -29,16 +29,6 @@ import { getServer, listServers, getPrimaryServer } from "./servers";
 
 /**
  * What a project-scoped API token is refused OUTRIGHT.
- *
- * Its capability set already drops every team-wide permission, which closes the
- * mutations — but `view` is an always-on floor that no capability check consults,
- * so the team-wide READS need an explicit refusal or a scoped token could still
- * enumerate the member roster, the other credentials and every database.
- *
- * Two shapes, and the difference matters: a COLLECTION says plainly that the
- * token is limited (the existence of a member list is not a secret, and an empty
- * array would be a lie), while a POINT LOOKUP BY ID behaves as not-found, so the
- * scope can never be used to discover which ids exist.
  */
 
 let db: TestDb;

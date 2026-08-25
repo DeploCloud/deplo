@@ -19,13 +19,8 @@ import {
 
 /**
  * The server gates compose edits that bind-mount a host path behind the
- * `canMountHostVolumes` grant. The detection MUST agree with the editor lint
- * (both use volumeSource + isHostBindSource), so it's tested directly here.
- *
- * A host bind is a source that escapes the project sandbox — an ABSOLUTE path,
- * OR a `..`-climbing path — and is NOT the app-files `./<x>` convention
- * (rewritten to the project-isolated dir at deploy time). Named/anonymous
- * volumes and `./`-relative mounts are not host binds.
+ * `canMountHostVolumes` grant. The detection MUST agree with the editor lint (both
+ * use volumeSource + isHostBindSource), so it's tested directly here.
  */
 
 test("volumeSource extracts the source of each volume entry form", () => {
@@ -148,12 +143,7 @@ test("composeHasHostBindMount: detects a bind in any of several services", () =>
 /* ------------------------------------------------------------------ */
 
 /**
- * A bind mount names a path, so the check above could see it. These do not:
- * `privileged: true` alone is enough to mount the host's disk and chroot into
- * it, `pid: host` puts `nsenter -t 1` one command away, and a raw `devices:`
- * entry hands over a disk. They were gated by nothing at all — a member holding
- * the default Member role could deploy one and own the server — so they are the
- * same permission as a host bind, and this is what keeps the list honest.
+ * A bind mount names a path, so the check above could see it.
  */
 test("composeNeedsHostPrivileges: every escape shape is caught", () => {
   const shapes = [
@@ -240,12 +230,7 @@ test("composeNeedsHostPrivileges: unparseable YAML is not a detection", () => {
 
 /**
  * The service-level bind check reads a mount's SOURCE and calls it a host bind
- * when it starts with `/` or climbs with `..`. A named volume is neither, so the
- * top-level `volumes:` block was ungated — and it carries two ways out of the
- * app's own storage: attaching an EXISTING volume by host name (the control
- * plane's own database is `…_deplo-postgres`, another team's app volume is
- * `deplo-<slug>-<name>`, both deterministic), and a `driver_opts` bind of any
- * path on the server.
+ * when it starts with `/` or climbs with `..`.
  */
 test("composeMountsForeignStorage: an external volume is foreign", () => {
   for (const decl of [
@@ -309,11 +294,7 @@ test("composeMountsForeignStorage: no volumes block, and unparseable YAML", () =
 
 /**
  * A container on the shared `deplo` network registers its service name as a DNS
- * alias there, and Docker round-robins a name two containers both claim. Deplo
- * itself answers to `deplo` on that network (Traefik forwards the panel to
- * `http://deplo:3000`) and, on an install created before the database moved to
- * its own internal leg, to `postgres`. Either one, claimed by a tenant, splits
- * the platform's own traffic with a container somebody else controls.
+ * alias there, and Docker round-robins a name two containers both claim.
  */
 test("composeClaimsReservedName: only when it joins the shared network", () => {
   const onShared = `services:
@@ -337,12 +318,7 @@ networks:
 /**
  * Host-file / foreign-container escapes that trip NO other detector (no
  * `privileged`, no host bind, no top-level pinned volume) and so were ungated:
- * `env_file` reads a host file into env; `secrets`/`configs` with a `file:`
- * source mount a host file; `volumes_from: container:` mounts a foreign
- * container's volumes; `cgroup: host` shares the host cgroup namespace. All
- * resolve/reference against the SHARED host layout, so a co-tenant can reach
- * another tenant's rendered env-file (`/data/stacks/<slug>.env`) or data volume
- * with only a plain team capability. Gated behind `canMountHostVolumes` now.
+ * `env_file` reads a host file into env; `secrets`/`configs` with a `file:` source
  */
 test("composeNeedsHostPrivileges: env_file reads a host file (abs or bare name)", () => {
   for (const ef of ["/data/stacks/victim.env", "victim.env"]) {
@@ -466,16 +442,11 @@ test("composeBuildReachesHost: absolute/ssh/privileged build reaches the host; a
 
 /**
  * Keys that merge config from a file the gate can't inspect are refused outright:
- * they smuggle privileged/host binds/ports and even traefik.* labels (label_file)
- * past every check. A same-file `extends: {service}` is fine — that service IS
- * linted.
+ * they smuggle privileged/host binds/ports and even traefik. * labels (label_file)
+ * past every check.
  */
 /**
- * The network twin of the foreign-STORAGE gate. Joining a network this app does
- * not own reaches another stack's unpublished services at L3 AND registers this
- * service's name as a DNS alias there — so calling a service `postgres` collects
- * the victim's own internal lookups, password and all. The shared-network
- * protections (alias drop, reserved names) only cover the `deplo` network.
+ * The network twin of the foreign-STORAGE gate.
  */
 test("composeJoinsForeignNetwork: an external/pinned/host-bridged network join needs the grant", () => {
   const joins = (nets: string) =>
@@ -649,10 +620,8 @@ test("an ordinary stack collects neither warning", () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * The compose is the only thing that knows where a stack's config file lands:
- * the file itself just sits in the app's files dir. Reading it is what lets
- * Storage show that file as a **File** entry with a real container path, rather
- * than the app appearing to have no files at all.
+ * The compose is the only thing that knows where a stack's config file lands: the
+ * file itself just sits in the app's files dir.
  */
 test("composeFileBindings reads both volume spellings, with the service", () => {
   const yaml = [

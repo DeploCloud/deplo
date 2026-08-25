@@ -11,10 +11,6 @@ import type { ServerMetrics } from "../data/monitoring";
 
 /**
  * The resource detector, evaluated without a dispatcher.
- *
- * Three properties, and all three are the difference between an alert somebody
- * acts on and one they mute: it waits out a spike, it does not flap around the
- * limit, and it never claims a recovery from something it never reported.
  */
 
 beforeEach(() => __resetThresholds());

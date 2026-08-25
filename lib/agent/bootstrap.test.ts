@@ -74,10 +74,9 @@ test("installCommand embeds the token + url, and the fingerprint only over HTTPS
 });
 
 test("the role rides as an env prefix INSIDE the elevated shell", () => {
-  // `sudo` does not forward the caller's environment, so a prefix outside it
-  // would be silently dropped and the host would install as an ordinary server -
-  // with Traefik, the shared network and a rewritten daemon.json on a machine
-  // Deplo is only borrowing.
+  // `sudo` does not forward the caller's environment, so a prefix outside it would be
+  // silently dropped and the host would install as an ordinary server - with Traefik,
+  // the shared network and a rewritten daemon.json on a machine Deplo is only
   const base = {
     baseUrl: "https://deplo.example.com",
     rawToken: "tok123",

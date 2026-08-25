@@ -31,10 +31,7 @@ import {
 } from "./roles";
 
 /**
- * Team roles against pglite. The invariant under test throughout is that a role
- * IS its members' capabilities: assigning one rewrites them, editing one rewrites
- * them for everyone holding it, and no path can leave the team with nobody able
- * to administer it.
+ * Team roles against pglite.
  */
 
 let db: TestDb;
@@ -605,16 +602,9 @@ test("limiting a built-in marks it edited, so the way back stays offered", async
 });
 
 test("every capability that exists is reachable: the Owner role holds all of them", async () => {
-  // A NEW capability is easy to ship half-dead: the enum, the gate and the UI
-  // all land, while every capability row already in the database predates it —
-  // so nobody, not even the founder, can use the feature. "The Owner built-in
-  // always grants everything" is a contract implemented by seeding rows, not by
-  // deriving at check time, which is exactly why it can silently rot.
-  //
-  // This asserts it against the REPLAYED migrations, so a capability added
-  // without its backfill fails here instead of in production. When it does: add
-  // one more migration granting the new name wherever its nearest existing
-  // sibling is already held (see 0077).
+  // A NEW capability is easy to ship half-dead: the enum, the gate and the UI all
+  // land, while every capability row already in the database predates it — so nobody,
+  // not even the founder, can use the feature.
   await seedIdentity(db);
   const owner = byName(await asOwner(() => listRoles()), "Owner");
   for (const cap of ALL_CAPABILITIES) {

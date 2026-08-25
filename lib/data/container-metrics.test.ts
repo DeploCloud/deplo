@@ -24,22 +24,6 @@ import {
 
 /**
  * Data-layer tests for the per-app / per-database metrics READS.
- *
- * Both the live read and the history read are now BUFFER reads — the telemetry
- * stream supervisor writes lib/monitoring/container-history.ts every cadence, so
- * nothing here dials an agent. That makes TEAM SCOPING the entire subject of this
- * file rather than a corner of it: the RAM buffer is keyed by bare resource id
- * and carries no team at all, so `loadTeamApp` / `loadDatabaseForTeam` returning
- * null is the ONE thing standing between a member of team B and team A's metrics.
- * Every read below is therefore asserted from both sides — the owner sees the
- * buffered window, the other team sees nothing — and a regression that dropped
- * the gate would still pass a same-team-only test.
- *
- * The per-resource "Save metrics" toggles (`setAppSaveMetrics` /
- * `setDatabaseSaveMetrics`) and the collector enumeration
- * (`listSaveMetricsTargetsForCollector`) were deleted with the polling collector;
- * their tests went with them. The instance-wide master switch is covered in
- * monitoring-settings.test.ts.
  */
 
 let db: TestDb;

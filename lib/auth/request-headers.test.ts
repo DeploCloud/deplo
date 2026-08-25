@@ -4,12 +4,9 @@ import assert from "node:assert/strict";
 import { authRequestHeaders } from "./request-headers";
 
 /**
- * Both halves of this selection fail SILENTLY, which is why they are pinned.
- *
- * Drop `user-agent` and the signed-in-devices table still renders — every row
- * just says "Unknown device" forever, and nothing anywhere reports an error.
- * Add `origin` and logins keep working on the canonical host while quietly
- * breaking on every other host the instance answers on.
+ * Both halves of this selection fail SILENTLY, which is why they are pinned. Drop
+ * `user-agent` and the signed-in-devices table still renders — every row just says
+ * "Unknown device" forever, and nothing anywhere reports an error.
  */
 
 const request = new Headers({
@@ -87,11 +84,7 @@ test("a request with none of the metadata headers yields just the cookie", () =>
 /**
  * The panel answers on two addresses at once - its own, usually https, and its
  * server's plain-http `http://<ip>:3000` backup - so the session cookie exists
- * under two names depending on which one it was opened at. Better Auth looks it
- * up under EXACTLY one, decided when the instance was built, so a session minted
- * on one address would resolve to nobody on the other: a redirect loop back to
- * /login instead of a panel. Offering both names is what keeps the backup
- * address a way back in rather than a page you can never sign into.
+ * under two names depending on which one it was opened at.
  */
 test("a plain-named auth cookie is also offered under __Secure-", () => {
   const out = authRequestHeaders(null, "deplo.session_token=abc");

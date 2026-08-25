@@ -6,12 +6,6 @@ import { defaultRoute, type RoutableDomain } from "../data/domains";
 
 /**
  * The route set a production deploy bakes into its Traefik labels.
- *
- * The contract that broke: a path prefix lets several domain rows share ONE
- * hostname (uniqueness is on `(name, path)`), so `app.com` and `app.com` + `/api`
- * are two distinct routes. The assembly step used to drop "every row whose name
- * is the primary's", which deleted the `/api` row before it ever reached the
- * router grammar — the user set a path, redeployed, and nothing happened.
  */
 
 /** A valid, routable row as `routableRoutes` returns it. */
@@ -85,11 +79,8 @@ test("a not-yet-valid primary is added as a synthetic route, never duplicated", 
   );
 });
 
-// An UNVERIFIED primary is still routed (so a brand-new app answers on it), and
-// it must be routed as the user configured it. Building that fallback from
-// `defaultRoute` flattened the row to whole-host-HTTPS-on-the-default-port, so a
-// first domain added WITH a path came up serving the whole host and the path
-// silently did nothing until someone happened to verify it.
+// An UNVERIFIED primary is still routed (so a brand-new app answers on it), and it
+// must be routed as the user configured it.
 
 test("an unverified primary keeps its OWN path/strip/port, not defaults", () => {
   const stored = route("app.com", {

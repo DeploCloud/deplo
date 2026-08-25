@@ -24,12 +24,9 @@ import {
 } from "./servers";
 
 /**
- * What a server is FOR, and the one direction that is genuinely one-way.
- *
- * A role is a CONTROL-PLANE decision - which pickers offer the host, which
- * readiness rows apply - so a host that has Docker can take any of the three and
- * go back. The exception is physical, not policy: a server installed as
- * backups-only never had Docker put on it, and no write here can change that.
+ * What a server is FOR, and the one direction that is genuinely one-way. A role is
+ * a CONTROL-PLANE decision - which pickers offer the host, which readiness rows
+ * apply - so a host that has Docker can take any of the three and go back.
  */
 
 let db: TestDb;
@@ -200,10 +197,9 @@ test("a migration source is out of the deploy picker AND the build picker", asyn
       false,
       "a migration source was offered as a deploy target",
     );
-    // The build picker is the one that reads differently: it deliberately keeps
-    // hosts that cannot deploy, and a migration source HAS Docker - so without
-    // its own exclusion it would be offered, and a build would ship the app's
-    // source and decrypted env to another platform's machine.
+    // The build picker is the one that reads differently: it deliberately keeps hosts
+    // that cannot deploy, and a migration source HAS Docker - so without its own
+    // exclusion it would be offered, and a build would ship the app's source and
     const builders = await listBuildServerChoices();
     assert.ok(
       builders.some((c) => c.id === SERVER_1),

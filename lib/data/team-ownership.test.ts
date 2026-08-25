@@ -23,12 +23,6 @@ import { transferTeamOwnership } from "./team-ownership";
 
 /**
  * Handing a team over — the one write that ever moves `teams.founder_user_id`.
- *
- * The crown is immutable to every other hand (an owner can't remove or demote
- * the founder), so this path is the ONLY exit from "the person who created the
- * team left the company". Which makes both halves worth pinning: that it works
- * for the founder with the right password, and that nobody else can fire it —
- * an assigned owner reaching it would sidestep every founder guard at once.
  */
 
 let db: TestDb;
@@ -114,10 +108,7 @@ test("a wrong password refuses the transfer", async () => {
 
 /**
  * The crown IS full access, so a plain member can receive it — the transfer puts
- * them on the Owner role itself. Requiring the rank up front blocked nothing (the
- * same admin grants it with one click) and allowed the incoherent end state this
- * asserts against: a crowned member who reaches only part of their own team, and
- * whose permissions no one is allowed to widen ever again.
+ * them on the Owner role itself.
  */
 test("a plain member is put on the Owner role by the transfer", async () => {
   await seedTeam();

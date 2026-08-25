@@ -4,11 +4,9 @@ import assert from "node:assert/strict";
 import { readConnectState, signConnectState } from "./manifest";
 
 /**
- * The connect state is both halves of the GitHub round trip: the CSRF proof
- * that the flow was started by THIS user, and the address to hand the browser
- * back to afterwards. It travels through github.com twice (the manifest POST,
- * then `installations/new?state=`), so what matters is that a state minted for
- * someone else is refused and that the return path survives untouched.
+ * The connect state is both halves of the GitHub round trip: the CSRF proof that
+ * the flow was started by THIS user, and the address to hand the browser back to
+ * afterwards.
  */
 test("connect state round-trips the return path for its own user only", () => {
   const withReturn = signConnectState("usr_1", "/new?template=ghost");

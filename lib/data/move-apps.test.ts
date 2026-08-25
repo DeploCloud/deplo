@@ -31,16 +31,9 @@ import { transferAppToTeam, appTransferInfo } from "./app-transfer";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
- * What "Move & reorder apps" actually buys you.
- *
- * The permission names one thing - relocating an app - and it is spread over
- * four call sites (folder, project, environment, another team), each with its
- * own second gate. This drives all of them as a member who holds `move_apps`
- * and NOTHING else, so a move that only works for a team admin shows up as a
- * failure here rather than as a permission that looks granted and does nothing.
- *
- * The mirror case matters as much: a member holding the other thirty-nine
- * permissions must not be able to move anything.
+ * What "Move & reorder apps" actually buys you. The permission names one thing -
+ * relocating an app - and it is spread over four call sites (folder, project,
+ * environment, another team), each with its own second gate.
  */
 
 let db: TestDb;

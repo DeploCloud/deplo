@@ -29,11 +29,6 @@ import {
 /**
  * The teardown queue: what happens when the host will not confirm that a stack
  * Deplo was told to destroy is gone.
- *
- * The seeded server carries no agent certificate, so the REAL `connectAgent`
- * throws before a socket opens - that is the unreachable path, for free. The
- * dial seam is swapped only where a test needs the host to ANSWER: the verify
- * step, a reclaimed deploy key, a container that survived.
  */
 
 let db: TestDb;

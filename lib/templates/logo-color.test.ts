@@ -4,15 +4,9 @@ import sharp from "sharp";
 import { analyseLogo } from "./logo-color";
 
 /**
- * A card is drawn from what this function says about a logo, and every way it
- * can be wrong is invisible until someone looks at 388 cards at once: a hue
- * that isn't the logo's colour, a hue for a logo that has none, and — the one
- * that actually makes a card unreadable — failing to notice that a logo drawn
- * only in black will vanish into the dark theme's card.
- *
- * Fixtures are painted here rather than committed: the check needs no network,
- * no catalogue and no binary in the repo. Lossless is load-bearing — lossy webp
- * smears the hues and makes the assertions flaky.
+ * A card is drawn from what this function says about a logo, and every way it can
+ * be wrong is invisible until someone looks at 388 cards at once: a hue that isn't
+ * the logo's colour, a hue for a logo that has none, and — the one that actually
  */
 async function logo(fill: number[], mark?: number[]): Promise<Buffer> {
   const raw = Buffer.alloc(32 * 32 * 4);

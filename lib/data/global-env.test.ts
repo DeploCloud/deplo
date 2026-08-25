@@ -24,8 +24,6 @@ import { appEnvSnapshot } from "./project-backup-descriptor";
 /**
  * Data-layer tests for INSTANCE-wide global env vars (the one scope that survives
  * ADR-0010; team-global vars became team-wide shared vars — see shared-vars.test).
- * Covers instance-admin gating, secret masking (a secret has no read-back path
- * and takes no edit), the deploy loader, and the backup snapshot.
  */
 
 let db: TestDb;

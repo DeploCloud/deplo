@@ -55,19 +55,9 @@ test("isInGap is strict-interior: endpoints (real samples) are not in the gap", 
 /* ------------------------------------------------------------------ */
 
 test("GAP_MS is derived from the stream cadence + the supervisor's backoff cap, and cannot drift from it", () => {
-  // Under the telemetry stream there is exactly ONE producer per host — the
-  // agent's own ticker — which removes the poll era's multi-writer arithmetic
-  // entirely. Two terms remain: the 5s cadence, and the reconnect backoff CAP.
-  //
-  // The cap is in play for reasons that are not a host failure at all (a deadline
-  // rotation, an agent self-update, a NAT rebalance), so the worst spacing
-  // between two HEALTHY samples is one cadence plus one full backoff step. The
-  // threshold is that, with 50% headroom.
-  //
-  // RECONNECT_BACKOFF_CAP_MS is imported rather than restated so the two
-  // constants CANNOT drift apart silently: raise the cap without raising GAP_MS
-  // and every healthy reconnect starts painting a "No data" band — the exact
-  // regression fixed three times already (05ebd6a, 81c8239, d0c7bd9).
+  // Under the telemetry stream there is exactly ONE producer per host — the agent's
+  // own ticker — which removes the poll era's multi-writer arithmetic entirely. Two
+  // terms remain: the 5s cadence, and the reconnect backoff CAP.
   const CADENCE_MS = 5_000; // STREAM_INTERVAL_MS, the cadence we ask the agent for
   const worstHealthySpacing = CADENCE_MS + RECONNECT_BACKOFF_CAP_MS;
   assert.ok(
@@ -107,10 +97,8 @@ test("a hole running past the window end IS clamped to the visible part", () => 
 });
 
 test("an off-window straggler does NOT band the plot — history just doesn't reach", () => {
-  // The regression that made "No data" look random: the chart draws one sample
-  // from before the window so the line can enter from the left edge. With a lone
-  // 14-minute-old straggler plus dense recent data, the raw span covered ~87% of
-  // a 5m plot — claiming a failure across a stretch the window never showed.
+  // The regression that made "No data" look random: the chart draws one sample from
+  // before the window so the line can enter from the left edge.
   const t1 = 1_000_000;
   const ts = [
     t1 - 840_000,

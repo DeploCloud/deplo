@@ -27,16 +27,8 @@ import { eq } from "drizzle-orm";
 
 /**
  * REACH, the second axis a role gained in 0069: which nodes of the team its
- * holders can touch at all.
- *
- * The rules under test, in the order they decide:
- *  1. an unscoped role reaches everything, which is every role that exists;
- *  2. a scoped one reaches what it names, its folders' subtrees included, and
- *     answers `[]` elsewhere — the same empty answer an invisible folder gives,
- *     so neither can be told from the other;
- *  3. a scope emptied by a cascade reaches NOTHING, never everything;
- *  4. a node grant EXTENDS the scope rather than being clamped by it, so a
- *     folder share stays alive when its holder is put on a limited role.
+ * holders can touch at all. The rules under test, in the order they decide: 1. an
+ * unscoped role reaches everything, which is every role that exists; 2.
  */
 
 let db: TestDb;
@@ -601,10 +593,6 @@ test("a scoped member can still pick where an app runs", async () => {
  * The sweep that found two leaks the rest of this file could not: a read that
  * assembles its OWN rows never passes through `node-access.ts`, which is where a
  * role scope is applied for free — so it has to ask, and two of them didn't.
- *
- * Written as a loop over the reads rather than an assertion each, because the
- * failure mode is "somebody adds a list and forgets", and a loop is what catches
- * the next one.
  */
 test("no list read hands a scoped member anything outside their scope", async () => {
   const reads: [string, () => Promise<unknown>][] = [

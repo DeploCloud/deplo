@@ -26,31 +26,6 @@ import {
 /**
  * HTTP Basic Auth credentials — the rows the deploy/reroute renderers turn into a
  * Traefik `basicauth` middleware in front of every one of an app's domains.
- *
- * Four contracts are locked here, because the feature is only as good as they are:
- *
- *  - **Every mutation hands back the owning app.** The API edge re-applies the
- *    app's routing right after each write (that is what makes a credential live
- *    seconds after it is saved instead of at the next deploy), and it takes the
- *    app id from these return values. Drop `appId` from the DTO and the reroute
- *    silently targets `undefined` — the labels never change and the app stays
- *    open while the UI lists a credential.
- *  - **The rendered value fails CLOSED.** `basicAuthUsersValue` is what the
- *    renderers embed; a credential it cannot decrypt must abort the render, never
- *    quietly hash the empty string into a middleware that accepts a blank
- *    password.
- *  - **The password reveal is the ONLY way back to a plaintext, and it is gated.**
- *    The Access page shows a credential's password on demand (a basic-auth login
- *    is handed to a person). It must stay out of every list DTO, refuse another
- *    team, and — like the render — fail loudly rather than hand back the empty
- *    string a failed decrypt produces.
- *  - **Authorship is recorded and never fabricated.** The page answers "who set
- *    this login up, and who last rotated it": add stamps both columns, a password
- *    change moves `updatedBy` only, and nothing back-fills a name onto a row that
- *    predates the tracking.
- *
- * `DEPLO_SECRET` is read lazily by lib/crypto, so setting it after the (hoisted)
- * imports is fine.
  */
 
 process.env.DEPLO_SECRET = "test-secret-for-basic-auth-aaaaaaaaaaaaaaaa";
@@ -378,12 +353,7 @@ test("a password that cannot be decrypted fails the reveal (never returns empty)
 });
 
 /**
- * A credential carried over from another platform keeps working. Deplo's two
- * password gates are for a password someone is CHOOSING; an imported one is
- * already in use and already protecting a public URL, so refusing it removed the
- * protection instead of strengthening it - a real migration put a code-server
- * online with no basic auth at all because "CoderPass123" has no special
- * character.
+ * A credential carried over from another platform keeps working.
  */
 test("an imported credential skips the password policy and is flagged weak", async () => {
   const weak = await as(OWNER_A, TEAM_A, () =>

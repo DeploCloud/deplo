@@ -261,11 +261,8 @@ test("the CSR-signed agent cert completes a real mTLS handshake with the control
 
 test("the agent refuses a client that presents no CA-signed cert", async () => {
   const server = await issueAgentServerCert(["127.0.0.1"]);
-  // The security property is server-side: a peer without a CA-signed client
-  // cert never reaches an AUTHORIZED connection, and the server raises
-  // tlsClientError. (Under TLS 1.3 the client's secureConnect can fire before
-  // the server validates the missing client cert, so we assert on the server,
-  // which is the side that actually enforces trust.)
+  // The security property is server-side: a peer without a CA-signed client cert
+  // never reaches an AUTHORIZED connection, and the server raises tlsClientError.
   await new Promise<void>((resolve, reject) => {
     let authorizedConnections = 0;
     const srv = tls.createServer(

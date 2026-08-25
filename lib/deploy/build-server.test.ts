@@ -11,10 +11,6 @@ import type { Server } from "../types";
 /**
  * The build-server CHOICE, tested without a database or an agent - the whole point
  * of splitting the pure `pickBuildServer` out of `resolveBuildServer`.
- *
- * The interesting cases are all about refusing: an image built for the wrong
- * architecture is the one failure this feature can cause that the deploy would
- * report as a SUCCESS, and only find out about when the container crash-loops.
  */
 
 function srv(over: Partial<Server> & { id: string }): Server {
@@ -141,10 +137,8 @@ test("a storage-only server can never build - it has no Docker", () => {
 });
 
 test("a migration source can never build - it HAS Docker, and that is the trap", () => {
-  // Every other "can this machine build?" check reads storageOnly, which a
-  // migration source passes: the other platform's host obviously has Docker. What
-  // makes it illegal is ownership, not capability - a build ships the app's source
-  // and its DECRYPTED env to the builder.
+  // Every other "can this machine build?" check reads storageOnly, which a migration
+  // source passes: the other platform's host obviously has Docker.
   const box = srv({ id: "srv_import", importOnly: true, hostArch: "amd64" });
   assert.equal(canBuildFor(box, TARGET), false);
   // And it is never picked automatically either, even alone in the fleet.

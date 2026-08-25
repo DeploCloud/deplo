@@ -83,21 +83,6 @@ import { listEnvironmentsForProject } from "./environments";
 
 /**
  * The Dokploy importer, end to end against pglite with a FAKE Dokploy.
- *
- * The fake is the whole point: the API's shapes are pinned by
- * `lib/dokploy/map.test.ts` against recorded rows, and what this file proves is
- * the other half — that a plausible organization lands complete, that a second
- * run creates nothing, that one broken service does not take the rest down, and
- * that the things which cannot come across end up IN THE REPORT rather than
- * nowhere.
- *
- * The seeded server deliberately has NO agent record, which is this repo's only
- * seam for the agent (there is no `connectAgent` mock — the same note is in
- * `databases.test.ts`). A database therefore lands as a `failed` report row
- * reading "not provisioned yet", which is also the real behaviour when someone
- * imports onto a host whose agent is not up: what matters here is that the rest
- * of the project still arrives. The database MAPPING is covered pure in
- * `lib/dokploy/map.test.ts`.
  */
 
 let db: TestDb;
@@ -434,10 +419,9 @@ test("a Dokploy machine Deplo already manages is recognised by its address", asy
 });
 
 test("a machine already registered as a MIGRATION SOURCE is still recognised", async () => {
-  // The regression that would break every volume copy in silence: the source
-  // machine is excluded from every picker, so an over-eager filter here would
-  // stop matching it - and `resolveSourceServer`, which reads its address the
-  // same way, would then answer "no agent on that host" on the second pass.
+  // The regression that would break every volume copy in silence: the source machine
+  // is excluded from every picker, so an over-eager filter here would stop matching
+  // it - and `resolveSourceServer`, which reads its address the same way, would then
   const { servers: serversTable } = await import("../db/schema/control-plane");
   const { eq } = await import("drizzle-orm");
   await db
@@ -457,11 +441,7 @@ test("a machine already registered as a MIGRATION SOURCE is still recognised", a
 });
 
 test("Dokploy on the machine Deplo runs on resolves to the agent already there", async () => {
-  // The same-machine case the wizard has a toggle for. The addresses rarely match
-  // in FORM - a panel hostname in the URL, an IP on the row - so this used to read
-  // as an unknown machine, and registering it again is now refused (a second row
-  // for one host would re-bootstrap the fleet's own agent as a migration source).
-  // The agent that can read those disks is already installed.
+  // The same-machine case the wizard has a toggle for.
   const { servers: serversTable } = await import("../db/schema/control-plane");
   const { eq } = await import("drizzle-orm");
   const beforeIp = process.env.DEPLO_SERVER_IP;
@@ -856,10 +836,9 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
     false,
   );
 
-  // ...but the app still answers on TWO addresses, because it answered on two
-  // over there. The throwaway one is RE-HOSTED: a temporary address of Deplo's,
-  // same port, and a row that remembers what it replaced so the Domains section
-  // can say so.
+  // .but the app still answers on TWO addresses, because it answered on two over
+  // there. The throwaway one is RE-HOSTED: a temporary address of Deplo's, same port,
+  // and a row that remembers what it replaced so the Domains section can say so.
   assert.equal(doms.length, 2);
   const rehosted = doms.find((d) => !d.isPrimary)!;
   assert.equal(rehosted.importedFrom, "blink-web-abc.traefik.me");
@@ -906,10 +885,9 @@ test("dismissing the notice clears it for that app only", async () => {
   );
 });
 
-// A compose stack's config file is mounted by the stack's own yaml, so nothing
-// in Storage described it and the page showed an empty list for an app that
-// plainly had one - while the platform it came from showed the file, with its
-// contents, in the service's own settings.
+// A compose stack's config file is mounted by the stack's own yaml, so nothing in
+// Storage described it and the page showed an empty list for an app that plainly
+// had one - while the platform it came from showed the file, with its contents, in
 test("a compose stack's config file shows up in Storage", async () => {
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   await importProject(runId, "dok-prj-other");
@@ -1575,16 +1553,8 @@ function json(body: unknown): Response {
 /* ------------------------------------------------------------------ */
 
 /**
- * The port a database publishes over there is the port it should publish here,
- * and for a long time it simply did not arrive.
- *
- * `mapDatabase` read Dokploy's `externalPort` all along - what dropped it was the
- * create: publishing 5432 fails while the Dokploy container still holds it (which
- * is the NORMAL state of a migration, since the source is stopped later, to read
- * its volume), and the fallback quietly made an unexposed database and wrote a
- * line in the report. These cover the three ways it can now end instead: the
- * review picked another port, the review said not to publish, and the only thing
- * holding the port was the source itself.
+ * The port a database publishes over there is the port it should publish here, and
+ * for a long time it simply did not arrive.
  */
 
 /** Give SERVER_1 an agent, and say which host ports are already taken on it. */
@@ -1732,10 +1702,9 @@ test("without the publish-ports grant the port is dropped, and the report says w
     `update users set is_instance_admin = false, can_expose_ports = false
        where id = '${USER_1}'`,
   );
-  // The plan still SAYS what the source publishes - that is a fact about the
-  // other platform, and the review needs it to count how many databases are
-  // about to lose theirs - but the import says the true reason rather than
-  // blaming the old instance.
+  // The plan still SAYS what the source publishes - that is a fact about the other
+  // platform, and the review needs it to count how many databases are about to lose
+  // theirs - but the import says the true reason rather than blaming the old
   const plan = await asOwner(() => scanDokploy(CONNECT));
   const planned = plan.projects
     .flatMap((p) => p.environments.flatMap((e) => e.services))
@@ -1755,13 +1724,8 @@ test("without the publish-ports grant the port is dropped, and the report says w
 /* ------------------------------------------------------------------ */
 
 /**
- * The half-finished migration, taken back out.
- *
- * The property that matters is not "it deletes things" - it is the LINE it
- * draws. A run that reused something already here recorded that as `skipped`,
- * and a revert that walked outcomes carelessly would delete a project somebody
- * had been using for a year because a Dokploy project happened to share its
- * name. So both directions are asserted, in the same fixture.
+ * The half-finished migration, taken back out. The property that matters is not
+ * "it deletes things" - it is the LINE it draws.
  */
 
 test("a revert removes what the run created", async () => {
@@ -1933,10 +1897,9 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
   const started = await pending;
   assert.equal(started.value?.id, runId);
   assert.equal(started.value?.orgName, "Acme Inc");
-  // A run nobody has picked up yet says so, and that is the whole point of the
-  // field: the row says `running` from the moment it is opened, whether or not
-  // any control plane is driving it, and the panel used to report "Migration in
-  // progress" over exactly that for as long as it lasted.
+  // A run nobody has picked up yet says so, and that is the whole point of the field:
+  // the row says `running` from the moment it is opened, whether or not any control
+  // plane is driving it, and the panel used to report "Migration in progress" over
   assert.equal(
     started.value?.heartbeatAt,
     null,
@@ -1958,12 +1921,8 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
 /* ------------------------------------------------------------------ */
 
 test("a corrected dial address keeps the machine recognisable by the one it came from", async () => {
-  // A Dokploy panel behind Cloudflare (or any reverse proxy) answers on the
-  // proxy's address, so the row the wizard registers is unreachable and has to be
-  // corrected. What must survive the correction is the MATCH: `planMachines`
-  // pairs a Dokploy machine with our server by address, and if the panel hostname
-  // is overwritten too, a second pass of the wizard sees an unknown machine and
-  // registers a SECOND row for the same box.
+  // A Dokploy panel behind Cloudflare (or any reverse proxy) answers on the proxy's
+  // address, so the row the wizard registers is unreachable and has to be corrected.
   const panelHost = new URL(URL_BASE).hostname;
   const credential = { baseUrl: URL_BASE, apiKey: CONNECT.apiKey };
   const added = await asOwner(() =>
@@ -1996,10 +1955,8 @@ test("a corrected dial address keeps the machine recognisable by the one it came
 
 test("a corrected address outlives the server row it was made on", async () => {
   // The cycle this closes, seen four times in one evening: correct the address,
-  // migrate, revert - and the source row is removed, on purpose, because a
-  // migration source is not a server anyone keeps. The correction lived on that
-  // row, so the next attempt re-derived the panel's name and asked for the same
-  // fix again, forever.
+  // migrate, revert - and the source row is removed, on purpose, because a migration
+  // source is not a server anyone keeps.
   const panelHost = new URL(URL_BASE).hostname;
   const credential = { baseUrl: URL_BASE, apiKey: CONNECT.apiKey };
   const added = await asOwner(() =>

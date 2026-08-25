@@ -23,23 +23,6 @@ import { __resetReleaseCacheForTests } from "../agent/release";
 
 /**
  * The readiness orchestrator's DB behaviour, hermetically: no gRPC, no sockets.
- *
- * Every case below exercises a path that NEVER dials — the auth gate, the unknown id, the
- * unprovisioned/trust-revoked fence — which is precisely the set of rules that, if broken,
- * would make this feature either a security hole or a liar:
- *   - it is instance-admin only, and the gate fires before any read or dial;
- *   - a server with no agent (or a trust-revoked one, whose fingerprint is "") is never
- *     dialed: there is nothing on the other end, and `resolveTarget` would throw from a pure
- *     DB read, which reported as "the agent did not answer" would paint every brand-new
- *     server as broken;
- *   - IT WRITES NOTHING. `servers.status` belongs to the health prober; a readiness probe has
- *     no confirming retry and no throttle lease, so letting it demote a server would
- *     reintroduce the exact "a blip pins a false offline on the operator's screen" bug that
- *     `probeServer`'s retry exists to prevent.
- *
- * The dialing path's DECISIONS are covered by the pure classifier in
- * lib/infra/server-readiness.test.ts — there is no mocking seam for `connectAgent`, which is
- * exactly why the classifier lives outside it.
  */
 
 let db: TestDb;

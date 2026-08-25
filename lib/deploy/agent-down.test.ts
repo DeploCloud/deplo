@@ -7,13 +7,6 @@ import { AgentUnavailableError } from "./agent-deploy";
 /**
  * The two error classes a dead host can produce, and why the build-server fallback
  * has to know about BOTH.
- *
- * They are unrelated types with near-identical names, and nothing at a call site
- * hints at which one arrives: `agentPreflight` rejects with `AgentUnreachableError`
- * (the dial or the Hello failed - the ordinary "the box is down"), while
- * `runAgentDeploy` raises `AgentUnavailableError` for its own refusals. Matching
- * only the second is exactly how a fallback written for "the build server is down"
- * never fires for it, and a suite with one server in it never notices.
  */
 
 test("the two agent-down errors are unrelated classes, so one instanceof is not enough", () => {
@@ -91,8 +84,7 @@ test("our own curated messages DO survive - they carry no address", () => {
 
 // A TRUST failure rides the SAME class as a dead host, and only the `trust` flag
 // separates them - the dial captures it because gRPC surfaces both as an opaque
-// transport error. Collapsing them would send someone to check whether the box is
-// up, which is precisely the thing that is fine.
+// transport error.
 test("a certificate failure does not read as a dead host", () => {
   const dead = new AgentUnreachableError("14 UNAVAILABLE: connection refused");
   const untrusted = new AgentUnreachableError(

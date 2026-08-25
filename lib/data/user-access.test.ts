@@ -27,13 +27,8 @@ import {
 } from "./user-access";
 
 /**
- * The instance-admin write path for one person's access (ADR-0016).
- *
- * The point of this surface is that an admin can answer "who can touch Prod?"
- * without being a member of the team in question — so the tests that matter are
- * the ones proving it does NOT become a way around the team's own rules: the
- * founder's crown, the instance owner's row, and the last member who can
- * administer the team.
+ * The instance-admin write path for one person's access (ADR-0016). The point of
+ * this surface is that an admin can answer "who can touch Prod?"
  */
 
 let db: TestDb;
@@ -382,10 +377,8 @@ test("the change lands in the affected team's Activity", async () => {
 });
 
 test("the team's OWN door logs it too, in the team it happened in", async () => {
-  // Settings → Users is one door into a membership; the team's Members tab is
-  // the other, and it used to write nothing at all — no Activity row, no alert.
-  // "Who changed what this person can do" has to be answerable whichever door
-  // it came through.
+  // Settings → Users is one door into a membership; the team's Members tab is the
+  // other, and it used to write nothing at all — no Activity row, no alert.
   const roles = await rolesOfTeamA();
   const viewer = roles.find((r) => r.builtinKey === "viewer")!;
   await as(

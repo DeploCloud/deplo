@@ -33,10 +33,6 @@ import { deleteUser, getDeleteUserImpact } from "./user-delete";
 
 /**
  * Permanently deleting a user account, against pglite.
- *
- * The teardown fan-out is harmless here: the seeded server has no agent record,
- * so `connectAgent` throws `AgentUnreachableError` before any socket is opened
- * and the detached teardown just warns — no gRPC, no network, no open handle.
  */
 
 const USER_2 = "user_2";

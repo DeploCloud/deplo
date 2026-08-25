@@ -18,19 +18,7 @@ import {
 } from "./server-certificates";
 
 /**
- * Data-layer tests for custom certificates. The seeded server has no pinned
- * agent certificate, so every dial is refused before a socket opens - which is
- * the property these rely on: everything asserted here has to happen BEFORE the
- * host is touched, and a call that reaches the dial proves the checks ran first.
- *
- * What they lock:
- *  - INSTANCE-ADMIN on all three entry points. A certificate here fronts every
- *    team's apps on that host, so a team capability is not authority over it.
- *  - the certificate and the key are checked AS A PAIR, and before the host is
- *    dialed. A mismatched pair makes Traefik quietly serve its own self-signed
- *    default, which is the failure nobody diagnoses from the outside.
- *  - an already-expired certificate is refused rather than installed, and the
- *    refusals name the fix instead of reading "server unreachable".
+ * Data-layer tests for custom certificates.
  */
 
 let db: TestDb;

@@ -23,11 +23,6 @@ import type { Capability } from "../types";
  * The precedence ladder of ADR-0016, end to end against pglite: a node capability
  * set REPLACES the team role's inside that node and may exceed it, with the most
  * specific node winning.
- *
- * The headline case is the one the product owner specified: a member whose role
- * gives `view, deploy_apps`, granted `manage_env, delete_apps` on one folder,
- * holds exactly the granted set INSIDE that folder — `deploy_apps` is gone there,
- * `manage_env` is present — and exactly the role's set everywhere else.
  */
 
 let db: TestDb;
@@ -236,11 +231,7 @@ test("a project grant governs the apps filed under it, and never hides them", as
 });
 
 /**
- * The gate a move runs, rather than the set it resolves. A grant REPLACES the
- * role inside its node, so a team-wide capability must stop at the boundary of
- * a node whose grant withholds it — and `moveAppToFolder` used to ask the TEAM
- * for `move_apps` and then gate only the source FOLDER, which left every app
- * inside a project answering to the team-wide set alone.
+ * The gate a move runs, rather than the set it resolves.
  */
 test("a project grant that withholds move_apps stops the team-wide one", async () => {
   await pg.exec(

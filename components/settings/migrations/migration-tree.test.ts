@@ -14,18 +14,6 @@ import type {
 
 /**
  * The review tree's arithmetic, and which of its two placement columns exist.
- *
- * Everything else on that screen is markup, but the parent checkboxes are
- * DERIVED from the leaves - the whole reason the tree can be pruned per app -
- * and a half-ticked project that renders as fully ticked is a lie about what the
- * import is going to do. Rendered to static markup rather than driven in a
- * browser: the state lives in the props, so the HTML is the whole answer.
- *
- * What static markup CANNOT show is a Radix Select's chosen label - it resolves
- * that on the client - so the assertions here are about which controls exist and
- * what placeholder they fall back to, never about the text inside a closed one.
- * That is also how the bulk row is tested: its placeholder is visible exactly
- * when the rows disagree and it therefore has no value to show.
  */
 
 function service(
@@ -225,10 +213,9 @@ test("an engine Deplo does not have can never be picked, and never counts", () =
 });
 
 test("a service's notes stay off the review entirely", () => {
-  // They are not warnings - "this path now points at Deplo's files directory"
-  // is a fact about how the import maps a thing, and a strip of yellow under
-  // every second row is how a screen stops being read. They live in the report
-  // the run leaves behind, and in the docs.
+  // They are not warnings - "this path now points at Deplo's files directory" is a
+  // fact about how the import maps a thing, and a strip of yellow under every second
+  // row is how a screen stops being read.
   const html = render(["s-web"]);
   assert.equal(html.includes("Published host ports"), false);
   assert.equal(html.includes("Deplo has no libsql engine"), false);
@@ -400,14 +387,9 @@ test("a database wears its engine's own mark, not a generic glyph", () => {
 });
 
 /**
- * A database's host port, which is the one thing on this screen that is not
- * about WHERE something goes.
- *
- * Quiet by default: a port nothing else wants is a fact, shown next to the
- * engine, not a question. It only becomes a control when it collides - and then
- * the row has to carry both answers, "publish it somewhere else" and "don't
- * publish it", because an import that silently drops the port is what this whole
- * strip exists to stop.
+ * A database's host port, which is the one thing on this screen that is not about
+ * WHERE something goes. Quiet by default: a port nothing else wants is a fact,
+ * shown next to the engine, not a question.
  */
 test("a database says what it publishes, and only asks when that port is taken", () => {
   const clean = render(["s-db"]);

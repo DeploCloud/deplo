@@ -7,19 +7,8 @@ import type { ClientReadableStream } from "@grpc/grpc-js";
 
 /**
  * `streamEvents` bridges a gRPC server-stream into an async generator, and its
- * THREE modes exist for three genuinely different payloads:
- *
- *  - unbounded (the default) for log lines, where dropping one loses information
- *    permanently;
- *  - drop-oldest for telemetry, where a sample that arrives a minute late is not
- *    late data, it is wrong data;
- *  - PAUSE-ABOVE for bytes, where dropping a frame corrupts the artifact and an
- *    unbounded queue is the whole multi-GB transfer sitting in the control
- *    plane's heap.
- *
- * The third one is what the backup relay and the volume/files copies ride on, so
- * it gets pinned here: the producer must actually be paused, and it must actually
- * be resumed.
+ * THREE modes exist for three genuinely different payloads: - unbounded (the
+ * default) for log lines, where dropping one loses information permanently; -
  */
 
 /** A stand-in for a grpc-js readable: an emitter that records pause/resume. */
@@ -58,22 +47,15 @@ const settle = () => new Promise((r) => setImmediate(r));
 
 /**
  * Prime the generator so its listeners are attached.
- *
- * An async generator's body does not run until the first `next()`, and
- * `streamEvents` registers `data`/`error`/`end` inside that body — so a frame
- * pushed before the first pull lands on a stream with no listeners and is simply
- * gone. Real callers always `for await` immediately, so this only matters here;
- * every test below holds the first pull's promise, pushes, and then reads.
  */
 async function prime<E>(
   gen: AsyncGenerator<E, void, unknown>,
 ): Promise<{ first: Promise<IteratorResult<E, void>> }> {
   const first = gen.next();
   await settle();
-  // BOXED, not returned bare: `await` unwraps a promise-of-a-promise
-  // recursively, so returning `first` directly would make `await prime(gen)`
-  // block until the first frame arrives — which is exactly what has not been
-  // pushed yet.
+  // BOXED, not returned bare: `await` unwraps a promise-of-a-promise recursively, so
+  // returning `first` directly would make `await prime(gen)` block until the first
+  // frame arrives — which is exactly what has not been pushed yet.
   return { first };
 }
 
@@ -151,10 +133,9 @@ test("maxQueued still drops the OLDEST — telemetry's contract is unchanged", a
 
   const got = [(await first).value];
   for await (const v of gen) got.push(v);
-  // All five arrive in ONE tick, so the suspended consumer never gets to take
-  // any of them mid-flight: the queue drops down to the newest two, and that is
-  // what the pull sees. Exactly the trade telemetry wants — the freshest sample
-  // beats the completeness of a backlog that is already worthless.
+  // All five arrive in ONE tick, so the suspended consumer never gets to take any of
+  // them mid-flight: the queue drops down to the newest two, and that is what the
+  // pull sees.
   assert.deepEqual(got, [3, 4]);
 });
 

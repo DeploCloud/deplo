@@ -30,12 +30,9 @@ import {
 } from "../outbound-url";
 
 /**
- * Git connections: the team boundary and the write-only token.
- *
- * The `git` provider is used throughout because it is the only one with no API
- * to call - every other provider would try to reach a real host from a unit
- * test. What is under test here is the data layer's scoping, not the HTTP
- * clients (those are covered, without a network, in lib/git/providers.test.ts).
+ * Git connections: the team boundary and the write-only token. The `git` provider
+ * is used throughout because it is the only one with no API to call - every other
+ * provider would try to reach a real host from a unit test.
  */
 
 let db: TestDb;
@@ -221,9 +218,7 @@ test("a connection-backed clone carries its credentials in the userinfo", async 
 
 test("a repo URL on a FOREIGN host does NOT carry the connection's token", async () => {
   // `repo.url` and `connectionId` are set independently by a member who needs no
-  // manage_git and no reveal capability. A URL pointing off the connection's own
-  // host must clone anonymously, or the PAT is exfiltrated to the chosen host
-  // (the agent lifts userinfo into an Authorization: Basic header).
+  // manage_git and no reveal capability.
   const created = await asTeamA(() => connect()); // baseUrl https://git.acme.com
   const attackerUrl = "https://collector.attacker.test/acme/site.git";
   const url = await resolveCloneUrl({

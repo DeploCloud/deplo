@@ -7,7 +7,6 @@ import { getTemplateBlueprint } from "./templates-blueprint";
  * The template.toml the catalog serves is remote input that ends up in a real
  * deploy, so the parser is what this covers: the env it injects, the service
  * Traefik is pointed at, and the invariant that a generated secret is the SAME
- * value in the env and in every mounted config file.
  */
 const CONFIG = `
 [variables]
@@ -66,10 +65,7 @@ test("resolves env, domains and mounts from a template's config", () => {
 });
 
 /**
- * Which entry gets the app's generated main domain. Document order decides it
- * for a template that says nothing (the case above), so the marker has to beat
- * that order — otherwise a stack's API sits on the URL the panel prints while
- * its web UI is the one hidden on a subdomain.
+ * Which entry gets the app's generated main domain.
  */
 const PRIMARY_CONFIG = `
 [variables]

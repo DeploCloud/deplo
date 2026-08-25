@@ -24,15 +24,6 @@ import { __setAgentConnectorForTest } from "../infra/agent-client";
  * Removal is TRUST REVOCATION + FORGETTING, not a host uninstall — these tests pin
  * that contract, which previously had zero coverage while the UI claimed the
  * opposite ("tells it to tear down its containers").
- *
- * What they lock:
- *   - the guards fire with a CLEAN message (a database on the server used to hit
- *     the `databases.server_id` RESTRICT FK and surface a raw Postgres error);
- *   - a BLOCKED removal has NO side effects — in particular it does not revoke
- *     trust on the way out (the old code revoked first, then blocked);
- *   - a clean removal hands back the host-side uninstall command, always;
- *   - an App mid-move OFF the server warns instead of silently stranding its
- *     volumes (`migrate_from_server_id` is SET NULL on delete).
  */
 
 let db: TestDb;
@@ -41,11 +32,7 @@ let pg: PGlite;
 const SERVER = "srv_target";
 const OTHER = "srv_other";
 /**
- * RFC 5737 TEST-NET-1, not the helper's default 10.0.0.1. removeServer now refuses
- * the host running Deplo, and `isDeploHostServer` classifies by comparing a row's
- * ip/host against this machine's real NIC addresses — so a private default could
- * make a removal test pass or fail depending on whose box it runs on. A TEST-NET
- * address is guaranteed never to be assigned to an interface.
+ * RFC 5737 TEST-NET-1, not the helper's default 10.0.0.1.
  */
 const REMOTE_IP = "192.0.2.10";
 /** What this instance believes its OWN address is, for the Deplo-host case. */
@@ -392,12 +379,8 @@ test("an agent that cannot uninstall itself KEEPS the row, and hands over the co
 });
 
 test("a migration source Deplo cannot reach can still be forgotten", async () => {
-  // The dead end this closes: uninstalling needs the agent to ANSWER, and this
-  // row exists because it does not. Running the host-side command by hand makes
-  // it worse - there is then even less answering - so without a path that dials
-  // nothing, the row is immortal. `removeServer` is that path: it revokes the pin
-  // and forgets the row without a single RPC, which is why the UI offers it right
-  // next to the failure.
+  // The dead end this closes: uninstalling needs the agent to ANSWER, and this row
+  // exists because it does not.
   const id = await seedMigrationSource();
   const calls = fakeAgent({ capabilities: ["self-update"] });
   try {

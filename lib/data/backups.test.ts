@@ -44,11 +44,7 @@ import {
 } from "./backups";
 
 /**
- * Data-layer tests for `backups` against pglite (PLAN Step 5, cut-set (d)). Covers
- * the CRUD + validation (the target_kind XOR), the seq-ordered run list, the
- * distinct-destinations sweep helper, the two-tx executor recording a `failed`
- * run when it can't even resolve creds (no agent reached), and the boot reconcile
- * that flips stale `running` runs (+ stuck schedules) to `failed`.
+ * Data-layer tests for `backups` against pglite (PLAN Step 5, cut-set (d)).
  */
 
 let db: TestDb;
@@ -384,11 +380,9 @@ test("countBackupArtifacts is 0 for a target with no stored artifacts", async ()
 /* ------------------------------------------------------------------ */
 
 test("runBackup records a failed run when the owning agent is unreachable", async () => {
-  // A valid schedule against a real destination + database: the start tx persists
-  // a `running` run + stamps the schedule, the DB descriptor resolves with no
-  // network, then the agent dial fails (the seeded server has no live agent) →
-  // the terminal tx flips the run to `failed`. Proves BOTH short transactions run
-  // around the (failed) agent call, with the dial OUTSIDE either tx.
+  // A valid schedule against a real destination + database: the start tx persists a
+  // `running` run + stamps the schedule, the DB descriptor resolves with no network,
+  // then the agent dial fails (the seeded server has no live agent) → the terminal tx
   await seedBackup(db, {
     id: "bkp_1",
     destinationId: "s3_1",
@@ -489,11 +483,9 @@ test("reconcileInFlightBackupRuns is idempotent / a no-op with nothing stale", a
 /* ------------------------------------------------------------------ */
 
 test("a deleted target's runs stay findable, and the sweep stamps them", async () => {
-  // The FKs on backup_runs are ON DELETE SET NULL, so deleting an app used to
-  // blank the only columns naming what its artifacts belonged to: retention
-  // stopped seeing them, no screen listed them, and the files sat on the
-  // destination forever with nothing left that could name them. `target_id` is
-  // what survives.
+  // The FKs on backup_runs are ON DELETE SET NULL, so deleting an app used to blank
+  // the only columns naming what its artifacts belonged to: retention stopped seeing
+  // them, no screen listed them, and the files sat on the destination forever with
   await seedRun(db, {
     id: "r_1",
     destinationId: "s3_1",
@@ -602,12 +594,7 @@ test("the sweep never touches a LIVE target, however old its runs", async () => 
 /* ------------------------------------------------------------------ */
 
 test("deleteAllBackupArtifacts (database) needs delete_databases, not manage_backups", async () => {
-  // It wipes every restore point a database has, with no undo. `manage_backups`
-  // reads as "create, edit, disable and run backup schedules" and is handed out
-  // on that reading — whoever may destroy the database may destroy its backups,
-  // and nobody else.
-  // Re-seed the whole identity graph with a SECOND member who holds exactly the
-  // capability the old gate accepted, and nothing that may destroy a database.
+  // It wipes every restore point a database has, with no undo.
   await pg.exec(TRUNCATE_IDENTITY);
   await seedIdentity(db, {
     users: [
@@ -686,10 +673,8 @@ test("a bucket artifact is no longer refused: the download reaches the agent", a
       targetKind: "app",
       appId: "prj_1",
     });
-    // The seeded server has no live agent, so this gets as far as the dial and
-    // fails THERE. Which failure is the whole point: "this backup is in your
-    // bucket, fetch it with your own credentials" was a refusal by design, and
-    // it left the Download button dead for every team whose backups live in one.
+    // The seeded server has no live agent, so this gets as far as the dial and fails
+    // THERE.
     await assert.rejects(
       () => downloadBackupArtifact("brun_dl"),
       (e: Error) => {
@@ -724,10 +709,8 @@ test("a legacy plaintext bucket destination downloads by the same path", async (
 
 test("an artifact whose app was deleted says WHICH server it lacks", async () => {
   await asUser1(async () => {
-    // `app_id` is ON DELETE SET NULL, so a run outlives its target - and that
-    // artifact is exactly the one somebody still wants. With no workload host
-    // left, any provisioned agent could dial the bucket; this harness has none,
-    // so the message must name that, not the deleted app.
+    // `app_id` is ON DELETE SET NULL, so a run outlives its target - and that artifact
+    // is exactly the one somebody still wants.
     await seedRun(db, {
       id: "brun_orphan",
       destinationId: "s3_1",

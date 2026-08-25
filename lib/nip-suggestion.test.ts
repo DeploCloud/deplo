@@ -4,10 +4,7 @@ import assert from "node:assert/strict";
 import { regenerateNipDomain } from "./nip-suggestion";
 
 /**
- * The one thing Generate must never do is move the hostname to a different
- * server. Only the two random words are free: the label and the trailing hex IP
- * are what nip.io resolves, and rerolling either would hand out a name that
- * points somewhere else (or nowhere).
+ * The one thing Generate must never do is move the hostname to a different server.
  */
 
 const HEX = "9487cf1e.nip.io"; // 148.135.207.30

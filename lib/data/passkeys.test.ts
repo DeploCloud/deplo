@@ -27,16 +27,9 @@ import {
 import { resetUserPasskeys } from "./members";
 
 /**
- * The data layer around passkeys: who may touch one, what it costs to, and what
- * is written down afterwards.
- *
- * Split from `lib/passkey.test.ts`, which owns the POLICY half (the mandate, the
- * login path, the network gate). This file is the boundary: step-up, isolation
- * between accounts, the ceiling, the audit trail, and the admin hatch.
- *
- * Almost everything here is an assertion about a REFUSAL, which is the only kind
- * of test worth writing for a security boundary: a gate that has quietly stopped
- * gating still passes every happy-path test in the file.
+ * The data layer around passkeys: who may touch one, what it costs to, and what is
+ * written down afterwards. Split from `lib/passkey.test.ts`, which owns the POLICY
+ * half (the mandate, the login path, the network gate).
  */
 
 let db: TestDb;
@@ -469,10 +462,9 @@ test("with no policy in force, the last passkey goes without argument", async ()
 });
 
 test("two removals racing each other cannot both win", async () => {
-  // The guard reads the account's passkeys and then deletes one; without the row
-  // lock both readers would see two, both would pass, and an account under a
-  // policy would end up with none. Serialized by `FOR UPDATE`, one of the two
-  // must fail - and the account keeps a second factor either way.
+  // The guard reads the account's passkeys and then deletes one; without the row lock
+  // both readers would see two, both would pass, and an account under a policy would
+  // end up with none.
   await db
     .update(teamsTable)
     .set({ requireTwoFactor: true })

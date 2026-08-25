@@ -11,17 +11,8 @@ import {
 
 /**
  * One predicate decides whether EVERY cookie Deplo writes may be `Secure`, and
- * both ways of getting it wrong are silent:
- *
- *  - Secure on an http panel: the browser drops the cookie without a word. The
- *    session one means nobody can log in; `deplo_team` means everyone is logged
- *    in with no active team, which resolves nothing. Both read as "the panel is
- *    broken" and neither says why.
- *  - Not secure on an https panel: the session cookie travels in clear on any
- *    downgraded request.
- *
- * So what it reads is the point: the address the panel answers on NOW, which an
- * operator can change from the panel itself, not the env var the box booted with.
+ * both ways of getting it wrong are silent: - Secure on an http panel: the browser
+ * drops the cookie without a word.
  */
 
 const ENV = process.env.DEPLO_PUBLIC_URL;
@@ -65,10 +56,8 @@ test("a trailing slash never changes the answer", () => {
 test("knowing no address at all is not a reason to mark cookies Secure", () => {
   delete process.env.DEPLO_PUBLIC_URL;
   assert.equal(publicBaseUrl(), null);
-  // Fails to the setting that still WORKS: a Secure cookie on a panel whose
-  // scheme we cannot name would be dropped on http and lock everyone out. The
-  // https panel that lands here has no configured address either, which is a
-  // louder problem than this one.
+  // Fails to the setting that still WORKS: a Secure cookie on a panel whose scheme we
+  // cannot name would be dropped on http and lock everyone out.
   assert.equal(cookiesAreSecure(), false);
 });
 
@@ -125,11 +114,6 @@ test("no address, and nothing to bind a passkey to", () => {
 
 /**
  * The per-request answer, which is what the panel's second address depends on.
- *
- * Only the fallback is reachable here: `headers()` needs a request scope, and
- * outside one - a scheduler tick, a script, this test - the instance's own
- * answer is the only one there is. Getting THAT wrong would flip every cookie
- * write that happens off a request, so it is pinned.
  */
 test("with no request to read, the instance's own answer stands", async () => {
   setStoredPublicBaseUrl("https://deplo.example.com");

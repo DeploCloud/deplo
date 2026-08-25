@@ -5,11 +5,7 @@ import { withTraefikStackLock } from "./agent-client";
 
 /**
  * Three features rewrite a host's Traefik stack file: the certificates tab, the
- * fleet-wide ACME account email, and the dashboard toggle. Each reads the WHOLE
- * file, edits it, and writes the whole thing back, and the agent takes whatever
- * it is given - there is no compare-and-swap underneath. Interleave two and the
- * second read misses the first write, so the second write puts it back: a
- * certificate that reported itself installed and is not on the host.
+ * fleet-wide ACME account email, and the dashboard toggle.
  */
 
 test("two writers on ONE server never interleave their read and their write", async () => {

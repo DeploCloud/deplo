@@ -5,13 +5,6 @@ import { forkCloneUrl, redactCloneUrl } from "./clone-url";
 
 /**
  * What a fork preview is allowed to clone.
- *
- * `app_previews.head_clone_url` was written on every delivery and then never
- * read: the deploy cloned the APP's repository at the fork's branch NAME, so a
- * fork preview either failed or quietly built the base repo's branch of the same
- * name - while the approve button told a maintainer they had reviewed the fork's
- * diff. The value now decides the clone, which makes checking it the load-bearing
- * part: it arrives inside a webhook body.
  */
 
 const BASE = "https://github.com/acme/app.git";

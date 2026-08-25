@@ -7,16 +7,6 @@ import { copyVolumeBetween } from "./volume-migration";
 
 /**
  * The byte relay, on its own.
- *
- * This is the one function in the repo that can destroy data while reporting
- * success, and for a long time it did: `docker run -v <name>:/v` CREATES a missing
- * volume, so exporting from the wrong host produced a valid EMPTY archive, and the
- * destination was wiped before the first frame arrived. Every Dokploy import and
- * every server move ran through here, and nothing counted a byte.
- *
- * So the invariants are pinned here rather than only at the callers: an empty
- * source is not a copy, a destination is not opened until the source has proven
- * itself, and a truncated or altered arrival is a failure.
  */
 
 /** A gzipped tar of an empty directory - what a missing volume exports. */

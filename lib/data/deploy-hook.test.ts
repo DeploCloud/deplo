@@ -34,10 +34,6 @@ import {
 
 /**
  * The deploy hook: the URL that lets something outside deplo trigger a deploy.
- *
- * What has to hold: the token is minted only when someone asks for it, the same
- * URL comes back until it is rotated, rotating kills the old one, the kill
- * switch is really a kill switch, and none of it crosses a team boundary.
  */
 
 let db: TestDb;

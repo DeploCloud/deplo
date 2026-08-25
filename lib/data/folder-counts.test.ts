@@ -14,11 +14,7 @@ import { createProject, listProjects, moveAppToProject } from "./projects";
 
 /**
  * Integration tests for the LIVE COUNTS on folder and project tiles against
- * pglite. Proves the subtree semantics: a folder's appCount covers
- * everything nested anywhere beneath it (not just direct children), and a
- * project's appCount also reaches services filed inside a legacy
- * folder-in-project subtree (pre-ADR-0009 rows, which carry no project_id of
- * their own).
+ * pglite.
  */
 
 let db: TestDb;

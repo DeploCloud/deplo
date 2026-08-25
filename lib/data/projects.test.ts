@@ -35,12 +35,9 @@ import {
 } from "./environments";
 
 /**
- * Integration tests for the Project data layer (ADR-0008, remodeled per
- * ADR-0009: a project is an ADVANCED FOLDER whose contents live per
- * Environment) against pglite. Proves: team-scoped slugging, live counts,
- * environment membership on move-in (default env), moveAppToEnvironment,
- * the one-home folder/project exclusivity, and a delete that re-parents
- * contents to the top level rather than cascading.
+ * Integration tests for the Project data layer (ADR-0008, remodeled per ADR-0009:
+ * a project is an ADVANCED FOLDER whose contents live per Environment) against
+ * pglite.
  */
 
 let db: TestDb;

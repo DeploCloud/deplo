@@ -26,15 +26,6 @@ import * as lease from "../backups/lease";
  * The TICK's cadence, which is the part `scheduler.test.ts` cannot see: it calls
  * the two phases directly, so it would pass just as well if they ran at the same
  * rate.
- *
- * They must not. Firing is minute-grained because a cron expression has no finer
- * resolution; reaping is what turns "Running" into an outcome, and at one poll a
- * minute a command that ended in 200ms read as running for another 59 - long
- * enough to look stuck, to look queued behind a hand-started run, and to skip the
- * next fire under overlap=skip.
- *
- * With no DEPLO_DATABASE_URL the lease takes its in-process path, which is the
- * single-process shape the scheduler actually runs in.
  */
 
 let db: TestDb;

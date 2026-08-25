@@ -26,20 +26,7 @@ import {
 } from "./server-maintenance";
 
 /**
- * Data-layer tests for host maintenance. The agent is genuinely unreachable here
- * (a seeded server has no pinned cert), which is exactly the property these need:
- * every assertion is about what happens BEFORE a host is dialed, and the dial
- * failing proves the check ran first rather than after a round trip.
- *
- * What they lock:
- *  - INSTANCE-ADMIN on every entry point. These act on shared infrastructure and
- *    can take a host's routing down; a team capability is not authority over it.
- *  - the Traefik dashboard is never published without credentials, refused in the
- *    data layer rather than only in the form — the mutation is reachable from the
- *    bearer API, where there is no form to disable.
- *  - restartDeploPanel refuses any server that is not the host running Deplo.
- *  - restartServerWorkloads leaves stopped workloads alone and reports per-
- *    workload failures instead of aborting at the first one.
+ * Data-layer tests for host maintenance.
  */
 
 let db: TestDb;
@@ -77,10 +64,7 @@ beforeEach(async () => {
       },
     ],
   });
-  // Deliberately UNPROVISIONED (no pinned cert). resolveTarget rejects such a
-  // server before opening a socket, so "the dial fails" here costs nothing —
-  // seeding a cert would make every call actually dial REMOTE_IP, which is
-  // unrouted and would hang the suite on a connect timeout rather than refuse.
+  // Deliberately UNPROVISIONED (no pinned cert).
   await seedServerRow(db, {
     id: REMOTE,
     name: "remote-1",
@@ -290,10 +274,9 @@ test("a bogus timezone is rejected before the host is dialed", async () => {
 });
 
 test("an alias reaches the host as its canonical name", async () => {
-  // Both host write paths must end up recording the SAME string: timedatectl
-  // keeps the name it is handed, the /etc/localtime relink keeps the file that
-  // name resolves to. Canonicalising here is what makes those agree, and it is
-  // also what stops "europe/rome" from meeting a case-sensitive filesystem.
+  // Both host write paths must end up recording the SAME string: timedatectl keeps
+  // the name it is handed, the /etc/localtime relink keeps the file that name
+  // resolves to.
   assert.equal(canonicalTimezone("europe/rome"), "Europe/Rome");
   assert.equal(canonicalTimezone("US/Eastern"), "America/New_York");
   assert.equal(canonicalTimezone("  Europe/Rome  "), "Europe/Rome");

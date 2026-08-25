@@ -26,18 +26,9 @@ import {
 } from "./oauth-test-helpers";
 
 /**
- * deplo as an OAuth 2.1 authorization server.
- *
- * Everything here is driven over HTTP through Better Auth's own handler, the way
- * `lib/data/two-factor.test.ts` does — because the risk this file covers is a
- * REMOTE one. Registration is unauthenticated by design, the authorize leg is a
- * top-level navigation that carries a SameSite=Lax cookie, and a code travels in
- * a URL. Each of those is somebody else's entry point, not ours.
- *
- * The other half of the story is that adding a plugin must not weaken the auth
- * that was already here. The last section duplicates a two-factor assertion on
- * purpose: the risk is plugin ORDER, and this is the file where a plugin was
- * added.
+ * deplo as an OAuth 2.1 authorization server. Everything here is driven over HTTP
+ * through Better Auth's own handler, the way `lib/data/two-factor.test.ts` does —
+ * because the risk this file covers is a REMOTE one.
  */
 
 let db: TestDb;
@@ -87,10 +78,8 @@ test("a full authorization code flow issues an access token", async () => {
 });
 
 test("the access token is stored hashed over the BARE secret", async () => {
-  // The one contract that is invisible until it breaks: the plugin strips its
-  // prefix before hashing, so `authenticateToken` must hash the bare secret.
-  // Hash the prefixed string instead and every OAuth request 401s while every
-  // other test still passes.
+  // The one contract that is invisible until it breaks: the plugin strips its prefix
+  // before hashing, so `authenticateToken` must hash the bare secret.
   const flow = await fullFlow({ email: EMAIL, password: PASSWORD });
   const bare = flow.accessToken.slice("dplo_at_".length);
   const expected = createHash("sha256").update(bare).digest("hex");
@@ -102,17 +91,7 @@ test("the access token is stored hashed over the BARE secret", async () => {
 
 test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly", async () => {
   // This is the bug that made Authorize a dead button, pinned from both ends.
-  //
-  // `consentEndpoint` funnels into `authorizeEndpoint`, which opens with
-  // `if (!ctx.request) throw UNAUTHORIZED("request not found")` — so calling it
-  // from a resolver with `auth.api.oauth2Consent({body, headers})` fails every
-  // single time, however valid the query and the cookie are. The browser has to
-  // post the consent, and `components/oauth/consent-form.tsx` is where that
-  // lives now.
-  //
-  // The second half is why nobody saw it: the APIError's `message` is EMPTY and
-  // the reason is in `body.error_description`, so a UI that shows `e.message`
-  // shows an error notification with nothing written inside it.
+  // `consentEndpoint` funnels into `authorizeEndpoint`, which opens with `if (!
   const reg = await registerClient();
   const cookie = await signIn(EMAIL, PASSWORD);
   const authorized = await authorize(cookie, {
@@ -156,10 +135,8 @@ test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly
 
 test("the signed authorization query survives Next's searchParams round trip", async () => {
   // The bug this pins was invisible and total: the provider signs the whole
-  // authorization query onto the consent URL, the page reads it back through
-  // Next's `searchParams` (an object, with an ARRAY for the repeated `ba_param`
-  // keys), and rebuilds it to post back. Drop the arrays and the signature stops
-  // matching — the consent is refused and Authorize looks like a dead button.
+  // authorization query onto the consent URL, the page reads it back through Next's
+  // `searchParams` (an object, with an ARRAY for the repeated `ba_param` keys), and
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);
@@ -230,10 +207,9 @@ test("dropping the repeated keys is what broke it", async () => {
 });
 
 test("a token cannot be requested for a resource deplo does not serve", async () => {
-  // GHSA-p2fr-6hmx-4528: the plugin validates `resource` but does not bind it to
-  // the grant, so more than one valid audience lets a client aim a token at a
-  // resource server it was not authorised for. deplo allows exactly ONE, which
-  // is the advisory's own workaround — this is what stops the list growing back.
+  // GHSA-p2fr-6hmx-4528: the plugin validates `resource` but does not bind it to the
+  // grant, so more than one valid audience lets a client aim a token at a resource
+  // server it was not authorised for.
   await assert.rejects(
     fullFlow({
       email: EMAIL,
@@ -253,12 +229,6 @@ test("a token cannot be requested for a resource deplo does not serve", async ()
 test("the audience allowlist has exactly one entry", async () => {
   // The runtime test above only proves today's list; this is what makes adding a
   // second audience a decision somebody has to argue for.
-  //
-  // Both keys, because Better Auth 1.7.0 split the old `validAudiences` in two:
-  // `resources` is what the AS will issue tokens for, and
-  // `clientRegistrationDefaultResources` is what a self-registered client is
-  // linked to. A second entry in EITHER one puts two audiences in reach of one
-  // client, which is the shape GHSA-p2fr-6hmx-4528 was about.
   const { readFileSync } = await import("node:fs");
   const src = readFileSync("lib/auth/better-auth.ts", "utf8");
   for (const key of ["resources", "clientRegistrationDefaultResources"]) {
@@ -280,10 +250,7 @@ test("the audience allowlist has exactly one entry", async () => {
 
 test("a moved panel leaves exactly one requestable audience", async () => {
   // Better Auth 1.7.0 turned the audience list into ROWS, and seeds them
-  // `insertOnly`. deplo's identifier is derived from the panel's address, so an
-  // instance that moved hostnames keeps the old row alongside the new one - two
-  // live audiences, which is the shape GHSA-p2fr-6hmx-4528 needed and the one
-  // the config guard above cannot see, because nothing in the config is wrong.
+  // `insertOnly`.
   const { reconcileOAuthResources } = await import("./oauth-resources");
   const current = `${BASE}/api/mcp`;
   const stale = "https://the-old-address.test/api/mcp";
@@ -294,10 +261,9 @@ test("a moved panel leaves exactly one requestable audience", async () => {
        on conflict (identifier) do update set disabled = false`,
     ["res_stale", stale, "old address"],
   );
-  // ...and the current one present but DISABLED, which is the A -> B -> A case:
-  // coming back to an address you used before finds the row already there, and
-  // `insertOnly` will not touch it. Without the re-enable half, every token
-  // exchange would then fail on an address that looks perfectly configured.
+  // .and the current one present but DISABLED, which is the A -> B -> A case: coming
+  // back to an address you used before finds the row already there, and `insertOnly`
+  // will not touch it.
   await pg.query(
     `insert into oauth_resource (id, identifier, name, disabled) values ($1, $2, $3, true)
        on conflict (identifier) do update set disabled = true`,
@@ -329,12 +295,8 @@ test("a moved panel leaves exactly one requestable audience", async () => {
 });
 
 test("the discovery documents agree on one issuer, and it resolves", async () => {
-  // RFC 8414 §3.3 makes a client check that the `issuer` it reads back equals
-  // the identifier it built the discovery URL from. deplo's issuer carries a
-  // path (`/api/auth`, Better Auth's base path), so advertising the bare origin
-  // made a conformant client reject the mismatch outright while a lenient one
-  // connected by luck. An issuer WITH a path also moves its metadata: §3.1
-  // inserts the path after the well-known segment.
+  // RFC 8414 §3.3 makes a client check that the `issuer` it reads back equals the
+  // identifier it built the discovery URL from.
   const prm = (await (await protectedResourceResponse()).json()) as {
     authorization_servers: string[];
   };
@@ -366,10 +328,8 @@ test("the discovery documents agree on one issuer, and it resolves", async () =>
 });
 
 test("prompt=none is refused instead of silently re-issuing a code", async () => {
-  // The provider honours it: with a consent on file it answers a top-level GET
-  // with a 302 straight back to the client carrying a fresh code, no screen and
-  // no click. Ordinary OAuth, wrong here — in deplo a consent is the act that
-  // mints an API token, and every one of those has to be somebody deciding.
+  // The provider honours it: with a consent on file it answers a top-level GET with a
+  // 302 straight back to the client carrying a fresh code, no screen and no click.
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);
@@ -591,10 +551,8 @@ test("a dangerous URL scheme cannot be registered as a redirect", async () => {
 /* ------------------------------------------------------------------ */
 
 test("dynamic registration cannot grant itself a silent-approval flag", async () => {
-  // Mass assignment from the registration body is how a self-registering client
-  // would hand itself a consent-free path in. The plugin refuses the field
-  // outright rather than defaulting it, which is the stronger guarantee — pin
-  // that, so a future "just ignore unknown fields" never quietly relaxes it.
+  // Mass assignment from the registration body is how a self-registering client would
+  // hand itself a consent-free path in.
   const refused = await registerClient({ skip_consent: true });
   assert.ok(refused.status >= 400, JSON.stringify(refused.body));
 
@@ -630,9 +588,7 @@ test("a freshly registered client reaches nothing until someone approves it", as
 
 test("/sign-in/email is refused over HTTP, and the session it would mint never exists", async () => {
   // The plugin's own sign-in skips every lock deplo's does: the per-ACCOUNT rate
-  // limit, the `failed_logins` alert, and the suspended-account refusal. Mounting
-  // `/api/auth/*` whole for OAuth published it anyway, so `deploOwnedGate` shuts
-  // it - and this is the test that notices if the OAuth plugin ever reopens it.
+  // limit, the `failed_logins` alert, and the suspended-account refusal.
   const before = (await pg.query(`select id from session`)).rows.length;
   const res = await requireAuth().handler(
     new Request("http://localhost/api/auth/sign-in/email", {

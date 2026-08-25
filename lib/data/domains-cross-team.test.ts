@@ -22,23 +22,9 @@ import {
 } from "./domains";
 
 /**
- * A hostname belongs to ONE TEAM.
- *
- * The stored uniqueness is `(name, coalesce(path_prefix,''))` rather than
- * `name`, on purpose: one team serving `app.com` on `/` and `app.com` on `/api`
- * from two apps is a real feature. What it also allowed was a DIFFERENT team
- * attaching the victim's hostname to an app of their own on a path of their
- * choosing, and every step after that landed by itself:
- *
- *  - `servers.all_teams` defaults to true, so the attacker picks the very host
- *    the victim's app runs on;
- *  - the victim's DNS already points there, so the row is born `valid`;
- *  - `traefikRouterLabels` pins a path router ABOVE the whole-host router by
- *    design, so the new route WINS for that path.
- *
- * Same-origin content under someone else's hostname. These tests are the guard,
- * and the third one is the half that must NOT regress: inside one team the
- * shared-hostname feature still works.
+ * A hostname belongs to ONE TEAM. The stored uniqueness is `(name,
+ * coalesce(path_prefix,''))` rather than `name`, on purpose: one team serving
+ * `app.com` on `/` and `app.com` on `/api` from two apps is a real feature.
  */
 
 let db: TestDb;

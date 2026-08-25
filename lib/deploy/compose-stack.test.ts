@@ -12,11 +12,9 @@ import {
 import type { VolumeMount } from "../types";
 
 /**
- * The `domains` table is the SOLE source of compose routing: each routed domain
- * (a {@link ComposeDomainRoute}) becomes exactly one Traefik router → its named
- * compose service. A route with no service (or one not in the stack) is skipped;
- * no routes ⇒ no routers. Separately, the contract that Deplo must NOT strip a
- * service's published `ports:` (host publishing is orthogonal to routing) holds.
+ * The `domains` table is the SOLE source of compose routing: each routed domain (a
+ * {@link ComposeDomainRoute}) becomes exactly one Traefik router → its named
+ * compose service.
  */
 
 type Svc = {
@@ -770,10 +768,8 @@ type BuildSvc = Svc & {
 };
 
 test("a service with `build:` gets the tracking labels ON THE IMAGE (build.labels)", () => {
-  // Container labels don't reach the image config, which left compose-BUILT
-  // images invisible to the cleanup's unused_app_images scope forever. The
-  // build.labels below are what makes each rebuilt generation reclaimable —
-  // deplo.service included, so the agent ranks each service's images apart.
+  // Container labels don't reach the image config, which left compose-BUILT images
+  // invisible to the cleanup's unused_app_images scope forever.
   const doc = buildDoc(`
 services:
   web:
@@ -832,12 +828,7 @@ services:
 });
 
 /**
- * The shared network is the platform's, not the stack's. Two things are settled
- * at render time because they cannot be settled anywhere else: a hand-written
- * `aliases:` list would claim any name on a network every app on the host
- * shares, and a service NAME is itself an alias there — so one called `deplo`
- * would collect the panel's own traffic (Traefik forwards it to
- * `http://deplo:3000`).
+ * The shared network is the platform's, not the stack's.
  */
 test("a hand-written alias on the shared network does not survive the render", () => {
   const out = buildComposeStack({
@@ -915,10 +906,7 @@ networks:
 /**
  * A compose route was rendered with the DEFAULT TLS triplet whatever its domain
  * asked for, because `ComposeDomainRoute` never declared the three fields the
- * caller was already passing. A domain with no certificate - which is what every
- * auto `.nip.io` host is, certificates being opt-in - therefore got a router on
- * `websecure` only: nothing answered on the http address the panel prints for
- * it, while :443 served it under a self-signed cert.
+ * caller was already passing.
  */
 test("buildComposeStack: a route with no certificate lands on the web entrypoint", () => {
   const yaml = buildComposeStack({
@@ -972,15 +960,9 @@ test("buildComposeStack: a route that asked for a certificate still gets one", (
 });
 
 /**
- * `network_mode` and `networks` are mutually exclusive in Compose, and the
- * failure is not local to the service: `docker compose up` refuses the WHOLE
- * project ("service X declares mutually exclusive `network_mode` and
- * `networks`: invalid compose project"), so one host-network container would
- * stop every other service in the stack from starting. Home Assistant, Plex and
- * the media stacks are all written that way and arrive from an import already
- * routed, which is exactly when nobody opens the compose editor to read the
- * lint. Such a service is left as its author wrote it and gets no router: it is
- * not on the deplo network, so Traefik could not reach it there anyway.
+ * `network_mode` and `networks` are mutually exclusive in Compose, and the failure
+ * is not local to the service: `docker compose up` refuses the WHOLE project
+ * ("service X declares mutually exclusive `network_mode` and `networks`: invalid
  */
 test("a network_mode service is left alone: no networks key, no router", () => {
   const doc = buildDoc(

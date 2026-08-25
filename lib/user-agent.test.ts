@@ -6,9 +6,7 @@ import { describeUserAgent } from "./user-agent";
 /**
  * Real User-Agent strings, because the whole difficulty of this parser is that
  * they impersonate each other: Edge says Chrome and Safari, Chrome says Safari,
- * Opera and Samsung Internet both say Chrome, Android says Linux. Each case here
- * is a browser that would be mislabelled if the ordered checks in
- * `lib/user-agent.ts` were rearranged.
+ * Opera and Samsung Internet both say Chrome, Android says Linux.
  */
 
 const UA = {

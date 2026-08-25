@@ -9,16 +9,6 @@ import { ALL_CAPABILITIES } from "../types";
 
 /**
  * The load-bearing test for the MCP server.
- *
- * A tool is a GraphQL document written by hand, so the failure mode is drift: a
- * field gets renamed, an argument becomes required, and the tool keeps existing
- * while answering "Cannot query field" to every model that calls it. That is
- * exactly what happened to `docs/reference/api.md`, which still documented four
- * fields that no longer existed.
- *
- * Validating every document against the generated SDL closes it: rename a field
- * anywhere in `lib/graphql/types/*`, regenerate `schema.graphql`, and this test
- * names the tools that stopped working.
  */
 
 let cached: GraphQLSchema | undefined;

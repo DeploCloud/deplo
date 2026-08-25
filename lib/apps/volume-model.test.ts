@@ -22,13 +22,7 @@ import {
 import type { VolumeMount } from "../types";
 
 /**
- * The Storage editor's model. Two properties matter beyond the plain unit checks:
- *
- *  - the UI labels are Volume / File / Bind while the STORED discriminants stay
- *    "named" / "app" / "host" (renaming them would be a migration for a caption);
- *  - `volumeProblem` must not accept anything the server's `validateVolumes`
- *    rejects — they share this module's constants, and these tests pin the
- *    overlap case by case.
+ * The Storage editor's model.
  */
 
 const vol = (p: Partial<VolumeMount>): VolumeMount => ({
@@ -170,10 +164,9 @@ test("the derived path follows the app's root directory, like the workdir does",
 });
 
 test("nothing is derived when deplo does not know the working directory", () => {
-  // A prebuilt image or a compose service chose its own, and a mount at an
-  // invented path fails silently: the app writes where it always did, the disk
-  // stays empty, the data is gone at the next deploy. The field is required
-  // there instead.
+  // A prebuilt image or a compose service chose its own, and a mount at an invented
+  // path fails silently: the app writes where it always did, the disk stays empty,
+  // the data is gone at the next deploy.
   for (const workdir of [null, undefined, ""]) {
     assert.equal(
       derivedMountPath(vol({ name: "uploads", mountPath: "" }), workdir),
@@ -612,10 +605,7 @@ test("a half-filled row still gets an honest readout, never a broken sentence", 
 /* ---- switching kind ------------------------------------------------- */
 
 test("switching kind PRESERVES each kind's own source", () => {
-  // Preserving is what makes a mis-click one click to undo. It is safe because
-  // only the selected kind's field renders, and both the save payload and the
-  // dirty key are type-gated (see storage-settings-form) — so a name typed for a
-  // Volume can never ship on a Bind row.
+  // Preserving is what makes a mis-click one click to undo.
   const asBind = switchKind(vol({ name: "uploads", mountPath: "/up" }), "host");
   assert.equal(asBind.type, "host");
   assert.equal(asBind.name, "uploads");

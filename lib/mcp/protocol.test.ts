@@ -14,23 +14,12 @@ import type { Capability } from "../types";
 /**
  * Drives the real SDK over a real HTTP request, so the wiring is tested rather
  * than assumed.
- *
- * The failure this exists to catch is unglamorous and total: every tool's zod
- * schema is converted to JSON Schema when `tools/list` is answered, and one
- * shape the converter cannot express takes the WHOLE list down — not just its
- * own tool. Asserting a count is how that becomes a test failure instead of an
- * agent that connects and sees nothing.
- *
- * No database: `tools/list` never reaches a resolver, so a principal is just a
- * capability set here.
  */
 
 /**
  * The revision deplo targets, spelled out rather than taken from the SDK's
  * `LATEST_PROTOCOL_VERSION` — which still names the PREVIOUS revision
- * (`2025-11-25`), because "latest" there means "latest of the two eras this
- * build can speak". Writing it out is also the assertion: if a future SDK drops
- * it, these tests fail instead of silently negotiating something else.
+ * (`2025-11-25`), because "latest" there means "latest of the two eras this build
  */
 const PROTOCOL = "2026-07-28";
 
@@ -168,10 +157,8 @@ test("instance-admin tools appear only for an instance-admin token", async () =>
 });
 
 test("a destructive tool runs straight away, with no confirmation step", () => {
-  // deplo adds no gate of its own: what an agent may do is the token's
-  // Capabilities and nothing on top. The tool reaches the data layer and fails
-  // THERE (no database in this test), which is the proof that nothing
-  // short-circuited it into a confirmation round trip.
+  // deplo adds no gate of its own: what an agent may do is the token's Capabilities
+  // and nothing on top.
   return rpc("tools/call", principal(ALL, true), {
     name: "delete_app",
     arguments: { appId: "prj_whatever" },
@@ -186,10 +173,9 @@ test("a destructive tool runs straight away, with no confirmation step", () => {
 });
 
 test("a client that cannot prompt is served exactly like one that can", async () => {
-  // The old behaviour refused here, because deplo owned the confirmation. Now
-  // the prompt belongs to the client, so a client without elicitation support
-  // is not a second-class caller — it just gets whatever its own approval flow
-  // decides to run.
+  // The old behaviour refused here, because deplo owned the confirmation. Now the
+  // prompt belongs to the client, so a client without elicitation support is not a
+  // second-class caller — it just gets whatever its own approval flow decides to run.
   const withPrompt = await rpc("tools/call", principal(ALL, true), {
     name: "delete_app",
     arguments: { appId: "prj_whatever" },

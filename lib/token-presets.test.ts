@@ -27,11 +27,7 @@ test("every template is a well-formed capability set", () => {
 });
 
 /**
- * The assertion with teeth. A renamed or deleted capability is already a compile
- * error via the `Capability` union; what a compiler cannot catch is someone
- * adding a newly-minted dangerous capability to a template that is advertised as
- * safe, or marking an existing one `sensitive` after the fact. This encodes the
- * design rule itself so it fails loudly instead of rotting.
+ * The assertion with teeth.
  */
 test("only Root access hands out a sensitive capability, and it hands out everything", () => {
   const root = TOKEN_PRESETS.find((p) => p.id === "root");

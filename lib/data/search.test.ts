@@ -16,12 +16,6 @@ import { search } from "./search";
 
 /**
  * The one read that spans teams.
- *
- * Everything else in `lib/data` answers about the active team, and this file is
- * the proof that crossing that line stayed a loop over the ordinary per-team
- * reads rather than a query with its own idea of who may see what: a team the
- * caller is not a member of has to contribute NOTHING, and it does so because
- * `listMyTeams` never names it, not because a filter remembered to exclude it.
  */
 
 let db: TestDb;

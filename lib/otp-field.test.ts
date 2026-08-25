@@ -12,11 +12,7 @@ import {
 } from "./otp-field";
 
 /**
- * The split code field's edit model. Six boxes have to behave like one cursor,
- * and every bug in a field like this is a keyboard path nobody tried by hand:
- * backspace out of an empty box, a paste landing mid-field, a click on box 5 of
- * an empty field. They are all cheap to assert and expensive to discover in a
- * login form someone is locked out of.
+ * The split code field's edit model.
  */
 
 const L = 6;

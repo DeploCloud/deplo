@@ -48,14 +48,6 @@ import { startDeployment } from "../deploy/build";
 
 /**
  * The data cutover, against a fake Dokploy and a fake agent.
- *
- * The byte copy IS covered here, and has to be: for as long as it was not, a relay
- * that reported "Copied" having moved nothing passed every suite in this repo while
- * destroying every volume it touched. So the three things the copy must never do
- * are pinned - it must not read from a host nobody derived, must not wipe a
- * destination before the source has proven it has data, and must not report a
- * success it did not perform - alongside the ORDER, which is the other half:
- * nothing on the source may be stopped until every check has passed.
  */
 
 let db: TestDb;
@@ -544,10 +536,9 @@ test("the plan pairs an imported app's volume with the one Deplo will mount", as
     ),
     [
       "blink-web-abc_uploads->deplo-blink-web-uploads@/app/uploads",
-      // The bind mount is listed as what it is - a host DIRECTORY, moved by a
-      // different RPC behind a different permission - rather than dropped in
-      // silence, which is how an app used to arrive missing half its data with a
-      // report that said everything went fine.
+      // The bind mount is listed as what it is - a host DIRECTORY, moved by a different
+      // RPC behind a different permission - rather than dropped in silence, which is how
+      // an app used to arrive missing half its data with a report that said everything
       "/etc/dokploy/x->/etc/dokploy/x@/app/config.json",
     ],
   );
@@ -605,9 +596,6 @@ test("the plan says so when Deplo has no agent on the machine holding the data",
 test("the plan tells an enrolled-but-unreachable machine apart from a missing one", async () => {
   // Two different problems with two different fixes: "no agent here at all" means
   // install one, "the agent will not answer us" means the address or the firewall.
-  // Both have to be decided on the REVIEW screen - `sourceReachable` is what stops
-  // the wizard from starting a copy it cannot finish, in one refusal rather than
-  // one per service.
   await seedDokployHostServer();
   unreachableAgents.add("srv_dokploy_host");
   const runId = await openRun();
@@ -1001,12 +989,8 @@ test("nothing is stopped until Deplo knows which server holds the data", async (
 });
 
 test("a source that is enrolled but will not answer US stops nothing and copies nothing", async () => {
-  // The row says `online`, because that is what the CALL-HOME sets and the
-  // call-home is the agent dialing OUT. The copy needs the other direction, and a
-  // panel behind a proxy or a host firewall that never opened the agent port both
-  // leave exactly this state. Until the pre-flight existed, the cutover trusted
-  // the row: it stopped the service on Dokploy and only then found out it could
-  // not read a byte - the source down, the target empty, and nothing to undo it.
+  // The row says `online`, because that is what the CALL-HOME sets and the call-home
+  // is the agent dialing OUT.
   await seedDokployHostServer();
   unreachableAgents.add("srv_dokploy_host");
   const runId = await openRun();
@@ -1040,12 +1024,8 @@ test("a source that is enrolled but will not answer US stops nothing and copies 
 });
 
 test("a source that dies MID-COPY says so, so the caller can stop the whole run", async () => {
-  // The pre-flight cannot see this one: the machine answered, the service was
-  // stopped on Dokploy, and the connection died with bytes in flight. What must
-  // not happen next is the loop moving on to the next service - every one of
-  // them is on the same machine, each gets stopped over there before its copy is
-  // tried, and a run that grinds through them hands back an organisation with no
-  // data and its services down on both sides.
+  // The pre-flight cannot see this one: the machine answered, the service was stopped
+  // on Dokploy, and the connection died with bytes in flight.
   await seedDokployHostServer();
   hostDiesMidCopy.add("srv_dokploy_host");
   const runId = await openRun();
@@ -1063,10 +1043,8 @@ test("a source that dies MID-COPY says so, so the caller can stop the whole run"
 });
 
 test("an ordinary failed copy does NOT claim the machine went away", async () => {
-  // The other half of the flag, and the half that keeps it meaningful: a volume
-  // that is simply not on that host is one report line and the run carries on.
-  // If everything raised `sourceGone` the caller would stop on the first
-  // service that has nothing to copy.
+  // The other half of the flag, and the half that keeps it meaningful: a volume that
+  // is simply not on that host is one report line and the run carries on.
   await seedDokployHostServer();
   delete volumes.srv_dokploy_host["blink-web-abc_uploads"];
   const runId = await openRun();

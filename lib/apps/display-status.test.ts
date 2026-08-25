@@ -16,7 +16,6 @@ const runtime = (over: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot => ({
  * The bug these lock down: `apps.status` is the last thing the control plane was
  * ASKED to do, so a container that crash-loops right after a successful deploy
  * leaves the row saying "active" — and the UI said "Online" while docker was
- * restarting the container every 60 seconds.
  */
 
 test("a crash-looping container is Restarting, never Online", () => {

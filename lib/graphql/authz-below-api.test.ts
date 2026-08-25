@@ -32,17 +32,7 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 /**
  * The other half of the API's authorization surface: the mutations whose field
  * gate is only `loggedIn`, because the capability they need is a PER-RESOURCE
- * question a static scope cannot ask - which folder, whose account, which
- * backup target. For those the data layer is not defense in depth, it is the
- * only depth, so each one is driven here against a REAL fixture (a real folder,
- * owned by someone else; a real app; a real team) rather than the unreachable
- * ids `authz-matrix.test.ts` uses.
- *
- * Every case is stated twice, because either half alone proves nothing:
- *  - a member holding only `view` must be refused, and
- *  - a member holding exactly the named capability must NOT be - otherwise the
- *    gate is really "manage the whole team", and the fine-grained permission the
- *    role editor offers is decoration.
+ * question a static scope cannot ask - which folder, whose account, which backup
  */
 
 let db: TestDb;
@@ -359,10 +349,9 @@ test("the compose preview is served at the view floor with every value masked", 
 /* ------------------------------------------------------------------ */
 
 test("a team capability does not reach into a folder the member can't see", async () => {
-  // The folder is owned by USER_1 and shared with nobody: an app filed inside it
-  // is invisible, and stays invisible however much the TEAM role grants -
-  // EXCEPT `manage_team`, which is the documented folder super-user, so the
-  // subject holds everything but that.
+  // The folder is owned by USER_1 and shared with nobody: an app filed inside it is
+  // invisible, and stays invisible however much the TEAM role grants - EXCEPT
+  // `manage_team`, which is the documented folder super-user, so the subject holds
   await setCaps(ALL_CAPABILITIES.filter((c) => c !== "manage_team"));
   const messages = await callAs(
     USER_M,

@@ -6,18 +6,8 @@ import { proxy } from "./proxy";
 
 /**
  * The headers that decide whether the panel is usable at all on the address it
- * answers on WITHOUT any DNS: its server's own `http://<ip>:3000`.
- *
- * Deciding `isHttps` from `DEPLO_PUBLIC_URL` rather than from the request sent
- * `upgrade-insecure-requests` to that plain-http page too, and the W3C algorithm
- * has no carve-out for IP hosts: the navigation is exempt, so the document
- * loads, and every relative stylesheet and chunk under it is promoted to an
- * `https://<ip>:3000` nothing serves. The panel rendered with no CSS and never
- * hydrated - a bug with no error message anywhere, which is why it is pinned
- * here rather than left to a browser to rediscover.
- *
- * The same mistake outlived turning HTTPS off from the panel: that moves the
- * stored address, never the env var, so the header kept being sent afterwards.
+ * answers on WITHOUT any DNS: its server's own `http://<ip>:3000`. Deciding
+ * `isHttps` from `DEPLO_PUBLIC_URL` rather than from the request sent
  */
 
 const PANEL = "https://deplo.example.com";
@@ -88,11 +78,7 @@ test("with no proxy header at all, only the configured host counts as https", ()
 });
 
 test("HSTS is remembered for months, so it never carries preload or subdomains", () => {
-  // Both were traps. `preload` at two years meant turning HTTPS off - the
-  // setting that exists to rescue a panel whose address cannot get a
-  // certificate - left the hostname unreachable over http for two years, with
-  // no way back from inside the panel. `includeSubDomains` reached past the
-  // panel onto apps, which are born on the `none` certificate provider.
+  // Both were traps.
   const { hsts } = headersFor("http://deplo.example.com/login", {
     host: "deplo.example.com",
     "x-forwarded-proto": "https",

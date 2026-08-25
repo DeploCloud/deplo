@@ -29,14 +29,9 @@ import {
 } from "./notifications";
 
 /**
- * Data-layer tests for notification channels against pglite.
- *
- * A team has N configured destinations and any kind may repeat, so the thing
- * under test is the INSTANCE: its config, its credentials, and its own alert
- * selection. Two rules carry the feature and both are pinned here — an ABSENT
- * alert row means "never decided" and falls back to the catalog default (so a
- * new key ships with no backfill AND a new channel starts on the defaults with
- * nothing written), and a credential is stored `*_enc` with no read path.
+ * Data-layer tests for notification channels against pglite. A team has N
+ * configured destinations and any kind may repeat, so the thing under test is the
+ * INSTANCE: its config, its credentials, and its own alert selection.
  */
 
 let db: TestDb;

@@ -15,10 +15,7 @@ import {
 import { retireInstalledPlugins } from "./retire";
 
 /**
- * The retirement sweep (ADR-0013). The teardown itself is Docker, so it is
- * injected — what these assert is the part that can strand a container: which
- * slug gets torn down, and that a row survives a failed teardown so the next
- * boot tries again.
+ * The retirement sweep (ADR-0013).
  */
 
 let db: TestDb;

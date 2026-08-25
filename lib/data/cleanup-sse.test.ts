@@ -17,17 +17,9 @@ import { cleanupRunsStream } from "../graphql/types/cleanup";
 import { __settleCleanupSweeps, runCleanupNow } from "./docker-cleanup";
 
 /**
- * The Docker-cleanup history stream — the sibling of `app-sse.test.ts`, and the thing
- * that makes "Clean up now" instant honest: the click is answered before the host is
- * touched, so the run row it hands back has to keep moving on its own.
- *
- * Two properties are asserted, and both are about the SAME hazard. A subscription's
- * async iterator runs AFTER the streaming Response was returned, where `cookies()` is
- * no longer callable — so the generator is driven here with NO request scope (no
- * `runWithIdentity`) across MORE THAN ONE tick. A cookie-reading helper anywhere in
- * that path (the gated `listCleanupRuns`, say, instead of the session-free read) would
- * crash the stream on the first ping and freeze every watching page at the snapshot it
- * happened to open with.
+ * The Docker-cleanup history stream — the sibling of `app-sse.test.ts`, and the
+ * thing that makes "Clean up now" instant honest: the click is answered before the
+ * host is touched, so the run row it hands back has to keep moving on its own.
  */
 
 let db: TestDb;

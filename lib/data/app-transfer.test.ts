@@ -35,12 +35,7 @@ import type { Capability } from "../types";
 
 /**
  * Data-layer tests for transferring an App to another team (Advanced → Danger
- * Zone). What they pin down is the tenancy contract, not the row update: the
- * destination has to be a team the CALLER belongs to with `deploy`, the caller
- * needs `manage_env` here (the app carries its secrets across), the app may not
- * land on a server that team can't target, and every attachment to the source
- * team — folder, shared-variable links, backup schedules, display order,
- * activity pointers, a GitHub installation it doesn't own — is severed.
+ * Zone).
  */
 
 let db: TestDb;

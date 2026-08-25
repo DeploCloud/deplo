@@ -40,12 +40,6 @@ import { LETSENCRYPT_DOMAINS_PER_TEAM_CAP } from "../deploy/domains";
 
 /**
  * Pull request previews, at the data layer.
- *
- * The invariants worth pinning: the key and host are minted ONCE (the URL is
- * commented on a pull request), the cap EVICTS the least recently active preview
- * rather than refusing the new one, a fork
- * builds nothing until someone approves it, a close is retryable, and another
- * team can touch none of it.
  */
 
 let db: TestDb;
@@ -54,11 +48,9 @@ let pg: PGlite;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // The queue is durable in the DB; the in-process dispatcher would try to dial
-  // an agent that doesn't exist here. Swap in a fake runner that just SETTLES the
-  // row, so these tests measure what a deploy trigger writes rather than a build.
-  // It must reach a terminal status: leaving the row `queued` would have the pump
-  // pick the same deploy again the instant its slot frees, forever.
+  // The queue is durable in the DB; the in-process dispatcher would try to dial an
+  // agent that doesn't exist here. Swap in a fake runner that just SETTLES the row,
+  // so these tests measure what a deploy trigger writes rather than a build.
   __setRunnerForTest(async (depId: string) => {
     await db
       .update(deploymentsTable)
@@ -275,10 +267,8 @@ test("a blocked fork evicts NOTHING — a stranger cannot knock a preview over",
   await openOrSyncPreview("prj_1", { ...PR, number: 1 }, { actor: "o" });
   assert.equal((await previewOf(1)).status, "queued");
 
-  // An unapproved fork is RECORDED so a maintainer can see and approve it, but
-  // it clones nothing and runs nothing. If recording it evicted the team's own
-  // live preview, anyone could take the app's previews down by opening pull
-  // requests — and put nothing in their place.
+  // An unapproved fork is RECORDED so a maintainer can see and approve it, but it
+  // clones nothing and runs nothing.
   const fork = await openOrSyncPreview(
     "prj_1",
     { ...PR, number: 2, isFork: true, headRepo: "stranger/blog" },
@@ -580,9 +570,7 @@ test("two apps in different teams get different keys and hosts for the same PR n
 test("a preview's certificate counts against the team's Let's Encrypt quota", async () => {
   // A preview host is deliberately never a `domains` row (ADR-0017 §5), which is
   // exactly why the quota could not see it: an app with previews on, a wildcard
-  // domain and HTTPS mints one certificate per open pull request, forever,
-  // against the ACME account the whole fleet shares. The cap has to count them
-  // or it is watching the wrong door.
+  // domain and HTTPS mints one certificate per open pull request, forever, against
   await seedPreviewApp("prj_1", { slug: "blog" });
   const now = new Date().toISOString();
 
@@ -629,9 +617,7 @@ test("a preview's certificate counts against the team's Let's Encrypt quota", as
 /**
  * Approval is per COMMIT, and this is the attack it closes: open something
  * harmless from a fork, get a maintainer to approve the preview, then push the
- * payload. The fork's code runs on the operator's host, on the shared `deplo`
- * network, so "they approved this pull request once" cannot be the same
- * statement as "they approved everything ever pushed to it".
+ * payload.
  */
 test("a fork approved at one commit is blocked again by the next push", async () => {
   await seedPreviewApp("prj_1", { slug: "blog" });

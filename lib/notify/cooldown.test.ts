@@ -5,10 +5,6 @@ import { shouldFire, __resetCooldowns } from "./cooldown";
 
 /**
  * The dedupe state machine, with `now` injected so nothing sleeps.
- *
- * The load-bearing case is the third one: a CHANGE of state always fires, which
- * is what makes "server back online" and "CPU back to normal" come out of the
- * same call the emitters already make on every observation.
  */
 
 beforeEach(() => __resetCooldowns());

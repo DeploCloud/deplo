@@ -5,11 +5,7 @@ import { filterScopeTree } from "./token-scope-search";
 import type { ScopeTreeTeam } from "./data/tokens";
 
 /**
- * The scope search. Recursive over a tree that nests folders arbitrarily, so the
- * two rules it has to get right are worth pinning: a node survives when anything
- * UNDER it matches (otherwise a hit three folders deep is unreachable), and a
- * node that matches ITSELF keeps all of its children (otherwise ticking it would
- * no longer mean "everything in here").
+ * The scope search.
  */
 const app = (id: string, name = id, slug = id) => ({
   id,

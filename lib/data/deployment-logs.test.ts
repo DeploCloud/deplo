@@ -34,7 +34,6 @@ import type { LogLine } from "../types";
  * Step 4 buffered deployment_logs writer tests (relational-store PLAN §6 Decision
  * 18): the guaranteed final flush, line order preserved (Array.push order via the
  * id identity), the buffer-fills immediate flush, and drain-then-DELETE with the
- * epoch guard so a late flush can't resurrect cleared lines.
  */
 
 let db: TestDb;
@@ -170,10 +169,9 @@ test("flushes for different deployments don't interleave", async () => {
 });
 
 test("a failed flush retries IN ORDER (no inversion across two failed batches)", async () => {
-  // Regression: an earlier drain-and-unshift-on-failure inverted order — two
-  // batches flushed in the same turn where both inserts fail would re-queue the
-  // SECOND batch in front of the first (B…, A…). The peek-insert-shift writer
-  // keeps the failed lines at the buffer HEAD so retries stay ordered.
+  // Regression: an earlier drain-and-unshift-on-failure inverted order — two batches
+  // flushed in the same turn where both inserts fail would re-queue the SECOND batch
+  // in front of the first (B…, A…).
   const fail = { n: 2 }; // fail exactly the first two flush inserts
   const real = db as unknown as {
     insert: (t: unknown) => { values: (v: unknown) => Promise<unknown> };
@@ -227,9 +225,6 @@ test("a failed flush retries IN ORDER (no inversion across two failed batches)",
 /**
  * `deployment_logs` lives in the CONTROL PLANE's database, shared by every team —
  * but the build's output is the tenant's to write, and nothing prunes these rows.
- * A build that prints forever would fill the disk and take the instance down, so
- * one deployment's contribution is bounded twice: per line, and per deployment.
- * The caps are shrunk here so the proof costs a handful of rows, not 20k.
  */
 test("the per-line and per-deployment log caps hold, and a read can't reset the budget", async () => {
   await seedDeployment(db, {

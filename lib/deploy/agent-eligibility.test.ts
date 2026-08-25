@@ -11,10 +11,7 @@ import type { BuildConfig } from "../types";
 
 /**
  * The agent now runs EVERY build method (the Dockerfile family + the heavy
- * builders static/nixpacks/railpack, ported to deplo-agent). So agentCanHandle
- * is always true; the real gate is per-server — agentCapabilityForMethod names
- * the Hello capability the owning agent must advertise, and the deploy path
- * checks it before routing.
+ * builders static/nixpacks/railpack, ported to deplo-agent).
  */
 
 function build(method: BuildConfig["buildMethod"]): BuildConfig {

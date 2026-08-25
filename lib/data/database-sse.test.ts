@@ -13,12 +13,8 @@ import { databaseStatusStream } from "../graphql/types/database";
 
 /**
  * SSE generator test for the databaseStatus subscription — the database twin of
- * app-sse.test.ts (same contract): the generator must paint the initial
- * snapshot AND forward >1 change ping WITHOUT ever calling a cookie-reading
- * helper (`cookies()` is not callable across the async-iteration ticks of a
- * long-lived SSE response). Driven with an explicit teamId and NO request scope
- * (no `runWithIdentity`), proving it is cookie-free — and it must yield the
- * MASKED DTO, never the encrypted connection string.
+ * app-sse.test.ts (same contract): the generator must paint the initial snapshot
+ * AND forward >1 change ping WITHOUT ever calling a cookie-reading helper
  */
 
 let db: TestDb;

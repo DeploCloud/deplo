@@ -35,20 +35,9 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 import { POST } from "@/app/api/apps/[id]/deploy-hook/[token]/route";
 
 /**
- * The deploy hook, driven by a token whose creator is a member of BOTH teams.
- *
- * The existing route tests use a stranger - someone who belongs to the other
- * team and nothing else - which the team check catches on its own. The sharper
- * question is the person in two teams at once: their token authenticated into
- * ALPHA holding nothing but `view`, and the URL points at BETA's app, where they
- * personally deploy all day. If the hook resolved WHO before it resolved WHERE,
- * the token's clamp would go silent (it keys on the (user, team) pair) and the
- * hook would deploy as the person instead of as the credential.
- *
- * It does not, because `owningTeamId(appId)` is passed as the team hint BEFORE
- * the token is authenticated - the hook re-teams into the app's own team, so the
- * clamp lands on the team that actually matters. These tests pin that ordering
- * down: it is the property the folder gate turned out not to have.
+ * The deploy hook, driven by a token whose creator is a member of BOTH teams. The
+ * existing route tests use a stranger - someone who belongs to the other team and
+ * nothing else - which the team check catches on its own.
  */
 
 let db: TestDb;

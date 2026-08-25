@@ -27,14 +27,8 @@ import {
 
 /**
  * Instance-owner invariants — the lockout this whole feature exists to close.
- *
  * Before the crown, `updateUserAdmin`'s only guard was "≥1 ACTIVE admin must
- * survive", which the ATTACKER satisfies by being that admin. So any instance
- * admin could, on any other admin (the first account included), clear the admin
- * flag, set `suspended` so login fails, and overwrite `password_hash` — three
- * routes to one takeover, with no user-deletion path and no self-service reset to
- * climb back through. These tests pin all three shut, and pin the transfer that
- * keeps the crown from being a dead end.
+ * survive", which the ATTACKER satisfies by being that admin.
  */
 
 let db: TestDb;

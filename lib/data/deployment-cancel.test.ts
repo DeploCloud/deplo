@@ -31,9 +31,6 @@ import {
 
 /**
  * `cancelAllDeployments` against pglite — the "Stop all builds" bulk action.
- * Counterpart to the delete sweep: it flips only IN-PROGRESS (queued/building)
- * rows to `canceled`, leaves terminal deployments (ready/error/canceled) exactly
- * as they are, and is team-scoped so a foreign caller stops nothing.
  */
 
 let db: TestDb;

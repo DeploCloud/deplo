@@ -18,10 +18,7 @@ process.env.DEPLO_SECRET = "test-secret-for-agent-mtls-pki-aaaaaaaa";
 
 /**
  * `completeBootstrap` consume-single-use under concurrency (relational-store PLAN
- * Step 6 — servers are relational now). The check-sign-consume splits the CSR
- * signing (crypto) from a conditional `UPDATE … WHERE bootstrap_used_at IS NULL`,
- * so two concurrent call-homes for the same token can't both provision: the loser
- * updates 0 rows and throws. This replaces the old in-memory `mutate()` re-check.
+ * Step 6 — servers are relational now).
  */
 
 let db: TestDb;

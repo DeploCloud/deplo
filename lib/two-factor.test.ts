@@ -28,9 +28,6 @@ import { ALL_CAPABILITIES } from "./types";
 
 /**
  * Any real capability, resolved from the canonical list rather than named.
- * WHICH capability is irrelevant here — the 2FA gate fires in `requireMembership`,
- * before the capability is even looked at — and hardcoding one would make this
- * file break every time the capability set is renamed or re-cut.
  */
 const SOME_CAPABILITY = ALL_CAPABILITIES.find((c) => c !== "view")!;
 
@@ -39,13 +36,8 @@ const USER_2 = "user_2";
 
 /**
  * Two-factor authentication end to end: enrolment through Better Auth's plugin,
- * the login challenge, and the team/role policy gate.
- *
- * The policy half is the security-critical part. "Niente 2FA, niente di niente"
- * means an unmet mandate must stop BOTH gates — `requireCapability` (mutations)
- * and `requireActiveTeamId` (reads) — and the bearer API with them. Each of the
- * three has its own assertion here, because each is reached by a different path
- * and closing only one of them is exactly the bug this feature could ship with.
+ * the login challenge, and the team/role policy gate. The policy half is the
+ * security-critical part.
  */
 
 let db: TestDb;

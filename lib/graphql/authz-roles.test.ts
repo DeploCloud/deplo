@@ -28,14 +28,9 @@ import {
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
- * Roles, end to end: a role is not a preset that a member's permissions drift
- * away from - it IS what they can do, so the only honest test of one is what the
- * API does after it is assigned and after it is edited.
- *
- * The capability→endpoint half lives in `authz-matrix.test.ts`; this file joins
- * it to the role machinery, for every capability in the catalogue: a role that
- * names exactly one permission must give its holder exactly that permission (and
- * the `view` floor), never the preset it was cloned from and never more.
+ * Roles, end to end: a role is not a preset that a member's permissions drift away
+ * from - it IS what they can do, so the only honest test of one is what the API
+ * does after it is assigned and after it is edited.
  */
 
 let db: TestDb;

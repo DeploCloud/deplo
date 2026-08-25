@@ -24,15 +24,8 @@ import { listInstallationRepos, listRepoBranches } from "./app";
 
 /**
  * A delivery may only act on an installation of the App whose secret signed it.
- *
- * The signature proves ONE thing - which `github_apps` row's webhook secret
- * signed this body - and the installation id is a field IN that body. Resolving
- * the second without binding it to the first meant a delivery signed by App A
- * could act on App B's installation, in another team.
- *
- * The attacker needs nothing exotic: `manage_git` lets them connect their own
- * GitHub App to this instance, and they own that App on github.com, so its
- * webhook secret is theirs to read and sign with.
+ * The signature proves ONE thing - which `github_apps` row's webhook secret signed
+ * this body - and the installation id is a field IN that body.
  */
 
 let db: TestDb;
@@ -143,9 +136,7 @@ test("the App's OWN installation still deploys", async () => {
 
 /**
  * `githubRepos`/`githubBranches` are `loggedIn`-only (a member picks a repo with
- * no capability), so the team check has to live in the data layer. The victim's
- * `ghi_victim` installation is in TEAM_A; the attacker in TEAM_B must not be able
- * to enumerate its private repos/branches by passing its (random) id.
+ * no capability), so the team check has to live in the data layer.
  */
 test("listing repos/branches refuses another team's installation id (IDOR)", async () => {
   await runWithIdentity({ userId: "u_attacker", teamId: TEAM_B }, async () => {

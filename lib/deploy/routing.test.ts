@@ -466,8 +466,7 @@ test("a path prefix appends && PathPrefix to a parenthesised Host group + priori
   });
   // Rule wraps the Host group in parens (so && binds across all hosts) and adds
   // PathPrefix; the priority is the BASE (which lifts it above every whole-host
-  // router) plus the prefix length; NO stripprefix / middlewares label (strip
-  // not requested).
+  // router) plus the prefix length; NO stripprefix / middlewares label (strip not
   assert.ok(
     labels.some((l) =>
       l.includes(".rule=(Host(`app.com`)) && PathPrefix(`/api`)"),
@@ -486,13 +485,8 @@ test("a path prefix appends && PathPrefix to a parenthesised Host group + priori
   assert.ok(!labels.some((l) => l.includes(".middlewares=")));
 });
 
-// Traefik picks the highest-priority router among those that MATCH, and defaults
-// an un-pinned router's priority to its RULE-STRING LENGTH. These are the tests
-// that would have caught the shipped bug: a path router pinned to the bare prefix
-// length (4) lost to the whole-host router serving the same host (default 15), so
-// `/api` never reached the path router and the strip middleware never fired.
-// The competing whole-host router usually belongs to ANOTHER app's container, so
-// this must hold across separate traefikRouterLabels() calls.
+// Traefik picks the highest-priority router among those that MATCH, and defaults an
+// un-pinned router's priority to its RULE-STRING LENGTH.
 
 /** The priority Traefik will actually use for a rendered router: the explicit
  * label when we emit one, else its rule-string length (Traefik's default). */
@@ -816,9 +810,7 @@ test("per-route mode applies PathPrefix + stripprefix too (compose path)", () =>
 });
 
 // --- Single-image backfill invariant: storing port = build.port explicitly must
-// render byte-identically to leaving it null. This is what lets the data layer
-// always write a concrete port onto single-image domains (so none is portless)
-// without rerouting / restarting any existing single-image container. ---
+// render byte-identically to leaving it null.
 
 test("single-image: explicit port == defaultPort renders byte-identically to null", () => {
   const nullPort = traefikRouterLabels({
@@ -860,10 +852,9 @@ test("single-image: mixed null + explicit-default ports still fold into ONE rout
   assert.ok(!labels.some((l) => l.includes("deplo-app__3000")));
 });
 
-// --- No routes: the container is deployed but NOT routed (a project whose
-// domains were all deleted; Deplo never resurrects an auto domain). The labels
-// must DISABLE Traefik for the container, never emit an empty/invalid Host()
-// rule. ---
+// --- No routes: the container is deployed but NOT routed (a project whose domains
+// were all deleted; Deplo never resurrects an auto domain). The labels must DISABLE
+// Traefik for the container, never emit an empty/invalid Host() rule.
 
 test("no routes ⇒ traefik.enable=false and NOTHING else (single-image)", () => {
   const labels = traefikRouterLabels({
@@ -1163,10 +1154,7 @@ test("redirectTo: absent ⇒ byte-identical to the pre-redirect output", () => {
 
 /**
  * A domain served by a certificate the operator installed on the host himself
- * (`certProvider: "custom"` → `certResolver: ""`). TLS is on, but no
- * `certresolver` label is emitted: pointing a router at a resolver that does not
- * exist makes Traefik answer with its self-signed default, and naming the real
- * one would have it request a certificate for a domain that already has one.
+ * (`certProvider: "custom"` → `certResolver: ""`).
  */
 test("an empty cert resolver emits tls=true and NO certresolver label", () => {
   const labels = traefikRouterLabels({

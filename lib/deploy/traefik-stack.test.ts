@@ -18,16 +18,7 @@ import { htpasswdLine } from "../crypto";
 
 /**
  * These lock the two properties that make rewriting a live host's reverse-proxy
- * config survivable:
- *
- *   1. NOTHING the host already had is dropped. The file was written by
- *      install-agent.sh with values only that host knows — the ACME email from
- *      install time, the absolute acme volume path, any flag added since. A
- *      renderer that re-created the file from a template would take all of it
- *      away, and the operator would learn about it when certs stopped renewing.
- *   2. The basicauth hash survives docker-compose's `$` interpolation. An
- *      unescaped `$apr1$…` in a compose value is eaten by compose, which locks
- *      the operator out of the dashboard they just secured.
+ * config survivable: 1. NOTHING the host already had is dropped.
  */
 
 /** What install-agent.sh actually writes, acme path expanded as the shell leaves it. */
@@ -418,15 +409,7 @@ test("a proxy that issues no certificates refuses the setting instead of pretend
 /* ------------------------------------------------------------------ */
 
 /**
- * The certificate half locks three things:
- *   1. a round trip: what goes in comes back out of the host's own file, which
- *      is where the list in the UI is read from (nothing is stored control-plane
- *      side, so a lossy write would lose the certificate itself);
- *   2. removal puts the file back exactly as it was, flags included, so
- *      installing and removing one is not a slow way to accumulate config;
- *   3. an operator's own file provider is used, never duplicated. Traefik
- *      refuses a second file provider, and a stack that will not start is a host
- *      with no routing at all.
+ * The certificate half locks three things: 1.
  */
 const CERT = {
   certPem: "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n",
@@ -496,11 +479,9 @@ test("removing the last certificate leaves the file as it was found", () => {
 });
 
 test("every write heals the entrypoint, not just the one that publishes the panel", () => {
-  // A host installed before the flag existed keeps redirecting every plain-http
-  // route it serves - the panel when its HTTPS is off, and EVERY app domain on
-  // the `none` certificate provider, which is the default a new domain is born
-  // with. Carrying the fix on each ordinary write is what heals an existing
-  // fleet without re-installing every host by hand.
+  // A host installed before the flag existed keeps redirecting every plain-http route
+  // it serves - the panel when its HTTPS is off, and EVERY app domain on the `none`
+  // certificate provider, which is the default a new domain is born with.
   const FLAG = "--entrypoints.web.http.redirections.entrypoint.priority=1";
   assert.ok(
     !commandOf(INSTALLED).includes(FLAG),
@@ -622,10 +603,8 @@ test("a proxy running as its own user keeps compose's default mode", () => {
 });
 
 test("anything the operator added to our certificate file survives an install", () => {
-  // deplo-certificates.yml is a Traefik dynamic-config file like any other, and
-  // an operator may have put a TLS policy or a middleware in it. Only the
-  // certificates in it are ours to rewrite - re-rendering the whole file from the
-  // certificate list would delete the rest, silently, on the next install.
+  // deplo-certificates.yml is a Traefik dynamic-config file like any other, and an
+  // operator may have put a TLS policy or a middleware in it.
   const first = withTraefikCertificates(INSTALLED, [CERT]);
   const doc = parse(first) as Doc & {
     configs: Record<string, { content: string }>;
@@ -668,12 +647,6 @@ test("a certificate file mangled by hand still takes a new certificate", () => {
 
 /**
  * What `install.sh` writes on a host installed with a domain, verbatim.
- *
- * Pasted rather than described because the two files are a contract: the
- * installer seeds the route and the panel edits it from then on, so a change to
- * either shape that the other does not follow leaves an operator with a panel
- * whose own settings have gone read-only. If this constant has to be edited to
- * make a test pass, install.sh is what needs the edit.
  */
 const INSTALLED_WITH_PANEL = `services:
   traefik:
@@ -782,10 +755,8 @@ test("turning HTTPS off moves the panel to plain http, and back", () => {
 
 test("a plain-http panel outranks the entrypoint redirect, which is what makes it reachable", () => {
   // MEASURED on traefik:v3.7, not assumed: an entrypoint redirection answers 301
-  // ahead of EVERY router on that entrypoint, including one pinned to MaxInt32.
-  // Its own priority is the only lever, so publishing an http route pins it.
-  // From a stack that does NOT have the flag - an install that predates it, which
-  // is every existing one. Adding it is what makes the toggle work there at all.
+  // ahead of EVERY router on that entrypoint, including one pinned to MaxInt32. Its
+  // own priority is the only lever, so publishing an http route pins it.
   assert.ok(
     !commandOf(INSTALLED).some((c) =>
       c.includes("redirections.entrypoint.priority"),

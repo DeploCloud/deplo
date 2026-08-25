@@ -33,11 +33,7 @@ import {
 import { startDeployment } from "./build";
 
 /**
- * Per-server deploy-queue tests (pglite). The queue is an in-process dispatcher
- * over durable `queued` rows; the real runner (runDeploymentGuarded) is swapped
- * for a controllable fake so the slot/ordering/exclusion logic is exercised
- * without a build. The fake mimics the one property the queue leans on:
- * `runDeployment`'s atomic `queued -> building` claim.
+ * Per-server deploy-queue tests (pglite).
  */
 
 let db: TestDb;
@@ -206,10 +202,7 @@ test("deploys on different servers run in parallel", async () => {
 
 // The regression a BUILD SERVER makes possible. Two production deploys of one app
 // used to be guaranteed into the same lane (the app's own server), so the exclusion
-// could live there. With a build server the lane is the BUILDER, and the least-busy
-// tie-break puts two rapid deploys of one app on two different builders - so a
-// per-lane set would let them run at once and, worse, finish out of order, leaving
-// the app on the OLDER commit.
+// could live there.
 test("two deploys of one app never overlap, even in different lanes", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);

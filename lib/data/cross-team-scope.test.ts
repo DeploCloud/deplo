@@ -27,14 +27,6 @@ import {
 /**
  * The ACTIVE-TEAM boundary, probed from the one direction the app-shaped gates
  * don't cover: a folder id belonging to a team that is not the request's.
- *
- * `requireAppCapability` refuses an app whose `teamId` isn't the active team
- * before it resolves anything. The folder gate has no such check - it resolves
- * the folder's OWN team and answers from the caller's membership there - so a
- * member of two teams, and every API token they ever minted, is the interesting
- * case: the token's capability clamp keys on the (user, team) PAIR and goes
- * silent the moment the team under test isn't the one the token authenticated
- * into.
  */
 
 let db: TestDb;

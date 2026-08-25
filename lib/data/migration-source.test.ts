@@ -29,17 +29,8 @@ import { eq } from "drizzle-orm";
 
 /**
  * A MIGRATION SOURCE is not a server you have - it is a server you are LEAVING.
- *
  * Deplo installs an agent on the other platform's host because a volume can only
- * be read by the agent standing on the disk that holds it. Everything here pins
- * the consequence: that machine is not ours, so nothing may aim work at it, and
- * nobody else's team may even see it.
- *
- * The gaps these close were real. `canHostWorkloads` guards creation, but the app
- * MOVE and the preview server only ever checked team access - so an id sent
- * through the API landed work on a host that runs nothing. And every build-side
- * check read `storageOnly` alone, which a migration source passes: it has Docker,
- * it is just not ours.
+ * be read by the agent standing on the disk that holds it.
  */
 
 let db: TestDb;

@@ -46,13 +46,6 @@ import {
  * The metrics stream SUPERVISOR — the control flow the polling collector it
  * replaced never had a test for at all (`runMetricsCollectorTick` was exported
  * "for tests" and nothing ever called it).
- *
- * Everything here is driven through the ONE seam the module exposes,
- * `__setMetricsConnectorForTest`: a fake agent connection whose `streamMetrics`
- * generator the test pumps frame by frame, so each assertion lands at a known
- * point in the loop instead of racing a timer. The database underneath is real
- * pglite — the health heartbeat goes through the genuine `recordServerHealth`
- * path, because the fence and the throttle it has to respect live there.
  */
 
 let db: TestDb;
@@ -62,10 +55,7 @@ const SRV_A = "srv_a";
 const SRV_B = "srv_b";
 
 /**
- * A server ENROLLED enough for the supervisor to dial. Reconcile skips any row
- * without an agent cert fingerprint, and `recordServerHealth`'s HAS_LIVE_AGENT
- * fence silently drops writes onto one — so a bare `seedServer` would make every
- * assertion below pass vacuously.
+ * A server ENROLLED enough for the supervisor to dial.
  */
 async function seedEnrolledServer(
   id: string,
@@ -127,10 +117,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   // Order matters. `stopMetricsStreams` flips `stopping` and aborts every loop
-  // SYNCHRONOUSLY before it awaits them, so cutting the fake streams right after
-  // it is called lets each `for await` finish and the loop see the stop flag. Cut
-  // them first instead and the loops would treat it as a clean end and
-  // immediately reconnect.
+  // SYNCHRONOUSLY before it awaits them, so cutting the fake streams right after it
+  // is called lets each `for await` finish and the loop see the stop flag.
   const stopped = stopMetricsStreams();
   endAllFeeds();
   await stopped;
@@ -226,18 +214,11 @@ function frame(containers: ContainerStat[] = []): MetricsSample {
 
 /**
  * A hand-pumped `streamMetrics` generator.
- *
- * `send()` resolves only once the supervisor has finished handling that frame and
- * come back for the next one, which is what lets every assertion run at a
- * deterministic point in the loop rather than after an arbitrary sleep.
  */
 const liveFeeds: Feed[] = [];
 
 /**
- * Cut every open fake stream. Stands in for what closing a real gRPC channel
- * does to the iterator — without it the supervisor's shutdown would block
- * forever on a `for await` over a generator that is simply waiting for a frame
- * nobody will send.
+ * Cut every open fake stream.
  */
 function endAllFeeds(): void {
   for (const f of liveFeeds.splice(0)) f.end();
@@ -426,10 +407,7 @@ test("a server whose agent predates the stream demotes to POLL alone — the fle
 });
 
 test("DEPLO_MONITORING_FORCE_POLL=1 forces EVERY server to poll — the production kill switch", async () => {
-  // This is the real revert for the streaming path. The agent binary is
-  // forward-only (`resolveLatestAgentRelease` is always-latest, so
-  // `updateServerAgent` structurally cannot downgrade), so if this env var does
-  // not actually work there is no way back short of shipping a control-plane fix.
+  // This is the real revert for the streaming path.
   await disableSaving();
   await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
   await seedEnrolledServer(SRV_B, "2026-01-01T00:00:01.000Z");
@@ -577,10 +555,7 @@ test("reconnect backoff grows exponentially and is CAPPED at RECONNECT_BACKOFF_C
     );
   }
 
-  // Capped: no attempt, however deep, escalates past the ceiling. That ceiling
-  // bounds how long a host that came back stays dark — and it is an INPUT to
-  // GAP_MS (see chart-gaps.test.ts), so letting it grow would also start banding
-  // "No data" across a perfectly healthy reconnect.
+  // Capped: no attempt, however deep, escalates past the ceiling.
   for (const attempt of [10, 16, 64, 1024]) {
     const v = backoffFor(attempt);
     assert.ok(
@@ -622,29 +597,15 @@ test("reconnect attempts are UNBOUNDED — a host down for an hour reconnects wh
 
 test("HEALTH_WRITE_MS stays under the prober's 15s THROTTLE_MS, or the prober silently re-enables its fleet-wide dial fan-out", () => {
   // THROTTLE_MS in lib/data/server-health.ts is 15000 and is not exported; it is
-  // restated here because this file is the only place the coupling is visible at
-  // all. The prober SKIPS its own dial while `status_checked_at` still looks
-  // fresh — so while the heartbeat stays under that window, a received frame
-  // REPLACES a dial. The moment it exceeds it, the row goes stale between
-  // heartbeats, the prober starts dialling every host every 15s again, and
-  // NOTHING tells you: the charts still look perfect.
+  // restated here because this file is the only place the coupling is visible at all.
   const PROBER_THROTTLE_MS = 15_000;
   assert.ok(
     HEALTH_WRITE_MS < PROBER_THROTTLE_MS,
     `HEALTH_WRITE_MS (${HEALTH_WRITE_MS}) must stay under the prober's throttle (${PROBER_THROTTLE_MS})`,
   );
 
-  // ...and that alone is NOT enough, which we learned the expensive way. The
-  // assertion above passed while production wrote every 15 SECONDS.
-  //
-  // The heartbeat can only fire when a frame arrives, so its real period is a
-  // MULTIPLE of the cadence, never HEALTH_WRITE_MS itself. At 10_000 with a 5s
-  // cadence the second frame lands exactly ON the boundary: two frames 4999ms
-  // apart sum to 9998, fail `>= 10_000`, and defer the write to the third frame.
-  // Real period 15s — precisely the throttle. Observed on the live fleet at
-  // 14:22:49 / 14:23:04 / 14:23:19 before this was fixed.
-  //
-  // So model the jitter and assert the EFFECTIVE period, not the constant.
+  // .and that alone is NOT enough, which we learned the expensive way. The assertion
+  // above passed while production wrote every 15 SECONDS.
   const EARLY_FRAME_TOLERANCE_MS = 100;
   const effectivePeriod =
     Math.ceil(
@@ -659,17 +620,12 @@ test("HEALTH_WRITE_MS stays under the prober's 15s THROTTLE_MS, or the prober si
 });
 
 test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5s frame rate", async () => {
-  // Both bounds, for different reasons. The UPPER bound is the saving: a write
-  // per frame would put the whole fleet's DB churn back on the 5s cadence. The
-  // LOWER bound is the load-bearing half — it is what keeps the health prober
-  // from re-enabling its own dial fan-out (see the test above).
+  // Both bounds, for different reasons. The UPPER bound is the saving: a write per
+  // frame would put the whole fleet's DB churn back on the 5s cadence.
   await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
 
-  // A controllable clock: the supervisor throttles off `Date.now()`, so
-  // simulating 40s of a 5s stream is a matter of advancing it rather than of
-  // waiting 40 seconds. It starts at the real now so these writes stay ordered
-  // after the connect-time one — `recordServerHealth` fences on a monotonic
-  // `status_checked_at` and would silently drop an out-of-order write.
+  // A controllable clock: the supervisor throttles off `Date.now()`, so simulating
+  // 40s of a 5s stream is a matter of advancing it rather than of waiting 40 seconds.
   const realNow = Date.now;
   let clock = realNow();
   Date.now = () => clock;
@@ -741,16 +697,8 @@ test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5
 /* ------------------------------------------------------------------ */
 
 /**
- * The gap these pin: `apps.status` is INTENT (the last thing the control plane
- * was ASKED to do), and one direction of it went stale silently. A host rebooted
- * on 2026-07-19, a user pressed Redeploy into the outage, every attempt failed its
- * agent pre-flight and wrote `error` — and when the host came back and Docker
- * restarted the containers, the App kept a red "Error" badge sitting directly
- * above its own live, moving CPU charts. The frame carrying the refutation was
- * arriving every 5 seconds into this very loop and being thrown away.
- *
- * Every test below drives the REAL supervisor loop and the REAL pglite write, so
- * what is asserted is the whole path: frame -> demux -> guarded UPDATE -> publish.
+ * The gap these pin: `apps.status` is INTENT (the last thing the control plane was
+ * ASKED to do), and one direction of it went stale silently.
  */
 
 /** Bring one enrolled server up in stream mode and hand back its feed. */
@@ -812,17 +760,8 @@ test("a frame reporting a RUNNING container clears a stale `error` — the reboo
 });
 
 test("only `error` is ever promoted — active/idle/stopping/queued/building are left exactly as stored", async () => {
-  // The status allowlist is the core of the write-war guard, and it is exactly
-  // ONE value wide. Every status here reports a running container in the same
-  // frame, and every one of them must survive it untouched:
-  //  - `queued`/`building` — the PREVIOUS container runs for the whole build, so
-  //    every frame says "running"; promoting would flip the badge off "Building"
-  //    seconds after the user pressed Deploy.
-  //  - `stopping` — written BEFORE an up-to-60s `docker stop`, so frames in that
-  //    window still say "running"; promoting would make the user's Stop bounce.
-  //  - `idle` — the deliberate stop. If `restart: unless-stopped` brings a
-  //    container back, "running" is the FAILURE and `idle` is the truth. This is
-  //    the one status where telemetry cannot tell success from failure.
+  // The status allowlist is the core of the write-war guard, and it is exactly ONE
+  // value wide.
   const untouchable = [
     "active",
     "idle",
@@ -873,10 +812,7 @@ test("only `error` is ever promoted — active/idle/stopping/queued/building are
 });
 
 test("an App with a deployment in flight is NOT touched, even from `error`", async () => {
-  // The status allowlist alone is not enough. The boot reconcile settles orphaned
-  // `building` deploys to `error` while deliberately leaving sibling `queued` rows
-  // for the deploy queue to re-drain — so `status='error'` WITH a live deployment
-  // is a reachable state, and the old container is still running throughout it.
+  // The status allowlist alone is not enough.
   const feed = await streamingServer();
   await seedApp(db, {
     id: "prj_q",
@@ -1230,10 +1166,7 @@ test("the reconcile runs on its OWN clock, not the frame's", async () => {
 
 test("APP_STATUS_RECONCILE_MS is slower than the frame cadence but still self-heals promptly", () => {
   // Both bounds matter. Too fast and the reconcile is DB churn on the stream's
-  // cadence — the thing this architecture removed. Too slow and a user watching a
-  // red badge on a working App has to wait it out; the reconnect path covers the
-  // outage case, but a deploy that fails onto a still-running stack is corrected
-  // only by this interval.
+  // cadence — the thing this architecture removed.
   assert.ok(
     APP_STATUS_RECONCILE_MS > STREAM_INTERVAL_MS,
     "the reconcile must not run at the frame cadence",

@@ -23,10 +23,7 @@ import {
 
 /**
  * Data-layer tests for server → team access (the "all teams / specific teams"
- * feature). Covers the consumption filter (`listServersForTeam`), the
- * `setServerTeams` widen/restrict transitions, and the block that refuses to
- * revoke a team's access while it still has workloads (apps or databases) on
- * the server — the conscious-teardown rule mirrored from `removeServer`.
+ * feature).
  */
 
 let db: TestDb;

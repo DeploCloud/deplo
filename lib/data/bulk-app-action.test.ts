@@ -22,14 +22,9 @@ import { createEnvironment } from "./environments";
 import { bulkAppAction } from "./apps";
 
 /**
- * Which apps a folder's or project's "All apps" action actually reaches.
- *
- * The seeded server has never called home, so every agent call fails: that is
- * the point here. What is being proven is the TARGET SET, and a failed stop is
- * the loudest possible marker of one - it writes "stopping", then settles the
- * app back to "active" (the honest fail-clear path), so an app that started
- * "idle" and reads "active" afterwards is one this action touched, and one still
- * "idle" was never picked up.
+ * Which apps a folder's or project's "All apps" action actually reaches. The
+ * seeded server has never called home, so every agent call fails: that is the
+ * point here.
  */
 
 let db: TestDb;

@@ -13,10 +13,7 @@ import type { ResourceLimits } from "../types";
 import type { RoutableDomain } from "../data/domains";
 
 /**
- * Per-app resource limits → `docker compose up` keys. The load-bearing
- * contracts: (1) no limits ⇒ NO keys emitted (byte-identical stack, the reroute
- * contract); (2) the unit mapping (MiB→`<n>m`, GiB→`<n>G`, milli-CPU→fractional
- * cores); (3) compose-stack apply is per-service and existing-wins.
+ * Per-app resource limits → `docker compose up` keys.
  */
 
 /** A ResourceLimits with everything unset, overlaid with `p`. */

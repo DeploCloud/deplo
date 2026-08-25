@@ -12,11 +12,8 @@ import {
 } from "./favicon-http";
 
 /**
- * The icon a RUNNING app declares about itself — the compose-stack arm, where
- * the favicon is inside a prebuilt image and is only ever served. These tests
- * pin the two decisions that matter: WHICH url to ask for, and whether what came
- * back is really an image (an SPA answering /favicon.ico with its index.html is
- * the common trap).
+ * The icon a RUNNING app declares about itself — the compose-stack arm, where the
+ * favicon is inside a prebuilt image and is only ever served.
  */
 
 const PNG = new Uint8Array([

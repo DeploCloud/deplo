@@ -5,13 +5,9 @@ import { renderCompose, parseStackVolumes } from "./build";
 import type { RoutableDomain } from "../data/domains";
 
 /**
- * Volumes injection into the single-container stack. The load-bearing contract:
- *  1. NO volumes ⇒ output byte-identical to the long-standing stack (so a
- *     reroute of an unchanged routing set never restarts the container).
- *  2. Named volumes ⇒ a service `- alias:/path[:ro]` list + a top-level
- *     `volumes.<alias>.name: deplo-<slug>-<alias>` (host name namespaced).
- *  3. A render→parse round-trip recovers the same {name, mountPath, readOnly}
- *     (the reroute path reads volumes back from the on-disk stack).
+ * Volumes injection into the single-container stack. The load-bearing contract: 1.
+ * NO volumes ⇒ output byte-identical to the long-standing stack (so a reroute of
+ * an unchanged routing set never restarts the container).
  */
 
 const route: RoutableDomain = {
@@ -111,8 +107,7 @@ test("parseStackVolumes: empty / missing-service stacks yield []", () => {
 test("renderCompose emits Docker Compose's `services:` top-level key, never `apps:`", () => {
   // Docker Compose's schema only allows `services:`. A top-level `apps:` (a
   // services→apps vocabulary over-rename) makes the agent's `docker compose up`
-  // reject the stack with "additional properties 'apps' not allowed". Pin the
-  // real wire contract so the round-trip's self-consistency can't mask a regression.
+  // reject the stack with "additional properties 'apps' not allowed".
   const yaml = renderCompose(base);
   assert.match(yaml, /^services:$/m);
   assert.doesNotMatch(yaml, /^apps:/m);

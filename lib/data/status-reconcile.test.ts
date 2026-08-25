@@ -37,9 +37,7 @@ test("reconcileStatus: a fresh 'restoring' stays 'restoring'", () => {
 
 test("reconcileStatus: a stale 'restoring' self-heals to 'error'", () => {
   // Past the agent's own ceiling for a backup operation, nobody is running this
-  // restore any more. "error", not "idle": a half-restored app is broken, not
-  // stopped on purpose — and telemetry promotes it back to "active" on its own
-  // if the containers are in fact up.
+  // restore any more.
   assert.equal(
     reconcileStatus("restoring", at(BACKUP_RUN_MAX_MS + 60_000), NOW),
     "error",

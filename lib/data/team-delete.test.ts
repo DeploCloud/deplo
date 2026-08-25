@@ -24,10 +24,8 @@ import {
 import { canDeleteTeam, deleteTeam } from "./team-delete";
 
 /**
- * deleteTeam gating + cascade against pglite. No apps/databases are seeded,
- * so the agent-teardown loop is a no-op and the tests stay hermetic (no gRPC
- * dials). The cookie switch after the delete throws outside a request scope and
- * is best-effort by design — asserted indirectly by the delete succeeding.
+ * deleteTeam gating + cascade against pglite. No apps/databases are seeded, so the
+ * agent-teardown loop is a no-op and the tests stay hermetic (no gRPC dials).
  */
 
 const USER_2 = "user_2";
@@ -169,9 +167,8 @@ test("a teamId that is not the active team fails closed (stale tab)", async () =
 
 test("a bearer token scoped to a team the user left fails closed", async () => {
   // getActiveTeamId silently rescopes a stale token to the user's first team;
-  // deleteTeam must refuse that rescope instead of deleting a team the token
-  // was never scoped to. USER_1 founded TEAM_A but is NOT a member of TEAM_B —
-  // an identity claiming TEAM_B resolves to TEAM_A via the fallback.
+  // deleteTeam must refuse that rescope instead of deleting a team the token was
+  // never scoped to.
   await seedIdentity(db);
 
   await assert.rejects(
@@ -204,10 +201,7 @@ test("on a legacy team with no founder, any owner may delete", async () => {
 test("a team with a database, a backup destination, schedules and run history deletes cleanly", async () => {
   // The riskiest cascade topology: backups/backup_runs point at backup_destination
   // with ON DELETE RESTRICT while the team delete cascades BOTH sides in one
-  // statement. Postgres' RI checks run on the end-of-statement snapshot, so the
-  // single DELETE must survive — this guards the invariant against future
-  // schema changes. The seeded server has no agent, so the database teardown
-  // exercises the best-effort path (unreachable → warn → proceed).
+  // statement.
   await seedIdentity(db);
   await addMembership(USER_1, TEAM_B);
   const T0 = "2026-01-01T00:00:00.000Z";

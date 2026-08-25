@@ -12,11 +12,6 @@ import {
 
 /**
  * Who gets offered what in an app's sub-menu.
- *
- * The Pull requests rule in particular has moved twice under discussion, and
- * nothing was pinning it: three conditions decide the operational entry and one
- * decides the settings entry, and getting any of them backwards means either a
- * dead end or a feature nobody can find. Pure functions, so this is cheap.
  */
 
 const FLAGS: AppNavFlags = {
@@ -146,11 +141,9 @@ test("a database gets Cron jobs on the same rule", () => {
 });
 
 test("MCP Server is offered to either capability that opens half of it", () => {
-  // Two different people have work to do there: `manage_mcp` owns the team
-  // switch and approving a web connector, `manage_tokens` owns minting the
-  // credential a terminal agent connects with. Naming only one of them hid the
-  // page from the other, who would then be told to "create a token for this"
-  // by a page they cannot reach.
+  // Two different people have work to do there: `manage_mcp` owns the team switch and
+  // approving a web connector, `manage_tokens` owns minting the credential a terminal
+  // agent connects with.
   const mcp = SETTINGS_NAV.flatMap((s) => s.items).find(
     (i) => i.href === "/settings/mcp",
   );

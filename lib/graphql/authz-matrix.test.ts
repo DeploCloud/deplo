@@ -44,22 +44,6 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
  * The API-surface authorization matrix: EVERY field of the public GraphQL API,
  * against EVERY capability, over both principals that can call it - a member
  * acting through the dashboard's session and an API token acting on its own.
- *
- * It is generated from the built schema rather than hand-listed, so a new
- * mutation is covered the day it is written: `authScopes` is read back off the
- * Pothos field extensions, the arguments are synthesised from the field's own
- * input types (deliberately nonexistent ids - the gate we are testing runs
- * BEFORE the resolver, and a caller who gets as far as "not found" has passed
- * it), and each field is executed twice per principal:
- *
- *  - holding everything EXCEPT its capability - must be refused;
- *  - holding nothing but its capability (and the `view` floor) - must NOT be
- *    refused, or the declared contract asks for a permission that isn't enough.
- *
- * `lib/graphql/yoga.ts` is reproduced rather than imported: it owns the HTTP
- * layer (and graphql-armor), while what matters here is what it wraps - the
- * context `buildContext` resolves and the `runWithIdentity` the identity plugin
- * re-applies around execution.
  */
 
 let db: TestDb;
@@ -88,8 +72,7 @@ after(async () => {
 /**
  * A fresh instance: an owner who is also the instance admin (USER_1, the token
  * minter of last resort) and the matrix subject - a plain member whose
- * capabilities every test rewrites, and who is NOT an instance admin, so an
- * `$any: { instanceAdmin, capability }` field is decided by the capability.
+ * capabilities every test rewrites, and who is NOT an instance admin, so an `$any:
  */
 async function reset(caps: Capability[]): Promise<void> {
   await pg.exec(TRUNCATE_ALL);
@@ -325,21 +308,9 @@ const refused = (messages: string[]): boolean =>
   messages.some((m) => REFUSED.test(m));
 
 /**
- * Endpoints that legitimately need MORE than their declared capability, listed
- * one by one so "this one takes two gates" is a decision somebody wrote down
- * rather than a hole the matrix stopped noticing.
- *
- * Two kinds live here:
- *
- *  - The second gate is not a capability at all. `canExposePorts` and
- *    `canMountHostVolumes` are instance-wide grants (they cross the team
- *    boundary, so no team role can hand them out), and holding `create_databases`
- *    really is not enough to pick a host port - that is the grant's whole job.
- *  - The second gate is a DIFFERENT capability. One `manage_crons` governs cron
- *    jobs on both apps and databases, and migration 0080 seeds it from EITHER
- *    console capability - so the database-side fields additionally require
- *    `open_database_console`, or app-console access alone would reach inside
- *    every database on the instance (ADR-0018 §5).
+ * Endpoints that legitimately need MORE than their declared capability, listed one
+ * by one so "this one takes two gates" is a decision somebody wrote down rather
+ * than a hole the matrix stopped noticing.
  */
 const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["M.generateAvailableDbPort", /permission to publish ports/i],
@@ -360,18 +331,7 @@ function refusedByGrant(e: Endpoint, messages: string[]): boolean {
 /* ------------------------------------------------------------------ */
 
 /**
- * The only fields that may answer an anonymous caller. `login`, `logout`,
- * `completeSetup`, `registerThroughLink`, `verifyTwoFactorLogin`,
- * `passkeyChallenge` and `verifyPasskeyLogin` are the public auth surface (they
- * carry their own rate limiting); `me` and `apiContext` describe the caller and
- * answer null when there isn't one.
- *
- * The two passkey ones are public for the same reason `login` is: they ARE a
- * sign-in, so requiring a session would be circular. `passkeyChallenge` hands
- * out a server-chosen challenge and names no account (that is what a
- * discoverable credential means), and `verifyPasskeyLogin` only succeeds against
- * a signature over that challenge - see ADR-0024 §5 for why the plugin's own
- * endpoints are closed while these two are not.
+ * The only fields that may answer an anonymous caller.
  */
 const PUBLIC_FIELDS = new Set([
   "Q.me",
@@ -402,10 +362,9 @@ test("every field of the API declares a gate, and only the auth surface is publi
 });
 
 test("every capability the catalogue offers is either enforced on the API or enforced below it", () => {
-  // Not every capability names a field: the folder verbs and `delete_team` are
-  // gated inside the data layer instead (their fields are `loggedIn`), and
-  // `view` is the floor no field asks for. Everything else must be reachable -
-  // a capability no endpoint consults is a permission that grants nothing.
+  // Not every capability names a field: the folder verbs and `delete_team` are gated
+  // inside the data layer instead (their fields are `loggedIn`), and `view` is the
+  // floor no field asks for.
   const enforcedBelow = new Set<Capability>([
     "view",
     "organize_folders",
@@ -546,14 +505,9 @@ test("an instance admin's token administers the instance only when it was grante
 });
 
 /**
- * The same question for the SUBSCRIPTIONS, which {@link EXECUTABLE} leaves out.
- *
- * A subscription's whole body is a generator, so it never reaches the data
- * layer's `requireInstanceAdmin` — the field scope is the only gate it has. That
- * is why the `instanceAdmin` scope asks the token's own switch rather than only
- * the person's admin flag: without it, an admin's ordinary token could open the
- * fleet-wide cleanup history the same admin's ordinary token is refused
- * everywhere else.
+ * The same question for the SUBSCRIPTIONS, which {@link EXECUTABLE} leaves out. A
+ * subscription's whole body is a generator, so it never reaches the data layer's
+ * `requireInstanceAdmin` — the field scope is the only gate it has.
  */
 const ADMIN_SUBSCRIPTIONS = ENDPOINTS.filter(
   (e) => e.kind === "subscription" && e.gate.kind === "instanceAdmin",
@@ -562,10 +516,6 @@ const ADMIN_SUBSCRIPTIONS = ENDPOINTS.filter(
 /**
  * Open one subscription as one principal and pull its FIRST event. `[]` ⇒ the
  * subscriber received a payload.
- *
- * Pulling matters: a scope-auth refusal can land either on `subscribe` (no
- * iterator at all) or on the per-event `resolve` (an iterator that only ever
- * yields errors). Both are a refusal; an iterator on its own is not.
  */
 async function open(p: Principal, e: Endpoint): Promise<string[]> {
   const result = await runWithIdentity(p.identity, () =>

@@ -50,22 +50,8 @@ import { ALL_CAPABILITIES } from "./types";
 
 /**
  * A passkey as a SECOND FACTOR - the three things about it that are true only by
- * construction, and would stop being true silently (ADR-0024).
- *
- * 1. `/api/auth/passkey/*` cannot be reached over the network. The plugin
- *    registers a permanent, password-replacing credential on a session alone,
- *    which is a notch below the bar `lib/data/passkeys.ts` holds.
- * 2. Holding a passkey satisfies a team's two-factor mandate - the whole reason
- *    a team can turn the policy on without making everyone install an app.
- * 3. Because of (2), the password ALONE must stop creating a session for such an
- *    account. Get this wrong and one factor clears a two-factor policy, which is
- *    worse than not having shipped the feature.
- *
- * The WebAuthn ceremony itself is not exercised: driving it needs a virtual
- * authenticator (Chrome DevTools Protocol) that this harness does not have, so
- * the credential is seeded as a row. That is deliberate - everything asserted
- * here is about what deplo does with a passkey, not about whether
- * `@simplewebauthn/server` verifies signatures.
+ * construction, and would stop being true silently (ADR-0024). 1.
+ * `/api/auth/passkey/*` cannot be reached over the network.
  */
 
 const SOME_CAPABILITY = ALL_CAPABILITIES.find((c) => c !== "view")!;
@@ -230,12 +216,9 @@ for (const [path, method] of [
 }
 
 test("the passkey gate leaves the rest of Better Auth alone", async () => {
-  // Proves the matcher is scoped to /passkey/ rather than having quietly closed
-  // the whole auth surface.
-  //
-  // Not `/sign-in/email` any more: `deploOwnedGate` closes that one on its own
-  // merits, so a 403 there would say nothing about THIS matcher. `/get-session`
-  // is the neighbour that stays open, and it changes nothing.
+  // Proves the matcher is scoped to /passkey/ rather than having quietly closed the
+  // whole auth surface. Not `/sign-in/email` any more: `deploOwnedGate` closes that
+  // one on its own merits, so a 403 there would say nothing about THIS matcher.
   const res = await overHttp("/get-session", "GET");
   assert.notEqual(res.status, 403, "get-session still reaches its own handler");
 });
@@ -440,11 +423,8 @@ test("the challenge is refused outright when this panel cannot have passkeys", a
 /* ------------------------------------------------------------------ */
 
 test("a session refresh does not wash the stamp off", async () => {
-  // Better Auth extends a session in place every `updateAge` (15 minutes here)
-  // by UPDATEing `expires_at`/`updated_at` on the same row. If that ever became
-  // a rotation - a new row, a new id - a passkey session would silently demote
-  // itself mid-afternoon and the person would meet the lock screen for no reason
-  // they could see. This drives the exact call the refresh path makes.
+  // Better Auth extends a session in place every `updateAge` (15 minutes here) by
+  // UPDATEing `expires_at`/`updated_at` on the same row.
   await requireForTeam();
   await seedPasskey(USER_1);
   await login(EMAIL_1, PASSWORD);
@@ -487,10 +467,7 @@ test("stamping a session that no longer exists is a no-op, not a crash", async (
 
 test("changing the password keeps a passkey session's standing", async () => {
   // `changePassword` revokes every session and mints a replacement from the new
-  // password. Without carrying the standing across, a passkey session would
-  // demote itself the moment somebody rotated their password, and an account
-  // under a mandate would meet the lock screen with nothing to explain it.
-  // Changing a password does not undo the ceremony that opened the browser.
+  // password.
   await requireForTeam();
   await seedPasskey(USER_1);
   await login(EMAIL_1, PASSWORD);
@@ -802,9 +779,7 @@ test("renaming is scoped to your own passkeys", async () => {
 test("the plugin's adapter can write, find and update a passkey row", async () => {
   // The one thing a rename in lib/db/schema/auth.ts breaks SILENTLY: the Drizzle
   // adapter resolves a model field as `schema.passkey[field]`, so the JS property
-  // names are the plugin's field list verbatim. Nothing else here exercises them
-  // - the ceremony cannot run headless - and the first sign of a mismatch would
-  // otherwise be a real registration failing in a browser.
+  // names are the plugin's field list verbatim.
   const adapter = (await requireAuth().$context).adapter;
   const created = (await adapter.create({
     model: "passkey",

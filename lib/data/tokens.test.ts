@@ -28,13 +28,7 @@ import {
 
 /**
  * Data-layer tests for the `api_tokens` leaf collection against pglite
- * (relational-store PLAN Step 2). Drives the LIVE async functions under a
- * `runWithIdentity` principal, with the FK roots seeded in pglite (see
- * `leaf-test-helpers`).
- *
- * The identity here carries NO `token`, i.e. these run as a cookie session —
- * which is what a member managing tokens in the dashboard is. What a bearer
- * request does with the resulting grant is `token-scope*.test.ts`.
+ * (relational-store PLAN Step 2).
  */
 
 let db: TestDb;

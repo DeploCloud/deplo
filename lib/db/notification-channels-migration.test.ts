@@ -14,17 +14,6 @@ import { ALL_CHANNELS } from "../types";
 /**
  * The data carry-over of migration 0075 — twelve fixed channel slots becoming N
  * configured instances.
- *
- * The normal harness replays the journal onto an EMPTY database, so it proves
- * the DDL is valid and proves nothing at all about a team that already had
- * channels configured. That is the only interesting half of this migration, and
- * this file is the only thing that covers it: replay 0000…0074, seed the old
- * world, apply 0075, and read what came out.
- *
- * The seeds are RAW SQL on purpose. They write `notification_settings`, which
- * 0075 drops and the live drizzle schema therefore no longer knows — a drizzle
- * insert names every column of the table object it is given, and that object
- * does not exist any more.
  */
 
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
@@ -74,12 +63,6 @@ before(async () => {
   await seedIdentity(db);
 
   // TEAM_A: one of everything worth distinguishing.
-  //  discord    enabled + configured        -> an instance
-  //  slack      configured but switched OFF -> an instance, still off
-  //  lark       neither                     -> nothing
-  //  ntfy       ONLY the NOT NULL default    -> nothing (the trap)
-  //  push       enabled, no config at all   -> an instance
-  //  email      smtp password AND resend key -> both secret slots
   await pg.exec(`
     INSERT INTO notification_settings (
       team_id, push_enabled,

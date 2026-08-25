@@ -30,16 +30,7 @@ import { gravatarEnabled } from "../avatar";
 /**
  * The panel address is not an ordinary text setting: it is interpolated into
  * copy-and-run strings, above all a server's install command, which the operator
- * pastes into a ROOT shell. So the two things pinned here are the ones that would
- * hurt if they slipped:
- *
- *  1. Nothing with a shell metacharacter, a path, or credentials in it can ever
- *     be stored, whatever an API client sends.
- *  2. Only an instance admin can move it, because moving it changes where every
- *     future agent calls home to.
- *
- * Plus the resolution order every URL Deplo hands out depends on: what an admin
- * stored wins over the DEPLO_PUBLIC_URL the box was installed with.
+ * pastes into a ROOT shell.
  */
 
 let db: TestDb;

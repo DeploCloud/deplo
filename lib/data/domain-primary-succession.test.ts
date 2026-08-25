@@ -34,15 +34,9 @@ import {
 import type { Domain } from "../types";
 
 /**
- * What happens to an app's CANONICAL host when its primary domain is deleted.
- *
- * The primary is what the app card's subtitle, the title-bar link and the first
- * deploy route all read (through `apps.production_url`). Deleting it used to
- * leave the app both primary-less AND still advertising the deleted hostname
- * forever — nothing outside a deploy ever rewrote the URL, and an app whose
- * domain is gone may never deploy again. So: the crown passes to the closest
- * remaining domain, the URL follows it, and it is cleared when the last domain
- * goes.
+ * What happens to an app's CANONICAL host when its primary domain is deleted. The
+ * primary is what the app card's subtitle, the title-bar link and the first deploy
+ * route all read (through `apps.production_url`).
  */
 
 const SERVER_IP = "10.0.0.1"; // seedServer's ip

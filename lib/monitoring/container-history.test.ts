@@ -18,15 +18,9 @@ import type {
 } from "../data/container-metrics";
 
 /**
- * The per-app / per-database metrics ring buffer (container-history.ts): keyed
- * by id, online-samples-only, rate-ceiling, window eviction, the clear / prune
- * paths, and the separate latest-value CELL that holds the per-container
- * breakdown.
- *
- * The watch-set tests that used to live here are gone with the API. Under the
- * telemetry stream every Deplo-managed container on a host arrives in one frame,
- * so "which resources are we willing to pay to sample?" is no longer a question
- * this module answers — see the supervisor.
+ * The per-app / per-database metrics ring buffer (container-history.ts): keyed by
+ * id, online-samples-only, rate-ceiling, window eviction, the clear / prune paths,
+ * and the separate latest-value CELL that holds the per-container breakdown.
  */
 
 // Read-time eviction is relative to Date.now(), so tests use near-now timestamps.
@@ -152,11 +146,9 @@ test("pruneContainerHistoryTo keeps only ids that still EXIST", () => {
 /* ------------------------------------------------------------------ */
 
 test("a container absent from a frame RETAINS its buffered window", () => {
-  // The behavioural change from the poll era, and the reason it matters: a
-  // container that STOPPED is exactly when its trailing window is worth the
-  // most — the operator opens the tab to see the CPU spike or the memory climb
-  // that PRECEDED the stop. Pruning on absence would erase the evidence at the
-  // moment it became interesting.
+  // The behavioural change from the poll era, and the reason it matters: a container
+  // that STOPPED is exactly when its trailing window is worth the most — the operator
+  // opens the tab to see the CPU spike or the memory climb that PRECEDED the stop.
   recordContainerSample(sample("app_1", NOW - 10_000, { cpu: 95 })); // the spike
   recordContainerSample(sample("app_1", NOW - 5000, { cpu: 98 }));
   recordContainerSample(sample("app_2", NOW - 5000)); // a sibling, still running

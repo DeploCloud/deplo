@@ -21,10 +21,8 @@ import {
 import { getQueuePosition } from "./deployments";
 
 /**
- * `getQueuePosition` against pglite — the 1-based slot the deployment-detail
- * "in queue" banner shows. It mirrors the deploy queue's drain order (see
- * deploy-queue `pickNext`): per OWNING SERVER, oldest-first by (createdAt, seq),
- * counting only queued rows ahead. null for a non-queued or foreign-team row.
+ * `getQueuePosition` against pglite — the 1-based slot the deployment-detail "in
+ * queue" banner shows.
  */
 
 let db: TestDb;

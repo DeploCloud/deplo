@@ -53,11 +53,6 @@ import { composeStackVolumeHostNames } from "./project-backup-descriptor";
 
 /**
  * Data-layer tests for `databases` against pglite (PLAN Step 5, cut-set (d)).
- * Verifies the newest-first SQL list, team isolation, the masked DTO / decrypted
- * connection string, and — the headline — that `deleteDatabase` removes the row
- * with the agent teardown OUTSIDE the delete, and the DB FKs CASCADE dependent
- * backup schedules + SET NULL a run's databaseId (the orphan the JSONB version
- * hand-filtered).
  */
 
 let db: TestDb;
@@ -367,11 +362,8 @@ test("rebuildDatabase: unreachable agent fails clearly and leaves the row intact
 });
 
 test("rebuild/redeploy refuse to render an undecryptable password (no empty-auth engine)", async () => {
-  // Simulate a `DEPLO_SECRET` rotation: the stored ciphertext no longer opens
-  // under the running key. Best-effort decryptSecret would yield "" here, and a
-  // rebuild (wipes the volume, re-inits from env) would boot the engine with NO
-  // password — a publicly-exposed redis with no auth. The guard runs BEFORE the
-  // agent dial, so the failure is the decrypt message, not "unreachable agent".
+  // Simulate a `DEPLO_SECRET` rotation: the stored ciphertext no longer opens under
+  // the running key.
   await seedDatabase(db, { id: "db_undec", name: "undec" });
   await db
     .update(databasesTable)

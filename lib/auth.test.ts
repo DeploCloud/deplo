@@ -32,9 +32,7 @@ import { capabilitiesForRole } from "./membership-shared";
 /**
  * Auth cut-set (b) tests against pglite (relational-store PLAN Step 3):
  * `createAccountWithTeam` as one `db.transaction`, the single-use registration
- * link's two-concurrent race, and the stale-password-login regression that
- * proves login reads the RELATIONAL password hash (the per-module-migration
- * hazard the cut-set boundary closes).
+ * link's two-concurrent race, and the stale-password-login regression that proves
  */
 
 let db: TestDb;
@@ -387,11 +385,7 @@ test("a WRONG password on a suspended account is the GENERIC error, not an enume
 
 /**
  * A successful `login` writes the session cookie via `cookies()`, which throws
- * "outside a request scope" under `node --test`. So "password accepted" is proven
- * by login getting PAST the credential check and reaching the cookie write — i.e.
- * it does NOT return `{ ok:false, error:"Invalid email or password" }`; instead
- * it throws the cookie-scope error. (A wrong password returns ok:false before any
- * cookie write and never throws.)
+ * "outside a request scope" under `node --test`.
  */
 async function assertLoginAccepts(
   email: string,
@@ -410,10 +404,7 @@ async function assertLoginAccepts(
   }
 }
 
-// First-run setup: the instance-owner claim is the atomic guard. completeSetup's
-// user-count check runs OUTSIDE the account transaction, so two concurrent
-// first-run calls can both pass it; they then serialize on the instance_settings
-// singleton and exactly one may commit a fully-privileged owner admin.
+// First-run setup: the instance-owner claim is the atomic guard.
 const setupOwner = (username: string) =>
   createAccountWithTeam(
     {

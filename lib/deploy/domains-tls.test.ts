@@ -9,12 +9,8 @@ import {
 } from "./domains";
 
 /**
- * No certificate is ever registered by default — a new domain's provider is
- * `none` unless the user (or a blueprint that expects HTTPS) opts in.
- * `blueprintWantsTls` is the opt-in detector for app creation: it fires only
- * when the blueprint bakes an `https://<one of its own hosts>` URL into an env
- * value, its compose text, or a materialised config file. `domainScheme` is the
- * URL-scheme counterpart every canonical-URL writer uses.
+ * No certificate is ever registered by default — a new domain's provider is `none`
+ * unless the user (or a blueprint that expects HTTPS) opts in.
  */
 
 const HOST = "appflowy-keen-puma-01020304.nip.io";
@@ -83,11 +79,7 @@ test("domainScheme: the `custom` provider is https - it is a certificate, just n
 /**
  * The `custom` provider is the domain-side half of "bring your own certificate":
  * the operator installed one on the SERVER (Settings, Servers, Certificates) and
- * this is how a hostname asks to be served with it. It is TLS with NO resolver -
- * naming one would have Traefik try to issue a certificate for a domain whose
- * whole point is that it already has one, typically a name no HTTP challenge can
- * reach. Without this provider the only way to get a domain onto :443 was to
- * claim Let's Encrypt issues it, which is both untrue and capped per team.
+ * this is how a hostname asks to be served with it.
  */
 test("domainTlsConfig: `custom` is HTTPS on websecure with no cert resolver", () => {
   assert.deepEqual(domainTlsConfig({ certProvider: "custom" }), {

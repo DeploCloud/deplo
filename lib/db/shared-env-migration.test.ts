@@ -22,25 +22,8 @@ import { resolveEnvEntries } from "../deploy/env-resolve";
 import type { EnvTarget } from "../types";
 
 /**
- * Migration-parity test for ADR-0010 (spec §4 "final check"), AMENDED by
- * ADR-0012 (shared variables are opt-in per app). It replays the committed
- * migrations, PAUSING after 0026 to seed representative old-world data —
- * a team-global, an environment-scoped var, and a shared group attached to an app
- * whose key COLLIDES with the app's own var — so that 0027's backfill has something
- * to convert, then asserts what the NEW loader + resolver yields per (app, target).
- * value_enc is compared verbatim (the backfill copies it), so no decryption is needed.
- *
- * Since ADR-0012, parity holds ONLY for LINK-derived vars (the old shared
- * groups, whose explicit per-app attachment IS an opt-in): they keep injecting,
- * with their old above-app-own precedence. Scope-derived vars (old team-globals
- * → team-wide, old environment vars → environment scope) deliberately STOP
- * injecting — they become available for each app to opt into. That behaviour
- * change is the point of ADR-0012, and these tests pin it down.
- *
- * Because the assertions run through the LIVE drizzle schema, the seeds are the
- * fragile part: they execute against a schema frozen at 0026, so anything a LATER
- * migration touches must be seeded with raw SQL — drizzle names every column of the
- * table object in an INSERT, including ones that do not exist yet at that point.
+ * Migration-parity test for ADR-0010 (spec §4 "final check"), AMENDED by ADR-0012
+ * (shared variables are opt-in per app).
  */
 
 const T0 = "2026-01-01T00:00:00.000Z";
@@ -67,38 +50,12 @@ before(async () => {
   });
   db = drizzle(pg, { schema });
 
-  // Replay 0000..0026, seed the old world, THEN apply 0027 and EVERYTHING after it.
-  // Two constraints pull in opposite directions and this ordering satisfies both:
-  // 0027's backfill reads legacy tables that 0028 drops, so they must exist and hold
-  // rows when it runs; but the assertions below drive the LIVE drizzle schema, whose
-  // star-SELECTs name every column the schema object currently knows — so the DB has
-  // to be at the LATEST migration, not frozen at 0027. Nothing past the backfill
-  // asserts on the legacy tables, so dropping them in 0028 costs nothing.
+  // Replay 0000.. 0026, seed the old world, THEN apply 0027 and EVERYTHING after it.
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
   // token_version (0043) adds a `users` column that seedIdentity's live-drizzle
-  // insert names, so it must exist before the pre-0027 seed. It only depends on
-  // `users` (0001) and touches nothing 0027's backfill reads, so apply it in the
-  // pre-seed batch and exclude it from the post-0027 replay. (Any future
-  // post-freeze column on a seeded table needs the same treatment.)
-  // team_roles (0054) is the same case for `memberships.role_id`: self-contained
-  // (it creates the table its FK points at) and invisible to 0027's backfill.
-  // two_factor / Better Auth (0055) is the same case again, and additionally
-  // DROPS `users.password_hash` — which the seed no longer writes. Its own
-  // credential backfill reads `users`, so running it before the seed simply
-  // copies zero rows, which is exactly right for a database with no accounts yet.
-  // granular (0064) is the same case for `memberships.granular`: one ALTER on a
-  // table that has existed since 0000, invisible to 0027's backfill. Its sibling
-  // 0065 (app_grants) stays in the post-27 batch — it indexes
-  // `activities.actor_user_id`, which only exists from 0029.
-  // custom_capabilities (0071) is 0064's case exactly: one additive ALTER with a
-  // default on `memberships` (0003), invisible to 0027's backfill.
-  // backup_default_seeded_at (0085) is that case once more, on `teams` (0000).
-  // mcp_enabled (0098) is the same again — which is why 0098 carries ONLY the
-  // ALTERs and the `manage_mcp` backfill lives in 0099, where it can stay in the
-  // post-27 batch with the other backfills. (0098 also added a second column
-  // that 0100 drops again; both run in their normal places.)
+  // insert names, so it must exist before the pre-0027 seed.
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 27 ||
     f.startsWith("0043_") ||
@@ -108,24 +65,17 @@ before(async () => {
     f.startsWith("0071_") ||
     f.startsWith("0085_") ||
     f.startsWith("0098_") ||
-    // 0115 is `account.issuer` and nothing else - one additive ALTER plus its
-    // backfill, on a table 0055 already created. `seedIdentity` below writes
-    // that column (Better Auth 1.7.0 requires it), so the seed cannot run at a
-    // schema point that predates it. The OAuth half of the same bump is 0116 and
-    // stays in its normal place.
+    // 0115 is `account.issuer` and nothing else - one additive ALTER plus its backfill,
+    // on a table 0055 already created.
     f.startsWith("0115_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 
   for (const f of pre27) await applyFile(f);
 
-  // Two columns from 0121 (profile pictures) borrowed forward as bare ALTERs
-  // rather than by pulling the whole file into `preSeed`: 0121 also alters
-  // `instance_settings`, which does not exist yet at this point. Needed because
-  // drizzle NAMES every column the live table object knows in its INSERT, so the
-  // seed helpers below reach for both on a schema frozen at 0026 — the same trap
-  // the raw-SQL `servers` seed further down exists for. Both are `IF NOT EXISTS`
-  // in the migration too, so 0121 still runs cleanly in its own place.
+  // Two columns from 0121 (profile pictures) borrowed forward as bare ALTERs rather
+  // than by pulling the whole file into `preSeed`: 0121 also alters
+  // `instance_settings`, which does not exist yet at this point.
   await pg.exec(`
     alter table teams add column if not exists image text;
     alter table memberships add column if not exists switcher_position integer;
@@ -139,8 +89,6 @@ before(async () => {
   // RAW SQL, not the drizzle `seedServer` helper: the schema is frozen at 0026 here,
   // but drizzle names EVERY column the live `servers` object knows in its INSERT — so
   // the helper reaches for columns a later migration adds (0030's status_checked_at /
-  // status_message) and the insert fails on a table that doesn't have them yet. Naming
-  // only the 0026-era columns keeps this seed pinned to the era it is seeding.
   await pg.exec(`
     insert into servers (
       id, name, host, type, status, ip, docker_version, traefik_enabled,
@@ -153,8 +101,7 @@ before(async () => {
     ) on conflict do nothing;`);
   // RAW SQL for the same reason as the servers seed above, and now for a second
   // column: drizzle names every column the LIVE table object knows, and
-  // `migration_run_id` (0119) does not exist at this 0026 freeze either. Naming
-  // only the 0026-era columns keeps the seed pinned to the era it is seeding.
+  // `migration_run_id` (0119) does not exist at this 0026 freeze either.
   await pg.exec(`
     insert into projects (id, team_id, name, slug, color, owner_user_id, created_at, updated_at)
     values ('prc_1', '${TEAM_A}', 'P', 'p', null, '${USER_1}', '${T0}', '${T0}');`);
@@ -163,12 +110,7 @@ before(async () => {
     values
       ('env_dev',  'prc_1', 'Development', 'development', 'development', '', true,  0, '${T0}', '${T0}'),
       ('env_prod', 'prc_1', 'Production',  'production',  'production',  '', false, 1, '${T0}', '${T0}');`);
-  // app_p lives in the project's Development env; app_top is top-level. Seeded
-  // via RAW SQL (not the drizzle `seedApp` helper): `appToRow` names the
-  // resource_* columns that migration 0032 adds, which don't exist yet at this
-  // 0026 freeze — the same reason the servers/env_vars seeds above go in raw.
-  // Only the apps rows (the FK anchors env_vars need) are seeded — the loaders
-  // the assertions drive read env/shared vars, never the app_build child.
+  // app_p lives in the project's Development env; app_top is top-level.
   await pg.exec(`
     insert into apps (
       id, name, slug, team_id, server_id, source, status, auto_deploy,
@@ -180,11 +122,7 @@ before(async () => {
     .update(appsTable)
     .set({ projectId: "prc_1", environmentId: "env_dev" })
     .where(eq(appsTable.id, "app_p"));
-  // app_p's OWN vars: OWN (unique) + DUP (collides with the shared group). Seeded
-  // with raw SQL, NOT db.insert(envVars): the seeds land on the 0026-era schema while
-  // the drizzle table object is the LIVE one and names every column it knows — a
-  // column introduced by a later migration (0029's authorship columns) does not exist
-  // yet at this point in the replay. Same reason the legacy tables below go in raw.
+  // app_p's OWN vars: OWN (unique) + DUP (collides with the shared group).
   await pg.exec(`
     insert into env_vars (id, app_id, key, value_enc, type, created_at, updated_at) values
       ('ev_own', 'app_p', 'OWN', 'enc:own', 'plain', '${T0}', '${T0}'),
@@ -270,9 +208,7 @@ test("backfill produced one shared var per legacy source", async () => {
 test("the only mode-less/link-less var is the one whose group reached no app", async () => {
   // Spec §4's "no shared var left without a valid sharing mode" — the ONE legitimate
   // exception is a var exploded from a group that was attached to nothing: it
-  // injected nowhere before and injects nowhere after, so parity holds and the row
-  // is kept rather than destroying the user's authored value. It is editable in the
-  // Shared tab (assigning it a mode is exactly what saveSharedVar demands).
+  // injected nowhere before and injects nowhere after, so parity holds and the row is
   const orphans = await pg.query<{ key: string }>(`
     select v.key from shared_env_vars v
     where v.team_wide = false

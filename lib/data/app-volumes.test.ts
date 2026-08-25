@@ -24,10 +24,8 @@ import type { VolumeMount } from "../types";
 
 /**
  * Storage volumes on a COMPOSE-STACK app — the writer that used to refuse them
- * outright ("volumes are managed inside the compose file"), which forced anyone
- * on a compose app to hand-edit YAML for something as ordinary as persistent
- * uploads. It now stores them like any other app's, plus the compose service
- * each one mounts into, and the renderer turns that into real mounts.
+ * outright ("volumes are managed inside the compose file"), which forced anyone on
+ * a compose app to hand-edit YAML for something as ordinary as persistent uploads.
  */
 
 const COMPOSE = `services:

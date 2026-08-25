@@ -15,8 +15,7 @@ import {
 /**
  * The picker's contract with the scheduler: whatever a person chooses in the UI
  * must come back out as a cron the matcher understands, and whatever is already
- * stored must come back INTO the controls unchanged. Everything here is pure, so
- * it tests as plain functions — no DOM, no clock.
+ * stored must come back INTO the controls unchanged.
  */
 
 const parts = (over: Partial<ScheduleParts>): ScheduleParts => ({

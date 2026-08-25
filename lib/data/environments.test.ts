@@ -20,12 +20,9 @@ import {
 import { deleteEnvironment } from "./environments";
 
 /**
- * Deleting an environment re-parents its apps rather than deleting them
- * (ADR-0009: an environment is a sub-folder of apps, so removing the sub-folder
- * keeps its contents in the project). Where they LAND is the whole contract:
- * an app left with a `project_id` and no `environment_id` is filed in a project
- * and in none of its environments, which is invisible on the Overview drill-in —
- * the app is not deleted, it is just gone.
+ * Deleting an environment re-parents its apps rather than deleting them (ADR-0009:
+ * an environment is a sub-folder of apps, so removing the sub-folder keeps its
+ * contents in the project).
  */
 
 let db: TestDb;
@@ -97,10 +94,9 @@ test("deleting an environment re-parents its apps to the project's default", asy
 });
 
 test("with no default anywhere, the apps still land somewhere real", async () => {
-  // A project with no default at all shouldn't happen — creation seeds one and
-  // this refuses to delete it — so if it ever does, silently clearing
-  // `environment_id` is the worst possible answer: the apps vanish from the
-  // drill-in with nothing to point at.
+  // A project with no default at all shouldn't happen — creation seeds one and this
+  // refuses to delete it — so if it ever does, silently clearing `environment_id` is
+  // the worst possible answer: the apps vanish from the drill-in with nothing to
   await seedProjectWith(null);
   await asUser1(() => deleteEnvironment("environ_dev"));
   const app = await homeOf("prj_moved");

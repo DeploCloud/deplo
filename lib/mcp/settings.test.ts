@@ -22,12 +22,6 @@ import { getMcpSettings, setMcpSettings } from "../data/mcp-settings";
 
 /**
  * The MCP kill switch and its Capability.
- *
- * The switch is the one thing standing between "this team's tokens may be
- * spoken to by an agent" and "they may not", so the two questions worth pinning
- * are: does a new team start OFF (the answer the migration's DEFAULT gives -
- * it shipped ON and moved in 0106), and is changing it actually gated on
- * `manage_mcp` rather than on being logged in.
  */
 
 let db: TestDb;
@@ -77,11 +71,8 @@ async function revoke(capability: string) {
 }
 
 test("a NEW team starts with MCP off — the kill switch ships closed", async () => {
-  // The COLUMN default is the whole test: no creation path writes this field,
-  // so what the migration says is what a team created today gets. A token is
-  // required either way; what changed is that allowing AI agents into a
-  // company's infrastructure is now a decision somebody makes rather than one
-  // they inherit.
+  // The COLUMN default is the whole test: no creation path writes this field, so what
+  // the migration says is what a team created today gets.
   await db.insert(teamsTable).values({
     id: "team_fresh",
     name: "Fresh",
