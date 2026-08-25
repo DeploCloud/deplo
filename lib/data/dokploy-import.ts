@@ -89,6 +89,10 @@ import {
   mapMounts,
   mapResources,
   mapSource,
+  cloneTarget,
+  composeAsRepoApp,
+  composeBuildServices,
+  composeVolumeMounts,
   volumeLabel,
   parseEnvBlob,
   portNotes,
@@ -1204,13 +1208,14 @@ const UNINSTALL_DRAIN_BATCH = 8;
 async function removeMigrationSources(
   runId: string,
   teamId: string,
+  opts: { force?: boolean } = {},
 ): Promise<void> {
   const sources = (await listServersForTeam(teamId)).filter(
     (s) => s.importOnly,
   );
   if (sources.length === 0) return;
 
-  if (await hasStrandedVolume(runId)) {
+  if (!opts.force && (await hasStrandedVolume(runId))) {
     for (const s of sources)
       await appendRunItem(runId, {
         path: s.name,
@@ -2248,7 +2253,10 @@ async function importAppService(
   },
   report: Report,
 ): Promise<string | null> {
-  const isCompose = svc.kind === "compose";
+  // Which Dokploy table it sat in. Whether it is a STACK here is decided below:
+  // a compose service can turn out to be one app built from its own repository,
+  // and importing that as a stack produces something that cannot deploy.
+  let isCompose = svc.kind === "compose";
 
   // Already here? Leave it completely alone — a second pass must not re-write
   // someone's configuration behind their back.
@@ -2302,6 +2310,41 @@ async function importAppService(
       `Deplo does not resolve Dokploy's \`\${{...}}\` templating - put the real values in: ${interpolated.join(", ")}.`,
     );
 
+  // The compose text, read before anything that depends on the app's SHAPE: it
+  // is what says whether this is a stack at all.
+  let yamlText = "";
+  if (isCompose) {
+    const inline = (detail.composeFile ?? "").trim();
+    yamlText = inline || (await getConvertedCompose(c, svc.id)) || "";
+    if (!yamlText.trim()) {
+      await report.add({
+        sourceKind: svc.kind,
+        sourceId: svc.id,
+        sourceName: name,
+        outcome: "failed",
+        targetKind: "app",
+        message:
+          "The compose file is in a git repository and Dokploy would not hand over the resolved file. Create the app and paste the compose in.",
+      });
+      return null;
+    }
+  }
+
+  /**
+   * A compose service that is really one app built from its own repository.
+   *
+   * Dokploy's "Compose" with a GitHub source is how people run a plain app whose
+   * repo happens to carry a compose file - one service, `build: .`, a port, a
+   * volume. Imported as a stack it lost the repository AND could not build: the
+   * stack Deplo ships the agent is opaque YAML with nothing beside it, so
+   * `build: .` points at a directory holding one compose file. It arrived
+   * looking migrated and was dead on arrival. Read as what it is, it is a git
+   * app, and every path below treats it as one.
+   */
+  const repoTarget = isCompose ? cloneTarget(detail) : null;
+  const asRepoApp = repoTarget ? composeAsRepoApp(yamlText) : null;
+  if (asRepoApp) isCompose = false;
+
   const domains = mapDomains(detail.domains, { isCompose });
   notes.push(...domains.notes);
   // The app's own address wins the primary slot over a temporary one, whatever
@@ -2320,22 +2363,27 @@ async function importAppService(
   let compose: string | null = null;
   const build: Partial<BuildConfig> = {};
 
-  if (isCompose) {
+  if (asRepoApp && repoTarget) {
+    source = repoTarget.provider === "github" ? "github" : "git";
+    repo = repoTarget;
+    // `build: .` in compose IS a Dockerfile build - the context dir's own
+    // Dockerfile unless the block names another. Nothing here has to guess.
+    build.buildMethod = "dockerfile";
+    build.methodSettings = {
+      dockerfilePath: asRepoApp.dockerfilePath ?? "Dockerfile",
+      ...(asRepoApp.dockerContextPath
+        ? { dockerContextPath: asRepoApp.dockerContextPath }
+        : {}),
+      ...(asRepoApp.dockerBuildStage
+        ? { dockerBuildStage: asRepoApp.dockerBuildStage }
+        : {}),
+    };
+    notes.push(
+      `On Dokploy this was a compose file in ${repoTarget.repo}, and all it did was build that repository and run it - so it came across as an app built from ${repoTarget.repo}, not as a stack. Pushing to ${repoTarget.branch} deploys it.`,
+    );
+  } else if (isCompose) {
     source = "compose";
     const inline = (detail.composeFile ?? "").trim();
-    const yamlText = inline || (await getConvertedCompose(c, svc.id)) || "";
-    if (!yamlText.trim()) {
-      await report.add({
-        sourceKind: svc.kind,
-        sourceId: svc.id,
-        sourceName: name,
-        outcome: "failed",
-        targetKind: "app",
-        message:
-          "The compose file is in a git repository and Dokploy would not hand over the resolved file. Create the app and paste the compose in.",
-      });
-      return null;
-    }
     if (!inline)
       notes.push(
         "The compose file is kept inline from now on, so changes in the repository will not follow.",
@@ -2356,6 +2404,15 @@ async function importAppService(
     // variables, domains and mounts are the part that takes an afternoon to
     // retype), but it used to do so without a word - and the app it makes can
     // never deploy. Say it here, where the report is read.
+    // A stack Deplo keeps as a stack has no repository behind it, so a service
+    // that builds from source cannot build HERE - and it used to arrive silent,
+    // failing its first deploy with a docker error nobody could trace back to
+    // the migration.
+    const builders = composeBuildServices(compose);
+    if (builders.length > 0)
+      notes.push(
+        `${builders.join(", ")} ${builders.length === 1 ? "builds" : "build"} from source, and Deplo has no repository for this stack - only the compose file came over. Give ${builders.length === 1 ? "it an" : "them"} image, or split ${builders.length === 1 ? "it" : "them"} out into ${builders.length === 1 ? "its" : "their"} own app built from the repository.`,
+      );
     const services = composeServiceCount(compose);
     if (services === null)
       notes.push(
@@ -2707,6 +2764,20 @@ async function importAppService(
   let volumes = mounts.value.volumes.filter(
     (v) => !(v.type === "app" && unwritten.has(v.projectPath ?? "")),
   );
+
+  // A compose service that came across as an APP keeps its storage: its volumes
+  // were declared in the compose file, not in Dokploy's mounts, so nothing above
+  // saw them - and without them the app arrives with nowhere for the data cutover
+  // to put the bytes. The container path is what the copy pairs on, so that is
+  // the part that has to be right.
+  if (asRepoApp)
+    for (const v of composeVolumeMounts(yamlText))
+      volumes.push({
+        type: "named",
+        name: volumeLabel(v.name, "data"),
+        mountPath: v.mountPath,
+        readOnly: false,
+      });
 
   // A compose stack's config file is mounted by the stack's OWN yaml, so nothing
   // in Storage described it and the Storage page - the one place a person looks
@@ -3417,15 +3488,25 @@ function revertError(e: unknown): string {
 }
 
 /**
- * Close a run somebody stopped, without finishing it.
+ * Stop a migration, which means UNDO it - the whole thing, every time.
  *
- * Deliberately NOT `finishDokployImport`: that one also uninstalls the agents
- * from the machines this migration read, and re-running is how a stopped
- * migration is resumed - whatever is already here is skipped the second time.
- * Taking the agents away would make that impossible.
+ * There is no half-migrated state to keep. A stop lands mid-copy far more often
+ * than not, and a volume that is 60% across is not 60% of an app: it is a
+ * database with a torn data directory, or a stack whose files disagree with its
+ * rows. Offering "keep what came over" made the person who pressed Stop judge
+ * that, from a progress bar, with no way to tell a finished volume from an
+ * interrupted one. So the choice is gone: stopping takes every app, database,
+ * project and variable this run created back out, takes Deplo's agent back off
+ * the machines it was put on to read, and returns the wizard to step one.
  *
- * Only ever moves a `running` row, so it is idempotent and cannot overwrite the
- * verdict of a run that had already failed on its own.
+ * Dokploy is left as the migration left it - services it stopped over there stay
+ * stopped, which the wizard says before it asks.
+ *
+ * Ordered so nothing is deleted while something is still writing into it: the
+ * copy in flight is cut first (the runner does that before it gets here), the
+ * services are handed back to their team, and only then does the undo run.
+ *
+ * Idempotent: a second call finds nothing left to delete and re-arms nothing.
  */
 export async function stopDokployImport(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
@@ -3439,7 +3520,29 @@ export async function stopDokployImport(runId: string): Promise<void> {
         eq(runsTable.status, "running"),
       ),
     );
+  await undoDokployImport(runId);
+}
+
+/**
+ * Take a run back out whole: what it created HERE, and the agent Deplo put over
+ * THERE to read it.
+ *
+ * The one ending shared by a Stop and a failure, which are the same situation
+ * wearing two words - a migration that did not land. Nothing about it is
+ * optional, and nothing about it asks.
+ *
+ * The uninstall is FORCED past its usual guard. That guard keeps the agent on a
+ * machine whose bytes did not all make it, because the agent is the only way to
+ * go back for them - and after an undo there is nothing here for them to land
+ * in. An uninstall that will not take is not lost either: it goes on the durable
+ * ladder and, once Deplo has given up, says so on the machine in Settings ->
+ * Servers so a person can take it off by hand.
+ */
+export async function undoDokployImport(runId: string): Promise<void> {
+  const { teamId } = await assertImportGate();
   await releaseMigrating(runId);
+  await revertDokployImport(runId);
+  await removeMigrationSources(runId, teamId, { force: true });
   await refreshCounts(runId, teamId);
 }
 

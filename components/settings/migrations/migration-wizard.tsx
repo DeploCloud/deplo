@@ -8,7 +8,6 @@ import {
   Loader2,
   ScrollText,
   Server as ServerIcon,
-  Undo2,
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
@@ -21,7 +20,6 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import type { ActionResult } from "@/lib/result";
 import {
   WizardStepper,
   type WizardStep,
@@ -45,7 +43,6 @@ import {
   type MigrationProgress,
   type Placement,
   type Plan,
-  type RevertResult,
   type ServerChoice,
 } from "./types";
 
@@ -186,19 +183,11 @@ const SCAN = /* GraphQL */ `
   }
 `;
 
-const REVERT = /* GraphQL */ `
-  mutation RevertDokployImport($runId: String!) {
-    revertDokployImport(runId: $runId) {
-      apps
-      databases
-      environments
-      projects
-      sharedVars
-      failed
-    }
-  }
-`;
-
+/**
+ * Stop, which is the same word the server means by it: undo the whole migration.
+ * There is no second call - nothing to keep, nothing to choose. See
+ * `stopDokployImport`.
+ */
 const STOP = /* GraphQL */ `
   mutation StopDokployImport($runId: String!) {
     stopDokployImport(runId: $runId)
@@ -353,11 +342,11 @@ export function MigrationWizard({
   /** The `startDokployImport` call is in flight. It is over in about a second,
    *  and from then on the run is the server's and the live feed is the truth. */
   const [running, setRunning] = React.useState(false);
-  const [stopped, setStopped] = React.useState(false);
-  /** The run this tab took over rather than started. Set when it is stopped from
-   *  here, so revert/keep act on it exactly as they do for the driver. */
+  /** A Stop is in flight: the server is taking the migration back out. It ends
+   *  when the run leaves the live feed, which drops the wizard back to step one. */
+  const [undoing, setUndoing] = React.useState(false);
+  /** The run this tab took over rather than started - what `closeReport` needs. */
   const [adoptedId, setAdoptedId] = React.useState<string | null>(null);
-  const [reverting, setReverting] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
 
   const [invites, setInvites] = React.useState<Invite[] | null>(null);
@@ -498,7 +487,7 @@ export function MigrationWizard({
     }
 
     setFailure(null);
-    setStopped(false);
+    setUndoing(false);
     setRunning(true);
     const res = await gqlAction<{ startDokployImport: string }, string>(
       START,
@@ -529,71 +518,48 @@ export function MigrationWizard({
     setApiKey("");
   }
 
-  async function revertRun() {
-    if (!runId)
-      return { ok: false as const, error: "There is no run to undo." };
-    setReverting(true);
-    const res = await gqlAction<
-      { revertDokployImport: RevertResult },
-      RevertResult
-    >(REVERT, { runId }, (d) => d.revertDokployImport);
-    setReverting(false);
-    if (!res.ok) {
-      toast.error(res.error);
-      return res;
-    }
-    const r = res.data;
-    const removed =
-      (r?.apps ?? 0) +
-      (r?.databases ?? 0) +
-      (r?.projects ?? 0) +
-      (r?.environments ?? 0) +
-      (r?.sharedVars ?? 0);
-    // What is STILL here, and why, is a list rather than a sentence - and a
-    // toast expires in four seconds. The server writes one line per leftover
-    // into the run's own log, so this only has to point at it.
-    if (r && r.failed.length > 0)
-      toast.warning(
-        `Removed ${removed} object(s) - ${r.failed.length} could not be removed, see the log in History`,
-      );
-    else
-      toast.success(
-        removed === 0
-          ? "Nothing was left to remove"
-          : `Removed ${removed} object(s)`,
-      );
-    setStopped(false);
+  /**
+   * Back to an empty wizard. The run is over and undone; nothing it made is
+   * here, and nothing it chose should be either - a plan half-applied is the one
+   * thing that must never be re-submitted by accident.
+   */
+  const resetToStart = React.useCallback(() => {
+    setUndoing(false);
     setFailure(null);
     setPlan(null);
     setRunId(null);
+    setAdoptedId(null);
     setChosen(new Set());
     setPlacements({});
     setServerMap({});
     setPendingMachines({});
     attemptedMachines.current = new Set();
     setApiKey("");
+    setLogOpen(false);
     setStep("connect");
     router.refresh();
-    return res;
-  }
+  }, [router]);
 
   /**
-   * Stop a run this tab did not start.
+   * Stop, which means undo.
    *
-   * The driver's Stop only raises a flag its loop reads between calls; there is
-   * no loop here, so this IS the call. Taking the run's id afterwards is what
-   * makes the rest of the panel work: "remove what came over" and "keep it" are
-   * the same two server calls the driver gets, and both only need that id.
+   * One call, and the server does all of it: the copy in flight is cut, every
+   * app, database, project and variable this run created is deleted, and Deplo's
+   * agent comes back off the machines it was put on. The wizard only has to
+   * wait - the run leaves the live feed when it is done, and `settleFinished`
+   * puts this page back on step one.
    */
-  async function stopResumed(id: string) {
+  async function stopRun(id: string) {
+    if (!id) return;
+    setUndoing(true);
+    setAdoptedId(id);
+    setRunId(id);
     const res = await gqlAction(STOP, { runId: id });
     if (!res.ok) {
+      setUndoing(false);
       toast.error(res.error);
       return;
     }
-    setAdoptedId(id);
-    setRunId(id);
-    setStopped(true);
     router.refresh();
   }
 
@@ -630,12 +596,17 @@ export function MigrationWizard({
         setStep(isInstanceAdmin && hasPlan ? "people" : "done");
         return;
       }
-      // Stopped or failed. Both land on the panel that offers the only two
-      // things left: take it back out, or keep it and read the report.
-      if (res.data.error) setFailure(res.data.error);
-      else setStopped(true);
+      // Stopped or failed - and either way the server has already taken it back
+      // out, so there is nothing here to decide and nothing left to keep. Say
+      // what happened and hand back an empty wizard.
+      if (res.data.error) toast.error(res.data.error);
+      else
+        toast.success(
+          "The migration was stopped, and everything it created was removed",
+        );
+      resetToStart();
     },
-    [isInstanceAdmin, hasPlan],
+    [isInstanceAdmin, hasPlan, resetToStart],
   );
 
   /**
@@ -646,19 +617,6 @@ export function MigrationWizard({
   async function closeReport() {
     const id = adoptedId ?? runId;
     if (id) await gqlAction(DISMISS, { runId: id });
-  }
-
-  /** Keep what landed and read the report on it. */
-  function keepPartial() {
-    setStopped(false);
-    setLogOpen(false);
-    // Stopped before the server opened a run: nothing was created, so there is
-    // no report to go to - this is just "never mind", back to the review.
-    if (!runId) {
-      setFailure(null);
-      return;
-    }
-    setStep(isInstanceAdmin ? "people" : "done");
   }
 
   /* ---- step: people ------------------------------------------------ */
@@ -744,7 +702,7 @@ export function MigrationWizard({
    * platform sitting between two places and "Undo the migration" lives on this
    * panel and nowhere else.
    */
-  const moving = step === "review" && (running || stopped || failure !== null);
+  const moving = step === "review" && (running || failure !== null);
 
   /**
    * Every machine behind that Dokploy answers Deplo - the same condition the
@@ -830,13 +788,11 @@ export function MigrationWizard({
    * people that Deplo is guessing.
    */
   const resumed =
-    feed != null && !running && !stopped && failure === null && step !== "done";
-  /** The same run once it has been stopped from here: `runId` is set now, so the
-   *  panel's second half - remove what came over, or keep it - is on offer. */
-  const resumedStopped =
-    adoptedId != null && !running && (stopped || failure !== null);
-  /** A migration owns the screen, whoever is looking and however they got here. */
-  const takenOver = resumed || resumedStopped;
+    feed != null && !running && failure === null && step !== "done";
+  /** A migration owns the screen, whoever is looking and however they got here.
+   *  Undoing one is still one: the panel stays, saying what it is doing, until
+   *  the run leaves the feed and the wizard resets. */
+  const takenOver = resumed;
 
   // One derived value drives the picture. A run in flight wins over the step -
   // driven here or watched from here - because the cable full of packets is the
@@ -994,7 +950,7 @@ export function MigrationWizard({
               {/* One panel, one run, whoever is looking: the person who started
                   it, the same person after a reload, the teammate who walked in
                   on it. The step they left is the step they get, Stop and all. */}
-              {(resumed || resumedStopped) && (
+              {resumed && (
                 <MovingPanel
                   progress={
                     feed
@@ -1008,12 +964,10 @@ export function MigrationWizard({
                   startedAt={feed ? Date.parse(feed.startedAt) : null}
                   failure={failure}
                   running={resumed}
-                  reverting={reverting}
+                  undoing={undoing}
                   onShowLog={() => setLogOpen(true)}
-                  onStop={() => void stopResumed(feed?.id ?? "")}
-                  onRevert={revertRun}
-                  onKeep={keepPartial}
-                  canRevert={runId != null}
+                  onStop={() => void stopRun(feed?.id ?? "")}
+                  onBack={resetToStart}
                 />
               )}
 
@@ -1053,13 +1007,11 @@ export function MigrationWizard({
                     startedAt={null}
                     failure={failure}
                     running={running}
-                    reverting={reverting}
+                    undoing={false}
                     onShowLog={() => setLogOpen(true)}
                     // No Stop: this is the second the `startDokployImport` call
                     // is in flight, and there is no run id to stop yet.
-                    onRevert={revertRun}
-                    onKeep={keepPartial}
-                    canRevert={runId != null}
+                    onBack={() => setFailure(null)}
                   />
                 ) : (
                   <ReviewStep
@@ -1247,96 +1199,56 @@ function ConnectStep({
 /* ------------------------------------------------------------------ */
 
 /**
- * What the review turns into once the move starts, and what it becomes if that
- * move does not finish.
+ * What the review turns into once the move starts.
  *
- * Not a dialog and not a step of its own: there is no decision here while it
- * runs, so it gets no chip on the rail, and nothing to close - leaving the page
- * is refused, so a dismissible dialog would only offer a way out that does not
- * exist. Two lines and a bar say everything; the line-by-line log is one
- * secondary button away.
+ * Not a dialog and not a step of its own: there is no decision here, so it gets
+ * no chip on the rail and nothing to close - leaving the page is refused, so a
+ * dismissible dialog would only offer a way out that does not exist. Two lines
+ * and a bar say everything; the line-by-line log is one secondary button away.
  *
- * The half-finished case is the one this panel really exists for. A run that
- * failed on project four of seven, or one somebody stopped, leaves apps and
- * databases here that are not a migration - they are debris - and Dokploy has
- * already been stopped for them. So the panel asks the only question left, in
- * two words each: take it back out, or keep it and read the report.
+ * There USED to be a second half: a run that stopped left its apps and databases
+ * on the screen with two buttons under them - take it back out, or keep it. That
+ * question could not honestly be answered from here. A stop lands mid-copy far
+ * more often than not, and a volume 60% across is not 60% of an app: it is a
+ * database with a torn data directory. Stop now means undo, the server does all
+ * of it, and this panel only ever reports.
  */
 function MovingPanel({
   progress,
   startedAt,
   failure,
   running,
-  reverting,
+  undoing,
   onShowLog,
   onStop,
-  onRevert,
-  onKeep,
-  canRevert,
+  onBack,
 }: {
   progress: MigrationProgress;
   /** Epoch ms the run started, or null when there is no run to time yet. */
   startedAt: number | null;
   failure: string | null;
   running: boolean;
-  reverting: boolean;
+  /** A Stop is in flight: the server is taking the migration back out. */
+  undoing: boolean;
   onShowLog: () => void;
-  /** Ask the control plane to stop between steps. Absent for the second while
-   *  the run is being opened, when there is no run id to stop. */
+  /** Absent for the second while the run is being opened, when there is no run
+   *  id to stop yet. */
   onStop?: () => void;
-  onRevert: () => Promise<ActionResult<unknown>>;
-  onKeep: () => void;
-  /**
-   * There is a run to undo. False when it stopped before the server had even
-   * opened one, which means nothing was created and there is nothing to offer.
-   */
-  canRevert: boolean;
+  onBack: () => void;
 }) {
   const pct = progress.total === 0 ? 0 : (progress.done / progress.total) * 100;
-  const [stopping, setStopping] = React.useState(false);
 
-  if (!running)
+  // The start call itself failed, so there is no run: nothing was created, and
+  // there is nothing to undo or report on. Back to the plan.
+  if (!running && !undoing)
     return (
       <StepShell
-        title={failure ? "The migration stopped" : "You stopped the migration"}
-        lead={
-          failure ??
-          "Whatever came over is here, and Dokploy is not serving it any more."
-        }
+        title="The migration could not start"
+        lead={failure ?? "Deplo could not start the migration."}
       >
         <div className="flex flex-wrap items-center gap-2">
-          {canRevert && (
-            <ConfirmAction
-              trigger={
-                <Button variant="destructive">
-                  <Undo2 className="size-4" />
-                  Remove what came over
-                </Button>
-              }
-              title="Remove everything this migration created?"
-              confirmLabel="Remove it"
-              // No `successMessage`: the revert raises its own, with the count
-              // of what it actually managed to take out.
-              description={
-                <>
-                  Deplo deletes the apps, databases and projects this run
-                  created here, with their data. Anything that was already in
-                  this team is left alone.
-                  <br />
-                  <br />
-                  It does not start Dokploy back up - the services this
-                  migration stopped over there stay stopped.
-                </>
-              }
-              onConfirm={onRevert}
-            />
-          )}
-          <Button variant="outline" onClick={onKeep} disabled={reverting}>
-            {canRevert ? "Keep it and finish" : "Back to the review"}
-          </Button>
-          <Button variant="ghost" onClick={onShowLog} disabled={reverting}>
-            <ScrollText className="size-4" />
-            Show log
+          <Button variant="outline" onClick={onBack}>
+            Back to the review
           </Button>
         </div>
       </StepShell>
@@ -1344,8 +1256,12 @@ function MovingPanel({
 
   return (
     <StepShell
-      title="Migration in progress"
-      lead="Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
+      title={undoing ? "Undoing the migration" : "Migration in progress"}
+      lead={
+        undoing
+          ? "Deplo is removing everything this migration created and taking its agent back off the machines it was reading. Nothing is left half moved."
+          : "Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
+      }
     >
       <div className="space-y-2">
         {/* The bar alone stalls for minutes on a big volume - same fill, no
@@ -1356,13 +1272,15 @@ function MovingPanel({
           <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
         </div>
         <p className="text-sm text-muted-foreground">
-          {[
-            progress.total > 0 &&
-              `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`,
-            progress.current,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
+          {undoing
+            ? "Removing what came over"
+            : [
+                progress.total > 0 &&
+                  `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`,
+                progress.current,
+              ]
+                .filter(Boolean)
+                .join(" \u00b7 ")}
         </p>
         <ElapsedLine startedAt={startedAt} progress={progress} />
       </div>
@@ -1370,25 +1288,37 @@ function MovingPanel({
       {/* Both at the end of the row, Stop first: it is the one somebody is
           reaching for while they watch this, and the log is the afterthought. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {/* Stop, not Cancel: the call in flight finishes either way, so this
-            asks for no confirmation - it is the safe half of the decision, and
-            the destructive one (take it back out) comes after, with its own. */}
-        {onStop && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              setStopping(true);
+        {onStop && !undoing && (
+          // A confirm, because Stop is destructive now and says so: it is the
+          // only button on this screen, and pressing it throws away everything
+          // the migration has done so far.
+          <ConfirmAction
+            trigger={
+              <Button variant="outline">
+                <CircleStop className="size-4" />
+                Stop
+              </Button>
+            }
+            title="Stop the migration and undo it?"
+            confirmLabel="Stop and undo"
+            description={
+              <>
+                Deplo removes every app, database and project this migration
+                created here, with their data, and takes its agent back off the
+                machines it was reading. There is no half-migrated state to
+                keep: a copy interrupted part-way through leaves data nobody can
+                trust.
+                <br />
+                <br />
+                It does not start Dokploy back up - the services this migration
+                stopped over there stay stopped.
+              </>
+            }
+            onConfirm={async () => {
               onStop();
+              return { ok: true as const, data: null };
             }}
-            disabled={stopping}
-          >
-            {stopping ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <CircleStop className="size-4" />
-            )}
-            {stopping ? "Stopping" : "Stop"}
-          </Button>
+          />
         )}
         <Button variant="ghost" onClick={onShowLog}>
           <ScrollText className="size-4" />

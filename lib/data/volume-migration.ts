@@ -141,6 +141,36 @@ export interface VolumeCopyResult {
  */
 export type OnBytes = (chunkBytes: number) => void;
 
+/**
+ * A copy somebody cancelled, told apart from a copy that broke.
+ *
+ * Stopping a migration means undoing it whole, and nothing can be deleted while
+ * bytes are still landing in it. A between-steps check cannot deliver that: one
+ * step is one service, and one service can be an hour of a 15 GB volume - which
+ * is how a stopped run went on copying for an hour into apps the undo had
+ * already removed. So the stream itself is interruptible, and this is the shape
+ * the interruption takes: never a `failed` line in the report, because nothing
+ * failed.
+ */
+export class CopyAbortedError extends Error {
+  constructor() {
+    super("The copy was cancelled.");
+    this.name = "CopyAbortedError";
+  }
+}
+
+export function isCopyAborted(e: unknown): boolean {
+  return (
+    e instanceof CopyAbortedError || (e as Error)?.name === "CopyAbortedError"
+  );
+}
+
+/** Throw the moment the caller withdraws. Called once per relayed chunk, which
+ *  is roughly once a megabyte - close enough to instant, and free. */
+function stopIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new CopyAbortedError();
+}
+
 /** Report progress without ever letting it fail the copy it is describing. */
 function report(onBytes: OnBytes | undefined, chunkBytes: number): void {
   try {
@@ -195,6 +225,7 @@ export async function copyVolumeBetween(
   volumeName: string,
   targetName: string = volumeName,
   onBytes?: OnBytes,
+  signal?: AbortSignal,
 ): Promise<VolumeCopyResult> {
   try {
     if (!(await sourceHasData(source, volumeName)))
@@ -210,6 +241,7 @@ export async function copyVolumeBetween(
   let bytes = 0;
   const counted = (async function* () {
     for await (const chunk of source.exportVolume(volumeName)) {
+      stopIfAborted(signal);
       bytes += chunk.length;
       hash.update(chunk);
       report(onBytes, chunk.length);
@@ -229,6 +261,10 @@ export async function copyVolumeBetween(
   try {
     res = await dest.importVolume(targetName, true, counted);
   } catch (e) {
+    // Ours first: a generator that threw reaches the caller wearing whatever
+    // the RPC layer made of it, and a cancellation must never read as a volume
+    // that failed to copy.
+    stopIfAborted(signal);
     throw attributeCopyError(e);
   }
   if (!res.ok)
@@ -281,6 +317,7 @@ export async function copyHostPathBetween(
   sourcePath: string,
   targetPath: string,
   onBytes?: OnBytes,
+  signal?: AbortSignal,
 ): Promise<VolumeCopyResult> {
   let seen = 0;
   try {
@@ -298,6 +335,7 @@ export async function copyHostPathBetween(
   let bytes = 0;
   const counted = (async function* () {
     for await (const chunk of source.exportHostPath(sourcePath)) {
+      stopIfAborted(signal);
       bytes += chunk.length;
       hash.update(chunk);
       report(onBytes, chunk.length);
@@ -314,6 +352,7 @@ export async function copyHostPathBetween(
   try {
     res = await dest.importHostPath(targetPath, true, counted);
   } catch (e) {
+    stopIfAborted(signal);
     throw attributeCopyError(e);
   }
   if (!res.ok)

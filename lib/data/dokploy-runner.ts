@@ -22,8 +22,14 @@ import {
   finishDokployImport,
   importDokployProject,
   stopDokployImport,
+  undoDokployImport,
 } from "./dokploy-import";
-import { moveDokployServiceData, planDokployDataMove } from "./dokploy-data";
+import {
+  abortRunCopy,
+  moveDokployServiceData,
+  planDokployDataMove,
+} from "./dokploy-data";
+import { isCopyAborted } from "./volume-migration";
 import { checkServerHealth } from "./server-health";
 import { listServersForTeam } from "./servers";
 
@@ -48,8 +54,24 @@ import { listServersForTeam } from "./servers";
  * checks would be a second authorization model, and this repo has one.
  */
 
-/** One lease for every migration on the instance. They are rare and heavy. */
-const LEASE = "dokploy-migration-runner";
+/**
+ * One lease PER RUN, not one for the instance.
+ *
+ * It used to be a single `dokploy-migration-runner` row, on the reasoning that
+ * migrations are rare and heavy so one at a time is plenty. What that actually
+ * built was a starvation bug with no symptom: the lease is renewed on every beat
+ * of the run being driven, so a control plane copying a 15 GB volume held it for
+ * the hour that took - and a second migration started meanwhile sat at
+ * "Migration in progress" with no runner, no heartbeat and not one line of log,
+ * for as long as the first one ran. It got worse with an ORPHANED control plane
+ * (a process that survived a restart, ppid 1, no port): it holds the lease and
+ * drives runs, while the control plane actually serving the panel can never take
+ * it.
+ *
+ * Per run, the lease means what a lease is for - two processes must not drive
+ * the SAME run - and it cannot mean anything else.
+ */
+const leaseFor = (runId: string) => `dokploy-migration:${runId}`;
 /** A heartbeat older than this is a control plane that died; take the run over.
  *
  *  It is the LEASE's staleness too, not only the run's. The lease defaults to two
@@ -67,7 +89,9 @@ const PROGRESS_MS = 1_000;
 
 const owner = `${process.pid}-${newId("run")}`;
 
-let ticking = false;
+/** Runs this process is driving right now. One `advance` per run, never two -
+ *  and a long one never keeps the tick from picking up a different run. */
+const inflight = new Set<string>();
 let timer: ReturnType<typeof setInterval> | null = null;
 
 /** What a run needs to talk to Dokploy, decrypted for the length of one step. */
@@ -194,10 +218,7 @@ export async function requestStopDokployRun(runId: string): Promise<void> {
  * take the timer down with it.
  */
 export async function runMigrationTick(): Promise<void> {
-  if (ticking) return;
-  ticking = true;
   try {
-    if (!(await acquireLease(LEASE, owner, new Date(), STALE_MS))) return;
     const now = new Date();
     const cold = new Date(now.getTime() - STALE_MS).toISOString();
     const rows = await getDb()
@@ -221,18 +242,28 @@ export async function runMigrationTick(): Promise<void> {
         ),
       )
       .orderBy(asc(runsTable.seq));
-    for (const row of rows) {
-      try {
-        await advance(row);
-      } catch (e) {
-        console.error("[migration] run", row.id, "failed:", e);
-        await failRun(row.id, e instanceof Error ? e.message : String(e));
-      }
-    }
+    // Concurrently, and each behind its OWN lease: a run this process is already
+    // driving is skipped rather than waited on, so the tick that follows a
+    // 40-minute copy still starts the migration somebody began five minutes ago.
+    await Promise.all(rows.filter((r) => !inflight.has(r.id)).map(drive));
   } catch (e) {
     console.error("[migration] tick failed:", e);
+  }
+}
+
+/** Take one run, if nobody else has it, and see it through. */
+async function drive(row: RunRow): Promise<void> {
+  if (!(await acquireLease(leaseFor(row.id), owner, new Date(), STALE_MS)))
+    return;
+  inflight.add(row.id);
+  try {
+    await advance(row);
+  } catch (e) {
+    console.error("[migration] run", row.id, "failed:", e);
+    await failRun(row, e instanceof Error ? e.message : String(e));
   } finally {
-    ticking = false;
+    inflight.delete(row.id);
+    await releaseLease(leaseFor(row.id), owner).catch(() => {});
   }
 }
 
@@ -255,7 +286,8 @@ export function startMigrationRunner(): void {
  * that stayed still with nothing on screen to say why.
  */
 export async function releaseMigrationRunnerLease(): Promise<void> {
-  await releaseLease(LEASE, owner);
+  for (const runId of inflight)
+    await releaseLease(leaseFor(runId), owner).catch(() => {});
 }
 
 /** Test seam: stop the timer so a suite does not tick under itself. */
@@ -272,7 +304,7 @@ type RunRow = typeof runsTable.$inferSelect;
  *  staleness windows have to move together: a run whose heartbeat is fresh while
  *  its runner's lease has gone stale is a run two control planes would drive. */
 async function beat(runId: string): Promise<void> {
-  await acquireLease(LEASE, owner, new Date(), STALE_MS);
+  await acquireLease(leaseFor(runId), owner, new Date(), STALE_MS);
   await getDb()
     .update(runsTable)
     .set({ runnerOwner: owner, heartbeatAt: nowIso() })
@@ -288,13 +320,23 @@ async function setProgress(
 }
 
 /**
- * Close a run as failed, say why, and forget the key.
+ * Close a run as failed, say why, forget the key - and take it back out.
  *
  * The key goes on EVERY door out of `running`, not only this one: a run that
  * ended has no further use for it, and a credential kept past its use is a
  * credential nobody remembers is there.
+ *
+ * The undo is not an extra kindness, it is the same rule a Stop obeys: a run
+ * that broke on project four of seven leaves exactly the debris a stopped one
+ * does, and half a copied volume is worse than none. There used to be a panel
+ * offering to keep it; there is not any more, so leaving the debris would leave
+ * it with nothing to remove it. A migration either lands whole or leaves
+ * nothing.
+ *
+ * `error` survives the undo (the revert writes `status`, never the message), so
+ * the wizard and History still say WHY it stopped.
  */
-async function failRun(runId: string, why: string): Promise<void> {
+async function failRun(row: RunRow, why: string): Promise<void> {
   await getDb()
     .update(runsTable)
     .set({
@@ -305,8 +347,21 @@ async function failRun(runId: string, why: string): Promise<void> {
       runnerOwner: null,
       phase: "done",
     })
-    .where(and(eq(runsTable.id, runId), eq(runsTable.status, "running")));
+    .where(and(eq(runsTable.id, row.id), eq(runsTable.status, "running")));
   publishMigrationChanged();
+
+  // Under the actor, like everything else the runner does - the undo is a stack
+  // of ordinary capability-gated deletes. A run too old to carry an actor keeps
+  // the old behaviour: it stays where it stopped rather than being deleted by
+  // nobody.
+  if (!row.actorUserId) return;
+  try {
+    await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
+      undoDokployImport(row.id),
+    );
+  } catch (e) {
+    console.error("[migration] undo after failure", row.id, "failed:", e);
+  }
 }
 
 async function credentialFor(row: RunRow): Promise<RunCredential> {
@@ -333,6 +388,14 @@ async function advance(row: RunRow): Promise<void> {
   // out of here, so nothing else was going to.
   const heart = setInterval(() => {
     void beat(row.id).catch(() => {});
+    // And it carries the STOP inwards. `stopped()` is read between steps, but a
+    // step is one service and one service can be an hour of volume - which is
+    // how a stopped run went on copying into apps its own undo had already
+    // deleted. The flag reaches the stream here, within a beat of being set,
+    // whichever control plane set it.
+    void stopWanted(row.id)
+      .then((yes) => yes && abortRunCopy(row.id))
+      .catch(() => {});
   }, IDLE_TICK_MS);
   heart.unref?.();
   try {
@@ -355,7 +418,19 @@ async function advanceAsActor(row: RunRow): Promise<void> {
   await runDataPhase(row, c);
 }
 
-/** Has somebody asked it to stop? Read fresh, between steps, every time. */
+/** Is this run still wanted? A pure read - it is called from the heartbeat, which
+ *  must never undo anything by itself. */
+async function stopWanted(runId: string): Promise<boolean> {
+  const [r] = await getDb()
+    .select({ stop: runsTable.stopRequested, status: runsTable.status })
+    .from(runsTable)
+    .where(eq(runsTable.id, runId))
+    .limit(1);
+  return !r || r.status !== "running" || r.stop;
+}
+
+/** Has somebody asked it to stop? Read fresh, between steps, every time - and if
+ *  they have, this is where the migration is taken back out. */
 async function stopped(runId: string): Promise<boolean> {
   const [r] = await getDb()
     .select({ stop: runsTable.stopRequested, status: runsTable.status })
@@ -365,6 +440,8 @@ async function stopped(runId: string): Promise<boolean> {
   if (!r) return true;
   if (r.status !== "running") return true;
   if (!r.stop) return false;
+  // Total: apps, databases, projects, variables, and Deplo's agent off the
+  // source machines. See `stopDokployImport`.
   await stopDokployImport(runId);
   await getDb()
     .update(runsTable)
@@ -577,26 +654,37 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
     // indistinguishable from a run that died, and got read as one.
     let copied = 0;
     let shownAt = 0;
-    const res = await moveDokployServiceData({
-      url: c.url,
-      apiKey: c.apiKey,
-      allowPrivate: c.allowPrivate,
-      runId: row.id,
-      sourceKind: d.sourceKind,
-      sourceId: d.sourceId,
-      onBytes: (chunk) => {
-        copied += chunk;
-        // Throttled, because the relay hands us a chunk roughly every megabyte
-        // and this is a label, not a byte log. Fire-and-forget for the same
-        // reason: the copy does not wait on its own progress line.
-        const now = Date.now();
-        if (now - shownAt < PROGRESS_MS) return;
-        shownAt = now;
-        void setProgress(row.id, {
-          stepLabel: `${d.sourceName} - ${formatBytes(copied)}`,
-        }).catch(() => {});
-      },
-    });
+    let res: Awaited<ReturnType<typeof moveDokployServiceData>>;
+    try {
+      res = await moveDokployServiceData({
+        url: c.url,
+        apiKey: c.apiKey,
+        allowPrivate: c.allowPrivate,
+        runId: row.id,
+        sourceKind: d.sourceKind,
+        sourceId: d.sourceId,
+        onBytes: (chunk) => {
+          copied += chunk;
+          // Throttled, because the relay hands us a chunk roughly every megabyte
+          // and this is a label, not a byte log. Fire-and-forget for the same
+          // reason: the copy does not wait on its own progress line.
+          const now = Date.now();
+          if (now - shownAt < PROGRESS_MS) return;
+          shownAt = now;
+          void setProgress(row.id, {
+            stepLabel: `${d.sourceName} - ${formatBytes(copied)}`,
+          }).catch(() => {});
+        },
+      });
+    } catch (e) {
+      // The copy was cut by a Stop, not by a fault. `stopped()` is what undoes
+      // the run; there is nothing to report and nothing left to copy.
+      if (isCopyAborted(e)) {
+        await stopped(row.id);
+        return;
+      }
+      throw e;
+    }
     // A failed VOLUME is a line in the report. A failed MACHINE is the end: every
     // service after this one is on it, and each gets stopped over there before
     // its copy is tried.

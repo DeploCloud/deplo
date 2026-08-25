@@ -53,6 +53,7 @@ import { requireAppCapability } from "./node-access";
 import {
   copyHostPathBetween,
   copyVolumeBetween,
+  isCopyAborted,
   startStackOn,
   stopStackOn,
   type OnBytes,
@@ -736,6 +737,23 @@ async function recordStoppedForCopy(
  * expecting to need it.
  */
 /** The copy stops, starts and rewrites the very rows the import marked. */
+/**
+ * The copy each run currently has in flight, so a Stop can reach into it.
+ *
+ * Stopping a migration undoes it whole, and nothing can be deleted while bytes
+ * are still landing in it - so the stop has to reach the stream, not merely the
+ * gap between two services. One entry per run: a run copies one service at a
+ * time. Process-local on purpose, and that is exactly right: the runner that
+ * holds the run is the one with the socket open, and it is the one whose
+ * heartbeat notices the flag.
+ */
+const inFlightCopies = new Map<string, AbortController>();
+
+/** Cut the copy this run has open, if it has one. Safe to call when it has not. */
+export function abortRunCopy(runId: string): void {
+  inFlightCopies.get(runId)?.abort();
+}
+
 export async function moveDokployServiceData(
   input: MoveInput,
 ): Promise<DataMoveResult> {
@@ -907,6 +925,8 @@ async function runMoveDokployServiceData(
     sourceServerId === landed.targetServerId
       ? source
       : await connectAgent(landed.targetServerId);
+  const aborter = new AbortController();
+  inFlightCopies.set(input.runId, aborter);
   try {
     for (const pair of paired.value) {
       try {
@@ -916,6 +936,7 @@ async function runMoveDokployServiceData(
           pair.sourceVolume,
           pair.targetVolume,
           input.onBytes,
+          aborter.signal,
         );
         // An empty source is not a copy and must never read as one. Nothing was
         // written and nothing was wiped, so the honest line is that there was
@@ -947,6 +968,9 @@ async function runMoveDokployServiceData(
             (pair.note ? ` ${pair.note}` : ""),
         });
       } catch (e) {
+        // Cancelled, not broken: leave every remaining volume alone and let the
+        // stop that asked for it do the undoing.
+        if (isCopyAborted(e)) throw e;
         failed++;
         if (isHostGone(e)) sourceGone = true;
         const message = e instanceof Error ? e.message : "the copy failed";
@@ -1001,6 +1025,7 @@ async function runMoveDokployServiceData(
           bind.sourcePath,
           bind.targetPath,
           input.onBytes,
+          aborter.signal,
         );
         if (copied.empty) {
           empty++;
@@ -1026,6 +1051,7 @@ async function runMoveDokployServiceData(
           message: `Copied ${formatBytes(copied.bytes)} (compressed) into ${bind.targetPath} (${bind.mountPath}), a host directory.`,
         });
       } catch (e) {
+        if (isCopyAborted(e)) throw e;
         failed++;
         if (isHostGone(e)) sourceGone = true;
         const message = e instanceof Error ? e.message : "the copy failed";
@@ -1043,6 +1069,7 @@ async function runMoveDokployServiceData(
       }
     }
   } finally {
+    inFlightCopies.delete(input.runId);
     source.close();
     if (dest !== source) dest.close();
   }
