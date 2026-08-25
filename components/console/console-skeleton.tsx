@@ -5,9 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 const LINES = ["w-52", "w-2/3", "w-1/3", "w-44", "w-3/4", "w-1/2", "w-24"];
 
 /**
- * The console route's loading frame — one toolbar row and the terminal slab
- * below it, at the size the real pane will be. Shared by the App and database
- * routes, which render the same pane.
+ * The console route's loading frame, at the size the real pane will be. Shared
+ * by the App and database routes, which render the same pane.
  */
 export function ConsoleSkeleton({ label }: { label: string }) {
   return (

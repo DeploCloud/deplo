@@ -23,13 +23,9 @@ const ROLE_ICON: Record<string, LucideIcon> = {
 };
 
 /**
- * Pick the role a member holds. One decision, not a capability grid: what a role
- * grants is defined once in Settings → Team → Roles and shown here as the summary
- * line + permission count, so the same set can't drift member by member.
- *
- * A member who predates roles (or was granted a one-off capability by an account
- * deletion healing the team) holds a hand-picked "Custom" set. That state is shown
- * as its own row so it reads as a real state, and picking any role replaces it.
+ * Pick the role a member holds. One decision, not a capability grid - what a role
+ * grants is defined once in Settings. A member predating roles holds a hand-picked
+ * "Custom" set, shown as its own row; picking any role replaces it.
  */
 export function RoleSelect({
   roles,

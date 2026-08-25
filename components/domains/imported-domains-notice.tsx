@@ -10,23 +10,9 @@ import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 
 /**
- * The one thing a migrated app does NOT keep: its address.
- *
- * A domain whose name could not come across is re-hosted rather than dropped -
- * the source's own throwaway host carries ITS server's IP, and a real name may
- * already be another team's here - so the app answers on an address Deplo
- * minted, with the same port, service and path. Nothing else about the app
- * changes, which is exactly why this is easy to miss: the app is up, the routes
- * are right, and the URL someone had bookmarked is gone.
- *
- * So it is stated where a person goes looking for an address, it stays until it
- * is dismissed (a toast would be gone before the page is read), and it is
- * dismissed PER APP - a migration brings over many, and one blanket dismissal
- * would hide the fact on every app that had not been looked at yet.
- *
- * Dismissing clears `importedFrom` on this app's domains: the provenance exists
- * for this message, and the import report keeps the permanent record of what
- * became what.
+ * A migrated app keeps everything except its address, which is easy to miss: the
+ * app is up, the routes are right, the bookmarked URL is gone. Dismissed PER APP
+ * (a migration brings over many) and it clears `importedFrom` on its domains.
  */
 export function ImportedDomainsNotice({
   appId,

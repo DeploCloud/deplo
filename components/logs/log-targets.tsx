@@ -84,19 +84,9 @@ function TreeRowContent({ row }: { row: LogTreeRow }) {
 }
 
 /**
- * Which logs to look at, as the tree they actually live in: projects and their
- * environments, folders as deep as they nest, then the apps at the top level and
- * the databases.
- *
- * One control, drawn twice — in the middle of the chooser, and in the pane's
- * toolbar where it stands in for the title. The same shape both times on
- * purpose: picking a target is one decision, and a decision with two grammars
- * costs the reader a pause every time they meet the second one.
- *
- * Headings are drawn but never landed on (`selectable`), and typing filters on
- * {@link LogTreeRow.haystack}, which is what keeps an app's headings on screen
- * while narrowing to it.
- */
+ * Which logs to look at, as the tree they live in. One control drawn twice - in
+ * the chooser and in the toolbar - because picking a target is one decision.
+ * Headings are drawn but never landed on, and typing filters on `haystack`. */
 export function LogTreePicker({
   rows,
   value,
@@ -138,14 +128,9 @@ export function LogTreePicker({
 }
 
 /**
- * The way back to the thing itself, on the row of the thing you are already
- * watching.
- *
- * It used to be an "Open <name>" row at the end of the list, which read as one
- * more app to pick — a menu footer wearing an app's clothes. As an icon at the
- * end of the active row it is where the eye already is, and it says what it
- * does: a new tab, so the logs you are watching stay where they are.
- */
+ * The way back to the thing itself, as an icon on the active row. It used to be
+ * an "Open <name>" row at the end, which read as one more app to pick. Opens a
+ * new tab, so the logs you are watching stay where they are. */
 function OpenTargetLink({ row }: { row: LogTreeRow }) {
   const label = `Open ${row.name} in a new tab`;
   return (

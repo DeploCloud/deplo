@@ -16,18 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
 /**
- * A periodic nudge to turn on two-factor authentication.
- *
- * Deliberately a LOCAL preference, not a server one: this is a nag, and a nag
- * the user silenced on their laptop has no business being an account-wide
- * setting to migrate, back up, or explain. localStorage is exactly the right
- * lifetime for it.
- *
- * The one hard rule: it never appears for an account that already has a second
- * factor - an authenticator app OR a passkey (ADR-0024). The caller passes that
- * in from the server-rendered viewer, so there is no window where a compliant
- * user gets asked anyway, and somebody who set passkeys up is never told to go
- * and set up the thing they already have.
+ * A periodic nudge to turn on two-factor. Deliberately a LOCAL preference: a nag
+ * silenced on one laptop has no business being account-wide. Never appears for
+ * an account that already has a second factor, passkey included (ADR-0024).
  */
 const KEY = "deplo:2fa-reminder";
 const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;

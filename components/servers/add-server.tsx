@@ -28,11 +28,9 @@ import {
 } from "./server-team-access";
 
 /**
- * Register a remote server (PLAN Part B, P1). No SSH-in: the operator names the
- * host, submits, and gets back a ONE-TIME install command to paste on the box.
- * The agent then calls home and provisions itself. The command embeds a
- * single-use token and is shown only once, so this is a two-step dialog:
- * register → reveal command (the dialog stays open on the command screen).
+ * Register a remote server. No SSH-in: the operator names the host and gets a
+ * ONE-TIME install command to paste on the box, and the agent calls home. The
+ * command is shown once, hence two steps with the dialog staying open.
  */
 export function AddServer({
   autoOpen = false,

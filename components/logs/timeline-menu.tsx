@@ -12,21 +12,9 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /**
- * How far back the live stream reaches, plus the two things about the timestamp
- * column that only make sense next to it.
- *
- * A menu of its own rather than another facet on the toolbar, because it is not
- * a filter: picking a range REOPENS the stream with a new `--since`, it does not
- * hide rows already on screen. Filters narrow what you have; this changes what
- * you asked for.
- *
- * The ceiling comes from the instance setting, and the last row is generated
- * from it rather than hard-coded: an admin who sets 7 days gets "Last 7 days"
- * here, and one who sets 1 gets nothing extra, because "Last day" already is
- * the ceiling. Docker rotates its log files by SIZE, so this is a bound on what
- * may be ASKED for, never a promise the host still has it — which is why an
- * empty result says the host rotated them rather than "no logs".
- */
+ * How far back the live stream reaches. Not a filter: picking a range REOPENS
+ * the stream with a new `--since`. Docker rotates by SIZE, so this bounds what
+ * may be ASKED for, never a promise the host still has it. */
 
 /** Minutes back from now. `0` would mean "everything", which is deliberately not
  *  offered: a container that has been up for a year would replay all of it. */

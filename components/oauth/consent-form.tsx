@@ -60,20 +60,9 @@ const AUTHORIZE = /* GraphQL */ `
 `;
 
 /**
- * Finish the OAuth handshake from the BROWSER.
- *
- * It cannot be done server-side: `/api/auth/oauth2/consent` funnels into the
- * provider's `authorizeEndpoint`, which opens with
- * `if (!ctx.request) throw UNAUTHORIZED("request not found")`, and an in-process
- * `auth.api.*` call has no request. Same-origin, so the CSP's `connect-src
- * 'self'` allows it and the browser attaches both the session cookie and the
- * `Origin` header the endpoint's CSRF check wants.
- *
- * The endpoint answers with JSON, not a 302, so there is no redirect to follow —
- * we read the URL and navigate. Its refusals live in `error_description`, and
- * `message` is empty, which is exactly how this once became an error toast with
- * nothing written in it.
- */
+ * Finish the OAuth handshake from the BROWSER: the provider's
+ * `authorizeEndpoint` throws without `ctx.request`, which an in-process call
+ * cannot supply. Refusals arrive in `error_description`, not `message`. */
 async function postConsent(body: {
   accept: boolean;
   scope?: string;

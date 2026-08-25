@@ -5,19 +5,9 @@ import { useTheme } from "@/components/theme-provider";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
 /**
- * App-wide toast host. Built on sonner with `richColors` so each type carries
- * its own colour, but the palette is rebranded to deplo's design tokens — teal
- * success, amber warning, red error, blue info — instead of sonner's stock
- * green/red/yellow.
- *
- * sonner colours a toast with `background/border/color: var(--<type>-{bg,border,
- * text})`, whose defaults it declares on the toaster element itself. We override
- * those custom properties INLINE on the same element (see `TOAST_VARS`): an
- * inline declaration beats sonner's stylesheet rule on that element regardless
- * of injection order, and the properties inherit down to every toast. The
- * tinted backgrounds are mixed against `--popover` so a coloured toast still
- * reads as a panel on the dark surface, and every value references a live token,
- * so the colours track light/dark automatically.
+ * App-wide toast host. sonner's `richColors` palette is rebranded to deplo's
+ * tokens by overriding its custom properties INLINE on the toaster element: an
+ * inline declaration beats its stylesheet rule regardless of injection order.
  */
 const TOAST_VARS = {
   // Plain / loading toasts: match the popover surface (sonner's "normal" type).

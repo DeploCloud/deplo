@@ -7,53 +7,25 @@ import { GAP_MS } from "@/lib/monitoring/chart-gaps";
 import { cn } from "@/lib/utils";
 
 /**
- * Shared presentational pieces for the monitoring dashboards — the current-value
- * tile, the chart card, the time-window selector and the live/stale status line.
- * Extracted so the per-app / per-database Monitoring tab
- * (container-monitoring-dashboard.tsx) renders identically to the fleet
- * Monitoring page without copying its layout. Pure/dumb: no data fetching.
+ * Shared presentational pieces for the monitoring dashboards. Pure and dumb, so
+ * the per-app tab renders identically to the fleet page without copying it.
  */
 
 /**
- * How often a dashboard re-reads the control plane's ring buffer.
- *
- * ITS MEANING CHANGED with the telemetry stream (lib/monitoring/supervisor.ts).
- * It used to be the AGENT MEASUREMENT RATE: each tick was a per-viewer GraphQL
- * call that dialled the owning host and made it measure, so the fleet's cost
- * scaled with how many people had a tab open. Nothing on a host measures because
- * of this timer any more — the agent samples on its own ticker and pushes frames
- * — so this is now purely a BUFFER READ RATE: how quickly a chart notices a
- * frame that already landed in control-plane RAM.
- *
- * Kept at 1s rather than matched to the 5s stream cadence deliberately. It is
- * cheap (an in-RAM read behind one already-authenticated request), it is
- * decoupled from the cadence — which the agent may clamp anywhere in [1s, 60s],
- * so pinning the read rate to an assumed 5s would make a faster host render
- * slower than it reports — and it keeps the freshest frame's latency under a
- * second instead of adding a beat of its own on top of the agent's.
- */
+ * How often a dashboard re-reads the ring buffer. A BUFFER READ RATE, not a
+ * measurement rate. Kept at 1s, not the 5s cadence: the agent may clamp anywhere
+ * in [1s, 60s], so an assumed 5s renders a fast host slower than it reports. */
 export const POLL_MS = 1000;
 /**
- * How stale the newest buffered sample may get before a dashboard stops calling
- * itself live.
- *
- * Deliberately the SAME threshold the charts band "No data" at, so the status
- * line and the chart can never disagree: the moment a gap is wide enough to draw
- * as a band, the header stops claiming the feed is live. See `GAP_MS` for the
- * derivation (stream cadence + the supervisor's reconnect backoff cap, plus
- * headroom) — it moves with the supervisor, and this must not fork from it.
+ * How stale the newest sample may get before a dashboard stops calling itself
+ * live. The SAME threshold the charts band "No data" at, so the status line and
+ * the chart can never disagree. See `GAP_MS`; this must not fork from it.
  */
 export const STALE_AFTER_MS = GAP_MS;
 /**
- * Rolling live buffer cap.
- *
- * Sized for the FASTEST CADENCE THE AGENT WILL SERVE, not the 5s default: the
- * agent clamps `interval_ms` to a 1000ms floor, so a full 16-minute window at 1s
- * is ~960 points. Mirrors `HARD_CAP` in lib/monitoring/history.ts for exactly
- * that reason. Trimming this toward the ~200 the default cadence needs would
- * look like a saving and act as silent truncation — the widest preset would stop
- * being able to fill the moment anyone lowered the cadence, with nothing
- * anywhere to say why.
+ * Rolling live buffer cap, sized for the FASTEST cadence the agent will serve
+ * (1s floor, ~960 points over 16 minutes), not the 5s default. Mirrors
+ * `HARD_CAP` in lib/monitoring/history.ts. Trimming it is silent truncation.
  */
 export const MAX_POINTS = 1200;
 

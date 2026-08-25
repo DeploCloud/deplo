@@ -16,11 +16,8 @@ import { Label } from "@/components/ui/label";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The standalone create-team form for a user with ZERO teams (their last team
- * was deleted, or they were removed from it). The dashboard needs an active
- * team, so this is the only screen such a user can reach until they create one
- * — createTeam works for teamless users and activates the new team.
- */
+ * The create-team form for a user with ZERO teams. The dashboard needs an active
+ * team, so this is the only screen they can reach until they make one. */
 export function WelcomeCreateTeam({ userName }: { userName: string }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();

@@ -4,19 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
 /**
- * "This person is not their role" — the one thing a roster of role names can't
- * say on its own.
- *
- * Two states and no third: something was taken away from them, or something was
- * added. Nothing renders for everyone who simply follows their role, which is
- * almost everybody, so the chip means "look here" rather than decorating every
- * tile. Coloured, because it is the only cell on the page whose whole job is to
- * be noticed: amber for less (the one an admin auditing access needs to see),
- * blue for more.
- *
- * Same component on the tile and on the member's own page — one wording, one
- * colour, and no way for the two surfaces to describe the same person
- * differently.
+ * "This person is not their role". Two states and no third: amber for less (what
+ * an admin auditing access needs to see), blue for more. Nothing renders for
+ * everyone who follows their role, so the chip means "look here".
  */
 export function AccessDeltaBadge({
   delta,

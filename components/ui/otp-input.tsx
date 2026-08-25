@@ -13,17 +13,9 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * A one-time code entered as separate boxes, one digit each.
- *
- * The rendering is all that lives here: every edit rule (what a keystroke does,
- * where the caret goes, what a paste means) is in [lib/otp-field.ts](../../lib/otp-field.ts)
- * so it can be tested without a DOM. This component only translates DOM events
- * into those calls and moves focus to wherever the model says the caret is.
- *
- * Why boxes rather than one input: a six-digit code read off a phone is entered
- * in glances, and separate boxes give you a place to look back at. They also
- * make a paste unambiguous and let the field say "you have three of six" without
- * any copy.
+ * A one-time code entered as separate boxes. Only the rendering lives here -
+ * every edit rule is in [lib/otp-field.ts](../../lib/otp-field.ts) so it can be
+ * tested without a DOM.
  */
 export function OtpInput({
   value,
@@ -58,16 +50,9 @@ export function OtpInput({
   }, []);
 
   /**
-   * The value as of the LAST EDIT, which is not the same thing as the `value`
-   * prop during the tick an edit happens in.
-   *
-   * `apply` moves focus synchronously, so the newly focused box runs its
-   * `onFocus` BEFORE React has re-rendered with the digit just typed. Reading
-   * the prop there sees the pre-edit value, decides the box is past the caret,
-   * and bounces focus backwards — which capped the field at three digits no
-   * matter how slowly you typed, because every other keystroke then landed on a
-   * box that had already been filled. Only the focus guard needs this; the
-   * rendering stays driven by the prop.
+   * The value as of the LAST EDIT, not the `value` prop during the tick an edit
+   * happens in: `apply` moves focus synchronously, so the newly focused box runs
+   * `onFocus` before React re-renders and would bounce focus backwards.
    */
   const editedRef = React.useRef(value);
   React.useEffect(() => {

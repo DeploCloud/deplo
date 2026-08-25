@@ -5,11 +5,9 @@ import { Button } from "@/components/ui/button";
 import { ConsentShell } from "@/components/oauth/consent-shell";
 
 /**
- * Why a connection cannot be approved, said in one line.
- *
- * Never a bare redirect: the person is mid-flow inside someone else's product
- * and a silent bounce to the dashboard reads as deplo being broken. There is a
- * way back, and it does not pretend the connection succeeded.
+ * Why a connection cannot be approved, in one line. Never a bare redirect: the
+ * person is mid-flow inside someone else's product, and a silent bounce reads
+ * as deplo being broken.
  */
 export function ConsentRefusal({
   clientName,

@@ -52,10 +52,9 @@ const DISTROLESS_NOTE =
   "! No shell in this container. Commands run as raw exec: the first word is the binary, the rest are literal arguments — no pipes, globbing, redirects or builtins.";
 
 /**
- * `exit`, `logout` and `clear` never reach the container: the data layer answers
- * them itself (`lib/data/console.ts`, and its database twin). Wrapping one in
- * `sh -lc` hides it from that check — which is why, before this, picking a shell
- * in the database console quietly broke `exit`.
+ * `exit`, `logout` and `clear` never reach the container - the data layer
+ * answers them. Wrapping one in `sh -lc` hides it from that check, which is how
+ * picking a shell in the database console quietly broke `exit`.
  */
 const CONTROL_WORDS = new Set(["exit", "logout", "clear"]);
 
@@ -72,21 +71,9 @@ const ATTACH_LABEL: Record<AttachStatus, string> = {
 };
 
 /**
- * The one console: an App's container and a database's are the same pane.
- *
- * It owns the toolbar and both terminals below it — the stateless exec REPL
- * ("Shell") and the live `docker attach` to PID 1 ("Attach") — and it is the
- * whole page: the route is full-bleed (`components/layout/shell-frame.tsx`), so
- * there is no title, no app header and no Redeploy button above it, and this
- * toolbar is the only heading the screen has. That is why the name is in it, as
- * the link back.
- *
- * What differs between an App and a database is passed in, not branched on: the
- * exec mutation, the attach endpoint, the shell probe, and how many containers
- * there are to choose from. Everything else — the picker, the shell wrapper, the
- * segmented Shell/Attach control, Clear/Copy/Download, the first-visit warning —
- * is identical for both, and used to be two copies that had already drifted.
- */
+ * The one console: an App's container and a database's are the same pane. What
+ * differs is passed in, not branched on - the exec mutation, the attach endpoint,
+ * the shell probe, the container count. */
 export function ConsolePane({
   id,
   title,

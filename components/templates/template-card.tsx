@@ -7,13 +7,9 @@ import type { LogoAccent } from "@/lib/templates/logo-color";
 import { defaultVariant, type CatalogTemplate } from "@/templates/types";
 
 /**
- * What the browser needs to draw a template, and nothing else.
- *
- * `listCatalog()` returns the whole entry — long description, links, author,
- * dates, blueprint paths — and the store is a client component, so an untrimmed
- * catalogue crosses the RSC boundary 388 times over: 368 KB against 103 KB
- * measured on the live catalogue. Everything left out is fetched by
- * `/templates/[slug]`, which is the page that shows it. (ADR-0023 §3.)
+ * What the browser needs to draw a template, and nothing else. The store is a
+ * client component, so an untrimmed catalogue crosses the RSC boundary 388 times
+ * over: 368 KB against 103 KB measured. The rest is fetched by the slug page.
  */
 export interface StoreTemplate {
   slug: string;
@@ -39,14 +35,9 @@ export function toStoreTemplate(t: CatalogTemplate): StoreTemplate {
 }
 
 /**
- * One template in the store. The whole card is the link — there is no Deploy
- * button here, because deploying is a decision made on the template's own page,
- * not from a tile that shows two lines about it.
- *
- * `accent` is what its logo's pixels said (see `lib/templates/logo-color.ts`):
- * a hue to wash the card in, or the theme the logo would vanish into. A logo
- * that said neither renders plain, rather than wearing a colour it does not
- * have or a plate it does not need.
+ * One template in the store. The whole card is the link - deploying is a decision
+ * made on the template's own page. `accent` is what its logo's pixels said; a
+ * logo that said neither hue nor theme renders plain.
  */
 export function TemplateCard({
   template,

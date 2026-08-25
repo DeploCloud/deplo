@@ -13,18 +13,9 @@ import { timeAgo } from "@/lib/utils";
 import type { CronRunDTO } from "@/lib/data/crons";
 
 /**
- * One job's run history, fetched when its row is expanded and re-read every few
- * seconds for as long as it stays open.
- *
- * Client-fetched rather than server-rendered with the list: a job's history is
- * the detail behind a row nobody has opened yet, and loading every job's runs to
- * render a page that shows none of them would be the expensive half of the query
- * done for nothing.
- *
- * Six statuses, and the copy is where the distinctions pay off. `skipped` and
- * `lost` are not failures - one never started, the other has an unknown outcome
- * - so neither is painted red, and each says which in a sentence rather than
- * leaving the reader to infer it from a colour.
+ * One job's runs, fetched when its row expands. Client-fetched: loading every
+ * job's history to render a page that shows none of them is the expensive half
+ * done for nothing. `skipped` and `lost` are not failures and are not red.
  */
 
 /** How often an open history re-reads itself. */

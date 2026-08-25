@@ -10,18 +10,9 @@ import { cn } from "@/lib/utils";
 import type { LogLevel } from "@/lib/types";
 
 /**
- * Search + level filtering, shared by every log console: the live runtime pane,
- * the build-log stream, and the deployments Logs page. All three grew their own
- * half of it — the deployments page had a search box and six hand-rolled toggle
- * pills, the live pane had neither — and this is the one implementation.
- *
- * The level menu is `FacetMenu` from the env toolbar, unchanged. It already
- * carries the multi-select popover, the per-option row counts, the greyed-out
- * zero-count option and the "Level · 3" trigger summary; a second one written
- * here would only be a worse copy. What is NOT reused is `useEnvFilters`, whose
- * `FilterableVar` constraint wants a `key` and an `updatedAt` that a log line
- * has neither of, and whose full-table recompute is the wrong shape for a
- * stream that appends a chunk every few hundred milliseconds.
+ * Search and level filtering, shared by the live pane, the build-log stream and
+ * the deployments Logs page. The level menu is `FacetMenu` from the env toolbar;
+ * `useEnvFilters` is not reused - it wants a `key` and an `updatedAt`.
  */
 
 export interface FilterableLogLine {
@@ -77,11 +68,8 @@ function levelFacet(levels: LogLevel[]): EnvFacet<FilterableLogLine> {
 }
 
 /**
- * Does a line match the needle? The raw text is tested first because it almost
- * always answers, and stripping ANSI off every line on every keystroke is the
- * expensive half. The stripped text is the fallback for the case the fast path
- * cannot see: a needle straddling an escape sequence, e.g. searching "connect"
- * across a `\x1b[31m` sitting between "con" and "nect".
+ * Does a line match? Raw text first because it almost always answers; stripping
+ * ANSI is the expensive half, and only catches a needle straddling an escape.
  */
 function matchesQuery(text: string, needle: string): boolean {
   return (

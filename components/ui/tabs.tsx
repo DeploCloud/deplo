@@ -62,9 +62,8 @@ const TabsContent = React.forwardRef<
 TabsContent.displayName = TabsPrimitive.Content.displayName;
 
 /**
- * Vercel-style underline tab list (for page sub-nav). The active underline is a
- * single element that SLIDES between triggers — it follows whichever trigger has
- * `data-state="active"` (set by Radix), so no value plumbing is needed here.
+ * Underline tab list for page sub-nav. The underline is a single element that
+ * SLIDES between triggers, following whichever has `data-state="active"`.
  */
 function UnderlineTabsList({
   className,

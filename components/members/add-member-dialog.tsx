@@ -22,9 +22,8 @@ import type { UserSearchResult } from "@/lib/data/members";
 import type { TeamRoleDTO } from "@/lib/data/roles";
 
 /**
- * Add an already-registered user to the active team, choosing the role they
- * hold. Controlled (no trigger of its own) so it can be opened from the Members
- * page header or the overview "Add new" menu.
+ * Add a registered user to the active team. Controlled, so it opens from the
+ * Members header or the overview "Add new" menu.
  */
 export function AddMemberDialog({
   open,
@@ -38,9 +37,8 @@ export function AddMemberDialog({
   /** Show the "create a new user" shortcut (instance admins only). */
   canCreateUser?: boolean;
   /**
-   * Offer "Owner" as a role. Only an existing owner (founder or assigned owner)
-   * may add another owner — a plain manager is capped at member/viewer. The data
-   * layer enforces this too; this just hides the option that would be rejected.
+   * Offer "Owner". Only an existing owner may add another; the data layer
+   * enforces it too, this just hides an option that would be rejected.
    */
   canAssignOwner?: boolean;
   /** Called after closing this dialog, to open the create-user dialog. */

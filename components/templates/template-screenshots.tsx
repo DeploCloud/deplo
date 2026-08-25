@@ -1,14 +1,7 @@
 /**
- * A template's screenshots.
- *
- * The catalogue carries an `images[]` per entry and today every one of them is
- * empty, so this renders for nobody — the caller only mounts it when there is
- * something to show. It is here so the day the catalogue publishes screenshots
- * they appear without a second pass over this page.
- *
- * Native scroll and snap, same as the store's rails: no carousel, no state, and
- * nothing that needs the client.
- */
+ * A template's screenshots. Every catalogue `images[]` is empty today, so the
+ * caller only mounts this when there is something to show; it exists so the day
+ * they are published nothing else has to change. Native scroll and snap. */
 export function TemplateScreenshots({
   images,
   name,

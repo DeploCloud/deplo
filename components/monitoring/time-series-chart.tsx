@@ -32,11 +32,9 @@ export type ChartUnit = "percent" | "bytesPerSec" | "count";
 /* Scales & formatting                                                 */
 /* ------------------------------------------------------------------ */
 
-/* Two consecutive samples further apart than GAP_MS (lib/monitoring/chart-gaps.ts)
-   are NOT connected — the sampling pipeline missed that window, and drawing
-   through the hole would fabricate data. The gap renders as a break in the line,
-   like Grafana's "connect null values: never". The threshold is shared with the
-   band renderer so a break and its "No data" label always agree. */
+/* Two samples further apart than GAP_MS are NOT connected: the pipeline
+   missed that window and drawing through it would fabricate data. The
+   threshold is shared with the band renderer so break and label agree. */
 
 const M_TOP = 10;
 const M_RIGHT = 12;

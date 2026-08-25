@@ -7,11 +7,8 @@ import { RefreshCw } from "lucide-react";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 
-/** How often the page re-checks unsettled domains' DNS. 30s is a deliberate
- * middle ground: fast enough that a freshly-created record is picked up about
- * as soon as it propagates, slow enough that a check is a rounding error (one
- * DNS resolve per domain — the server skips the routing re-apply when nothing
- * changed, so an idle check never touches the agent). */
+/** How often unsettled domains are re-checked. One DNS resolve per domain, and
+ * the server skips the routing re-apply when nothing changed. */
 const CHECK_INTERVAL_MS = 30_000;
 
 /** The slice of a domain row the checker needs: identity for the mutation,
@@ -23,32 +20,16 @@ export interface UnsettledDomain {
 }
 
 /**
- * The "waiting for DNS" callout on the app's Domains page — and the automation
- * behind it. While mounted (i.e. while the page has at least one
- * pending/misconfigured domain) it re-runs the server-side DNS check for each
- * of those domains every {@link CHECK_INTERVAL_MS}: once on mount (the stored
- * status may be stale — the user often fixes DNS elsewhere and comes back),
- * then on the interval, skipping ticks while the tab is hidden. The moment a
- * check flips a domain routable, routing is applied server-side by the same
- * mutation, a toast announces it, and the RSC tree is refreshed so the row
- * turns green — the user never has to find the Verify button (it still exists
- * for an impatient immediate re-check).
- *
- * Checks reuse the `verifyDomain` mutation, which is `manage_domains`-gated, so
- * a viewer without it never polls at all and the callout drops its "automatic"
- * claim rather than promise something it can't do. The same stop happens after
- * two consecutive rounds where every call failed, which covers the cases the
- * capability can't predict (an unreachable server, a revoked grant mid-page).
+ * The "waiting for DNS" callout, and the polling behind it: re-runs the check on
+ * mount and every {@link CHECK_INTERVAL_MS}, skipping hidden tabs. Gated on
+ * `manage_domains` - without it the callout drops its "automatic" claim.
  */
 export function DomainDnsAutoCheck({
   domains,
   serverIp,
 }: {
-  /** The page's unsettled (non-`valid`, non-`cloudflare`) domains — i.e. the
-   * ones a further DNS check could still move. A proxied (`cloudflare`) host is
-   * excluded even though it is unverified: re-resolving it can only ever return
-   * Cloudflare's anycast IPs again, so polling it would spin forever without
-   * ever learning anything. */
+  /** Domains a further check could still move. A `cloudflare` host is excluded:
+   * re-resolving it only ever returns anycast IPs, so polling never learns. */
   domains: UnsettledDomain[];
   /** The public IPv4 these domains' A records must point at (this app's
    * server), shown in the callout. Absent when no usable IP is recorded. */

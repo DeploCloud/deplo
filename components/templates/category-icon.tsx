@@ -18,13 +18,9 @@ import {
 } from "lucide-react";
 
 /**
- * The catalog names each category's icon as a lucide id (`chart-line`,
- * `layout-template`, …). Sixteen explicit imports rather than
- * `lucide-react/dynamic`: the dynamic entrypoint reaches for the whole icon set
- * at runtime, and this list is short, static and tree-shakeable.
- *
- * A category the catalogue adds tomorrow falls back to `Package` — the same
- * glyph its own "Other" category uses — instead of rendering nothing.
+ * Category icons, named by the catalog as lucide ids. Explicit imports rather
+ * than `lucide-react/dynamic`, which reaches for the whole set at runtime. An
+ * unknown category falls back to `Package` instead of rendering nothing.
  */
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   activity: Activity,

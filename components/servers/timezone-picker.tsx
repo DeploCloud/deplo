@@ -13,17 +13,9 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * The timezone picker on a server's Advanced tab.
- *
- * A `<datalist>` used to do this job and looked like the browser's, not like
- * Deplo's: no theme, no hover, no way to show what a zone means. This is the
- * same idea in the app's own vocabulary: a Popover with a search box and a list
- * that shows the CURRENT TIME in each zone, which is the thing an operator is
- * actually picking by ("the one that reads 14:32", not "the one spelled Rome").
- *
- * The zone list is the browser's own IANA database, nothing to ship, nothing to
- * keep up to date. Matches are capped (see MAX_ROWS) so a first open renders a
- * screenful rather than four hundred rows.
+ * The timezone picker on a server's Advanced tab. A Popover with a search box
+ * listing the CURRENT TIME in each zone, which is what an operator actually
+ * picks by. Zones come from the browser's IANA database; matches are capped.
  */
 const MAX_ROWS = 80;
 

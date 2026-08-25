@@ -1,14 +1,9 @@
 import type { AppStatus, DatabaseStatus, DatabaseType } from "@/lib/types";
 
 /**
- * One thing whose logs can be watched on the general Logs page: an App or a
- * database.
- *
- * Deliberately flat and deliberately pure. The same shape is rendered by the
- * centred chooser and by the toolbar picker, keyed in the URL, remembered in a
- * cookie and matched by the typing filter, so it has exactly one identity —
- * {@link LogTarget.key} — and no React, no `server-only`, nothing that stops the
- * RSC and the two client components from all importing it.
+ * One thing whose logs can be watched: an App or a database. Flat and pure - it
+ * is keyed in the URL, in a cookie and by the filter, so it has exactly one
+ * identity ({@link LogTarget.key}) and imports no React and no `server-only`.
  */
 export interface LogTarget {
   /** `app:<slug>` or `db:<id>`. The URL, the cookie value, the combobox key and
@@ -23,19 +18,15 @@ export interface LogTarget {
   logo: string | null;
   /** Databases only: picks the engine's brand mark when there is no logo. */
   type?: DatabaseType;
-  /** Apps only — where this one sits on the Overview, which is where the picker
-   *  draws it. All three are optional and all three are TOLERATED when they
-   *  point at nothing: a folder the caller holds no grant on never comes back
-   *  from `listFolders`, and an app must still be pickable. */
+  /** Where the app sits on the Overview. All three are TOLERATED when they point
+   *  at nothing: a folder the caller holds no grant on never comes back. */
   projectId?: string | null;
   environmentId?: string | null;
   folderId?: string | null;
 }
 
-/** The cookie that remembers the last target, so the sidebar's Logs entry
- *  reopens it. Written by the client (a GET cannot set a cookie from an RSC),
- *  read in the page, and validated against the readable list on every read —
- *  see `resolveLogTarget`. */
+/** Remembers the last target so the sidebar's Logs entry reopens it. Written by
+ *  the client, and validated against the readable list on every read. */
 export const LOG_TARGET_COOKIE = "deplo_logs_target";
 
 /** A cookie is attacker-writable text. Anything longer than this is not a key

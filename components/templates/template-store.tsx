@@ -46,16 +46,9 @@ export function TemplateStore({
    *  asset URLs resolved server-side. */
   templates: StoreTemplate[];
   /**
-   * The accents, still in flight.
-   *
-   * Reading them means fetching and decoding every logo in the catalogue - a
-   * cold process spends seconds on it - while the band, the chips and the rail
-   * layout are all derived from `templates`, which is already here. So they
-   * arrive as a promise and the cards alone wait on it behind a `<Suspense>`,
-   * instead of the whole page sitting on a skeleton until the last logo is
-   * measured. Cards are not painted uncoloured first: a catalogue that changes
-   * shade seconds after it appears reads as broken, not as fast.
-   */
+   * The accents, still in flight: reading them decodes every logo, so they
+   * arrive as a promise and only the cards wait behind `<Suspense>`. Never
+   * painted uncoloured first - a catalogue that changes shade reads as broken. */
   accents: Promise<Accents>;
   /** The Overview drill-in the store was opened from, carried on to the wizard
    *  so a template deployed from inside a folder is created IN that folder. */

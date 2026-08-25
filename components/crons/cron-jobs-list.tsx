@@ -42,21 +42,9 @@ import { timeAgo } from "@/lib/utils";
 import type { CronJobDTO } from "@/lib/data/crons";
 
 /**
- * The operational Cron jobs page: what is scheduled, when each one runs next,
- * how the last one went, and the buttons that act on it.
- *
- * One row per job, expanding into its run history - the same shape the
- * Deployments list uses, because "what is scheduled" and "what happened" are the
- * same question asked at two zoom levels, and a separate page for the second one
- * would mean navigating away from the thing you are debugging.
- *
- * Everything with a clock in it is LIVE, and none of it is free-running: the
- * countdown is recomputed from the READER's clock every second (a "next run"
- * rendered on the server minutes ago ages into the past, which is how this page
- * came to say "next 45 seconds ago"), the row re-reads itself while a run is in
- * flight, and one re-read follows the soonest fire - the only change a page
- * rendered from job rows cannot otherwise see, because firing writes a run.
- */
+ * What is scheduled, when it next runs, how the last one went. One row per job
+ * expanding into its history. Every clock is recomputed from the READER's clock -
+ * a "next run" rendered server-side ages into the past. */
 
 /** How long after a fire the page re-reads to pick up the run it started: one
  *  scheduler tick to launch it, plus the reap that settles a quick command. */

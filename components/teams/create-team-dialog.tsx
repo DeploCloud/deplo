@@ -30,11 +30,9 @@ export function CreateTeamDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   /**
-   * Whether to leave for the overview once the team exists. True everywhere a
-   * new team is the whole errand; false when the caller is mid-flow and has
-   * state of its own that a navigation would throw away - the migration wizard
-   * holds a scan, a selection and an API key that exist only in its tab.
-   */
+   * Whether to leave for the overview once the team exists. False when the
+   * caller is mid-flow with state a navigation would throw away - the migration
+   * wizard holds a scan and an API key that exist only in its tab. */
   redirect?: boolean;
 }) {
   const router = useRouter();

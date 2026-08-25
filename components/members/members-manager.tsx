@@ -110,10 +110,9 @@ export function MembersManager({
 }
 
 /**
- * One member, as a tile that opens their page. Every action a member has — role,
- * per-node access, the instance-wide account, removal — lives on that page, so
- * the card carries no menu of its own: a two-item dropdown that only ever led
- * somewhere else was a stop on the way, not a shortcut.
+ * One member, as a tile that opens their page. Every action lives on that page,
+ * so the card carries no menu: a two-item dropdown that only led somewhere else
+ * was a stop on the way, not a shortcut.
  */
 function MemberCard({
   member,

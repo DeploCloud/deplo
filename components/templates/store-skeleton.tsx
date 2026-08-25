@@ -3,13 +3,8 @@ import type { CSSProperties } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * The store's placeholders, in one file because two different moments render
- * them: `templates/loading.tsx` (the whole page, before the RSC read lands) and
- * `template-store.tsx` (the rails alone, while the logo accents stream in).
- *
- * They have to move with `template-store.tsx` - a skeleton that shows a
- * different shape makes the page jump on arrival - and keeping one copy is what
- * stops the two callers from drifting apart.
+ * The store's placeholders. One file because two moments render them, and a
+ * skeleton showing a different shape makes the page jump on arrival.
  */
 
 /** The chip row above the rails. */

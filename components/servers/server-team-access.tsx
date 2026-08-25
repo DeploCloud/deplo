@@ -17,10 +17,8 @@ export interface ServerAccess {
 }
 
 /**
- * Controlled editor for a server's team access — the "all teams / specific teams"
- * choice. Reused by the install dialog (initial choice) and the Settings → Servers
- * "Team access" dialog (post-install edit). Pure UI: the parent owns the value and
- * persists it (addServer / setServerTeams).
+ * Controlled editor for a server's "all teams / specific teams" choice. Pure UI:
+ * the parent owns the value and persists it (addServer / setServerTeams).
  */
 export function ServerTeamAccess({
   value,

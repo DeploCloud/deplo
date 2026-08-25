@@ -18,20 +18,9 @@ export interface VariantOption {
 }
 
 /**
- * Which variant of a template family the page is showing. Only rendered when
- * the family has more than one; a template with a single variant looks exactly
- * as it always did.
- *
- * The choice rides the URL (`?variant=`), like the project drill-in's
- * environment: the link is shareable and the page stays a server component. It
- * `replace`s rather than `push`es, because picking a variant refines the page
- * you are on: Back has to leave the template rather than walk back through the
- * variants you looked at. (`TemplateSearchLink` pushes for the opposite reason:
- * typing there takes you off this page.)
- *
- * The server owns the hrefs, so this component knows nothing about the drill-in
- * scope it has to preserve.
- */
+ * Which variant of a template family the page shows; only rendered when there is
+ * more than one. The choice rides `?variant=` and `replace`s rather than
+ * `push`es, because picking a variant refines the page you are on. */
 export function VariantPicker({
   variants,
   selected,

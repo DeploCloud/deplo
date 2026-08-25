@@ -17,12 +17,9 @@ export interface SlideRect {
 }
 
 /**
- * Track the box of the active element inside a container (relative to the
- * container) so a single highlight can SLIDE between items instead of each item
- * toggling its own. Re-measures when `deps` change, when the container resizes,
- * and — when `watchAttributes` is set — when a descendant's `data-state` flips
- * (Radix tabs mark the active trigger that way, so no value plumbing is needed).
- * Measured with getBoundingClientRect so it works regardless of offsetParent.
+ * Track the active element's box inside a container so one highlight can SLIDE
+ * between items. Re-measures on `deps`, on resize, and with `watchAttributes`
+ * when a descendant's `data-state` flips (how Radix marks the active trigger).
  */
 export function useSlidingRect(
   containerRef: React.RefObject<HTMLElement | null>,

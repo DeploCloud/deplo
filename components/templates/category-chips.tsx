@@ -26,16 +26,9 @@ const DESKTOP = 640;
 const MORE_FALLBACK = 96;
 
 /**
- * The category filter.
- *
- * On a phone this is a scrolling row: swiping is how that surface has read a
- * list of chips since tab bars existed, and hiding half of them behind a menu
- * would cost a tap for something the thumb already does.
- *
- * On a desktop there is no swipe, so a row that runs past the edge is a row you
- * cannot reach. The chips that fit stay chips and the rest fold into "More",
- * which also keeps the row exactly one line tall at every width instead of
- * wrapping to two and shoving the store down the page.
+ * The category filter. A scrolling row on a phone, where the thumb already
+ * swipes; on desktop the chips that fit stay chips and the rest fold into
+ * "More", which also keeps the row exactly one line tall at every width.
  */
 export function CategoryChips({
   categories,

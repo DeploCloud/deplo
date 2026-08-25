@@ -5,17 +5,9 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * A row of cards that scrolls sideways.
- *
- * Native overflow + CSS scroll snap, not a carousel library: the repo has no
- * carousel and this needs none. `ScrollArea` is deliberately not used either —
- * it mounts a vertical scrollbar inside its own root and takes no orientation,
- * so using it here would mean reshaping a shared primitive for one caller.
- *
- * The arrows are an affordance for the mouse, which has no swipe. They appear
- * only on the side there is something to scroll to, so a row that fits shows
- * none at all.
- */
+ * A row of cards that scrolls sideways. Native overflow and CSS scroll snap, no
+ * carousel; `ScrollArea` takes no orientation and mounts a vertical scrollbar.
+ * The arrows are for the mouse and only appear where there is somewhere to go. */
 export function TemplateRail({
   title,
   subtitle,

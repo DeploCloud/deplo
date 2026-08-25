@@ -78,11 +78,9 @@ export function SetupForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {/*
-          POST for the same reason the sign-in form is POST: a submit that
-          happens before hydration is a native one, and a native GET would put
-          this admin password in the URL and every access log behind it.
-        */}
+        {/* POST for the same reason the sign-in form is: a submit before hydration
+          is native, and a native GET would put this password in the URL and
+          every access log behind it. */}
         <form method="post" onSubmit={onSubmit} className="space-y-4">
           {error && (
             <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

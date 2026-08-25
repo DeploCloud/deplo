@@ -38,17 +38,9 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { CronJobDTO } from "@/lib/data/crons";
 
 /**
- * Create or edit one cron job.
- *
- * The split is the same one the rest of Settings uses: the four things you
- * cannot run without - what it is called, where it runs, when, and what it runs
- * - are the form, and everything that has a defensible default lives under
- * Advanced. Somebody adding "clear the cache every night" should never scroll
- * past a working directory to reach Save.
- *
- * Two things it says out loud rather than leaving to be discovered: the worst
- * case of timeout x retries (because the two multiply, and the server refuses
- * the product), and the one day a year DST can swallow an hour-pinned schedule.
+ * Create or edit one cron job. Name, target, schedule and command are the form;
+ * anything with a defensible default is under Advanced. Two things are said out
+ * loud: timeout x retries (the server refuses the product) and the DST hour.
  */
 
 const SERVICE_INHERIT = "__default__";

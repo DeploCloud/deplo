@@ -25,15 +25,9 @@ const LINES: [string, string][] = [
 ];
 
 /**
- * The loading frame every log route shares: one toolbar row and the stream
- * below it, at the size the real pane will be.
- *
- * One file because the three routes render one pane. The App's and the
- * database's copies of this were byte-identical, and the general Logs page
- * would have made a third — `loading.tsx` cannot read searchParams, so it
- * cannot tell the chooser from the pane and shows the pane either way. The
- * pane is both the steady state and the slow one (`getLogsInfo` dials the
- * agent), so that is the right guess.
+ * The loading frame every log route shares. One file because `loading.tsx`
+ * cannot read searchParams, so it cannot tell the chooser from the pane - and
+ * the pane is both the steady state and the slow one.
  */
 export function LogPaneSkeleton() {
   return (

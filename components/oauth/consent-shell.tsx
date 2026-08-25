@@ -2,12 +2,8 @@ import Link from "next/link";
 import { DeploLogo } from "@/components/logo";
 
 /**
- * The frame around the consent screen.
- *
- * Same centred shell as the sign-in pages, without their layout: `app/(auth)`
- * redirects a signed-in user to the dashboard, and everyone who reaches consent
- * is signed in. Sign-in width on purpose: the permission surface lives in a
- * dialog, so what sits here is one short card either way.
+ * The frame around the consent screen. The centred sign-in shell without its
+ * layout, which redirects a signed-in user away - and everyone here is signed in.
  */
 export function ConsentShell({ children }: { children: React.ReactNode }) {
   return (

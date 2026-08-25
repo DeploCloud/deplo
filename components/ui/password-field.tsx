@@ -9,16 +9,9 @@ import { passwordRuleStatus } from "@/lib/password-policy";
 import { cn } from "@/lib/utils";
 
 /**
- * The one field for choosing an account password: a reveal toggle, a segmented
- * strength bar, and the live checklist of what is still missing.
- *
- * Cosmetic, like every other client-side check in deplo. The gate that counts
- * is `assertPasswordPolicy` (lib/password-policy.ts), which the server runs on
- * the same rules for every path that writes a credential. This field exists so
- * nobody discovers a rejected password only after clicking Save.
- *
- * The meter appears once there is something to measure - an empty field shows a
- * plain input, so a form the user has not reached yet stays quiet.
+ * The field for choosing a password: reveal toggle, strength bar, live checklist.
+ * Cosmetic - the gate that counts is `assertPasswordPolicy` server-side. The
+ * meter only appears once there is something to measure.
  */
 export function PasswordField({
   id,

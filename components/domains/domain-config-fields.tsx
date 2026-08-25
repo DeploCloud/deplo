@@ -21,30 +21,21 @@ import {
 import { wwwCounterpart, type WwwRedirect } from "@/lib/www-redirect";
 import type { CertProvider, DomainEntrypoint } from "@/lib/types";
 
-/** Entrypoint options — the two entrypoints the proxy's static config defines.
- * Labelled outcome-first (HTTPS / HTTP) with the entrypoint name kept, because
- * `websecure` is Traefik's vocabulary and not a consequence anyone can read.
- * The dropdown that renders these also offers "Automatic", which is how
- * `manualEntrypoint: false` is presented — see {@link ENTRYPOINT_AUTO}. */
+/** The two entrypoints the proxy's static config defines, labelled
+ * outcome-first because `websecure` is Traefik vocabulary, not a consequence. */
 export const ENTRYPOINTS: { value: DomainEntrypoint; label: string }[] = [
   { value: "websecure", label: "HTTPS — websecure (:443)" },
   { value: "web", label: "HTTP — web (:80)" },
 ];
 
-/** The sentinel the entrypoint dropdown uses for "derive it from the
- * certificate". It is NOT a Traefik entrypoint — it is the ABSENCE of a manual
- * choice (`manualEntrypoint: false`). Deliberately kept out of `ENTRYPOINTS`
- * and out of `DomainConfigState`, so the stored union stays exactly the two
- * real entrypoints and `resolveDomainConfig` needs no change. */
+/** Sentinel for "derive the entrypoint from the certificate". NOT a Traefik
+ * entrypoint: it is the ABSENCE of a manual choice, so it stays out of
+ * `ENTRYPOINTS` and `DomainConfigState` and needs no data-layer change. */
 const ENTRYPOINT_AUTO = "auto";
 
-/** Certificate providers, including "None" (no TLS — plain HTTP on the web
- * entrypoint). The dropdown is the single TLS control: picking a provider is how
- * a domain opts INTO HTTPS (there is no separate checkbox). "None" is listed
- * first because it is the default for a brand-new domain — no certificate is
- * ever registered unless the user (or a template that expects HTTPS) asks, or
- * the DNS check finds the domain proxied through Cloudflare, which serves it
- * over HTTPS anyway and so selects "Cloudflare" on its own. */
+/** Certificate providers. The dropdown is the single TLS control - picking one
+ * is how a domain opts INTO HTTPS. "None" is first because it is the default;
+ * a Cloudflare-proxied host selects "Cloudflare" on its own. */
 export const CERT_PROVIDERS: { value: CertProvider; label: string }[] = [
   { value: "none", label: "None (no certificate)" },
   { value: "letsencrypt", label: "Let's Encrypt" },
@@ -74,19 +65,9 @@ export interface DomainConfigState {
   www: WwwRedirect;
 }
 
-/** Seed config form state from a domain (or defaults for a brand-new domain).
- * `manualEntrypoint` seeds on whether the domain stored an explicit entrypoint
- * — an absent entrypoint means "auto" (the data layer derived it).
- *
- * A BRAND-NEW domain defaults to NO certificate (`none`): a cert is only ever
- * registered when the user opts in. An existing domain with an absent provider
- * keeps the legacy `letsencrypt` reading — that is how the deploy edge routes
- * pre-field rows, so the form must show what actually runs.
- *
- * `defaultPort` pre-fills the port field for a BRAND-NEW domain (the Add dialog,
- * where `domain` is undefined) so single-image domains are created with an
- * explicit port rather than blank — every domain now carries a concrete port.
- * Ignored when editing an existing domain (its stored port wins). */
+/** Seed form state from a domain, or defaults for a new one. A NEW domain gets
+ * no certificate; an existing row with an absent provider keeps the legacy
+ * `letsencrypt` reading, because that is what the deploy edge actually runs. */
 export function initialDomainConfig(
   domain?: {
     port?: number | null;
@@ -128,25 +109,15 @@ export function parseMiddlewares(text: string): string[] {
     .filter(Boolean);
 }
 
-/** Validate + resolve config form state into the action payload, or return an
- * error string. On a compose stack (`isCompose`) the service and the service
- * port are BOTH required — a domain must name the compose service it routes to
- * and that service's container port. On a single-image project the port stays
- * optional (blank ⇒ the app's default port).
- *
- * `entrypoint` resolves to a tri-state the action layer understands:
- *   - a concrete value → manual mode
- *   - `null`           → auto (the data layer derives it)
- * The `none` provider always resolves to `null` (auto) because it forces the
- * `web` entrypoint regardless — surfacing a manual choice there would be a lie.
- */
+/** Validate and resolve form state into the action payload, or an error string.
+ * A compose stack requires both service and port. `entrypoint` is tri-state:
+ * a value means manual, `null` means auto - and `none` always forces `null`. */
 export function resolveDomainConfig(
   state: DomainConfigState,
   isCompose: boolean,
-  /** The hostname the dialog currently holds. Given, a `www` pairing is dropped
-   * when that hostname has no counterpart — otherwise typing `example.com`,
-   * picking a pairing and then editing the host into `api.foo.example.com`
-   * would post a pairing the server can only reject. */
+  /** The hostname the dialog holds. A `www` pairing is dropped when the hostname
+   * has no counterpart, or editing the host would post a pairing the server
+   * can only reject. */
   hostname?: string,
 ):
   | {
@@ -202,17 +173,9 @@ export function resolveDomainConfig(
 }
 
 /**
- * One-line description of what the advanced panel currently holds, shown on the
- * closed header so the section is legible without opening it.
- *
- * Every part is emitted ONLY when it diverges from a brand-new domain's
- * defaults, so a first-run Add dialog shows a bare "Advanced settings" instead
- * of greeting a newcomer with the words "No certificate". That fact still
- * reaches them — once, and louder — as the `http://` in the route preview
- * directly above.
- *
- * Middlewares are counted, never named: names overflow the row, and the count
- * answers the only question a closed header needs to answer.
+ * What the advanced panel holds, for the closed header. Only parts that DIVERGE
+ * from a new domain's defaults are emitted, so a first-run dialog does not greet
+ * a newcomer with "No certificate". Middlewares are counted, never named.
  */
 export function advancedSummary(
   state: DomainConfigState,

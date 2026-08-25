@@ -2,23 +2,9 @@ import { cn } from "@/lib/utils";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 
 /**
- * The wash a card wears in its logo's colour, and the one number it needs.
- *
- * Written for the template store and now shared with any card that carries a
- * brand mark — Settings → MCP Server's agent picker is the second caller. It
- * lives in its own module for a boring reason: `template-card.tsx` is a SERVER
- * component, so importing these two functions from there would drag it into a
- * client bundle. The CSS behind them is in `globals.css` under "Template store".
- *
- * A logo with a hue wears that hue. A logo drawn in a single neutral has no
- * hue, so it wears its own ink instead (`tpl-veil-neutral`) — a white wordmark
- * lights its card white rather than being the one tile in the grid that stays
- * flat. A logo that reads as neither renders plain.
- *
- * `lit` picks when: `"hover"` while the card is only being pointed at, `"on"`
- * once it is the chosen one (or on a detail page's header, where there is
- * nothing to choose).
- */
+ * The wash a card wears in its logo's colour. Its own module because
+ * `template-card.tsx` is a SERVER component. A logo with a hue wears it, a
+ * neutral one wears its own ink, one that reads as neither renders plain. */
 export function veilProps(
   accent: LogoAccent | undefined,
   lit: "hover" | "on",

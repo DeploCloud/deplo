@@ -37,12 +37,9 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     hideClose?: boolean;
     /**
-     * This dialog owns its own height and scrolling — skip the bounded shell.
-     *
-     * For the handful that already do it better than a generic wrapper can: the
-     * wizards, whose `grid-rows-[auto_minmax(0,1fr)]` addresses the content's
-     * direct children and would be aimed at the wrapper instead, and the backup
-     * wizard, whose animated height depends on being able to overflow.
+     * This dialog owns its own height and scrolling - skip the bounded shell.
+     * For the wizards, whose `grid-rows` addresses the content's direct
+     * children, and the backup wizard, whose animated height must overflow.
      */
     selfManaged?: boolean;
   }
@@ -112,12 +109,9 @@ const DialogContent = React.forwardRef<
           }}
           {...props}
         >
-          {/* The scroll lives on a WRAPPER, not on the content itself: the close
-          button below is absolutely positioned and would scroll away with the
-          body, and `p-6` would go with it. The wrapper carries the grid + gap
-          the content used to provide, so header / body / footer keep their
-          rhythm. `focus-safe-scroll` is what stops a focused full-width field
-          having its ring sliced by the clip. */}
+          {/* The scroll lives on a WRAPPER: the close button is absolutely positioned
+          and would scroll away with the body. `focus-safe-scroll` stops a
+          focused full-width field having its ring sliced by the clip. */}
           {selfManaged ? (
             children
           ) : (

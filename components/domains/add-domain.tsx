@@ -27,10 +27,8 @@ import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { regenerateNipDomain } from "@/lib/nip-suggestion";
 
-/** A project as the dialog needs it: id, name, its compose YAML (when it is a
- * compose stack) so the service selector can be populated client-side, and its
- * default container port so a new single-image domain's port field is pre-filled
- * (every domain now carries an explicit port). */
+/** A project as the dialog needs it: the compose YAML populates the service
+ * selector, and the default port pre-fills a new domain's port field. */
 export interface AddDomainApp {
   id: string;
   name: string;

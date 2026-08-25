@@ -7,12 +7,9 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 /**
- * The store's search box. One definition, two owners:
- *
- * - the catalogue drives it itself, because it filters 388 entries in memory on
- *   every keystroke and must not wait for a round trip to redraw;
- * - a single template's page uses `TemplateSearchLink` below, which navigates.
- */
+ * The store's search box. The catalogue drives it itself, filtering 388 entries
+ * in memory on every keystroke; a single template's page uses
+ * `TemplateSearchLink` below, which navigates. */
 export function TemplateSearchField({
   value,
   onChange,
@@ -37,12 +34,9 @@ export function TemplateSearchField({
 }
 
 /**
- * The same box on a template's page, so the search never disappears once you
- * have drilled in. Typing takes you back to the catalogue, filtered.
- *
- * It `push`es rather than `replace`s: leaving a template's page IS a
- * navigation, and Back has to return to the template you were reading.
- */
+ * The same box on a template's page, so search never disappears once you have
+ * drilled in. It `push`es rather than `replace`s: leaving a template's page IS
+ * a navigation, and Back has to return to what you were reading. */
 export function TemplateSearchLink({
   scope = "",
   className,

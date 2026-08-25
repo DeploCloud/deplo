@@ -83,31 +83,21 @@ export function DomainRow({
   siblings = [],
 }: {
   domain: Row;
-  /** Every domain of the SAME app, so the Edit dialog can DERIVE this hostname's
-   * `www` pairing from the rows that exist rather than from a stored flag. The
-   * page already holds them; passing them keeps the derivation in one direction
-   * (rows ⇒ state), so a companion removed by hand shows up as "No redirect" on
-   * the next render instead of a lie. */
+  /** Every domain of the same app, so Edit DERIVES the `www` pairing from the
+   * rows that exist rather than a stored flag - a companion removed by hand
+   * then reads as "No redirect" instead of a lie. */
   siblings?: { name: string; redirectTo?: string | null }[];
   /** The app's compose YAML (compose stacks only) so the Edit dialog can
    * offer the service selector. Absent/null ⇒ a single-image project. */
   compose?: string | null;
-  /** Whether the app really is a compose stack (`usesComposeStack`, resolved by
-   * the page). NOT inferred from `compose` here: an app can carry leftover
-   * compose text while deploying a repo/image, and that inference would make
-   * the Container cell warn "no service" about a domain that routes fine. */
+  /** Whether the app really is a compose stack. NOT inferred from `compose`: an
+   * app can carry leftover compose text while deploying a repo or image. */
   isCompose: boolean;
-  /** Whether the table renders the Container column at all (resolved by the page:
-   * only when the app has more than one container to route to, or a row on a
-   * stack names none). With one container every row would print the same name,
-   * so the column is dropped and this cell with it — the header count and the
-   * cells must agree, hence a prop rather than a per-row decision. */
+  /** Whether the table renders the Container column at all. The header count and
+   * the cells must agree, hence a prop rather than a per-row decision. */
   showContainer: boolean;
-  /** The public IPv4 of the server THIS project is deployed on — the address a
-   * custom domain's A record must resolve to. Surfaced in the misconfigured hint
-   * so the user knows exactly where to point DNS. It is server-specific (a
-   * project on another server needs a different IP), so it is resolved per
-   * project and passed in, never a shared constant. */
+  /** The public IPv4 of the server THIS project is on - the address a custom
+   * domain's A record must resolve to. Server-specific, so never a constant. */
   serverIp?: string;
 }) {
   const router = useRouter();

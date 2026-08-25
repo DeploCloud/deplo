@@ -13,15 +13,9 @@ import { cn } from "@/lib/utils";
 type Side = "top" | "right" | "bottom" | "left";
 
 /**
- * A small "info" icon that reveals an explanatory tooltip on hover/focus. It
- * sits next to a field label, toggle title or section header to carry the longer
- * explanation that doesn't fit in the name itself — the discoverable "why/how"
- * that a label alone can't convey.
- *
- * Renders as a `type="button"` so it never submits the surrounding form, and is
- * keyboard-focusable so the hint is reachable without a pointer. Because it is
- * interactive content, a click on it inside a `<label>` does NOT forward to the
- * labelled control (per the HTML spec), so it's safe to nest in a `<Label>`.
+ * The "info" icon next to a label that carries the explanation the name cannot.
+ * A `type="button"`, so it never submits the form, and interactive content, so a
+ * click inside a `<label>` does not forward to the labelled control.
  */
 export function InfoTip({
   content,
@@ -61,10 +55,8 @@ export function InfoTip({
 }
 
 /**
- * A field label with an optional trailing info icon. Drop-in replacement for
- * `<Label>` where the field needs more explanation than its name conveys: pass
- * the explanation as `info` and it renders an {@link InfoTip}; omit it and this
- * is just a `<Label>` laid out as a flex row (so a leading icon still aligns).
+ * A field label with an optional trailing info icon. Drop-in for `<Label>`: pass
+ * `info` and it renders an {@link InfoTip}, omit it and this is just a Label.
  */
 export function FieldLabel({
   children,

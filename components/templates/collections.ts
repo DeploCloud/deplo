@@ -1,16 +1,7 @@
 /**
- * The store's editorial rows.
- *
- * The catalog service has no popularity signal and no per-template dates — all
- * 388 entries carry the same `createdAt` and `lastUpdate` — so a "Most
- * installed" or "New arrivals" row would be an arbitrary order wearing a
- * confident label. These rows are curated here instead, which is honest about
- * what they are: a recommendation, not a measurement.
- *
- * Slugs are matched against the live catalogue at render time. An unknown one
- * is dropped silently and a row left with too few entries does not render at
- * all, so a template renamed upstream costs a card, never the page.
- */
+ * The store's editorial rows. The catalog has no popularity signal and no dates,
+ * so "Most installed" would be an arbitrary order wearing a confident label.
+ * Slugs are matched at render time, so a rename costs a card, never the page. */
 export interface TemplateCollection {
   title: string;
   subtitle: string;

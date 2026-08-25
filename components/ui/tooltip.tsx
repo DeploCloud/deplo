@@ -9,25 +9,10 @@ const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = TooltipPrimitive.Root;
 
 /**
- * Keep a tooltip SHUT unless the user actually asked for it.
- *
- * Radix opens a tooltip on *any* focus of the trigger
- * (`onFocus: composeEventHandlers(props.onFocus, () => context.onOpen())`), and an
- * overlay focuses its first tabbable element as it opens — next to a field label
- * that element is the little info button, so the dialog came up with a tooltip
- * already floating over it.
- *
- * `:focus-visible` alone does NOT settle it, which is the trap: Chrome carries
- * focus-visible over to whatever is focused programmatically next, so a dialog
- * opened from a ⋯ menu (the menu item was focus-visible) matched it and opened
- * the tooltip anyway. Hence {@link isOverlayAutoFocusing}, which knows what the
- * heuristic can't: that this focus is the surface's doing, not the user's.
- *
- * `preventDefault()` is Radix's own escape hatch: `composeEventHandlers` skips
- * the primitive's handler on a default-prevented event. Focus itself is NOT
- * cancelled (a focus event isn't cancelable) — only Radix's reaction to it. A
- * real keyboard focus (Tab onto the trigger) still shows the hint.
- */
+ * Keep a tooltip SHUT unless the user asked for it. Radix opens on ANY focus of
+ * the trigger, and `:focus-visible` does not settle it - Chrome carries it over
+ * to whatever is focused programmatically next. Hence {@link isOverlayAutoFocusing}.
+ * `preventDefault()` is Radix's escape hatch; focus itself is not cancelled. */
 function keyboardOnlyTooltipFocus(event: React.FocusEvent<HTMLElement>) {
   if (isOverlayAutoFocusing() || !event.currentTarget.matches(":focus-visible"))
     event.preventDefault();
@@ -35,10 +20,8 @@ function keyboardOnlyTooltipFocus(event: React.FocusEvent<HTMLElement>) {
 
 /**
  * The trigger EVERY tooltip goes through, so the guard above is never something
- * a call site has to remember — a raw `TooltipPrimitive.Trigger` would open on a
- * dialog's auto-focus again. A caller's own `onFocus` runs first and can opt out
- * by preventing default itself.
- */
+ * a call site has to remember. A caller's own `onFocus` runs first and can opt
+ * out by preventing default itself. */
 const TooltipTrigger = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
@@ -91,16 +74,9 @@ function SimpleTooltip({
 }
 
 /**
- * A submenu trigger with a tooltip that steps aside for the submenu. A submenu
- * opens on the same hover gesture that would show the trigger's tooltip, so the
- * two would otherwise overlap. Here the tooltip is controlled and forced shut
- * while the submenu is open (`subOpen`), then behaves normally again once it
- * closes.
- *
- * The menu primitives are passed in (`Sub`/`SubTrigger`/`SubContent`) so the
- * same component works for both context menus and dropdown menus. `trigger` is
- * the SubTrigger's inner content; `children` are the submenu's items.
- */
+ * A submenu trigger whose tooltip steps aside for the submenu - both open on the
+ * same hover gesture. The menu primitives are passed in, so this works for both
+ * context and dropdown menus. `trigger` is the SubTrigger's inner content. */
 function MenuSubTooltip({
   Sub,
   SubTrigger,

@@ -2,17 +2,9 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 /**
- * A template's description, as the catalogue writes it.
- *
- * This is remote input (ADR-0023 §2), so raw HTML stays off: no `rehype-raw`,
- * which means anything HTML-shaped in a description is rendered as text rather
- * than as markup. Links open in a new tab and carry `rel="noopener"` — they
- * point at whatever the catalogue says, and the dashboard is not for it to
- * navigate.
- *
- * Styles are written here rather than through a prose plugin: the repo has no
- * typography plugin and this is the only long-form copy in the product.
- */
+ * A template's description, as the catalogue writes it. Remote input
+ * (ADR-0023 §2), so no `rehype-raw`: anything HTML-shaped renders as text.
+ * Links open in a new tab with `rel="noopener"`. */
 export function TemplateMarkdown({ source }: { source: string }) {
   return (
     <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">

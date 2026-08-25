@@ -28,32 +28,18 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
 /**
- * The readiness REPORT for one server: a live, never-stored answer to "is this
- * host's installation complete enough to deploy Apps to?".
- *
- * Distinct from the health chip on the card, which answers "can we reach and
- * trust this agent right now?". Opening this dialog dials the owning agent once
- * (Hello + two host-port bind tests + host metrics) and renders what came back,
- * grouped and severity-ranked. Nothing is persisted, which is why this component
- * deliberately does NOT call `router.refresh()` after a run: the check writes
- * nothing, so a refresh would re-run every read on the page to learn nothing —
- * and, worse, would suggest the page's stored status had been touched. It hasn't.
- *
- * The probe runs on open and on every "Run again"; a `runId` ref discards a
- * response that a newer run (or a reopen) has already superseded.
- */
+ * The readiness REPORT for one server. Nothing is persisted, which is why this
+ * deliberately does NOT `router.refresh()`. A `runId` ref discards a response a
+ * newer run has superseded. */
 
 /* ------------------------------------------------------------------ */
 /* Wire types                                                          */
 /* ------------------------------------------------------------------ */
 
 /**
- * Declared LOCALLY on purpose, mirroring `server-health-provider.tsx`. The
- * canonical types live in `lib/infra/server-readiness.ts`, but that module
- * imports `./agent-client` — which is `import "server-only"` and pulls in
- * `@grpc/grpc-js` — so naming it from a client component would drag the agent
- * client into the browser bundle and break the build. These mirror the SDL of
- * `ServerReadinessReport`, which is the contract that actually crosses the wire.
+ * Declared LOCALLY on purpose. The canonical types import `./agent-client`,
+ * which is `server-only` and pulls in `@grpc/grpc-js`, so naming them from a
+ * client component would drag the agent client into the browser bundle.
  */
 type ReadinessSeverity = "pass" | "info" | "warn" | "fail" | "skip";
 type ReadinessGroup =
@@ -200,9 +186,8 @@ const GROUP_LABELS: Record<ReadinessGroup, string> = {
 };
 
 /**
- * The honest caveats. They live in a tooltip, not as helper text under the rows
- * (the repo's field-help rule), because they qualify what the whole group can and
- * cannot prove — a reader only needs them when they doubt a row.
+ * The honest caveats, in a tooltip rather than helper text: they qualify what
+ * the whole group can prove, and a reader only needs them when they doubt a row.
  */
 const GROUP_INFO: Partial<Record<ReadinessGroup, string>> = {
   routing:
@@ -234,11 +219,9 @@ export function ServerReadinessDialog({
   const [error, setError] = React.useState<string | null>(null);
 
   /**
-   * `reset` drops the previous report before probing. The OPEN path passes it (the
-   * dialog must never paint an answer collected before it was opened); "Run again"
-   * does not, so the rows stay on screen while the fresh probe runs. It lives here
-   * rather than in the effect body because a setState called straight from an effect
-   * is a cascading render (react-hooks/set-state-in-effect).
+   * `reset` drops the previous report before probing. The OPEN path passes it,
+   * "Run again" does not, so rows stay on screen. It lives here rather than the
+   * effect body because setState from an effect is a cascading render.
    */
   const run = React.useCallback(
     (opts?: { reset?: boolean }) => {

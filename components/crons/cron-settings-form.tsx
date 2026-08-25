@@ -10,24 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The master switch for one target's cron jobs - one row of Settings → Advanced
- * → Advanced features, next to the Console.
- *
- * Deliberately ONE control. The per-job settings (schedule, timezone, shell,
- * timeout, retries, overlap) belong to a job and live in its dialog, because two
- * jobs on the same app legitimately want different ones; a target-level default
- * for them would be a knob whose only job is to be overridden. So this row says
- * what the feature is, warns what it costs, and turns it on - the operational
- * page (and its sidebar entry) appear with it.
- *
- * Renders the ROW, not the card around it: it shares one "Advanced features"
- * card with the console, and a feature that had a card of its own read like a
- * section rather than the opt-in it is.
- *
- * Saves the instant it is flipped - the house rule for a switch - and turning it
- * OFF keeps every job. That makes it the pause button as well as the opt-in,
- * which is the behaviour somebody reaches for when a job is misbehaving at 03:00.
- */
+ * The master switch for one target's cron jobs. Deliberately ONE control: the
+ * per-job settings belong to a job. Renders the ROW, not the card, and turning it
+ * OFF keeps every job, so it doubles as the pause button. */
 
 const SET_ENABLED = /* GraphQL */ `
   mutation ($targetKind: String!, $targetId: ID!, $enabled: Boolean!) {

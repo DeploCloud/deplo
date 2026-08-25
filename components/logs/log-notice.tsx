@@ -10,14 +10,9 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * "This container is in a restart loop", "only 2 of 3 are running", "the last
- * build failed". Context the log pane must not be read without — a crash loop
- * whose banner is missing reads as an app that prints a stack trace on a timer.
- *
- * It used to be a full-width strip above the pane. On the full-screen logs page
- * that strip is exactly the "information above the logs" the page exists to get
- * rid of, and in a crash loop it never goes away. So it rides in the toolbar as
- * a chip: the headline stays visible, the paragraph is one click away.
+ * Context the log pane must not be read without - a crash loop whose banner is
+ * missing reads as an app printing a stack trace on a timer. A toolbar chip, not
+ * a strip: in a crash loop a strip never goes away.
  */
 export interface LogNotice {
   tone: "error" | "warn" | "muted";
