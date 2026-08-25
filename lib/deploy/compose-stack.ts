@@ -11,6 +11,7 @@ import { certResolver } from "./domains";
 import { traefikRouterLabels, hash6 } from "./routing";
 import { mergeResourceLimits } from "./resources";
 import {
+  keepAuthoredEnvText,
   RESERVED_SHARED_NETWORK_NAMES,
   reservedNameMessage,
   sharedNetworkKeys,
@@ -566,6 +567,17 @@ function injectAppVolumes(
   if (Object.keys(topLevel).length > 0) doc.volumes = topLevel;
 }
 
+/** The authored compose with its env values re-quoted. See `keepAuthoredEnvText`. */
+function readComposeKeepingEnvText(compose: string): string {
+  try {
+    const doc = yaml.parseDocument(compose);
+    if (doc.errors.length > 0) return compose;
+    return keepAuthoredEnvText(doc) ? String(doc) : compose;
+  } catch {
+    return compose;
+  }
+}
+
 export function buildComposeStack(input: ComposeStackInput): string {
   const { compose, name, deployKey, appId, domainRoutes } = input;
   const trackingId = input.trackingId ?? appId;
@@ -582,7 +594,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
 
   let doc: ComposeDoc;
   try {
-    doc = (yaml.load(compose) as ComposeDoc) ?? {};
+    doc = (yaml.load(readComposeKeepingEnvText(compose)) as ComposeDoc) ?? {};
   } catch (e) {
     throw new Error(
       `Invalid docker-compose file: ${e instanceof Error ? e.message : String(e)}`,

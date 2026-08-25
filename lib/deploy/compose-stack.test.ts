@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import yaml from "js-yaml";
+import yaml from "../yaml";
 
 import {
   buildComposeStack,
@@ -1019,4 +1019,46 @@ services:
     ),
     [],
   );
+});
+
+test("the env text the author typed is the text the container gets", () => {
+  // `022` is a umask and `1.10` is a version. Read as numbers they come back out
+  // as 22 and 1.1, and the container is handed a value nobody wrote.
+  const doc = buildDoc(`x-common: &common
+  environment:
+    UMASK: 022
+services:
+  web:
+    image: nginx
+    environment:
+      VER: 1.10
+      PORT: 8080
+      OK: true
+      TXT: hello
+  side:
+    <<: *common
+    image: alpine
+`);
+  const env = doc.services.web.environment as unknown as Record<
+    string,
+    unknown
+  >;
+  assert.equal(env.VER, "1.10");
+  // Also inside the anchor a service merges from, which is where a big stack
+  // keeps its shared defaults.
+  assert.equal(
+    (doc.services.side.environment as unknown as Record<string, unknown>).UMASK,
+    "022",
+  );
+  // A number that IS a number, a boolean and a string are left as they are.
+  assert.equal(env.PORT, 8080);
+  assert.equal(env.OK, true);
+  assert.equal(env.TXT, "hello");
+});
+
+test("a compose that needs no requoting is read as it was", () => {
+  const doc = buildDoc(
+    "services:\n  web:\n    image: nginx\n    environment:\n      A: '1'\n",
+  );
+  assert.deepEqual(doc.services.web.environment, { A: "1" });
 });
