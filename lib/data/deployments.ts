@@ -52,6 +52,9 @@ export async function listDeployments(filter?: {
   (Deployment & {
     serviceName: string;
     appSlug: string;
+    /** The app's display logo, so a cross-app list can show which app a row
+     * belongs to without a second query. Null ⇒ the caller draws its own glyph. */
+    appLogo: string | null;
     /** GitHub commit URL for this deployment's SHA, or null for a non-GitHub
      * source — lets a list decorate the SHA with a link without loading the
      * project graph. */
@@ -84,6 +87,7 @@ export async function listDeployments(filter?: {
       id: appsTable.id,
       name: appsTable.name,
       slug: appsTable.slug,
+      logo: appsTable.logo,
       serverId: appsTable.serverId,
       // Rollback eligibility: the retention depth, plus the four columns that say
       // whether this app builds an image of its own at all (see rollbackTargetIds).
@@ -196,6 +200,7 @@ export async function listDeployments(filter?: {
         canRollback: rollbackable.has(dep.id),
         serviceName: p?.name ?? "",
         appSlug: p?.slug ?? "",
+        appLogo: p?.logo ?? null,
         serverId,
         serverName: serverId ? (serverNameById.get(serverId) ?? null) : null,
         buildServerName:

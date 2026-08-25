@@ -49,6 +49,7 @@ export default async function DeploymentsPage() {
             appId: d.appId,
             appSlug: d.appSlug,
             serviceName: d.serviceName,
+            appLogo: d.appLogo,
             serverId: d.serverId,
             serverName: d.serverName,
             buildServerName: d.buildServerName,

@@ -9,7 +9,6 @@ import {
   Trash2,
   CircleStop,
   Hammer,
-  Server,
   Undo2,
   ListFilter,
   ArrowUpDown,
@@ -20,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { AppLogo } from "@/components/shared/project-logo";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -245,6 +245,9 @@ export interface DeploymentRow {
   appId: string;
   appSlug: string;
   serviceName: string;
+  /** The app's logo, shown beside its name in the App column. Only the global
+   *  page passes it, since that is the only place the column exists. */
+  appLogo?: string | null;
   /** Owning server id — present on the global page (for the Server filter). */
   serverId?: string | null;
   /** Owning server name — present on the global page (for the Server column). */
@@ -1115,9 +1118,10 @@ export function DeploymentsTable({
                         <SimpleTooltip content="Open this deployment's build logs">
                           <Link
                             href={`/apps/${d.appSlug}/deployments/${d.id}`}
-                            className="cursor-pointer font-medium text-foreground hover:underline"
+                            className="flex cursor-pointer items-center gap-2 font-medium text-foreground hover:underline"
                           >
-                            {d.serviceName}
+                            <AppLogo logo={d.appLogo ?? null} size={20} />
+                            <span className="truncate">{d.serviceName}</span>
                           </Link>
                         </SimpleTooltip>
                       </TableCell>
@@ -1139,10 +1143,11 @@ export function DeploymentsTable({
                             }
                           >
                             <span className="flex items-center gap-1.5 text-muted-foreground">
-                              {d.buildServerName ? (
+                              {/* Only the build-server mark is drawn. A server
+                                  glyph on every ordinary row repeated what the
+                                  column header already says. */}
+                              {d.buildServerName && (
                                 <Hammer className="size-3.5 shrink-0" />
-                              ) : (
-                                <Server className="size-3.5 shrink-0" />
                               )}
                               <span className="truncate">{d.serverName}</span>
                             </span>
