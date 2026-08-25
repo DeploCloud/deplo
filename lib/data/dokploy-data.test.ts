@@ -39,7 +39,7 @@ import {
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
-import { beginDokployImport, stopDokployImport } from "./dokploy-import";
+import { beginDokployImport, finishDokployImport } from "./dokploy-import";
 import { moveDokployServiceData, planDokployDataMove } from "./dokploy-data";
 import { acceptDataCopyLoss } from "./data-copy";
 import { startApp } from "./apps";
@@ -756,7 +756,8 @@ test("a copy that fails marks the app, and the marker holds the deploy", async (
 
   // Close the run first: while it is open the app is the migration's and every
   // door refuses for THAT reason. This is about the reason that outlives it.
-  await asOwner(() => stopDokployImport(runId));
+  // `finish`, not `stop`: stopping means undoing, and this app has to survive.
+  await asOwner(() => finishDokployImport(runId));
 
   // And that is what refuses the deploy, from every door.
   await assert.rejects(
@@ -813,7 +814,9 @@ test("accepting the loss unblocks the app, and says so in the trail", async () =
     }),
   );
 
-  await asOwner(() => stopDokployImport(runId));
+  // `finish`, not `stop`: stopping a run deletes what it created, and the whole
+  // point here is the app that outlives the migration.
+  await asOwner(() => finishDokployImport(runId));
   await asOwner(() => acceptDataCopyLoss({ kind: "app", id: "prj_web" }));
 
   const rows = await db.execute(

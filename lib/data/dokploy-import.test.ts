@@ -1403,16 +1403,21 @@ test("leaving keeps the source that still holds data nothing could copy", async 
   );
 });
 
-test("leaving keeps the sources a stopped run is resumed through", async () => {
+test("a stopped run has already handed its sources back", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.79");
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   await asOwner(() => stopDokployImport(runId));
 
+  // Nothing left for leaving the page to do: stopping IS the undoing, agents
+  // included, so the source is on the uninstall ladder before anybody walks out.
   assert.equal(await asOwner(() => abandonDokployImport()), 0);
-
+  const [source] = await db
+    .select()
+    .from(serversTable)
+    .where(eq(serversTable.id, id));
   assert.ok(
-    await asOwner(() => getServerById(id)),
-    "re-running is how a stopped migration is resumed, and it needs the agent",
+    !source || source.uninstallNextAt !== null || source.uninstallError,
+    "stopping must put the source's agent on its way off, not leave it running",
   );
 });
 
@@ -1863,7 +1868,7 @@ test("a revert of somebody else's run is not found", async () => {
   assert.ok((await db.select().from(appsTable)).length > 0);
 });
 
-test("stopping a run closes it WITHOUT taking the agents off the source", async () => {
+test("stopping a run undoes it whole: what it made here, and the agent over there", async () => {
   // The machine the migration reads from, registered the way the install step
   // registers it.
   const SOURCE = "srv_stop_source";
@@ -1876,25 +1881,36 @@ test("stopping a run closes it WITHOUT taking the agents off the source", async 
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await settleProvisioning(db);
+  const landed = await db.select().from(appsTable);
+  assert.ok(landed.length > 0, "the import has to have made something to undo");
 
   await asOwner(() => stopDokployImport(runId));
 
+  // There is no half-migrated state to keep: a stop lands mid-copy far more
+  // often than not, and a volume 60% across is not 60% of an app.
   const rows = await db.select().from(runsTable).where(eq(runsTable.id, runId));
-  assert.equal(rows[0].status, "stopped");
-  // Still ours, still reachable - re-running is how a stopped migration is
-  // resumed, and it cannot be if the agent has been uninstalled.
+  assert.equal(rows[0].status, "reverted");
+  assert.equal(
+    (await db.select().from(appsTable)).length,
+    0,
+    "everything the run created has to be gone",
+  );
+  const [source] = await db
+    .select()
+    .from(serversTable)
+    .where(eq(serversTable.id, SOURCE));
   assert.ok(
-    await asOwner(() => getServerById(SOURCE)),
-    "the source was removed",
+    !source || source.uninstallNextAt !== null || source.uninstallError,
+    "the agent Deplo put on the source is on its way back off",
   );
 
-  // Idempotent, and it never overwrites a verdict a run reached on its own.
+  // Idempotent: a second call finds nothing left to delete.
   await asOwner(() => stopDokployImport(runId));
   const again = await db
     .select()
     .from(runsTable)
     .where(eq(runsTable.id, runId));
-  assert.equal(again[0].status, "stopped");
+  assert.equal(again[0].status, "reverted");
 });
 
 /* ------------------------------------------------------------------ */

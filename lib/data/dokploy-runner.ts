@@ -71,7 +71,7 @@ import { listServersForTeam } from "./servers";
  * Per run, the lease means what a lease is for - two processes must not drive
  * the SAME run - and it cannot mean anything else.
  */
-const leaseFor = (runId: string) => `dokploy-migration:${runId}`;
+export const leaseFor = (runId: string) => `dokploy-migration:${runId}`;
 /** A heartbeat older than this is a control plane that died; take the run over.
  *
  *  It is the LEASE's staleness too, not only the run's. The lease defaults to two
