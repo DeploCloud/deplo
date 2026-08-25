@@ -127,6 +127,12 @@ without `--agent-only`.
 - **The panel cannot uninstall itself.** Nothing in the dashboard removes the
   control plane; it is the thing doing the removing. That is what the host-side
   script is for.
+- **It undoes an installer's work, not a hand-built one.** The script knows the
+  layout `install.sh` writes: `/opt/deplo`, its two Compose projects, the agent's
+  systemd unit. An instance you assembled yourself somewhere else - your own
+  Compose file, a different directory, the panel started by hand - is not
+  something it can find, and it will report that machine as having no control
+  plane. Take that one down the way you brought it up.
 - **Docker Engine and `/etc/docker/daemon.json` stay.** The installer widened
   Docker's address pools and kept your original as `daemon.json.deplo-bak`.
   Putting it back needs a Docker restart, which stops every container on the
