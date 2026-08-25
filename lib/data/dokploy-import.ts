@@ -142,39 +142,6 @@ import { publishMigrationChanged } from "../graphql/pubsub";
 
 /**
  * Import a Dokploy instance's projects into this team.
- *
- * ONE source of truth: Dokploy's own HTTP API (`lib/dokploy/client.ts`). No SSH,
- * no reading its database, no shell on either host — which is what lets the same
- * code serve the remote case (Dokploy on another VPS) and the internal one
- * (Dokploy on this VPS, reached over the docker bridge). The source instance is
- * only ever READ: it keeps running, and stays the rollback.
- *
- * Three rules shape everything here:
- *
- *  1. **Nothing is deployed.** Every app is created with `deploy: false`. Dokploy
- *     is still answering those hostnames; deploying as they land would fight the
- *     live system for ports and for ACME.
- *  2. **One try/catch per object.** A refused gate, a hostname another team owns,
- *     a compose file that needs a grant — each becomes a row in the report and
- *     the import carries on. An import that dies on app seven is worse than one
- *     that tells you app seven needs attention.
- *  3. **Whatever cannot come across is SAID.** A `manual` report row is the only
- *     thing between "imported" and "silently half-imported": the private repo
- *     with no credential, the database whose host name changed, the published
- *     port deplo does not do. Nothing is dropped in silence.
- *
- * Authorization is deplo's normal boundary, unchanged: the entry gate is
- * `create_projects` on a team-wide principal, and every object then goes through
- * the SAME `lib/data` function the UI calls, so it re-checks its own capability
- * (`create_apps`, `create_databases`, `manage_domains`, `manage_env`, …). An
- * importer that bypassed those would be a second authorization path, and there
- * must never be one — so a caller missing `create_databases` gets databases in
- * the report as `failed`, not a privileged shortcut.
- *
- * Everything lands in the ACTIVE team. `requireActiveTeamId` is memoized per
- * request (React `cache`), so switching team mid-request would not be seen by the
- * calls that follow it; the wizard therefore switches team FIRST (the existing
- * `createTeam` / `switchTeam` mutations) and imports afterwards.
  */
 
 /* ------------------------------------------------------------------ */
@@ -195,37 +162,26 @@ export interface PlanService {
   /** The Dokploy server it runs on; empty string means Dokploy's own host. */
   sourceServerId: string;
   /**
-   * Whether Deplo would ever COMPILE this, which is what makes a build server
-   * mean anything for it. A compose stack, a prebuilt image and a database are
-   * all deployed as they are, so offering to choose where they build would be a
-   * control with nothing behind it.
+   * Whether Deplo would ever COMPILE this, which is what makes a build server mean
+   * anything for it.
    */
   buildsFromSource: boolean;
   /**
-   * Deplo's OWN engine id for a database (`mongo` over there is `mongodb`
-   * here), so a review screen can show the engine's real brand mark instead of
-   * a generic glyph. Null for anything that is not a database Deplo has.
-   *
-   * Resolved here rather than mapped in the browser: the translation already
-   * exists in `deploEngineFor`, and a second copy on the client is a table that
-   * drifts the first time an engine is added.
+   * Deplo's OWN engine id for a database (`mongo` over there is `mongodb` here),
+   * so a review screen can show the engine's real brand mark instead of a generic
+   * glyph.
    */
   engine: string | null;
   /**
    * The host port this database publishes on Dokploy, or null when it publishes
-   * none (and for anything that is not a database). Carried into the plan so the
-   * review can say what will be published BEFORE it is, and ask about a port
-   * something else on the target host already holds - which used to be found out
-   * only from the report, after the import had silently dropped it.
+   * none (and for anything that is not a database).
    */
   exposedPort: number | null;
   /** Hostnames that would be imported (the throwaway ones already dropped). */
   domains: string[];
   /**
    * The icon this service would arrive with, already validated, or null when it
-   * has none. The scan reads the detail row anyway, so showing the real icon in
-   * the plan costs nothing and lets the review be checked at a glance: what you
-   * are about to see afterwards is what you are looking at now.
+   * has none.
    */
   logo: string | null;
   notes: string[];
@@ -246,15 +202,9 @@ export interface PlanProject {
 }
 
 /**
- * One MACHINE behind that Dokploy, and whether Deplo can reach its disk.
- *
- * Deplo copies a volume by asking the agent ON the host that holds it - there is
- * no other way in (ADR-0006), and agents cannot dial each other. So a Dokploy
- * machine with no Deplo agent is a machine whose data cannot move, and that is
- * worth knowing BEFORE an import rather than at the moment of the cutover.
- *
- * The first entry is always the host Dokploy itself runs on, which has no server
- * row over there and is the empty id here.
+ * One MACHINE behind that Dokploy, and whether Deplo can reach its disk. Deplo
+ * copies a volume by asking the agent ON the host that holds it - there is no
+ * other way in (ADR-0006), and agents cannot dial each other.
  */
 export interface PlanServer {
   sourceId: string;
@@ -325,12 +275,6 @@ export interface ImportRunDTO {
   /**
    * When the process driving this run last said it was alive, or null while
    * nothing has picked it up.
-   *
-   * The one honest answer to "is this actually doing something". A run is a row
-   * saying `running`, which it keeps saying whether or not any control plane is
-   * driving it - so the panel used to report "Migration in progress" over a run
-   * nobody had claimed, with no log, for as long as it took somebody to ask.
-   * Compared against `MIGRATION_HEARTBEAT_STALE_MS` by whoever reads it.
    */
   heartbeatAt: string | null;
   /** When its report was closed by the person who started it. Null while the
@@ -339,15 +283,6 @@ export interface ImportRunDTO {
   /**
    * The path of the last thing this run touched (`Project / Environment /
    * service`), or null before it has touched anything.
-   *
-   * Only the ACTIVE-run read fills it in; the history list leaves it null,
-   * because a finished run says where it got to with its whole report.
-   *
-   * It exists because a wizard that reloads loses everything: the loop lives in
-   * the tab, and so did the only record of which project it was on. The server
-   * has never known the DENOMINATOR - what somebody selected is not stored - but
-   * it has always known the last row written, and "last: jellyfin" is the half
-   * that answers "where is it".
    */
   lastPath: string | null;
 }
@@ -392,10 +327,7 @@ export interface ConnectInput {
 /* ------------------------------------------------------------------ */
 
 /**
- * The entry gate. `create_projects` is the smallest capability that can produce
- * what an import produces, and `requireTeamWide` refuses a narrowed API token or
- * a member on a project-scoped role: an import writes across the whole team, so a
- * principal that only reaches one corner of it must not start one.
+ * The entry gate.
  */
 export async function assertImportGate(): Promise<{ teamId: string }> {
   await requireTeamWide("import from Dokploy");
@@ -429,12 +361,6 @@ export async function credentialFor(
 /**
  * One Dokploy service as `project.all` gives it: an id, a kind, and whatever else
  * happened to be projected.
- *
- * `project.all` is NOT the rows. Measured against a real instance it returns
- * `{applicationId, name, applicationStatus}` for an application and, for a
- * database, `{postgresId}` and nothing else — no name, no `appName`, no
- * `serverId`. So this carries an OPTIONAL name (a label for a service whose detail
- * could not be read) and everything else comes from `getService`.
  */
 interface SourceService {
   kind: "application" | "compose" | DokployDbKind;
@@ -496,10 +422,6 @@ async function nameOfService(
 
 /**
  * How many services a compose file declares, or null when it is not valid YAML.
- *
- * `composeServiceNames` answers `[]` to both questions, and the report has to
- * tell them apart: "this file is broken" and "this file is empty" are different
- * things to do about an app that will otherwise never deploy.
  */
 function composeServiceCount(compose: string): number | null {
   let doc: unknown;
@@ -543,15 +465,8 @@ function nameOf(
 /* ------------------------------------------------------------------ */
 
 /**
- * Read the source instance and describe what an import would do — without
- * writing anything.
- *
- * The per-service detail calls run here, not only at import time, because the
- * preview has to be able to say the three things that would otherwise only
- * surface as a failure halfway through: this hostname belongs to another team,
- * this compose needs a grant you do not hold, this engine does not exist here.
- * The lint predicates run against the ALREADY-REWRITTEN compose, so the answer
- * the preview gives is the answer the import will get.
+ * Read the source instance and describe what an import would do — without writing
+ * anything.
  */
 export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
   const { teamId } = await assertImportGate();
@@ -616,11 +531,9 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           // fact into an HTTP 404 in the report.
           if (line.targetKind === null) {
             line.status = "unsupported";
-            // Its NAME is still worth one call. `project.all` gives a database
-            // nothing but its id, so the line otherwise reads
-            // "jiNnZQIEqsTkIARVHq0He has no equivalent here" - true, and useless to
-            // the person who has to decide what to do about it. A refusal here
-            // changes nothing: the id stands, as it did before.
+            // Its NAME is still worth one call. `project.all` gives a database nothing but its
+            // id, so the line otherwise reads "jiNnZQIEqsTkIARVHq0He has no equivalent here" -
+            // true, and useless to the person who has to decide what to do about it.
             line.name = await nameOfService(c, svc);
             line.notes.push(`Deplo has no ${svc.kind} engine.`);
             services[index] = line;
@@ -654,11 +567,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
               ...(detail as DokployDatabase),
               name: line.name,
             });
-            // The port the review needs to talk about. Carried whatever the caller
-            // may do with it - this describes the SOURCE, and whether it can be
-            // published here is a separate fact the review states once at the top -
-            // so a screen with no port controls can still say how many databases
-            // are about to lose theirs.
+            // The port the review needs to talk about.
             line.exposedPort = mappedDb.value?.exposedPort ?? null;
             line.notes.push(...mappedDb.notes);
             services[index] = line;
@@ -760,11 +669,6 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
 
 /**
  * Compose warnings worth a REPORT line, borrowed from the editor's own linter.
- *
- * Neither of these stops an import, and both are things the stack's author would
- * see the moment they opened the compose editor - which, on an import, is the one
- * time nobody does: the file arrives from somewhere else and goes straight to a
- * deploy. A service named `deplo` deploys nowhere the moment it gets a domain.
  */
 function composeAdvice(compose: string): string[] {
   return lintCompose(compose)
@@ -772,10 +676,8 @@ function composeAdvice(compose: string): string[] {
       (d) =>
         d.rule === "reserved-service-name" ||
         d.rule === "network-aliases-dropped" ||
-        // A service on the host's network namespace is not reachable through
-        // Deplo's proxy, so its address (if it had one over there) is now a
-        // host port and nothing else. Said here because the compose editor,
-        // which says it too, is the one screen an import never opens.
+        // A service on the host's network namespace is not reachable through Deplo's proxy,
+        // so its address (if it had one over there) is now a host port and nothing else.
         d.rule === "network-mode-host" ||
         d.rule === "network-mode-conflict",
     )
@@ -783,12 +685,9 @@ function composeAdvice(compose: string): string[] {
 }
 
 /**
- * Which of deplo's compose gates this file would trip, as sentences.
- *
- * Deliberately the SAME predicates `createApp` runs (`lib/deploy/compose-lint.ts`),
- * because the preview has no business disagreeing with the write path. The two
- * hard refusals (`extends`/`include`/`label_file`, and claiming a reserved name on
- * the shared network) have no grant that lifts them and are reported as such.
+ * Which of deplo's compose gates this file would trip, as sentences. Deliberately
+ * the SAME predicates `createApp` runs (`lib/deploy/compose-lint.ts`), because the
+ * preview has no business disagreeing with the write path.
  */
 function composeBlockers(
   compose: string,
@@ -860,12 +759,8 @@ async function existingNames(teamId: string): Promise<{
 }
 
 /**
- * Every hostname on this instance that belongs to a DIFFERENT team.
- *
- * `addDomain` refuses those (`assertHostnameNotAnotherTeams` — a hostname belongs
- * to one team), and `createApp`'s auto-domain silently falls back to a generated
- * name instead. Knowing the set up front is what lets the preview say so before
- * anything is written.
+ * Every hostname on this instance that belongs to a DIFFERENT team. Knowing the
+ * set up front is what lets the preview say so before anything is written.
  */
 async function hostnamesOwnedElsewhere(teamId: string): Promise<Set<string>> {
   const rows = await getDb()
@@ -879,24 +774,8 @@ async function hostnamesOwnedElsewhere(teamId: string): Promise<Set<string>> {
 }
 
 /**
- * Every machine behind that Dokploy, each paired with the Deplo server at the
- * same address - or nothing, when Deplo has no agent there.
- *
- * `dokployMachines` is the same answer for a caller holding no plan: the CUTOVER
- * needs exactly one field out of it - which Deplo server can read a given Dokploy
- * host's disk - and takes it from here rather than from the browser. That mapping
- * used to be a client input, and the wizard filled every machine in with the Deplo
- * host: the export then read a volume that was not on that machine, Docker made an
- * empty one on the spot, and the copy overwrote real data with nothing while
- * reporting success. An address is a fact; it is not something to be asked.
- *
- * Matched on ADDRESS, because that is the only thing the two systems share: a
- * Dokploy server row carries an IP, a Deplo server row carries the ip/host the
- * agent was registered with, and one machine is one address. A storage-only host
- * is not a match: it has no Docker to export a volume from.
- *
- * The Dokploy host itself comes first and is the empty id, the same key the
- * server mapping and the cutover already use for it.
+ * Every machine behind that Dokploy, each paired with the Deplo server at the same
+ * address - or nothing, when Deplo has no agent there.
  */
 export async function dokployMachines(
   c: DokployCredential,
@@ -907,11 +786,6 @@ export async function dokployMachines(
 
 /**
  * The addresses somebody has already corrected for this Dokploy, by machine.
- *
- * Read before every plan, because the correction has to outlive the server row
- * it was made on - that row is removed at the end of each attempt, and without
- * this the next attempt re-derived the panel's name and asked for the same fix
- * again.
  */
 async function rememberedAddresses(
   teamId: string,
@@ -966,15 +840,6 @@ export async function rememberDokployMachineAddress(
 
 /**
  * Point Deplo at where a machine of this Dokploy really is, and REMEMBER it.
- *
- * One verb for what used to be two halves that came apart: the server row got
- * the new address and the knowledge died with the row, which is removed at the
- * end of every attempt. Now the same call proves the address and writes it down,
- * so the next attempt registers the machine there instead of asking again.
- *
- * Proof first, memory second, and never the other way round: a remembered
- * address is used AUTOMATICALLY next time, so remembering one nobody reached
- * would turn one bad guess into a permanent one.
  */
 export async function setDokployMachineAddress(input: {
   sourceUrl: string;
@@ -1017,13 +882,8 @@ async function planMachines(
           s.ip?.trim().toLowerCase() === a ||
           s.host?.trim().toLowerCase() === a,
       ) ??
-      // The same-machine case, which the wizard has a toggle for: the other
-      // platform runs on the box Deplo runs on. The addresses rarely match in
-      // FORM (a panel hostname here, an IP on the row), so without this the
-      // machine reads as unknown - and registering it again is refused, because
-      // a second row for the same host would re-bootstrap the fleet's own agent
-      // as a migration source. The agent that can read those disks is already
-      // installed; this is how the wizard finds it.
+      // The same-machine case, which the wizard has a toggle for: the other platform runs
+      // on the box Deplo runs on.
       (isDeploHostServer({ ip: a, host: a }, self)
         ? mine.find((s) => isDeploHostServer(s, self))
         : undefined);
@@ -1038,11 +898,8 @@ async function planMachines(
   }
 
   /**
-   * A remembered correction wins over the derived address, and BOTH are tried
-   * for the match. A row registered before the correction existed still carries
-   * the panel's name, and missing it would register the same machine twice -
-   * `assertImportHostIsNew` only refuses an address it already knows, and these
-   * two are different strings for one box.
+   * A remembered correction wins over the derived address, and BOTH are tried for
+   * the match.
    */
   const machine = (sourceId: string, name: string, derived: string | null) => {
     const address = remembered.get(sourceId) ?? derived;
@@ -1173,9 +1030,7 @@ export async function beginDokployImport(input: {
 /**
  * Attempts before Deplo stops trying to take its agent off a migration source and
  * asks a person instead: the one made while the wizard is still open, then two
- * from the sweep. The failures worth retrying are all transient - a host still
- * finishing the last volume copy, an RPC that timed out, a box rebooting - and
- * they clear in under a minute far more often than they do not.
+ * from the sweep.
  */
 const UNINSTALL_ATTEMPTS = 3;
 
@@ -1186,9 +1041,7 @@ const UNINSTALL_BACKOFF_MS = [60_000, 5 * 60_000];
 
 /**
  * The deadline for the ONE attempt made inline, while somebody is watching the
- * wizard finish. The RPC's own deadline is a minute, and three of those in a row
- * is how "Finish" used to sit for three minutes on a host that had gone away. On
- * a host that is up, removing a unit file and a binary takes well under this.
+ * wizard finish.
  */
 const UNINSTALL_INLINE_DEADLINE_MS = 15_000;
 
@@ -1198,23 +1051,6 @@ const UNINSTALL_DRAIN_BATCH = 8;
 /**
  * The last act of a migration: take Deplo's agent back off every machine it was
  * installed on to read Dokploy, and forget those rows.
- *
- * Automatic, because a migration that ends with "now go and remove the agent
- * yourself" is not finished - the operator never installed it, so undoing it is
- * not their errand. What changed is that "automatic" now survives the request:
- * the intent is written on the server row (`uninstall_next_at`), one attempt is
- * made here while the wizard is still open, and the sweep carries the rest. A
- * person is asked only once Deplo has given up, which takes three attempts over
- * several minutes - and by then the sentence the host refused with is on the row
- * to show them.
- *
- * The actor is the migration's, not the caller's: this runs as the closing half
- * of the import, and the Activity trail should say who asked for the migration.
- *
- * ONE thing still holds it back completely: a volume copy that FAILED, because
- * the bytes are still over there and the agent is the only way to fetch them.
- * That is not a failure to retry, it is a decision to leave to a person, so it
- * writes its `manual` line and schedules nothing.
  */
 async function removeMigrationSources(
   runId: string,
@@ -1306,32 +1142,8 @@ async function scheduleSourceUninstalls(
 
 /**
  * The wizard was walked away from, and the machines it was reading are somebody
- * else's.
- *
- * Registering a source is not a free act: Deplo puts its own agent on another
- * platform's host to read the disks. Finishing an import takes that agent back
- * off by itself ({@link removeMigrationSources}); LEAVING the page used to take
- * nothing off at all, so the row outlived the plan it was made for - an agent
- * running on a machine nobody meant to hand over for good, and a "Migration
- * source" in Settings -> Servers with no migration behind it.
- *
- * So leaving ends the same way finishing does, on the same durable ladder: one
- * attempt now, the sweep behind it, a person asked only once Deplo has given up.
- * The wizard calls it on the way out; the identity is the person leaving, and
- * the capability is the one that registered the sources in the first place.
- *
- * Two things it refuses to touch, both because the bytes still matter:
- *
- *  - a run IN FLIGHT owns those agents (it reads volumes through them) and
- *    removes them itself when it ends - a second tab that never started it must
- *    not end them from under it - and a STOPPED one is resumed by re-running,
- *    which needs the same agents;
- *  - a run that ended with a volume copy FAILED is the one case where the agent
- *    is deliberately left behind, and this is the same refusal
- *    {@link removeMigrationSources} makes.
- *
- * Returns how many sources it is taking off, which is 0 far more often than not
- * (a Dokploy whose machines were all ours already registers nothing).
+ * else's. The wizard calls it on the way out; the identity is the person leaving,
+ * and the capability is the one that registered the sources in the first place.
  */
 export async function abandonDokployImport(): Promise<number> {
   const { teamId } = await requireCapability("create_projects");
@@ -1363,14 +1175,6 @@ export async function abandonDokployImport(): Promise<number> {
 /**
  * One attempt at taking Deplo off one migration source, and what to do with the
  * answer.
- *
- * Success deletes the server row, which takes the pending intent with it - the
- * row IS the queue entry, which is why there is no second table to keep in step.
- * A failure either moves the row along the ladder or, on the last rung, stops
- * trying: `uninstall_next_at` goes NULL, the host's own words go into
- * `uninstall_error`, and only THEN does anything appear in front of a person -
- * the card on the migration screen, the line under Migration sources, a `manual`
- * row in the report and an entry in Activity.
  */
 async function attemptSourceUninstall(
   source: { id: string; name: string; attempts: number; runId: string | null },
@@ -1439,11 +1243,8 @@ async function attemptSourceUninstall(
 
 /**
  * The sweep half: retry every migration source whose uninstall is still owed.
- *
- * Runs on the preview reaper's tick (every 60s, under its lease), because that is
- * already a loop that dials hosts on a schedule and this is the same shape of
- * work. There is no catch-up window to miss: the predicate is a DB state, so a
- * tick that never ran costs nothing but the delay.
+ * There is no catch-up window to miss: the predicate is a DB state, so a tick that
+ * never ran costs nothing but the delay.
  */
 export async function drainMigrationSourceUninstalls(
   now: Date = new Date(),
@@ -1491,12 +1292,9 @@ export async function drainMigrationSourceUninstalls(
   }
 }
 
-/** Close a run. Idempotent: a finished run is left alone.
- *
- *  The status flips FIRST, and only the call that flipped it sweeps the migration
- *  sources: closing is the one atomic step here, so a second Finish (a retried
- *  request, a second tab) cannot uninstall twice or write the same "still on that
- *  host" line again. Counts come last, because the sweep writes report rows. */
+/**
+ * Close a run. Counts come last, because the sweep writes report rows.
+ */
 export async function finishDokployImport(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
   const closed = await getDb()
@@ -1548,10 +1346,9 @@ export async function refreshCounts(
       created: count("created"),
       skipped: count("skipped"),
       failed: count("failed"),
-      // `unsupported` counts as "needs a look": it is a decision left to a
-      // person, exactly like `manual`, and its own column would be a fifth
-      // number nobody asked for. Left out of every total, a run of 92 items
-      // reported 91 - which reads as a lost line, not as a category.
+      // `unsupported` counts as "needs a look": it is a decision left to a person,
+      // exactly like `manual`, and its own column would be a fifth number nobody asked
+      // for.
       manual: count("manual") + count("unsupported"),
     })
     .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
@@ -1562,13 +1359,9 @@ export async function refreshCounts(
 }
 
 /**
- * A report collector: rows go to the run AND come back to the caller.
- *
- * `at()` deepens the breadcrumb but SHARES the items array — the caller gets one
- * flat report for the whole project, in the order things happened. (A per-level
- * array would leave the returned report holding only the top level while the
- * database held everything, which is exactly the shape of bug that makes a
- * progress screen lie.)
+ * A report collector: rows go to the run AND come back to the caller. `at()`
+ * deepens the breadcrumb but SHARES the items array — the caller gets one flat
+ * report for the whole project, in the order things happened.
  */
 class Report {
   constructor(
@@ -1612,11 +1405,7 @@ class Report {
     await getDb()
       .insert(itemsTable)
       .values({ id: newId("dimi"), runId: this.runId, ...row });
-    // Everything this run CREATES is the run's to write until it ends. Marked
-    // here rather than at each create call because this is the one place that
-    // already knows all three things it takes - which run, which kind, which id
-    // - so a new kind of thing an import can create cannot forget to say so.
-    // Never on `skipped`: a project that was already here goes on working.
+    // Everything this run CREATES is the run's to write until it ends.
     if (row.outcome === "created") await markMigrating(this.runId, row);
   }
 
@@ -1686,10 +1475,6 @@ async function markMigrating(
 
 /**
  * Hand everything this run created back to the people who own it.
- *
- * Called from every door out of `running` - finished, stopped, and interrupted
- * by the next run - because a row left marked by a run nobody is running is a
- * service frozen for good, and the only way back would be the database.
  */
 async function releaseMigrating(runId: string): Promise<void> {
   for (const table of Object.values(MIGRATING_TABLES))
@@ -1724,23 +1509,13 @@ export interface ImportProjectInput extends ConnectInput {
 }
 
 /**
- * Import ONE Dokploy project into the active team.
- *
- * One project per call on purpose: the wizard drives the loop, so progress is
- * real, every request is short, and an import interrupted halfway can be resumed
- * by running it again — the second pass skips what is already here.
- *
- * The source is re-read here rather than taken from the scan's result: the plan
- * the client holds is a rendering, and app configuration must never arrive from a
- * browser.
+ * Import ONE Dokploy project into the active team. The source is re-read here
+ * rather than taken from the scan's result: the plan the client holds is a
+ * rendering, and app configuration must never arrive from a browser.
  */
 /**
- * The import's own writes are exempt from the marker they set.
- *
- * It creates apps through `createApp` and writes their volumes through
- * `setAppVolumes` - the same functions, through the same gates, that a person
- * clicking goes through. Without this the run would be refused by its own
- * marker on everything after the first write.
+ * The import's own writes are exempt from the marker they set. Without this the
+ * run would be refused by its own marker on everything after the first write.
  */
 export async function importDokployProject(
   input: ImportProjectInput,
@@ -1777,17 +1552,16 @@ async function runImportDokployProject(
     source.name,
   );
 
-  // Read ONCE, up here, for the same reason the scan reads it: without the grant
-  // a database's port cannot be published at all, and knowing that BEFORE the
-  // create is what lets the report say the true reason instead of guessing at
-  // whichever one the failed create happened to raise.
+  // Read ONCE, up here, for the same reason the scan reads it: without the grant a
+  // database's port cannot be published at all, and knowing that BEFORE the create is
+  // what lets the report say the true reason instead of guessing at whichever one the
+  // failed create happened to raise.
   const mayExposePorts = await canExposePorts();
 
-  // Which of OUR servers is each Dokploy machine, as an address match rather than
-  // the caller's `servers` mapping - that one falls back to the Deplo host for a
-  // machine we have no agent on, which is the right default for "where does this
-  // land" and the wrong answer to "is this the same box". Read once, and only if
-  // a database asks.
+  // Which of OUR servers is each Dokploy machine, as an address match rather than the
+  // caller's `servers` mapping - that one falls back to the Deplo host for a machine
+  // we have no agent on, which is the right default for "where does this land" and
+  // the wrong answer to "is this the same box".
   let machineHosts: Map<string, string | null> | null = null;
   const hostOfMachine = async (sourceServerId: string) => {
     if (!machineHosts)
@@ -1800,10 +1574,7 @@ async function runImportDokployProject(
     return machineHosts.get(sourceServerId) ?? null;
   };
 
-  // Where a service lands when nobody named a host. Mirrors resolveTeamServer's
-  // own rule - a single usable server is the answer, several is a refusal - so
-  // "is the source on this box" can be asked even for a caller that sent no
-  // placements at all (the API, and every import before the review had columns).
+  // Where a service lands when nobody named a host.
   let soleServer: string | null | undefined;
   const targetServerFor = async (given: string | undefined) => {
     if (given) return given;
@@ -1859,10 +1630,10 @@ async function runImportDokployProject(
         });
         continue;
       }
-      // The DETAIL is loaded here rather than inside each importer, because it is
-      // also where the service's real name lives: `project.all` gives a database
-      // nothing but its id, so a report scoped before this call would have an
-      // empty breadcrumb for exactly the objects hardest to identify.
+      // The DETAIL is loaded here rather than inside each importer, because it is also
+      // where the service's real name lives: `project.all` gives a database nothing but
+      // its id, so a report scoped before this call would have an empty breadcrumb for
+      // exactly the objects hardest to identify.
       let detail: DokployApplication | DokployCompose | DokployDatabase;
       try {
         detail = await loadService(c, svc);
@@ -1879,12 +1650,9 @@ async function runImportDokployProject(
         continue;
       }
 
-      // Deplo caps a name at 60 characters and so does Dokploy's own column at
-      // 63 for `appName` - but its display NAME is free text, and a service
-      // called after a team, a region and a cluster goes past it. Refusing the
-      // whole app over its title is the wrong trade: an app that arrives
-      // renamed can be renamed back, an app that never arrives is a migration
-      // someone has to notice.
+      // Deplo caps a name at 60 characters and so does Dokploy's own column at 63 for
+      // `appName` - but its display NAME is free text, and a service called after a team,
+      // a region and a cluster goes past it.
       const fullName = nameOf(detail, svc);
       const name = truncateName(fullName);
       const svcReport = envReport.at(name);
@@ -1931,10 +1699,9 @@ async function runImportDokployProject(
               // nothing. `null` is a decision ("publish nothing"), not a silence.
               exposedPort: placement?.exposedPort,
               mayExposePorts,
-              // Whether the machine this database runs on over there IS the machine
-              // it is about to run on here - the one case where the port it wants is
-              // held by the very container we are importing, and stopping that frees
-              // it. False when that Dokploy machine maps to no server of ours.
+              // Whether the machine this database runs on over there IS the machine it is about
+              // to run on here - the one case where the port it wants is held by the very
+              // container we are importing, and stopping that frees it.
               sourceIsTargetHost:
                 serverId != null &&
                 (await hostOfMachine(svc.serverId)) === serverId,
@@ -2051,11 +1818,7 @@ export interface ServicePlacement {
   /** Null (or absent) is Automatic: use a build server if the fleet has one. */
   buildServerId?: string | null;
   /**
-   * A database's host port, decided in the review. Three distinct values, and the
-   * difference matters: ABSENT keeps the source's own port (what an API or MCP
-   * caller that knows nothing about this field gets, and what the import always
-   * did), `null` publishes nothing, and a number publishes there instead.
-   * Ignored for anything that is not a database.
+   * A database's host port, decided in the review.
    */
   exposedPort?: number | null;
 }
@@ -2080,9 +1843,7 @@ async function resolvePlacements(
   const servers = await listServersForTeam(teamId);
   const canRun = new Set(servers.filter(canHostWorkloads).map((s) => s.id));
   // Wider than `canRun` on purpose: a build-only host is a legal builder and an
-  // illegal target, which is the whole point of the two columns. A migration
-  // source is neither: it has Docker, but it is the machine we are importing FROM,
-  // and a build there would hand it this app's source and decrypted env.
+  // illegal target, which is the whole point of the two columns.
   const canBuild = new Set(
     servers.filter((s) => !s.storageOnly && !s.importOnly).map((s) => s.id),
   );
@@ -2112,10 +1873,9 @@ async function resolvePlacements(
             "The build server picked for this app is not one this team can build on - it builds automatically instead.",
         });
     }
-    // A port outside the range createDatabase accepts is refused HERE, where the
-    // report can name the service, instead of down at the create where it would
-    // read as "the database could not be made". The source's own port is used
-    // instead - the same thing an absent override means.
+    // A port outside the range createDatabase accepts is refused HERE, where the report
+    // can name the service, instead of down at the create where it would read as "the
+    // database could not be made".
     let exposedPort = p.exposedPort;
     if (typeof exposedPort === "number" && !isValidExposePort(exposedPort)) {
       await report.add({
@@ -2173,11 +1933,6 @@ async function ensureProject(
 
 /**
  * The deplo Environment for a Dokploy one.
- *
- * Matched by NAME against the three a new project already has (Development /
- * Preview / Production), because that is what a Dokploy "production" environment
- * means here — creating a second one beside it would leave every project with two
- * productions.
  */
 async function ensureEnvironment(
   projectId: string,
@@ -2245,11 +2000,6 @@ async function appIdsInProject(
  * One Dokploy application or compose stack → one deplo App, with its env vars,
  * config files, primary domain, extra domains, volumes, resource limits,
  * basic-auth users and crons.
- *
- * `createApp` does the first five in a single call (it is the same path a template
- * install takes), which is why it is worth passing everything through it rather
- * than assembling rows here: slug retries, the compose gates, placement and the
- * auto-domain all stay in one place.
  */
 async function importAppService(
   c: DokployCredential,
@@ -2299,14 +2049,7 @@ async function importAppService(
   const argEntries = parseEnvBlob(
     (detail as DokployApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));
-  // Every migrated variable comes across PLAIN, whatever it is called. The
-  // heuristic that guesses "secret" from a key name exists for someone typing a
-  // variable into Deplo; here it would mask values that were readable on the
-  // platform they came from, and the first thing anybody does after a migration
-  // is compare the two side by side. A masked value has no reveal path at the
-  // `view` floor, and a secret-typed one is dropped from a fork's preview - so
-  // the guess turns a working import into one that cannot be checked. Whoever
-  // wants them hidden flips the type in Variables afterwards.
+  // Every migrated variable comes across PLAIN, whatever it is called.
   const env = [...envEntries, ...argEntries].map((e) => ({
     ...e,
     type: "plain" as const,
@@ -2343,14 +2086,6 @@ async function importAppService(
 
   /**
    * A compose service that is really one app built from its own repository.
-   *
-   * Dokploy's "Compose" with a GitHub source is how people run a plain app whose
-   * repo happens to carry a compose file - one service, `build: .`, a port, a
-   * volume. Imported as a stack it lost the repository AND could not build: the
-   * stack Deplo ships the agent is opaque YAML with nothing beside it, so
-   * `build: .` points at a directory holding one compose file. It arrived
-   * looking migrated and was dead on arrival. Read as what it is, it is a git
-   * app, and every path below treats it as one.
    */
   const repoTarget = isCompose ? cloneTarget(detail) : null;
   const asRepoApp = repoTarget ? composeAsRepoApp(yamlText) : null;
@@ -2358,10 +2093,10 @@ async function importAppService(
 
   const domains = mapDomains(detail.domains, { isCompose });
   notes.push(...domains.notes);
-  // The app's own address wins the primary slot over a temporary one, whatever
-  // order the source kept them in: a throwaway host is first over there simply
-  // because Dokploy minted it first, and promoting it here would demote the name
-  // people actually type to a secondary row.
+  // The app's own address wins the primary slot over a temporary one, whatever order
+  // the source kept them in: a throwaway host is first over there simply because
+  // Dokploy minted it first, and promoting it here would demote the name people
+  // actually type to a secondary row.
   const primary =
     domains.value.find((d) => !d.generated) ?? domains.value[0] ?? null;
   const mounts = mapMounts(detail.mounts, { isCompose });
@@ -2400,10 +2135,8 @@ async function importAppService(
         "The compose file is kept inline from now on, so changes in the repository will not follow.",
       );
     const adapted = adaptComposeForDeplo(yamlText);
-    // An `env_file` naming a file this stack does not carry is the other
-    // platform's own env file under its own name (`stack.env` and friends).
-    // Deplo's agent writes `.env` next to the stack, so point it there rather
-    // than let `compose up` refuse the project over a file nobody creates.
+    // An `env_file` naming a file this stack does not carry is the other platform's own
+    // env file under its own name (`stack.env` and friends).
     const retargeted = retargetPlatformEnvFiles(
       adapted.compose,
       mounts.value.files.map((f) => f.filePath),
@@ -2412,13 +2145,8 @@ async function importAppService(
     notes.push(...adapted.changes, ...retargeted.changes);
     notes.push(...composeAdvice(compose));
     // A compose file that parses to nothing deployable still comes across (its
-    // variables, domains and mounts are the part that takes an afternoon to
-    // retype), but it used to do so without a word - and the app it makes can
-    // never deploy. Say it here, where the report is read.
-    // A stack Deplo keeps as a stack has no repository behind it, so a service
-    // that builds from source cannot build HERE - and it used to arrive silent,
-    // failing its first deploy with a docker error nobody could trace back to
-    // the migration.
+    // variables, domains and mounts are the part that takes an afternoon to retype),
+    // but it used to do so without a word - and the app it makes can never deploy.
     const builders = composeBuildServices(compose);
     if (builders.length > 0)
       notes.push(
@@ -2433,10 +2161,9 @@ async function importAppService(
       notes.push(
         "Its compose file declares no services, so there is nothing to deploy yet. Add them under Compose.",
       );
-    // An `env_file` the author wrote resolves inside the stack's own directory,
-    // which is a thing the AGENT does - and an older one on this host does not,
-    // so the stack would come up looking for a file that is not there. Asked
-    // only when there is an env_file to care about.
+    // An `env_file` the author wrote resolves inside the stack's own directory, which
+    // is a thing the AGENT does - and an older one on this host does not, so the stack
+    // would come up looking for a file that is not there.
     if (/^\s*env_file\s*:/m.test(compose) && home.serverId) {
       const { serverSupports, COMPOSE_PROJECTDIR_CAPABILITY } =
         await import("../infra/agent-client");
@@ -2445,11 +2172,7 @@ async function importAppService(
           "Its compose file names an `env_file`, which needs a newer agent on this server than the one running there. Update the server's agent under Servers before deploying.",
         );
     }
-    // The host ports the stack binds, checked against the machine it is landing
-    // on. A database says this already and says it well; a stack said nothing
-    // and the collision arrived later as a `docker compose up` error nobody
-    // could connect back to the import. 80 and 443 belong to the proxy, so an
-    // imported reverse proxy trips this every time.
+    // The host ports the stack binds, checked against the machine it is landing on.
     const wantedPorts = composeHostPorts(compose);
     if (wantedPorts.length > 0 && home.serverId && (await canExposePorts())) {
       try {
@@ -2498,10 +2221,10 @@ async function importAppService(
   // consistent from the start.
   if (primary?.port) build.port = primary.port;
 
-  // Claiming a hostname needs `manage_domains`, and an import must not turn a
-  // missing permission into a failed app: without it the app comes across on a
-  // generated host and the report says which names were left behind, exactly
-  // like the extra domains below.
+  // Claiming a hostname needs `manage_domains`, and an import must not turn a missing
+  // permission into a failed app: without it the app comes across on a generated host
+  // and the report says which names were left behind, exactly like the extra domains
+  // below.
   const mayClaimHosts = await hasCapability("manage_domains");
   // Only a REAL hostname is a claim the permission gates. A throwaway address is
   // re-hosted onto one of Deplo's own either way (`addImportedDomains`), so
@@ -2531,11 +2254,7 @@ async function importAppService(
     // createApp would either refuse it or point this app at the old box.
     autoDomain:
       mayClaimHosts && primary && !primary.generated ? primary.host : null,
-    // A service that answered on NOTHING over there gets nothing here. Deplo
-    // mints an address for every app it creates, which is right everywhere else
-    // and wrong on an import: a worker, a queue consumer or a Pi-hole reached on
-    // port 53 would arrive published on a public host nobody asked for, routed
-    // at whatever port happened to be first in its compose.
+    // A service that answered on NOTHING over there gets nothing here.
     noAutoDomain: domains.value.length === 0,
     composeService: isCompose ? (primary?.service ?? null) : null,
     composePort: isCompose ? (primary?.port ?? null) : null,
@@ -2544,10 +2263,7 @@ async function importAppService(
     // here would be a row nobody ever turns back into a file.
     mounts:
       isCompose && mounts.value.files.length > 0 ? mounts.value.files : null,
-    // The icon comes across with everything else. Dokploy stores it inline, which
-    // is what deplo stores too, so there is nothing to fetch - and an app that had
-    // one over there arriving with the generic glyph here is the kind of detail
-    // that makes a migration feel lossy even when nothing was lost.
+    // The icon comes across with everything else.
     logo: mapLogo(detail.icon),
     deploy: false,
   });
@@ -2563,16 +2279,8 @@ async function importAppService(
   });
   const target = { kind: "app", id: created.id };
 
-  // EVERY address the app answered on over there has to be an address it answers
-  // on here. Two of them cannot come across under their own name - the source's
-  // throwaway hosts (they carry ITS server's IP) and a real name another team on
-  // this Deplo already serves - and the old behaviour was to drop them, which
-  // turned an app with two addresses into an app with none. They are RE-HOSTED
-  // instead: Deplo mints a temporary address of its own and keeps the route.
-  //
-  // The primary is minted inside createApp, before this code can say what it
-  // should serve, so the app's first source domain is applied ONTO it; the rest
-  // go through `addImportedDomains`, which mints one address per source host.
+  // EVERY address the app answered on over there has to be an address it answers on
+  // here.
   const rehosted = new Map<string, string>();
   if (domains.value.length === 0)
     notes.push(
@@ -2597,10 +2305,8 @@ async function importAppService(
       );
     const row = landed[0];
     if (row && row.name.toLowerCase() !== primary.host) {
-      // The address changed - because it was a throwaway, or because the real
-      // one was taken. Either way the ROUTE is applied to what it landed on, and
-      // the row remembers where it came from so the app's Domains section can
-      // say so instead of leaving someone to load a URL that is gone.
+      // The address changed - because it was a throwaway, or because the real one was
+      // taken.
       await applyImportedRoute(row.id, importedRoute(primary));
       rehosted.set(primary.host, row.name);
       notes.push(
@@ -2609,20 +2315,8 @@ async function importAppService(
           : `${primary.host} could not be taken, so the app answers on ${row.name} instead.`,
       );
     } else if (row) {
-      // createApp mints the primary domain itself and knows only its NAME, so
-      // everything else about the route has to be applied afterwards.
-      //
-      // The certificate was already done here: it is explicit intent (certs are
-      // opt-in, and someone who had one over there asked for it) and re-ticking
-      // it by hand on every app is the difference between an import and a
-      // to-do list. The PATH was not, and that was the bug: an app served on
-      // `example.com/api` over there arrived claiming the whole of
-      // `example.com` here - a different route, and one that collides with
-      // whatever already answers on that host. Same for the entrypoint.
-      //
-      // Deliberately NOT the port: `ensureAutoDomain` already derived it from
-      // the build settings (themselves taken from this very domain), and writing
-      // it again would pin it as an override that stops following them.
+      // createApp mints the primary domain itself and knows only its NAME, so everything
+      // else about the route has to be applied afterwards.
       const patch: DomainPatch = {};
       if (row.certProvider !== primary.certProvider)
         patch.certProvider = primary.certProvider;
@@ -2644,10 +2338,9 @@ async function importAppService(
   }
 
   const rest = domains.value.filter((d) => d !== primary);
-  // A real hostname is asked for first. One that cannot be taken - another team
-  // here already serves it, or this member may not claim names - is NOT dropped
-  // either: it joins the re-hosting below, for the same reason a throwaway does.
-  // Going from two addresses to one is the same failure as going to none.
+  // A real hostname is asked for first. One that cannot be taken - another team here
+  // already serves it, or this member may not claim names - is NOT dropped either: it
+  // joins the re-hosting below, for the same reason a throwaway does.
   const refused: MappedDomain[] = [];
   for (const d of rest.filter((d) => !d.generated))
     if (!(await addExtraDomain(created.id, d, notes))) refused.push(d);
@@ -2686,16 +2379,8 @@ async function importAppService(
     }
   }
 
-  // The one place a re-hosted address cannot be fixed from out here: INSIDE the
-  // app's own data. Nextcloud keeps its hostname in `trusted_domains` and
-  // refuses every other name; WordPress keeps `siteurl` in its database and
-  // redirects to it. Both come across byte-for-byte, which is correct and is
-  // exactly why they still name the old machine.
-  //
-  // Deplo does not rewrite bytes inside a tenant's data, so it says so instead -
-  // once, naming the new address, next to the app it applies to. Without this
-  // the app comes up, answers, and shows an error nobody can connect to the
-  // migration.
+  // The one place a re-hosted address cannot be fixed from out here: INSIDE the app's
+  // own data.
   if (rehosted.size > 0) {
     const landedOn = [...new Set(rehosted.values())].join(", ");
     notes.push(
@@ -2703,16 +2388,9 @@ async function importAppService(
     );
   }
 
-  // An address that could not come across is a DEAD address, and the app is
-  // usually still carrying it in its own configuration: `NEXTCLOUD_DOMAIN`,
-  // `SITE_URL`, a CORS origin, a callback URL. Left alone, the app comes up
-  // pointing at the machine it just left - and the person who migrated it reads
-  // that as "the migration half worked".
-  //
-  // So a value that NAMES a re-hosted address is rewritten to the address it
-  // became. Only that substring, only for hosts this import itself moved, and
-  // every variable it touched is named in the report - a value nobody can act on
-  // is not worth preserving out of politeness.
+  // An address that could not come across is a DEAD address, and the app is usually
+  // still carrying it in its own configuration: `NEXTCLOUD_DOMAIN`, `SITE_URL`, a
+  // CORS origin, a callback URL.
   if (rehosted.size > 0) {
     const rewritten = env.map((e) => ({
       key: e.key,
@@ -2739,21 +2417,8 @@ async function importAppService(
     }
   }
 
-  // Every config file is written into the app's Files here and now - the same
-  // write the Storage editor makes - for two different reasons.
-  //
-  // A SINGLE-IMAGE app has no compose file to bind one with, so this IS the
-  // import: the bytes land in Files and the "app" volume `mapMounts` paired with
-  // each one mounts them back where they were. Written BEFORE the volumes,
-  // because a mount whose source file is missing is not a no-op - docker creates
-  // a DIRECTORY there, and the app starts and serves nothing.
-  //
-  // A COMPOSE stack re-materialises `app_mounts` on every bring-up, so its files
-  // would appear anyway - but only after the first deploy, and an import
-  // deliberately deploys nothing. Until then the file existed as a database row
-  // and nowhere a person could look, which reads exactly like a file mount that
-  // did not come across. Writing it now puts it in the Files tab immediately; the
-  // deploy writes the same bytes to the same path, so nothing diverges.
+  // Every config file is written into the app's Files here and now - the same write
+  // the Storage editor makes - for two different reasons.
   const unwritten = new Set<string>();
   for (const f of mounts.value.files) {
     try {
@@ -2776,11 +2441,10 @@ async function importAppService(
     (v) => !(v.type === "app" && unwritten.has(v.projectPath ?? "")),
   );
 
-  // A compose service that came across as an APP keeps its storage: its volumes
-  // were declared in the compose file, not in Dokploy's mounts, so nothing above
-  // saw them - and without them the app arrives with nowhere for the data cutover
-  // to put the bytes. The container path is what the copy pairs on, so that is
-  // the part that has to be right.
+  // A compose service that came across as an APP keeps its storage: its volumes were
+  // declared in the compose file, not in Dokploy's mounts, so nothing above saw them
+  // - and without them the app arrives with nowhere for the data cutover to put the
+  // bytes.
   if (asRepoApp)
     for (const v of composeVolumeMounts(yamlText))
       volumes.push({
@@ -2790,17 +2454,10 @@ async function importAppService(
         readOnly: false,
       });
 
-  // A compose stack's config file is mounted by the stack's OWN yaml, so nothing
-  // in Storage described it and the Storage page - the one place a person looks
-  // for "what files does this app have" - showed an empty list for an app that
-  // demonstrably had one. On the platform this came from that file is right
-  // there in the service's own settings, with its content.
-  //
-  // So it gets its Storage row: a **File** entry pointing at the same file, at
-  // the container path the compose binds it to. The row does not create a second
-  // mount - `injectAppVolumes` skips a path the authored compose already mounts
-  // on that service - it makes the file VISIBLE and editable where every other
-  // kind of storage is.
+  // A compose stack's config file is mounted by the stack's OWN yaml, so nothing in
+  // Storage described it and the Storage page - the one place a person looks for
+  // "what files does this app have" - showed an empty list for an app that
+  // demonstrably had one.
   if (isCompose && compose) {
     const bindings = composeFileBindings(compose);
     for (const f of mounts.value.files) {
@@ -2837,11 +2494,8 @@ async function importAppService(
     volumes = volumes.filter((v) => v.type !== "host");
   }
   // Same shape as the grant filter above, and for the same measured reason:
-  // `setAppVolumes` writes the whole set or nothing, so ONE entry it will not
-  // take used to leave the app with NO storage at all. A Jenkins whose
-  // `/var/run/docker.sock` bind is (rightly) reserved arrived without
-  // `/var/jenkins_home` either - no error on screen, no data on the next
-  // deploy. Refuse per ENTRY, name each one, and write the rest.
+  // `setAppVolumes` writes the whole set or nothing, so ONE entry it will not take
+  // used to leave the app with NO storage at all.
   const refusedMounts: string[] = [];
   volumes = volumes.filter((v) => {
     const path = (v.mountPath ?? "").trim().replace(/\/+$/, "");
@@ -2880,11 +2534,8 @@ async function importAppService(
     }
   }
 
-  // The credential comes across AS IT IS. Putting an inherited password through
-  // Deplo's policy dropped it, and dropping it does not make the app safer - it
-  // publishes an admin panel that was behind a password a moment ago. Measured:
-  // a code-server arrived online and open because "CoderPass123" has no special
-  // character. It is flagged instead, and Access says so.
+  // The credential comes across AS IT IS. Measured: a code-server arrived online and
+  // open because "CoderPass123" has no special character.
   const security = (detail as DokployApplication).security ?? [];
   for (const s of security) {
     try {
@@ -2902,12 +2553,7 @@ async function importAppService(
       `${security.length === 1 ? "Its basic-auth password came" : `Its ${security.length} basic-auth passwords came`} across unchanged, so the app is protected exactly as it was. ${security.length === 1 ? "It was" : "They were"} never checked against Deplo's password rules - rotate ${security.length === 1 ? "it" : "them"} under Access when the migration is done.`,
     );
 
-  // Preview deployments. Dokploy has the same feature and deplo has the whole of
-  // it (enabled, port, how many at once), so a repo that opened a preview per
-  // pull request over there keeps doing it here instead of arriving switched off
-  // with nothing said. Only the three fields that mean the same thing on both
-  // sides travel; a preview's own env, wildcard and certificate are deplo's to
-  // derive.
+  // Preview deployments.
   if (!isCompose) {
     const app = detail as DokployApplication;
     if (app.isPreviewDeploymentsActive) {
@@ -2942,12 +2588,9 @@ async function importAppService(
 }
 
 /**
- * Every occurrence of a re-hosted address, replaced by the one it became.
- *
- * A plain substring swap, because that is how these values are shaped: the host
- * sits inside a URL, a comma-separated list, a connection string. Matching is
- * case-insensitive (a hostname is), and the longest source host goes first so a
- * name that contains another one cannot be half-replaced.
+ * Every occurrence of a re-hosted address, replaced by the one it became. A plain
+ * substring swap, because that is how these values are shaped: the host sits
+ * inside a URL, a comma-separated list, a connection string.
  */
 function rewriteHosts(value: string, hosts: Map<string, string>): string {
   let out = value;
@@ -3036,13 +2679,6 @@ async function importCrons(
 
 /**
  * One Dokploy database → one deplo Database.
- *
- * Unlike an app, this one really starts: deplo has no notion of a database that
- * exists but is not provisioned, so `createDatabase` brings a container up with an
- * empty volume. That is the useful end state — something to restore a dump into —
- * but it means two things get said out loud: the host name changes (the connection
- * strings in the imported variables still point at Dokploy's), and the data does
- * not come with it.
  */
 async function importDatabaseService(
   c: DokployCredential,
@@ -3097,11 +2733,8 @@ async function importDatabaseService(
   }
 
   // The password is carried over on purpose (see mapDatabase), and as a GENERATED
-  // credential: another platform's random token is not something a person chose,
-  // so deplo's account policy does not apply to it. It used to, and it refused
-  // essentially every Dokploy database - those passwords are alphanumeric, so
-  // "at least 1 special character" alone was enough - which silently swapped the
-  // credential that every imported connection string still spells out.
+  // credential: another platform's random token is not something a person chose, so
+  // deplo's account policy does not apply to it.
   const base = {
     name: spec.name,
     type: spec.type,
@@ -3109,10 +2742,7 @@ async function importDatabaseService(
     serverId,
     username: spec.username ?? undefined,
     dbName: spec.dbName ?? undefined,
-    // The source's image, pinned at CREATE so the first provision already runs
-    // it. Setting it afterwards only rewrites the row: the container would keep
-    // running the derived image until somebody pressed Redeploy, and the Data
-    // step would then pour the source's bytes into the wrong binary.
+    // The source's image, pinned at CREATE so the first provision already runs it.
     customImage: spec.customImage,
   };
   const withPassword = {
@@ -3158,10 +2788,7 @@ async function importDatabaseService(
 
   let created = await attempt({ ...withPassword, ...withPort });
 
-  // The port is held by the very container we are importing. Nothing else can
-  // free it, and the import stops that service anyway a moment later to read its
-  // volume - so stop it now and ask again. Only ever on the SAME host: stopping a
-  // service on another machine frees nothing here.
+  // The port is held by the very container we are importing.
   if (!created && publishPort != null && opts.sourceIsTargetHost) {
     try {
       await stopService(c, svc.kind, svc.id);
@@ -3171,11 +2798,9 @@ async function importDatabaseService(
     }
   }
 
-  // Two things can still fail here, and the report must name the one that did:
-  // the port is held by something that is not ours, or the password cannot ride
-  // inside a connection string. Drop the PORT first and keep the credential -
-  // announcing "password refused" when the port was the problem sends people off
-  // to rewrite connection strings that were never broken.
+  // Two things can still fail here, and the report must name the one that did: the
+  // port is held by something that is not ours, or the password cannot ride inside a
+  // connection string.
   if (!created && publishPort != null) {
     created = await attempt(withPassword);
     if (created) notes.push(portNote(firstError));
@@ -3201,11 +2826,10 @@ async function importDatabaseService(
     return;
   }
 
-  // The start command and the resource caps, both of which Deplo stores on a
-  // database and neither of which the import was writing: a Postgres tuned with
-  // `-c shared_buffers=1GB` arrived untuned, and one capped at 1 GB / 0.5 CPU
-  // arrived uncapped - free to take the whole host from every other tenant.
-  // `mapResources` is the same function the app path already uses.
+  // The start command and the resource caps, both of which Deplo stores on a database
+  // and neither of which the import was writing: a Postgres tuned with `-c
+  // shared_buffers=1GB` arrived untuned, and one capped at 1 GB / 0.5 CPU arrived
+  // uncapped - free to take the whole host from every other tenant.
   if (spec.command) {
     try {
       const { updateDatabaseImage } = await import("./databases");
@@ -3229,11 +2853,9 @@ async function importDatabaseService(
     }
   }
 
-  // The engine's config files. AFTER the create, because they are a whole-set
-  // replace on an existing database - and before the report, so a refusal is one
-  // of the notes rather than a silent gap. It reroutes, which on a database that
-  // is still provisioning is a no-op: the provision that follows renders the
-  // stack from the row, files included.
+  // The engine's config files. AFTER the create, because they are a whole-set replace
+  // on an existing database - and before the report, so a refusal is one of the notes
+  // rather than a silent gap.
   if (spec.mounts.length > 0) {
     try {
       await setDatabaseMounts(created.id, spec.mounts);
@@ -3280,13 +2902,8 @@ async function importDatabaseService(
 /* ---- project / environment level variables --------------------------- */
 
 /**
- * A Dokploy project's or environment's own env blob → a deplo shared variable
- * per key, scoped there AND linked to the apps that were in it.
- *
- * The link is the load-bearing half: under ADR-0012 a shared variable's scope only
- * makes it AVAILABLE, and injection is solely the per-app link. Scoping without
- * linking would look right in the UI and inject nothing, which is how a stack
- * comes up missing exactly the variables the old platform had always supplied.
+ * A Dokploy project's or environment's own env blob → a deplo shared variable per
+ * key, scoped there AND linked to the apps that were in it.
  */
 async function importSharedVars(
   blob: string | null | undefined,
@@ -3303,9 +2920,7 @@ async function importSharedVars(
   if (entries.length === 0) return;
 
   // Same rule as everything else on a re-run: a key that is already here is left
-  // exactly as it is. `saveSharedVar` mints a new row when given no id, so
-  // without this a second pass would duplicate every shared variable - and
-  // overwriting would silently undo a value someone had corrected by hand.
+  // exactly as it is.
   const already = new Set(
     (
       await getDb()
@@ -3369,19 +2984,9 @@ async function importSharedVars(
 /* ------------------------------------------------------------------ */
 
 /**
- * Bring the Dokploy organization's people over.
- *
- * Passwords are not migratable in either direction: Dokploy's API never exposes
- * them and its hashes are not deplo's. So each person gets what deplo already
- * has for this — a single-use registration link pre-assigned to this team — and
- * someone who already has an account is simply added to the team.
- *
- * Everyone lands as a plain **member**, whatever they were on Dokploy: a
- * registration link may not carry ownership (`mintRegistrationLink` refuses it),
- * and inferring "admin" into deplo's capability set from another platform's role
- * name is exactly the kind of guess that quietly hands out more access than
- * anyone asked for. The report says who was an owner or admin over there so an
- * admin can promote them on purpose.
+ * Bring the Dokploy organization's people over. Passwords are not migratable in
+ * either direction: Dokploy's API never exposes them and its hashes are not
+ * deplo's.
  */
 export async function importDokployMembers(
   input: ConnectInput & { runId: string },
@@ -3499,25 +3104,9 @@ function revertError(e: unknown): string {
 }
 
 /**
- * Stop a migration, which means UNDO it - the whole thing, every time.
- *
- * There is no half-migrated state to keep. A stop lands mid-copy far more often
- * than not, and a volume that is 60% across is not 60% of an app: it is a
- * database with a torn data directory, or a stack whose files disagree with its
- * rows. Offering "keep what came over" made the person who pressed Stop judge
- * that, from a progress bar, with no way to tell a finished volume from an
- * interrupted one. So the choice is gone: stopping takes every app, database,
- * project and variable this run created back out, takes Deplo's agent back off
- * the machines it was put on to read, and returns the wizard to step one.
- *
- * Dokploy is left as the migration left it - services it stopped over there stay
- * stopped, which the wizard says before it asks.
- *
- * Ordered so nothing is deleted while something is still writing into it: the
- * copy in flight is cut first (the runner does that before it gets here), the
- * services are handed back to their team, and only then does the undo run.
- *
- * Idempotent: a second call finds nothing left to delete and re-arms nothing.
+ * Stop a migration, which means UNDO it - the whole thing, every time. Dokploy is
+ * left as the migration left it - services it stopped over there stay stopped,
+ * which the wizard says before it asks.
  */
 export async function stopDokployImport(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
@@ -3536,18 +3125,7 @@ export async function stopDokployImport(runId: string): Promise<void> {
 
 /**
  * Take a run back out whole: what it created HERE, and the agent Deplo put over
- * THERE to read it.
- *
- * The one ending shared by a Stop and a failure, which are the same situation
- * wearing two words - a migration that did not land. Nothing about it is
- * optional, and nothing about it asks.
- *
- * The uninstall is FORCED past its usual guard. That guard keeps the agent on a
- * machine whose bytes did not all make it, because the agent is the only way to
- * go back for them - and after an undo there is nothing here for them to land
- * in. An uninstall that will not take is not lost either: it goes on the durable
- * ladder and, once Deplo has given up, says so on the machine in Settings ->
- * Servers so a person can take it off by hand.
+ * THERE to read it. The uninstall is FORCED past its usual guard.
  */
 export async function undoDokployImport(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
@@ -3569,35 +3147,9 @@ export interface RevertResultDTO {
 }
 
 /**
- * Take a migration back out of Deplo.
- *
- * The case this exists for is the half-finished one: a run that failed on
- * project four of seven, or one somebody stopped, leaves apps and databases here
- * that nobody asked for and that are not a migration - they are debris. Deleting
- * eleven of them by hand, in the right order, is exactly the kind of clean-up
- * the product exists to not ask for.
- *
- * **It only removes what the run CREATED.** The ledger is `dokploy_import_items`,
- * and reusing something that was already here is recorded as `skipped`, never
- * `created` - so a project that existed before the migration keeps every app it
- * had, and a revert can never eat something the migration merely wrote into.
- *
- * **It does not put Dokploy back.** The migration stopped those services over
- * there and the platform never restarts them, so a revert is "unmake what landed
- * here", not "undo the whole thing". The wizard says so before it runs.
- *
- * Order is children first: apps, then databases, then the projects the run made
- * (their environments cascade with them), then the shared variables it added to
- * the team, then any environment it put in a project that was already here. Each delete keeps its OWN capability gate -
- * `delete_apps`, `delete_databases`, `delete_projects`, `manage_environments` -
- * so somebody who may unmake apps but not databases gets the apps removed and a
- * line saying which databases are still here. That mirrors the import itself,
- * which creates what the actor may create and reports the rest.
- *
- * A database refuses to be deleted until its host proves the container and the
- * volume are gone, which is what makes "reverted" mean it. That refusal arrives
- * here as a `failed` line rather than as an exception, because one unreachable
- * host must not strand the other ten objects.
+ * Take a migration back out of Deplo. The wizard says so before it runs. That
+ * refusal arrives here as a `failed` line rather than as an exception, because one
+ * unreachable host must not strand the other ten objects.
  */
 /** Undoing a migration deletes the very rows it marked, so it is exempt too. */
 export async function revertDokployImport(
@@ -3680,12 +3232,10 @@ async function runRevertDokployImport(runId: string): Promise<RevertResultDTO> {
     }
   }
 
-  // ---- the team's shared variables the run added ---------------------
-  // Matched by KEY, not by id: the report line for a shared variable carries no
-  // target id, and it does not need one - a key that already existed is
-  // recorded `skipped`, so a `created` line can only be this run's own. Listing
-  // and deleting both want `manage_env`, so an actor without it gets one line
-  // per variable rather than a silent leftover.
+  // ---- the team's shared variables the run added --------------------- Matched by
+  // KEY, not by id: the report line for a shared variable carries no target id, and
+  // it does not need one - a key that already existed is recorded `skipped`, so a
+  // `created` line can only be this run's own.
   const varKeys = new Set(
     rows.filter((r) => r.targetKind === "shared-var").map((r) => r.sourceName),
   );
@@ -3719,10 +3269,8 @@ async function runRevertDokployImport(runId: string): Promise<RevertResultDTO> {
     }
   }
 
-  // What could NOT be taken back out goes into the run's own log, which is the
-  // only place anybody looks afterwards. It used to be appended to a client-side
-  // array that the same function cleared three lines later, so "this app is
-  // still here, and here is why" reached nobody at all.
+  // What could NOT be taken back out goes into the run's own log, which is the only
+  // place anybody looks afterwards.
   for (const line of failed) {
     const [head, ...rest] = line.split(": ");
     await appendRunItem(runId, {
@@ -3734,10 +3282,9 @@ async function runRevertDokployImport(runId: string): Promise<RevertResultDTO> {
     });
   }
 
-  // The run stays in History - what happened is still what happened - but it
-  // says out loud that it was taken back out, so nobody reads "12 created" as
-  // twelve apps that exist. `report_seen_at` goes with it: undoing a migration
-  // IS being done with it, and the wizard must not open on it again.
+  // The run stays in History - what happened is still what happened - but it says out
+  // loud that it was taken back out, so nobody reads "12 created" as twelve apps that
+  // exist.
   await getDb()
     .update(runsTable)
     .set({ status: "reverted", finishedAt: nowIso(), reportSeenAt: nowIso() })
@@ -3769,22 +3316,6 @@ async function environmentIsGone(id: string): Promise<boolean> {
 
 /**
  * The run the wizard should OPEN on, or null for an empty connect form.
- *
- * A migration runs in the control plane, so the page it was started from is one
- * of the places you can watch it from and not the only one - but every screen
- * the wizard showed lived in that tab's memory, so leaving and coming back gave
- * a blank form while the run was still moving, and a run that ended while you
- * were away lost its report entirely. This is what makes the wizard a VIEW of
- * the run instead: whichever tab, whichever device, the same screen comes back.
- *
- * Two runs qualify, and the difference is the point. A run still RUNNING belongs
- * to the whole team: everybody who may open this page gets the same panel on it,
- * with the same Stop, because that is what the server already allows - stopping,
- * undoing and dismissing are gated on `create_projects` and the team, never on
- * who started it. A run that has ENDED is still only its actor's, until they
- * close its report (see {@link dismissDokployReport}); a teammate would
- * otherwise be handed somebody else's verdict to dismiss, which is what History
- * is for.
  */
 export async function resumableDokployImport(): Promise<ImportRunDTO | null> {
   const teamId = await requireActiveTeamId();
@@ -3807,11 +3338,6 @@ export async function resumableDokployImport(): Promise<ImportRunDTO | null> {
 
 /**
  * "I am done looking at this run" - the wizard stops opening on it.
- *
- * The one piece of the wizard's state that cannot be derived from the run: every
- * other screen it shows is a function of status, items and progress, but whether
- * the person has READ the report is only knowable because they said so. Pressing
- * Finish on the report says it, and so does undoing the migration.
  */
 export async function dismissDokployReport(runId: string): Promise<void> {
   const { teamId } = await requireCapability("create_projects");
@@ -3823,14 +3349,8 @@ export async function dismissDokployReport(runId: string): Promise<void> {
 
 /**
  * The team's migration in flight, or null. There is at most one: opening a run
- * marks any older `running` row of the team Interrupted (see
- * {@link beginDokployImport}), so this is a fact, not a first-of-many.
- *
- * Cookie-free (the team is an argument) because the header chip reads it from
- * an SSE generator, where `cookies()` is no longer callable - same contract as
- * `summarizeForTeam` in ./apps.ts. No capability gate on purpose: "somebody is
- * moving a platform into this team right now, hold off" is a warning for every
- * member, not only for the ones who may start one.
+ * marks any older `running` row of the team Interrupted (see {@link
+ * beginDokployImport}), so this is a fact, not a first-of-many.
  */
 export async function activeDokployImportForTeam(
   teamId: string,

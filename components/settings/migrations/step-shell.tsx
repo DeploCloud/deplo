@@ -2,12 +2,6 @@ import type * as React from "react";
 
 /**
  * Every step is the same shape: a question, one line under it, the controls.
- *
- * Holding that shape is what makes five steps feel like one flow rather than
- * five screens someone bolted together, and it is why none of them is wrapped
- * in a `Card` - the illustration beside them already frames the column, and a
- * card drawn around the whole of a step is a box inside a box.
- *
  * Left-aligned, because the picture is on the right: a centred column of text
  * beside an illustration has no edge for the eye to come back to.
  */

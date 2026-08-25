@@ -13,21 +13,9 @@ import { StepShell } from "./step-shell";
 import type { Invite, PlanMember } from "./types";
 
 /**
- * The people who were on that Dokploy, as the team page draws people.
- *
- * A grid of cards rather than a list of rows with a button on the end, because
- * that is what "the people in this team" looks like everywhere else in Deplo -
- * and because the thing you do here is send one person one link, which means
- * every card has to carry its own.
- *
- * The links are minted on ARRIVAL, not behind a "create their links" button.
- * There is no decision in that button: whoever reached this step has already
- * chosen to bring the team over, and a screen of names with nothing to send is
- * a screen you have to act on twice. Each link is single-use and expires on its
- * own, so minting one for somebody who is never invited costs nothing.
- *
- * Passwords cannot come over - Dokploy hashes them and so do we - so everybody
- * arrives as a plain member whatever they were over there, and says so.
+ * The people who were on that Dokploy, as the team page draws people. Each link is
+ * single-use and expires on its own, so minting one for somebody who is never
+ * invited costs nothing.
  */
 export function PeopleStep({
   people,

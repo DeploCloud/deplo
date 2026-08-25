@@ -3,28 +3,9 @@ import { cn } from "@/lib/utils";
 import { LOGO_PATH, MARK_VIEWBOX } from "@/components/logo";
 
 /**
- * The migration wizard's illustration: two servers and the cable between them.
- *
- * One drawing in five poses rather than five drawings, because the pose IS the
- * progress bar. A stepper says "3 of 5"; a cable two thirds of the way across
- * says what is left to happen. The five are the five beats of a migration - find
- * the old platform, reach its machines, decide what comes over, move it, and
- * live here now.
- *
- * - `connect` - the cable has barely left Dokploy. Nothing has been read yet.
- * - `install` - it is halfway. Deplo's agent is landing on the source machines.
- * - `review`  - almost there, waiting on the one decision left.
- * - `moving`  - the cable is complete and packets are running down it.
- * - `done`    - Deplo lit, Dokploy dark. The traffic lives here now.
- *
- * Pure SVG plus keyframes in `globals.css`, like the other twenty-one graphics
- * here: no library, no JS, and every colour a token so it is correct in both
- * themes. The two brand marks are the exception every logo is - they are drawn
- * with `currentColor` rather than their own ink, because Dokploy ships a solid
- * black mark that would vanish on the dark theme.
- *
- * The `aria-label` changes with the pose. It is the entire drawing for anyone
- * who cannot see it, so it describes the state and not the artwork.
+ * The migration wizard's illustration: two servers and the cable between them. One
+ * drawing in five poses rather than five drawings, because the pose IS the
+ * progress bar.
  */
 
 /** Straight from `public/migrations/dokploy.svg`, the upstream brand mark. */
@@ -73,10 +54,6 @@ const LABEL: Record<MigrationState, string> = {
 
 /**
  * How much of the cable is still missing, as a fraction.
- *
- * `pathLength="1"` normalises the route, so one dash of length 1 at an offset of
- * 0.8 leaves exactly the first fifth drawn - the numbers below read as a fifth,
- * two fifths, three fifths, all of it, without anyone measuring the path.
  */
 const CABLE_LEFT: Record<MigrationState, number> = {
   connect: 0.8,
@@ -103,10 +80,6 @@ export function MigrationGraphic({
   const moving = state === "moving";
   return (
     // Cropped to the drawing, but not tighter than the widest thing IN it.
-    // The machines live at y 32-88, and on `done` the success halo around the
-    // right-hand one reaches x 168 and y 26-94 - a box of `0 20 160 80` sliced
-    // its right edge off against the outer `<svg>`, which clips by default.
-    // So: x -10 to 170, y 18 to 102.
     <svg
       viewBox="-10 18 180 84"
       fill="none"
@@ -115,18 +88,11 @@ export function MigrationGraphic({
       className={cn("h-32 w-auto", className)}
     >
       <defs>
-        {/* Deplo's machine is drawn in the brand gradient - violet, pink, blue -
-            and only its CASE is: the mark on its face stays `currentColor`, the
-            way every logo in this repo does, so it reads in both themes.
-
-            `userSpaceOnUse` over the machine's own box, not the default bounding
-            box: a `<line>` has no height, so a bounding-box gradient on the drive
-            bays would collapse. Pinned to x 112-156 / y 32-88, the whole machine
-            shares one sweep instead of each part restarting it.
-
-            A fixed id is safe here even though the drawing appears more than once
-            on a page: every copy defines the same three stops, so whichever one
-            the browser resolves is the same gradient. */}
+        {/**
+         * Deplo's machine is drawn in the brand gradient - violet, pink, blue - and only
+         * its CASE is: the mark on its face stays `currentColor`, the way every logo in
+         * this repo does, so it reads in both themes.
+         */}
         <linearGradient
           id={BRAND_GRADIENT}
           gradientUnits="userSpaceOnUse"
@@ -163,9 +129,6 @@ export function MigrationGraphic({
         className={cn(
           "stroke-border",
           // The dots drift toward Deplo while the cable is still short of it.
-          // It is the only motion the first screen has - nothing is connected
-          // yet, so there is nothing else to show - and it says which way this
-          // is going before a single field has been filled in.
           !done && "deplo-migrate-track",
         )}
         strokeWidth="2.5"
@@ -231,14 +194,6 @@ export function MigrationGraphic({
 
 /**
  * One machine: a case, the mark on its face, and two drive bays under it.
- *
- * The bays are what stop it reading as a handset. A rounded rectangle with a
- * logo in the middle is a phone; a rounded rectangle with two short rows and a
- * light at the end of each is a rack unit, and it costs four elements.
- *
- * The top light is the machine's own: it breathes while this is the machine
- * doing the serving, and goes out (left) or green (right) when the migration
- * lands.
  */
 function Machine({
   x,

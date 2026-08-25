@@ -14,18 +14,6 @@ import { gql, gqlAction } from "@/lib/graphql-client";
 /**
  * The FALLBACK for taking Deplo's agent back off the machines it was installed on,
  * and it appears only once Deplo has GIVEN UP.
- *
- * Finishing an import does this by itself and keeps doing it on a ladder that
- * outlives the request: one attempt while the wizard is open, two more from the
- * sweep over the following minutes. A source that is merely still being worked on
- * shows nothing at all - asking someone to press a button next to a job already
- * running is how a person learns to press it every time, and then to distrust the
- * automatic half entirely.
- *
- * So the filter is `uninstallError`, not "is there a migration source": non-empty
- * means three attempts failed, and the sentence in it is the host's own. The one
- * other way to get here is a volume copy that failed, which stops the ladder
- * before it starts because the bytes are still on that machine.
  */
 const SOURCES = /* GraphQL */ `
   query MigrationSources {
@@ -52,11 +40,6 @@ const UNINSTALL = /* GraphQL */ `
  * The exit that needs no network. `removeServer` revokes the pin and forgets the
  * row without dialing anything, which is the only thing that still works once the
  * host cannot be reached - and this card exists precisely because it could not be.
- *
- * Without it the card was a dead end that told you to "try again once that machine
- * is reachable", which for a host behind a firewall nobody will open is advice
- * that cannot be followed. Worse, uninstalling the agent BY HAND made it more
- * stuck, not less: there is then even less answering than before.
  */
 const FORGET = /* GraphQL */ `
   mutation ForgetMigrationSource($id: String!) {
@@ -131,10 +114,7 @@ export function RemoveMigrationSources() {
 
   /**
    * The same verb the Servers page offers, in bulk: uninstall where the host
-   * answers, and stop tracking the ones it does not. It has to FINISH - this card
-   * is the fallback after three failed attempts, so "try again" is what already
-   * did not work, and a button that leaves the same rows behind is a button
-   * nobody can use.
+   * answers, and stop tracking the ones it does not.
    */
   async function finish() {
     const failures: string[] = [];
@@ -236,11 +216,10 @@ export function RemoveMigrationSources() {
             </li>
           ))}
         </ul>
-        {/* One command for every host: it is `<panel>/uninstall.sh --agent-only`
-            and nothing else, so asking once is honest and asking per row would be
-            noise. Shown up front rather than behind a press, because running it
-            by hand is a legitimate first move - and it is the only move that
-            actually takes the agent off a machine Deplo cannot reach. */}
+        {/**
+         * One command for every host: it is `<panel>/uninstall.sh --agent-only` and nothing
+         * else, so asking once is honest and asking per row would be noise.
+         */}
         {command && (
           <div className="mt-4 space-y-2">
             <p className="text-xs text-muted-foreground">

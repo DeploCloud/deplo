@@ -82,29 +82,12 @@ const UNREACHABLE_SOURCE_HOST =
 
 /**
  * Its twin, for the machine that HAS an agent Deplo still cannot talk to.
- *
- * Worth telling apart from the one above, because the fix is a different one: the
- * agent is installed and enrolled, and the thing to change is the address or the
- * firewall in front of it.
  */
 const UNREACHABLE_SOURCE_AGENT =
   "Deplo cannot reach the agent on the machine this service's data is on, so nothing was stopped and no data was copied. Check that machine's address and that its agent port is open to Deplo, then run the copy again.";
 
 /**
  * Whether the agent holding this service's data answers US.
- *
- * A server row reads `online` from the CALL-HOME, which the agent makes OUTBOUND
- * over 443 - it proves nothing about the direction a copy needs, which is the
- * control plane dialing the agent's own port. A panel behind Cloudflare or any
- * reverse proxy hands out the proxy's address, and a host firewall that never
- * opened the agent port looks identical from here: both leave a machine that
- * enrolled cleanly and cannot be read from.
- *
- * Asked BEFORE `stopService`, the point of no return. Without it the cutover
- * stopped the service on the old platform and only then found out it could not
- * copy a byte - and each volume then spent the kernel's full SYN timeout failing,
- * which outlives the proxy in front of the panel and reads to the browser as the
- * whole control plane going away.
  */
 async function sourceAgentReachable(serverId: string): Promise<boolean> {
   try {
@@ -123,31 +106,6 @@ async function sourceAgentReachable(serverId: string): Promise<boolean> {
 /**
  * The data half of a Dokploy migration: move a service's volumes over, once its
  * configuration is already here.
- *
- * A CUTOVER, not a copy, and deliberately one service at a time — so a fleet moves
- * in steps, each with a way back. For each service:
- *
- *   1. ask Dokploy which containers run it and `docker inspect` them (through
- *      Dokploy's own API, which is literally that command) for the REAL volume
- *      names and the paths they are mounted at;
- *   2. pair those against the imported app's own volumes BY CONTAINER PATH — the
- *      only identity the two platforms share, since neither's volume names mean
- *      anything to the other;
- *   3. STOP the service on Dokploy and leave it stopped. `ExportVolume`'s contract
- *      is that the source is quiesced, and a volume read while its container writes
- *      produces an archive nothing can be trusted from;
- *   4. relay each volume through the control plane into the Deplo one
- *      (`ExportVolume` on the source host → `ImportVolume` on the target's), which
- *      is the same star-topology relay a server move already uses.
- *
- * Nothing is deployed afterwards: the user presses Deploy when the traffic should
- * follow the data.
- *
- * **A caller never names a volume.** Both sides are derived here from the service
- * and the app it was imported into. A mutation that accepted a source and a target
- * volume name would be an instruction to copy any volume on the host into any
- * other one — another team's data into your app, or an empty archive over the
- * control plane's own database. The only thing a caller picks is WHICH SERVICE.
  */
 
 /* ------------------------------------------------------------------ */
@@ -180,15 +138,9 @@ export interface DataMoveService {
   /** Whether the source is still up over there. */
   running: boolean;
   /**
-   * Whether the machine holding this service's data ANSWERS us - a live Hello,
-   * not the stored status, which goes green on the call-home and so says nothing
-   * about the direction a copy needs (see `sourceAgentReachable`).
-   *
-   * Read by the wizard BEFORE it starts copying anything. One unreachable source
-   * stops the whole data phase in one line rather than turning into one identical
-   * failure per service: the cause is a single machine, and at that point nothing
-   * has been stopped on the other platform yet, so halting costs nothing and
-   * leaves nothing half-moved.
+   * Whether the machine holding this service's data ANSWERS us - a live Hello, not
+   * the stored status, which goes green on the call-home and so says nothing about
+   * the direction a copy needs (see `sourceAgentReachable`).
    */
   sourceReachable: boolean;
   volumes: DataMoveVolume[];
@@ -202,16 +154,6 @@ export interface DataMoveResult {
   /**
    * The source machine stopped answering PART WAY THROUGH - a gRPC UNAVAILABLE,
    * which is a connection that died, not a volume that could not be read.
-   *
-   * The difference decides whether the caller keeps going. One volume failing is
-   * one line in a report and the next service is unaffected; the HOST going away
-   * means every service after this one will fail the same way, and each of them
-   * gets stopped on the other platform first. A run that keeps going through that
-   * turns one broken machine into a whole organisation with its data left behind
-   * and its services down on both sides.
-   *
-   * The pre-flight catches the machine that is already gone; this catches the one
-   * that leaves mid-copy, which no check before the first byte can see.
    */
   sourceGone: boolean;
 }
@@ -255,10 +197,8 @@ interface SourceService {
  * (a helper per field) turned one call into three for the same answer.
  */
 async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
-  // `project.all` gives ids, not rows: an application arrives as
-  // {applicationId, name, applicationStatus} and a database as {postgresId} and
-  // nothing else. `appName` — the label every container of the service carries,
-  // and the whole basis of finding its volumes — is only ever on the detail row.
+  // `project.all` gives ids, not rows: an application arrives as {applicationId,
+  // name, applicationStatus} and a database as {postgresId} and nothing else.
   const stubs: {
     kind: string;
     id: string;
@@ -314,12 +254,6 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
 
 /**
  * Which containers a service runs, and the volumes they mount.
- *
- * The runtime is TRIED in order rather than assumed: Dokploy runs an application
- * or a database as a swarm service and a compose stack as a compose project, and a
- * `composeType: stack` matches neither label exactly. A lookup that committed to
- * one would find nothing and report "no volumes" — the same shape as a service
- * that genuinely has none, which is the worst possible way to be wrong here.
  */
 async function sourceState(
   c: DokployCredential,
@@ -333,10 +267,8 @@ async function sourceState(
   running: boolean;
   notes: string[];
 }> {
-  // A compose stack's containers are plain ones named after the stack; an
-  // application or a database is a swarm service. Both orders end with the other
-  // value rather than assuming, because a Dokploy configured differently (a
-  // `composeType: stack`, an install not using swarm) still has to be found.
+  // A compose stack's containers are plain ones named after the stack; an application
+  // or a database is a swarm service.
   const order: DokployRuntime[] =
     kind === "compose" ? ["standalone", "swarm"] : ["swarm", "standalone"];
 
@@ -345,10 +277,8 @@ async function sourceState(
     containers = await listAppContainers(c, appName, type).catch(() => []);
     if (containers.length > 0) break;
   }
-  // No container is the NORMAL state of a platform someone is leaving (Dokploy
-  // stops a service by scaling it to 0 replicas), and the volume is still on the
-  // host. Fall back to what Dokploy declares it mounts rather than reporting the
-  // service as having no data — which reads identically to genuinely having none.
+  // No container is the NORMAL state of a platform someone is leaving (Dokploy stops
+  // a service by scaling it to 0 replicas), and the volume is still on the host.
   if (containers.length === 0)
     return {
       volumes: declared,
@@ -414,17 +344,6 @@ interface Landed {
 
 /**
  * What this import run actually created: Dokploy service id → the Deplo resource.
- *
- * The whole pairing, and the reason it is a READ of the run rather than a search.
- * It used to be a name match across the entire team, which is wrong in both
- * directions: a service renamed on either side silently paired with nothing, and a
- * database that merely happened to share a name with something on Dokploy was
- * offered up as a target — for a copy whose first act is to WIPE it. A run knows
- * what it made and what it made it from; nothing else has to be inferred.
- *
- * Only `created` rows count. A row that came back `skipped` names a resource this
- * run found ALREADY here and deliberately left alone, and leaving it alone has to
- * include its data.
  */
 async function runTargets(
   runId: string,
@@ -615,11 +534,9 @@ export async function planDokployDataMove(
       singleData: landed.targetKind === "database",
     });
     const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
-    // Said HERE, before anything is stopped: a machine Deplo cannot read is a
-    // machine whose data cannot move at all, and the review screen is where that
-    // has to be read - not the cutover, with the old platform already down. Having
-    // a server row is not enough: it has to ANSWER, for the reason
-    // `sourceAgentReachable` spells out.
+    // Said HERE, before anything is stopped: a machine Deplo cannot read is a machine
+    // whose data cannot move at all, and the review screen is where that has to be read
+    // - not the cutover, with the old platform already down.
     const sourceServer = machines.find(
       (m) => m.sourceId === svc.serverId,
     )?.deploServerId;
@@ -641,10 +558,9 @@ export async function planDokployDataMove(
       sourceReachable: reachable,
       volumes: [
         ...paired.value,
-        // A bind mount is listed as what it is: a host DIRECTORY, copied by a
-        // different RPC behind a different permission. Naming it a volume in the
-        // report would be the sort of half-truth that makes someone believe data
-        // moved when it could not.
+        // A bind mount is listed as what it is: a host DIRECTORY, copied by a different RPC
+        // behind a different permission. Naming it a volume in the report would be the sort
+        // of half-truth that makes someone believe data moved when it could not.
         ...binds.map((b) => ({
           sourceVolume: b.sourcePath,
           targetVolume: b.targetPath,
@@ -681,14 +597,6 @@ export interface MoveInput extends ConnectInput {
 
 /**
  * Write down the stop the copy just performed, because it was DELIBERATE.
- *
- * `databases.status` / `apps.status` are intent, and the live fold
- * (lib/apps/display-status.ts) only ever contradicts a row that claims to be up:
- * a row still saying "running" over a container we stopped ourselves is the one
- * input that makes the badge lie, and it lies in the worst direction - red "Not
- * running", the word for a database that fell over, on a migration where nothing
- * went wrong. Grey "Stopped" is both true and the state whose button is Start,
- * which is exactly what the copy's own note tells the user to press.
  */
 async function recordStoppedForCopy(
   landed: Landed,
@@ -720,32 +628,10 @@ async function recordStoppedForCopy(
 /**
  * Cut one service's data over: stop it on Dokploy, then copy every paired volume
  * into the app or database that was imported from it.
- *
- * Gated on `restore_backups` on the TARGET — the capability that already means
- * "may overwrite this resource's data". A restore and this have the same blast
- * radius, and minting a second permission for the same power would only make one
- * of them the weaker way in.
- *
- * OWNERSHIP is not a problem here, though it looks like one: Dokploy runs the
- * Debian `postgres` image (uid 999) and Deplo renders `postgres:<v>-alpine`
- * (uid 70), so the copied files arrive owned by a user that does not exist in the
- * new container. Every one of these official images still STARTS AS ROOT and its
- * entrypoint chowns the data directory before dropping privileges (verified on a
- * live Deplo database: `Config.User` empty, pid 1 running as postgres), so the
- * first start fixes it. An app's own volume has no such gap - the image on both
- * sides is the same one, so the uid already matches. Do not add a chown step here
- * expecting to need it.
  */
 /** The copy stops, starts and rewrites the very rows the import marked. */
 /**
  * The copy each run currently has in flight, so a Stop can reach into it.
- *
- * Stopping a migration undoes it whole, and nothing can be deleted while bytes
- * are still landing in it - so the stop has to reach the stream, not merely the
- * gap between two services. One entry per run: a run copies one service at a
- * time. Process-local on purpose, and that is exactly right: the runner that
- * holds the run is the one with the socket open, and it is the one whose
- * heartbeat notices the flag.
  */
 const inFlightCopies = new Map<string, AbortController>();
 
@@ -792,10 +678,7 @@ async function runMoveDokployServiceData(
     await requireCapability("restore_backups");
   }
 
-  // Which Deplo server holds the Dokploy volumes. DERIVED from the service's own
-  // Dokploy host by ADDRESS, never a free choice and never a client input:
-  // pointing this at the wrong host reads a volume that is not there, and Docker
-  // answers by creating an empty one rather than by failing.
+  // Which Deplo server holds the Dokploy volumes.
   const sourceServerId = await resolveSourceServer(c, teamId, svc.serverId);
 
   const state = await sourceState(
@@ -811,11 +694,7 @@ async function runMoveDokployServiceData(
   const notes = [...state.notes, ...paired.notes];
 
   // A bind mount's bytes sit in a plain host directory, so copying one reads and
-  // writes an arbitrary path on two machines. That is the same power a compose
-  // stack's own bind mount already carries, and it is gated the same way: instance
-  // admin AND the host-volumes grant. Without both, the directory is not copied and
-  // the report says so by name - silence here would leave someone believing an app
-  // arrived whole when its data never left the old machine.
+  // writes an arbitrary path on two machines.
   const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
   const mayCopyHostPaths =
     binds.length === 0 ||
@@ -870,9 +749,7 @@ async function runMoveDokployServiceData(
 
   // A database is provisioned in the BACKGROUND by the import (`createDatabase`
   // floats it), so at this point its first container may still be running `initdb`
-  // into the very volume about to be replaced. Wait for the row to settle before
-  // anything is stopped - untarring under a live initialisation leaves a cluster
-  // that is half one database and half another.
+  // into the very volume about to be replaced.
   if (landed.targetKind === "database") {
     const settled = await waitForProvision(landed.targetId, teamId);
     if (!settled) {
@@ -899,9 +776,7 @@ async function runMoveDokployServiceData(
   await stopService(c, input.sourceKind, input.sourceId);
 
   // Stop the destination too: untarring into a volume a container is writing to is
-  // the same mistake in the other direction. A never-deployed app has no stack to
-  // stop and the agent says so — tolerated, because the copy itself fails loudly
-  // if the host is genuinely unreachable.
+  // the same mistake in the other direction.
   try {
     await stopStackOn(landed.targetServerId, landed.targetSlug);
     await recordStoppedForCopy(landed, teamId);
@@ -915,10 +790,8 @@ async function runMoveDokployServiceData(
   // Set by either loop below. See DataMoveResult.sourceGone: it is the difference
   // between "this volume did not come across" and "stop the whole migration".
   let sourceGone = false;
-  // What did NOT arrive, kept apart from `notes` (which also carries advice) so
-  // it can be written onto the app or database itself at the end. A report line
-  // is read by whoever is watching the migration; this is read by whoever presses
-  // Deploy three days later.
+  // What did NOT arrive, kept apart from `notes` (which also carries advice) so it
+  // can be written onto the app or database itself at the end.
   const lost: string[] = [];
   const source = await connectAgent(sourceServerId);
   const dest =
@@ -938,10 +811,7 @@ async function runMoveDokployServiceData(
           input.onBytes,
           aborter.signal,
         );
-        // An empty source is not a copy and must never read as one. Nothing was
-        // written and nothing was wiped, so the honest line is that there was
-        // nothing there - which is also the first thing to check when a service
-        // arrives without the data someone expected.
+        // An empty source is not a copy and must never read as one.
         if (copied.empty) {
           empty++;
           await appendRunItem(input.runId, {
@@ -1074,11 +944,8 @@ async function runMoveDokployServiceData(
     if (dest !== source) dest.close();
   }
 
-  // A database is brought back up and CHECKED, because "the bytes are in the
-  // volume" is not the claim anyone cares about - "the engine reads them" is. It is
-  // also the one check that catches a copy the engine cannot use at all (a data
-  // directory written by a different major version), which otherwise surfaces days
-  // later as a database that will not start.
+  // A database is brought back up and CHECKED, because "the bytes are in the volume"
+  // is not the claim anyone cares about - "the engine reads them" is.
   if (moved > 0 && landed.targetKind === "database") {
     const verdict = await startAndVerifyDatabase(landed, teamId);
     await appendRunItem(input.runId, {
@@ -1097,11 +964,7 @@ async function runMoveDokployServiceData(
     }
   }
 
-  // The verdict on the whole service, written where a deploy will read it. Until
-  // it is cleared, nothing starts this workload: its volumes are empty or half
-  // written, and an engine handed an empty data directory initialises a new one
-  // rather than failing. A copy that worked clears the marker a previous attempt
-  // left, which is what makes running the migration again the actual fix.
+  // The verdict on the whole service, written where a deploy will read it.
   const marker = { kind: landed.targetKind, id: landed.targetId } as const;
   if (lost.length > 0) await markDataCopyFailed(marker, lost.join(" | "));
   else if (failed === 0) await clearDataCopyError(marker);
@@ -1156,11 +1019,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Wait for a database row to stop saying `provisioning`.
- *
- * `createDatabase` floats the provision (`void provisionDatabase(...)`), so an
- * import returns while `initdb` is still writing the very volume this is about to
- * replace. Untarring under a live initialisation produces a directory that is half
- * one cluster and half another - which starts, and is corrupt.
  */
 async function waitForProvision(
   databaseId: string,
@@ -1190,12 +1048,8 @@ async function waitForProvision(
 
 /**
  * What to ask each engine for a number that proves the copied data is READABLE.
- *
- * Run inside the container, so no credential leaves the control plane and none has
- * to match: postgres trusts the local socket, and the others read the password out
- * of their own environment. Best effort by design - the verdict is the engine
- * coming up healthy, and a count that will not run must never turn a good copy into
- * a reported failure.
+ * Best effort by design - the verdict is the engine coming up healthy, and a count
+ * that will not run must never turn a good copy into a reported failure.
  */
 const CONTENT_COUNT: Partial<
   Record<
@@ -1212,8 +1066,8 @@ const CONTENT_COUNT: Partial<
   }),
   // `-D <db>` + `database()` rather than a quoted schema list: the whole command
   // rides inside `sh -c '...'`, and a single quote cannot be escaped inside single
-  // quotes in POSIX sh - the quoted form parsed as nothing and silently answered
-  // with no count at all.
+  // quotes in POSIX sh - the quoted form parsed as nothing and silently answered with
+  // no count at all.
   mysql: (a) => ({
     command: `sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" -N -B -D ${a.dbName} -e "select count(*) from information_schema.tables where table_schema = database()"'`,
     noun: "table",
@@ -1224,17 +1078,14 @@ const CONTENT_COUNT: Partial<
   }),
   // Every database on the instance, not the one the row names: a Mongo on the old
   // platform carries no database name for the import to carry across, so the row
-  // holds a placeholder and the data is wherever the app actually wrote it. The
-  // regex is deliberate - a string literal here would need a quote this command has
-  // no way to spare.
+  // holds a placeholder and the data is wherever the app actually wrote it.
   mongodb: () => ({
     command: `sh -c 'mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({listDatabases:1}).databases.filter(d=>!/^(admin|local|config)$/.test(d.name)).reduce((a,d)=>a+db.getSiblingDB(d.name).getCollectionNames().length,0)"'`,
     noun: "collection",
   }),
   // No redis: Deplo passes its password as `--requirepass` on the server's argv, so
   // nothing inside the container can authenticate a client without being handed the
-  // secret again. The healthcheck already proves the engine answers, and a count
-  // that always fails is worse than no count.
+  // secret again.
   clickhouse: (a) => ({
     command: `clickhouse-client --query "select count(*) from system.tables where database = '${a.dbName}'"`,
     noun: "table",
@@ -1243,12 +1094,6 @@ const CONTENT_COUNT: Partial<
 
 /**
  * Start the copied database and check the engine reads what landed in its volume.
- *
- * This is the difference between "the bytes are in the volume" and "the database
- * works", and only the second one is worth reporting. It is also the check that
- * catches a data directory the engine cannot open at all - a cluster written by a
- * different major version - which otherwise shows up days later as a database that
- * will not start and no clue why.
  */
 async function startAndVerifyDatabase(
   landed: Landed,
@@ -1337,17 +1182,8 @@ async function setDatabaseRunningAfterCopy(
 }
 
 /**
- * The Deplo server that can read a given Dokploy host's volumes.
- *
- * Derived from the ADDRESS, and never accepted from the caller. A wrong answer here
- * is not a failure but an EMPTY copy over real data: `docker run -v <name>:/v`
- * creates the volume when it is missing, so exporting from the wrong machine
- * succeeds and returns nothing. That is exactly what happened while this was a
- * client input - the wizard filled every Dokploy machine in with the Deplo host, so
- * every copy read a volume that was not there and wiped a real one on arrival.
- *
- * `dokployMachines` is the same matching the scan shows on the review screen, so
- * what the user was told the migration would do is what it does.
+ * The Deplo server that can read a given Dokploy host's volumes. Derived from the
+ * ADDRESS, and never accepted from the caller.
  */
 async function resolveSourceServer(
   c: DokployCredential,

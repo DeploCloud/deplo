@@ -31,25 +31,8 @@ import { FacetMenu, type EnvFacet } from "@/components/env/env-filters";
 import type { ReportItem } from "./types";
 
 /**
- * What a migration did, line by line - while it runs, and ever after.
- *
- * The ONE viewer for a run's log. There used to be two: this console for
- * whoever started the run, and a "Report" dialog - same rows, grouped by
- * outcome, no timestamps, no search - for everybody else, for the end of the
- * wizard and for History. One table read two ways is two answers to the same
- * question, and the one people were handed depended on which door they came
- * through. This is the surviving one, because chronology is what a log is.
- *
- * So it is a console. Fixed-width, densest thing in the product, newest at the
- * bottom, following the run unless you scroll away from it. Every line carries
- * WHEN, WHAT KIND of thing it was, and the message verbatim - the agent's own
- * words, gRPC codes and all, because that string is what somebody pastes into a
- * search when a copy fails.
- *
- * Live by POLLING, not by subscription: this is open for a minute at a time,
- * it wants the whole list rather than a tail, and one query every second and a
- * half for as long as somebody is looking at it is cheaper than a second SSE
- * per tab that has to be reconciled with the first.
+ * What a migration did, line by line - while it runs, and ever after. This is the
+ * surviving one, because chronology is what a log is.
  */
 
 /**
@@ -130,12 +113,6 @@ function levelOf(outcome: string): Level {
 
 /**
  * The five outcomes as ONE multi-select menu, not five toggle pills.
- *
- * The pills were five buttons wide - half the toolbar - and they were
- * single-pick: "failed" hid the "needs you" rows you were reading them next to.
- * `FacetMenu` is the control every other log console in the app already wears
- * (`components/logs/log-filters.tsx` uses it for levels), checkboxes, per-option
- * counts and all.
  */
 const LEVEL_FACET: EnvFacet<ReportItem> = {
   id: "outcome",
@@ -172,10 +149,10 @@ export function MigrationConsole({
   /** Keep polling. False once the run is over: the list cannot change again. */
   live: boolean;
 }) {
-  // Stamped with the run it came from, so re-opening the dialog on a DIFFERENT
-  // run never paints the previous one's lines while this one's are on the way -
-  // and `undefined` (nothing read yet) stays distinct from `null` (the server
-  // says there is no such run), which the empty state below tells apart.
+  // Stamped with the run it came from, so re-opening the dialog on a DIFFERENT run
+  // never paints the previous one's lines while this one's are on the way - and
+  // `undefined` (nothing read yet) stays distinct from `null` (the server says there
+  // is no such run), which the empty state below tells apart.
   const [fetched, setFetched] = React.useState<{
     runId: string;
     log: RunLog | null;
@@ -279,12 +256,11 @@ export function MigrationConsole({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* `selfManaged`: the shell wraps its children in a scrolling GRID, where
-          the log pane's `flex-1` means nothing - so the pane grew with the log
-          and pushed the line count and the buttons down out of reach. This
-          dialog is a flex column that owns its own height: header and toolbar at
-          the top, the pane taking what is left and scrolling inside itself, the
-          footer against the bottom edge and staying there. */}
+      {/**
+       * `selfManaged`: the shell wraps its children in a scrolling GRID, where the log
+       * pane's `flex-1` means nothing - so the pane grew with the log and pushed the line
+       * count and the buttons down out of reach.
+       */}
       <DialogContent
         selfManaged
         className="flex h-[85dvh] max-w-4xl flex-col gap-3"

@@ -35,53 +35,19 @@ import { checkServerHealth } from "./server-health";
 import { listServersForTeam } from "./servers";
 
 /**
- * The import loop, moved out of the browser tab.
- *
- * It used to live in the tab because the tab held the Dokploy API key, which was
- * never stored - and that one property cost everything else. A reload killed the
- * run mid-flight: projects created here, services stopped over there, a row
- * saying `running` with nobody running it, and a panel showing the
- * organisation's name where the progress should be, because the plan that knew
- * the progress had died with the tab. Closing a laptop was a data-loss event.
- *
- * So the key is stored, encrypted, and wiped the moment the run leaves
- * `running`; the choice is stored as rows; and a lease-guarded tick finishes the
- * job. The tab becomes a VIEWER - it can be closed, reloaded, or replaced by
- * somebody else's tab, and the migration does not notice.
- *
- * Everything it does goes through the SAME functions the tab called, under
- * `runWithIdentity` for the person who started it - the pattern the deploy hook
- * and the MCP server already use. A background job with its own capability
- * checks would be a second authorization model, and this repo has one.
+ * The import loop, moved out of the browser tab. A background job with its own
+ * capability checks would be a second authorization model, and this repo has one.
  */
 
 /**
- * One lease PER RUN, not one for the instance.
- *
- * It used to be a single `dokploy-migration-runner` row, on the reasoning that
- * migrations are rare and heavy so one at a time is plenty. What that actually
- * built was a starvation bug with no symptom: the lease is renewed on every beat
- * of the run being driven, so a control plane copying a 15 GB volume held it for
- * the hour that took - and a second migration started meanwhile sat at
- * "Migration in progress" with no runner, no heartbeat and not one line of log,
- * for as long as the first one ran. It got worse with an ORPHANED control plane
- * (a process that survived a restart, ppid 1, no port): it holds the lease and
- * drives runs, while the control plane actually serving the panel can never take
- * it.
- *
- * Per run, the lease means what a lease is for - two processes must not drive
- * the SAME run - and it cannot mean anything else.
+ * One lease PER RUN, not one for the instance. Per run, the lease means what a
+ * lease is for - two processes must not drive the SAME run - and it cannot mean
+ * anything else.
  */
 export const leaseFor = (runId: string) => `dokploy-migration:${runId}`;
-/** A heartbeat older than this is a control plane that died; take the run over.
- *
- *  It is the LEASE's staleness too, not only the run's. The lease defaults to two
- *  hours, which is right for a scheduler that ticks once a minute and wrong here:
- *  a control plane killed mid-migration held the runner shut for two hours, and
- *  the only symptom was that nothing moved. Safe to shorten only because the
- *  lease is now renewed on every beat - the idle tick's and the one that runs
- *  THROUGH a long step (see {@link advance}), which is what a 900 MB volume copy
- *  used to look abandoned for. */
+/**
+ * A heartbeat older than this is a control plane that died; take the run over.
+ */
 const STALE_MS = MIGRATION_HEARTBEAT_STALE_MS;
 /** How often the tick runs when nothing is going on. */
 const IDLE_TICK_MS = 15_000;
@@ -124,10 +90,6 @@ export interface StartRunInput {
 
 /**
  * Open a run, write down everything needed to finish it, and start it moving.
- *
- * Gated exactly like the loop it replaces - `beginDokployImport` runs the same
- * `assertImportGate` - and it returns as soon as the plan is durable, not when
- * the migration is done. The tab is free from that moment.
  */
 export async function startDokployRun(input: StartRunInput): Promise<string> {
   const { teamId } = await assertImportGate();
@@ -201,9 +163,8 @@ export async function requestStopDokployRun(runId: string): Promise<void> {
   if (!row || row.status !== "running") return;
 
   // Nobody is driving it. The flag alone would leave the row `running` forever -
-  // which is what a run started by an old client, or one whose runner died
-  // without a successor, looks like. Closing it here is the same call the runner
-  // would make; it is only ever reached when no runner will.
+  // which is what a run started by an old client, or one whose runner died without a
+  // successor, looks like.
   const beatAt = row.heartbeatAt ? Date.parse(row.heartbeatAt) : 0;
   if (Date.now() - beatAt < STALE_MS) return;
   await stopDokployImport(runId);
@@ -252,15 +213,10 @@ export async function runMigrationTick(): Promise<void> {
   }
 }
 
-/** Take one run, if nobody else has it, and see it through.
- *
- *  The claim is marked BEFORE the first `await`, and that ordering is the whole
- *  guard. Ticks overlap now - the timer fires every 15 seconds whether or not
- *  the last pass is still driving something - so two of them can select the same
- *  fresh row, and the lease cannot tell them apart: they are the same process,
- *  so they are the same owner, and a lease renews for its owner by definition.
- *  The old instance-wide `ticking` flag used to make this impossible by making
- *  everything impossible. */
+/**
+ * Take one run, if nobody else has it, and see it through. The claim is marked
+ * BEFORE the first `await`, and that ordering is the whole guard.
+ */
 async function drive(row: RunRow): Promise<void> {
   if (inflight.has(row.id)) return;
   inflight.add(row.id);
@@ -291,10 +247,6 @@ export function startMigrationRunner(): void {
 /**
  * Hand the lease back on SIGTERM/SIGINT, so the next control plane picks the
  * migration up on its first tick instead of waiting out the staleness window.
- *
- * The four schedulers have always done this; the runner was added later and was
- * not on the list, which is how a restart during a migration became a migration
- * that stayed still with nothing on screen to say why.
  */
 export async function releaseMigrationRunnerLease(): Promise<void> {
   for (const runId of inflight)
@@ -309,22 +261,17 @@ export function stopMigrationRunner(): void {
 
 type RunRow = typeof runsTable.$inferSelect;
 
-/** Claim the run and keep claiming it: a long step must not look abandoned.
- *
- *  Both claims, in one call. The lease renewal rides along because the two
- *  staleness windows have to move together: a run whose heartbeat is fresh while
- *  its runner's lease has gone stale is a run two control planes would drive. */
+/**
+ * Claim the run and keep claiming it: a long step must not look abandoned.
+ */
 async function beat(runId: string): Promise<void> {
   await acquireLease(leaseFor(runId), owner, new Date(), STALE_MS);
   await getDb()
     .update(runsTable)
     .set({ runnerOwner: owner, heartbeatAt: nowIso() })
     .where(eq(runsTable.id, runId));
-  // And it is PUBLISHED, because the panel's only proof that somebody is driving
-  // this run is a heartbeat it can see. The config phase can spend minutes
-  // inside one project without writing any progress, and a feed that only wakes
-  // on progress would leave every watcher holding a heartbeat from before the
-  // silence - unable to tell a runner that is working from one that is gone.
+  // And it is PUBLISHED, because the panel's only proof that somebody is driving this
+  // run is a heartbeat it can see.
   publishMigrationChanged();
 }
 
@@ -337,21 +284,9 @@ async function setProgress(
 }
 
 /**
- * Close a run as failed, say why, forget the key - and take it back out.
- *
- * The key goes on EVERY door out of `running`, not only this one: a run that
- * ended has no further use for it, and a credential kept past its use is a
- * credential nobody remembers is there.
- *
- * The undo is not an extra kindness, it is the same rule a Stop obeys: a run
- * that broke on project four of seven leaves exactly the debris a stopped one
- * does, and half a copied volume is worse than none. There used to be a panel
- * offering to keep it; there is not any more, so leaving the debris would leave
- * it with nothing to remove it. A migration either lands whole or leaves
- * nothing.
- *
- * `error` survives the undo (the revert writes `status`, never the message), so
- * the wizard and History still say WHY it stopped.
+ * Close a run as failed, say why, forget the key - and take it back out. There
+ * used to be a panel offering to keep it; there is not any more, so leaving the
+ * debris would leave it with nothing to remove it.
  */
 async function failRun(row: RunRow, why: string): Promise<void> {
   await getDb()
@@ -367,10 +302,8 @@ async function failRun(row: RunRow, why: string): Promise<void> {
     .where(and(eq(runsTable.id, row.id), eq(runsTable.status, "running")));
   publishMigrationChanged();
 
-  // Under the actor, like everything else the runner does - the undo is a stack
-  // of ordinary capability-gated deletes. A run too old to carry an actor keeps
-  // the old behaviour: it stays where it stopped rather than being deleted by
-  // nobody.
+  // Under the actor, like everything else the runner does - the undo is a stack of
+  // ordinary capability-gated deletes.
   if (!row.actorUserId) return;
   try {
     await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
@@ -398,18 +331,12 @@ async function advance(row: RunRow): Promise<void> {
   if (!row.actorUserId)
     throw new Error("This run was started before Deplo could resume one.");
   await beat(row.id);
-  // The steps beat between themselves, and one step can be a 900 MB volume
-  // crossing two hosts - minutes in which nothing beat at all, so the run and
-  // the lease both went cold under a runner that was working perfectly. The
-  // timer is what makes a long step look alive; `ticking` keeps the idle tick
-  // out of here, so nothing else was going to.
+  // The steps beat between themselves, and one step can be a 900 MB volume crossing
+  // two hosts - minutes in which nothing beat at all, so the run and the lease both
+  // went cold under a runner that was working perfectly.
   const heart = setInterval(() => {
     void beat(row.id).catch(() => {});
-    // And it carries the STOP inwards. `stopped()` is read between steps, but a
-    // step is one service and one service can be an hour of volume - which is
-    // how a stopped run went on copying into apps its own undo had already
-    // deleted. The flag reaches the stream here, within a beat of being set,
-    // whichever control plane set it.
+    // And it carries the STOP inwards.
     void stopWanted(row.id)
       .then((yes) => yes && abortRunCopy(row.id))
       .catch(() => {});
@@ -473,11 +400,9 @@ async function stopped(runId: string): Promise<boolean> {
 /* ------------------------------------------------------------------ */
 
 /**
- * Nothing is created until every machine this run reads from ANSWERS.
- *
- * The install step proved it once, and that proof has an age: a run resumed
- * after a control-plane restart may be hours old. It costs one Hello per machine
- * and it is the last moment a refusal is free.
+ * Nothing is created until every machine this run reads from ANSWERS. The install
+ * step proved it once, and that proof has an age: a run resumed after a
+ * control-plane restart may be hours old.
  */
 async function assertMachinesAnswer(row: RunRow): Promise<void> {
   const ids = new Set(

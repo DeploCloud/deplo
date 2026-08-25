@@ -1,16 +1,6 @@
 /**
- * Dokploy row → deplo input. PURE: no I/O, no DB, no auth, no `server-only`.
- *
- * Everything that is easy to get subtly wrong lives here — the env-file grammar,
- * the build-pack table, the docker memory/CPU suffixes, which domains are worth
- * carrying, the compose network rewrite — precisely so it unit-tests against
- * recorded rows without a Dokploy instance or a database.
- *
- * The convention for anything that cannot be represented: return the value that
- * IS representable and add a line to `notes`. A note becomes a `manual` row in
- * the import report ("imported, but there is one thing to do by hand"), which is
- * the whole difference between a migration you can trust and one that quietly
- * drops half a config. Nothing here throws for missing data.
+ * Dokploy row → deplo input. The convention for anything that cannot be
+ * represented: return the value that IS representable and add a line to `notes`.
  */
 
 import yaml from "js-yaml";
@@ -56,13 +46,7 @@ const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 /* ------------------------------------------------------------------ */
 
 /**
- * Dokploy keeps env as one `.env`-shaped text column; deplo keeps rows. Same
- * grammar as `importEnv` (blank lines and `#` comments dropped, one layer of
- * matching quotes stripped, invalid keys skipped) plus a tolerated `export `
- * prefix, which people paste in from a shell.
- *
- * Comment lines are lost: deplo has no comment concept on an env row. That was
- * already true of the manual migration and is not worth a note per app.
+ * Dokploy keeps env as one `.env`-shaped text column; deplo keeps rows.
  */
 export function parseEnvBlob(blob: string | null | undefined): {
   key: string;
@@ -116,12 +100,6 @@ const DOKPLOY_NETWORK = "dokploy-network";
 /**
  * Every top-level network KEY in this compose that resolves to Dokploy's shared
  * network — which is not only the key `dokploy-network`.
- *
- * Same trap `sharedNetworkKeys` (lib/deploy/compose-lint.ts) documents for
- * deplo's own network: compose lets a network be referenced under any key while
- * pointing elsewhere with `name:`, so `{ web: { external: true, name:
- * dokploy-network } }` is the same network under an alias. A rule that matches
- * the key alone is one rename away from being decorative.
  */
 function dokployNetworkKeys(doc: { networks?: unknown }): Set<string> {
   const keys = new Set<string>();
@@ -147,32 +125,9 @@ function dokployNetworkKeys(doc: { networks?: unknown }): Set<string> {
 }
 
 /**
- * Turn a Dokploy compose file into a Deplo one. Two rewrites, both mechanical,
- * both necessary, and nothing else is touched — Traefik labels a user wrote by
- * hand included. They are configuration someone chose, and this is an import, not
- * a rewrite.
- *
- * **1. Drop `dokploy-network`.** It does not exist here, and
- * `composeJoinsForeignNetwork` (correctly) treats an external network we do not
- * own as a way out of the sandbox — so importing verbatim would demand the
- * `canMountHostVolumes` grant for every stack, over a network with no purpose
- * here: `buildComposeStack` attaches the services to Deplo's own.
- *
- * **2. Rewrite `../files/x` to `./x`.** Both platforms materialise a service's
- * config files next to the stack and bind them in; they just spell the path
- * differently. Dokploy writes `<stack>/files/<path>` and binds `../files/<path>`;
- * Deplo writes its own isolated files dir and binds `./<path>` (`rewriteMountSource`
- * in compose-stack.ts). Left alone, a `../` source is not merely wrong — Deplo
- * reads it as climbing OUT of the sandbox, so the stack would demand the
- * host-volumes grant and then bind a path that holds nothing. Measured on a real
- * instance, this is the single most common thing in a Dokploy compose file.
- *
- * A source that climbs anywhere ELSE with `..` is left exactly as it is: that one
- * really is a host bind, and Deplo should go on asking for the grant.
- *
- * The YAML is only re-serialized when there IS something to change (a round trip
- * through js-yaml reflows the file and drops comments), so a stack that needed
- * neither rewrite comes across byte-identical.
+ * Turn a Dokploy compose file into a Deplo one. Left alone, a `../` source is not
+ * merely wrong — Deplo reads it as climbing OUT of the sandbox, so the stack would
+ * demand the host-volumes grant and then bind a path that holds nothing.
  */
 export function adaptComposeForDeplo(source: string): {
   compose: string;
@@ -248,13 +203,8 @@ export function adaptComposeForDeplo(source: string): {
     }
   }
 
-  // The SAME `../files/x` rewrite, everywhere else a compose file can name a
-  // file next to itself. `services[].volumes` was the only place it was applied,
-  // and the others are not rare: an `env_file`, a `secrets: file:`, a
-  // `configs: file:` and a `build.context` all resolve against the project
-  // directory, which is Deplo's own per-stack files dir - so a path left saying
-  // `../files/x` (or Dokploy's platform-written `.env`, which is not written
-  // here) points at nothing and the stack refuses to come up.
+  // The SAME `../files/x` rewrite, everywhere else a compose file can name a file
+  // next to itself.
   for (const [where, target] of topLevelFileRefs(doc)) {
     const rewritten = deploFilesPath(target.value);
     if (rewritten == null) continue;
@@ -273,21 +223,8 @@ export function adaptComposeForDeplo(source: string): {
 
 /**
  * Point an `env_file` at the env file DEPLO writes, when the stack names one it
- * did not bring with it.
- *
- * Every platform materialises a service's variables into a file next to the
- * compose, and they do not agree on its name: Dokploy writes `.env`, others
- * write `stack.env`. The agent writes `.env` in the stack's own directory
- * (>= 1.31.0), so a stack that says `env_file: stack.env` looks for a file
- * nobody creates and `docker compose up` refuses the whole project - measured on
- * a real Paperless stack.
- *
- * The rule is deliberately narrow: an entry is retargeted ONLY when the file is
- * not one this app carries. A `./config/app.env` the author actually wrote (and
- * that came across as a config file) is left exactly as it is - it names their
- * file, not the platform's.
- *
- * `carried` is the set of file paths the app brings, as `mapMounts` names them.
+ * did not bring with it. The rule is deliberately narrow: an entry is retargeted
+ * ONLY when the file is not one this app carries.
  */
 export function retargetPlatformEnvFiles(
   source: string,
@@ -371,9 +308,6 @@ interface FileRef {
  * Every place OUTSIDE `services[].volumes` where a compose file names a
  * neighbouring file: `env_file` (string or list, on each service),
  * `build.context`, `label_file`, and the top-level `secrets` / `configs` blocks.
- *
- * Returned as setters rather than paths so the caller rewrites in place without
- * a second walk of the same document.
  */
 function topLevelFileRefs(doc: Record<string, unknown>): [string, FileRef][] {
   const out: [string, FileRef][] = [];
@@ -470,10 +404,6 @@ const BUILD_METHOD: Record<string, BuildMethod> = {
 
 /**
  * Dokploy's per-service build fields → deplo's `BuildConfig`.
- *
- * `buildArgs` deliberately does NOT land here: deplo passes env vars to the
- * build (agent ≥ 1.9.0), so the caller merges them into the env set instead —
- * one mechanism rather than two.
  */
 export function mapBuildSettings(
   app: DokployApplication,
@@ -491,12 +421,7 @@ export function mapBuildSettings(
   const build: Partial<BuildConfig> = { buildMethod };
   const methodSettings: BuildConfig["methodSettings"] = {};
 
-  // ONLY the settings the chosen builder reads. Dokploy stores a value in every
-  // one of these columns whether or not the app uses that builder — measured on a
-  // real instance, a Nixpacks app carries `dockerfile: "Dockerfile"` and
-  // `railpackVersion: "0.15.4"` — and importing those would pin an unrelated
-  // builder to a version this app never asked for, out of what is really just the
-  // other platform's column default.
+  // ONLY the settings the chosen builder reads.
   if (buildMethod === "dockerfile") {
     if (app.dockerfile?.trim())
       methodSettings.dockerfilePath = app.dockerfile.trim();
@@ -666,15 +591,9 @@ export function mapResources(row: {
 /* ------------------------------------------------------------------ */
 
 /**
- * The service's icon, carried over as-is.
- *
- * There is nothing to fetch: Dokploy already stores an inline data-URI (see
- * {@link DokployApplication.icon}), which is the same thing deplo stores, so the
- * only work is refusing what deplo would not accept anyway - a remote URL, an
- * image type outside the allowlist, or one over the size cap. Those come back
- * `null` rather than throwing: an icon is decoration, and losing it must never be
- * the reason a service fails to import. An app that lands without one still picks
- * one up from favicon detection on its first deploy.
+ * The service's icon, carried over as-is. Those come back `null` rather than
+ * throwing: an icon is decoration, and losing it must never be the reason a
+ * service fails to import.
  */
 export function mapLogo(icon: string | null | undefined): string | null {
   const value = icon?.trim();
@@ -696,14 +615,6 @@ const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/;
 
 /**
  * Where the app's code comes from.
- *
- * Every git flavour lands as deplo's plain `git` source with an https clone URL:
- * the tokens and GitHub App installations that authenticated the clone on Dokploy
- * are excluded from its API on purpose, so there is no credential to carry. A
- * public repo clones anonymously and works immediately; a private one needs a git
- * connection attached afterwards, which is what the note says. The caller may
- * still fill `connectionId` when the team already has a connection for the same
- * host.
  */
 export function mapSource(app: DokployApplication): Mapped<MappedSource> {
   const notes: string[] = [];
@@ -720,11 +631,8 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
       );
       return { value: { kind: "none" }, notes };
     }
-    // A private pull can be configured two ways over there: a registry ENTITY, or
-    // a username/password/URL typed straight onto the application
-    // (`saveDockerProvider`). Both need re-entering here, and only the first was
-    // ever mentioned — so the second arrived as a plain public image and failed
-    // its first deploy on an unauthenticated pull, with nothing in the report.
+    // A private pull can be configured two ways over there: a registry ENTITY, or a
+    // username/password/URL typed straight onto the application (`saveDockerProvider`).
     if (app.registryId || app.registry || app.username || app.registryUrl)
       notes.push(
         "From a private registry. Add it under Registries and reselect it - Dokploy never exposes the password.",
@@ -868,8 +776,6 @@ export function repoNameFromUrl(url: string): string {
 /**
  * Hostnames that only ever meant "the box this used to run on": Dokploy's
  * generated `traefik.me` names and the wildcard-DNS services that encode an IP.
- * Carrying one over would point at the old VPS and ask Let's Encrypt for a
- * certificate on a name we do not control. deplo mints its own instead.
  */
 const THROWAWAY_HOST_RE = /(^|\.)(traefik\.me|sslip\.io|nip\.io|localhost)$/i;
 
@@ -891,14 +797,7 @@ export interface MappedDomain {
   service: string | null;
   /**
    * The source host was the other platform's own THROWAWAY address - a
-   * `*.sslip.io` / `*.traefik.me` / `*.nip.io` name with its server's IP baked
-   * in. It cannot be carried over (it points at the old box, and half of them
-   * are not even a claim anyone could make), but the ROUTE it describes is real:
-   * a port, a service, a path someone chose.
-   *
-   * So it is not dropped - it is RE-HOSTED. Deplo mints a temporary address of
-   * its own and puts this same route on it, which is why an app that answered on
-   * two temporary addresses arrives answering on two, not on none.
+   * `*.sslip.io` / `*.traefik.me` / `*.nip.io` name with its server's IP baked in.
    */
   generated: boolean;
 }
@@ -906,11 +805,6 @@ export interface MappedDomain {
 /**
  * The domains worth importing, in Dokploy's own order (the first survivor becomes
  * deplo's primary).
- *
- * Dropped without a note: preview domains (deplo generates its own per PR) and
- * disabled rows. A THROWAWAY host is not dropped - see {@link
- * MappedDomain.generated}. Everything else comes across with its path, port,
- * service and certificate choice.
  */
 export function mapDomains(
   domains: DokployDomain[] | null | undefined,
@@ -933,11 +827,7 @@ export function mapDomains(
 
     const path = (d.path ?? "/").trim();
     const pathPrefix = path === "/" ? "" : path;
-    // Dokploy can rewrite the path on the way to the container. Deplo either
-    // strips the prefix or forwards the request whole - there is no third
-    // answer - so a REAL rewrite (anything but the default `/`) is named here
-    // instead of disappearing: the app would otherwise receive a path it has
-    // never been asked to serve.
+    // Dokploy can rewrite the path on the way to the container.
     const internal = (d.internalPath ?? "").trim();
     if (internal && internal !== "/")
       notes.push(
@@ -970,10 +860,9 @@ export function mapDomains(
 
 export interface MappedMounts {
   /**
-   * Config files that must exist in the stack's files dir, with the container
-   * path Dokploy mounted each one at (empty for a compose stack's, whose YAML
-   * does the binding itself). WHO writes them is the caller's business - see
-   * {@link mapMounts}.
+   * Config files that must exist in the stack's files dir, with the container path
+   * Dokploy mounted each one at (empty for a compose stack's, whose YAML does the
+   * binding itself).
    */
   files: { filePath: string; content: string; mountPath: string }[];
   /** Named volumes and host binds, for `setAppVolumes`. */
@@ -1006,10 +895,7 @@ function fileNameFromMountPath(mountPath: string): string {
 }
 
 /**
- * `base`, or the first `<stem>-<n>.<ext>` nobody has taken yet. Two mounts at
- * `/etc/a/app.ini` and `/etc/b/app.ini` are one file each on Dokploy and would
- * be ONE file here - the second silently overwriting the first - because all the
- * files dir keeps is the last path segment.
+ * `base`, or the first `<stem>-<n>.<ext>` nobody has taken yet.
  */
 function uniqueFilePath(base: string, used: Set<string>): string {
   if (!used.has(base)) {
@@ -1031,28 +917,6 @@ function uniqueFilePath(base: string, used: Set<string>): string {
 
 /**
  * Dokploy's three mount kinds -> deplo's writers.
- *
- * `volume` and `bind` become Storage entries (`setAppVolumes`). A `file` mount
- * is content, and Dokploy stores it TWO different ways depending on what it is
- * attached to:
- *
- *  - **a compose stack** names the file in `filePath`, writes it to
- *    `<stack>/files/<filePath>` and lets the YAML bind it (`../files/<filePath>`,
- *    which `adaptComposeForDeplo` rewrites to `./<filePath>`). `mountPath` is
- *    empty - nothing reads it.
- *  - **an application** has no YAML to write a bind into, so the container path
- *    in `mountPath` IS the mount and `filePath` is left NULL. Requiring
- *    `filePath` dropped every one of those on the floor, content included - a
- *    prebuilt image whose only configuration is an injected `nginx.conf` or
- *    `index.html` arrived here empty. So the last segment of `mountPath` is the
- *    file's name, and it is paired with an **"app" volume** - what Settings ->
- *    Storage calls a **File** - so something actually mounts it back where it
- *    was.
- *
- * `files` is what must EXIST in the app's files dir; who puts it there is the
- * caller's business (a compose deploy re-materialises `app_mounts` on every
- * bring-up, a single-image app is written once through the file RPC, exactly
- * like the Storage editor does it).
  */
 export function mapMounts(
   mounts: DokployMount[] | null | undefined,
@@ -1152,11 +1016,6 @@ const DB_ENGINE: Partial<Record<DokployDbKind, DatabaseType>> = {
 /**
  * The deplo engine for one of Dokploy's database tables, or null when there is
  * none (libsql).
- *
- * Exported so the decision is made BEFORE the detail call: asking Dokploy for a
- * libsql row we can do nothing with produces a 404 and a report line about HTTP,
- * when the honest answer - "Deplo has no libsql engine" - was knowable without
- * leaving the building.
  */
 export function deploEngineFor(kind: DokployDbKind): DatabaseType | null {
   return DB_ENGINE[kind] ?? null;
@@ -1175,10 +1034,7 @@ export interface MappedDatabase {
   /** The image Dokploy ran, ALWAYS kept verbatim - see `mapDatabase`. */
   customImage: string;
   /**
-   * The start command Dokploy overrode, or null. Deplo stores one too
-   * (`databases.custom_command`, what Settings -> Advanced writes), so an engine
-   * tuned with `-c max_connections=500` keeps its tuning instead of arriving as
-   * a sentence in a report asking someone to retype it.
+   * The start command Dokploy overrode, or null.
    */
   command: string | null;
   /** The engine's config files, in deplo's shape. Almost always empty. */
@@ -1208,14 +1064,6 @@ function imageRepo(image: string | null | undefined): string | null {
 
 /**
  * One of Dokploy's five database tables → `createDatabase` input.
- *
- * The password is carried over ON PURPOSE, even though deplo would happily mint
- * one: every imported app's `DATABASE_URL` still spells out the old password, so
- * regenerating it here would break the apps in a way nobody would connect back
- * to this import. deplo's own policy may still refuse it, and then the caller
- * reports loudly.
- *
- * `libsql` returns null - deplo has no such engine.
  */
 export function mapDatabase(
   kind: DokployDbKind,
@@ -1228,20 +1076,8 @@ export function mapDatabase(
     return { value: null, notes };
   }
 
-  // The source's EXACT image is kept, canonical or not - deplo never re-derives
-  // one here. Deriving looked equivalent and is not, for two measured reasons:
-  //
-  //  - Deplo's own ref appends a suffix (`postgres:${v}-alpine`), so a source tag
-  //    that is not a bare number came out as `postgres:16-alpine-alpine`, and an
-  //    untagged image came out with no version at all.
-  //  - The data volume is copied byte for byte, and a Postgres cluster written by
-  //    the Debian image (glibc) reopened by the Alpine one (musl) sorts text
-  //    differently - verified on a real cluster: `'a' < 'B'` is true under glibc
-  //    and false under musl - so every btree index on a text column silently
-  //    stops matching. Data must be reopened by the binary that wrote it.
-  //
-  // `kind` is also the official Docker Hub repo for all five engines, so an image
-  // Dokploy left blank falls back to the same thing Docker itself would resolve.
+  // The source's EXACT image is kept, canonical or not - deplo never re-derives one
+  // here. Data must be reopened by the binary that wrote it.
   const customImage = row.dockerImage?.trim() || `${kind}:latest`;
   const tag = imageTag(customImage);
   const version = tag ?? "latest";
@@ -1269,13 +1105,8 @@ export function mapDatabase(
       `Custom start command on Dokploy ("${truncate(command, 60)}") spans more than one line - set it under Advanced if you still need it.`,
     );
   // Dokploy models a database's own DATA volume as a mount row, so counting every
-  // mount announced "extra files that are not imported" about the one thing the
-  // Data step exists to copy - on every single database. Only a FILE or BIND
-  // mount is genuinely extra; a volume is data, and data moves.
-  //
-  // A FILE comes across: it is the engine's configuration, and deplo keeps those
-  // itself (`Database.mounts`). A BIND does not - a database has no host-folder
-  // mount here, so the honest answer is to say which folder was left behind.
+  // mount announced "extra files that are not imported" about the one thing the Data
+  // step exists to copy - on every single database.
   const mapped = mapMounts(
     (row.mounts ?? []).filter((m) => m.type === "file"),
     { isCompose: false },
@@ -1291,22 +1122,8 @@ export function mapDatabase(
         )}). Deplo databases have no host mounts - move what is in there another way.`,
     );
 
-  // mysql and mariadb keep TWO credentials on Dokploy - an application user and
-  // root - while deplo models ONE and uses it for both. That is true of a
-  // database deplo created and false of a volume copied off another platform:
-  // the copied cluster keeps the SOURCE's users, and the engine's init env is
-  // not re-applied to a volume that is already initialized. Everything deplo
-  // does to a database itself authenticates as root (the backup dump needs it -
-  // `mysqldump --databases` wants privileges a scoped user does not have - and
-  // so do the console and password rotation), so root's credential is the one
-  // that has to become the database's. The application user is left untouched
-  // inside the copied cluster, so the imported app's own connection string goes
-  // on working with it.
-  // A database's own environment. Deplo has no per-database variables (an engine
-  // is configured through its image, its command and its config files), so these
-  // cannot come across - but they were doing so in SILENCE, and some of them
-  // decide how the cluster is initialised (`POSTGRES_INITDB_ARGS`, `TZ`,
-  // `PGDATA`). Name them.
+  // mysql and mariadb keep TWO credentials on Dokploy - an application user and root
+  // - while deplo models ONE and uses it for both.
   const envKeys = parseEnvBlob(row.env).map((e) => e.key);
   if (envKeys.length > 0)
     notes.push(
@@ -1333,10 +1150,7 @@ export function mapDatabase(
       username: rootPassword ? "root" : row.databaseUser?.trim() || null,
       dbName: row.databaseName?.trim() || null,
       password: rootPassword ?? (row.databasePassword?.trim() || null),
-      // A real published port or nothing. Dokploy's column is nullable and a
-      // service that publishes none can also carry 0, which is not a port
-      // anything here would accept - and it would reach the report as a line
-      // about "port 0" that reads like a fault instead of an absence.
+      // A real published port or nothing.
       exposedPort:
         typeof row.externalPort === "number" && row.externalPort > 0
           ? row.externalPort
@@ -1383,10 +1197,6 @@ function normalizePath(p: string): string {
 
 /**
  * The named volumes a `docker inspect` says a container is using.
- *
- * Bind mounts are dropped: a host path is not a volume, deplo would have imported
- * it as a bind mount pointing at the same place, and copying a host directory is
- * a different operation with a different blast radius.
  */
 export function sourceVolumesFrom(inspect: {
   Mounts?: {
@@ -1407,15 +1217,7 @@ export function sourceVolumesFrom(inspect: {
     seen.add(name);
     out.push({ name, mountPath: normalizePath(dest) });
   }
-  // Drop a mount whose path is an ANCESTOR of another mount's. That one is the
-  // image's own `VOLUME` declaration, which Docker satisfies with an anonymous
-  // volume the real mount then sits INSIDE of: postgres 18 declares
-  // `VOLUME /var/lib/postgresql` while its data lives in
-  // `/var/lib/postgresql/<major>/docker`, so every Postgres 18 container reports
-  // two volumes. Its bytes are whatever the image shipped, never the database -
-  // and counting it made the source look like it had two data volumes, which is
-  // exactly what stopped the single-data pairing from matching a Postgres 18 and
-  // left the imported database empty.
+  // Drop a mount whose path is an ANCESTOR of another mount's.
   return out.filter(
     (v) => !out.some((o) => o !== v && isUnderPath(o.mountPath, v.mountPath)),
   );
@@ -1430,12 +1232,6 @@ export interface HostMount {
 
 /**
  * The BIND MOUNTS a `docker inspect` says a container is using.
- *
- * Kept apart from `sourceVolumesFrom` rather than folded into it, because the two
- * are copied by different RPCs with very different blast radii: a named volume is
- * Docker's to hand over, a host directory is the machine's. Same reason the copy of
- * one is instance-admin plus the host-volumes grant and the copy of the other is
- * not.
  */
 export function sourceBindMountsFrom(inspect: {
   Mounts?: { Type?: string; Source?: string; Destination?: string }[];
@@ -1485,10 +1281,6 @@ export function declaredSourceBindMounts(
 
 /**
  * Match every source bind mount to the deplo host mount that should receive it.
- *
- * By container PATH, the same identity the named volumes pair on - the host paths
- * routinely agree (the import copies Dokploy's own path across verbatim), but they
- * do not have to, and the path inside the container is what the app actually reads.
  */
 export function pairHostMounts(
   source: HostMount[],
@@ -1521,18 +1313,8 @@ function isUnderPath(child: string, parent: string): boolean {
 
 /**
  * The volumes a Dokploy service DECLARES, for when there is no container to
- * inspect.
- *
- * Inspecting the running container is exact, and it is also unavailable exactly
- * when it is most needed: a platform someone is migrating off is usually stopped,
- * and Dokploy stops a service by scaling its swarm service to 0 replicas - no
- * container, no mounts, and the data move would report "no volumes" while a
- * perfectly good volume sits on the host. Dokploy's own API still answers with
- * the mounts it declared, so that is the fallback.
- *
- * A compose stack's volumes are not in `mounts` at all - they live in its compose
- * file, and docker-compose prefixes each with the project name, which for Dokploy
- * is the service's `appName`.
+ * inspect. Dokploy's own API still answers with the mounts it declared, so that is
+ * the fallback.
  */
 export function declaredSourceVolumes(input: {
   kind: string;
@@ -1567,17 +1349,6 @@ export function declaredSourceVolumes(input: {
 
 /**
  * Match every source volume to the deplo volume that should receive it.
- *
- * The container PATH is the identity: `/app/uploads` on one platform is
- * `/app/uploads` on the other, whatever either called the volume.
- *
- * `singleData` is for a database, where each side has exactly one data volume and
- * the paths routinely DISAGREE - postgres 18 defaults its data dir to
- * `/var/lib/postgresql/18/docker` while Deplo mounts (and pins `PGDATA` to)
- * `/var/lib/postgresql/data`.
- * One volume on each side has no ambiguity to resolve, so they are paired anyway
- * and the note names both paths, because that mismatch is also the thing most
- * likely to stop the imported database from starting.
  */
 export function pairVolumes(
   source: NamedVolume[],
@@ -1620,10 +1391,8 @@ export function pairVolumes(
   }
 
   for (const s of source)
-    // An anonymous volume left over is not news: the image asked for it, nobody
-    // named it, and nothing on this side could ever correspond to it. Saying so
-    // on every mongo (which declares /data/configdb) is noise in a report whose
-    // whole value is that every line means something.
+    // An anonymous volume left over is not news: the image asked for it, nobody named
+    // it, and nothing on this side could ever correspond to it.
     if (
       !pairs.some((p) => p.sourceVolume === s.name) &&
       !isAnonymousVolume(s.name)
@@ -1641,17 +1410,7 @@ export function pairVolumes(
 }
 
 /**
- * The on-disk name of one of an app's volumes. Two shapes, and the difference is
- * whether Deplo wrote the volume into the stack itself:
- *
- *  - a volume Deplo manages (an `app_volumes` row) is rendered with an explicit
- *    `name:`, which docker-compose uses verbatim: `deplo-<slug>-<alias>`;
- *  - a volume declared in the user's OWN compose has no `name:`, so compose
- *    prefixes it with the project: `deplo-<slug>_<alias>`.
- *
- * The project is always `deplo-<slug>` (the agent runs `docker compose -p
- * deplo-<slug>`), which is also why a database's volume is
- * `deplo-db-<slug>_db-<slug>-data`: its stack's slug IS `db-<slug>`.
+ * The on-disk name of one of an app's volumes.
  */
 export function deploVolumeName(
   slug: string,
@@ -1668,12 +1427,6 @@ export function deploDatabaseVolumeName(host: string): string {
 
 /**
  * The volumes a compose file declares, with the path each is mounted at.
- *
- * Only top-level `volumes:` entries matter (a named volume); a bind mount or an
- * anonymous mount is not something a data move can pair. The first service that
- * mounts an alias wins the path — two services sharing one volume mount it at the
- * same place in every stack worth migrating, and picking one is better than
- * refusing to move it.
  */
 export function composeVolumeMounts(compose: string): NamedVolume[] {
   let doc: {
@@ -1748,11 +1501,7 @@ export function unsupportedNotes(app: DokployApplication): string[] {
     notes.push(
       `${app.redirects!.length} redirect rule(s) on Dokploy - Deplo has no redirect list, use a domain per host.`,
     );
-  // Swarm's own service spec. Deplo runs one container per app through compose,
-  // so none of these have a column here - which is a reason to SAY them, not to
-  // drop them without a word: a healthcheck and a placement constraint are
-  // decisions somebody made, and finding out they are gone because a container
-  // never restarted is the wrong way to learn it.
+  // Swarm's own service spec.
   const swarm = (
     [
       ["healthCheckSwarm", "a health check"],
@@ -1795,24 +1544,6 @@ export interface ComposeRepoApp {
 
 /**
  * Is this compose file one service that BUILDS FROM ITS OWN REPOSITORY?
- *
- * Dokploy lets a "Compose" service take its file from GitHub, and people use
- * that for a plain application: one service, `build: .`, a port, a volume. Deplo
- * imported it as a compose app, which was the wrong shape twice over. The
- * repository was dropped - so no auto-deploy on push and no way to update the
- * file - and, far worse, `build: .` was kept in a stack Deplo ships to the agent
- * as opaque YAML with nothing beside it: the context is a directory holding one
- * compose file, so the app could never build. It arrived looking migrated and
- * was dead on arrival.
- *
- * The honest reading of that file is "this repository, built and run", which is
- * exactly a Deplo app with a git source - so that is what it becomes, and the
- * build settings come off the `build:` block.
- *
- * Deliberately narrow. TWO services, or one that also names an `image:`, or
- * anything with a `depends_on`, is a real stack and stays one: those keep their
- * compose, and the caller says out loud that Deplo has no repository to build
- * them from.
  */
 export function composeAsRepoApp(compose: string): ComposeRepoApp | null {
   let doc: {
@@ -1861,12 +1592,9 @@ export function composeAsRepoApp(compose: string): ComposeRepoApp | null {
 }
 
 /**
- * The services of a compose file that build from source, by name.
- *
- * A stack Deplo keeps as a stack has no repository behind it, so every one of
- * these is a service that cannot build here. Naming them is the difference
- * between an app that fails its first deploy with a docker error and a report
- * line that says what to do.
+ * The services of a compose file that build from source, by name. A stack Deplo
+ * keeps as a stack has no repository behind it, so every one of these is a service
+ * that cannot build here.
  */
 export function composeBuildServices(compose: string): string[] {
   let doc: { services?: Record<string, { build?: unknown }> } | null;

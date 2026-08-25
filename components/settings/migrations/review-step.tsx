@@ -50,26 +50,6 @@ function databasesWithPorts(plan: Plan) {
 /**
  * Which databases would land on a host port something else already holds, and a
  * free port to offer instead.
- *
- * The whole point is that this is answered BEFORE the import, not after: the port
- * a database publishes on the other platform is routinely taken over here (by
- * Deplo's own Postgres on 5432, by an app, by the other database in the same
- * migration), and an import that discovers that at the create can only drop the
- * port and write a line about it in a report nobody reads until it is too late.
- *
- * Two things are deliberately NOT a conflict:
- *
- * - **The source itself holding it.** When the database runs on the very machine
- *   it is about to run on here, the container holding that port is the one being
- *   imported, and the import stops it moments later to read its volume - so the
- *   port frees itself and asking about it would be asking about nothing.
- * - **A port on a server nothing could ask.** An agent too old to probe, or one
- *   that will not answer, is reported once at the top rather than turned into a
- *   decision per database about a problem that may not exist.
- *
- * Duplicates inside the same import are found here and nowhere else: neither
- * database exists yet, so the host has nothing to bind and the probe cannot see
- * the clash - only this list can.
  */
 function usePortConflicts({
   plan,
@@ -109,10 +89,8 @@ function usePortConflicts({
     [placements],
   );
 
-  // The question to ask each server: the ports its databases came with, plus the
-  // ones the review has since chosen, so a typed port is checked too. Serialised
-  // to a string because it is what the effect keys on - an array rebuilt every
-  // render would make it fire forever.
+  // The question to ask each server: the ports its databases came with, plus the ones
+  // the review has since chosen, so a typed port is checked too.
   const askKey = React.useMemo(() => {
     const byServer = new Map<string, Set<number>>();
     for (const s of dbs) {
@@ -402,12 +380,11 @@ export function ReviewStep({
         />
       )}
 
-      {/* Where it all ends up, and it sits AFTER the list: the question this
-          step asks is "what comes over", and the answer to "into which team" is
-          the one you check once you have seen the list - not a card to read
-          past on the way to it. The destination is otherwise invisible, since
-          an API key is scoped to one Dokploy organization and everything here
-          to the active team. */}
+      {/**
+       * Where it all ends up, and it sits AFTER the list: the question this step asks is
+       * "what comes over", and the answer to "into which team" is the one you check once
+       * you have seen the list - not a card to read past on the way to it.
+       */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
           <TeamTargetGraphic />
@@ -428,12 +405,10 @@ export function ReviewStep({
           )}
         </div>
 
-        {/* The one consequence worth stopping on, in its own small card right
-            under the destination - and NOT behind a confirm dialog. A modal
-            that says one sentence is a click people learn to dismiss without
-            reading; a line that is on screen the whole time you are ticking
-            boxes has already been read by the time you press the button. The
-            names live in the tooltip: the number is the thing being decided. */}
+        {/**
+         * The one consequence worth stopping on, in its own small card right under the
+         * destination - and NOT behind a confirm dialog.
+         */}
         {chosenNames.length > 0 && (
           <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />

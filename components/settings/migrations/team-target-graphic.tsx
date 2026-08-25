@@ -3,13 +3,6 @@ import { cn } from "@/lib/utils";
 /**
  * The mark beside "everything lands in <team>": an open crate with three things
  * already in it.
- *
- * Static on purpose. Every other graphic here animates because it is telling you
- * what is happening; this one sits next to a sentence that already says where
- * things go, so movement would only compete with the wizard's own illustration
- * two hand-spans to the right.
- *
- * `aria-hidden` for the same reason - the title beside it is the label.
  */
 export function TeamTargetGraphic({ className }: { className?: string }) {
   return (

@@ -40,13 +40,9 @@ import {
 } from "./types";
 
 /**
- * A database whose host port is taken on the server it is about to land on, as
- * the review needs to say it: the port that clashes, the host it clashes on, and
+ * A database whose host port is taken on the server it is about to land on, as the
+ * review needs to say it: the port that clashes, the host it clashes on, and
  * whether what is currently chosen still clashes.
- *
- * Keyed on the SOURCE port rather than on the current choice, so the row keeps
- * its controls after the clash has been resolved - somebody who changes their
- * mind about a port they were just given has nowhere else to go.
  */
 export interface PortConflict {
   takenPort: number;
@@ -57,28 +53,10 @@ export interface PortConflict {
 
 /**
  * What is coming over, as a tree you can prune and place.
- *
- * The row is the scope picker's row, deliberately: same indent, same chevron,
- * same meta column, so a tree in Deplo looks like every other tree in Deplo.
- * What differs is the SELECTION MODEL. The scope picker grants a subtree
- * forever, so ticking a parent covers descendants that do not exist yet and its
- * children go checked-and-disabled. Here the set is closed and finite - these
- * exact services, once - so the leaf is the truth and every parent is derived
- * from it. That is what makes a half-ticked project honest instead of a lie
- * about the four services under it.
- *
- * The two right-hand columns are where each app lands. They live ON the row
- * rather than in a table below it because "which of these am I taking" and
- * "where does this one go" are the same question asked twice, and answering the
- * second one in a different list means matching names by eye.
  */
 
 /**
  * The status column says what is DIFFERENT about a row, so `new` says nothing.
- *
- * Everything on this screen is new until it is not - a badge reading "New" on
- * nine rows out of ten is a column of noise you have to look past to find the
- * one that says "Already here". The absence is the answer.
  */
 const STATUS_LABEL: Partial<Record<PlanService["status"], string>> = {
   exists: "Already here",
@@ -102,10 +80,6 @@ const COL = {
 
 /**
  * Every field a search looks at, the service's own PATH included.
- *
- * The path is what makes a two-word search work: "blink api" is how people
- * describe the api inside Blink, and matching each term against one name in
- * isolation would answer that with nothing.
  */
 function hit(service: PlanService, path: string, terms: string[]): boolean {
   const hay = [path, service.name, service.kind, ...service.domains]
@@ -119,15 +93,6 @@ const nameHit = (name: string, terms: string[]) =>
 
 /**
  * What a search leaves on screen, as three id sets rather than a pruned copy.
- *
- * Two rules, both borrowed from the scope picker's filter because they have to
- * hold or the control lies: a node survives when anything UNDER it matches, and
- * a node that matches ITSELF keeps everything under it.
- *
- * Ids rather than rebuilt objects on purpose. The counters and the tri-state
- * boxes are computed from a project's FULL child list, and a filtered copy would
- * make "2 of 3 selected" describe the search instead of the import - a number
- * that changes when you type is a number that cannot be trusted.
  */
 export function visible(
   projects: PlanProject[],
@@ -260,19 +225,14 @@ export function MigrationTree({
 
   return (
     <div className="space-y-3">
-      {/* One row for everything that acts on the WHOLE list: find something,
-          take everything, put everything somewhere. It replaced a header row
-          inside the table whose left cell read "Set all" - a caption you have
-          to read before you can use the control beside it, in a column that was
-          not a column.
-
-          The bulk controls write `all`, never the filtered rows: a search is a
-          lens on the list, so setting everything still means everything. */}
+      {/**
+       * One row for everything that acts on the WHOLE list: find something, take
+       * everything, put everything somewhere.
+       */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* No cap: the search takes whatever the bulk controls beside it do not
-            want. A fixed 20rem left a gap in the middle of the row on every
-            screen wide enough to matter, and a search box that stops growing
-            while its table keeps going reads as a leftover. */}
+        {/**
+         * No cap: the search takes whatever the bulk controls beside it do not want.
+         */}
         <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -576,18 +536,8 @@ function ServiceRows({
 }
 
 /**
- * The one thing on this screen that is not a choice about WHERE, but about what
- * a database will answer on.
- *
- * It sits under the row it belongs to, in the same warning strip the notes use,
- * because that is where somebody already looks for "what about this one". The
- * port is pre-filled with one that is free on the target host, so the person who
- * has no opinion presses Import and gets a working database; the checkbox is for
- * the person who would rather it stayed private for now.
- *
- * The labels are Storage's own - "Expose publicly", "Host port" - deliberately:
- * this is the same setting the database's own Connection screen shows, and
- * calling it something else here would make it read as a second, different one.
+ * The one thing on this screen that is not a choice about WHERE, but about what a
+ * database will answer on.
  */
 function PortConflictRow({
   service,
@@ -614,19 +564,20 @@ function PortConflictRow({
           Port {conflict.takenPort} is taken on {conflict.serverName}.
         </span>
       </span>
-      {/* The problem reads on the left, the remedy sits at the far end of the
-          strip: you find out what is wrong before you are handed the controls
-          for it, and every row's controls line up with each other instead of
-          starting wherever their sentence happened to stop. */}
+      {/**
+       * The problem reads on the left, the remedy sits at the far end of the strip: you
+       * find out what is wrong before you are handed the controls for it, and every row's
+       * controls line up with each other instead of starting wherever their sentence
+       * happened to stop.
+       */}
       <span className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:ml-auto">
         <span className="flex items-center gap-2">
           <Checkbox
             id={toggleField}
             checked={exposed}
-            // Back ON means back to what the source published, which the review
-            // then finds a free port for exactly as it did the first time - so
-            // there is no "last port" to remember here, and no way for this row
-            // to hand back a stale one.
+            // Back ON means back to what the source published, which the review then finds a
+            // free port for exactly as it did the first time - so there is no "last port" to
+            // remember here, and no way for this row to hand back a stale one.
             onCheckedChange={(v) =>
               onPlace({
                 exposedPort:
@@ -681,17 +632,9 @@ function PortConflictRow({
 }
 
 /**
- * What a service will BE here, drawn the way Deplo already draws it.
- *
- * A database gets its engine's real brand mark - the elephant, the dolphin, the
- * leaf - through the same component the storage pages use, so a Postgres looks
- * like a Postgres before it has been imported and not only after. `engine` is
+ * What a service will BE here, drawn the way Deplo already draws it. `engine` is
  * resolved server-side because Dokploy's `mongo` is Deplo's `mongodb`, and a
  * second copy of that table in the browser is one that drifts.
- *
- * A service that has its OWN icon over there shows that instead, since it is the
- * icon it will have here: the plan then reads as the dashboard it produces, and
- * the review is a comparison rather than a list of names.
  */
 function ServiceMark({ service }: { service: PlanService }) {
   if (service.targetKind === "database")
@@ -850,11 +793,6 @@ function tristate(on: number, total: number): boolean | "indeterminate" {
 
 /**
  * A selection counter, not a size.
- *
- * Deliberately nounless: the scope picker can say "8 apps" because everything
- * under it IS an App, while a Dokploy project mixes apps and databases and
- * calling a Postgres an app in the same breath as the glossary is how a
- * vocabulary rots. "3 of 8 selected" reads identically in every state.
  */
 function countLabel(on: number, total: number): string {
   if (total === 0) return "Nothing to import";
@@ -938,12 +876,9 @@ function Row({
         <span className="flex size-4 shrink-0 items-center justify-center">
           {mark}
         </span>
-        {/* Name over meta, not name beside meta. Side by side they competed for
-            one shrinking box and the NAME lost - "storefront-web" came out as
-            "st…" next to a hostname printed in full, which is exactly backwards
-            for the thing you read the row to identify. Stacked, the name gets
-            the whole width at any measure and the hostname takes the same width
-            on the line under it. */}
+        {/**
+         * Name over meta, not name beside meta.
+         */}
         <span className="min-w-0 flex-1">
           <span
             className={cn(

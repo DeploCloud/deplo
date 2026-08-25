@@ -1,22 +1,5 @@
 /**
  * Read-only client for a Dokploy instance's HTTP API.
- *
- * The migration reads EVERYTHING through this API and never through Dokploy's
- * database or a shell on its host — which is what lets the same code serve both
- * the remote case (Dokploy on another VPS) and the internal one (Dokploy on this
- * VPS, reached over the docker bridge). Nothing here writes to Dokploy: the
- * source instance is left running and untouched, so it stays the rollback.
- *
- * Deliberately dependency-free (no `server-only`, no DB, no crypto) and shaped
- * after `lib/git/providers.ts` for the same reason: the caller hands over an
- * already-decrypted credential, so the fiddly parts — response shapes, error
- * text, the older-Dokploy fallbacks — unit-test without HTTP or a database.
- *
- * Dokploy's API is its tRPC router projected onto OpenAPI: every procedure is a
- * path (`/api/project.all`), queries are GET with query-string params, and auth
- * is one `x-api-key` header. An API key belongs to ONE organization and every
- * read is filtered by it, so one key == one Dokploy organization == one deplo
- * team. Reading a second organization means a second key.
  */
 
 /** A Dokploy instance and the key that reads it. */
@@ -53,9 +36,8 @@ export interface DokployDomain {
   stripPath?: boolean | null;
   /**
    * The path the request is rewritten TO before it reaches the container
-   * (Dokploy's own middleware). Deplo strips a prefix or forwards it whole and
-   * has no third answer, so a real rewrite is reported rather than silently
-   * dropped. `/` is the default and rewrites nothing.
+   * (Dokploy's own middleware). Deplo strips a prefix or forwards it whole and has
+   * no third answer, so a real rewrite is reported rather than silently dropped.
    */
   internalPath?: string | null;
   serviceName?: string | null;
@@ -102,8 +84,7 @@ export interface DokployApplication {
    * The service's icon, and ALWAYS a base64 data-URI rather than a URL: Dokploy
    * inlines a template's logo server-side when the service is created, an upload
    * is read with `FileReader`, and its bundled icon set is an SVG built in the
-   * browser. That is the same shape deplo stores in `apps.logo`, so the icon
-   * crosses the migration as a field copy and never as a download.
+   * browser.
    */
   icon?: string | null;
   sourceType: DokploySourceType;
@@ -207,8 +188,7 @@ export interface DokployCompose {
    * The service's icon, and ALWAYS a base64 data-URI rather than a URL: Dokploy
    * inlines a template's logo server-side when the service is created, an upload
    * is read with `FileReader`, and its bundled icon set is an SVG built in the
-   * browser. That is the same shape deplo stores in `apps.logo`, so the icon
-   * crosses the migration as a field copy and never as a download.
+   * browser.
    */
   icon?: string | null;
   composeType?: "docker-compose" | "stack" | null;
@@ -357,10 +337,7 @@ export interface DokploySchedule {
 /* ------------------------------------------------------------------ */
 
 /**
- * How long one Dokploy call may take. Same reasoning as the git providers: the
- * address points at a host we do not run, often behind someone's VPN, and the
- * scan sits on the path of a button the user is watching. Without a deadline an
- * unreachable box turns "Scan" into a two-minute hang.
+ * How long one Dokploy call may take.
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -378,13 +355,8 @@ export function __resetDokployFetchForTest(): void {
 }
 
 /**
- * A transport failure, said out loud.
- *
- * `fetch` rejects with a bare "fetch failed" whatever went wrong, and this is the
- * FIRST screen of a migration: the everyday mistakes are the port (Dokploy serves
- * :3000 over plain http by default), `https://` typed at an http instance, and a
- * typo in the host. All three read the same otherwise, so the user is left
- * guessing on the one screen where guessing costs the most.
+ * A transport failure, said out loud. All three read the same otherwise, so the
+ * user is left guessing on the one screen where guessing costs the most.
  */
 /**
  * An https URL whose host is a bare IP. Deliberately not "any IP": `http://` on an
@@ -441,13 +413,7 @@ export function describeDokployTransportError(
     case "SELF_SIGNED_CERT_IN_CHAIN":
     case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
     case "ERR_TLS_CERT_ALTNAME_INVALID":
-      // The trap, named. Somebody whose panel sits behind a proxy is told - by
-      // the NEXT step - to give the machine's own address, and a fair number of
-      // them come back and put it HERE instead. Over https a bare IP reaches
-      // whatever the proxy serves when no name matches, which is its default
-      // self-signed certificate, and the honest-but-useless answer was "not one
-      // this machine trusts". They did not mistype an address; they filled in
-      // the wrong field, and only this sentence can say so.
+      // The trap, named.
       return isBareIpHttps(baseUrl)
         ? `${baseUrl} answered with a certificate this machine does not trust (${code}) - which is what an IP address gets, because the certificate is issued for the panel's NAME. Put the address you open Dokploy on in your browser here. The machine's own address is asked for at the next step, and it is not this field.`
         : `The https certificate ${at} is not one this machine trusts (${code}).`;
@@ -487,15 +453,6 @@ export function normalizeDokployBaseUrl(raw: string): string {
 
 /**
  * One GET against Dokploy, with a readable failure.
- *
- * Dokploy's own message is surfaced (truncated) rather than swallowed: the two
- * everyday failures are a key pasted from the wrong instance (401) and a key
- * belonging to a plain member, whose `accessedProjects` list is stale and whose
- * `*.one` calls answer 403. Both are things only the user can fix, and only if
- * we say which one happened.
- *
- * `redirect: "manual"` for the reason `lib/outbound-url.ts` documents: the
- * address is SSRF-checked once, and a 302 is the way out of that check.
  */
 async function get<T>(
   c: DokployCredential,
@@ -583,15 +540,6 @@ function hasLooseServices(p: DokployProject): boolean {
 
 /**
  * Every project of the key's organization, with environments and their services.
- *
- * ONE call for the whole tree — `project.all` loads projects → environments →
- * {applications, compose, and each database table}. The rows are shallow (no
- * domains/mounts/ports), which is what the per-service `*.one` calls below are
- * for.
- *
- * A Dokploy old enough to predate environments hangs services off the project
- * instead; those are folded into one synthetic "production" environment so the
- * rest of the import has a single shape to walk.
  */
 export async function listProjects(
   c: DokployCredential,
@@ -622,10 +570,6 @@ export async function listProjects(
 
 /**
  * One environment's own row, for the variable blob `project.all` never carries.
- *
- * The tree's environments come back with `env: null` whatever they hold — it is a
- * projection — so an environment's shared variables looked like "there were
- * none" and were dropped without a report line. Only the detail row has them.
  */
 export async function getEnvironment(
   c: DokployCredential,
@@ -669,13 +613,6 @@ export function getDatabase(
 
 /**
  * The detail call for any kind of service, picked by kind.
- *
- * Worth having in one place because **`project.all` is a projection, not the
- * rows**: measured against a real instance it returns
- * `{applicationId, name, applicationStatus}` for an application, and for a
- * database only `{postgresId}` — no name, no `appName`, no `serverId`. Everything
- * authoritative therefore comes from here, and anything that reads a field off the
- * tree instead is reading a field that may simply not be there.
  */
 export function getService(
   c: DokployCredential,
@@ -697,10 +634,7 @@ export function serviceDisplayName(
 }
 
 /**
- * A compose body only counts when it declares services. Dokploy answers the JSON
- * body `null` for a repo it has not cloned yet, which arrives here as the
- * four-character string "null" — truthy, and indistinguishable from a real file
- * unless we look inside it.
+ * A compose body only counts when it declares services.
  */
 function composeOrNull(body: string): string | null {
   const yaml = body.trim();
@@ -708,13 +642,9 @@ function composeOrNull(body: string): string | null {
 }
 
 /**
- * The compose file Dokploy would actually deploy, for a stack whose YAML lives
- * in a git repo rather than in the database.
- *
- * deplo holds compose YAML inline, so a repo-backed stack has nothing to import
- * without this. It only answers once Dokploy has cloned the repo on its host, so
- * a failure is expected and NOT an error: the caller reports "paste the compose"
- * instead of creating a broken app.
+ * The compose file Dokploy would actually deploy, for a stack whose YAML lives in
+ * a git repo rather than in the database. deplo holds compose YAML inline, so a
+ * repo-backed stack has nothing to import without this.
  */
 export async function getConvertedCompose(
   c: DokployCredential,
@@ -786,17 +716,7 @@ export interface DokployContainer {
 }
 
 /**
- * How a Dokploy service's containers are found. Exactly two values: the endpoint
- * REFUSES anything else (`Invalid option: expected one of "standalone"|"swarm"`),
- * so a third would be a 400 rather than a miss.
- *
- *  - `swarm` filters on `com.docker.swarm.service.name` — an application or a
- *    database, both of which Dokploy runs as swarm services;
- *  - `standalone` filters on the container NAME — a compose stack, whose
- *    containers are `<appName>-<service>-1`.
- *
- * Verified against a live instance: a compose stack answers on `standalone` and
- * nothing on `swarm`, a database the other way round.
+ * How a Dokploy service's containers are found.
  */
 export type DokployRuntime = "swarm" | "standalone";
 
@@ -829,10 +749,6 @@ export interface DokployInspect {
 /**
  * `docker inspect <id>` on the source host, through Dokploy's own API
  * (`docker.getConfig` is literally that command).
- *
- * This is what makes the data move exact instead of a guess: the REAL volume
- * names and the paths they are mounted at come from the container that is using
- * them, so none of Dokploy's naming conventions have to be reproduced here.
  */
 export function inspectContainer(
   c: DokployCredential,
@@ -853,12 +769,8 @@ const STOP_PROCEDURE: Record<string, string> = {
 };
 
 /**
- * Stop a service on the SOURCE instance, and leave it stopped.
- *
- * The one write this client makes, and the point of no return of a cutover: a
- * volume read while its container is writing produces an archive nothing can be
- * trusted from (`ExportVolume`'s contract is that the caller has quiesced the
- * source). The UI says so before the button is pressed.
+ * Stop a service on the SOURCE instance, and leave it stopped. The UI says so
+ * before the button is pressed.
  */
 export async function stopService(
   c: DokployCredential,

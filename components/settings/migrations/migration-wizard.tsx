@@ -49,18 +49,8 @@ import {
 } from "./types";
 
 /**
- * Migrating a Dokploy over, as one screen.
- *
- * Find it, reach its machines, decide what comes, move it, hand out the invites.
- * Everything you act on down the left, one illustration large on the right whose
- * pose is the progress bar - the same shape as the MCP connect wizard, and for
- * the same reason: the drawing is the one element that never changes place while
- * the column beside it swaps between a form, a list, a tree and a report.
- *
- * The API key never leaves this component's state. It is sent with each call and
- * stored nowhere, which is why the migration is driven from here (one project
- * per request) instead of handed to a background job - and why leaving the page
- * mid-run cannot be allowed to be an accident.
+ * Migrating a Dokploy over, as one screen. The API key never leaves this
+ * component's state.
  */
 
 type StepId = "connect" | "install" | "review" | "people" | "done";
@@ -74,15 +64,9 @@ const STEP_LABEL: Record<StepId, string> = {
 };
 
 /**
- * The steps, and there is no longer a separate one for the data.
- *
- * The cutover used to be its own screen at the end, reachable months later. It
- * moved INTO the migration: `install` refuses to continue until Deplo has an
- * agent on every machine behind that Dokploy, which is what makes copying the
- * data possible at all - so by the time the projects move, it can always do it.
- *
- * `people` only for an instance admin, because both of its actions are
- * instance-admin gated and the step would otherwise be a page of nothing.
+ * The steps, and there is no longer a separate one for the data. `people` only for
+ * an instance admin, because both of its actions are instance-admin gated and the
+ * step would otherwise be a page of nothing.
  */
 function stepsFor(canInvite: boolean): WizardStep<StepId>[] {
   const ids: StepId[] = [
@@ -121,12 +105,8 @@ const START = /* GraphQL */ `
 
 /**
  * The tail of a run item's path - `Backups / production / jellyfin` becomes
- * `jellyfin`.
- *
- * What the panel wants is the thing being worked on, and the project and
- * environment in front of it are already said by the step around it. Null when
- * the run has not written a row yet, which is a real state: a run is open for a
- * beat before its first object lands.
+ * `jellyfin`. Null when the run has not written a row yet, which is a real state:
+ * a run is open for a beat before its first object lands.
  */
 function lastStep(path: string | null | undefined): string {
   if (!path) return "";
@@ -199,8 +179,7 @@ const STOP = /* GraphQL */ `
 /**
  * Sent on the way out of an unfinished wizard - from a click on the sidebar and
  * from the tab closing alike, which is why it is fired as a bare `fetch` with
- * `keepalive` rather than through the client. Nothing reads the answer: the
- * decision of what may actually be uninstalled is entirely the server's.
+ * `keepalive` rather than through the client.
  */
 /**
  * "I am done with this run": the wizard stops opening on it and gives back an
@@ -290,9 +269,7 @@ export function MigrationWizard({
   canExposePorts: boolean;
   /**
    * The run this person is in the middle of, read at page load: one still moving,
-   * or one whose report they have not closed yet. It is what makes leaving the
-   * page free - the wizard opens on the run instead of on an empty form, so the
-   * screens come back whichever tab (or device) they come back on.
+   * or one whose report they have not closed yet.
    */
   resumable: ImportRun | null;
   /**
@@ -313,10 +290,7 @@ export function MigrationWizard({
   const [serverMap, setServerMap] = React.useState<Record<string, string>>({});
   /**
    * The machines Deplo has registered and is waiting to hear from, and which it
-   * has already tried. They live HERE rather than in the install step because
-   * that step unmounts whenever somebody clicks another chip on the rail, and a
-   * registration that died with it came back as "already registered at that
-   * address" the second time round.
+   * has already tried.
    */
   const [pendingMachines, setPendingMachines] = React.useState<
     Record<string, PendingMachine>
@@ -333,9 +307,6 @@ export function MigrationWizard({
    * Where the run stood when this page was rendered, kept until the live feed
    * connects - a fraction of a second in which the wizard would otherwise paint
    * the connect form over a migration that is moving.
-   *
-   * Dropped the moment the run is settled (below), so it can never outlive the
-   * thing it is standing in for.
    */
   const [snapshot, setSnapshot] = React.useState<ActiveMigration | null>(() =>
     resumable && resumable.status === "running" ? asActive(resumable) : null,
@@ -357,11 +328,9 @@ export function MigrationWizard({
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
   const [minting, setMinting] = React.useState(false);
 
-  // An address picked in History. Adjusted during RENDER rather than in an
-  // effect - React's own answer for "a prop changed, derive some state from it"
-  // - so the field is already filled on the first paint of the tab instead of
-  // flashing empty. Keyed on the nonce so picking the same run twice still
-  // writes, and never on mount: an empty form is what a fresh tab shows.
+  // An address picked in History. Adjusted during RENDER rather than in an effect -
+  // React's own answer for "a prop changed, derive some state from it" - so the field
+  // is already filled on the first paint of the tab instead of flashing empty.
   const [prefilled, setPrefilled] = React.useState(prefill?.nonce ?? 0);
   if (prefill && prefill.nonce !== prefilled) {
     setPrefilled(prefill.nonce);
@@ -408,11 +377,9 @@ export function MigrationWizard({
       ),
     );
     // A service lands on the Deplo server that IS the Dokploy machine it runs on,
-    // whenever the scan matched one by address - staying put is what somebody
-    // moving twenty-five services means by "import", and re-picking the host on
-    // twenty-five dropdowns is not a choice, it is a chore. Anything with no
-    // match (a machine with no agent here) falls back to the host Deplo runs on,
-    // the one host every install has.
+    // whenever the scan matched one by address - staying put is what somebody moving
+    // twenty-five services means by "import", and re-picking the host on twenty-five
+    // dropdowns is not a choice, it is a chore.
     const home = (servers.find((s) => s.isDeploHost) ?? servers[0])?.id;
     const runnable = new Set(servers.map((s) => s.id));
     const byMachine = new Map(
@@ -436,11 +403,9 @@ export function MigrationWizard({
           ),
         ),
       );
-      // The same default for a service whose placement was never touched: which of
-      // our servers its apps LAND on. It is only that - where the data is READ from
-      // is derived server-side from the machine's address, never from this map.
-      // Answering both questions with one field is what made every copy read the
-      // Deplo host, find no volume there, and overwrite real data with nothing.
+      // The same default for a service whose placement was never touched: which of our
+      // servers its apps LAND on. It is only that - where the data is READ from is
+      // derived server-side from the machine's address, never from this map.
       setServerMap(
         Object.fromEntries([
           [OWN_HOST, landingFor(OWN_HOST)],
@@ -458,12 +423,6 @@ export function MigrationWizard({
 
   /**
    * Hand the whole thing to the control plane and stop being the driver.
-   *
-   * This used to BE the migration: a loop of mutations in a browser tab, which
-   * is why closing the tab killed it. Now it writes the plan down once and
-   * returns; the runner finishes the job under the identity of whoever pressed
-   * the button, and this page - or any other page, or no page at all - just
-   * watches.
    */
   async function runImport() {
     if (!plan || running) return;
@@ -545,12 +504,6 @@ export function MigrationWizard({
 
   /**
    * Stop, which means undo.
-   *
-   * One call, and the server does all of it: the copy in flight is cut, every
-   * app, database, project and variable this run created is deleted, and Deplo's
-   * agent comes back off the machines it was put on. The wizard only has to
-   * wait - the run leaves the live feed when it is done, and `settleFinished`
-   * puts this page back on step one.
    */
   async function stopRun(id: string) {
     if (!id) return;
@@ -569,11 +522,6 @@ export function MigrationWizard({
   /**
    * The run ended somewhere else - in the control plane, which is where it runs
    * now - so this tab has to find out how.
-   *
-   * `watched` going from a run to null IS the signal: the live feed only ever
-   * carries a RUNNING one. Without this the wizard fell back to the review
-   * screen when a migration finished, offering to start the one that had just
-   * succeeded.
    */
   /** Read by `settleFinished`, which must not change identity every time the
    *  plan does - it is the dependency of an effect that watches the live feed. */
@@ -664,10 +612,6 @@ export function MigrationWizard({
 
   /**
    * A machine's agent just came up: it is now one of ours.
-   *
-   * `useCallback`, like `goToReview` below, because the install step hangs an
-   * interval and a timeout off these: a new identity every render would reset
-   * the poll and, worse, restart the two-second settle that ends the step.
    */
   const machineResolved = React.useCallback(
     (sourceId: string, serverId: string, serverName: string) => {
@@ -700,21 +644,12 @@ export function MigrationWizard({
 
   /**
    * The panel, not the tree: the review step is showing a run rather than a plan.
-   * True from the first project moved until the run is resolved one way or the
-   * other - a stopped or failed one included, because that is half of somebody's
-   * platform sitting between two places and "Undo the migration" lives on this
-   * panel and nowhere else.
    */
   const moving = step === "review" && (running || failure !== null);
 
   /**
    * Every machine behind that Dokploy answers Deplo - the same condition the
    * install step ends on, hoisted here because the step rail needs it too.
-   *
-   * `deploServerId` is only set once a machine has come back `online` from a live
-   * probe, so this is "Deplo can read their disks", not "an agent was installed
-   * there". Empty list is ready: a Dokploy whose machines were all ours already
-   * has nothing to wait for.
    */
   const machinesReady = React.useMemo(
     () => (plan?.servers ?? []).every((m) => m.deploServerId),
@@ -724,17 +659,10 @@ export function MigrationWizard({
   /**
    * Nothing here holds the page any more, and that is the point: the run is the
    * control plane's, and every screen this wizard shows is restored from it (see
-   * `resumable`). Switching off the sidebar and refusing Back protected state
-   * that only existed in this tab - state that now outlives the tab entirely.
+   * `resumable`).
    */
   /**
-   * The team's run in flight, whoever started it. The wizard opens on it instead
-   * of on an empty connect form: a second run would mark the first one
-   * Interrupted, and a blank form is the worst thing to show while half a
-   * platform is in the air.
-   *
-   * Read live from the same stream the header chip uses, so it appears the
-   * moment anybody starts one and clears itself when the run ends.
+   * The team's run in flight, whoever started it.
    */
   const watched = useActiveMigration();
 
@@ -745,12 +673,6 @@ export function MigrationWizard({
   /**
    * Arriving on a run already in progress - or on one whose report nobody has
    * closed yet - is the SAME screen the person left, not a new kind of screen.
-   *
-   * Once, on mount: take the run's id (every button on the panel is a server call
-   * that needs only that), then ask the server where it actually stands. A run
-   * still moving hands the screen to the live feed; one that has ended lands on
-   * exactly what the tab that started it would be looking at - the report, or the
-   * panel that asks whether to undo it.
    */
   const restored = React.useRef(false);
   React.useEffect(() => {
@@ -770,25 +692,14 @@ export function MigrationWizard({
     const now = watched?.id ?? null;
     const before = wasWatching.current;
     wasWatching.current = now;
-    // Whatever run this tab was showing, not only one it had adopted: the panel
-    // is the same for everybody, so the screen it turns into when the run lands
-    // has to be too. Without this, a teammate whose page was already open when
-    // somebody started a migration watched it finish and got dropped back onto
-    // the connect form, while the person who started it got the last screen.
+    // Whatever run this tab was showing, not only one it had adopted: the panel is the
+    // same for everybody, so the screen it turns into when the run lands has to be too.
     if (before && !now) void settleFinished(before);
   }, [watched, settleFinished]);
   /**
-   * A run in flight, on the screen of whoever has this page open.
-   *
-   * There is ONE panel, and everybody with the page gets it: the person who
-   * started the run, the same person after a reload, and the teammate who walked
-   * in on it. There used to be a second, read-only one for anybody whose display
-   * name did not match the run's `actor` - which was fiction twice over. The run
-   * has not lived in a browser tab since it moved into the control plane, and
-   * the server never asked who started it: stopping, undoing and dismissing are
-   * gated on `create_projects` and the team, and reaching this page already
-   * needs both. A screen that hides a button the server would honour teaches
-   * people that Deplo is guessing.
+   * A run in flight, on the screen of whoever has this page open. There is ONE
+   * panel, and everybody with the page gets it: the person who started the run,
+   * the same person after a reload, and the teammate who walked in on it.
    */
   const resumed =
     feed != null && !running && failure === null && step !== "done";
@@ -814,13 +725,9 @@ export function MigrationWizard({
   /** A run somebody started, driven from here or merely watched. */
   const inFlight = running || takenOver;
 
-  // Armed from the moment there is something to lose. Not from mount: a page
-  // somebody opened to look at should not argue with them on the way out. Not
-  // after Finish either - by then the migration is over and every link on the
-  // report is somewhere you are meant to go. And NOT while a run is in flight:
-  // the control plane is driving it, leaving is free, and asking "are you sure"
-  // about something that costs nothing teaches people to click through the one
-  // that does.
+  // Armed from the moment there is something to lose. Not after Finish either - by
+  // then the migration is over and every link on the report is somewhere you are
+  // meant to go.
   const guarded =
     step !== "done" &&
     !inFlight &&
@@ -828,18 +735,6 @@ export function MigrationWizard({
 
   /**
    * Leaving with a plan and no run gives the source machines their machine back.
-   *
-   * The install step put Deplo's agent on each of them - somebody else's hosts,
-   * for the length of one migration - and nothing else was ever going to take it
-   * off: only a FINISHED run did that, so an abandoned wizard left an agent
-   * running and a "Migration source" in Settings that outlived the plan it was
-   * for. The server decides what is safe to remove (a run in flight owns its
-   * agents; a failed volume copy keeps them); this only says "I left".
-   *
-   * The ref is what makes both exits read the same answer: React's cleanup for a
-   * click on the sidebar, `pagehide` for the tab closing. `keepalive` because the
-   * second one is a request outliving its document, and `persisted` because a
-   * page going into the back/forward cache has not been left at all.
    */
   const abandonRef = React.useRef(false);
   // No dependency array on purpose: this is the "latest value" of a flag the
@@ -871,10 +766,10 @@ export function MigrationWizard({
 
   return (
     <>
-      {/* The soft half, for a plan somebody spent ten minutes choosing: a
-          confirm on the way out, saying what leaving actually costs. Once the run
-          STARTS there is nothing to confirm - the control plane owns it, and this
-          page is one of the places you can watch it from, not the only one. */}
+      {/**
+       * The soft half, for a plan somebody spent ten minutes choosing: a confirm on the
+       * way out, saying what leaving actually costs.
+       */}
       <UnsavedChangesGuard
         when={guarded}
         title="Leave the migration?"
@@ -883,16 +778,10 @@ export function MigrationWizard({
         cancelLabel="Stay on this page"
       />
 
-      {/* Every step stacks: the drawing large and centred on top, the rail and
-          the content under it. It used to split into two columns from 1440px,
-          and that was a worse deal than it looked - the sidebar takes ~240px off
-          every viewport before this container sees it, so the content column
-          came out at 592px whatever the screen, which is narrower than the
-          review tree needs and narrower than the first screen wanted. One
-          column, centred, and the width is the step's own: a form you read in
-          one line, a tree you read across.
-
-          The Done step opts out entirely - see `DoneStep`. */}
+      {/**
+       * Every step stacks: the drawing large and centred on top, the rail and the content
+       * under it.
+       */}
       {step === "done" ? (
         <DoneStep
           onShowLog={() => setLogOpen(true)}
@@ -906,12 +795,11 @@ export function MigrationWizard({
         <div className="mx-auto flex w-full flex-col items-center gap-8">
           <MigrationGraphic state={pose} className="h-auto w-full max-w-md" />
 
-          {/* One width for every step, and it is the narrow one: a wizard is
-              read top to bottom, and a 48rem measure under a centred picture
-              reads as a page rather than a sequence. The review tree pays for
-              it - at this width its name column truncates a long hostname - so
-              its own columns are as narrow as their labels allow, and the last
-              resort is the `overflow-x-auto` it already had. */}
+          {/**
+           * One width for every step, and it is the narrow one: a wizard is read top to
+           * bottom, and a 48rem measure under a centred picture reads as a page rather than a
+           * sequence.
+           */}
           <div className="w-full max-w-xl min-w-0 space-y-6">
             {/* Centred, because the column under it is centred: a rail hugging
                 the left edge of a narrow centred column reads as misaligned
@@ -921,20 +809,14 @@ export function MigrationWizard({
                 steps={STEPS}
                 current={takenOver ? "review" : step}
                 reachable={(s) => {
-                  // The rail is inside the panel, so the lock cannot switch it
-                  // off - it says so itself instead: while a migration owns the
-                  // screen, driven here or watched from here, the only step
-                  // there is is the one it is on.
+                  // The rail is inside the panel, so the lock cannot switch it off - it says so
+                  // itself instead: while a migration owns the screen, driven here or watched from
+                  // here, the only step there is is the one it is on.
                   if (moving || takenOver) return s === "review";
                   if (s === "connect") return true;
                   if (s === "install") return plan != null;
-                  // Review is where the copy is started, and a copy needs an
-                  // agent that ANSWERS on every machine. The install step already
-                  // refuses to end until it has one - but the rail sat above it
-                  // saying "Review" was reachable the whole time, so one click
-                  // walked straight past the gate and landed on a cutover that
-                  // could not read a single volume. A gate the chrome around it
-                  // does not honour is a suggestion.
+                  // Review is where the copy is started, and a copy needs an agent that ANSWERS on
+                  // every machine. A gate the chrome around it does not honour is a suggestion.
                   if (s === "review") return plan != null && machinesReady;
                   // People and the report are what the migration produces:
                   // neither is anywhere until there is a run.
@@ -1056,10 +938,9 @@ export function MigrationWizard({
         </div>
       )}
 
-      {/* Line by line, while it happens. Reads the run from the server rather
-          than this tab's memory of it, which is what lets somebody who has just
-          arrived from the header chip see the same log as the person who started
-          it. */}
+      {/**
+       * Line by line, while it happens.
+       */}
       <MigrationConsole
         runId={adoptedId ?? runId ?? feed?.id ?? null}
         open={logOpen}
@@ -1103,12 +984,9 @@ function ConnectStep({
     >
       <form className="grid gap-4" onSubmit={onSubmit}>
         <div className="grid gap-2">
-          {/* "Panel address", not "Address". The install step asks for an
-              address too - the MACHINE's - and two fields with the same label
-              two screens apart is how somebody fixes the wrong one: put the
-              host's IP here and the scan dies on a certificate issued for the
-              panel's name, which reads as "the IP is wrong" when it is the
-              field that is. */}
+          {/**
+           * "Panel address", not "Address".
+           */}
           <FieldLabel
             htmlFor="dokploy-url"
             info="The address you open Dokploy on. Deplo adds /api. Not the machine's address - the next step asks for that."
@@ -1147,16 +1025,9 @@ function ConnectStep({
           />
         </div>
 
-        {/* Shown to everybody, off and explained for whoever cannot use it. It
-            used to be hidden without the grant, which left the most common
-            single-box install - Dokploy and Deplo on the same machine - staring
-            at an address that will not resolve, with nothing on screen saying
-            why or who could fix it.
-
-            The explanation is a tooltip, not a paragraph: three lines of prose
-            under a switch is three lines every reader of this screen scrolls
-            past, and the only person who needs them is the one who already
-            wondered what the switch does. */}
+        {/**
+         * Shown to everybody, off and explained for whoever cannot use it.
+         */}
         <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
           <FieldLabel
             htmlFor="same-machine"
@@ -1207,18 +1078,6 @@ function ConnectStep({
 
 /**
  * What the review turns into once the move starts.
- *
- * Not a dialog and not a step of its own: there is no decision here, so it gets
- * no chip on the rail and nothing to close - leaving the page is refused, so a
- * dismissible dialog would only offer a way out that does not exist. Two lines
- * and a bar say everything; the line-by-line log is one secondary button away.
- *
- * There USED to be a second half: a run that stopped left its apps and databases
- * on the screen with two buttons under them - take it back out, or keep it. That
- * question could not honestly be answered from here. A stop lands mid-copy far
- * more often than not, and a volume 60% across is not 60% of an app: it is a
- * database with a torn data directory. Stop now means undo, the server does all
- * of it, and this panel only ever reports.
  */
 function MovingPanel({
   progress,
@@ -1247,10 +1106,10 @@ function MovingPanel({
   onBack: () => void;
 }) {
   const pct = progress.total === 0 ? 0 : (progress.done / progress.total) * 100;
-  // Ticks here rather than inside the elapsed line, because a heartbeat goes
-  // cold with the clock and nothing else: no frame arrives to say so - that IS
-  // the situation - so the whole panel has to be able to change its mind on its
-  // own, title included.
+  // Ticks here rather than inside the elapsed line, because a heartbeat goes cold
+  // with the clock and nothing else: no frame arrives to say so - that IS the
+  // situation - so the whole panel has to be able to change its mind on its own,
+  // title included.
   const now = useNow(startedAt != null || heartbeatAt != null);
   const driven = isDriven({ heartbeatAt }, now);
 
@@ -1364,15 +1223,8 @@ function MovingPanel({
 }
 
 /**
- * The clock the panel reads, ticking once a second while there is a run.
- *
- * Its own hook because two things depend on it and one of them is not a number
- * on screen: a heartbeat goes cold with the CLOCK and nothing else - no frame
- * arrives to announce it, that is the situation - so the panel needs a reason to
- * re-render before it can notice.
- *
- * Lazily initialised, so it reads once per mount rather than on every render.
- * This never runs on the server: it exists only while a run is on screen.
+ * The clock the panel reads, ticking once a second while there is a run. This
+ * never runs on the server: it exists only while a run is on screen.
  */
 function useNow(active: boolean): number {
   const [now, setNow] = React.useState(() => Date.now());
@@ -1386,14 +1238,6 @@ function useNow(active: boolean): number {
 
 /**
  * How long it has been going, and roughly how much is left.
- *
- * The estimate divides the time spent evenly across the steps done, which is
- * exactly as wrong as it sounds on a run where one service holds a 40 GB volume
- * and the next holds none - so it says "about", it only appears once a step has
- * actually finished, and it never replaces the position line. A number that is
- * roughly right beats the thing it replaced, which was nothing at all: a bar
- * that has not moved in four minutes reads as hung, and the only cure is a
- * second that keeps ticking.
  */
 function ElapsedLine({
   startedAt,
@@ -1425,16 +1269,9 @@ function ElapsedLine({
 /* ------------------------------------------------------------------ */
 
 /**
- * The end, and the one step that breaks the two-column layout.
- *
- * Everywhere else the illustration sits beside the thing you are doing, because
- * there is a thing you are doing. Here there is not: the work is over, so the
- * drawing IS the screen - Deplo lit, Dokploy dark - and it goes to the middle at
- * twice the size with the confetti over it.
- *
- * The log is a dialog rather than the body of this step for the same reason.
- * "It worked" is the message; the hundred lines behind it are for whoever wants
- * them, and they are still there in History tomorrow morning.
+ * The end, and the one step that breaks the two-column layout. Everywhere else the
+ * illustration sits beside the thing you are doing, because there is a thing you
+ * are doing.
  */
 function DoneStep({
   onShowLog,
@@ -1449,11 +1286,11 @@ function DoneStep({
 }) {
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
-      {/* Over the WINDOW, not over the drawing. A burst thrown from the middle
-          of the screen is still a burst thrown from the middle of the screen -
-          which is where the illustration is, so that is what it looks like it
-          came out of. Rain instead: the whole width, top to bottom, sixty
-          pieces. */}
+      {/**
+       * Over the WINDOW, not over the drawing. A burst thrown from the middle of the
+       * screen is still a burst thrown from the middle of the screen - which is where the
+       * illustration is, so that is what it looks like it came out of.
+       */}
       <ConfettiBurst rain className="z-50" count={60} />
 
       <MigrationGraphic state="done" className="h-48 w-auto" />
@@ -1466,11 +1303,10 @@ function DoneStep({
         </p>
       </div>
 
-      {/* The two ends of the row, the way every footer in the app reads: what
-          you might want to look at first on the left, the way out on the right.
-          There is no "migrate another one" - Finish leaves the page, and coming
-          back here gives a blank wizard, which is the same thing without a
-          button nobody presses twice. */}
+      {/**
+       * The two ends of the row, the way every footer in the app reads: what you might
+       * want to look at first on the left, the way out on the right.
+       */}
       <div className="flex w-full flex-wrap items-center justify-between gap-2">
         <Button variant="outline" onClick={onShowLog}>
           <ScrollText className="size-4" />

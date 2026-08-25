@@ -17,19 +17,6 @@ import type { ImportRun, ServerChoice } from "./types";
 /**
  * The two halves of the migrations page: bringing a platform over, and what has
  * already come over.
- *
- * They used to be one column, with "Earlier imports" parked under the connect
- * form - so the person starting their first migration scrolled past an empty
- * card, and the person looking up last week's report had to read the connect
- * form to get to it. Two jobs, two tabs.
- *
- * The active tab rides in `?tab=` with `window.history.replaceState`, the same
- * shape the MCP page uses: flipping tabs neither re-runs the RSC nor fills the
- * back button.
- *
- * `forceMount` on the wizard is load-bearing. Radix unmounts an inactive panel,
- * and the wizard holds the source's API key, the scanned plan and a running
- * migration in state - a stray tab click would have thrown all three away.
  */
 
 const TABS = ["migrate", "history"] as const;

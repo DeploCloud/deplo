@@ -19,18 +19,8 @@ import { MigrationConsole } from "./migration-console";
 import type { ImportRun } from "./types";
 
 /**
- * Every migration this team has run, and the report each one left behind.
- *
- * A table rather than cards: the rows are all the same four facts and the only
- * question anyone brings here is "which run was that, and what did it do" -
- * which is a scan down a column, not a browse. The wizard next door is where
- * you start one, so this tab never offers to.
- *
- * The log is fetched on demand, by the console itself. `dokployImports`
- * deliberately returns runs WITHOUT their items (a team with twenty migrations
- * would otherwise ship thousands of lines to render four dates), so opening one
- * is a second call - and it is the SAME console the wizard shows while the run
- * is still moving, down to the search box and the filters.
+ * Every migration this team has run, and the report each one left behind. The
+ * wizard next door is where you start one, so this tab never offers to.
  */
 
 export function MigrationsHistory({

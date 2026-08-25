@@ -18,48 +18,8 @@ import { AGENT_PORT_NOTICE } from "@/components/shared/agent-reachability";
 import type { PlanServer } from "./types";
 
 /**
- * Getting Deplo's agent onto the machines behind that Dokploy.
- *
- * This is a GATE, not a summary. Deplo copies a volume by asking the agent ON
- * the host that holds it - there is no other way in, and agents cannot dial each
- * other - so a Dokploy machine with no agent is a machine whose databases arrive
- * empty and stay empty. Finding that out at the end, with the old platform
- * already stopped, is the failure this screen exists to prevent. There is no
- * "skip this one".
- *
- * For a long time the gate did not gate. It waited for the server to leave
- * `provisioning`, which happens on the CALL-HOME - a request the agent makes
- * OUTBOUND, over 443, from behind whatever firewall the host has. That proves
- * the agent is alive; it proves nothing about the direction a copy needs, which
- * is the control plane dialing the agent's own port. Two very ordinary setups
- * satisfy the old check and then lose every byte:
- *
- *  - the address is the other platform's PANEL hostname, and the panel sits
- *    behind Cloudflare or another reverse proxy, so it resolves to the proxy;
- *  - the host has a firewall (any stock cloud image) and the agent port was
- *    never opened.
- *
- * So the step now PROBES - `checkServerHealth`, the same live Hello the Servers
- * page runs - and a machine counts as connected only when that comes back
- * `online`. The verdict costs about eight seconds, and when it is bad the row
- * offers the two things that fix it: the address, and a re-check for after the
- * firewall was changed.
- *
- * Registering the server is NOT a button. Somebody who has just handed Deplo a
- * working API key has already said yes to the only question ("may Deplo have
- * these machines"); an "Add it as a server" per row was a second yes for the
- * same decision, and every one of them had to be clicked before the command it
- * produced could even be read. So the step registers them on arrival and gets
- * straight to the only thing a person can actually do here: run one line on
- * each box.
- *
- * The command is truncated on purpose. It is 200 characters of bootstrap token,
- * nobody reads it, and Copy takes the whole thing.
- *
- * The step ends itself. Every machine reporting in is not a decision, so it does
- * not get a Continue - it waits, then moves on. That includes the common case
- * where every machine was already ours, which shows for a beat so the reader
- * sees that it was checked rather than skipped.
+ * Getting Deplo's agent onto the machines behind that Dokploy. For a long time the
+ * gate did not gate.
  */
 
 const ADD_SERVER = /* GraphQL */ `
@@ -75,10 +35,7 @@ const ADD_SERVER = /* GraphQL */ `
 `;
 
 /**
- * A live probe, not a read of the stored row - the whole point of the gate. It
- * also covers the provisioning phase for free: an agent that has not called home
- * yet has no certificate, and `checkServerHealth` passes an unprovisioned server
- * straight through untouched.
+ * A live probe, not a read of the stored row - the whole point of the gate.
  */
 const CHECK_HEALTH = /* GraphQL */ `
   mutation CheckMigrationServerHealth($id: String!) {
@@ -92,9 +49,8 @@ const CHECK_HEALTH = /* GraphQL */ `
 
 /**
  * `keepHost` is what keeps a corrected machine recognisable: the row was
- * registered at the panel's address, and that is the address a second pass of
- * the wizard matches the Dokploy machine by. See the flag's own doc in
- * `lib/data/servers.ts`.
+ * registered at the panel's address, and that is the address a second pass of the
+ * wizard matches the Dokploy machine by.
  */
 const CHANGE_ADDRESS = /* GraphQL */ `
   mutation ChangeMigrationServerAddress($id: String!, $address: String!) {
@@ -115,17 +71,6 @@ const POLL_MS = 6000;
  * What Deplo KNOWS when a probe comes back `offline`, and it is worth saying out
  * loud because the reader has just run a command and cannot tell whether it
  * worked.
- *
- * It worked. A row leaves `provisioning` only through `completeBootstrap`, which
- * fires on the agent's own call-home: the install ran, the binary started, the
- * token was consumed and a certificate was minted for it. So a row that has
- * reached this state has proven the install succeeded, and the ONLY thing that
- * failed is Deplo dialing back - a distinction the reader cannot make from
- * "cannot reach this machine" alone, and one that decides whether they go
- * re-run the installer (pointless) or open a port (the fix).
- *
- * Said only for `offline`. The other verdicts mean something answered, so the
- * install is not what is in question.
  */
 const INSTALLED_BUT_UNREACHABLE =
   "Installed and calling home, but Deplo cannot reach it back.";
@@ -140,12 +85,6 @@ interface Unreachable {
 
 /**
  * A machine Deplo has registered and is now waiting to hear from.
- *
- * Owned by the WIZARD, not by this step. The step unmounts the moment somebody
- * clicks another chip on the rail, and a registration that died with it came
- * back as "X is already registered at that address" the second time - the one
- * error `addServer` raises for a migration source - with the install command
- * they had not run yet gone from the screen.
  */
 export interface PendingMachine {
   serverId: string;
@@ -155,9 +94,7 @@ export interface PendingMachine {
 
 /**
  * The address row, shared by the two states that need one: a machine that could
- * not be registered, and one that was registered at an address Deplo cannot
- * reach. Same field, same rules, so it cannot drift into two spellings of the
- * same question.
+ * not be registered, and one that was registered at an address Deplo cannot reach.
  */
 function AddressForm({
   value,
@@ -185,10 +122,10 @@ function AddressForm({
           onSubmit();
         }}
       >
-        {/* EMPTY, never prefilled: the address we hold is the one that just
-            failed, and handing it back invites a Save that changes nothing. The
-            placeholder carries the shape, and BOTH shapes - an IP is the usual
-            answer, a second DNS name that skips the proxy is just as good. */}
+        {/**
+         * EMPTY, never prefilled: the address we hold is the one that just failed, and
+         * handing it back invites a Save that changes nothing.
+         */}
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -245,11 +182,8 @@ export function InstallStep({
     React.SetStateAction<Record<string, PendingMachine>>
   >;
   /**
-   * Which machines have been through `addServer` already, so revisiting this
-   * step never registers one twice. A ref rather than state because it must not
-   * cause a render, and the wizard's rather than this component's because it has
-   * to outlive the step. A FAILED attempt takes itself back out, since no row
-   * was created and trying again is the right thing to do.
+   * Which machines have been through `addServer` already, so revisiting this step
+   * never registers one twice.
    */
   attempted: React.RefObject<Set<string>>;
   /** One machine just came online: it now maps to this Deplo server. */
@@ -268,11 +202,7 @@ export function InstallStep({
   const settled = missing.length === 0;
 
   /**
-   * Register one machine at `address`. The effect below calls it with the
-   * address the scan worked out; a person calls it with the one they typed,
-   * which is the ONLY way past a machine whose address Deplo could not work out
-   * or whose registration was refused. Without that, the step blocked - which is
-   * its job - with nothing on screen that could unblock it, which is not.
+   * Register one machine at `address`.
    */
   const registerMachine = React.useCallback(
     async (m: PlanServer, address: string) => {
@@ -290,10 +220,9 @@ export function InstallStep({
           input: {
             name: m.sourceId ? m.name : "dokploy-host",
             host: address,
-            // A MIGRATION SOURCE, not a server: the install command touches
-            // nothing on the box but the agent itself, the host stays out of
-            // every picker and every sweep, and finishing the migration
-            // uninstalls it again.
+            // A MIGRATION SOURCE, not a server: the install command touches nothing on the box
+            // but the agent itself, the host stays out of every picker and every sweep, and
+            // finishing the migration uninstalls it again.
             importOnly: true,
           },
         },
@@ -332,10 +261,9 @@ export function InstallStep({
     let cancelled = false;
     (async () => {
       for (const m of machines) {
-        // Checked BEFORE the machine is marked attempted: a resolved machine
-        // rewrites `machines`, which re-runs this effect and cancels the old
-        // one, and a machine claimed by a run that then stops would never be
-        // registered by anybody.
+        // Checked BEFORE the machine is marked attempted: a resolved machine rewrites
+        // `machines`, which re-runs this effect and cancels the old one, and a machine
+        // claimed by a run that then stops would never be registered by anybody.
         if (cancelled) return;
         if (m.deploServerId || attempted.current.has(m.sourceId)) continue;
         attempted.current.add(m.sourceId);
@@ -349,12 +277,9 @@ export function InstallStep({
           }));
           continue;
         }
-        // One at a time rather than all at once: a failure has to be able to
-        // name the machine it happened on, and two hosts registering in
-        // parallel produce two toasts nobody can tell apart. Deliberately NOT
-        // bailing on `cancelled` after the call: the request already went out,
-        // so its answer is applied either way - dropping it would leave a
-        // registered server whose install command nothing ever shows.
+        // One at a time rather than all at once: a failure has to be able to name the
+        // machine it happened on, and two hosts registering in parallel produce two toasts
+        // nobody can tell apart.
         await registerMachine(m, m.ipAddress);
       }
     })();
@@ -376,12 +301,9 @@ export function InstallStep({
         { status: string; statusMessage: string | null }
       >(CHECK_HEALTH, { id: p.serverId }, (d) => d.checkServerHealth);
       if (!res.ok) {
-        // The row is GONE, most likely - removed elsewhere, or the migration was
-        // finished in another tab. Probing it again can only fail the same way,
-        // so the machine goes back to being unregistered: that state offers the
-        // field that registers it, which is the only thing that can help. A
-        // transient blip lands there too and is harmless, because `addServer`
-        // refuses a second row at an address it already knows.
+        // The row is GONE, most likely - removed elsewhere, or the migration was finished
+        // in another tab. A transient blip lands there too and is harmless, because
+        // `addServer` refuses a second row at an address it already knows.
         setPending((prev) => {
           const next = { ...prev };
           delete next[sourceId];
@@ -571,13 +493,9 @@ export function InstallStep({
                 )}
               </div>
 
-              {/* The command shows while it is the thing to DO, and stops the
-                  moment it is not. An agent that called home and cannot be
-                  reached back is installed correctly - handing back the line
-                  that installs it says the opposite, and the next thing
-                  somebody does is run it again for nothing. An `error` verdict
-                  is the exception: there the agent answered with a certificate
-                  or a protocol we refuse, and re-provisioning IS the cure. */}
+              {/**
+               * The command shows while it is the thing to DO, and stops the moment it is not.
+               */}
               {p && !bad && <CommandLine command={p.installCommand} truncate />}
 
               {p && bad && bad.status !== "offline" && (
@@ -625,10 +543,9 @@ export function InstallStep({
                 </div>
               )}
 
-              {/* Never registered: no address to derive, or `addServer` refused
-                  one. The step blocking is right; blocking with nothing on
-                  screen that could unblock it is not, and that is what this was
-                  until now. */}
+              {/**
+               * Never registered: no address to derive, or `addServer` refused one.
+               */}
               {!p && !m.deploServerId && error && (
                 <div className="space-y-2">
                   {canAddServers ? (

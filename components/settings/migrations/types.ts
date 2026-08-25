@@ -1,11 +1,6 @@
 /**
  * The wire shapes the import wizard reads, mirroring the DTOs in
  * `lib/data/dokploy-import.ts`.
- *
- * Hand-written on purpose - there is no codegen here - and kept in one file so
- * the wizard, the tree and the progress dialog agree on them. Adding a field is
- * still three edits: the data-layer DTO, the Pothos ref, and here plus the
- * query's selection set.
  */
 
 export interface PlanService {
