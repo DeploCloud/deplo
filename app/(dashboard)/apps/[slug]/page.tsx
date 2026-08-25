@@ -30,7 +30,7 @@ import {
   formatBuildDuration,
   repoCommitUrl,
   repoCredentialMissing,
-  timeAgo,
+  timeAgoShort,
 } from "@/lib/utils";
 
 export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
@@ -108,7 +108,7 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
                 <div>
                   <p className="text-xs text-muted-foreground">Created</p>
                   <p className="flex items-center gap-1.5 text-sm">
-                    {timeAgo(prod.createdAt)} by
+                    {timeAgoShort(prod.createdAt)} by
                     {prod.creatorUser && (
                       <UserAvatar
                         name={prod.creatorUser.name}
@@ -270,7 +270,7 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
                   {formatBuildDuration(d.buildDurationMs)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {timeAgo(d.createdAt)}
+                  {timeAgoShort(d.createdAt)}
                 </span>
               </Link>
             ))}

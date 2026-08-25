@@ -10,6 +10,7 @@ import {
   readableTextColor,
   repoCredentialMissing,
   safeReturnPath,
+  timeAgoShort,
 } from "./utils";
 import { FOLDER_COLORS } from "./folder-colors";
 
@@ -207,4 +208,15 @@ test("safeReturnPath keeps in-app paths and refuses anything that leaves the app
   ]) {
     assert.equal(safeReturnPath(bad), null, `expected ${bad} to be refused`);
   }
+});
+
+test("timeAgoShort compresses the unit and keeps the suffix", () => {
+  const h = new Date(Date.now() - 8 * 60 * 60 * 1000);
+  assert.equal(timeAgoShort(h), "8h ago");
+  assert.equal(
+    timeAgoShort(new Date(Date.now() - 26 * 60 * 60 * 1000)),
+    "1d ago",
+  );
+  assert.equal(timeAgoShort(new Date(Date.now() + 3 * 60 * 1000)), "in 3m");
+  assert.equal(timeAgoShort("not a date"), "");
 });

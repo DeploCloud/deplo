@@ -21,6 +21,24 @@ export function timeAgo(input: Date | string | number): string {
   return formatDistanceToNowStrict(date, { addSuffix: true });
 }
 
+/** `timeAgo` with one-letter units: `8h ago`, `1d ago`, `3mo ago`. */
+export function timeAgoShort(input: Date | string | number): string {
+  return timeAgo(input).replace(
+    /(\d+)\s(second|minute|hour|day|week|month|year)s?/,
+    (_, n: string, unit: string) => n + SHORT_UNITS[unit],
+  );
+}
+
+const SHORT_UNITS: Record<string, string> = {
+  second: "s",
+  minute: "m",
+  hour: "h",
+  day: "d",
+  week: "w",
+  month: "mo",
+  year: "y",
+};
+
 /**
  * How long a build took (or has been running), as `340ms` / `12s` / `2m 5s`.
  */

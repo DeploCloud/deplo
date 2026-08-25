@@ -3,10 +3,11 @@
 import * as React from "react";
 import { Server as ServerIcon, TriangleAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
-import { timeAgo } from "@/lib/utils";
+import { timeAgoShort } from "@/lib/utils";
 import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
@@ -58,7 +59,14 @@ export function DatabaseOverview({
       <Card>
         <CardContent className="space-y-4 p-5">
           <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground">Connection string</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">Connection string</p>
+              <SettingsShortcut
+                href={`/storage/databases/${db.id}/settings/connection`}
+                label="Connection settings"
+                className="-my-1.5"
+              />
+            </div>
             <DatabaseConnectionString
               id={db.id}
               masked={db.connectionStringMasked}
@@ -102,7 +110,7 @@ export function DatabaseOverview({
                 <span className="text-muted-foreground">Internal only</span>
               )}
             </Field>
-            <Field label="Created">{timeAgo(db.createdAt)}</Field>
+            <Field label="Created">{timeAgoShort(db.createdAt)}</Field>
           </dl>
         </CardContent>
       </Card>
