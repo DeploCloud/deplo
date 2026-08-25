@@ -1,7 +1,7 @@
 -- Deleting an app's PRIMARY domain used to leave two lies behind: the app kept
 -- `production_url` pointing at the hostname that was just removed (the app card's
 -- subtitle and the title-bar link read it), and no remaining domain inherited the
--- primary flag — so the app was left primary-less, its canonical host decided by
+-- primary flag, so the app was left primary-less, its canonical host decided by
 -- whatever row Postgres happened to return first.
 --
 -- `removeDomain` now promotes an heir and re-derives the URL. This heals the rows
@@ -11,7 +11,7 @@
 -- The succession heuristic (same service, then same port) can't be replayed here:
 -- the removed domain is long gone, so the oldest remaining domain gets the crown.
 --
--- Idempotent — re-running changes nothing once every app is consistent.
+-- Idempotent - re-running changes nothing once every app is consistent.
 -- Hand-authored: the committed drizzle snapshots stop at 0014, so
 -- `drizzle-kit generate` can't diff against an up-to-date base.
 
@@ -25,7 +25,7 @@ UPDATE "domains" SET "is_primary" = true WHERE "id" IN (
   ORDER BY d."app_id", d."created_at", d."id"
 );
 --> statement-breakpoint
--- 2. Re-derive the canonical URL from that primary — NULL when the app has no
+-- 2. Re-derive the canonical URL from that primary - NULL when the app has no
 --    domain at all, so the UI falls back to "No domain yet". The scheme mirrors
 --    domainScheme(): only the cert-less `none` provider is served plain HTTP
 --    (a NULL provider is a pre-field row, which routes as letsencrypt).

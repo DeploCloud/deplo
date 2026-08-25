@@ -149,7 +149,7 @@ test("listing repos/branches refuses another team's installation id (IDOR)", asy
       /installation not found/i,
     );
   });
-  // The owning team gets PAST the team check — it fails later on the real GitHub
+  // The owning team gets PAST the team check - it fails later on the real GitHub
   // call (an invalid test private key), NOT with "installation not found".
   await runWithIdentity({ userId: "u_victim", teamId: TEAM_A }, async () => {
     await assert.rejects(

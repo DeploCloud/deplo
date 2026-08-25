@@ -129,7 +129,7 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      // A deployer WITHOUT manage_env — the source-side secret gate.
+      // A deployer WITHOUT manage_env - the source-side secret gate.
       {
         id: "user_2",
         teamId: TEAM_A,
@@ -278,7 +278,7 @@ test("transfers the app, and severs every tie to the team it came from", async (
   assert.equal(
     (await db.select().from(cronJobs).where(eq(cronJobs.appId, APP))).length,
     0,
-    "cron jobs do not travel — a surviving one would run the source team's command in the destination container",
+    "cron jobs do not travel - a surviving one would run the source team's command in the destination container",
   );
   assert.equal(
     (await db.select().from(apiTokenApps).where(eq(apiTokenApps.appId, APP)))
@@ -525,7 +525,7 @@ test("a scoped API token can't move an app into a team outside its scope", async
     "manage_env",
   ]);
   // A second and third app so the two SUCCESS cases each have their own row to
-  // move (a transfer is destructive — the app leaves TEAM_A).
+  // move (a transfer is destructive - the app leaves TEAM_A).
   await seedApp(db, { id: "prj_app2", teamId: TEAM_A });
   await seedApp(db, { id: "prj_app3", teamId: TEAM_A });
 
@@ -561,7 +561,7 @@ test("a scoped API token can't move an app into a team outside its scope", async
       fn,
     );
 
-  // A token scoped to TEAM_A only is refused when the destination is TEAM_B —
+  // A token scoped to TEAM_A only is refused when the destination is TEAM_B,
   // even though its human holds move_apps + manage_env there.
   await asToken([TEAM_A], async () => {
     await assert.rejects(

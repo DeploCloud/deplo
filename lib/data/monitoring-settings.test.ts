@@ -33,7 +33,7 @@ import type { ServerMetrics } from "./monitoring";
 /**
  * Tests for the "save metrics on server" feature: the `monitoring_settings`
  * singleton (missing row = default ON, `manage_infra`-gated write) and the
- * in-memory history ring buffer it controls (lib/monitoring/history.ts) —
+ * in-memory history ring buffer it controls (lib/monitoring/history.ts) -
  */
 
 let db: TestDb;
@@ -123,7 +123,7 @@ test("recordMetricsSample keeps online measurements, oldest first", () => {
   assert.equal(latestSampleTs(SERVER_1), t0 + 1000);
 });
 
-test("offline snapshots are refused — a gap, never a zero", () => {
+test("offline snapshots are refused - a gap, never a zero", () => {
   recordMetricsSample(sample(Date.now(), { online: false }));
   assert.deepEqual(getMetricsHistory(SERVER_1), []);
 });

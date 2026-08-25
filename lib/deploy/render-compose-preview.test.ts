@@ -9,7 +9,7 @@ import type { RoutableDomain } from "../data/domains";
 /**
  * The load-bearing property of the deploy key: a PRODUCTION render is
  * byte-identical to what it has always been (the key is the app slug), while a
- * pull request preview shares nothing with it — not the container, not a volume,
+ * pull request preview shares nothing with it, not the container, not a volume,
  */
 
 const ROUTE: RoutableDomain = {
@@ -31,8 +31,8 @@ const BASE = {
   appId: "prj_1",
   routes: [ROUTE],
   env: { FOO: "bar" },
-  // A named volume AND an `app` (files-dir) mount, so BOTH isolation axes —
-  // the host volume name and the per-stack files dir — are exercised.
+  // A named volume AND an `app` (files-dir) mount, so BOTH isolation axes -
+  // the host volume name and the per-stack files dir - are exercised.
   volumes: [
     { name: "data", mountPath: "/app/data" },
     {
@@ -86,7 +86,7 @@ test("a preview shares no container, volume or files dir with production", () =>
   assert.match(yaml, /container_name: deplo-blog__pr-42\n/);
   assert.match(yaml, /name: deplo-blog__pr-42-data/);
   assert.match(yaml, /files\/blog__pr-42\//);
-  // The production names must appear NOWHERE — not as a volume, not as a path.
+  // The production names must appear NOWHERE, not as a volume, not as a path.
   assert.doesNotMatch(yaml, /name: deplo-blog-data/);
   assert.doesNotMatch(yaml, /files\/blog\//);
   assert.doesNotMatch(yaml, /container_name: deplo-blog\n/);
@@ -179,7 +179,7 @@ services:
 `;
 
 /**
- * `buildComposeStack` skips every route that names no service — so a preview route
+ * `buildComposeStack` skips every route that names no service, so a preview route
  * built with `service: null` produced a stack with NO Traefik router at all.
  */
 test("a compose preview emits a router that names a service", () => {
@@ -237,7 +237,7 @@ test("a serviceless route is exactly what used to make it unreachable", () => {
   });
   assert.ok(
     !yaml.includes("blog-pr-43-abc-0a000001.nip.io"),
-    "a serviceless route wires nothing — this is the bug previewRouteTarget exists to prevent",
+    "a serviceless route wires nothing - this is the bug previewRouteTarget exists to prevent",
   );
 });
 

@@ -13,7 +13,7 @@ import {
 } from "./server-health-provider";
 
 /**
- * Whether a Traefik proxy is running on this host — under the SAME honesty rule as
+ * Whether a Traefik proxy is running on this host - under the SAME honesty rule as
  * the health chip beside it. The flag is not wrong, it is just *old*, and a badge
  * that can't say how old it is can only mislead.
  */
@@ -33,7 +33,7 @@ export function ServerTraefikBadge({
       <SimpleTooltip
         content={
           state.traefikEnabled
-            ? "Traefik is running on this host — it's the proxy that routes your domains to the apps deployed here."
+            ? "Traefik is running on this host - it's the proxy that routes your domains to the apps deployed here."
             : "No Traefik proxy is running on this host. Apps deployed here won't be reachable by domain until one is."
         }
       >
@@ -58,7 +58,7 @@ export function ServerTraefikBadge({
     <SimpleTooltip content={tip}>
       <Badge variant="muted">
         <CircleHelp className="size-3" />
-        Traefik —
+        Traefik -
       </Badge>
     </SimpleTooltip>
   );

@@ -56,7 +56,7 @@ test("remapBuildInput only re-keys fields that are present (partial input)", () 
 });
 
 test("remapBuildInput keeps an explicit empty-string edit (clearing a field)", () => {
-  // Clearing Root Directory back to "" is a real edit, not a no-op — it must
+  // Clearing Root Directory back to "" is a real edit, not a no-op - it must
   // reach the store, not be treated as absent.
   const out = remapBuildInput({ rootDir: "", outputDir: "" });
   assert.equal(out.rootDirectory, "");

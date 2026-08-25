@@ -50,12 +50,12 @@ function detailFor(runtime: DatabaseRuntimeView | null): string | null {
   if (runtime.running === 0)
     return "This database is meant to be running, but no container is up. The Logs tab shows its last output.";
   if (runtime.unhealthy > 0)
-    return "The container is up but failing its healthcheck — running, but the engine isn't answering.";
+    return "The container is up but failing its healthcheck - running, but the engine isn't answering.";
   return null;
 }
 
 /**
- * The database header's labelled status badge — the DB twin of AppStatusBadge.
+ * The database header's labelled status badge - the DB twin of AppStatusBadge.
  */
 export function DatabaseStatusBadge({
   id,

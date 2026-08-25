@@ -34,7 +34,7 @@ import {
 let db: TestDb;
 let pg: PGlite;
 
-const IP = "10.0.0.1"; // seedServer's ip — what a nip.io host encodes
+const IP = "10.0.0.1"; // seedServer's ip - what a nip.io host encodes
 
 before(async () => {
   ({ db, pg } = await makeTestDb());

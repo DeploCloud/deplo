@@ -60,15 +60,15 @@ export function useAppRuntime(
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const tick = async () => {
-      // Skip the round trip while the tab is in the background — a forgotten tab
-      // watching a crash loop must not poll an agent for hours — but keep the
+      // Skip the round trip while the tab is in the background - a forgotten tab
+      // watching a crash loop must not poll an agent for hours, but keep the
       // timer alive so it resumes on its own when the tab comes back.
       if (document.visibilityState === "visible") {
         try {
           const data = await gql<Response>(APP_RUNTIME_QUERY, { appId });
           if (!cancelled) setRuntime(data.appRuntime);
         } catch {
-          // A failed poll is not evidence about the container — keep the last
+          // A failed poll is not evidence about the container - keep the last
           // answer rather than flipping the badge on a blip.
         }
       }
@@ -83,6 +83,6 @@ export function useAppRuntime(
   }, [appId, enabled]);
 
   // Disabled means "we are not claiming the app is up, so there is nothing to
-  // check" — report no probe rather than a stale one from before it stopped.
+  // check" - report no probe rather than a stale one from before it stopped.
   return enabled ? runtime : null;
 }

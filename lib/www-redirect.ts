@@ -1,11 +1,11 @@
 /**
- * The `www` / non-`www` pair of a hostname — the one place that knows which two
+ * The `www` / non-`www` pair of a hostname - the one place that knows which two
  * hostnames are "the same site" and which of them a browser should end up on.
  */
 
 /**
  * Which hostname of a `www`/non-`www` pair serves the app, expressed relative to
- * the domain being edited: - `none` — nothing is paired; only this hostname is
+ * the domain being edited: - `none`, nothing is paired; only this hostname is
  * routed.
  */
 export type WwwRedirect = "none" | "toThis" | "toCounterpart";

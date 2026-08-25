@@ -17,8 +17,8 @@ import type { Team, TeamSummary } from "@/lib/types";
 /* Enums                                                               */
 /* ------------------------------------------------------------------ */
 
-// The plan union ("pro" | "enterprise") is team-local — not shared in
-// enums.ts — so we define it here and export nothing.
+// The plan union ("pro" | "enterprise") is team-local, not shared in
+// enums.ts, so we define it here and export nothing.
 const TeamPlanEnum = builder.enumType("TeamPlan", {
   values: ["pro", "enterprise"] as const,
 });
@@ -147,7 +147,7 @@ builder.mutationFields((t) => ({
   }),
   transferTeamOwnership: t.field({
     type: "Boolean",
-    // manage_team is the FLOOR, not the gate — the data layer additionally
+    // manage_team is the FLOOR, not the gate - the data layer additionally
     // requires the caller to BE the team's primary owner, which no capability
     // expresses.
     authScopes: { capability: "manage_team" },
@@ -192,7 +192,7 @@ builder.mutationFields((t) => ({
   deleteTeam: t.field({
     type: "Boolean",
     // loggedIn only: the founder/instance-admin gate (tighter than any
-    // capability — see lib/data/team-delete.ts) is enforced in the data layer.
+    // capability - see lib/data/team-delete.ts) is enforced in the data layer.
     authScopes: { loggedIn: true },
     description:
       "Permanently delete a team. teamId must be the ACTIVE team (the delete " +

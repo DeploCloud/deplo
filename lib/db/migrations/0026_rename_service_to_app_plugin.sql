@@ -5,9 +5,9 @@
 -- discriminant values (backups/backup_runs target_kind, activities type,
 -- app_volumes type) all migrate. IDs (prj_.../app_...) are opaque and stay on the
 -- rows (no value rewrite). The agent wire (deplo.project=<id> label, deplo-<slug>
--- stack naming) is deliberately UNCHANGED — it carries the App id. The installed-
+-- stack naming) is deliberately UNCHANGED - it carries the App id. The installed-
 -- plugin container/label identity (deplo-app-<slug>, deplo.role=app, /data/apps,
--- app_ id prefix) is ALSO unchanged — only its Traefik path moved to /plugins/<slug>.
+-- app_ id prefix) is ALSO unchanged - only its Traefik path moved to /plugins/<slug>.
 -- FK/PK constraint names are left as-is (functional; nothing reads them).
 
 -- Tables: Service -> App --------------------------------------------------

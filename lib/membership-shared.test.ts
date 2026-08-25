@@ -23,7 +23,7 @@ test("owner preset grants every capability", () => {
   }
 });
 
-test("viewer preset is read-only — it can look at everything, change nothing", () => {
+test("viewer preset is read-only - it can look at everything, change nothing", () => {
   assert.deepEqual(CAPABILITY_PRESETS.viewer, [
     "view",
     "view_logs",
@@ -124,7 +124,7 @@ test("the legacy split preserves access: the old eight expand, nothing is orphan
   assert.deepEqual(
     ALL_CAPABILITIES.filter((c) => !covered.has(c)),
     [],
-    "a capability no old name expands to — the migration would under-grant it",
+    "a capability no old name expands to - the migration would under-grant it",
   );
   // The retired names are the only ones that still expand as input: the three the
   // split dropped, plus `manage_s3`, which was RENAMED to

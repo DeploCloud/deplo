@@ -134,6 +134,44 @@ test("an import claims a hostname this team serves on another path", async () =>
   assert.equal(name, HOST, "the second app must keep the real hostname");
 });
 
+test("a third app joins the same hostname on a third path", async () => {
+  await asVictim(() => addDomain("prj_victim", HOST, {}));
+  await asVictim(() => addDomain("prj_sibling", HOST, { pathPrefix: "/api" }));
+  await seedApp(db, {
+    id: "prj_third",
+    teamId: TEAM_A,
+    slug: "third",
+    serverId: "srv_1",
+  });
+  const name = await asVictim(() =>
+    ensureAutoDomain("prj_third", {
+      slug: "third",
+      ip: HOST_IP,
+      preferred: HOST,
+      preferredPath: "/admin",
+      defaultPort: 3000,
+    }),
+  );
+  assert.equal(name, HOST);
+});
+
+test("the SAME path on the same hostname is not handed out twice", async () => {
+  await asVictim(() => addDomain("prj_victim", HOST, { pathPrefix: "/api" }));
+  const name = await asVictim(() =>
+    ensureAutoDomain("prj_sibling", {
+      slug: "sibling",
+      ip: HOST_IP,
+      preferred: HOST,
+      preferredPath: "/api",
+      defaultPort: 3000,
+    }),
+  );
+  // The row would break the stored uniqueness, so the app gets an address of its
+  // own instead of failing to be created at all.
+  assert.notEqual(name, HOST);
+  assert.match(name, /\.nip\.io$/);
+});
+
 test("a hostname another team serves is still not claimed by an import", async () => {
   await asVictim(() => addDomain("prj_victim", HOST, {}));
   const name = await asAttacker(() =>
@@ -157,7 +195,7 @@ test("the same row can still be edited without tripping over itself", async () =
  * A preview host never enters the `domains` table: `previewHost` builds
  * `<slug>-pr-<n>.<base>` straight into a Traefik router, with `letsencrypt` by
  * default. So the guard above has a twin here, or the takeover it closes is
- * reachable one level down — routers AND certificate orders under a name that
+ * reachable one level down - routers AND certificate orders under a name that
  * belongs to somebody else.
  */
 test("a preview base domain under another team's hostname is refused", async () => {

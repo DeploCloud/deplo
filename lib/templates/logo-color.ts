@@ -9,7 +9,7 @@ import type { CatalogTemplate } from "@/templates/types";
  * all.
  */
 
-/** Below this OKLCH chroma a pixel is grey, white or black — it has no colour. */
+/** Below this OKLCH chroma a pixel is grey, white or black - it has no colour. */
 const MIN_CHROMA = 0.04;
 /** 15° buckets. Finer splits a single brand colour across two neighbours. */
 const BUCKETS = 24;
@@ -25,7 +25,7 @@ const MID_LIGHTNESS = 0.5;
 const CONCURRENCY = 16;
 /** A cold whole-catalogue pass has this long before the page renders untinted.
  *  Measured cost is ~0.5s, so this only ever fires on a catalogue having a very
- *  bad day — and ADR-0023 says the catalogue degrades, it does not error. */
+ *  bad day, and ADR-0023 says the catalogue degrades, it does not error. */
 const BUDGET_MS = 8000;
 
 /** Resolved once. A native module that will not load must not be able to take
@@ -60,7 +60,7 @@ function oklab(r8: number, g8: number, b8: number) {
 }
 
 /**
- * What a card needs to draw a logo well. `tone` — the theme the logo would vanish
+ * What a card needs to draw a logo well. `tone` - the theme the logo would vanish
  * into, absent when it vanishes into neither.
  */
 export interface LogoAccent {
@@ -104,7 +104,7 @@ export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
   let white = 0;
 
   for (let i = 0; i + 3 < pixels.length; i += 4) {
-    if (pixels[i + 3] < 128) continue; // transparent — the logo isn't there
+    if (pixels[i + 3] < 128) continue; // transparent - the logo isn't there
     const { L, a, b } = oklab(pixels[i], pixels[i + 1], pixels[i + 2]);
     const chroma = Math.hypot(a, b);
     if (chroma < MIN_CHROMA) {
@@ -136,7 +136,7 @@ export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
 
   if (hasHue) {
     const hue = (Math.atan2(sinSum[winner], cosSum[winner]) * 180) / Math.PI;
-    // A logo with colour is visible on both surfaces — chroma carries it even
+    // A logo with colour is visible on both surfaces - chroma carries it even
     // when its lightness sits near the card's. It never needs a plate.
     return { hue: Math.round((hue + 360) % 360) };
   }

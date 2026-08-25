@@ -18,7 +18,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { Team } from "@/lib/types";
 
 /**
- * Create a new team — the viewer becomes its owner and it is made active.
+ * Create a new team - the viewer becomes its owner and it is made active.
  * Controlled (no trigger of its own) so it can be opened from a menu, the team
  * switcher, or anywhere else.
  */

@@ -115,7 +115,7 @@ test("a scoped API token can't mint a token reaching a team outside its scope (M
 
   await asScopedToken([TEAM_A], async () => {
     // Reaching TEAM_B is outside the token's own scope, even though its human is
-    // an owner there — the clamp bounds capabilities, this bounds reach.
+    // an owner there - the clamp bounds capabilities, this bounds reach.
     await assert.rejects(
       () =>
         createToken({
@@ -270,7 +270,7 @@ test("a project scope round-trips, and a foreign project writes nothing", async 
       /isn't in a team you belong to/,
     );
   });
-  // The refusal rolled the whole insert back — no half-created token.
+  // The refusal rolled the whole insert back, no half-created token.
   assert.equal((await db.select().from(apiTokens)).length, 1);
   assert.equal((await db.select().from(apiTokenProjects)).length, 1);
 });
@@ -633,7 +633,7 @@ test("listTokens is scoped to the active team", async () => {
 /**
  * A token's live clamp measures it against its CREATOR, so it says nothing about
  * whoever edits it afterwards. Editing is allowed from the team the token was
- * created in — but a token's reach can span teams, and being an administrator in
+ * created in, but a token's reach can span teams, and being an administrator in
  * the home team is not authority in the others.
  */
 
@@ -660,7 +660,7 @@ test("re-scoping someone else's token can't hand it power the editor lacks there
       { id: "u_editor", teamId: TEAM_A, role: "owner" },
     ],
   });
-  // Both belong to team B as well — the creator fully, the editor read-only.
+  // Both belong to team B as well - the creator fully, the editor read-only.
   await seedMembership("u_creator", TEAM_B, [...ALL_CAPABILITIES]);
   await seedMembership("u_editor", TEAM_B, ["view"]);
 
@@ -675,7 +675,7 @@ test("re-scoping someone else's token can't hand it power the editor lacks there
   );
   const tokenId = (await db.select().from(apiTokens))[0]!.id;
 
-  // The editor administers team A, so the token is theirs to edit — but pointing
+  // The editor administers team A, so the token is theirs to edit, but pointing
   // it at team B would arm a credential with a permission they don't hold there.
   await assert.rejects(
     () =>
@@ -690,7 +690,7 @@ test("re-scoping someone else's token can't hand it power the editor lacks there
     /permissions you hold yourself/i,
   );
 
-  // Narrowing it to what they DO hold in team B is fine — the bound is a
+  // Narrowing it to what they DO hold in team B is fine - the bound is a
   // ceiling, and revoking is always available.
   await runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
     updateToken({
@@ -713,7 +713,7 @@ test("an unrestricted token reaching a team the editor isn't in can only be revo
     ],
   });
   // Only the creator is in team B, so an unrestricted token reaches a team the
-  // editor cannot even see — there is no set to measure the edit against.
+  // editor cannot even see - there is no set to measure the edit against.
   await seedMembership("u_creator", TEAM_B, [...ALL_CAPABILITIES]);
 
   await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
@@ -751,7 +751,7 @@ test("the creator editing their own token is untouched by the cross-team bound",
     () => createToken({ name: "ci", capabilities: ["view", "delete_apps"] }),
   );
   const tokenId = (await db.select().from(apiTokens))[0]!.id;
-  // Unrestricted, so it reaches team B too — where the creator is read-only. The
+  // Unrestricted, so it reaches team B too - where the creator is read-only. The
   // edit stands, because the live clamp already answers for it there.
   await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
     updateToken({
@@ -819,8 +819,8 @@ test("the creator edits their own token from any team, not only the one it was m
 
 /**
  * A token used to live until somebody revoked it, and nothing ever made anybody.
- * The expiry is enforced in `identityForTokenRow` — the one place both credential
- * shapes and every entry point (GraphQL, MCP, the deploy hook) resolve through —
+ * The expiry is enforced in `identityForTokenRow` - the one place both credential
+ * shapes and every entry point (GraphQL, MCP, the deploy hook) resolve through,
  * so it cannot be true in one of them and not another.
  */
 test("an expired token authenticates as nothing", async () => {

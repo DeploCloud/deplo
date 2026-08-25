@@ -1,7 +1,7 @@
 import type { LogLevel } from "./types";
 
 /**
- * Level detection for RAW log lines that arrive without a level tag — a
+ * Level detection for RAW log lines that arrive without a level tag - a
  * container's stdout/stderr from `docker logs -f`, and a build's output, which the
  * agent forwards verbatim under a blanket `info` (only the lines deplo itself
  * writes into a build's sink carry an authored level, so `loadDeploymentLogs`
@@ -64,13 +64,13 @@ function levelFromNumber(n: number): LogLevel | null {
 
 const LEVEL_KEY = "level|severity|levelname|loglevel|log\\.level|lvl";
 
-/** `"level":"error"` / `"severity":"WARN"` / `"log.level":"debug"` — JSON. */
+/** `"level":"error"` / `"severity":"WARN"` / `"log.level":"debug"` - JSON. */
 const JSON_LEVEL = new RegExp(
   `"(?:${LEVEL_KEY})"\\s*:\\s*"([A-Za-z]{3,11})"`,
   "i",
 );
 
-/** `"level":50` — pino's numeric scale, or syslog's, inside a JSON log line. */
+/** `"level":50` - pino's numeric scale, or syslog's, inside a JSON log line. */
 const JSON_LEVEL_NUM = new RegExp(
   `"(?:${LEVEL_KEY})"\\s*:\\s*(\\d{1,2})(?![\\d.])`,
   "i",
@@ -104,7 +104,7 @@ const GLOG_LEVEL: Record<string, LogLevel> = {
 };
 
 /**
- * A bare UPPERCASE level word standing as its own column — how logback, log4j,
+ * A bare UPPERCASE level word standing as its own column - how logback, log4j,
  * Serilog and Spring Boot lay a line out: `2026-08-24 10:00:00.000 INFO 1 ---
  * [main] c.a.App : started`.
  */
@@ -121,7 +121,7 @@ const SYSLOG_PRI = /^<(\d{1,3})>/;
 const NPM_PREFIX = /^\s*(?:npm|pnpm|yarn)\s+(ERR!|WARN|warning|notice)(?=\s|$)/;
 
 /**
- * Tier 1 — the producer stated the level.
+ * Tier 1 - the producer stated the level.
  */
 function declaredLevel(m: string): LogLevel | null {
   const glog = GLOG.exec(m);
@@ -171,7 +171,7 @@ function firstLevelWord(m: string, re: RegExp): LogLevel | null {
 }
 
 /**
- * Tier 2 — shapes that mean one thing and nothing else.
+ * Tier 2 - shapes that mean one thing and nothing else.
  */
 const KNOWN_ERROR_SHAPES: RegExp[] = [
   // JS/Java stack frame. Every quantifier after the anchor is bounded: the
@@ -197,7 +197,7 @@ const KNOWN_ERROR_SHAPES: RegExp[] = [
   /\bcode\s*[:=]\s*['"]?(E[A-Z]{2,})\b/,
 ];
 
-/** Tier 4 — success is claimed, not inferred. A completion marker the producer
+/** Tier 4 - success is claimed, not inferred. A completion marker the producer
  *  printed on purpose, and nothing that merely sounds healthy. */
 const SUCCESS_SHAPES: RegExp[] = [
   /\[\s*(?:ok|success|succeeded|done|pass(?:ed)?)\s*\]/i,
@@ -212,7 +212,7 @@ const SUCCESS_SHAPES: RegExp[] = [
 const WARN_SHAPES: RegExp[] = [/\bdeprecat(?:ed|ion|ing)\b/i, /[‼⚠]/];
 
 /**
- * An HTTP method somewhere on the line followed by a 3-digit token — the shape of
+ * An HTTP method somewhere on the line followed by a 3-digit token - the shape of
  * every access log, and the ONLY context in which a bare number is read as a
  * status.
  */
@@ -224,7 +224,7 @@ const ACCESS_LOG =
 const NAMED_STATUS =
   /["']?(?:status|statuscode|status_code|http_status|downstreamstatus|response_code)["']?\s*[:=]\s*["']?([1-5]\d{2})\b/i;
 
-/** Tier 3 — a status code, mapped conservatively. 2xx/3xx stay INFO rather than
+/** Tier 3 - a status code, mapped conservatively. 2xx/3xx stay INFO rather than
  *  going green: a busy access log is thousands of 200s, and a pane that is a
  *  wall of green says as little as one that is a wall of grey. */
 function levelFromStatus(m: string): LogLevel | null {
@@ -236,7 +236,7 @@ function levelFromStatus(m: string): LogLevel | null {
 }
 
 /**
- * Classify a single raw log line. Pass the PLAIN line (ANSI already stripped) —
+ * Classify a single raw log line. Pass the PLAIN line (ANSI already stripped) -
  * escape codes would otherwise leak into the patterns, e.g. a `[0m` reset
  * masquerading as a `[…]`-bracketed tag.
  */

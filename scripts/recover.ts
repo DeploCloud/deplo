@@ -1,5 +1,5 @@
 /**
- * Break-glass recovery, run on the host that runs Deplo — `bun run recover`.
+ * Break-glass recovery, run on the host that runs Deplo - `bun run recover`.
  */
 
 import { and, asc, eq } from "drizzle-orm";
@@ -19,7 +19,7 @@ import {
 import { hashPassword } from "../lib/crypto";
 
 const USAGE = `
-deplo recover — break-glass account recovery (run on the Deplo host)
+deplo recover - break-glass account recovery (run on the Deplo host)
 
   bun run recover list
       Every account: username, email, and whether it is admin / owner / suspended.
@@ -189,7 +189,7 @@ async function cmdPassword(handle: string, given: string | undefined) {
   if (given === "-") console.log(`  New password: ${password}`);
   if (user.suspended)
     console.log(
-      `  NOTE: @${user.username} is SUSPENDED and still can't sign in — run \`bun run recover unsuspend ${user.username}\`.`,
+      `  NOTE: @${user.username} is SUSPENDED and still can't sign in - run \`bun run recover unsuspend ${user.username}\`.`,
     );
   console.log();
 }
@@ -221,7 +221,7 @@ async function cmdOwner(handle: string) {
     `\n  @${user.username} now owns this instance (instance admin, not suspended).`,
   );
   console.log(
-    "  The previous owner keeps their admin flag — demote them from Settings → Users if that isn't what you want.\n",
+    "  The previous owner keeps their admin flag - demote them from Settings → Users if that isn't what you want.\n",
   );
 }
 

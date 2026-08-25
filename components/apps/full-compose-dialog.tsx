@@ -15,7 +15,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Shows the full Deplo-generated compose stack — the augmented YAML that `docker
+ * Shows the full Deplo-generated compose stack - the augmented YAML that `docker
  * compose` actually runs (Traefik + deplo labels, the injected `deplo` network,
  * absolute mount paths), as opposed to the clean source the user authors in the
  */
@@ -56,7 +56,7 @@ export function FullComposeDialog({ appId }: { appId: string }) {
         <DialogHeader>
           <DialogTitle>Full compose</DialogTitle>
           <DialogDescription>
-            The stack Deplo generates and runs — your compose augmented with
+            The stack Deplo generates and runs - your compose augmented with
             Traefik routing labels, the <code className="font-mono">deplo</code>{" "}
             network and absolute mount paths. Read-only; regenerated on every
             deploy.
@@ -79,7 +79,7 @@ export function FullComposeDialog({ appId }: { appId: string }) {
           </div>
         ) : (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Nothing to show yet — deploy this app once to generate its stack.
+            Nothing to show yet - deploy this app once to generate its stack.
           </p>
         )}
       </DialogContent>

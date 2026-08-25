@@ -11,7 +11,7 @@ import { useLiveDatabaseStatus } from "@/components/storage/database-live-status
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
- * Start / Stop / Restart for a database — the DB twin of AppControls.
+ * Start / Stop / Restart for a database - the DB twin of AppControls.
  */
 export function DatabaseControls({
   id,
@@ -26,7 +26,7 @@ export function DatabaseControls({
   const provisioning = status === "provisioning";
   const running = status === "running";
 
-  // Fire and let the live status answer — the subscription reports what the
+  // Fire and let the live status answer - the subscription reports what the
   // container is doing, so a spinner on the button only delays the click.
   function act(mutation: string, success: string) {
     startTransition(async () => {
@@ -82,7 +82,7 @@ export function DatabaseControls({
           </Button>
         </SimpleTooltip>
       )}
-      <SimpleTooltip content="Restart the container (stop then start) — no config change">
+      <SimpleTooltip content="Restart the container (stop then start), no config change">
         <Button
           variant="outline"
           size="sm"

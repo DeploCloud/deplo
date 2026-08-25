@@ -124,7 +124,7 @@ function PersonCard({
   return (
     <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4">
       <div className="flex w-full items-center gap-3">
-        {/* These people have no deplo account yet — no stored colour, and no
+        {/* These people have no deplo account yet - no stored colour, and no
             picture to resolve. The neutral mark, and their name or the local
             part of their address for the letters. */}
         <UserAvatar name={person.name} username={person.email} size="lg" />

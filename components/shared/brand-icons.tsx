@@ -18,7 +18,7 @@ export function GitHubIcon({ className }: { className?: string }) {
 }
 
 /**
- * Real brand marks, single-path, 24x24, `fill="currentColor"` — taken from
+ * Real brand marks, single-path, 24x24, `fill="currentColor"` - taken from
  * simple-icons (CC0) so nothing here is drawn from memory.
  */
 export function MattermostIcon({ className }: { className?: string }) {
@@ -165,7 +165,7 @@ export function GitIcon({ className }: { className?: string }) {
 }
 
 /**
- * The mark of a git host, by provider id — one mapping so the provider dropdown,
+ * The mark of a git host, by provider id - one mapping so the provider dropdown,
  * the connections list and the connect dialog can never show three different
  * glyphs for the same host.
  */
@@ -202,7 +202,7 @@ const GIT_BRAND: Record<string, { bg: string; fg: string }> = {
 };
 
 /**
- * A git host's mark on its own brand colour — the same shape the notification
+ * A git host's mark on its own brand colour - the same shape the notification
  * channels use, and for the same reason: four identical grey glyphs are four
  * things you have to read, while the colour makes the one you want findable before
  */

@@ -53,7 +53,7 @@ type EnvRow =
   ({ kind: "standalone" } & EnvVarDTO) | ({ kind: "shared" } & AppSharedVarDTO);
 
 /**
- * A row's identity in this table — also its React key and what an optimistic
+ * A row's identity in this table - also its React key and what an optimistic
  * removal is tracked by. `kind` is part of it because the two lists are minted
  * separately: an id only identifies a row together with the list it came from.
  */
@@ -80,7 +80,7 @@ export function EnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
 
-  // Shared vars this app has OPTED INTO (linked — the only way a shared var injects,
+  // Shared vars this app has OPTED INTO (linked - the only way a shared var injects,
   // ADR-0012).
   const appliedShared = React.useMemo(
     () => sharedVars.filter((v) => v.linked),
@@ -101,7 +101,7 @@ export function EnvManager({
   );
 
   // A deleted (or unlinked) row leaves the table on the click, instead of waiting out
-  // the mutation and then the `router.refresh()` that reloads this page's variables —
+  // the mutation and then the `router.refresh()` that reloads this page's variables -
   // the window in which a second click on the same row used to earn a "Not found".
   const {
     visible: rows,
@@ -110,7 +110,7 @@ export function EnvManager({
   } = useOptimisticRemove(serverRows, rowKey);
 
   // One app's table: the variable is either its own or shared with it (Source),
-  // and beyond that only what/who/when apply — a Project or Environment filter
+  // and beyond that only what/who/when apply - a Project or Environment filter
   // would have exactly one value here.
   const facets = React.useMemo(
     () => [
@@ -268,7 +268,7 @@ export function EnvManager({
                       </SimpleTooltip>
                     </TableCell>
                     <TableCell>
-                      {/* A shared row carries no creator — it falls back server-side. */}
+                      {/* A shared row carries no creator - it falls back server-side. */}
                       <EnvAuthorCell author={row.updatedBy ?? null} />
                     </TableCell>
                     <TableCell className="text-right">
@@ -340,7 +340,7 @@ function SharedRowActions({
   /**
    * Both removals below take the row off THIS table, so both tell the table to
    * drop it on the click rather than leaving it clickable until the refresh
-   * lands — and to put it back if the mutation behind it is refused.
+   * lands, and to put it back if the mutation behind it is refused.
    */
   onRemoved: () => void;
   onRestored: () => void;
@@ -436,8 +436,8 @@ function SharedRowActions({
         description={
           <>
             This deletes <span className="font-mono">{row.key}</span> for the
-            whole team. Every app it reaches — not just this one — stops
-            receiving it on new deployments.
+            whole team. Every app it reaches, not just this one, stops receiving
+            it on new deployments.
           </>
         }
         confirmLabel="Delete everywhere"

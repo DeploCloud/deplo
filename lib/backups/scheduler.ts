@@ -22,9 +22,9 @@ import {
 } from "./lease";
 
 /**
- * The backup scheduler (PLAN Step 6) — the thing that makes a stored cron
+ * The backup scheduler (PLAN Step 6) - the thing that makes a stored cron
  * `schedule` actually fire. In dev with no Postgres the lease degrades to an
- * in-process lock — safe because `next start`/`next dev` are single-process.
+ * in-process lock - safe because `next start`/`next dev` are single-process.
  */
 
 const TICK_MS = 60_000;
@@ -52,7 +52,7 @@ interface SchedulerState {
   ticking: boolean;
   /** The `now` of the last tick that reached the lease check (held or not), so a
    *  tick after a long drain can replay the cron minutes the drain stepped over.
-   *  Null on a fresh process — restarts never replay (no persisted last run). */
+   *  Null on a fresh process - restarts never replay (no persisted last run). */
   lastTickAt: Date | null;
   /** When the orphan-artifact sweep last ran (epoch ms; 0 = never this process). */
   lastOrphanSweepAt: number;
@@ -73,7 +73,7 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
 /**
  * One scheduler tick: claim the lease, then run every enabled schedule due this
  * minute. Exported for tests + an immediate first run; safe to call directly.
- * Never throws — a single schedule's failure is contained so the rest still run.
+ * Never throws - a single schedule's failure is contained so the rest still run.
  */
 export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
   if (state.ticking) return; // a previous tick is still draining; skip this one.
@@ -84,7 +84,7 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
     if (!held) return;
 
     // CATCH-UP over an overrun drain: one slow dump holds `state.ticking`, so the
-    // interval ticks under it are SKIPPED — which used to step straight past every
+    // interval ticks under it are SKIPPED, which used to step straight past every
     // schedule whose exact cron minute fell inside the drain, silently losing that run
     const minutes: Date[] = [];
     if (state.lastTickAt) {
@@ -105,7 +105,7 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       .from(backupsTable)
       .where(eq(backupsTable.enabled, true));
     // Each due schedule carries the exact minute it matched, so the dedupe key is
-    // the SCHEDULED instant rather than the tick's own clock — the two differ by
+    // the SCHEDULED instant rather than the tick's own clock - the two differ by
     // the whole catch-up window after a slow drain.
     const due: { backup: Backup; firedFor: string }[] = [];
     for (const b of enabledRows.map(assembleBackup)) {
@@ -133,7 +133,7 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
 
     for (const { backup: b, firedFor } of due) {
       // Heartbeat mid-drain: one slow dump can outlast LEASE_STALE_MS, and a lease whose
-      // heartbeat only advances at tick start would go stale — free for another instance
+      // heartbeat only advances at tick start would go stale - free for another instance
       // to steal and double-fire.
       if (!(await acquireLease(BACKUP_SCHEDULER_LEASE, state.owner))) break;
       // Stamp BEFORE awaiting so a re-entrant/overlapping tick in the same minute
@@ -177,14 +177,14 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
 
 /**
  * Release this process's hold on the scheduler lease. Best-effort and safe when we
- * never held it — the lease layer ignores a release by a non-holder.
+ * never held it - the lease layer ignores a release by a non-holder.
  */
 export async function releaseBackupSchedulerLease(): Promise<void> {
   await releaseLease(BACKUP_SCHEDULER_LEASE, state.owner);
 }
 
 /**
- * Start the once-a-minute scheduler loop. Idempotent — a second call is a no-op,
+ * Start the once-a-minute scheduler loop. Idempotent - a second call is a no-op,
  * so importing this through more than one Next module graph can't start two
  * loops. Called from `instrumentation.ts` at boot (Node runtime only).
  */

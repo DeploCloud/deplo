@@ -37,7 +37,7 @@ import { DB_NAMES } from "./db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
- * A database on the Storage grid — visually aligned with the Overview app card: a
+ * A database on the Storage grid - visually aligned with the Overview app card: a
  * whole-card stretched link into the detail page, an engine-icon tile, a live
  * status, and a ⋯ actions menu.
  */
@@ -59,7 +59,7 @@ export function DatabaseCard({
   dragActive?: boolean;
   /** Runtime-poll cadence for the status badge (slower on the list to stay light). */
   pollMs?: number;
-  /** The viewer holds `manage_infra` — the capability `revealConnection` needs. */
+  /** The viewer holds `manage_infra` - the capability `revealConnection` needs. */
   canReveal?: boolean;
 }) {
   // Still arriving: a migration is creating this database and copying its volume
@@ -161,7 +161,7 @@ function DatabaseCardGrid({
         </div>
 
         {/**
-         * Connection box — the databases analogue of the app card's latest-deployment box:
+         * Connection box - the databases analogue of the app card's latest-deployment box:
          * the connection string up top as the same click-to-reveal chip the Variables page
          * uses (masked, so the endpoint still reads at a glance), placement + exposure
          */}

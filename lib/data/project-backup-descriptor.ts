@@ -31,7 +31,7 @@ export interface ProjectBackupDescriptor {
 }
 
 /**
- * The exact decrypted env a project runs with in production — the snapshot the
+ * The exact decrypted env a project runs with in production - the snapshot the
  * restore re-Reroutes.
  */
 export async function appEnvSnapshot(
@@ -195,14 +195,14 @@ export function appMoveVolumeNames(
   const volumes = (doc as { volumes?: unknown } | null)?.volumes;
   if (!volumes || typeof volumes !== "object") return [];
   // The stack's own Storage-settings volumes are pinned inside Deplo's namespace
-  // BY Deplo — they must move with the app, not trip the reserved-name guard.
+  // BY Deplo - they must move with the app, not trip the reserved-name guard.
   const own = new Set(namedVolumeHostNames(slug, project.volumes));
   const names: string[] = [];
   for (const [key, spec] of Object.entries(
     volumes as Record<string, unknown>,
   )) {
     const s = (spec ?? {}) as { name?: unknown; external?: unknown };
-    // Skip external volumes — Deplo doesn't own them, so a move must not relocate
+    // Skip external volumes - Deplo doesn't own them, so a move must not relocate
     // them (they stay the operator's responsibility on whatever host declares them).
     if (s.external === true || (s.external && typeof s.external === "object")) {
       continue;
@@ -240,7 +240,7 @@ export async function buildProjectDescriptor(
   const volumeNames = composeStack
     ? // The app's Storage volumes are pinned by the RENDERER inside Deplo's
       // namespace, so they are enumerated from the YAML like any other stack
-      // volume — but exempted from the guard that rejects a user-pinned one.
+      // volume, but exempted from the guard that rejects a user-pinned one.
       composeStackVolumeHostNames(
         slug,
         composeYaml,

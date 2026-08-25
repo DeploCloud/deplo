@@ -109,7 +109,7 @@ services:
       - "8080:80"
 `);
   const labels = labelsOf(doc.services.web);
-  // Routing rides the deplo network to the container port — orthogonal to host
+  // Routing rides the deplo network to the container port - orthogonal to host
   // publishing, so the labels coexist with the kept ports.
   assert.ok(labels.includes("traefik.docker.network=deplo"));
   assert.ok(
@@ -230,7 +230,7 @@ test("no domain routes ⇒ NO Traefik routers (the stack is built but unrouted)"
 test("a user-authored traefik.* label is stripped; Deplo's own routers survive", () => {
   // Hostname hijack attempt: the author hand-writes a router claiming another
   // team's host. The `domains` table is the ONLY routing source, so it must not
-  // survive — while Deplo's own domains-derived router for a real domain stays.
+  // survive, while Deplo's own domains-derived router for a real domain stays.
   const doc = buildDoc(
     `
 services:
@@ -290,7 +290,7 @@ test("a path-scoped route emits a PathPrefix rule + stripprefix middleware", () 
 });
 
 /* ------------------------------------------------------------------ */
-/* detectDefaultApp — used at project creation to seed domain 1    */
+/* detectDefaultApp - used at project creation to seed domain 1    */
 /* ------------------------------------------------------------------ */
 
 test("detectDefaultApp prefers a service that publishes a port", () => {
@@ -361,7 +361,7 @@ services:
     { filesDir: "/srv/stacks/files/demo" },
   );
   const vols = volsOf(doc.services.web as Svc & { volumes?: unknown });
-  // Unchanged — the gate (isHostBindSource) is what rejects it, not the rewrite.
+  // Unchanged - the gate (isHostBindSource) is what rejects it, not the rewrite.
   assert.ok(vols.includes("../sibling/data:/data"));
 });
 
@@ -381,7 +381,7 @@ services:
 });
 
 /* ------------------------------------------------------------------ */
-/* Storage-settings volumes — a compose stack gets deplo-managed        */
+/* Storage-settings volumes - a compose stack gets deplo-managed        */
 /* persistent storage without the user hand-writing any `volumes:`      */
 /* ------------------------------------------------------------------ */
 
@@ -468,7 +468,7 @@ services:
 `,
     { volumes: [vol({ name: "data", mountPath: "/data" })] },
   );
-  // The authored compose is authoritative — same precedence as envKeys/resources.
+  // The authored compose is authoritative - same precedence as envKeys/resources.
   assert.deepEqual(volsOf(doc.services.web as Svc & { volumes?: unknown }), [
     "authored:/data",
   ]);
@@ -508,7 +508,7 @@ services:
     "/srv/stacks/files/demo/config.toml:/etc/app/config.toml",
     "/srv/media:/media",
   ]);
-  // Binds have an absolute source — docker needs no top-level declaration.
+  // Binds have an absolute source - docker needs no top-level declaration.
   assert.deepEqual(topVolumes(doc), {});
 });
 
@@ -599,7 +599,7 @@ test("no volumes ⇒ no `volumes:` key anywhere (byte-identical baseline)", () =
 });
 
 /* ------------------------------------------------------------------ */
-/* envKeys — settings env vars injected as bare `- KEY` pass-throughs  */
+/* envKeys - settings env vars injected as bare `- KEY` pass-throughs  */
 /* (the env analogue of the auto domain labels; values ride env-file)  */
 /* ------------------------------------------------------------------ */
 
@@ -630,7 +630,7 @@ services:
       domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
     },
   );
-  // The user picked "every service" — both the app and the sidecar get the keys,
+  // The user picked "every service" - both the app and the sidecar get the keys,
   // as bare names (no value), so each reads its value from the env-file.
   assert.deepEqual(envOf(doc.services.web), ["FOO", "BAR"]);
   assert.deepEqual(envOf(doc.services.db), ["FOO", "BAR"]);
@@ -681,7 +681,7 @@ services:
     { envKeys: ["FOO", "BAR"] },
   );
   const env = envOf(doc.services.web);
-  // FOO is already a pass-through — keep it as-is, append only BAR (no dupes).
+  // FOO is already a pass-through - keep it as-is, append only BAR (no dupes).
   assert.deepEqual(env, ["FOO", "BAR"]);
 });
 
@@ -716,7 +716,7 @@ services:
 });
 
 test("a map service whose keys are all already declared is left as a MAP (no churn)", () => {
-  // mergeEnvironment must NOT rewrite a map to a list when it adds nothing —
+  // mergeEnvironment must NOT rewrite a map to a list when it adds nothing -
   // that would change the YAML and force a needless reroute restart.
   const out = buildComposeStack({
     compose: `
@@ -734,7 +734,7 @@ services:
     envKeys: ["FOO", "BAR"],
   });
   const doc = yaml.load(out) as Doc;
-  // Still a map (object), not an array — nothing new was added.
+  // Still a map (object), not an array - nothing new was added.
   assert.ok(
     !Array.isArray(doc.services.web.environment) &&
       typeof doc.services.web.environment === "object",

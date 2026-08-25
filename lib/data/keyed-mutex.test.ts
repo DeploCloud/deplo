@@ -60,7 +60,7 @@ test("different keys run concurrently", async () => {
   });
 
   await tick();
-  // Both started despite neither having resolved — they don't block each other.
+  // Both started despite neither having resolved - they don't block each other.
   assert.deepEqual(order.sort(), ["k1:start", "k2:start"]);
 
   a.resolve();
@@ -104,7 +104,7 @@ test("the key is dropped from the registry once its chain drains", async () => {
 });
 
 test("a key contended again after draining still serializes", async () => {
-  // Run once to completion (drops the key), then contend again — the second round
+  // Run once to completion (drops the key), then contend again - the second round
   // must still serialize, proving cleanup didn't break the lock.
   await withKeyedLock("reuse", async () => {});
   await tick();

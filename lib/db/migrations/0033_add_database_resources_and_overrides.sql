@@ -3,9 +3,9 @@
 -- from the database's Settings pages (no Docker/compose knowledge required).
 --
 -- The twelve resource_* columns are the EXACT flattened ResourceLimits block
--- `apps` carries (migration 0032) — same names, same units (memory in
+-- `apps` carries (migration 0032) - same names, same units (memory in
 -- MEBIBYTES, disk in GIBIBYTES, CPU in MILLI-CPUs), same NULL ⇒ uncapped /
--- all-NULL ⇒ `resources: null` contract — so both tables share the single
+-- all-NULL ⇒ `resources: null` contract, so both tables share the single
 -- column↔field mapping in lib/data/app-graph-rows.ts and the compose renderer
 -- in lib/deploy/resources.ts. A database that never opened the Resources page
 -- renders a byte-identical stack.

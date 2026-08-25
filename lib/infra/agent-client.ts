@@ -69,13 +69,13 @@ import {
 import type { Server } from "../types";
 
 /**
- * The agent client — the control plane's side of the second system boundary
+ * The agent client - the control plane's side of the second system boundary
  * (ADR-0006).
  */
 
 const HELLO_TIMEOUT_MS = 8_000;
 /**
- * The Hello deadline the HEALTH PROBER uses (lib/data/server-health.ts) — much
+ * The Hello deadline the HEALTH PROBER uses (lib/data/server-health.ts) - much
  * shorter than {@link HELLO_TIMEOUT_MS}, which is a deploy pre-flight budget spent
  * on a deploy the operator has already committed to.
  */
@@ -89,13 +89,13 @@ const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts ex
  */
 const CRON_START_TIMEOUT_MS = 15_000;
 const CRON_POLL_TIMEOUT_MS = 10_000;
-// The Metrics / ContainerStats POLL deadline — deliberately a fraction of the
+// The Metrics / ContainerStats POLL deadline - deliberately a fraction of the
 // console class.
 const METRICS_TIMEOUT_MS = 8_000;
 const FILES_TIMEOUT_MS = 15_000;
 const STREAM_DEADLINE_MS = 30 * 60_000; // logs/attach are long-lived
 /**
- * The StreamMetrics deadline — its own constant because {@link STREAM_DEADLINE_MS}
+ * The StreamMetrics deadline - its own constant because {@link STREAM_DEADLINE_MS}
  * would tear the telemetry stream down every 30 minutes, and this one is meant to
  * stay open for the life of the process.
  */
@@ -121,12 +121,12 @@ const SELF_UNINSTALL_TIMEOUT_MS = 60_000; // a few file removals + two systemctl
 const STACK_DEADLINE_MS = 3 * 60_000;
 // A cross-host volume copy (export/import) tars a whole DB data volume across the
 // wire; the agent caps each side at ~30min. Match the backup-class deadline plus
-// dial slack — same reasoning as BACKUP_DEADLINE_MS (a volume-heavy move is long).
+// dial slack - same reasoning as BACKUP_DEADLINE_MS (a volume-heavy move is long).
 const VOLUME_COPY_DEADLINE_MS = 60 * 60_000;
 // How many BYTE-carrying frames a relay may hold before it pauses the source
 // stream.
 const STREAM_BYTES_PAUSE_ABOVE = 8;
-// A port-availability probe is a single bind()+close() on the host — near-instant.
+// A port-availability probe is a single bind()+close() on the host - near-instant.
 // Keep the deadline short so an unreachable agent fails fast (this gates an
 // interactive "generate available port" click + the pre-provision guard).
 const CHECK_PORT_DEADLINE_MS = 15_000;
@@ -135,16 +135,16 @@ const CHECK_PORT_DEADLINE_MS = 15_000;
 // or a settings click open waiting on a slow app.
 const PROBE_HTTP_DEADLINE_MS = 12_000;
 // A cleanup sweep walks every image, volume and build-cache record on the host and
-// then removes them one at a time (never in one `prune` verb — see dockerCleanup);
+// then removes them one at a time (never in one `prune` verb - see dockerCleanup);
 // on a full host that is tens of GB of unlinking.
 const CLEANUP_DEADLINE_MS = 30 * 60_000;
 // Host ops. HostInfo/SetTimezone/RestartControlPlane are file reads, a relink and a
-// detached spawn — interactive, so an unresponsive host must fail fast rather than
+// detached spawn - interactive, so an unresponsive host must fail fast rather than
 // hold a settings page open.
 const HOSTOPS_DEADLINE_MS = 20_000;
 const TRAEFIK_DEADLINE_MS = 200_000;
 
-/** What to ask an app's own container for — never an address (see `probeHttp`). */
+/** What to ask an app's own container for, never an address (see `probeHttp`). */
 export interface AgentProbeHttpRequest {
   /** The app whose stack to reach; the container must carry its label. */
   appId: string;
@@ -174,7 +174,7 @@ export interface AgentProbeHttpResult {
   location: string;
 }
 
-/** Plain structural shapes the agent returns — mapped 1:1 by the data layer. */
+/** Plain structural shapes the agent returns - mapped 1:1 by the data layer. */
 export interface AgentConsoleInstance {
   name: string;
   service: string;
@@ -187,7 +187,7 @@ export interface AgentConsoleInstance {
   tty: boolean;
   /**
    * Raw docker state ("running" | "restarting" | "exited" | …). EMPTY from an
-   * agent older than the field, which only sent `running` — and a bool cannot
+   * agent older than the field, which only sent `running`, and a bool cannot
    * tell a crash loop from a clean stop. Treat "" as unknown, never as a state.
    */
   state: string;
@@ -318,7 +318,7 @@ export interface AgentConnection {
   exportVolume(volumeName: string): AsyncGenerator<Buffer, void, unknown>;
   /**
    * Untar a stream of gzipped-tar chunks INTO a named Docker volume on this
-   * (destination) host — the receiving half of a cross-host move. `wipeFirst`
+   * (destination) host - the receiving half of a cross-host move. `wipeFirst`
    * empties the target before untarring so the copy overwrites rather than merges.
    */
   importVolume(
@@ -328,19 +328,19 @@ export interface AgentConnection {
   ): Promise<{
     ok: boolean;
     error: string;
-    /** Compressed bytes this host consumed, and their sha256 — for the caller to
+    /** Compressed bytes this host consumed, and their sha256 - for the caller to
      *  check against what it relayed. 0/"" from an agent older than the fields;
      *  that is "not reported", never "nothing arrived". */
     bytesWritten: number;
     sha256: string;
   }>;
   /**
-   * Stream an arbitrary HOST DIRECTORY out of this host as a gzipped tar — the
+   * Stream an arbitrary HOST DIRECTORY out of this host as a gzipped tar - the
    * bind-mount half of a migration from another platform, whose services may keep
    * their data in a plain directory.
    */
   exportHostPath(path: string): AsyncGenerator<Buffer, void, unknown>;
-  /** Untar a stream into a HOST DIRECTORY on this host — the receiving half. The
+  /** Untar a stream into a HOST DIRECTORY on this host - the receiving half. The
    *  wipe happens on the first data frame, never on the header alone. */
   importHostPath(
     path: string,
@@ -354,12 +354,12 @@ export interface AgentConnection {
   }>;
   /**
    * Stream an app's host-side FILES DIR (a plain host directory, not a Docker
-   * volume) OUT of this host as a gzipped tar — the files-dir sibling of {@link
+   * volume) OUT of this host as a gzipped tar - the files-dir sibling of {@link
    * exportVolume} for an app move.
    */
   exportFiles(slug: string): AsyncGenerator<Buffer, void, unknown>;
   /**
-   * Untar a stream of gzipped-tar chunks INTO an app's files dir on this host —
+   * Untar a stream of gzipped-tar chunks INTO an app's files dir on this host -
    * the receiving half. `wipeFirst` empties the dir first (overwrite, not merge).
    */
   importFiles(
@@ -389,7 +389,7 @@ export interface AgentConnection {
   readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
   /**
    * Whether a host TCP port is free to publish. Gates the database "Expose
-   * publicly" flow — the pre-provision collision guard and the "generate an
+   * publicly" flow - the pre-provision collision guard and the "generate an
    * available port" button.
    */
   checkPort(port: number): Promise<{ available: boolean; reason: string }>;
@@ -413,7 +413,7 @@ export interface AgentConnection {
    */
   selfUninstall(deadlineMs?: number): Promise<string[]>;
   /**
-   * Reclaim Docker disk on the host — a STRICT ALLOW-LIST, never a prune verb.
+   * Reclaim Docker disk on the host - a STRICT ALLOW-LIST, never a prune verb.
    */
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
 
@@ -426,10 +426,10 @@ export interface AgentConnection {
   hostInfo(req: HostInfoRequest): Promise<HostInfoResponse>;
   /** Move the host clock to an IANA zone; answers with a FRESH HostInfoResponse
    *  so the caller sees the clock that actually moved. The agent re-validates the
-   *  name against /usr/share/zoneinfo — it ends in a relink of /etc/localtime. */
+   *  name against /usr/share/zoneinfo - it ends in a relink of /etc/localtime. */
   setTimezone(req: SetTimezoneRequest): Promise<HostInfoResponse>;
   /** Rewrite and/or restart the deplo-traefik stack from control-plane-rendered
-   *  YAML (ADR-0006). Refuses — as `ok:false`, not an RPC error — when Deplo did
+   *  YAML (ADR-0006). Refuses (as `ok:false`, not an RPC error) when Deplo did
    *  not install Traefik on that host. */
   traefikConfig(req: TraefikConfigRequest): Promise<TraefikConfigResponse>;
   /** Bounce the container the Deplo panel runs in on this host. `ok:true` means
@@ -451,7 +451,7 @@ export interface AgentConnection {
   /** Verify S3 connectivity + that the bucket is writable (makes the S3 half of
    *  testDestination real). */
   s3Check(s3: S3Target): Promise<{ ok: boolean; error: string }>;
-  /** Delete a single object (or, with `prefix`, a whole target folder) from S3 —
+  /** Delete a single object (or, with `prefix`, a whole target folder) from S3 -
    *  backs retention pruning + delete-with-artifacts. Idempotent; returns the
    *  count removed. `s3.objectKey` is the key or prefix. */
   s3Delete(
@@ -491,7 +491,7 @@ export interface AgentConnection {
      */
     expectedSha256?: string,
   ): AsyncGenerator<Buffer, void, unknown>;
-  /** Stream an artifact INTO a store — the destination half of a cross-host
+  /** Stream an artifact INTO a store - the destination half of a cross-host
    *  backup. Returns what actually landed (bytes + sha256), which is the number
    *  the run records: on a filesystem there is no ETag. */
   writeStoreFile(
@@ -594,7 +594,7 @@ export interface AgentConnection {
 /**
  * A resolved dial target: the address + serverName + the control plane's client
  * creds + the pinned fingerprint. The pin is REQUIRED for every server (trust
- * that EXACT cert, P6 revocation) — there is no un-pinned in-process agent.
+ * that EXACT cert, P6 revocation) - there is no un-pinned in-process agent.
  */
 interface DialTarget {
   address: string;
@@ -637,33 +637,33 @@ export class AgentUninstallUnsupportedError extends Error {}
 
 /**
  * The reachable agent does not (yet) implement the backup RPCs (Backup / Restore /
- * S3Check / S3Delete) — it doesn't advertise the `"backup"` capability in Hello,
+ * S3Check / S3Delete) - it doesn't advertise the `"backup"` capability in Hello,
  * or it answers the call with gRPC UNIMPLEMENTED.
  */
 export class AgentBackupUnsupportedError extends Error {}
 
 /**
- * The reachable agent can back up to S3 but cannot hold artifacts on its own disk
- * — it predates the `"backup-store"` capability.
+ * The reachable agent can back up to S3 but cannot hold artifacts on its own disk -
+ * it predates the `"backup-store"` capability.
  */
 export class AgentBackupStoreUnsupportedError extends Error {}
 
 /**
  * The reachable agent does not (yet) implement the {@link
- * AgentConnection.containerStats} RPC — it predates the `"container-stats"`
+ * AgentConnection.containerStats} RPC - it predates the `"container-stats"`
  * capability, so it answers with gRPC UNIMPLEMENTED.
  */
 export class AgentContainerStatsUnsupportedError extends Error {}
 
 /**
  * The reachable agent does not (yet) implement {@link
- * AgentConnection.streamMetrics} — it predates the `"metrics-stream"` capability.
+ * AgentConnection.streamMetrics} - it predates the `"metrics-stream"` capability.
  */
 export class AgentMetricsStreamUnsupportedError extends Error {}
 
 /**
  * The reachable agent does not (yet) implement the {@link
- * AgentConnection.checkPort} RPC — it doesn't advertise the `"checkport"`
+ * AgentConnection.checkPort} RPC - it doesn't advertise the `"checkport"`
  * capability in Hello, or it answers with gRPC UNIMPLEMENTED.
  */
 export class AgentCheckPortUnsupportedError extends Error {}
@@ -685,10 +685,10 @@ export function mapCheckPortUnsupported(e: unknown): Error {
 
 /**
  * The reachable agent does not (yet) implement the cross-host data-copy RPCs used
- * by a server move — the volume-copy pair ({@link AgentConnection.exportVolume} /
+ * by a server move - the volume-copy pair ({@link AgentConnection.exportVolume} /
  * {@link AgentConnection.importVolume}, capability `"volume-copy"`) and/or the
  * files-dir pair ({@link AgentConnection.exportFiles} / {@link
- * AgentConnection.importFiles}, capability `"files-copy"`) — or it answers with
+ * AgentConnection.importFiles}, capability `"files-copy"`), or it answers with
  * gRPC UNIMPLEMENTED.
  */
 export class AgentVolumeCopyUnsupportedError extends Error {}
@@ -710,12 +710,12 @@ export function mapVolumeCopyUnsupported(e: unknown, which: string): Error {
 
 /**
  * The reachable agent does not (yet) implement the {@link
- * AgentConnection.dockerCleanup} RPC — it doesn't advertise the `"docker-cleanup"`
+ * AgentConnection.dockerCleanup} RPC - it doesn't advertise the `"docker-cleanup"`
  * capability in Hello, or it answers with gRPC UNIMPLEMENTED.
  */
 export class AgentCleanupUnsupportedError extends Error {}
 
-/** The single message an out-of-date agent produces, wherever the gap is caught —
+/** The single message an out-of-date agent produces, wherever the gap is caught -
  *  the Hello pre-flight in {@link runAgentCleanup} or the RPC's own UNIMPLEMENTED.
  *  One string so the two paths can never drift into two different stories. */
 const CLEANUP_UNSUPPORTED_MESSAGE =
@@ -726,7 +726,7 @@ const CLEANUP_UNSUPPORTED_MESSAGE =
  * Map a DockerCleanup RPC error to {@link AgentCleanupUnsupportedError} when it is
  * a gRPC UNIMPLEMENTED (the agent predates the RPC); every other error passes
  * through unchanged. {@link runAgentCleanup} preflights the capability via Hello
- * first, but an agent could advertise nothing yet still reject — this is the
+ * first, but an agent could advertise nothing yet still reject - this is the
  * belt-and-braces.
  */
 export function mapCleanupUnsupported(e: unknown): Error {
@@ -750,7 +750,7 @@ const TRANSPORT_DOWN_CODES = new Set<number>([
 /**
  * Normalise an RPC error: a transport-down gRPC error becomes an
  * AgentUnreachableError (so the data-layer guards catch it); anything else (an
- * application error the agent deliberately returned — NOT_FOUND,
+ * application error the agent deliberately returned - NOT_FOUND,
  * PERMISSION_DENIED, INVALID_ARGUMENT, FAILED_PRECONDITION) passes through
  * unchanged.
  */
@@ -806,7 +806,7 @@ async function remoteTarget(server: Server): Promise<DialTarget> {
   const host = server.ip || server.host;
   return {
     address: `${host}:${agent.port}`,
-    // TLS SNI / authority. For an IP host, verify against `localhost` instead —
+    // TLS SNI / authority. For an IP host, verify against `localhost` instead -
     // signAgentCsr ALWAYS adds it as a DNS SAN, so verification still passes.
     serverName: IPV4_RE.test(host) ? "localhost" : host,
     clientCreds: {
@@ -887,14 +887,14 @@ function dial(target: DialTarget): AgentConnection {
     "grpc.keepalive_time_ms": 30_000,
     "grpc.keepalive_timeout_ms": 10_000,
     // Only ping while an RPC is in flight. Matches the agent's
-    // PermitWithoutStream:false — a ping on a wholly idle channel would be
+    // PermitWithoutStream:false - a ping on a wholly idle channel would be
     // refused, and we have no reason to send one.
     "grpc.keepalive_permit_without_calls": 0,
   });
 
   /**
    * Adapt a gRPC server-stream of LogChunks into the output-only AttachHandle the
-   * logs session registry consumes — so lib/logs/session.ts works UNCHANGED for a
+   * logs session registry consumes, so lib/logs/session.ts works UNCHANGED for a
    * remote backing.
    */
   function logsHandle(stream: ClientReadableStream<LogChunk>): AttachHandle {
@@ -1000,7 +1000,7 @@ function dial(target: DialTarget): AgentConnection {
         if (closed) return;
         try {
           // A tty-only AttachInput frame; the agent applies it to the pty. On a
-          // pipe-backed (non-tty) attach the agent ignores it — harmless.
+          // pipe-backed (non-tty) attach the agent ignores it - harmless.
           stream.write({ resize: { cols, rows } });
         } catch {
           /* stream gone; ignore */
@@ -1088,7 +1088,7 @@ function dial(target: DialTarget): AgentConnection {
         // A SHORT deadline is mandatory (METRICS_TIMEOUT_MS): the dashboard polls ~1s on a
         // busy-guard, so a remote agent that accepts the connection but can't finish
         // measuring (host pinned by its own deploy/load) must fail fast so the next tick
-        // can retry — not hang the poll for the full console deadline and amplify a brief
+        // can retry, not hang the poll for the full console deadline and amplify a brief
         // pin into a minute-long chart gap.
         client.metrics(
           { dataDir },
@@ -1140,7 +1140,7 @@ function dial(target: DialTarget): AgentConnection {
     },
     stopStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        // `removeVolumes` is part of StackRef but meaningless for start/stop —
+        // `removeVolumes` is part of StackRef but meaningless for start/stop -
         // these only toggle the running state, never touch volumes.
         client.stopStack(
           { slug, removeVolumes: false, reclaimVolumes: [] },
@@ -1337,7 +1337,7 @@ function dial(target: DialTarget): AgentConnection {
       });
     },
     exportFiles(slug: string) {
-      // Server-streaming files-dir tar out — the exact shape of exportVolume, with
+      // Server-streaming files-dir tar out - the exact shape of exportVolume, with
       // FilesChunk{data} frames instead of VolumeChunk{data}.
       return (async function* () {
         const stream = client.exportFiles(
@@ -1357,7 +1357,7 @@ function dial(target: DialTarget): AgentConnection {
       wipeFirst: boolean,
       chunks: AsyncIterable<Buffer>,
     ) {
-      // Client-streaming files-dir untar in — mirrors importVolume with a slug header.
+      // Client-streaming files-dir untar in - mirrors importVolume with a slug header.
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         const call: ClientWritableStream<FilesChunk> = client.importFiles(
           new Metadata(),
@@ -1661,7 +1661,7 @@ function dial(target: DialTarget): AgentConnection {
       ageIdentity = "",
       expectedSha256 = "",
     ) {
-      // Server-streaming bytes: same shape as exportVolume, same backpressure —
+      // Server-streaming bytes: same shape as exportVolume, same backpressure -
       // an artifact is exactly the kind of stream an unbounded queue turns into
       // an OOM.
       return (async function* () {
@@ -2051,7 +2051,7 @@ const BACKUP_STORE_CAPABILITY = "backup-store";
 const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
 
 /**
- * The agent reads `S3Target.extra_args` — a destination's advanced quirk flags
+ * The agent reads `S3Target.extra_args` - a destination's advanced quirk flags
  * reach its minio client instead of being ignored. Refusing there would take
  * backups away from a whole fleet mid-rollout over a workaround.
  */
@@ -2117,7 +2117,7 @@ export function mapCronUnsupported(e: unknown): Error {
 
 /**
  * The capability an agent advertises once it can serve per-container `docker
- * stats` (ContainerStats) — the per-app/per-database Monitoring tab.
+ * stats` (ContainerStats) - the per-app/per-database Monitoring tab.
  */
 export const CONTAINER_STATS_CAPABILITY = "container-stats";
 
@@ -2166,18 +2166,18 @@ export function mapContainerStatsUnsupported(e: unknown): Error {
 
 /**
  * Open a connection to the agent owning `serverId` AND preflight that it can do
- * backups — the entry point every real backup/restore path uses (Step 3). On
+ * backups - the entry point every real backup/restore path uses (Step 3). On
  * success the LIVE connection is returned (caller must `close()` it).
  */
 export async function connectBackupAgent(
   serverId: string,
-  /** Also require `"backup-store"` — set when the artifact lives on THIS host's
+  /** Also require `"backup-store"` - set when the artifact lives on THIS host's
    *  disk. Split from the base check so an agent that can dump to S3 but cannot
    *  hold artifacts fails the SECOND thing with a message that names it. */
   opts: {
     store?: boolean;
     encryptedS3?: boolean;
-    /** This destination carries advanced S3 flags — warn if they will be
+    /** This destination carries advanced S3 flags - warn if they will be
      *  dropped, but never refuse. */
     s3Args?: boolean;
     /** Also require `"backup-s3-read"` - set when the artifact is to be streamed
@@ -2245,7 +2245,7 @@ export async function connectBackupAgent(
     ) {
       console.warn(
         `[backups] the agent on server ${serverId} is too old to apply this ` +
-          `destination's advanced S3 flags — it is talking to the bucket ` +
+          `destination's advanced S3 flags - it is talking to the bucket ` +
           `without them. Update the agent on this server to apply them.`,
       );
     }
@@ -2323,7 +2323,7 @@ export async function serverSupports(
 /**
  * Mandatory pre-flight (PLAN P5): confirm the agent answers Hello before a deploy,
  * with a contract-version check. Returns the HelloResponse or throws a clear
- * "server unreachable" error — never hangs.
+ * "server unreachable" error, never hangs.
  */
 export async function agentPreflight(serverId: string): Promise<HelloResponse> {
   const conn = await connectAgent(serverId);
@@ -2380,7 +2380,7 @@ export async function selfUpdateServerAgent(
   const release = await resolveLatestAgentRelease();
   if (!release) {
     throw new Error(
-      "Could not resolve the latest agent release from GitHub — try again, or use Check for updates.",
+      "Could not resolve the latest agent release from GitHub - try again, or use Check for updates.",
     );
   }
   // Shape the release's per-arch binaries into the RPC's { arch -> {url,sha256} }
@@ -2393,7 +2393,7 @@ export async function selfUpdateServerAgent(
   const conn = dial(target);
   try {
     // Pre-flight: confirm the agent answers AND can self-update. An agent too old
-    // to know the RPC won't advertise the capability — reject distinctly so the UI
+    // to know the RPC won't advertise the capability - reject distinctly so the UI
     // says "re-run the installer" rather than emitting a confusing UNIMPLEMENTED.
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(SELF_UPDATE_CAPABILITY)) {
@@ -2405,7 +2405,7 @@ export async function selfUpdateServerAgent(
     return await conn.selfUpdate(release.version, binaries);
   } catch (e) {
     // Belt-and-braces: a just-old-enough agent that advertises nothing useful, or
-    // a version skew, may still answer the call with UNIMPLEMENTED — map it to the
+    // a version skew, may still answer the call with UNIMPLEMENTED - map it to the
     // same actionable message rather than a raw gRPC error.
     if (
       !(e instanceof AgentUpdateUnsupportedError) &&
@@ -2565,13 +2565,13 @@ export async function runAgentCleanup(
 const HOSTOPS_CAPABILITY = "hostops";
 
 /**
- * The reachable agent is too old for the host-ops RPCs — it cannot report what the
+ * The reachable agent is too old for the host-ops RPCs - it cannot report what the
  * hardware is, move the clock, restart Traefik or restart the panel.
  */
 export class AgentHostOpsUnsupportedError extends Error {}
 
-/** One message wherever the gap surfaces — the Hello pre-flight or UNIMPLEMENTED
- *  on the call itself — so the two paths cannot tell two different stories. */
+/** One message wherever the gap surfaces - the Hello pre-flight or UNIMPLEMENTED
+ *  on the call itself, so the two paths cannot tell two different stories. */
 const HOSTOPS_UNSUPPORTED_MESSAGE =
   "The agent on this server is too old for host management. " +
   "Update the agent on this server, then try again.";

@@ -98,7 +98,7 @@ export function RestoreRunsDialog({
           <DialogTitle>Restore {targetName}</DialogTitle>
           <DialogDescription>
             Pick a backup to restore in place. This overwrites the live{" "}
-            {targetKind} — there is downtime and the current state is not
+            {targetKind} - there is downtime and the current state is not
             recoverable.
           </DialogDescription>
         </DialogHeader>

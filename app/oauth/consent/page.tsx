@@ -13,7 +13,7 @@ import { ConsentForm } from "@/components/oauth/consent-form";
 import { ConsentRefusal } from "@/components/oauth/consent-refusal";
 
 /**
- * The OAuth consent screen — deplo's half of connecting an AI client. It is a
+ * The OAuth consent screen - deplo's half of connecting an AI client. It is a
  * token-minting form, because approving it mints a real API token.
  */
 export default async function OAuthConsentPage(props: {
@@ -24,13 +24,13 @@ export default async function OAuthConsentPage(props: {
   const clientId = typeof params.client_id === "string" ? params.client_id : "";
   const scope = typeof params.scope === "string" ? params.scope : "";
 
-  // Must survive the round trip byte for byte — see `rebuildOauthQuery`.
+  // Must survive the round trip byte for byte - see `rebuildOauthQuery`.
   const oauthQuery = rebuildOauthQuery(params);
 
   if (!clientId) redirect("/settings/mcp");
 
-  // Refusing to render without the provider's signature is not the security boundary
-  // — the consent endpoint verifies it for real (and its expiry), and the mint
+  // Refusing to render without the provider's signature is not the security boundary -
+  // the consent endpoint verifies it for real (and its expiry), and the mint
   // requires the record that endpoint writes.
   if (typeof params.sig !== "string" || !params.sig)
     return (
@@ -68,7 +68,7 @@ export default async function OAuthConsentPage(props: {
     // anything else would connect the client somewhere the person never read.
     requireActiveTeamId(),
     // What the scope picker starts ticked. Only the teams the mint would
-    // actually accept — ticking one it refuses is a failed Authorize, not a
+    // actually accept - ticking one it refuses is a failed Authorize, not a
     // connection.
     listConnectableTeamIds(),
   ]);

@@ -152,7 +152,7 @@ test("a successful probe also refreshes the heartbeat; a failed one does not", a
 test("claimProbe advances the throttle lease but NEVER the freshness watermark", async () => {
   // The load-bearing invariant. status_checked_at is the UI's confidence signal; if the
   // lease advanced it, an inconclusive probe (timeout / skip) would leave a stale status
-  // wearing a fresh timestamp — a confident green painted for a host nobody reached.
+  // wearing a fresh timestamp - a confident green painted for a host nobody reached.
   await seedServerRow(db, { id: "srv_1", status: "online", agent: AGENT });
 
   assert.equal(await claimProbe("srv_1", true), true);
@@ -171,7 +171,7 @@ test("claimProbe advances the throttle lease but NEVER the freshness watermark",
 
 test("a fresh observation suppresses a redundant ambient claim", async () => {
   // If the 1s metrics poll just observed the server, the Servers page has no reason to
-  // re-dial — the claim skips when status_checked_at is already fresh, even if the lease
+  // re-dial - the claim skips when status_checked_at is already fresh, even if the lease
   // is stale.
   const justNow = new Date(Date.now() - 1_000).toISOString();
   await seedServerRow(db, {
@@ -230,7 +230,7 @@ test("the throttle collapses a burst of page loads into ONE dial", async () => {
 });
 
 test("a forced check bypasses the ambient throttle but still respects a floor", async () => {
-  // "Force" means "ignore the 15s window", not "dial as fast as you can click" — the
+  // "Force" means "ignore the 15s window", not "dial as fast as you can click" - the
   // floor is the only backstop against a mashed button (or a scripted bearer-token
   // caller) turning the control plane into a fan-out dialer.
   const eightSecondsAgo = new Date(Date.now() - 8_000).toISOString();

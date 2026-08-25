@@ -12,7 +12,7 @@ import type { VolumeMount } from "../types";
 /**
  * The descriptor's volume-name resolution is the load-bearing correctness point of
  * project backup: the agent tars/wipes each name VERBATIM (`-v <name>:/v`), so a
- * wrong name silently backs up nothing — or, on restore, wipes the wrong volume.
+ * wrong name silently backs up nothing, or, on restore, wipes the wrong volume.
  */
 
 const vol = (v: Partial<VolumeMount>): VolumeMount => ({
@@ -108,7 +108,7 @@ volumes:
 test("compose-stack: the app's OWN Storage volume is enumerated, not refused", () => {
   // What the renderer emits for a Storage-settings volume on a compose stack:
   // a top-level alias pinned to Deplo's per-app host name. It lives inside the
-  // reserved namespace legitimately — the guard exempts exactly these.
+  // reserved namespace legitimately - the guard exempts exactly these.
   const yaml = `
 volumes:
   uploads:

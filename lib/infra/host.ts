@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 /**
  * Real metrics for the host running the control plane. Uses node:os (portable)
  * plus Linux-only sources (df, /proc/net/dev) where available. No value is
- * fabricated — fields that cannot be measured are returned as 0.
+ * fabricated - fields that cannot be measured are returned as 0.
  */
 export interface HostMetrics {
   cpu: number; // 0-100

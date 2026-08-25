@@ -317,8 +317,8 @@ test("the right token and the right permission queue a deploy", async () => {
     "the deploy is attributed to the member the token acts as, not to nobody",
   );
   // The free-text name has always been there; this is what lets the row show a
-  // FACE. A hook runs under runWithIdentity, so the actor resolves to an account
-  // — unlike a GitHub webhook push, whose creator is a GitHub login and stays
+  // FACE. A hook runs under runWithIdentity, so the actor resolves to an account -
+  // unlike a GitHub webhook push, whose creator is a GitHub login and stays
   // null.
   assert.equal(
     rows[0].creatorUserId,
@@ -368,7 +368,7 @@ test("a hook can't reach into a folder its token's creator can't see", async () 
     .where(eq(appsTable.id, APP));
 
   // DEPLOYER holds team `deploy_apps` but nothing on the folder, so the app is
-  // not theirs to see — and a hook is never more than the person behind it.
+  // not theirs to see, and a hook is never more than the person behind it.
   const bearer = await mint(DEPLOYER, TEAM_A, ["view", "deploy_apps"]);
   const res = await post(APP, token, bearer);
   assert.equal(res.status, 403);

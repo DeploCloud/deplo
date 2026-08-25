@@ -88,7 +88,7 @@ test("compose plan with no mounts sends an empty mounts list", async () => {
 
 /**
  * Heavy build methods (static/nixpacks/buildpacks/railpack) now run agent-side.
- * The git arm can't probe the tree, so it keys purely off the method — these pin
+ * The git arm can't probe the tree, so it keys purely off the method - these pin
  * that mapping.
  */
 
@@ -120,7 +120,7 @@ test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfil
 /**
  * Build-time env parity: when the control plane renders a GENERATED Dockerfile
  * (legacy/auto method, tree not probeable here), the resolved env-var NAMES must
- * ride into the body as ARG/ENV declarations — the agent then feeds the values as
+ * ride into the body as ARG/ENV declarations - the agent then feeds the values as
  */
 test("git plan with a legacy/auto method embeds the env NAMES (not values) in the generated Dockerfile", async () => {
   const req = await buildDeployRequest({
@@ -193,7 +193,7 @@ test("no-cache and force-recreate ride the request independently", async () => {
   assert.equal(fresh.forceRecreate, false);
 
   // "Rebuild container" on a compose stack: nothing to build, but the containers
-  // must be replaced — the case `up -d` alone silently skips.
+  // must be replaced - the case `up -d` alone silently skips.
   const rebuilt = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },

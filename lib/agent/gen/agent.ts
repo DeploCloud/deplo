@@ -68,7 +68,7 @@ export function contractVersionToJSON(object: ContractVersion): string {
 /**
  * Where the agent gets the bytes it builds/runs. Part B implements GIT (the agent
  * clones with a short-lived token, D3) so a remote build never ships the whole repo
- * over the wire — only the clone URL + branch + ephemeral token.
+ * over the wire - only the clone URL + branch + ephemeral token.
  */
 export enum SourceKind {
   SOURCE_KIND_UNSPECIFIED = 0,
@@ -84,14 +84,14 @@ export enum SourceKind {
   SOURCE_KIND_GIT = 3,
   /**
    * SOURCE_KIND_COMPOSE - A multi-service compose stack: the control plane rendered the full stack
-   * (buildComposeStack — Traefik labels, deplo-network wiring, the deplo.* labels on
+   * (buildComposeStack - Traefik labels, deplo-network wiring, the deplo.* labels on
    * EVERY service) into compose_yaml; the agent neither builds nor pulls an image (each
    * service's image comes up via `docker compose up` itself).
    */
   SOURCE_KIND_COMPOSE = 4,
   /**
    * SOURCE_KIND_DEV_WORKSPACE - PART D: "deploy from dev workspace". The build context is the project's PERSISTENT
-   * dev workspace already on THIS agent's host (<dev-dir>/<slug>) — the developer's
+   * dev workspace already on THIS agent's host (<dev-dir>/<slug>) - the developer's
    * live, edited tree.
    */
   SOURCE_KIND_DEV_WORKSPACE = 5,
@@ -325,19 +325,19 @@ export function backupKindToJSON(object: BackupKind): string {
 export enum CleanupScope {
   CLEANUP_SCOPE_UNSPECIFIED = 0,
   /**
-   * CLEANUP_SCOPE_BUILD_CACHE - `docker builder prune` — the daemon's own BuildKit cache. Touches no Deplo
+   * CLEANUP_SCOPE_BUILD_CACHE - `docker builder prune` - the daemon's own BuildKit cache. Touches no Deplo
    * object at all.
    */
   CLEANUP_SCOPE_BUILD_CACHE = 1,
   /**
-   * CLEANUP_SCOPE_DANGLING_IMAGES - `docker image prune` — untagged layers only, NEVER `-a`. A stopped container
+   * CLEANUP_SCOPE_DANGLING_IMAGES - `docker image prune` - untagged layers only, NEVER `-a`. A stopped container
    * still pins its image, so this cannot strand an app.
    */
   CLEANUP_SCOPE_DANGLING_IMAGES = 2,
   /**
    * CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE - Dangling anonymous volumes that are PROVABLY buildkitd stores: the railpack builder
    * runs `moby/buildkit`, which declares VOLUME /var/lib/buildkit, and an orphaned one
-   * is identified by the `buildkitd.lock` sentinel file at its mountpoint — never by
+   * is identified by the `buildkitd.lock` sentinel file at its mountpoint, never by
    * name, never by label.
    */
   CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE = 3,
@@ -419,7 +419,7 @@ export interface InstallRenewedCertRequest {
   certPem: string;
   /**
    * The CA certificate (PEM); the agent refreshes its trust pool too if non-empty.
-   * Empty ⇒ keep the existing CA (the common case — only the leaf rotates).
+   * Empty ⇒ keep the existing CA (the common case - only the leaf rotates).
    */
   caPem: string;
 }
@@ -555,7 +555,7 @@ export interface BuildSpec {
 
 /**
  * A git source the agent clones itself (SOURCE_KIND_GIT, D3). The token is the only
- * secret here and it is ephemeral — nothing long-lived crosses the wire, and the agent
+ * secret here and it is ephemeral, nothing long-lived crosses the wire, and the agent
  * never persists it.
  */
 export interface GitSource {
@@ -580,7 +580,7 @@ export interface GitSource {
 export interface DockerfileBuild {
   /**
    * Path to the Dockerfile, relative to the build context root. Re-validated against
-   * the context root inside the agent (the anti-escape check is re-ported to Go — path
+   * the context root inside the agent (the anti-escape check is re-ported to Go - path
    * validation runs where the I/O runs, never trusting a path off the wire).
    */
   dockerfilePath: string;
@@ -596,7 +596,7 @@ export interface DockerfileBuild {
   /**
    * The generated Dockerfile body (only when `generated` is true). Rendered by
    * the control plane (generateDockerfile) so the agent stays dumb about
-   * framework presets — same single-source-of-truth principle as the compose.
+   * framework presets - same single-source-of-truth principle as the compose.
    */
   generatedDockerfile: string;
 }
@@ -631,7 +631,7 @@ export interface DeployRequest {
   /**
    * Present iff source_kind == GIT (Part B). The agent clones this itself; the
    * control plane does not tar a context for git sources targeting a remote
-   * agent — only the descriptor crosses the wire (D3).
+   * agent - only the descriptor crosses the wire (D3).
    */
   git?:
     | GitSource
@@ -676,7 +676,7 @@ export interface DeployRequest {
    */
   devWorkspaceSubdir: string;
   /**
-   * The heavy build method's settings — present iff build_kind is STATIC / NIXPACKS /
+   * The heavy build method's settings - present iff build_kind is STATIC / NIXPACKS /
    * BUILDPACKS / RAILPACK.
    */
   buildSpec?:
@@ -739,7 +739,7 @@ export interface ReattachRequest {
 
 export interface LogLine {
   /**
-   * info | warn | error | debug | command — mirrors lib/types.ts LogLevel so the
+   * info | warn | error | debug | command - mirrors lib/types.ts LogLevel so the
    * control plane writes it straight into the deployment log.
    */
   level: string;
@@ -811,7 +811,7 @@ export interface HostPathChunk_Header {
   path: string;
   /**
    * Empty the target first. Applied on the FIRST DATA FRAME, never on the header
-   * alone — see VolumeChunk.Header.wipe_first for why.
+   * alone - see VolumeChunk.Header.wipe_first for why.
    */
   wipeFirst: boolean;
 }
@@ -924,7 +924,7 @@ export interface ImageChunk_Header {
  * Deploy: the control plane renders everything, the agent just writes + brings up.
  */
 export interface RerouteRequest {
-  /** Stack identity — keys the stack file, compose project and container name. */
+  /** Stack identity - keys the stack file, compose project and container name. */
   slug: string;
   /**
    * The fully re-rendered stack YAML with the new domain/label set. Opaque to the
@@ -943,7 +943,7 @@ export interface RerouteRequest {
   mounts: MountFile[];
   /**
    * The app's extra `compose up` flags, same contract as
-   * DeployRequest.compose_up_args — a reroute brings the stack up too, so the
+   * DeployRequest.compose_up_args - a reroute brings the stack up too, so the
    * flags the operator asked for apply here as well.
    */
   composeUpArgs: string[];
@@ -985,7 +985,7 @@ export interface CheckPortRequest {
 export interface CheckPortResponse {
   /**
    * True when the agent could bind (and immediately released) the port on the
-   * host — i.e. nothing else holds it right now.
+   * host - i.e. nothing else holds it right now.
    */
   available: boolean;
   /** "" when available; otherwise a human-readable reason (in use / out of range). */
@@ -999,7 +999,7 @@ export interface CheckPortResponse {
 export interface ProbeHttpRequest {
   /**
    * The app the container must belong to (its `deplo.project` label). Empty is
-   * refused — an unscoped probe could reach any container on the host.
+   * refused - an unscoped probe could reach any container on the host.
    */
   projectId: string;
   /**
@@ -1013,7 +1013,7 @@ export interface ProbeHttpRequest {
    */
   service: string;
   /**
-   * The port INSIDE the container (1-65535) — the same port Traefik is routed
+   * The port INSIDE the container (1-65535) - the same port Traefik is routed
    * to, not a published host port.
    */
   port: number;
@@ -1025,7 +1025,7 @@ export interface ProbeHttpRequest {
   /**
    * Host header to send. Empty => the container's IP. An app that only answers
    * on its own hostname (ALLOWED_HOSTS, a configured site URL) needs its real
-   * domain here. Validated as a hostname — never a URL, never a header list.
+   * domain here. Validated as a hostname, never a URL, never a header list.
    */
   host: string;
   /**
@@ -1056,7 +1056,7 @@ export interface ProbeHttpResponse {
 }
 
 /**
- * In-place agent binary update (SelfUpdate). The agent stays otherwise dumb — it does
+ * In-place agent binary update (SelfUpdate). The agent stays otherwise dumb - it does
  * not talk to the GitHub API or know the release repo, it just fetches the chosen URL,
  * checks the digest, and swaps itself.
  */
@@ -1085,7 +1085,7 @@ export interface ArchBinary {
   url: string;
   /**
    * Lowercase hex sha256 the downloaded bytes MUST match. A mismatch aborts the
-   * update with FAILED_PRECONDITION and the running binary is left untouched —
+   * update with FAILED_PRECONDITION and the running binary is left untouched -
    * the agent never execs an unverified binary (install-agent.sh P2 parity).
    */
   sha256: string;
@@ -1120,7 +1120,7 @@ export interface SelfUpdateResponse {
 }
 
 /**
- * The S3 destination the agent reads/writes with — the DECRYPTED creds (the control
+ * The S3 destination the agent reads/writes with - the DECRYPTED creds (the control
  * plane decrypts via decryptSecret and sends plaintext over mTLS; the agent never holds
  * the encryption key, mirroring Deploy's env handling) plus the bucket coordinates and
  * the exact object key.
@@ -1157,7 +1157,7 @@ export interface S3Target {
 }
 
 /**
- * A directory on THIS host's filesystem that holds backup artifacts — the second
+ * A directory on THIS host's filesystem that holds backup artifacts - the second
  * destination shape, for a user who would rather keep backups on a VPS they already pay
  * for than sign up for a bucket.
  */
@@ -1173,7 +1173,7 @@ export interface StoreTarget {
  */
 export interface DatabaseDescriptor {
   /**
-   * The DB container to `docker exec` into (the agent re-derives nothing — it
+   * The DB container to `docker exec` into (the agent re-derives nothing - it
    * execs exactly this name). For a Deplo DB this is the compose container of
    * the db-<name> stack.
    */
@@ -1198,7 +1198,7 @@ export interface DatabaseDescriptor {
  */
 export interface ProjectDescriptor {
   /**
-   * The project slug — keys the files dir (<stack-dir>/files/<slug>) and the
+   * The project slug - keys the files dir (<stack-dir>/files/<slug>) and the
    * stack the restore re-Reroutes.
    */
   slug: string;
@@ -1241,7 +1241,7 @@ export interface BackupRequest {
   kind: BackupKind;
   /**
    * The destination: exactly one of `s3` / `store`, unless `stream_out` is set
-   * (in which case neither is needed — the caller IS the sink).
+   * (in which case neither is needed - the caller IS the sink).
    */
   s3?:
     | S3Target
@@ -1254,13 +1254,13 @@ export interface BackupRequest {
     | undefined;
   /**
    * The age recipient ("age1…", an X25519 public key) the artifact is encrypted to.
-   * REQUIRED whenever the artifact is not going to S3 — a store write or a stream_out
+   * REQUIRED whenever the artifact is not going to S3 - a store write or a stream_out
    * relay with an empty recipient is an ERROR, never a silent plaintext write.
    */
   ageRecipient: string;
   /**
    * Emit the artifact as BackupEvent.data frames instead of writing it anywhere. The
-   * BackupResult still reports the size this host produced — the durable number is the
+   * BackupResult still reports the size this host produced - the durable number is the
    * destination's StoreResult.bytes_written.
    */
   streamOut: boolean;
@@ -1287,14 +1287,14 @@ export interface BackupResult {
   error: string;
   /**
    * The object key written (echoes the destination's object_key on success) and
-   * its size in bytes — recorded on the control plane's BackupRun.
+   * its size in bytes - recorded on the control plane's BackupRun.
    */
   objectKey: string;
   sizeBytes: number;
   /** Hex sha256 of the artifact as written. */
   sha256: string;
   /**
-   * How big the artifact is once DECRYPTED — i.e. exactly how many bytes ReadStoreFile
+   * How big the artifact is once DECRYPTED - i.e. exactly how many bytes ReadStoreFile
    * emits when it is handed an age identity, which is what a download hands to a
    * browser.
    */
@@ -1355,7 +1355,7 @@ export interface S3CheckResponse {
   ok: boolean;
   /**
    * "" on success; a human-readable reason otherwise (bad creds, no bucket,
-   * unmarked root, read-only mount) — surfaced as the destination's status detail.
+   * unmarked root, read-only mount) - surfaced as the destination's status detail.
    */
   error: string;
   /**
@@ -1393,7 +1393,7 @@ export interface S3DeleteRequest {
 export interface S3DeleteResponse {
   ok: boolean;
   error: string;
-  /** How many objects were deleted (0 when already absent — still ok, idempotent). */
+  /** How many objects were deleted (0 when already absent - still ok, idempotent). */
   deleted: number;
 }
 
@@ -1454,7 +1454,7 @@ export interface StoreResult {
   /**
    * What actually landed. A filesystem has no ETag, so these two are the only
    * durable proof of the transfer, and they are what the control plane records
-   * on the BackupRun — not the source's own count.
+   * on the BackupRun, not the source's own count.
    */
   bytesWritten: number;
   sha256: string;
@@ -1602,7 +1602,7 @@ export interface ConsoleInstance {
   state: string;
   /**
    * Healthcheck verdict when the image defines one: "healthy" | "unhealthy" |
-   * "starting". Empty when the container has no healthcheck (the common case) —
+   * "starting". Empty when the container has no healthcheck (the common case),
    * NOT a synonym for healthy.
    */
   health: string;
@@ -1634,7 +1634,7 @@ export interface ExecResponse {
   stderr: string;
   /**
    * True when the image had no shell and the command ran as raw argv (no pipes/
-   * globbing) — the console renders a notice.
+   * globbing) - the console renders a notice.
    */
   rawMode: boolean;
 }
@@ -1771,7 +1771,7 @@ export interface ReadFileResponse {
   text: string;
   size: number;
   /**
-   * "" when text is present; "binary" or "too-large" when it is withheld —
+   * "" when text is present; "binary" or "too-large" when it is withheld -
    * matches lib/data/project-files.ts FileContent.reason byte-for-byte.
    */
   reason: string;
@@ -1822,7 +1822,7 @@ export interface FilesExistResponse {
 /**
  * Everything the agent needs to start a project's dev container, all rendered by
  * the control plane (D2: one renderer, opaque artifacts on the wire). The agent
- * neither resolves the image nor renders labels — it writes files and runs Docker.
+ * neither resolves the image nor renders labels - it writes files and runs Docker.
  */
 export interface StartDevRequest {
   /**
@@ -1833,7 +1833,7 @@ export interface StartDevRequest {
   slug: string;
   projectId: string;
   /**
-   * The fully-rendered dev compose YAML (renderDevCompose) — opaque to the agent,
+   * The fully-rendered dev compose YAML (renderDevCompose) - opaque to the agent,
    * written to <stack-dir>/dev-<slug>.yml (0600: it holds decrypted `development` env).
    */
   composeYaml: string;
@@ -1887,7 +1887,7 @@ export interface GatewayConfig {
 /**
  * One control-plane-computed gateway exec step the agent runs verbatim inside the
  * gateway container: `docker exec -i <gateway> <argv...>`, optionally piping `input` to
- * the command's stdin (chpasswd / file writes — the secret never hits argv/env that
+ * the command's stdin (chpasswd / file writes - the secret never hits argv/env that
  * `docker inspect` could surface).
  */
 export interface GatewayStep {
@@ -1897,7 +1897,7 @@ export interface GatewayStep {
 
 /**
  * Ensure the gateway is up, then reconcile EVERY supplied user into it (the store is
- * the sole source of truth — ADR-0002; the control plane sends the full provision plan
+ * the sole source of truth - ADR-0002; the control plane sends the full provision plan
  * for every DevSshUser of this server so a fresh gateway rebuilds its whole
  * projection).
  */
@@ -1908,7 +1908,7 @@ export interface EnsureGatewayRequest {
   /**
    * The provision steps for every stored user of this server, in order. Each
    * inner step-list provisions one account/key/map. Replayed on first boot and
-   * after drift — provisioning is idempotent.
+   * after drift - provisioning is idempotent.
    */
   users: UserSteps[];
 }
@@ -1938,7 +1938,7 @@ export interface DeprovisionSshUserRequest {
 export interface TunnelRequest {
   slug: string;
   /**
-   * The launch script (tunnelLaunchScript) — only set on StartTunnel; rendered by
+   * The launch script (tunnelLaunchScript) - only set on StartTunnel; rendered by
    * the control plane so the CLI download URL / tunnel name stay one source.
    */
   launchScript: string;
@@ -1946,7 +1946,7 @@ export interface TunnelRequest {
 
 /**
  * The agent returns the RAW tunnel log + running flag; the control plane parses
- * it (parseTunnelLog) into the device-login link / connected URL — that logic
+ * it (parseTunnelLog) into the device-login link / connected URL - that logic
  * stays pure and testable in TS, not duplicated in Go.
  */
 export interface TunnelStatus {
@@ -1974,7 +1974,7 @@ export interface DockerCleanupRequest {
   minAgeHours: number;
   /**
    * UNUSED_APP_IMAGES only: how many of the newest images to keep per deplo.slug.
-   * 0 => 1 — the current tag is always kept, even when no container references it
+   * 0 => 1 - the current tag is always kept, even when no container references it
    * (a stopped app must stay redeployable without a rebuild).
    */
   keepImagesPerApp: number;
@@ -1985,8 +1985,8 @@ export interface DockerCleanupRequest {
    */
   keepPerSlug: { [key: string]: number };
   /**
-   * LEFTOVER_APP_FILES only: every stack slug the control plane still knows — Apps,
-   * their preview stacks (`<slug>__pr-<n>`) and databases — INSTANCE-WIDE, not just the
+   * LEFTOVER_APP_FILES only: every stack slug the control plane still knows - Apps,
+   * their preview stacks (`<slug>__pr-<n>`) and databases - INSTANCE-WIDE, not just the
    * ones placed on this host.
    */
   liveSlugs: string[];
@@ -2003,14 +2003,14 @@ export interface CleanupScopeResult {
   reclaimedBytes: number;
   itemsRemoved: number;
   /**
-   * The image ids / volume names / cache-record ids removed — or, under dry_run,
+   * The image ids / volume names / cache-record ids removed, or, under dry_run,
    * that WOULD be removed. Bounded to 200 entries; items_removed is authoritative.
    */
   items: string[];
   /**
    * True when the agent DECLINED the scope: it could not build the
    * container-reference reverse index the scope's safety rests on, so it refused
-   * to guess. A skipped scope is not a failure — the sweep continues.
+   * to guess. A skipped scope is not a failure - the sweep continues.
    */
   skipped: boolean;
   /**
@@ -2032,7 +2032,7 @@ export interface DockerCleanupResponse {
 export interface ContainerStatsRequest {
   /**
    * The project the containers must belong to (agent re-validates the label
-   * deplo.project=<project_id>). Empty is REJECTED — a blank filter would stat
+   * deplo.project=<project_id>). Empty is REJECTED - a blank filter would stat
    * every container on the host (cross-tenant), exactly like ListInstances.
    */
   projectId: string;
@@ -2047,7 +2047,7 @@ export interface ContainerStatsRequest {
 /**
  * One container's live resource usage, parsed from `docker stats --no-stream`. net_* /
  * block_* are CUMULATIVE totals since container start (that is what `docker stats`
- * reports), NOT rates — the control plane derives bytes/sec from the delta between
+ * reports), NOT rates - the control plane derives bytes/sec from the delta between
  * consecutive samples, which also survives a counter reset on restart. cpu_pct and
  * mem_* are already instantaneous.
  */
@@ -2071,12 +2071,12 @@ export interface ContainerStat {
   pids: number;
   /**
    * False for a container that exists in the project but is not running (stats
-   * are zeroed) — so the tab can distinguish "stopped" from "no such container".
+   * are zeroed), so the tab can distinguish "stopped" from "no such container".
    */
   running: boolean;
   /**
    * The deplo.project label (an App id, prj_*, or a Database id) this container belongs
-   * to — the demux key for the host-wide stream.
+   * to - the demux key for the host-wide stream.
    */
   projectId: string;
   /**
@@ -2092,7 +2092,7 @@ export interface ContainerStat {
   state: string;
   /**
    * Healthcheck verdict when the image defines one: "healthy" | "unhealthy" |
-   * "starting". Empty when the container has no healthcheck (the common case) —
+   * "starting". Empty when the container has no healthcheck (the common case),
    * NOT a synonym for healthy.
    */
   health: string;
@@ -2120,7 +2120,7 @@ export interface MetricsStreamRequest {
    */
   intervalMs: number;
   /**
-   * False => host metrics only. No container roster, no `docker ps`, no stats —
+   * False => host metrics only. No container roster, no `docker ps`, no stats -
    * for a caller that only wants the host gauge.
    */
   includeContainers: boolean;
@@ -2159,7 +2159,7 @@ export interface HostInfoResponse {
   cpuModel: string;
   /** PHYSICAL cores, deduplicated by (physical id, core id). 6 on the chip above. */
   cpuCores: number;
-  /** Logical processors — what schedulers and `nproc` count. 12 on the chip above. */
+  /** Logical processors - what schedulers and `nproc` count. 12 on the chip above. */
   cpuThreads: number;
   /** bytes */
   memTotalBytes: number;
@@ -2174,7 +2174,7 @@ export interface HostInfoResponse {
   /** Docker server version, "" when the daemon is unreachable. */
   dockerVersion: string;
   /**
-   * Docker's data root (`docker info -f {{.DockerRootDir}}`) — where images and
+   * Docker's data root (`docker info -f {{.DockerRootDir}}`), where images and
    * volumes actually live, which is not always the disk the operator assumes.
    */
   dockerRootDir: string;
@@ -2189,7 +2189,7 @@ export interface HostInfoResponse {
   utcOffsetMinutes: number;
   /**
    * The current $AGENT_DATA/traefik/docker-compose.yml, verbatim. Empty when
-   * Deplo did not install Traefik here — which is exactly the signal that
+   * Deplo did not install Traefik here, which is exactly the signal that
    * TraefikConfig must refuse to write.
    */
   traefikComposeYaml: string;
@@ -2224,7 +2224,7 @@ export interface TraefikConfigRequest {
 export interface TraefikConfigResponse {
   ok: boolean;
   /**
-   * Why not, verbatim for the operator — most usefully "this host runs a Traefik
+   * Why not, verbatim for the operator - most usefully "this host runs a Traefik
    * Deplo did not install".
    */
   error: string;
@@ -2236,7 +2236,7 @@ export interface TraefikConfigResponse {
 }
 
 export interface RestartControlPlaneRequest {
-  /** The caller's own hostname / container id — see HostInfoRequest. */
+  /** The caller's own hostname / container id - see HostInfoRequest. */
   controlPlaneHint: string;
 }
 
@@ -16080,7 +16080,7 @@ export const AgentService = {
   },
   /**
    * Per-CONTAINER live resource snapshot (`docker stats --no-stream`) for the named
-   * containers of ONE project — the data source for the per-app / per-database
+   * containers of ONE project - the data source for the per-app / per-database
    * Monitoring tab, next to the host-level Metrics above.
    */
   containerStats: {
@@ -16205,7 +16205,7 @@ export const AgentService = {
   },
   /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
-   * server move — the sibling of ExportVolume/ImportVolume for the one piece of a
+   * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
    */
   exportFiles: {
@@ -16232,7 +16232,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
   /**
-   * Copy an arbitrary HOST DIRECTORY off this machine — the bind-mount half of a
+   * Copy an arbitrary HOST DIRECTORY off this machine - the bind-mount half of a
    * migration from another platform, where a service's data may sit in a plain
    * directory rather than in a Docker volume.
    */
@@ -16324,7 +16324,7 @@ export const AgentService = {
   },
   /**
    * ONE bounded HTTP GET to a container of an app's own stack, issued from the host
-   * over Docker's network — what a compose app's icon detection reads. The only way to
+   * over Docker's network - what a compose app's icon detection reads. The only way to
    * see it is to ask the running app for it, exactly as a browser would.
    */
   probeHttp: {
@@ -16351,7 +16351,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): DockerCleanupResponse => DockerCleanupResponse.decode(value),
   },
   /**
-   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping — the
+   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping - the
    * agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir) are NEVER
    * touched, so the server keeps its identity and pinned fingerprint across the upgrade
    * and stays "online".
@@ -16456,7 +16456,7 @@ export const AgentService = {
     responseSerialize: (value: StoreResult): Buffer => Buffer.from(StoreResult.encode(value).finish()),
     responseDeserialize: (value: Buffer): StoreResult => StoreResult.decode(value),
   },
-  /** Restore from an artifact this host CANNOT reach — the cross-host half of Restore. */
+  /** Restore from an artifact this host CANNOT reach - the cross-host half of Restore. */
   restoreFrom: {
     path: "/deplo.agent.v1.Agent/RestoreFrom" as const,
     requestStream: true as const,
@@ -16469,7 +16469,7 @@ export const AgentService = {
   /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw byte
    * chunks. Closing the stream (browser disconnect) cancels the RPC, which kills the
-   * agent's `docker logs` client only — never the container.
+   * agent's `docker logs` client only, never the container.
    */
   followLogs: {
     path: "/deplo.agent.v1.Agent/FollowLogs" as const,
@@ -16520,7 +16520,7 @@ export const AgentService = {
   },
   /**
    * The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
-   * "raw exec (no shell)") for the console banner — replaces shellLabel.
+   * "raw exec (no shell)") for the console banner - replaces shellLabel.
    */
   shellLabel: {
     path: "/deplo.agent.v1.Agent/ShellLabel" as const,
@@ -16653,7 +16653,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): DeployEvent => DeployEvent.decode(value),
   },
   /**
-   * Stop a project's dev container (reversible — KEEPS the workspace + deps
+   * Stop a project's dev container (reversible - KEEPS the workspace + deps
    * volume so a later StartDev resumes the edited tree). Also stops the tunnel.
    */
   stopDev: {
@@ -16708,7 +16708,7 @@ export const AgentService = {
   },
   /**
    * Provision one user inside the running gateway by running the control-plane-
-   * computed exec steps (the password, if any, rides in a step's stdin — never
+   * computed exec steps (the password, if any, rides in a step's stdin, never
    * argv/env). Ensures the gateway first (carries the same gateway payload).
    */
   provisionSshUser: {
@@ -16793,7 +16793,7 @@ export const AgentService = {
     responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
-  /** Static host identity — the neofetch answer, not the gauge. */
+  /** Static host identity - the neofetch answer, not the gauge. */
   hostInfo: {
     path: "/deplo.agent.v1.Agent/HostInfo" as const,
     requestStream: false as const,
@@ -16817,7 +16817,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): HostInfoResponse => HostInfoResponse.decode(value),
   },
   /**
-   * Rewrite and/or restart THIS host's `deplo-traefik` stack — the reverse proxy the
+   * Rewrite and/or restart THIS host's `deplo-traefik` stack - the reverse proxy the
    * installer put at $AGENT_DATA/traefik/docker-compose.yml.
    */
   traefikConfig: {
@@ -16831,7 +16831,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): TraefikConfigResponse => TraefikConfigResponse.decode(value),
   },
   /**
-   * Restart the container running the Deplo control plane on THIS host (agent 0 only —
+   * Restart the container running the Deplo control plane on THIS host (agent 0 only -
    * a remote has no panel to restart).
    */
   restartControlPlane: {
@@ -16861,7 +16861,7 @@ export interface AgentServer extends UntypedServiceImplementation {
   metrics: handleUnaryCall<MetricsRequest, HostMetrics>;
   /**
    * Per-CONTAINER live resource snapshot (`docker stats --no-stream`) for the named
-   * containers of ONE project — the data source for the per-app / per-database
+   * containers of ONE project - the data source for the per-app / per-database
    * Monitoring tab, next to the host-level Metrics above.
    */
   containerStats: handleUnaryCall<ContainerStatsRequest, ContainerStatsResponse>;
@@ -16904,7 +16904,7 @@ export interface AgentServer extends UntypedServiceImplementation {
   importVolume: handleClientStreamingCall<VolumeChunk, StackResult>;
   /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
-   * server move — the sibling of ExportVolume/ImportVolume for the one piece of a
+   * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
    */
   exportFiles: handleServerStreamingCall<ExportFilesRequest, FilesChunk>;
@@ -16915,7 +16915,7 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   importFiles: handleClientStreamingCall<FilesChunk, StackResult>;
   /**
-   * Copy an arbitrary HOST DIRECTORY off this machine — the bind-mount half of a
+   * Copy an arbitrary HOST DIRECTORY off this machine - the bind-mount half of a
    * migration from another platform, where a service's data may sit in a plain
    * directory rather than in a Docker volume.
    */
@@ -16950,7 +16950,7 @@ export interface AgentServer extends UntypedServiceImplementation {
   checkPort: handleUnaryCall<CheckPortRequest, CheckPortResponse>;
   /**
    * ONE bounded HTTP GET to a container of an app's own stack, issued from the host
-   * over Docker's network — what a compose app's icon detection reads. The only way to
+   * over Docker's network - what a compose app's icon detection reads. The only way to
    * see it is to ask the running app for it, exactly as a browser would.
    */
   probeHttp: handleUnaryCall<ProbeHttpRequest, ProbeHttpResponse>;
@@ -16960,7 +16960,7 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   dockerCleanup: handleUnaryCall<DockerCleanupRequest, DockerCleanupResponse>;
   /**
-   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping — the
+   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping - the
    * agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir) are NEVER
    * touched, so the server keeps its identity and pinned fingerprint across the upgrade
    * and stays "online".
@@ -17000,12 +17000,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    * `data`.
    */
   writeStoreFile: handleClientStreamingCall<StoreChunk, StoreResult>;
-  /** Restore from an artifact this host CANNOT reach — the cross-host half of Restore. */
+  /** Restore from an artifact this host CANNOT reach - the cross-host half of Restore. */
   restoreFrom: handleBidiStreamingCall<RestoreChunk, RestoreEvent>;
   /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw byte
    * chunks. Closing the stream (browser disconnect) cancels the RPC, which kills the
-   * agent's `docker logs` client only — never the container.
+   * agent's `docker logs` client only, never the container.
    */
   followLogs: handleServerStreamingCall<FollowLogsRequest, LogChunk>;
   /**
@@ -17023,7 +17023,7 @@ export interface AgentServer extends UntypedServiceImplementation {
   exec: handleUnaryCall<ExecRequest, ExecResponse>;
   /**
    * The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
-   * "raw exec (no shell)") for the console banner — replaces shellLabel.
+   * "raw exec (no shell)") for the console banner - replaces shellLabel.
    */
   shellLabel: handleUnaryCall<ShellLabelRequest, ShellLabelResponse>;
   /** Spawn a command in a container and return immediately with its handle. */
@@ -17052,7 +17052,7 @@ export interface AgentServer extends UntypedServiceImplementation {
   /** Start (or restart) a project's dev container. */
   startDev: handleServerStreamingCall<StartDevRequest, DeployEvent>;
   /**
-   * Stop a project's dev container (reversible — KEEPS the workspace + deps
+   * Stop a project's dev container (reversible - KEEPS the workspace + deps
    * volume so a later StartDev resumes the edited tree). Also stops the tunnel.
    */
   stopDev: handleUnaryCall<StopDevRequest, StackResult>;
@@ -17075,7 +17075,7 @@ export interface AgentServer extends UntypedServiceImplementation {
   ensureGateway: handleUnaryCall<EnsureGatewayRequest, StackResult>;
   /**
    * Provision one user inside the running gateway by running the control-plane-
-   * computed exec steps (the password, if any, rides in a step's stdin — never
+   * computed exec steps (the password, if any, rides in a step's stdin, never
    * argv/env). Ensures the gateway first (carries the same gateway payload).
    */
   provisionSshUser: handleUnaryCall<ProvisionSshUserRequest, StackResult>;
@@ -17101,7 +17101,7 @@ export interface AgentServer extends UntypedServiceImplementation {
    * and hot-reloads its TLS config so new handshakes present the fresh cert.
    */
   installRenewedCert: handleUnaryCall<InstallRenewedCertRequest, StackResult>;
-  /** Static host identity — the neofetch answer, not the gauge. */
+  /** Static host identity - the neofetch answer, not the gauge. */
   hostInfo: handleUnaryCall<HostInfoRequest, HostInfoResponse>;
   /**
    * Set the host's timezone (IANA name, e.g. "Europe/Rome"). `timedatectl` when
@@ -17109,12 +17109,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   setTimezone: handleUnaryCall<SetTimezoneRequest, HostInfoResponse>;
   /**
-   * Rewrite and/or restart THIS host's `deplo-traefik` stack — the reverse proxy the
+   * Rewrite and/or restart THIS host's `deplo-traefik` stack - the reverse proxy the
    * installer put at $AGENT_DATA/traefik/docker-compose.yml.
    */
   traefikConfig: handleUnaryCall<TraefikConfigRequest, TraefikConfigResponse>;
   /**
-   * Restart the container running the Deplo control plane on THIS host (agent 0 only —
+   * Restart the container running the Deplo control plane on THIS host (agent 0 only -
    * a remote has no panel to restart).
    */
   restartControlPlane: handleUnaryCall<RestartControlPlaneRequest, RestartControlPlaneResponse>;
@@ -17162,7 +17162,7 @@ export interface AgentClient extends Client {
   ): ClientUnaryCall;
   /**
    * Per-CONTAINER live resource snapshot (`docker stats --no-stream`) for the named
-   * containers of ONE project — the data source for the per-app / per-database
+   * containers of ONE project - the data source for the per-app / per-database
    * Monitoring tab, next to the host-level Metrics above.
    */
   containerStats(
@@ -17304,7 +17304,7 @@ export interface AgentClient extends Client {
   ): ClientWritableStream<VolumeChunk>;
   /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
-   * server move — the sibling of ExportVolume/ImportVolume for the one piece of a
+   * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
    */
   exportFiles(request: ExportFilesRequest, options?: Partial<CallOptions>): ClientReadableStream<FilesChunk>;
@@ -17333,7 +17333,7 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: StackResult) => void,
   ): ClientWritableStream<FilesChunk>;
   /**
-   * Copy an arbitrary HOST DIRECTORY off this machine — the bind-mount half of a
+   * Copy an arbitrary HOST DIRECTORY off this machine - the bind-mount half of a
    * migration from another platform, where a service's data may sit in a plain
    * directory rather than in a Docker volume.
    */
@@ -17448,7 +17448,7 @@ export interface AgentClient extends Client {
   ): ClientUnaryCall;
   /**
    * ONE bounded HTTP GET to a container of an app's own stack, issued from the host
-   * over Docker's network — what a compose app's icon detection reads. The only way to
+   * over Docker's network - what a compose app's icon detection reads. The only way to
    * see it is to ask the running app for it, exactly as a browser would.
    */
   probeHttp(
@@ -17486,7 +17486,7 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: DockerCleanupResponse) => void,
   ): ClientUnaryCall;
   /**
-   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping — the
+   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping - the
    * agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir) are NEVER
    * touched, so the server keeps its identity and pinned fingerprint across the upgrade
    * and stays "online".
@@ -17612,14 +17612,14 @@ export interface AgentClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StoreResult) => void,
   ): ClientWritableStream<StoreChunk>;
-  /** Restore from an artifact this host CANNOT reach — the cross-host half of Restore. */
+  /** Restore from an artifact this host CANNOT reach - the cross-host half of Restore. */
   restoreFrom(): ClientDuplexStream<RestoreChunk, RestoreEvent>;
   restoreFrom(options: Partial<CallOptions>): ClientDuplexStream<RestoreChunk, RestoreEvent>;
   restoreFrom(metadata: Metadata, options?: Partial<CallOptions>): ClientDuplexStream<RestoreChunk, RestoreEvent>;
   /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw byte
    * chunks. Closing the stream (browser disconnect) cancels the RPC, which kills the
-   * agent's `docker logs` client only — never the container.
+   * agent's `docker logs` client only, never the container.
    */
   followLogs(request: FollowLogsRequest, options?: Partial<CallOptions>): ClientReadableStream<LogChunk>;
   followLogs(
@@ -17669,7 +17669,7 @@ export interface AgentClient extends Client {
   ): ClientUnaryCall;
   /**
    * The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
-   * "raw exec (no shell)") for the console banner — replaces shellLabel.
+   * "raw exec (no shell)") for the console banner - replaces shellLabel.
    */
   shellLabel(
     request: ShellLabelRequest,
@@ -17871,7 +17871,7 @@ export interface AgentClient extends Client {
     options?: Partial<CallOptions>,
   ): ClientReadableStream<DeployEvent>;
   /**
-   * Stop a project's dev container (reversible — KEEPS the workspace + deps
+   * Stop a project's dev container (reversible - KEEPS the workspace + deps
    * volume so a later StartDev resumes the edited tree). Also stops the tunnel.
    */
   stopDev(
@@ -17941,7 +17941,7 @@ export interface AgentClient extends Client {
   ): ClientUnaryCall;
   /**
    * Provision one user inside the running gateway by running the control-plane-
-   * computed exec steps (the password, if any, rides in a step's stdin — never
+   * computed exec steps (the password, if any, rides in a step's stdin, never
    * argv/env). Ensures the gateway first (carries the same gateway payload).
    */
   provisionSshUser(
@@ -18065,7 +18065,7 @@ export interface AgentClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StackResult) => void,
   ): ClientUnaryCall;
-  /** Static host identity — the neofetch answer, not the gauge. */
+  /** Static host identity - the neofetch answer, not the gauge. */
   hostInfo(
     request: HostInfoRequest,
     callback: (error: ServiceError | null, response: HostInfoResponse) => void,
@@ -18101,7 +18101,7 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: HostInfoResponse) => void,
   ): ClientUnaryCall;
   /**
-   * Rewrite and/or restart THIS host's `deplo-traefik` stack — the reverse proxy the
+   * Rewrite and/or restart THIS host's `deplo-traefik` stack - the reverse proxy the
    * installer put at $AGENT_DATA/traefik/docker-compose.yml.
    */
   traefikConfig(
@@ -18120,7 +18120,7 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: TraefikConfigResponse) => void,
   ): ClientUnaryCall;
   /**
-   * Restart the container running the Deplo control plane on THIS host (agent 0 only —
+   * Restart the container running the Deplo control plane on THIS host (agent 0 only -
    * a remote has no panel to restart).
    */
   restartControlPlane(

@@ -11,7 +11,7 @@ export type DbNavState = {
   id: string;
   /** Cron jobs are switched on for this database. */
   cronsEnabled: boolean;
-  /** Its own logo, and the engine behind it — the mark on the Overview entry,
+  /** Its own logo, and the engine behind it - the mark on the Overview entry,
    *  the same picture Storage lists the database under. */
   logo: string | null;
   type: DatabaseType;

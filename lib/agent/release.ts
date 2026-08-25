@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * The agent binary is no longer built inside this repo — it lives in its own
+ * The agent binary is no longer built inside this repo - it lives in its own
  * repository (AGENT_REPO) and ships as GitHub Release assets. Policy: ALWAYS
  * LATEST.
  */

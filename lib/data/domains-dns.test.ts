@@ -36,9 +36,9 @@ import {
  * checks the domains page runs on its interval.
  */
 
-const SERVER_IP = "10.0.0.1"; // seedServer's ip — the classify target
+const SERVER_IP = "10.0.0.1"; // seedServer's ip - the classify target
 const CLOUDFLARE_IP = "104.16.1.1"; // inside Cloudflare's 104.16.0.0/13
-const ELSEWHERE_IP = "203.0.113.9"; // TEST-NET-3 — an unrelated address
+const ELSEWHERE_IP = "203.0.113.9"; // TEST-NET-3 - an unrelated address
 
 let db: TestDb;
 let pg: PGlite;
@@ -84,7 +84,7 @@ test("addDomain: a Cloudflare-proxied host is born cloudflare + ssl", async () =
   assert.equal(d.status, "cloudflare");
   assert.equal(d.ssl, true);
   // Cloudflare already serves this host over HTTPS, so the certificate provider
-  // follows the detection instead of leaving the row on the cert-less default —
+  // follows the detection instead of leaving the row on the cert-less default,
   // no trip into Advanced settings to make deplo agree with the proxy.
   assert.equal(d.certProvider, "cloudflare");
   const [row] = await db.select().from(domainsTable);
@@ -136,7 +136,7 @@ test("verifyDomain: pending → valid reports statusChanged; re-verify doesn't",
   const d = await asUser1(() => addDomain("prj_1", "flip.example.io", {}));
   assert.equal(d.status, "pending");
 
-  // DNS record lands — the next check (the page's automatic one) flips it.
+  // DNS record lands - the next check (the page's automatic one) flips it.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const flipped = await asUser1(() => verifyDomain(d.id));
   assert.equal(flipped.status, "valid");
@@ -163,7 +163,7 @@ test("verifyDomain: pending → cloudflare also settles the certificate provider
   const d = await asUser1(() => addDomain("prj_1", "later-cf.example.io", {}));
   assert.equal(d.certProvider, "none");
 
-  // The record lands behind the orange cloud — the same check that discovers the
+  // The record lands behind the orange cloud - the same check that discovers the
   // proxy hands the certificate to it, so the router moves to websecure without
   // the user touching anything.
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
@@ -198,7 +198,7 @@ test("verifyDomain: un-proxying a domain never strips the certificate it gained"
   const d = await asUser1(() => addDomain("prj_1", "grey.example.io", {}));
   assert.equal(d.certProvider, "cloudflare");
   // Orange cloud switched off: the host now points straight here. The provider
-  // stays — dropping a live site back to plain HTTP is never the safe guess, and
+  // stays - dropping a live site back to plain HTTP is never the safe guess, and
   // `cloudflare` is a valid grey-cloud (DNS-01) choice in its own right.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const checked = await asUser1(() => verifyDomain(d.id));
@@ -243,7 +243,7 @@ test("rename onto a proxied host picks up the Cloudflare certificate too", async
   assert.equal(d.certProvider, "none");
 
   // The Edit dialog posts the whole config, so an untouched dropdown re-sends
-  // the stored `none` — which must NOT read as "the user chose plain HTTP".
+  // the stored `none`, which must NOT read as "the user chose plain HTTP".
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   await asUser1(() =>
     updateDomain(d.id, { name: "moved-cf.example.io", certProvider: "none" }),

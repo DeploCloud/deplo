@@ -31,7 +31,7 @@ export function withKeyedLock<T>(
   );
   chains.set(key, tail);
 
-  // Drop the key once OUR tail is the registry's current one and it has settled —
+  // Drop the key once OUR tail is the registry's current one and it has settled -
   // i.e. nothing newer chained behind us. Guards against deleting a fresher chain.
   void tail.then(() => {
     if (chains.get(key) === tail) chains.delete(key);

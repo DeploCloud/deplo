@@ -132,7 +132,7 @@ export async function removeUploads(appId: string): Promise<void> {
 }
 
 /**
- * Extract a stored archive into `destDir`, which must already exist. Security —
+ * Extract a stored archive into `destDir`, which must already exist. Security -
  * symlinks: an uploaded archive is fully attacker-controlled, so after the extract
  * we walk the tree and REJECT any symbolic link.
  */
@@ -228,7 +228,7 @@ async function extractTarBounded(
     clearTimeout(timer);
     if (timedOut) throw new Error("tar timed out after 300000ms");
     // `err` already carries EXTRACTED_TOO_LARGE on a cap breach (the meaningful
-    // failure), or the decompression error otherwise — surface it as-is.
+    // failure), or the decompression error otherwise - surface it as-is.
     throw err;
   }
 

@@ -37,7 +37,7 @@ import {
 
 /**
  * The READ seam for the project graph (relational-store PLAN §6 "Reads /
- * performance — batch-load is mandatory").
+ * performance - batch-load is mandatory").
  */
 type DbReader = ReturnType<typeof getDb> | DbTx;
 
@@ -102,7 +102,7 @@ async function assembleApps(db: DbReader, rows: AppRow[]): Promise<App[]> {
 
 /**
  * One project + all its children in a bounded query set, or null if absent. The
- * aggregate loader (PLAN §6 "One aggregate project loader"). NOT team-scoped —
+ * aggregate loader (PLAN §6 "One aggregate project loader"). NOT team-scoped -
  * callers that need a team check pass `teamId` or filter the result.
  */
 export async function loadAppGraph(
@@ -152,7 +152,7 @@ export async function loadAppsByIds(
 /**
  * The per-team data `summarize` needs as a PURE function (PLAN §6 "`summarize()`
  * is N+1"): the latest deployment per project (one query) and the domain count per
- * project (one GROUP BY) — so a list of N apps costs a bounded number of queries
+ * project (one GROUP BY), so a list of N apps costs a bounded number of queries
  */
 export interface SummaryPreload {
   latestDeployments: Map<string, Deployment>;
@@ -215,7 +215,7 @@ export async function loadDeployment(
 /**
  * A project's deployments, newest-first with the deterministic `seq` tie-break
  * (PLAN §5/§6 "Push ORDER BY created_at DESC, seq DESC + LIMIT into SQL"). The
- * optional `limit` is the list push-down — slicing happens in SQL, not memory.
+ * optional `limit` is the list push-down - slicing happens in SQL, not memory.
  */
 export async function loadDeploymentsForApp(
   appId: string,

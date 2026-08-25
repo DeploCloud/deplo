@@ -20,7 +20,7 @@ import { gqlAction } from "@/lib/graphql-client";
 /**
  * Create a folder in the active team. Controlled (no trigger of its own) so it
  * can be opened from the Overview "Add new" menu. A folder is a team-wide,
- * single-level grouping — apps are moved into it afterward from the grid.
+ * single-level grouping - apps are moved into it afterward from the grid.
  */
 export function CreateFolderDialog({
   open,
@@ -31,7 +31,7 @@ export function CreateFolderDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  /** Called with the new folder's id after it's created (before the refresh) —
+  /** Called with the new folder's id after it's created (before the refresh) -
    *  e.g. to move a current selection of apps into it. */
   onCreated?: (folderId: string) => void | Promise<void>;
   /** Override the default body copy (e.g. the "with selected apps" variant). */
@@ -97,7 +97,7 @@ export function CreateFolderDialog({
           <DialogTitle>Create a folder</DialogTitle>
           <DialogDescription>
             {description ??
-              "Folders group apps on the Overview. Drag an app onto a folder — or use a card's menu — to move it in."}
+              "Folders group apps on the Overview. Drag an app onto a folder, or use a card's menu, to move it in."}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>

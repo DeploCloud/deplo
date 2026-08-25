@@ -57,7 +57,7 @@ export async function updateMyAvatar(image: string | null): Promise<void> {
 
 /** Change the current user's email, after re-checking their password. */
 /**
- * Rate-limited current-password re-auth for a settings change — the same budget as
+ * Rate-limited current-password re-auth for a settings change - the same budget as
  * the 2FA step-up (two-factor.ts `stepUpPassword`), so a stolen LIVE session can't
  * brute-force the current password to escalate to a durable takeover (a successful
  * change-password logs the real owner out).
@@ -121,7 +121,7 @@ export async function changePassword(input: {
   // straight back in with the password they just chose.
   await revokeAllSessions(user.id);
   // Best-effort: outside a request scope (tests) or on any failure the change still
-  // stands and the initiator simply re-authenticates with the new password — a safe
+  // stands and the initiator simply re-authenticates with the new password - a safe
   // fallback, never a leak.
   try {
     await startSessionFor(user.email, input.newPassword);
@@ -130,6 +130,6 @@ export async function changePassword(input: {
       if (fresh) await markSessionAuthMethod(fresh, user.id, "passkey");
     }
   } catch {
-    /* no request scope / cookie write unavailable — logged out is fine */
+    /* no request scope / cookie write unavailable - logged out is fine */
   }
 }

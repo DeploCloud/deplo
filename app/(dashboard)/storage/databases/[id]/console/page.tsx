@@ -15,7 +15,7 @@ export default async function DatabaseConsolePage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  // A live shell into the database container is an infra-class operation — the
+  // A live shell into the database container is an infra-class operation - the
   // sidebar chip is hidden without it, but guard the page too.
   if (!(await hasCapability("open_database_console"))) {
     return (

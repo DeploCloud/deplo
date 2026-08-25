@@ -7,7 +7,7 @@ import { DB_LOGOS } from "@/components/storage/db-engines";
 import type { DatabaseType } from "@/lib/types";
 
 /**
- * A database's display avatar — the twin of `AppLogo`, with one difference: a
+ * A database's display avatar - the twin of `AppLogo`, with one difference: a
  * database is never logo-less.
  */
 export function DatabaseLogo({

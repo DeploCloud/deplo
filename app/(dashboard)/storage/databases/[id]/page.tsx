@@ -13,7 +13,7 @@ export default async function DatabaseOverviewPage(
   if (!db) notFound();
 
   // `revealConnection` is gated on manage_infra; without it the connection
-  // string stays masked with no reveal affordance (cosmetic — the mutation is
+  // string stays masked with no reveal affordance (cosmetic - the mutation is
   // the real gate).
   const [server, canReveal, canControl] = await Promise.all([
     getServerById(db.serverId),

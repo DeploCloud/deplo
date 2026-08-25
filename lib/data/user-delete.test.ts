@@ -136,7 +136,7 @@ test("a team the user is alone in is deleted with the account, apps and all", as
   assert.equal(impact.soloTeams.length, 1);
   assert.equal(impact.soloTeams[0]!.appCount, 1);
   assert.equal(impact.soloTeams[0]!.otherMemberCount, 0);
-  // Already accounted for by the team line — never double-counted as an opt-in.
+  // Already accounted for by the team line, never double-counted as an opt-in.
   assert.equal(impact.createdAppCount, 0);
 
   const res = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
@@ -214,7 +214,7 @@ test("apps they created in a surviving team are kept unless asked for", async ()
     teamId: TEAM_A,
     createdByUserId: USER_1,
   });
-  // TEAM_B is USER_2's solo team and would be deleted regardless — drop it so
+  // TEAM_B is USER_2's solo team and would be deleted regardless - drop it so
   // this case is only about the shared team.
   await db.delete(teamsTable).where(eq(teamsTable.id, TEAM_B));
 
@@ -227,7 +227,7 @@ test("apps they created in a surviving team are kept unless asked for", async ()
     deleteUser(USER_2, ALL_OFF),
   );
   assert.equal(await exists(appsTable, "prj_theirs"), true);
-  // Kept, but no longer attributed — the FK is SET NULL, never CASCADE.
+  // Kept, but no longer attributed - the FK is SET NULL, never CASCADE.
   const row = (
     await db
       .select({ createdByUserId: appsTable.createdByUserId })
@@ -357,7 +357,7 @@ test("the instance owner's account is off limits", async () => {
   assert.equal(await exists(usersTable, USER_2), true);
 });
 
-test("deleting a fellow admin is fine — the caller is the surviving admin", async () => {
+test("deleting a fellow admin is fine - the caller is the surviving admin", async () => {
   // The lockout invariant `updateUserAdmin` has to defend holds for free here:
   // the caller is an active instance admin (a suspended account can't even
   // authenticate) and can't delete themselves, so one always remains.

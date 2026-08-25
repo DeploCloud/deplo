@@ -26,7 +26,7 @@ import { formatBytes } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * General settings: an app's name and logo — its identity, so they share one
+ * General settings: an app's name and logo - its identity, so they share one
  * card. A picked photo goes through the crop dialog and saves on confirm; the
  * name saves with its button (and arms the leave guard while dirty).
  */
@@ -40,7 +40,7 @@ export function GeneralSettingsForm({
   name: string;
   logo: string | null;
   /** Whether the app has scannable source files (a GitHub repo or an
-   * uploaded archive) — gates the "Detect from source" button. */
+   * uploaded archive) - gates the "Detect from source" button. */
   detectable?: boolean;
 }) {
   const router = useRouter();
@@ -101,7 +101,7 @@ export function GeneralSettingsForm({
     if (
       !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
     ) {
-      toast.error("Unsupported image — use PNG, JPEG, WebP, GIF or SVG");
+      toast.error("Unsupported image - use PNG, JPEG, WebP, GIF or SVG");
       return;
     }
     if (file.size > MAX_LOGO_BYTES) {
@@ -126,7 +126,7 @@ export function GeneralSettingsForm({
   }
 
   // Ask the server to find this app's own favicon and set it as the logo: in a GitHub
-  // repo, the uploaded archive, or — for a compose stack — its files dir on its
+  // repo, the uploaded archive, or, for a compose stack, its files dir on its
   // server plus the icon the running app serves.
   function detectFromSource() {
     startTransition(async () => {
@@ -149,7 +149,7 @@ export function GeneralSettingsForm({
         <CardContent className="space-y-6 pt-6">
           {/* Logo */}
           <div className="space-y-3">
-            <FieldLabel info="Shown for this app on the dashboard. Set automatically from this app's own favicon — replace it any time">
+            <FieldLabel info="Shown for this app on the dashboard. Set automatically from this app's own favicon - replace it any time">
               Logo
             </FieldLabel>
             <div className="flex flex-wrap items-center gap-4">
@@ -219,7 +219,7 @@ export function GeneralSettingsForm({
             />
           </div>
 
-          {/* Name — saved with the button below; the logo saves on pick. */}
+          {/* Name - saved with the button below; the logo saves on pick. */}
           <div className="max-w-md space-y-2 border-t border-border pt-6">
             <Label>App name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} />

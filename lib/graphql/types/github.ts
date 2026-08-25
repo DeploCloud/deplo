@@ -162,7 +162,7 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { org, returnTo }): Promise<GithubConnectStart> => {
       const user = await assertUser();
       // The manifest base is baked permanently into the App on GitHub, so it
-      // must be an explicit, externally-reachable URL — never a host guess.
+      // must be an explicit, externally-reachable URL, never a host guess.
       const base = resolveManifestBaseUrl();
       if (base === PUBLIC_URL_PLACEHOLDER) {
         throw new Error(

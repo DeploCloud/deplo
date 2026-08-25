@@ -1,5 +1,5 @@
 /**
- * A minimal, streaming TAR reader — enough to pull ONE named entry out of an
+ * A minimal, streaming TAR reader - enough to pull ONE named entry out of an
  * archive that arrives as a sequence of chunks, without ever holding the whole
  * archive (or any entry we don't want) in memory.
  */
@@ -15,7 +15,7 @@ export interface TarEntry {
   /** Byte length declared by the header. */
   size: number;
   /**
-   * The entry's bytes, or null when the caller's `read` predicate declined it —
+   * The entry's bytes, or null when the caller's `read` predicate declined it -
    * declined entries are streamed past, never buffered.
    */
   bytes: Buffer | null;
@@ -112,7 +112,7 @@ function readString(block: Buffer, start: number, length: number): string {
 }
 
 /**
- * Read a numeric header field. Returns -1 for a field we can't trust — the caller
+ * Read a numeric header field. Returns -1 for a field we can't trust - the caller
  * treats that as a corrupt archive rather than guessing a length.
  */
 function readNumber(block: Buffer, start: number, length: number): number {
@@ -195,7 +195,7 @@ function paxPath(data: Buffer): string | null {
 /**
  * Where the parser is: between entries (expecting a 512-byte header block), or
  * inside one's payload. `collected` is null for an entry whose bytes the caller
- * declined — its data is streamed past, never buffered.
+ * declined - its data is streamed past, never buffered.
  */
 type ParserState =
   | { kind: "header" }
@@ -209,7 +209,7 @@ type ParserState =
       collected: Buffer[] | null;
     };
 
-/** A regular file — `0`, the legacy NUL, and GNU's contiguous `7`. */
+/** A regular file - `0`, the legacy NUL, and GNU's contiguous `7`. */
 function isRegularFile(type: string): boolean {
   return type === "0" || type === "\0" || type === "7";
 }
@@ -248,7 +248,7 @@ export async function* tarEntries(
         }
         zeroBlocks = 0;
         const header = parseHeader(block);
-        if (!header) return; // corrupt / desynchronised — stop, never guess
+        if (!header) return; // corrupt / desynchronised - stop, never guess
         const name: string =
           overrideName ??
           (header.prefix ? `${header.prefix}/${header.name}` : header.name);

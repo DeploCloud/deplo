@@ -46,7 +46,7 @@ export function DeploymentActions({
 }: {
   id: string;
   appId: string;
-  /** Owning app slug — used to route to the new deployment's live logs. */
+  /** Owning app slug - used to route to the new deployment's live logs. */
   appSlug: string;
   url: string;
   status: DeploymentStatus;
@@ -54,7 +54,7 @@ export function DeploymentActions({
    * Set for a pull request preview build: a link straight to the pull request.
    */
   pullRequestUrl?: string | null;
-  /** Show the "Delete" item (a finished deployment only). Cosmetic — the data
+  /** Show the "Delete" item (a finished deployment only). Cosmetic - the data
    *  layer re-checks `deploy` on the app's folder. */
   canDelete?: boolean;
   /** Whether the viewer may deploy this app. Redeploy / Promote / Cancel are
@@ -78,7 +78,7 @@ export function DeploymentActions({
   commitSha?: string;
   commitMessage?: string;
   /** Deleting takes this row off the table on the CLICK rather than leaving it
-   *  clickable until the refresh lands — and puts it back if the mutation is
+   *  clickable until the refresh lands, and puts it back if the mutation is
    *  refused. Owned by the table, which holds the rows. */
   onRemoved?: () => void;
   onRestored?: () => void;
@@ -91,7 +91,7 @@ export function DeploymentActions({
   // A build in flight can be stopped; a still-queued one is simply canceled.
   const isBuilding = status === "building";
   const canCancel = isBuilding || status === "queued";
-  // A finished deployment (not queued/building) is terminal history — deletable.
+  // A finished deployment (not queued/building) is terminal history - deletable.
   const isTerminal = !canCancel;
 
   function redeploy() {
@@ -125,7 +125,7 @@ export function DeploymentActions({
         (d) => d.cancelDeployment,
       );
       if (res.ok) {
-        // The server returns false when the build had already finished — don't
+        // The server returns false when the build had already finished - don't
         // claim we stopped something we didn't (the row status here can be stale).
         if (res.data)
           toast.success(isBuilding ? "Build stopped" : "Deployment canceled");
@@ -149,14 +149,14 @@ export function DeploymentActions({
     return res;
   }
 
-  // Two one-click destinations sit out in the open — "Open deployment" (its build
-  // logs & details) and "Visit" (the live app) — so neither is buried in the menu;
+  // Two one-click destinations sit out in the open - "Open deployment" (its build
+  // logs & details) and "Visit" (the live app), so neither is buried in the menu;
   // the ⋯ keeps the mutating actions (Redeploy / Promote / Stop build).
   const detailHref = `/apps/${appSlug}/deployments/${id}`;
   return (
     <>
       <div className="flex items-center justify-end gap-0.5">
-        <SimpleTooltip content="Open this deployment — build logs & details">
+        <SimpleTooltip content="Open this deployment - build logs & details">
           <Button variant="ghost" size="icon-sm" asChild>
             <Link href={detailHref} aria-label="Open deployment">
               <ScrollText className="size-4" />

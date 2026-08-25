@@ -3,15 +3,15 @@
 -- 0061 gave a token its own capabilities and a project scope. That scope was too
 -- shallow in both directions: a token was pinned to exactly ONE team (whichever
 -- it happened to be created in, with no way to say "these two teams" or "every
--- team I belong to"), and inside a project it was all-or-nothing — there was no
+-- team I belong to"), and inside a project it was all-or-nothing - there was no
 -- way to hand a CI job one app.
 --
 -- Now the scope is the tree the editor draws. One row per TICKED node, at
 -- whatever depth it was ticked:
---   api_token_teams    — this whole team: every project, every app, and the
+--   api_token_teams    - this whole team: every project, every app, and the
 --                        team-wide settings its capabilities allow.
---   api_token_projects — this whole project: every app in it, now and later.
---   api_token_apps     — exactly this app.
+--   api_token_projects - this whole project: every app in it, now and later.
+--   api_token_apps     - exactly this app.
 -- The token's team set is derived (a project knows its team, an app knows its
 -- team), so nothing is denormalized and a node deleted anywhere simply drops out.
 --
@@ -23,7 +23,7 @@
 -- Depth is what strips permissions, breadth is not. A token holding two WHOLE
 -- teams keeps every capability it was given in both. A token narrowed to a
 -- project or an app inside a team loses that team's team-wide capabilities
--- (members, roles, registries, databases) — there is no per-project version of
+-- (members, roles, registries, databases) - there is no per-project version of
 -- them. So "which teams" and "how much of a team" stay two separate questions.
 --
 -- This migration changes NOBODY's access. Every token that exists is given an

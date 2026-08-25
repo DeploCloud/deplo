@@ -16,7 +16,7 @@ export const RegistryRef = builder
   .implement({
     description:
       "A container-image registry credential owned by a team. The password / " +
-      "access token is never exposed — only the connection metadata.",
+      "access token is never exposed - only the connection metadata.",
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
@@ -35,7 +35,7 @@ const AddRegistryInputType = builder.inputType("AddRegistryInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     type: t.field({ type: RegistryTypeEnum, required: true }),
-    // Optional — the data layer defaults the host per registry type.
+    // Optional - the data layer defaults the host per registry type.
     registryUrl: t.string({ required: false }),
     username: t.string({ required: true }),
     password: t.string({ required: true }),

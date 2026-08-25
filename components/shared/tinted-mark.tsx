@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * A glyph tinted with the thing's own accent colour — how projects and folders are
+ * A glyph tinted with the thing's own accent colour - how projects and folders are
  * marked wherever they are listed but not tiled (the scope picker's tree, the Logs
  * picker's tree).
  */

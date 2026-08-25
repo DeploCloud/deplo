@@ -1,6 +1,6 @@
 # ADR-0009: Projects are advanced folders; Environments scope their contents
 
-- **Status**: Accepted — 2026-07-07 (supersedes the "passive container" reading of
+- **Status**: Accepted - 2026-07-07 (supersedes the "passive container" reading of
   ADR-0008; the Environment entity, env-var scoping and deploy-key groundwork from
   ADR-0008 are unchanged).
 - **Amends**: [ADR-0008](0008-projects-own-environments-services-are-the-deployable-unit.md)
@@ -15,7 +15,7 @@ direction (owner feedback, 2026-07-07) rejects that shape:
 
 > A Project is a more **advanced folder**. Its extra feature is **development
 > environments**: each environment is selected from a dropdown and holds its
-> **own services** — like sub-folders — and each environment has **shared
+> **own services**, like sub-folders, and each environment has **shared
 > variables that apply only in that environment**. Projects must not have a page
 > of their own; projects, folders and services all live on the Overview.
 
@@ -29,7 +29,7 @@ direction (owner feedback, 2026-07-07) rejects that shape:
    the default environment unless an explicit environment is given; leaving ⇒
    both NULL).
 2. **One home only.** A service is in a folder OR in a project's environment,
-   never both — `moveServiceToFolder` clears the project/environment,
+   never both - `moveServiceToFolder` clears the project/environment,
    `moveServiceToProject`/`moveServiceToEnvironment` clear the folder. Folders
    never live inside projects: `moveFolderToProject` is REMOVED (data layer and
    GraphQL); the ADR-0008 `folders.project_id` column remains only so legacy

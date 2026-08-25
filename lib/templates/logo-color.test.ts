@@ -6,7 +6,7 @@ import { analyseLogo } from "./logo-color";
 /**
  * A card is drawn from what this function says about a logo, and every way it can
  * be wrong is invisible until someone looks at 388 cards at once: a hue that isn't
- * the logo's colour, a hue for a logo that has none, and — the one that actually
+ * the logo's colour, a hue for a logo that has none, and - the one that actually
  */
 async function logo(fill: number[], mark?: number[]): Promise<Buffer> {
   const raw = Buffer.alloc(32 * 32 * 4);
@@ -65,7 +65,7 @@ test("a black wordmark asks for a plate on the dark theme", async () => {
   assert.equal(black.hue, undefined, "black is not a hue");
   assert.equal(black.tone, "dark");
 
-  // Mostly transparent with black ink — the common shape in the catalogue.
+  // Mostly transparent with black ink - the common shape in the catalogue.
   const ink = await analyseLogo(await logo([0, 0, 0, 0], [12, 12, 12, 255]));
   assert.equal(ink.tone, "dark");
 });
@@ -78,7 +78,7 @@ test("a white wordmark asks for a plate on the light theme instead", async () =>
 
 test("a coloured logo never asks for a plate", async () => {
   // A dark navy mark sits near the dark card's lightness and would be plated by
-  // any lightness-only rule — but chroma carries it, so it must not be.
+  // any lightness-only rule, but chroma carries it, so it must not be.
   const navy = await analyseLogo(await logo([0, 0, 0, 0], [24, 40, 120, 255]));
   assert.notEqual(navy.hue, undefined);
   assert.equal(navy.tone, undefined, "colour is visible on both surfaces");

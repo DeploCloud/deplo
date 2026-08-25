@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       avatarUrl: resolved.account.avatarUrl,
     });
     // Back where the connect started, with the same one-shot flag the panel
-    // uses — the toast lives in the app shell, so it fires on any page.
+    // uses - the toast lives in the app shell, so it fires on any page.
     const back =
       readConnectState(request.nextUrl.searchParams.get("state"), user.id)
         ?.returnTo ?? null;

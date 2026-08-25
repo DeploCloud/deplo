@@ -80,7 +80,7 @@ const ServerReadinessSeverityEnum = builder.enumType(
   "ServerReadinessSeverity",
   {
     description:
-      "How much a readiness row matters. fail = a deployment to this server cannot succeed. warn = a deployment succeeds, but the result is not fully usable. info = a true, neutral fact. pass = verified good. skip = we could not evaluate it (the agent is too old, or an upstream fact is missing) — a skip never moves the verdict.",
+      "How much a readiness row matters. fail = a deployment to this server cannot succeed. warn = a deployment succeeds, but the result is not fully usable. info = a true, neutral fact. pass = verified good. skip = we could not evaluate it (the agent is too old, or an upstream fact is missing) - a skip never moves the verdict.",
     values: ["pass", "info", "warn", "fail", "skip"] as const,
   },
 );
@@ -153,15 +153,15 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     teams: t.field({
       type: [TeamRef],
       // The granted-team NAMES are cross-team info, so gate them to infra managers (the
-      // only ones who edit access) — `allTeams` above stays readable by all for the
+      // only ones who edit access) - `allTeams` above stays readable by all for the
       // count-only badge.
       authScopes: { capability: "manage_team" },
       description:
-        "Teams explicitly granted access when `allTeams` is false (empty otherwise — every team has access). Requires manage_infra.",
+        "Teams explicitly granted access when `allTeams` is false (empty otherwise - every team has access). Requires manage_infra.",
       resolve: (s) => getServerTeams(s.id),
     }),
     // Part B: provisioning/trust state, all nullable (absent on a
-    // not-yet-provisioned server). Never expose secret-shaped material — only
+    // not-yet-provisioned server). Never expose secret-shaped material - only
     // the agent VERSION + a "is it provisioned" signal + the heartbeat cache.
     provisioned: t.boolean({
       description:
@@ -180,18 +180,18 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     expectedAgentVersion: t.string({
       description:
-        "The agent version this server should be running — the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
+        "The agent version this server should be running - the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
       resolve: () => resolveExpectedAgentVersion(),
     }),
     lastSeenAt: t.string({
       nullable: true,
-      description: "Heartbeat cache (P5) — a hint, not the source of truth.",
+      description: "Heartbeat cache (P5) - a hint, not the source of truth.",
       resolve: (s) => s.lastSeenAt ?? null,
     }),
     statusCheckedAt: t.string({
       nullable: true,
       description:
-        "When `status` was last OBSERVED by a live agent Hello probe (ISO), or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated — a probe that times out or is throttled writes nothing.",
+        "When `status` was last OBSERVED by a live agent Hello probe (ISO), or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated - a probe that times out or is throttled writes nothing.",
       resolve: (s) => s.statusCheckedAt ?? null,
     }),
     statusMessage: t.string({
@@ -199,7 +199,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       // Instance-admin only, like `teams` above is manage_infra only.
       authScopes: { instanceAdmin: true },
       description:
-        'Why `status` is not `online` — e.g. "The agent is up but Docker is unreachable". Null when online or never probed. Requires instanceAdmin.',
+        'Why `status` is not `online` - e.g. "The agent is up but Docker is unreachable". Null when online or never probed. Requires instanceAdmin.',
       resolve: (s) => s.statusMessage ?? null,
     }),
     isDeploHost: t.boolean({
@@ -235,7 +235,7 @@ const ServerHostInfoRef = builder
   .objectRef<ServerHostInfo>("ServerHostInfo")
   .implement({
     description:
-      "What a server IS — its hardware, OS and clock — read live from its agent and stored nowhere. Distinct from the usage gauges on Monitoring: this is the make and model, not the load.",
+      "What a server IS (its hardware, OS and clock) read live from its agent and stored nowhere. Distinct from the usage gauges on Monitoring: this is the make and model, not the load.",
     fields: (t) => ({
       cpuModel: t.exposeString("cpuModel", {
         description:
@@ -246,7 +246,7 @@ const ServerHostInfoRef = builder
           "PHYSICAL cores. A 6-core/12-thread chip reports 6 here and 12 in cpuThreads; reporting threads as cores is the usual way a spec sheet overstates a box.",
       }),
       cpuThreads: t.exposeInt("cpuThreads", {
-        description: "Logical processors — what schedulers and `nproc` count.",
+        description: "Logical processors - what schedulers and `nproc` count.",
       }),
       memTotalBytes: t.exposeFloat("memTotalBytes", {
         description: "Installed RAM, in bytes.",
@@ -273,7 +273,7 @@ const ServerHostInfoRef = builder
       }),
       dockerRootDir: t.exposeString("dockerRootDir", {
         description:
-          "Where Docker actually keeps images and volumes — on a host with a mounted data disk this is not the root filesystem.",
+          "Where Docker actually keeps images and volumes - on a host with a mounted data disk this is not the root filesystem.",
       }),
       uptimeSec: t.exposeFloat("uptimeSec", {
         description: "Seconds since the host booted.",
@@ -292,16 +292,16 @@ const ServerHostInfoRef = builder
       }),
       utcOffsetMinutes: t.exposeInt("utcOffsetMinutes", {
         description:
-          "Offset from UTC in MINUTES, not hours — Kathmandu is +345 and Kolkata +330.",
+          "Offset from UTC in MINUTES, not hours - Kathmandu is +345 and Kolkata +330.",
       }),
       traefikManaged: t.exposeBoolean("traefikManaged", {
         description:
-          "Whether Deplo installed the Traefik on this host. False for a server behind the operator's own proxy, where Deplo will not reconfigure anything — the dashboard cannot be published there.",
+          "Whether Deplo installed the Traefik on this host. False for a server behind the operator's own proxy, where Deplo will not reconfigure anything - the dashboard cannot be published there.",
       }),
       traefikDashboardDomain: t.string({
         nullable: true,
         description:
-          "The domain the host is CURRENTLY serving Traefik's dashboard on, read from the live stack file rather than from what Deplo stored — so a host reconfigured out of band reports the truth.",
+          "The domain the host is CURRENTLY serving Traefik's dashboard on, read from the live stack file rather than from what Deplo stored, so a host reconfigured out of band reports the truth.",
         resolve: (i) => i.traefikDashboardDomain,
       }),
       canRestartControlPlane: t.exposeBoolean("canRestartControlPlane", {
@@ -334,7 +334,7 @@ const ServerRestartReportRef = builder
   .objectRef<ServerRestartReport>("ServerRestartReport")
   .implement({
     description:
-      "The outcome of restarting everything Deplo runs on a server. Partial success is normal and is reported as such — one wedged stack must not hide that the other twenty came back.",
+      "The outcome of restarting everything Deplo runs on a server. Partial success is normal and is reported as such - one wedged stack must not hide that the other twenty came back.",
     fields: (t) => ({
       restarted: t.exposeInt("restarted"),
       skipped: t.exposeInt("skipped", {
@@ -375,7 +375,7 @@ const ServerRemovalRef = builder
   .objectRef<ServerRemoval>("ServerRemoval")
   .implement({
     description:
-      "The result of removing a server. Removal revokes the agent's trust and forgets the row — it does NOT uninstall anything on the host, so the uninstall command is always returned.",
+      "The result of removing a server. Removal revokes the agent's trust and forgets the row - it does NOT uninstall anything on the host, so the uninstall command is always returned.",
     fields: (t) => ({
       uninstallCommand: t.exposeString("uninstallCommand", {
         description:
@@ -438,7 +438,7 @@ const ServerReadinessCheckRef = builder
       }),
       detail: t.exposeString("detail", {
         description:
-          "What we found. Drawn from a closed, curated set whenever it describes a failure — never a raw agent error (which would leak the pinned certificate fingerprint and the dial address).",
+          "What we found. Drawn from a closed, curated set whenever it describes a failure, never a raw agent error (which would leak the pinned certificate fingerprint and the dial address).",
       }),
       hint: t.string({
         nullable: true,
@@ -452,7 +452,7 @@ const ServerReadinessReportRef = builder
   .objectRef<ReadinessReport>("ServerReadinessReport")
   .implement({
     description:
-      "A live, never-persisted answer to 'is this host set up to run deployments?'. Assembled from one agent Hello, two host port bind-tests and one host-metrics call, plus the control plane's own record of the server. It is NOT a sixth ServerStatus and nothing gates on it — the deploy gate is and stays the mandatory live Hello pre-flight.",
+      "A live, never-persisted answer to 'is this host set up to run deployments?'. Assembled from one agent Hello, two host port bind-tests and one host-metrics call, plus the control plane's own record of the server. It is NOT a sixth ServerStatus and nothing gates on it - the deploy gate is and stays the mandatory live Hello pre-flight.",
     fields: (t) => ({
       serverId: t.exposeString("serverId"),
       serverName: t.exposeString("serverName"),
@@ -756,7 +756,7 @@ builder.mutationFields((t) => ({
     type: ServerRemovalRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host — the agent, Traefik and the deplo network keep running there — so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.",
+      "Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host (the agent, Traefik and the deplo network keep running there), so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => removeServer(id),
   }),
@@ -764,7 +764,7 @@ builder.mutationFields((t) => ({
     type: "String",
     authScopes: { instanceAdmin: true },
     description:
-      "Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates — the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or — until the agent ships the self-update RPC — when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).",
+      "Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates - the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or, until the agent ships the self-update RPC, when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       const { version } = await updateServerAgent(id);
@@ -805,13 +805,13 @@ builder.mutationFields((t) => ({
     resolve: (_r, { force }) => checkAllServerHealth({ force: force ?? false }),
   }),
   // A MUTATION, not a query, for exactly the reason checkServerHealth above is one:
-  // it dials out over the network, and app/api/graphql/route.ts serves GET — a
+  // it dials out over the network, and app/api/graphql/route.ts serves GET - a
   // side-effecting query would be reachable by a plain link (prefetch, crawler, CSRF)
   checkServerReadiness: t.field({
     type: ServerReadinessReportRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted — it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.",
+      "Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted - it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => checkServerReadiness(id),
   }),
@@ -848,7 +848,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { instanceAdmin: true },
     description:
-      "Restart the Traefik reverse proxy on this server. The configuration is untouched — this is the 'it is wedged, bounce it' action. Routing on this host is interrupted for the few seconds Traefik takes to come back. Errors when Deplo did not install Traefik there.",
+      "Restart the Traefik reverse proxy on this server. The configuration is untouched - this is the 'it is wedged, bounce it' action. Routing on this host is interrupted for the few seconds Traefik takes to come back. Errors when Deplo did not install Traefik there.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await restartServerTraefik(id);
@@ -859,7 +859,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { instanceAdmin: true },
     description:
-      "Restart the Deplo control plane on the host that runs it. Refused for any other server. Returns once the restart is SCHEDULED, not once it is done: the restart ends the process serving this request, so the answer necessarily arrives first — expect the dashboard to be briefly unreachable.",
+      "Restart the Deplo control plane on the host that runs it. Refused for any other server. Returns once the restart is SCHEDULED, not once it is done: the restart ends the process serving this request, so the answer necessarily arrives first - expect the dashboard to be briefly unreachable.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await restartDeploPanel(id);
@@ -870,7 +870,7 @@ builder.mutationFields((t) => ({
     type: ServerRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Publish Traefik's own web dashboard for this server on a domain, protected by basic auth, or turn it off by passing no input. A domain, a username and a password are ALL required to enable it — the dashboard lists every route, service and certificate on the host, so it is never published unprotected. On an edit that only changes the domain the stored password is reused; the password itself can never be read back. Applying the change recreates the Traefik container, so routing on this host is interrupted for a few seconds.",
+      "Publish Traefik's own web dashboard for this server on a domain, protected by basic auth, or turn it off by passing no input. A domain, a username and a password are ALL required to enable it - the dashboard lists every route, service and certificate on the host, so it is never published unprotected. On an edit that only changes the domain the stored password is reused; the password itself can never be read back. Applying the change recreates the Traefik container, so routing on this host is interrupted for a few seconds.",
     args: {
       id: t.arg.string({ required: true }),
       input: t.arg({ type: TraefikDashboardInputType, required: false }),

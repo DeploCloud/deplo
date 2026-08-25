@@ -6,7 +6,7 @@ import type { RuntimeSnapshot } from "@/lib/apps/display-status";
 import type { RuntimeContainerView } from "@/components/apps/use-app-runtime";
 
 /**
- * Poll what a database's container is ACTUALLY doing on the host — the DB twin of
+ * Poll what a database's container is ACTUALLY doing on the host - the DB twin of
  * {@link import("@/components/apps/use-app-runtime").useAppRuntime}.
  */
 
@@ -66,7 +66,7 @@ export function useDatabaseRuntime(
           });
           if (!cancelled) setRuntime(data.databaseRuntime);
         } catch {
-          // A failed poll is not evidence about the container — keep the last
+          // A failed poll is not evidence about the container - keep the last
           // answer rather than flipping the badge on a blip.
         }
       }

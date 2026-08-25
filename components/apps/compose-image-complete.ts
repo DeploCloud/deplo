@@ -85,7 +85,7 @@ export async function imageCompletionSource(
         type: "constant",
         detail: t.lastUpdated ? relativeDate(t.lastUpdated) : undefined,
       }));
-      // filter:false — the registry already matched the fragment server-side
+      // filter:false - the registry already matched the fragment server-side
       // (e.g. tags are `v2.0.0` while the user typed `2.0.`), so CodeMirror's
       // prefix scoring must not hide them. Order is registry order (newest-first).
       return { from: tagFrom, options, filter: false };
@@ -111,7 +111,7 @@ export async function imageCompletionSource(
           ? `★ ${compactNumber(n.stars)}`
           : undefined,
     }));
-    // filter:false — Docker Hub already ranked by relevance for the query.
+    // filter:false - Docker Hub already ranked by relevance for the query.
     return { from: valueStart, options, filter: false };
   } catch {
     return null;

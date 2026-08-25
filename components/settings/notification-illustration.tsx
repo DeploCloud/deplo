@@ -4,7 +4,7 @@ import {
 } from "@/components/settings/channel-brand";
 import type { NotificationChannel } from "@/lib/types";
 
-/** A phone catching alerts as they land — the one picture that says what this page is for before anybody reads a switch. */
+/** A phone catching alerts as they land - the one picture that says what this page is for before anybody reads a switch. */
 
 const INBOX: {
   channel: NotificationChannel;

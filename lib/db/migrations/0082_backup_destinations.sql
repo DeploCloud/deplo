@@ -1,7 +1,7 @@
 -- A backup destination is a bucket OR a server's disk.
 --
 -- Until now the only place a backup could go was S3, which meant signing up for
--- a bucket before you could take a first backup — infrastructure you may not
+-- a bucket before you could take a first backup - infrastructure you may not
 -- have, demanded as a precondition for the most basic safety feature, on a
 -- platform whose whole point is using what you already pay for. The artifact was
 -- never bucket-shaped though: it is one opaque compressed stream, and a file on
@@ -70,7 +70,7 @@ ALTER TABLE "backup_destination" ADD COLUMN "recovery_key_saved_at" timestamp wi
 -- What the last check saw on a server destination: the filesystem's headroom and
 -- the root the agent actually resolved (the managed one when `path` is NULL).
 -- Stored so the card can show both without a second RPC per render. The free
--- space is information for the operator, never a pre-flight gate — a dump's size
+-- space is information for the operator, never a pre-flight gate - a dump's size
 -- is not knowable before it exists, so ENOSPC on the write is the real guard.
 ALTER TABLE "backup_destination" ADD COLUMN "last_free_bytes" bigint;
 --> statement-breakpoint
@@ -111,8 +111,8 @@ ALTER TABLE "backup_destination" ADD CONSTRAINT "backup_destination_kind_shape" 
 
 -- A VPS bought purely to hold backups: the agent is installed, Docker is not.
 --
--- Without this the host sits permanently red — the readiness check for
+-- Without this the host sits permanently red - the readiness check for
 -- docker.available is severity `fail`, and server health returns `warning`
--- forever — so the product would ship a screen that accuses the user's storage
+-- forever, so the product would ship a screen that accuses the user's storage
 -- box of being broken for doing exactly what it was bought to do.
 ALTER TABLE "servers" ADD COLUMN "storage_only" boolean DEFAULT false NOT NULL;

@@ -48,7 +48,7 @@ export type AgentBuildPlan =
     }
   | {
       /**
-       * The agent clones a git repo ITSELF (D3, Part B) — used for a REMOTE server
+       * The agent clones a git repo ITSELF (D3, Part B) - used for a REMOTE server
        * so the whole repo never crosses the wire, only the descriptor.
        */
       kind: "git";
@@ -117,7 +117,7 @@ function heavyBuildKind(method: BuildMethod): BuildKind | null {
 }
 
 /**
- * The BuildSpec the agent's heavy builders read — flattens BuildConfig +
+ * The BuildSpec the agent's heavy builders read - flattens BuildConfig +
  * methodSettings onto the wire.
  */
 export function buildSpecFor(build: BuildConfig): BuildSpec {
@@ -169,7 +169,7 @@ export function explicitDockerfileDescriptor(
   };
 }
 
-/** Callbacks the agent stream writes into — the existing deploy log/status seam. */
+/** Callbacks the agent stream writes into - the existing deploy log/status seam. */
 export interface AgentDeploySink {
   log: (level: LogLevel, text: string) => void;
   /** Called on each phase transition (for future status granularity). */
@@ -198,7 +198,7 @@ export async function runAgentDeploy(opts: {
   readyTimeoutMs?: number;
   /** Build with `--no-cache` (the app's Build cache is off, or a clear is armed). */
   noCache?: boolean;
-  /** `compose up --force-recreate` — the explicit "Rebuild container" action. */
+  /** `compose up --force-recreate` - the explicit "Rebuild container" action. */
   forceRecreate?: boolean;
   /** The app's extra `docker compose up` flags, already split into argv tokens. */
   composeUpArgs?: string[];
@@ -227,7 +227,7 @@ export async function runAgentDeploy(opts: {
   if (opts.noCache && !hello.capabilities.includes("deploy.nocache")) {
     opts.sink.log(
       "warn",
-      "This server's agent is too old to skip the build cache — this build may reuse " +
+      "This server's agent is too old to skip the build cache - this build may reuse " +
         "cached layers. Update the agent (reissue the install command from the server's actions menu).",
     );
   }
@@ -237,7 +237,7 @@ export async function runAgentDeploy(opts: {
   ) {
     opts.sink.log(
       "warn",
-      "This server's agent is too old to force a fresh container — if nothing about the " +
+      "This server's agent is too old to force a fresh container, if nothing about the " +
         "stack changed, the running container is kept. Update the agent (reissue the install " +
         "command from the server's actions menu).",
     );
@@ -251,7 +251,7 @@ export async function runAgentDeploy(opts: {
   ) {
     opts.sink.log(
       "warn",
-      `This server's agent is too old to apply this app's extra compose flags (${opts.composeUpArgs.join(" ")}) — ` +
+      `This server's agent is too old to apply this app's extra compose flags (${opts.composeUpArgs.join(" ")}) - ` +
         "it is bringing the stack up without them. Update the agent (reissue the install " +
         "command from the server's actions menu).",
     );
@@ -264,7 +264,7 @@ export async function runAgentDeploy(opts: {
   // never misses an event (D5). Shared across the initial Deploy and any reattach.
   const cursor = { seq: 0 };
 
-  // First leg: the Deploy stream. `started` gates fallback — once the agent has
+  // First leg: the Deploy stream. `started` gates fallback - once the agent has
   // begun real work, a local fallback would DOUBLE-build, so from here a failure
   // is a deploy ERROR (or a RECONNECT), never a silent local rebuild.
   let started = false;
@@ -322,7 +322,7 @@ export async function runAgentDeploy(opts: {
       );
       if (outcome.terminal) return outcome.terminal;
       // Stream ended without a terminal result: the agent is still building (a
-      // partial replay) — loop to reattach again from the advanced cursor.
+      // partial replay) - loop to reattach again from the advanced cursor.
     } catch (e) {
       // NOT_FOUND => the agent has no record (never ran it, or it was evicted):
       // unrecoverable, stop retrying.
@@ -462,7 +462,7 @@ export async function buildDeployRequest(opts: {
     // byte-identical to what it always was.
     noBuildCache: opts.noCache ?? false,
     forceRecreate: opts.forceRecreate ?? false,
-    // Appended to the bring-up the AGENT assembles — the project name, stack file
+    // Appended to the bring-up the AGENT assembles - the project name, stack file
     // and env-file are never ours to send. Empty for almost every app.
     composeUpArgs: opts.composeUpArgs ?? [],
     // Stop after the build: nothing of this app is written to the stack dir and nothing
@@ -471,7 +471,7 @@ export async function buildDeployRequest(opts: {
   };
 
   if (opts.plan.kind === "compose") {
-    // A multi-service compose stack (Part C): no build, no image pull — the agent
+    // A multi-service compose stack (Part C): no build, no image pull - the agent
     // writes the env to a --env-file (the YAML interpolates `${VAR}`), the mount files
     // under its files dir, then `docker compose up`s the rendered stack and waits for
     return {
@@ -498,7 +498,7 @@ export async function buildDeployRequest(opts: {
   }
 
   if (opts.plan.kind === "git") {
-    // GIT source (D3): the agent clones the repo itself, so no context is tarred here —
+    // GIT source (D3): the agent clones the repo itself, so no context is tarred here -
     // only the descriptor crosses the wire.
     return {
       ...base,
@@ -535,7 +535,7 @@ export async function buildDeployRequest(opts: {
   if (normalized.buildMethod === "dockerfile") {
     dockerfile = explicitDockerfileDescriptor(normalized);
   } else {
-    // Legacy/auto: prefer a root Dockerfile, else generate one — exactly as
+    // Legacy/auto: prefer a root Dockerfile, else generate one - exactly as
     // buildGenerated does (builders.ts:168-181).
     const hasDockerfile = await fileExists(join(buildDir, "Dockerfile"));
     dockerfile = hasDockerfile

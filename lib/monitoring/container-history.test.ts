@@ -103,7 +103,7 @@ test("refuses offline snapshots (a gap, not a fake zero)", () => {
 
 test("drops samples landing inside the rate ceiling (MIN_GAP_MS = 250)", () => {
   // A ceiling, not a de-dupe: it sits BELOW the agent's 1s cadence clamp floor,
-  // so a legitimately fast host is never thinned — only a pathological writer is.
+  // so a legitimately fast host is never thinned - only a pathological writer is.
   recordContainerSample(sample("app_1", NOW - 4000));
   recordContainerSample(sample("app_1", NOW - 3900)); // 100ms later → dropped
   recordContainerSample(sample("app_1", NOW - 3700)); // 300ms after the kept one → kept
@@ -147,13 +147,13 @@ test("pruneContainerHistoryTo keeps only ids that still EXIST", () => {
 
 test("a container absent from a frame RETAINS its buffered window", () => {
   // The behavioural change from the poll era, and the reason it matters: a container
-  // that STOPPED is exactly when its trailing window is worth the most — the operator
+  // that STOPPED is exactly when its trailing window is worth the most - the operator
   // opens the tab to see the CPU spike or the memory climb that PRECEDED the stop.
   recordContainerSample(sample("app_1", NOW - 10_000, { cpu: 95 })); // the spike
   recordContainerSample(sample("app_1", NOW - 5000, { cpu: 98 }));
   recordContainerSample(sample("app_2", NOW - 5000)); // a sibling, still running
 
-  // Two subsequent frames carry app_2 only — app_1 died. Nothing prunes it.
+  // Two subsequent frames carry app_2 only - app_1 died. Nothing prunes it.
   recordContainerSample(sample("app_2", NOW - 2000));
   recordContainerSample(sample("app_2", NOW));
 
@@ -162,13 +162,13 @@ test("a container absent from a frame RETAINS its buffered window", () => {
     [95, 98],
     "the window preceding the stop must survive the container's disappearance",
   );
-  // Only DELETION of the resource forgets it — that is what prune is for.
+  // Only DELETION of the resource forgets it - that is what prune is for.
   pruneContainerHistoryTo(new Set(["app_2"]));
   assert.equal(getContainerHistory("app_1").length, 0);
 });
 
 /* ------------------------------------------------------------------ */
-/* The breakdown CELL — a live table, not a series                     */
+/* The breakdown CELL - a live table, not a series                     */
 /* ------------------------------------------------------------------ */
 
 test("the breakdown starts empty and is a per-resource cell", () => {
@@ -183,7 +183,7 @@ test("the breakdown starts empty and is a per-resource cell", () => {
 
 test("recordContainerInstances REPLACES the cell, never appends", () => {
   // The whole point of keeping this out of the ring buffer: nobody charts the
-  // breakdown, so it needs no history — and appending would multiply every
+  // breakdown, so it needs no history, and appending would multiply every
   // sample by the container count, which is what toSample strips it out to avoid.
   recordContainerInstances("app_1", [instance("web"), instance("worker")]);
   recordContainerInstances("app_1", [instance("web")]); // the worker was removed

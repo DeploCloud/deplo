@@ -45,7 +45,7 @@ interface DeleteTeamContext {
   teamId: string;
   /** Whether the caller may delete the active team at all. */
   allowed: boolean;
-  /** The caller's last team — deleting it would strand them teamless. */
+  /** The caller's last team - deleting it would strand them teamless. */
   onlyTeam: boolean;
 }
 
@@ -69,7 +69,7 @@ async function deleteTeamContext(): Promise<DeleteTeamContext> {
   if (!rows[0]) throw new Error("No team");
   const founderId = rows[0].founderUserId;
   // Two independent gates, and both matter for a BEARER TOKEN: - `isInstanceAdmin()`
-  // (not the stored flag) because instance-admin is opt-in per token — a plain token
+  // (not the stored flag) because instance-admin is opt-in per token - a plain token
   // minted by an admin is not an admin; - `delete_team` because being the founder
   // says WHO you are, not what the credential in hand may do.
   const allowed =
@@ -129,7 +129,7 @@ export interface TeardownPlan {
 /**
  * Best-effort teardown of every stack the deleted team owned, DETACHED from the
  * request: the mutation already deleted the rows and responded (a team-wide
- * fan-out can run for minutes — one hung agent holds a 3-minute deadline — and a
+ * fan-out can run for minutes, one hung agent holds a 3-minute deadline, and a
  * synchronous teardown would blow past proxy timeouts, surfacing a false failure
  * for a delete that succeeded).
  */
@@ -225,31 +225,31 @@ export async function deleteTeam(teamId: string): Promise<void> {
   const ctx = await deleteTeamContext();
   if (teamId !== ctx.teamId)
     throw new Error(
-      "The team to delete is no longer the active team — reload and try again",
+      "The team to delete is no longer the active team - reload and try again",
     );
   if (!ctx.allowed)
     throw new Error(
-      "You don't have permission to delete this team — only its primary owner, with permission to delete the team, or an instance admin can",
+      "You don't have permission to delete this team - only its primary owner, with permission to delete the team, or an instance admin can",
     );
-  // Fast-path only — the enforcement re-check runs under the lock below.
+  // Fast-path only - the enforcement re-check runs under the lock below.
   if (ctx.onlyTeam)
     throw new Error(
-      "You can't delete your only team — create another team first",
+      "You can't delete your only team - create another team first",
     );
 
   const db = getDb();
   // Serialize the guard + delete per USER: two concurrent deletes of the caller's two
   // teams would each see the other team still alive and strand the caller with zero
-  // teams — exactly what the only-team guard exists to prevent.
+  // teams - exactly what the only-team guard exists to prevent.
   const plan = await withKeyedLock(
     `team-delete:${ctx.userId}`,
     async (): Promise<TeardownPlan | null> => {
       const mine = await teamsForUser(ctx.userId);
-      // A concurrent call already deleted it — idempotent, nothing to tear down.
+      // A concurrent call already deleted it - idempotent, nothing to tear down.
       if (!mine.some((t) => t.id === ctx.teamId)) return null;
       if (mine.length <= 1)
         throw new Error(
-          "You can't delete your only team — create another team first",
+          "You can't delete your only team - create another team first",
         );
 
       // Snapshot the teardown targets IMMEDIATELY before the delete, so apps/databases
@@ -305,7 +305,7 @@ export async function deleteTeam(teamId: string): Promise<void> {
         .from(installedPluginsTable)
         .where(eq(installedPluginsTable.teamId, ctx.teamId));
 
-      // One DELETE — the FK CASCADEs remove every team-scoped row.
+      // One DELETE - the FK CASCADEs remove every team-scoped row.
       await db.delete(teamsTable).where(eq(teamsTable.id, ctx.teamId));
 
       // Any host will do for a BUCKET (the agent just needs network + creds); a

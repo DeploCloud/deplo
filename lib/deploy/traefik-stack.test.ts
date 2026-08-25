@@ -161,7 +161,7 @@ test("the router uses the resolver this stack actually defines, not a guess", ()
   );
 });
 
-test("enabling twice is idempotent — no duplicate flags or labels", () => {
+test("enabling twice is idempotent - no duplicate flags or labels", () => {
   const once = withTraefikDashboard(INSTALLED, DASH);
   const twice = withTraefikDashboard(once, DASH);
   assert.equal(twice, once);
@@ -263,7 +263,7 @@ test("turning the panel off leaves a dashboard flag that was never ours", () => 
   // the file must come back untouched, byte for byte.
   assert.equal(withTraefikDashboard(HAND_MAINTAINED, null), HAND_MAINTAINED);
 
-  // And after a full publish/unpublish cycle, THEIR flag is still there — it is
+  // And after a full publish/unpublish cycle, THEIR flag is still there - it is
   // the loopback dashboard they were using before Deplo existed.
   const cycled = withTraefikDashboard(
     withTraefikDashboard(HAND_MAINTAINED, DASH),
@@ -274,7 +274,7 @@ test("turning the panel off leaves a dashboard flag that was never ours", () => 
   assert.deepEqual(labelsOf(cycled), [], "nothing of ours may linger either");
 
   // On a host where WE added the flag, we still take it back out (INSTALLED has
-  // none of its own) — that is the case the marker label tells apart.
+  // none of its own) - that is the case the marker label tells apart.
   const installedCycle = withTraefikDashboard(
     withTraefikDashboard(INSTALLED, DASH),
     null,

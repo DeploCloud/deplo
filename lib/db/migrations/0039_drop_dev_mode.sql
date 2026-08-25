@@ -4,15 +4,15 @@
 -- whole feature (UI, GraphQL surface, data layer, deploy paths, gateway
 -- rendering) is gone from the control plane, so its storage goes too:
 --
---  * `app_dev` — the per-app dev config (1-to-1 child of apps). At removal
+--  * `app_dev` - the per-app dev config (1-to-1 child of apps). At removal
 --    time the fleet held a single row (disabled, status 'off'); its host-side
 --    remnant (container/workspace/deps volume) was torn down via the agent's
 --    TeardownDev RPC before this migration shipped.
---  * `dev_ssh_user` — SSH gateway accounts. Empty on every real instance (the
+--  * `dev_ssh_user` - SSH gateway accounts. Empty on every real instance (the
 --    gateway was lazy-created on the first user, so no gateway container was
 --    ever provisioned fleet-wide).
---  * TYPE `dev_status` — used only by `app_dev.status`, dropped after it.
---  * `deployments.build_source` — the "deploy from dev workspace" provenance
+--  * TYPE `dev_status` - used only by `app_dev.status`, dropped after it.
+--  * `deployments.build_source` - the "deploy from dev workspace" provenance
 --    marker; 'dev-workspace' was its only ever value, and no live row carries
 --    one.
 --

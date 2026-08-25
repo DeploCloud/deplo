@@ -30,7 +30,7 @@ export function OtpInput({
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** Fired once the last box is filled — wire it to submit, not to a toast. */
+  /** Fired once the last box is filled - wire it to submit, not to a toast. */
   onComplete?: (value: string) => void;
   length?: number;
   disabled?: boolean;
@@ -60,7 +60,7 @@ export function OtpInput({
   }, [value]);
 
   // A rejected code is cleared by the caller while the boxes are still disabled,
-  // which drops focus on the floor — the user is then looking at an empty field that
+  // which drops focus on the floor - the user is then looking at an empty field that
   // swallows their next keystroke.
   const filledRef = React.useRef(value.length > 0);
   React.useEffect(() => {
@@ -106,7 +106,7 @@ export function OtpInput({
               refs.current[i] = el;
             }}
             // `text` and not `number`: a number input brings spinners, accepts
-            // "e" and "-", and strips leading zeros — all wrong for a code.
+            // "e" and "-", and strips leading zeros - all wrong for a code.
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"

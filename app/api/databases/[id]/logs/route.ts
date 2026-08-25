@@ -9,7 +9,7 @@ import { parseLogWindow } from "@/lib/logs/window";
 import { logMaxDays } from "@/lib/data/instance-settings";
 
 /**
- * Live runtime logs (`docker logs -f`) for a DATABASE container, over plain HTTP —
+ * Live runtime logs (`docker logs -f`) for a DATABASE container, over plain HTTP -
  * the database sibling of `/api/apps/[id]/logs` (same SSE framing, same session
  * plumbing; only the authorization/resolution seam differs).
  */
@@ -107,7 +107,7 @@ export async function GET(
         );
       };
 
-      // NOT named "open" — EventSource reserves that event name.
+      // NOT named "open" - EventSource reserves that event name.
       send("session", session.id);
 
       // Streaming decoder so a multi-byte UTF-8 glyph split across two docker
@@ -122,7 +122,7 @@ export async function GET(
         }
       });
 
-      // Curated failure reason first, then close — never a silent empty pane.
+      // Curated failure reason first, then close, never a silent empty pane.
       // NOT named "error" (EventSource dispatches transport errors there).
       session.onExit = (error) => {
         try {
@@ -135,7 +135,7 @@ export async function GET(
       };
 
       // A signal that aborted DURING the pre-start awaits never fires "abort"
-      // again — check it explicitly so an already-gone client is cleaned up
+      // again - check it explicitly so an already-gone client is cleaned up
       // immediately (the idle reaper then kills the backing).
       if (request.signal.aborted) {
         closeStream();
@@ -169,7 +169,7 @@ export async function DELETE(
   const session = sessionId ? logs.get(sessionId, databaseId) : undefined;
   // Only the principal that opened it may close it: a session id is otherwise a
   // capability anyone can use to cut short somebody else's live log stream.
-  // Silent either way — a stranger learns nothing about which ids are live.
+  // Silent either way - a stranger learns nothing about which ids are live.
   if (session && session.userId === user.id) logs.destroy(sessionId);
   return Response.json({ ok: true });
 }

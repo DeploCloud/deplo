@@ -108,7 +108,7 @@ export function RobotGraphic({
       />
 
       {/* The port the cable is aiming at. The one element that turns green, and
-          only on `connected` — the single success beat the sibling graphics
+          only on `connected` - the single success beat the sibling graphics
           each spend their one `--success` on. */}
       {live && (
         <circle

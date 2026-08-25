@@ -476,7 +476,7 @@ export async function listGitRepos(
   connectionId: string,
 ): Promise<RepoSummary[]> {
   // A narrowed API token (scoped to specific projects) must not enumerate the
-  // whole team's git host through the connection's PAT — this is a team-level
+  // whole team's git host through the connection's PAT - this is a team-level
   // browse, and a token minting an app passes its repo URL directly instead.
   await requireTeamWide("the team's git repositories");
   const cred = await requireOwnCredential(connectionId);

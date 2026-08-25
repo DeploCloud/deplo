@@ -601,7 +601,7 @@ function ChannelRow({
   // A stored channel's secrets are already set, so the row asks for nothing extra.
   const ready = isChannelReady(instance, {});
   const target = channelTarget(instance);
-  // A channel with nothing ticked is configured, on, and silent — the one state
+  // A channel with nothing ticked is configured, on, and silent - the one state
   // that looks healthy and delivers nothing. It reads as a warning, like an
   // unfinished setup, because it has the same consequence.
   const noAlerts = instance.alerts.length === 0;

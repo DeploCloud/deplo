@@ -55,7 +55,7 @@ export function AddNewMenu({
   parentFolder = null,
   placement = null,
 }: {
-  /** Whether the viewer may create apps (`create_apps`) — gates both the
+  /** Whether the viewer may create apps (`create_apps`) - gates both the
    *  from-scratch wizard and the template catalogue, which only lead there. */
   canCreateApp: boolean;
   /** Whether the viewer may create databases (`create_databases`). */
@@ -63,13 +63,13 @@ export function AddNewMenu({
   canManageMembers: boolean;
   /** Whether the viewer may create folders (`create_folders`). */
   canCreateFolder: boolean;
-  /** Whether the viewer may create projects (`create_projects`) — a separate
+  /** Whether the viewer may create projects (`create_projects`) - a separate
    *  permission from folders, so the two entries appear separately. */
   canCreateProject: boolean;
   isAdmin: boolean;
   /**
    * The folder currently open on the Overview, if any. Null at the top level, or
-   * inside a project — folders never live in a project, so one made there stays at
+   * inside a project - folders never live in a project, so one made there stays at
    * the top level.
    */
   parentFolder?: { id: string; name: string } | null;

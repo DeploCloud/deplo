@@ -49,7 +49,7 @@ test("a non-default environment gets a __-suffixed key", () => {
 
 test("__ separator makes non-default keys collision-proof across services", () => {
   // A slug is `[a-z0-9-]` and can NEVER contain `__`, so a non-default env key
-  // can never equal ANY other app's bare key — even the adversarial case of an
+  // can never equal ANY other app's bare key, even the adversarial case of an
   // app literally slugged `app-preview` sitting next to `app` env `preview`.
   const envKey = environmentStackName("app", {
     slug: "preview",

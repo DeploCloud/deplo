@@ -12,7 +12,7 @@ export interface PaneTitle {
   label: string;
   /** The App's or database's Overview. */
   href: string;
-  /** Advanced settings, when the pane has a settings page behind it — the gear
+  /** Advanced settings, when the pane has a settings page behind it - the gear
    *  beside the label. The log panes have none and pass nothing. */
   settingsHref?: string;
 }

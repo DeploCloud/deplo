@@ -21,7 +21,7 @@ export function DatabaseConnectionString({
   className,
 }: {
   id: string;
-  /** `connectionStringMasked` — what the chip shows while covered. */
+  /** `connectionStringMasked` - what the chip shows while covered. */
   masked: string;
   /** The viewer holds `manage_infra`; false drops the affordances entirely. */
   canReveal?: boolean;
@@ -41,7 +41,7 @@ export function DatabaseConnectionString({
     );
     setPending(false);
     if (!res.ok) {
-      // Surface the server's own message — "You don't have permission…" and
+      // Surface the server's own message - "You don't have permission…" and
       // "Database not found" both mean something specific to the user.
       toast.error(res.error);
       return null;

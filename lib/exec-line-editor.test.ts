@@ -31,7 +31,7 @@ function makeEditor({ cols = 40, rows = 10 } = {}) {
   return { term, ed, submitted };
 }
 
-/** xterm writes are queued — settle the parser before reading the buffer. */
+/** xterm writes are queued - settle the parser before reading the buffer. */
 const flush = (term: Terminal) =>
   new Promise<void>((resolve) => term.write("", resolve));
 
@@ -141,7 +141,7 @@ test("Ctrl-U/Ctrl-K kill to the line edges, Ctrl-W kills the word left", async (
   ed.data(END);
   ed.data("\x17"); // Ctrl-W → kills "three"
   await flush(term);
-  // The prompt's trailing space is a REAL cell — translateToString keeps it.
+  // The prompt's trailing space is a REAL cell - translateToString keeps it.
   assert.equal(row(term, 0), "p$ ");
 
   ed.data("abc def");
@@ -226,7 +226,7 @@ test("a line wrapping across rows stays editable (Home, mid-line insert)", async
   ed.data(HOME);
   await flush(term);
   assert.deepEqual(caret(term), { x: 3, y: 0 });
-  ed.data("Z"); // insert at the head — everything shifts one cell
+  ed.data("Z"); // insert at the head - everything shifts one cell
   await flush(term);
   assert.equal(row(term, 0), "p$ Zabcdefghij012345");
   assert.equal(row(term, 1), "6789xyz");
@@ -307,7 +307,7 @@ test("Ctrl-L clears the screen but keeps the line and the caret column", async (
   const { term, ed } = makeEditor();
   ed.data("abc");
   ed.data(LEFT);
-  // term.reset() is synchronous while writes queue — settle first, as the
+  // term.reset() is synchronous while writes queue - settle first, as the
   // browser always has by the time a separate Ctrl-L keystroke arrives.
   await flush(term);
   ed.data("\x0c");

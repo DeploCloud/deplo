@@ -9,10 +9,10 @@ export const LOGO_PATH =
 
 /** Full artwork viewBox. */
 const FULL_VIEWBOX = "0 0 118 38";
-/** ViewBox cropped to the leading "d" glyph — the compact mark. */
+/** ViewBox cropped to the leading "d" glyph - the compact mark. */
 export const MARK_VIEWBOX = "0 3.38 24.5 25";
 
-/** Deplo mark — the leading "d" glyph. Monochrome, theme-aware, square. */
+/** Deplo mark - the leading "d" glyph. Monochrome, theme-aware, square. */
 export function DeploMark({
   className,
   size = 20,
@@ -50,7 +50,7 @@ export function deploMarkDataUri(): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-/** Deplo logo — the full "deplo" wordmark. Scales with the surrounding font size. */
+/** Deplo logo - the full "deplo" wordmark. Scales with the surrounding font size. */
 export function DeploLogo({
   className,
   showWordmark = true,

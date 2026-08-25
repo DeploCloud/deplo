@@ -107,7 +107,7 @@ test("rehostEmbeddedNip only touches the matching fromIp (leaves other nip hosts
 });
 
 test("rehostEmbeddedNip is a no-op when the value has no nip host", () => {
-  // garage's real env uses internal service DNS, never the public host — untouched.
+  // garage's real env uses internal service DNS, never the public host - untouched.
   assert.equal(
     rehostEmbeddedNip("http://garage:3900", MASTER, REMOTE),
     "http://garage:3900",

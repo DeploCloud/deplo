@@ -14,7 +14,7 @@ async function writeClipboard(value: string): Promise<boolean> {
     await navigator.clipboard.writeText(value);
     return true;
   } catch {
-    /* no clipboard API, or the permission was refused — try the old way */
+    /* no clipboard API, or the permission was refused - try the old way */
   }
   const active = document.activeElement as HTMLElement | null;
   const ta = document.createElement("textarea");
@@ -42,7 +42,7 @@ export function CopyButton({
   size = "icon-sm",
   label,
 }: {
-  /** The text itself, or a thunk read at click time — a terminal's buffer
+  /** The text itself, or a thunk read at click time - a terminal's buffer
    *  changes on every keystroke, so a snapshot prop would always be stale. */
   value: string | (() => string);
   className?: string;
@@ -55,9 +55,9 @@ export function CopyButton({
     if (
       !(await writeClipboard(typeof value === "function" ? value() : value))
     ) {
-      // Both paths are gone (a hardened browser). Say so — a button that
+      // Both paths are gone (a hardened browser). Say so - a button that
       // reports nothing reads as "copied" and the value never arrives.
-      toast.error("Couldn't copy — select the text and copy it manually");
+      toast.error("Couldn't copy - select the text and copy it manually");
       return;
     }
     setCopied(true);

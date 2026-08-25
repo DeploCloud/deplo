@@ -87,7 +87,7 @@ test("final flush persists every enqueued line, in order", async () => {
 test("loadDeploymentLogs flushes pending lines then reads them back", async () => {
   appendLog("dpl_1", line("a"));
   appendLog("dpl_1", line("b"));
-  // No explicit finalize — loadDeploymentLogs must flush first.
+  // No explicit finalize - loadDeploymentLogs must flush first.
   const logs = await loadDeploymentLogs("dpl_1");
   assert.deepEqual(
     logs.map((l) => l.text),
@@ -112,7 +112,7 @@ test("clear drains-then-DELETEs and a late flush can't resurrect cleared lines",
   await finalizeDeploymentLogs("dpl_1");
   assert.equal((await db.select({ n: count() }).from(deploymentLogs))[0]!.n, 2);
 
-  // Enqueue more, then CLEAR before they flush — the clear bumps the epoch so the
+  // Enqueue more, then CLEAR before they flush - the clear bumps the epoch so the
   // buffered batch is dropped and the persisted rows are deleted.
   appendLog("dpl_1", line("doomed-1"));
   appendLog("dpl_1", line("doomed-2"));
@@ -169,7 +169,7 @@ test("flushes for different deployments don't interleave", async () => {
 });
 
 test("a failed flush retries IN ORDER (no inversion across two failed batches)", async () => {
-  // Regression: an earlier drain-and-unshift-on-failure inverted order — two batches
+  // Regression: an earlier drain-and-unshift-on-failure inverted order - two batches
   // flushed in the same turn where both inserts fail would re-queue the SECOND batch
   // in front of the first (B…, A…).
   const fail = { n: 2 }; // fail exactly the first two flush inserts
@@ -223,7 +223,7 @@ test("a failed flush retries IN ORDER (no inversion across two failed batches)",
 });
 
 /**
- * `deployment_logs` lives in the CONTROL PLANE's database, shared by every team —
+ * `deployment_logs` lives in the CONTROL PLANE's database, shared by every team,
  * but the build's output is the tenant's to write, and nothing prunes these rows.
  */
 test("the per-line and per-deployment log caps hold, and a read can't reset the budget", async () => {
@@ -289,7 +289,7 @@ test("an unstated build line is classified on read; an authored level is not", a
     logs.map((l) => l.level),
     ["error", "info", "command", "info"],
   );
-  // The stored rows keep what the producer said — the reading is on the way out.
+  // The stored rows keep what the producer said - the reading is on the way out.
   const rows = await db
     .select()
     .from(deploymentLogs)

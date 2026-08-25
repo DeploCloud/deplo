@@ -4,7 +4,7 @@ import * as React from "react";
 
 /**
  * Parks the text-entry cursor at the END of a prefilled field that gets focused as
- * it appears — otherwise the caret sits BEFORE the value and the first thing typed
+ * it appears, otherwise the caret sits BEFORE the value and the first thing typed
  * is prepended to it ("X" + "hello" instead of "hello" + "X").
  */
 export function useInitialCaretAtEnd<
@@ -28,7 +28,7 @@ export function useInitialCaretAtEnd<
   return nodeRef;
 }
 
-/** Input types whose selection is scriptable — `setSelectionRange` throws on the
+/** Input types whose selection is scriptable - `setSelectionRange` throws on the
  *  rest (number, email, date, …). A textarea always is. */
 const SELECTABLE_INPUT_TYPES = new Set([
   "text",

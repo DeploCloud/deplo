@@ -311,7 +311,7 @@ test("registration link consume rejects an expired link", async () => {
   assert.equal((await db.select().from(usersTable)).length, 0);
 });
 
-test("login reads the RELATIONAL password — a relational password change is seen immediately (stale-password regression)", async () => {
+test("login reads the RELATIONAL password - a relational password change is seen immediately (stale-password regression)", async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner", password: "Oldpass!1" },
@@ -335,7 +335,7 @@ test("login reads the RELATIONAL password — a relational password change is se
     });
   });
 
-  // The OLD password must now FAIL and the NEW one succeed — proving login reads
+  // The OLD password must now FAIL and the NEW one succeed - proving login reads
   // the relational row, not a stale JSONB cache (the cut-set boundary hazard).
   assert.equal(
     (await login(email, "Oldpass!1")).ok,
@@ -376,7 +376,7 @@ test("a WRONG password on a suspended account is the GENERIC error, not an enume
   });
   // The "suspended" message is revealed only to someone who proves the password;
   // without it, a suspended account is indistinguishable from a wrong password or
-  // an unknown email (same message, same scrypt work) — no pre-auth existence leak.
+  // an unknown email (same message, same scrypt work) - no pre-auth existence leak.
   const res = await login(`${USER_1}@example.io`, "not-the-password");
   assert.equal(res.ok, false);
   assert.match(res.error ?? "", /Invalid email or password/);

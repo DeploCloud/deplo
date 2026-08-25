@@ -1,7 +1,7 @@
 -- The eight coarse capabilities become forty named permissions.
 --
 -- `deploy` meant create an app, ship it, stop it, delete it, shell into it, and
--- make folders, projects and environments — thirteen different powers behind one
+-- make folders, projects and environments - thirteen different powers behind one
 -- word. `manage_infra` meant every database, backup, S3 bucket, registry, Git
 -- connection and API token at once. So "can deploy but must not delete", "can read
 -- files but not write them", "can run backups but never restore one" were not
@@ -10,13 +10,13 @@
 -- editor browses them by).
 --
 -- This migration changes NOBODY's access. Every stored row is expanded into
--- exactly the permissions its old name already implied — the mapping is
+-- exactly the permissions its old name already implied - the mapping is
 -- LEGACY_CAPABILITY_EXPANSION in lib/capabilities.ts, and the two must agree
 -- (the same table, written twice, is why: SQL cannot import TypeScript, and a
 -- one-shot expansion must not depend on the app booting first).
 --
--- Five names survive unchanged because they were already one action —
--- view, manage_domains, manage_env, manage_members, manage_team — so they are
+-- Five names survive unchanged because they were already one action -
+-- view, manage_domains, manage_env, manage_members, manage_team, so they are
 -- present on both sides of the mapping and are NOT deleted. Only `deploy`,
 -- `manage_files` and `manage_infra` disappear.
 --

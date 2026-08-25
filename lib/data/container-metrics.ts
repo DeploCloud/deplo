@@ -12,7 +12,7 @@ import {
 } from "../monitoring/container-history";
 
 /**
- * Per-app / per-database live resource metrics — the data behind the Monitoring
+ * Per-app / per-database live resource metrics - the data behind the Monitoring
  * TAB on an app or database page (the per-container sibling of
  * lib/data/monitoring.ts's host-level metrics).
  */
@@ -36,7 +36,7 @@ export interface ContainerInstanceMetrics {
  * The aggregate stored in the ring buffer + charted.
  */
 export interface ContainerMetricsSample {
-  /** The app or database id — the history buffer key. */
+  /** The app or database id - the history buffer key. */
   id: string;
   online: boolean;
   /** epoch ms (control-plane clock at measurement). */
@@ -58,13 +58,13 @@ export interface ContainerMetricsSample {
 
 /** The live DTO: a sample plus the "update the agent" flag and the breakdown. */
 export interface ContainerMetrics extends ContainerMetricsSample {
-  /** True only when the agent is too old for ContainerStats — the tab shows an
+  /** True only when the agent is too old for ContainerStats - the tab shows an
    *  "update the agent on this server" state, distinct from offline. */
   unsupported: boolean;
   instances: ContainerInstanceMetrics[];
 }
 
-/** A "we couldn't measure" DTO — reachable? no. Never recorded to history. */
+/** A "we couldn't measure" DTO - reachable? no. Never recorded to history. */
 function unavailable(
   id: string,
   ts: number,
@@ -156,7 +156,7 @@ export function toContainerSample(m: ContainerMetrics): ContainerMetricsSample {
 function toSample(m: ContainerMetrics): ContainerMetricsSample {
   // Deliberately drop `instances` (the breakdown is a live-only table) and
   // `unsupported` (never true for a recorded, online sample) to keep the RAM
-  // window lean — rest-sibling omit, like databases.ts toDTO.
+  // window lean - rest-sibling omit, like databases.ts toDTO.
   const { unsupported, instances, ...sample } = m;
   void unsupported;
   void instances;
@@ -243,6 +243,6 @@ export async function getDatabaseMetricsHistory(
 
 /**
  * This file used to end with two more sections, both deleted. The COLLECTOR
- * ENUMERATIONS went first. — a question that only existed because sampling cost an
+ * ENUMERATIONS went first. - a question that only existed because sampling cost an
  * RPC each.
  */

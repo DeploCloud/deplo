@@ -86,7 +86,7 @@ export function FieldLabel({
   infoLabel?: string;
 }) {
   return (
-    // `w-fit` so the label — and the info trigger it carries — hug their content
+    // `w-fit` so the label, and the info trigger it carries, hug their content
     // instead of stretching the full column width.
     <Label
       className={cn("flex w-fit items-center gap-1.5", className)}

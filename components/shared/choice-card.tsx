@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * One option as a big, clickable card — icon, title, one-line blurb, tick.
+ * One option as a big, clickable card - icon, title, one-line blurb, tick.
  */
 export function ChoiceCard({
   title,
@@ -23,7 +23,7 @@ export function ChoiceCard({
   icon: React.ComponentType<{ className?: string }>;
   selected: boolean;
   disabled?: boolean;
-  /** Shown instead of the blurb while disabled — say WHY, not that it is off. */
+  /** Shown instead of the blurb while disabled - say WHY, not that it is off. */
   disabledNote?: string;
   multi?: boolean;
   onSelect: () => void;

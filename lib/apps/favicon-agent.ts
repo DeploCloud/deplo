@@ -27,7 +27,7 @@ import { MAX_LOGO_BYTES } from "./logo-shared";
 
 /**
  * Favicon auto-detection for an app whose icon lives on its OWNING HOST rather
- * than in a repo or an upload — a **compose stack**. Two places it can be, and
+ * than in a repo or an upload - a **compose stack**. Two places it can be, and
  * this module reads both, because a compose app is either shape: 1.
  */
 
@@ -35,7 +35,7 @@ import { MAX_LOGO_BYTES } from "./logo-shared";
 const MAX_DIRS_LISTED = 48;
 /** How deep below the files root the walk descends (`public/img/icons/…`). */
 const MAX_DEPTH = 6;
-/** Total entries examined — a hostile/huge tree can't turn this into a crawl. */
+/** Total entries examined - a hostile/huge tree can't turn this into a crawl. */
 const MAX_ENTRIES_SEEN = 20_000;
 /** Candidates collected before the walk stops early. */
 const MAX_CANDIDATES = 32;
@@ -55,7 +55,7 @@ const MAX_HTML_BYTES = 256 * 1024;
  * chasing further than this is a crawl, not a detection. */
 const MAX_REDIRECTS = 2;
 
-/** The one agent call the walk needs — narrowed so tests can drive it with a
+/** The one agent call the walk needs - narrowed so tests can drive it with a
  * fake tree instead of a live server. `AgentConnection` satisfies it. */
 export interface FaviconFileLister {
   listFiles(
@@ -118,7 +118,7 @@ export async function collectAgentFaviconCandidates(
 }
 
 /** Gunzip an agent chunk stream, closing BOTH ends when the consumer stops
- * early — that propagates back through the generator to `stream.cancel()`, so
+ * early - that propagates back through the generator to `stream.cancel()`, so
  * abandoning the read actually stops the agent's tar. */
 async function* gunzip(
   chunks: AsyncIterable<Buffer>,
@@ -135,7 +135,7 @@ async function* gunzip(
 
 /**
  * Read one file out of an app's files dir as raw bytes. An SVG is tried through
- * `ReadFile` first — one small unary call instead of a whole-directory tar, and
+ * `ReadFile` first - one small unary call instead of a whole-directory tar, and
  * the only read that works on an agent too old for `files-copy`.
  */
 export async function readFilesDirBytes(
@@ -144,7 +144,7 @@ export async function readFilesDirBytes(
   path: string,
 ): Promise<Buffer | null> {
   if (path.toLowerCase().endsWith(".svg")) {
-    // A `reason` (binary / too-large) means the text was withheld — the tar
+    // A `reason` (binary / too-large) means the text was withheld - the tar
     // still has the bytes, so fall through rather than give up.
     const file = await conn.readFile(slug, path).catch(() => null);
     if (file?.text) {
@@ -162,7 +162,7 @@ export async function readFilesDirBytes(
 }
 
 /** A detected icon: where it was found, and its bytes. `mime` is set when the
- * source told us the type outright (a served response, whose bytes we sniffed) —
+ * source told us the type outright (a served response, whose bytes we sniffed) -
  * a file on disk has only its extension to go on, so it leaves this unset. */
 export interface DetectedFaviconBytes {
   path: string;
@@ -185,7 +185,7 @@ export async function detectAgentFilesFavicon(
     if (!(await conn.filesExist(slug))) return null;
     const candidates = await collectAgentFaviconCandidates(conn, slug);
     // Sizes come from the listing, so the logo cap is applied BEFORE any byte
-    // crosses the wire — an oversized favicon is dropped by the ranker.
+    // crosses the wire - an oversized favicon is dropped by the ranker.
     const best = pickBestFavicon(candidates);
     if (!best) return null;
     const bytes = await readFilesDirBytes(conn, slug, best.path);
@@ -203,7 +203,7 @@ export async function detectAgentFilesFavicon(
 /* ------------------------------------------------------------------ */
 
 /**
- * Where to reach an app's own web service — everything the agent needs to make
+ * Where to reach an app's own web service - everything the agent needs to make
  * the request, and nothing it could turn into an arbitrary address.
  */
 export interface ServedIconTarget {
@@ -220,7 +220,7 @@ export interface ServedIconTarget {
   basePath: string;
 }
 
-/** The routing facts a target is derived from — the shape `RoutableDomain`
+/** The routing facts a target is derived from - the shape `RoutableDomain`
  * already has, so a deploy hands its own routes straight over. */
 export interface IconProbeRoute {
   name: string;
@@ -246,7 +246,7 @@ export interface FaviconHttpProber {
 }
 
 /**
- * Work out which container, port and hostname an app's icon should be asked for —
+ * Work out which container, port and hostname an app's icon should be asked for -
  * the SAME target Traefik was pointed at, so what we read is what a visitor sees.
  */
 export function servedIconTarget(
@@ -336,7 +336,7 @@ async function readHomePage(
 }
 
 /**
- * Read the icon a RUNNING app serves — the compose-stack arm of favicon detection,
+ * Read the icon a RUNNING app serves - the compose-stack arm of favicon detection,
  * and the only one that can work for an app whose files are all inside a prebuilt
  * image.
  */
@@ -356,7 +356,7 @@ export async function detectServedFavicon(
   }
 }
 
-/** {@link detectServedFavicon} against an already-open connection — the whole
+/** {@link detectServedFavicon} against an already-open connection - the whole
  * decision, with only the dial removed, so it is drivable with canned responses
  * in a test. */
 export async function detectServedFaviconVia(
@@ -364,11 +364,11 @@ export async function detectServedFaviconVia(
   target: ServedIconTarget,
 ): Promise<DetectedFaviconBytes | null> {
   const hello = await conn.hello();
-  // An agent too old to reach into the app simply reports no icon — the same
+  // An agent too old to reach into the app simply reports no icon - the same
   // "nothing to show" every other dead end yields, never an error.
   if (!hello.capabilities?.includes(HTTP_PROBE_CAPABILITY)) return null;
   const html = await readHomePage(conn, target);
-  // No page to read still leaves the well-known path worth one try — plenty of
+  // No page to read still leaves the well-known path worth one try - plenty of
   // apps serve an API at `/` and their icon at `/favicon.ico` all the same.
   const queue = iconCandidates(html ?? "", {
     basePath: target.basePath,
@@ -404,7 +404,7 @@ export async function detectServedFaviconVia(
       continue;
     }
     // `truncated` means the agent cut the body at the logo cap, so what we hold
-    // is a fragment of an oversized image — never storable, and never a reason
+    // is a fragment of an oversized image, never storable, and never a reason
     // to stop looking at the next candidate.
     if (res.status !== 200 || res.truncated || res.body.length === 0) continue;
     if (res.body.length > MAX_LOGO_BYTES) continue;

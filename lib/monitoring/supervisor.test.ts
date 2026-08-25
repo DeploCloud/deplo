@@ -43,7 +43,7 @@ import {
 } from "./supervisor";
 
 /**
- * The metrics stream SUPERVISOR — the control flow the polling collector it
+ * The metrics stream SUPERVISOR - the control flow the polling collector it
  * replaced never had a test for at all (`runMetricsCollectorTick` was exported
  * "for tests" and nothing ever called it).
  */
@@ -92,7 +92,7 @@ before(async () => {
   __setTestDb(db);
   // Every successful connect calls `resolveExpectedAgentVersion`, which reaches
   // for the GitHub releases API. Fail it closed so the suite never touches the
-  // network — the caller already falls back to the compiled-in expected version.
+  // network - the caller already falls back to the compiled-in expected version.
   globalThis.fetch = (() =>
     Promise.reject(new Error("network disabled in tests"))) as typeof fetch;
 });
@@ -285,7 +285,7 @@ class Feed {
 /**
  * Spin until `pred` holds. The per-server loops are started with `void`, so there
  * is no promise to await for "it got that far". Bounded by ITERATIONS, not by
- * `Date.now()` — one test below replaces the clock.
+ * `Date.now()` - one test below replaces the clock.
  */
 async function waitFor(
   pred: () => boolean | Promise<boolean>,
@@ -324,7 +324,7 @@ async function appRow(
 /**
  * Count `appChanged` pings for one App. The publish is what makes a corrected
  * badge repaint without a reload, and it is guarded on the UPDATE actually
- * matching — so both "it fired" and "it did NOT fire" are worth pinning.
+ * matching, so both "it fired" and "it did NOT fire" are worth pinning.
  */
 function countPings(appId: string): { count: () => number; stop: () => void } {
   const it = pubSub.subscribe("appChanged", appId)[Symbol.asyncIterator]();
@@ -380,7 +380,7 @@ test("a server with an enrolled agent runs in STREAM mode and its frames land in
   );
 });
 
-test("a server whose agent predates the stream demotes to POLL alone — the fleet keeps streaming", async () => {
+test("a server whose agent predates the stream demotes to POLL alone - the fleet keeps streaming", async () => {
   // The degradation path is PER SERVER on purpose: a fleet is updated one host at
   // a time, so one old agent must never take its neighbours' telemetry with it.
   await disableSaving(); // the poll fallback then has nothing to dial
@@ -406,7 +406,7 @@ test("a server whose agent predates the stream demotes to POLL alone — the fle
   );
 });
 
-test("DEPLO_MONITORING_FORCE_POLL=1 forces EVERY server to poll — the production kill switch", async () => {
+test("DEPLO_MONITORING_FORCE_POLL=1 forces EVERY server to poll - the production kill switch", async () => {
   // This is the real revert for the streaming path.
   await disableSaving();
   await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
@@ -458,7 +458,7 @@ test("one host frame demuxes to the right App and Database by projectId", async 
     ]),
   );
 
-  // The App's two containers fold into ONE series — the app TOTAL — rather than
+  // The App's two containers fold into ONE series, the app TOTAL, rather than
   // two: splitting siblings apart by name is how a Compose app's chart lies.
   const app = getContainerHistory("prj_1");
   assert.equal(app.length, 1);
@@ -565,7 +565,7 @@ test("reconnect backoff grows exponentially and is CAPPED at RECONNECT_BACKOFF_C
   }
 });
 
-test("reconnect attempts are UNBOUNDED — a host down for an hour reconnects when it returns", async () => {
+test("reconnect attempts are UNBOUNDED - a host down for an hour reconnects when it returns", async () => {
   // There is deliberately no give-up state: the supervisor must recover a host
   // with zero operator action, so a long outage costs only the (capped) backoff.
   await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
@@ -592,7 +592,7 @@ test("reconnect attempts are UNBOUNDED — a host down for an hour reconnects wh
 });
 
 /* ------------------------------------------------------------------ */
-/* The health heartbeat — the highest-risk coupling in this change     */
+/* The health heartbeat - the highest-risk coupling in this change     */
 /* ------------------------------------------------------------------ */
 
 test("HEALTH_WRITE_MS stays under the prober's 15s THROTTLE_MS, or the prober silently re-enables its fleet-wide dial fan-out", () => {
@@ -615,7 +615,7 @@ test("HEALTH_WRITE_MS stays under the prober's 15s THROTTLE_MS, or the prober si
   assert.ok(
     effectivePeriod < PROBER_THROTTLE_MS,
     `HEALTH_WRITE_MS (${HEALTH_WRITE_MS}) at a ${STREAM_INTERVAL_MS}ms cadence writes every ` +
-      `${effectivePeriod}ms once a frame lands early — that must stay under ${PROBER_THROTTLE_MS}ms. ` +
+      `${effectivePeriod}ms once a frame lands early - that must stay under ${PROBER_THROTTLE_MS}ms. ` +
       `Keep HEALTH_WRITE_MS strictly BETWEEN one and two cadences.`,
   );
 });
@@ -672,7 +672,7 @@ test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5
       const delta = writes[i] - writes[i - 1];
       assert.ok(
         delta >= HEALTH_WRITE_MS,
-        `two health writes ${delta}ms apart — the ${HEALTH_WRITE_MS}ms throttle is not holding`,
+        `two health writes ${delta}ms apart - the ${HEALTH_WRITE_MS}ms throttle is not holding`,
       );
     }
 
@@ -684,7 +684,7 @@ test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5
     for (const w of [...writes, clock]) {
       assert.ok(
         w - previous <= PROBER_THROTTLE_MS,
-        `${w - previous}ms passed with no health write — the prober's throttle would lapse`,
+        `${w - previous}ms passed with no health write - the prober's throttle would lapse`,
       );
       previous = w;
     }
@@ -694,7 +694,7 @@ test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5
 });
 
 /* ------------------------------------------------------------------ */
-/* App status reconcile — the stale "error" self-heal                  */
+/* App status reconcile - the stale "error" self-heal                  */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -715,7 +715,7 @@ async function streamingServer(id = SRV_A): Promise<Feed> {
   return feed;
 }
 
-test("a frame reporting a RUNNING container clears a stale `error` — the reboot incident", async () => {
+test("a frame reporting a RUNNING container clears a stale `error` - the reboot incident", async () => {
   await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
   await seedApp(db, {
     id: "prj_1",
@@ -760,9 +760,9 @@ test("a frame reporting a RUNNING container clears a stale `error` — the reboo
   }
 });
 
-test("only `error` is ever promoted — active/idle/stopping/queued/building are left exactly as stored", async () => {
+test("only `error` is ever promoted - active/idle/stopping/queued/building are left exactly as stored", async () => {
   // The status allowlist is the core of the write-war guard, and it is exactly ONE
-  // value wide. - `stopping` — written BEFORE an up-to-60s `docker stop`, so frames
+  // value wide. - `stopping` - written BEFORE an up-to-60s `docker stop`, so frames
   // in that window still say "running"; promoting would make the user's Stop bounce.
   const untouchable = [
     "active",
@@ -852,7 +852,7 @@ test("an App with a deployment in flight is NOT touched, even from `error`", asy
   assert.equal(afterB.updatedAt, beforeB.updatedAt);
 });
 
-test("an App ABSENT from the frame is never written — absence is unknown, not failure", async () => {
+test("an App ABSENT from the frame is never written - absence is unknown, not failure", async () => {
   // A missing container means the stream has not reported it (host down, agent
   // restarting, container not created yet). Writing a status from that would
   // invent an outage out of silence.
@@ -892,7 +892,7 @@ test("an App ABSENT from the frame is never written — absence is unknown, not 
   );
 });
 
-test("an empty frame writes nothing — a host with no containers is not a host of failed Apps", async () => {
+test("an empty frame writes nothing - a host with no containers is not a host of failed Apps", async () => {
   const feed = await streamingServer();
   await seedApp(db, {
     id: "prj_1",
@@ -909,7 +909,7 @@ test("an empty frame writes nothing — a host with no containers is not a host 
   assert.equal(after.updatedAt, before.updatedAt);
 });
 
-test("a crash-looping container is NOT promoted — `restarting` vetoes the whole App", async () => {
+test("a crash-looping container is NOT promoted - `restarting` vetoes the whole App", async () => {
   // A restart loop is not a working App, and `error` is a more honest word for it
   // than `active`. Promoting would only hand it to `displayStatus` to re-demote to
   // "restarting", flipping the badge through a state that was never true.
@@ -960,7 +960,7 @@ test("a container that exists but is EXITED does not promote", async () => {
   assert.equal((await appRow("prj_dead")).status, "error");
 });
 
-test("an App mid server-MOVE is skipped — the old host's containers are not evidence", async () => {
+test("an App mid server-MOVE is skipped - the old host's containers are not evidence", async () => {
   // A pending move is not representable in `status`: the App has containers on the
   // OLD host and a fresh stack on the NEW one, and this loop is per-server, so it
   // would be acting on one of two conflicting truths.
@@ -1013,9 +1013,9 @@ test("a frame is only authority over the Apps ITS OWN host runs", async () => {
   assert.equal(after.updatedAt, before.updatedAt);
 });
 
-test("a Database id in the frame never touches an App — and is not an error either", async () => {
+test("a Database id in the frame never touches an App, and is not an error either", async () => {
   // Databases ride the same `deplo.project` label. They simply match no row in
-  // `apps`, so they need no special case — but that must be true, not assumed.
+  // `apps`, so they need no special case, but that must be true, not assumed.
   const feed = await streamingServer();
   await seedDatabase(db, { id: "db_1", serverId: SRV_A });
   await seedApp(db, {
@@ -1040,7 +1040,7 @@ test("a Database id in the frame never touches an App — and is not an error ei
   );
 });
 
-test("NOTHING is written when nothing changed — across many frames and many reconcile windows", async () => {
+test("NOTHING is written when nothing changed - across many frames and many reconcile windows", async () => {
   // The whole architecture exists to stop per-resource DB churn on the stream's
   // cadence. A reconcile that wrote (or published) an unchanged row every frame
   // would put it straight back, plus an SSE frame to every open dashboard.
@@ -1060,7 +1060,7 @@ test("NOTHING is written when nothing changed — across many frames and many re
     const before = await appRow("prj_ok");
 
     // Step the clock a full reconcile window per frame, so the guarded UPDATE
-    // genuinely RUNS each time rather than being skipped by the throttle — the
+    // genuinely RUNS each time rather than being skipped by the throttle - the
     // point is that a running statement still writes nothing.
     for (let i = 0; i < 6; i++) {
       clock += APP_STATUS_RECONCILE_MS;
@@ -1113,7 +1113,7 @@ test("a corrected App is written and published EXACTLY once, not once per frame"
     assert.equal(
       after.updatedAt,
       corrected.updatedAt,
-      "the correction is idempotent — re-observing a healthy App writes nothing",
+      "the correction is idempotent - re-observing a healthy App writes nothing",
     );
     assert.equal(pings.count(), 1, "and publishes nothing further");
   } finally {
@@ -1146,7 +1146,7 @@ test("the reconcile runs on its OWN clock, not the frame's", async () => {
       .set({ status: "error" })
       .where(eq(appsTable.id, "prj_1"));
 
-    clock += STREAM_INTERVAL_MS; // one cadence — well inside the window
+    clock += STREAM_INTERVAL_MS; // one cadence - well inside the window
     await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
     assert.equal(
       (await appRow("prj_1")).status,
@@ -1214,7 +1214,7 @@ test("telemetrySaysRunning: what counts as proof an App is up", () => {
       c({ state: "exited", running: false }),
     ]),
     true,
-    "a partially-up stack is still up — `displayStatus` is what calls that degraded",
+    "a partially-up stack is still up - `displayStatus` is what calls that degraded",
   );
 
   // An agent too old to send `state` leaves it "" (proto3 default) rather than

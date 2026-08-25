@@ -1,6 +1,6 @@
 # Dev containers run on official base images, set up by a bind-mounted entrypoint
 
-- **Status**: Retired — 2026-07-19. Dev mode (the live, editable dev container with
+- **Status**: Retired - 2026-07-19. Dev mode (the live, editable dev container with
   SSH access and the VS Code tunnel) was removed from the product wholesale; this
   decision has no remaining subject. Kept as a historical record. The host-side
   uninstaller retains a legacy `deplo-ssh-gateway` sweep for hosts provisioned
@@ -20,7 +20,7 @@ version drift against the upstream bases.
 Dev containers run on **official base images directly** (`node:22`, `python:3.12`,
 `golang:1.23`, `rust:1`, `php:8.3`, `eclipse-temurin:21`). The dev image **preset** is
 **derived by default from the project's `framework`** (nextjs/svelte/astro → `node`,
-etc.), overridable only for the custom-image case — so the preset never drifts from the
+etc.), overridable only for the custom-image case, so the preset never drifts from the
 framework's language. The `devuser`/git/dep-install setup runs in a small **entrypoint
 script bind-mounted from `/data`** at first boot, not baked into a custom image.
 
@@ -30,6 +30,6 @@ script bind-mounted from `/data`** at first boot, not baked into a custom image.
 - First boot of a fresh dev container pays a few seconds of apk/apt + dep install.
   Accepted; only happens once per workspace (the workspace then persists).
 - If first-boot latency ever becomes a problem, prebuilt `deplo/dev-<lang>` images can be
-  reintroduced as a pure optimization behind the same preset — not a prerequisite.
+  reintroduced as a pure optimization behind the same preset, not a prerequisite.
 - The entrypoint lives in `/data` (bind-mounted), so it is updatable without rebuilding
   anything, consistent with how stacks/configs already live under `/data`.

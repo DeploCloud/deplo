@@ -2,14 +2,14 @@
 --
 -- Before this, "role" was a label on a membership (owner/member/viewer) and the
 -- capability set behind it lived only in TypeScript (CAPABILITY_PRESETS). A team
--- could not rename a role, change what it grants, or invent one of its own — every
+-- could not rename a role, change what it grants, or invent one of its own - every
 -- deviation showed up as a per-member "Custom" set nobody could reuse.
 --
 -- `team_roles` gives each team its own three built-ins (`builtin_key`, revertible
 -- to their preset, never deletable) plus any number of custom roles it authors.
 -- `memberships.role_id` is the assignment. What every authorization check reads is
 -- UNCHANGED: `membership_capabilities` stays the effective set, and editing a role
--- re-writes those rows for its members inside the same transaction — so this
+-- re-writes those rows for its members inside the same transaction, so this
 -- migration alters no permission, and a control plane rolled back to the previous
 -- version still enforces exactly what it did before.
 --
@@ -17,7 +17,7 @@
 -- three built-ins and links the memberships whose capability set matches one of
 -- them, on first read, idempotently. That keeps the set-comparison in tested
 -- TypeScript rather than in one-shot SQL, and self-heals a team created by any
--- other path. A membership left with `role_id` NULL is a hand-picked "Custom" set —
+-- other path. A membership left with `role_id` NULL is a hand-picked "Custom" set -
 -- legal, still enforced, and shown as such.
 CREATE TABLE "team_roles" (
 	"id" text PRIMARY KEY NOT NULL,

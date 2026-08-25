@@ -32,20 +32,20 @@ test("a healthy Hello is online, with no message to explain away", () => {
   assert.equal(h.message, null);
 });
 
-test("Docker unreachable is `warning`, not offline — the agent answered", () => {
+test("Docker unreachable is `warning`, not offline - the agent answered", () => {
   const h = classifyServerHealth(hello({ dockerAvailable: false }), null);
   assert.equal(h.status, "warning");
   assert.equal(h.message, HEALTH_MESSAGES.dockerDown);
 });
 
-test("Traefik being down is NOT a warning — a DB/worker host legitimately has none", () => {
+test("Traefik being down is NOT a warning - a DB/worker host legitimately has none", () => {
   // It has its own badge, and a status that fires on a normal configuration is a
   // status operators learn to ignore.
   const h = classifyServerHealth(hello({ traefikRunning: false }), null);
   assert.equal(h.status, "online");
 });
 
-test("an unsupported contract version is `error` — the box is up, its agent is wrong", () => {
+test("an unsupported contract version is `error` - the box is up, its agent is wrong", () => {
   const h = classifyServerHealth(
     hello({ contractVersion: ContractVersion.CONTRACT_VERSION_UNSPECIFIED }),
     null,
@@ -74,7 +74,7 @@ test("a deadline overrun is offline, and says so specifically", () => {
   assert.equal(h.message, HEALTH_MESSAGES.timedOut);
 });
 
-test("a cert-pin mismatch is `error`, NEVER offline — the peer answered, it just isn't ours", () => {
+test("a cert-pin mismatch is `error`, NEVER offline - the peer answered, it just isn't ours", () => {
   // This is the case gRPC flattens into an opaque UNAVAILABLE. Reporting it as
   // "offline" would send an operator to check a host that is up, and would bury what
   // may be a MITM or a half-finished re-provision.

@@ -38,20 +38,20 @@ export interface TokenGrant {
 export interface TokenScope {
   /** Every team the token can act in at all (whole ones plus derived ones). */
   teamIds: string[];
-  /** Teams reachable WHOLLY — every project, every app, every team-wide setting. */
+  /** Teams reachable WHOLLY - every project, every app, every team-wide setting. */
   wholeTeamIds: string[];
   /** Projects reachable wholly (every app in them, now and later). */
   projectIds: string[];
   /**
-   * Folders reachable wholly, SUBTREE ALREADY EXPANDED — the ticked folders, every
+   * Folders reachable wholly, SUBTREE ALREADY EXPANDED - the ticked folders, every
    * folder nested under them, and every folder filed under a ticked project.
    */
   folderIds: string[];
   /** Individually-named apps. */
   appIds: string[];
   /**
-   * The Projects a scoped node lives in — the container of an individually-named
-   * app, or of a reachable folder — so a token given one app or one folder can
+   * The Projects a scoped node lives in - the container of an individually-named
+   * app, or of a reachable folder, so a token given one app or one folder can
    * still see where it sits. Derived at authentication time.
    */
   appProjectIds: string[];
@@ -59,7 +59,7 @@ export interface TokenScope {
 
 // In `next dev` the RSC layer and the route-handler layer compile into separate
 // module registries, so a module-level `new AsyncLocalStorage()` would exist as TWO
-// independent instances in one process — `runWithIdentity` (called from the route
+// independent instances in one process - `runWithIdentity` (called from the route
 // handler / yoga) would write to one while `currentIdentity()` (called from the
 // data layer, possibly the RSC graph) reads the other, and the override would be
 // invisible.
@@ -117,7 +117,7 @@ export function inProjectScope(projectId: string | null | undefined): boolean {
   );
 }
 
-/** Whether a Folder is reachable — its subtree is already expanded into the scope. */
+/** Whether a Folder is reachable - its subtree is already expanded into the scope. */
 export function inFolderScope(folderId: string | null | undefined): boolean {
   const scope = narrowedScope();
   if (!scope) return true;
@@ -125,7 +125,7 @@ export function inFolderScope(folderId: string | null | undefined): boolean {
 }
 
 /**
- * Whether an app row is reachable — by its own id, by its folder, or by its
+ * Whether an app row is reachable - by its own id, by its folder, or by its
  * project.
  */
 export function inAppScope(app: {

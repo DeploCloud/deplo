@@ -17,7 +17,7 @@ ALTER TABLE "environment_env_vars" ADD CONSTRAINT "environment_env_vars_environm
 CREATE UNIQUE INDEX "environment_env_vars_environment_key_uq" ON "environment_env_vars" USING btree ("environment_id","key");--> statement-breakpoint
 CREATE INDEX "environment_env_vars_environment_idx" ON "environment_env_vars" USING btree ("environment_id");--> statement-breakpoint
 -- Backfill (ADR-0008 phased plan): a project created between migrations 0016 and
--- 0017 predates Environment seeding and has no rows — give it the standard three
+-- 0017 predates Environment seeding and has no rows - give it the standard three
 -- (Production default), so every project can hold environment variables. Ids use
 -- md5(random) instead of pgcrypto so the statement runs on any Postgres (pglite
 -- included); the environ_ prefix matches newId("environ").

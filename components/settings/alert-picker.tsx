@@ -17,7 +17,7 @@ import {
 import { ALL_ALERTS, type AlertKey } from "@/lib/types";
 
 /**
- * Which alerts a team wants — the same picker shape as the role editor's
+ * Which alerts a team wants - the same picker shape as the role editor's
  * permissions, on purpose: search, categories, a description per row and a count
  * per category.
  */
@@ -100,7 +100,7 @@ export function AlertPicker({
           )}
           {/**
            * Acts on the FILTERED subset and is spelled the same as the control in every
-           * category header — it is the same gesture, and the same gesture cannot be called
+           * category header - it is the same gesture, and the same gesture cannot be called
            * two things three lines apart.
            */}
           {!disabled && shown.some((a) => enabled.has(a)) && (

@@ -27,7 +27,7 @@ services:
       - "3000:3000"
     # NO docker.sock, the same rule install.sh states: the panel is the one
     # container here reachable from the internet, and that mount is root on the
-    # box for whoever reaches it. Nothing needs it any more — the last live line
+    # box for whoever reaches it. Nothing needs it any more - the last live line
     # that touched a socket went with `ensureNetwork` (see lib/deploy/build.ts),
     # and the plugin retirement sweep tolerates an unreachable daemon by design.
     # Everything host-coupled goes over mTLS gRPC to the server agent, ADR-0006.
@@ -42,8 +42,8 @@ services:
       - "traefik.http.routers.deplo.entrypoints=websecure"
       - "traefik.http.routers.deplo.tls.certresolver=letsencrypt"
       # Lowest priority so this Host-only dashboard router is a true fallback:
-      # any more-specific PathPrefix router on the same host — an app's path
-      # override, or the reserved /plugins/<slug> route (ADR-0013) — wins. Traefik
+      # any more-specific PathPrefix router on the same host - an app's path
+      # override, or the reserved /plugins/<slug> route (ADR-0013) - wins. Traefik
       # defaults an un-pinned router's priority to its rule-string LENGTH, which
       # for a real host exceeds a short PathPrefix router's length and would
       # otherwise SHADOW that path. priority=1 (0 is treated as "unset").

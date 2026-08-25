@@ -95,7 +95,7 @@ test("the three defaults are seeded on first read and the owner adopts theirs", 
   assert.equal(again.length, 3);
 });
 
-test("a hand-picked capability set is NOT adopted — it stays Custom", async () => {
+test("a hand-picked capability set is NOT adopted - it stays Custom", async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -214,7 +214,7 @@ test("the Owner default is locked, and a default reverts to its preset", async (
     /can't be edited/,
   );
 
-  // Re-scope the Member default, then reset it — the member follows both ways.
+  // Re-scope the Member default, then reset it - the member follows both ways.
   await asOwner(() =>
     updateRole({
       id: member.id,
@@ -317,7 +317,7 @@ test("a non-owner can't author or assign a role above their own rank", async () 
       { id: "m1", teamId: TEAM_A, role: "viewer", capabilities: ["view"] },
     ],
   });
-  // Authoring: the manager may run backups on nothing — they don't hold it.
+  // Authoring: the manager may run backups on nothing - they don't hold it.
   await assert.rejects(
     () =>
       asUser("mgr", () =>
@@ -384,7 +384,7 @@ test("a role edit can't strip the team of its last administrator", async () => {
       ),
     /at least one member who can manage members/,
   );
-  // The refusal rolled the whole edit back — role and member are untouched.
+  // The refusal rolled the whole edit back - role and member are untouched.
   assert.deepEqual(await capsOf(USER_1), [
     "manage_members",
     "manage_roles",
@@ -472,7 +472,7 @@ test("an absent field on updateRole means leave it alone, not clear it", async (
   );
 
   // Sending the field explicitly still replaces it, so this is not a refusal to
-  // write — only a refusal to invent an empty value.
+  // write - only a refusal to invent an empty value.
   await asOwner(() =>
     updateRole({ id: role.id, name: "Deployers", capabilities: ["view"] }),
   );
@@ -504,7 +504,7 @@ test("a scope-only edit re-syncs the holders without touching the authored set",
   await asOwner(() => updateMember({ userId: "u_dev", roleId: role.id }));
   assert.ok((await capsOf("u_dev")).includes("manage_members"));
 
-  // Limiting the role, and NOTHING else — no capabilities in the payload. The
+  // Limiting the role, and NOTHING else - no capabilities in the payload. The
   // authored set must survive; the EFFECTIVE one must lose the team-wide verb.
   await asOwner(() =>
     updateRole({ id: role.id, name: "Ops", scope: { projectIds: ["prc_x"] } }),
@@ -547,7 +547,7 @@ test("a scoped role is never matched by the legacy rank+capabilities shape", asy
   );
 
   // rank + capabilities says nothing about REACH, and matching compares the
-  // CLAMPED set — which makes a limited role the likeliest match for a short
+  // CLAMPED set, which makes a limited role the likeliest match for a short
   // list. Landing on it handed the membership a boundary nobody asked for.
   await asOwner(() =>
     updateMember({
@@ -603,14 +603,14 @@ test("limiting a built-in marks it edited, so the way back stays offered", async
 
 test("every capability that exists is reachable: the Owner role holds all of them", async () => {
   // A NEW capability is easy to ship half-dead: the enum, the gate and the UI all
-  // land, while every capability row already in the database predates it — so nobody,
+  // land, while every capability row already in the database predates it, so nobody,
   // not even the founder, can use the feature.
   await seedIdentity(db);
   const owner = byName(await asOwner(() => listRoles()), "Owner");
   for (const cap of ALL_CAPABILITIES) {
     assert.ok(
       owner.capabilities.includes(cap),
-      `the Owner role is missing "${cap}" — a capability nobody can hold is a feature nobody can reach`,
+      `the Owner role is missing "${cap}" - a capability nobody can hold is a feature nobody can reach`,
     );
   }
 

@@ -43,7 +43,7 @@ test("isoTimestampParser: null passes through, every shape canonicalises to T…
 });
 
 /* ------------------------------------------------------------------ */
-/* Regime 1 — node-postgres process-global registration                */
+/* Regime 1 - node-postgres process-global registration                */
 /* ------------------------------------------------------------------ */
 
 test("pg.types: importing lib/db/pg.ts registers the shared parser for both OIDs", async () => {
@@ -52,7 +52,7 @@ test("pg.types: importing lib/db/pg.ts registers the shared parser for both OIDs
 
   for (const oid of [TIMESTAMPTZ_OID, TIMESTAMP_OID]) {
     const parser = pgTypes.getTypeParser(oid) as (v: string | null) => unknown;
-    // The registered parser must behave identically to our shared helper — i.e.
+    // The registered parser must behave identically to our shared helper - i.e.
     // a space-separated driver rendering comes back canonical 'T…Z'.
     assert.equal(
       parser("2026-06-24 12:34:56.789+00"),
@@ -64,7 +64,7 @@ test("pg.types: importing lib/db/pg.ts registers the shared parser for both OIDs
 });
 
 /* ------------------------------------------------------------------ */
-/* Regime 2 — pglite end-to-end round-trip                              */
+/* Regime 2 - pglite end-to-end round-trip                              */
 /* ------------------------------------------------------------------ */
 
 let db: PGlite;

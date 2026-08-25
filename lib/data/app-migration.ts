@@ -43,7 +43,7 @@ async function runMigration(
   const service = await loadAppGraph(appId);
   if (!service) return;
   const fromServerId = service.migrateFromServerId;
-  if (!fromServerId) return; // no pending migration — the common case
+  if (!fromServerId) return; // no pending migration - the common case
   const toServerId = service.serverId;
   const slug = service.slug;
 
@@ -56,7 +56,7 @@ async function runMigration(
 
   emit("info", `Migrating data from the previous server…`);
 
-  // Enumerate the data volumes to copy from the OLD host's rendered stack — the OLD
+  // Enumerate the data volumes to copy from the OLD host's rendered stack - the OLD
   // host is where the DATA actually lives, so it is the source of truth for what to
   // copy.
   let volumeNames: string[] = [];
@@ -72,13 +72,13 @@ async function runMigration(
     volumeNames = appMoveVolumeNames(service, renderedYaml);
     assertSafeVolumeNames(slug, volumeNames);
   } catch (e) {
-    // Couldn't even enumerate — leave the old host intact, clear the marker, warn.
+    // Couldn't even enumerate - leave the old host intact, clear the marker, warn.
     await clearMigrationMarker(appId);
     emit(
       "warn",
       `Could not read the old server's stack to migrate data ` +
         `(${e instanceof Error ? e.message : String(e)}). The old server was left ` +
-        `intact — its data was not copied. Recover it manually if needed.`,
+        `intact - its data was not copied. Recover it manually if needed.`,
     );
     return;
   }
@@ -96,7 +96,7 @@ async function runMigration(
     return;
   }
 
-  // Quiesce both stacks. If either won't stop we abort BEFORE copying — a running
+  // Quiesce both stacks. If either won't stop we abort BEFORE copying - a running
   // source would give a torn copy, a running destination would race the untar.
   try {
     await stopStackOn(toServerId, slug);
@@ -109,7 +109,7 @@ async function runMigration(
       "warn",
       `Could not stop both stacks to migrate data safely ` +
         `(${e instanceof Error ? e.message : String(e)}). The old server was left ` +
-        `intact — its data was not copied.`,
+        `intact - its data was not copied.`,
     );
     return;
   }
@@ -128,14 +128,14 @@ async function runMigration(
       "error",
       `Failed to copy data to the new server ` +
         `(${e instanceof Error ? e.message : String(e)}). The old server was left ` +
-        `intact with its data — it was NOT torn down. To retry, move the app ` +
+        `intact with its data - it was NOT torn down. To retry, move the app ` +
         `back to the old server and then move it again once the issue is fixed, or ` +
         `recover the data manually.`,
     );
     return;
   }
 
-  // Copy succeeded — bring the new stack up on the migrated data.
+  // Copy succeeded - bring the new stack up on the migrated data.
   try {
     await startStackOn(toServerId, slug);
   } catch (e) {
@@ -158,7 +158,7 @@ async function runMigration(
   await destroyStackOn(fromServerId, slug).catch((e) => {
     teardownWarning =
       ` The old server's stack could not be torn down ` +
-      `(${e instanceof Error ? e.message : String(e)}) — remove it manually.`;
+      `(${e instanceof Error ? e.message : String(e)}) - remove it manually.`;
   });
 
   await clearMigrationMarker(appId);

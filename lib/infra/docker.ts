@@ -11,7 +11,7 @@ import {
 import type { IPty } from "node-pty";
 
 /**
- * Real Docker client. This module never fabricates data — if Docker is unavailable
+ * Real Docker client. This module never fabricates data, if Docker is unavailable
  * the calls reject.
  */
 
@@ -29,8 +29,8 @@ interface RunOpts {
   cwd?: string;
   /**
    * Resolve (instead of reject) when the process exits with a non-zero *exit
-   * code*. Spawn failures and timeouts — which produce no numeric exit code,
-   * meaning the process never ran — still reject.
+   * code*. Spawn failures and timeouts, which produce no numeric exit code,
+   * meaning the process never ran, still reject.
    */
   noThrow?: boolean;
 }
@@ -65,7 +65,7 @@ function run(bin: string, args: string[], opts: RunOpts): Promise<ExecResult> {
       (err, stdout, stderr) => {
         // A numeric `err.code` is a real process exit code. A non-numeric one
         // (ENOENT/EACCES) or a kill (timeout) means the process never produced
-        // an exit status — docker itself failed to run — and must always reject.
+        // an exit status, docker itself failed to run, and must always reject.
         const numericExit =
           err && typeof (err as { code?: unknown }).code === "number"
             ? ((err as { code: number }).code as number)
@@ -236,8 +236,8 @@ export async function containerLogs(
 }
 
 /**
- * Whether `docker exec` failed at the docker/OCI runtime level — the command never
- * ran inside the container — as opposed to the guest command running and exiting
+ * Whether `docker exec` failed at the docker/OCI runtime level - the command never
+ * ran inside the container - as opposed to the guest command running and exiting
  * non-zero.
  */
 const DOCKER_LEVEL_STDERR =
@@ -249,7 +249,7 @@ export function isDockerLevelStderr(stderr: string): boolean {
 
 export type ShellPlan =
   | { kind: "shell"; run: string[] } // argv prefix before the command, e.g. ["sh","-lc"]
-  | { kind: "raw" }; // no shell in image — caller's command is split into argv
+  | { kind: "raw" }; // no shell in image - caller's command is split into argv
 
 export interface ContainerExecResult extends ExecResult {
   /** True when no shell was found and the command ran as raw argv (no pipes/globbing). */
@@ -294,7 +294,7 @@ async function resolveShellPlan(
       });
     } catch {
       // Spawn failure / timeout / daemon unreachable: can't probe. Don't cache a
-      // result that may be transient — treat as raw for this attempt only.
+      // result that may be transient - treat as raw for this attempt only.
       return { kind: "raw" };
     }
     if (res.code === 0) {
@@ -302,7 +302,7 @@ async function resolveShellPlan(
       break;
     }
     // A docker-level error (container stopped/removed) fails every probe
-    // identically — bail without caching so a later restart re-probes.
+    // identically - bail without caching so a later restart re-probes.
     if (isDockerLevelStderr(res.stderr)) return { kind: "raw" };
   }
   shellCache.set(name, { plan, image, at: Date.now() });
@@ -319,7 +319,7 @@ export async function shellLabel(name: string, image: string): Promise<string> {
 /**
  * Split a command string into argv for raw (shell-less) exec. Honors single and
  * double quotes; performs NO expansion (no globbing, $VAR, pipes, redirects).
- * Intentionally minimal — this is not a shell emulator.
+ * Intentionally minimal - this is not a shell emulator.
  */
 export function splitArgv(s: string): string[] {
   const out: string[] = [];
@@ -352,7 +352,7 @@ export function splitArgv(s: string): string[] {
 
 /**
  * Run a command inside a container (real `docker exec`). Only docker-level
- * failures (spawn error, timeout, daemon unreachable — no numeric exit code)
+ * failures (spawn error, timeout, daemon unreachable - no numeric exit code)
  * reject.
  */
 export async function execInContainer(
@@ -518,7 +518,7 @@ export function followLogs(name: string, tail = 500): AttachHandle {
       child.on("close", cb);
       child.on("error", cb);
     },
-    // Logs are read-only — there is no stdin to write to.
+    // Logs are read-only - there is no stdin to write to.
     write() {},
     close() {
       if (closed) return;

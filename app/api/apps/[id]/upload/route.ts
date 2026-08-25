@@ -80,7 +80,7 @@ export async function POST(
 
   // Refuse to clobber an archive a build is still extracting: one deploy at a
   // time per project. The client surfaces this 409 message. Deployments are
-  // relational now — query the in-flight statuses directly.
+  // relational now - query the in-flight statuses directly.
   const inFlightRows = await getDb()
     .select({ id: deploymentsTable.id })
     .from(deploymentsTable)
@@ -93,7 +93,7 @@ export async function POST(
     .limit(1);
   if (inFlightRows.length > 0) {
     return Response.json(
-      { error: "A deploy is already running — wait for it to finish" },
+      { error: "A deploy is already running - wait for it to finish" },
       { status: 409 },
     );
   }
@@ -102,7 +102,7 @@ export async function POST(
   // can't see an upload that hasn't created its deployment yet).
   if (uploadsInFlight.has(appId)) {
     return Response.json(
-      { error: "An upload is already in progress — wait for it to finish" },
+      { error: "An upload is already in progress - wait for it to finish" },
       { status: 409 },
     );
   }
@@ -141,7 +141,7 @@ export async function POST(
       return Response.json({ error: "Empty archive" }, { status: 400 });
     }
 
-    // Commit the new pointer FIRST, then prune older upload dirs — the app never points
+    // Commit the new pointer FIRST, then prune older upload dirs - the app never points
     // at a deleted archive, and a rejected upload above leaves the previous one intact
     // (its subdir was pruned only on success here).
     try {
@@ -152,7 +152,7 @@ export async function POST(
     }
     await pruneUploads(appId, upload.id).catch(() => {});
 
-    // No deploy here — the archive is stored and the app points at it. The caller
+    // No deploy here - the archive is stored and the app points at it. The caller
     // deploys on demand (Save & Deploy), which is what lets the server be chosen before
     // the first build runs.
     return Response.json({

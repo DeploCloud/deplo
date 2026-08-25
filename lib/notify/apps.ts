@@ -11,7 +11,7 @@ import { dispatchAlert } from "./dispatch";
 import { shouldFire } from "./cooldown";
 
 /**
- * "This app keeps dying" — the signal `telemetrySaysRunning` has always computed
+ * "This app keeps dying" - the signal `telemetrySaysRunning` has always computed
  * and thrown away. Adding a ninth writer on a 30s clock would start a write-war
  * with the deploy pipeline for a fact the UI already displays correctly.
  */
@@ -26,7 +26,7 @@ const lastSeen = ((globalThis as Record<symbol, unknown>)[KEY] ??= new Map<
 const ALERTED_KEY = Symbol.for("deplo.notify.crashloop.alerted");
 /**
  * App ids we have actually raised a crash-loop alert for. Recovery is announced
- * ONLY for these — otherwise every healthy app in the fleet would report itself
+ * ONLY for these, otherwise every healthy app in the fleet would report itself
  * "running again" on the first reconcile after a restart.
  */
 const alerted = ((globalThis as Record<symbol, unknown>)[ALERTED_KEY] ??=
@@ -123,7 +123,7 @@ async function appRows(serverId: string, ids: string[]) {
     );
 }
 
-/** Test hook — the previous-pass maps outlive a single test file otherwise. */
+/** Test hook - the previous-pass maps outlive a single test file otherwise. */
 export function __resetAppHealth(): void {
   lastSeen.clear();
   alerted.clear();

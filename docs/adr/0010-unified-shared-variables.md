@@ -1,7 +1,7 @@
 # ADR-0010: Unified shared variables (one model, three sharing modes)
 
-- **Status**: Accepted — 2026-07-12. **Amended by [ADR-0012](0012-shared-variables-are-opt-in-per-app.md)**
-  (2026-07-16): §2's "in-scope vars auto-apply" is reversed — modes are now
+- **Status**: Accepted - 2026-07-12. **Amended by [ADR-0012](0012-shared-variables-are-opt-in-per-app.md)**
+  (2026-07-16): §2's "in-scope vars auto-apply" is reversed - modes are now
   availability scopes and only the per-app link injects; §4's precedence
   collapses accordingly.
 - **Amends**: the env-var scoping in [ADR-0008](0008-projects-own-environments-services-are-the-deployable-unit.md)
@@ -21,7 +21,7 @@ five tabs on `/variables` and a dedicated "Shared groups" button on every app:
 | Instance globals   | `instance_env_vars`                       | every app of every team (admin)       |
 
 Three of these are really "one variable, shared to several apps," modelled three
-different ways — confusing to use and to reason about. Product direction: collapse the
+different ways - confusing to use and to reason about. Product direction: collapse the
 surface to **App** and **Shared**, and give a shared variable a small, explicit sharing
 model matching Vercel / Railway / Cloudflare.
 
@@ -30,10 +30,10 @@ model matching Vercel / Railway / Cloudflare.
 1. **One individual `shared_env_vars` row = one shared variable** (not a group). It is
    owned by a team, carries a value + type, and reaches an app through any of **three
    non-exclusive sharing modes** plus a **per-app link**:
-   - **team-wide** (`team_wide` bool) — every app in the team;
-   - **environment** (`shared_env_var_environments`) — apps whose `apps.environment_id` ∈ the set;
-   - **project** (`shared_env_var_projects`, a whitelist) — apps whose `apps.project_id` ∈ the set;
-   - **per-app link** (`shared_env_var_apps`) — an explicit link attached from the app UI.
+   - **team-wide** (`team_wide` bool): every app in the team;
+   - **environment** (`shared_env_var_environments`): apps whose `apps.environment_id` ∈ the set;
+   - **project** (`shared_env_var_projects`, a whitelist): apps whose `apps.project_id` ∈ the set;
+   - **per-app link** (`shared_env_var_apps`): an explicit link attached from the app UI.
      At least one **mode** is required (enforced in the data layer). An orthogonal
      `shared_env_var_targets` (production/preview/development) gates the runtime, defaulting
      to all three.

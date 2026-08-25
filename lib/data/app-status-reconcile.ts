@@ -45,7 +45,7 @@ export async function reconcileAppStatusFromTelemetry(
   // `apps` and drop out of the UPDATE, so they need no special case here.
   const running: string[] = [];
   // `restarting` is the crash-loop signal `telemetrySaysRunning` has always
-  // computed and discarded. Collected here — where the frame already is — and
+  // computed and discarded. Collected here, where the frame already is, and
   // handed to the alerting side, which owns the hysteresis and writes nothing.
   const crashing: string[] = [];
   for (const [id, stats] of byProject) {

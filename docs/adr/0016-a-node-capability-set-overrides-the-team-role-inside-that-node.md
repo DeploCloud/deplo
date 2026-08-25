@@ -1,6 +1,6 @@
 # ADR-0016: A node capability set overrides the team role inside that node
 
-- **Status**: Accepted — 2026-08-03. Migrations `0064`, `0065`.
+- **Status**: Accepted - 2026-08-03. Migrations `0064`, `0065`.
 - **Amends**: the module contract of `lib/data/folder-access.ts` (which said a
   grant is "NEVER more than the grantee holds at the team level", so "revoking a
   team capability silently revokes it everywhere per-folder"), the **Membership**
@@ -12,20 +12,20 @@
 
 deplo gates forty fine-grained capabilities, and until now a person's set in a
 team came from exactly one place: the role on their membership. The only per-node
-dimension was `folder_grants`, and it could not GIVE anything — every read of it
+dimension was `folder_grants`, and it could not GIVE anything - every read of it
 was intersected live with the grantee's team capabilities, so a grant could only
 ever narrow.
 
 That makes the most ordinary team request unexpressible. "Marta runs Prod, and
 nothing else" has to be built out of two moves: give her `manage_env` **team-wide**,
 then hope no folder grant elsewhere lets her use it. The clamp does not prevent
-the over-grant — it _forces_ it. A model whose safe path is "widen the role first"
+the over-grant - it _forces_ it. A model whose safe path is "widen the role first"
 is upside down, and it is the opposite of what the fine-grained split was for.
 
 The second half of the problem is administrative. Roles and per-team capabilities
 are editable only from inside the team, by someone who holds `manage_members`
 there. An instance admin looking at one person's account has no place to see, let
-alone change, what that person can reach across the instance — the honest answer
+alone change, what that person can reach across the instance - the honest answer
 to "who can touch Prod?" was "ask whoever runs each team", which the mission
 explicitly rules out.
 
@@ -36,14 +36,14 @@ explicitly rules out.
 
        app grant → nearest ancestor folder → further ancestors → project → membership
 
-   The first rung that says anything wins outright — a union would make "they can
+   The first rung that says anything wins outright - a union would make "they can
    deploy everywhere except here" impossible, which is half the point. `view` is
    implied at every rung, so an empty result always means "no access" and never
    "read-only".
 
 2. **The live clamp becomes membership EXISTENCE, not membership capabilities.**
    Removing someone from the team, suspending them, or an unmet 2FA policy still
-   revokes everything, everywhere, live — every path goes through `membershipFor`
+   revokes everything, everywhere, live - every path goes through `membershipFor`
    first. Revoking a single _capability_ no longer revokes it everywhere; the
    answer to "take their access away" is "remove them", and the UI says so.
 
@@ -55,7 +55,7 @@ explicitly rules out.
    re-share (`requireFolderOwnerOrAdmin`).
 
 4. **Reachability is unchanged.** A Folder stays private to its owner and its
-   grantees — an empty capability set is still the folder-not-visible signal. A
+   grantees - an empty capability set is still the folder-not-visible signal. A
    Project and an App have no privacy story today (every member sees every app),
    and they do not acquire one: a grant on either is a capability override and
    nothing more. The one widening is that a folder grant now reaches the whole
@@ -85,7 +85,7 @@ explicitly rules out.
 8. **The token intersection is preserved AT THE NODE.** A node grant replaces the
    membership set and so never passes through `membershipFor`'s own clamp;
    `lib/data/node-access.ts` therefore ends with `clampCapabilitiesToToken`.
-   Without that one line a scoped CI token would inherit its creator's grants —
+   Without that one line a scoped CI token would inherit its creator's grants -
    the exact impersonation ADR-0015 removed. `lib/data/node-access-token.test.ts`
    is what keeps it honest.
 
@@ -103,7 +103,7 @@ explicitly rules out.
   live answer does. It is the one genuine widening in this change and worth an
   upgrade note.
 - The Share dialog shows the set that was granted rather than a silently narrowed
-  copy of it — previously it could report less than it had just saved.
+  copy of it - previously it could report less than it had just saved.
 - `ctx.capabilities` in `lib/graphql/context.ts` becomes the union of the role's
   set and every capability reachable through a node grant in the active team. It
   was always documented as "a convenience snapshot, not the security boundary";
@@ -114,5 +114,5 @@ explicitly rules out.
 - `lib/data/folder-access-integration.test.ts` had a test asserting the old clamp.
   It is inverted rather than deleted, so the reversal is recorded where someone
   reading the suite will find it.
-- `project_grants` — in the schema since the Project container landed, never read
-  or written — becomes live, and `app_grants` joins it (migration `0065`).
+- `project_grants`: in the schema since the Project container landed, never read
+  or written - becomes live, and `app_grants` joins it (migration `0065`).

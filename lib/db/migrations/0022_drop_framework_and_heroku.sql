@@ -8,7 +8,7 @@
 -- framework's default language version, so NON-Node services stored a
 -- Python/Go/Rust/PHP version (e.g. "3.12", "1.22"). Node is the only pinnable
 -- runtime now, and the build path labels every stored runtime_version as "node"
--- (NIXPACKS_NODE_VERSION / RAILPACK_NODE_VERSION) — so a surviving non-Node value
+-- (NIXPACKS_NODE_VERSION / RAILPACK_NODE_VERSION), so a surviving non-Node value
 -- would be mis-read as a Node major (majorVersion("3.12") = "3" ⇒ node:3, a
 -- broken build). Clear those rows here, WHILE the framework column still exists,
 -- so redeploys fall back to auto-detection. Guarded + IF EXISTS so re-running on

@@ -63,7 +63,7 @@ export function normalizeBuildConfig(build: BuildConfig): BuildConfig {
       : build;
 
   // The Heroku/Paketo buildpack methods were removed; remap legacy rows to
-  // Nixpacks (the surviving auto-detecting builder — the closest equivalent) so
+  // Nixpacks (the surviving auto-detecting builder - the closest equivalent) so
   // those apps keep deploying and the settings UI shows a selected method.
   const legacyMethod = normalized.buildMethod as string;
   if (legacyMethod === "heroku" || legacyMethod === "paketo") {

@@ -140,7 +140,7 @@ test("an unprovisioned server returns a `provisioning` report without dialing", 
 
 test("a trust-revoked server (empty-string fingerprint) is fenced exactly like an unprovisioned one", async () => {
   // removeServer revokes trust by writing "" (not NULL). Dialing such a row would make
-  // resolveTarget throw from a pure DB read — reported as "the agent did not answer", which
+  // resolveTarget throw from a pure DB read - reported as "the agent did not answer", which
   // is a lie: we never asked.
   await seedServerRow(db, {
     id: "srv_revoked",
@@ -157,7 +157,7 @@ test("a trust-revoked server (empty-string fingerprint) is fenced exactly like a
   );
 });
 
-test("a readiness check WRITES NOTHING — status, its timestamps and the heartbeat are untouched", async () => {
+test("a readiness check WRITES NOTHING - status, its timestamps and the heartbeat are untouched", async () => {
   // The load-bearing invariant. Readiness is a DIAGNOSTIC the operator opens *because*
   // something looks wrong; it must not be able to perturb what the page is telling them.
   // `servers.status` stays the health prober's alone.
@@ -191,7 +191,7 @@ test("a readiness check WRITES NOTHING — status, its timestamps and the heartb
 });
 
 test("grantedTeamCount comes from the real server_teams rows", async () => {
-  // A restricted server with zero grants can never receive a deployment, so it FAILS — and a
+  // A restricted server with zero grants can never receive a deployment, so it FAILS, and a
   // fail outranks `provisioning`, even on a server whose agent has not called home yet.
   await seedServerRow(db, {
     id: "srv_locked",

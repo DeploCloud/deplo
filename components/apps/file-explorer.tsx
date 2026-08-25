@@ -206,7 +206,7 @@ export function FileExplorer({ appId }: { appId: string }) {
     const path = joinPath(dir, name);
     const kind = creating === "folder" ? "dir" : "file";
     // The entry appears in the listing NOW, the form closes with it, and the
-    // agent's answer only decides the toast — `loadDir` settles the real
+    // agent's answer only decides the toast - `loadDir` settles the real
     // listing (size, modified time, or the entry going away again) either way.
     setEntries((prev) => [
       ...prev,

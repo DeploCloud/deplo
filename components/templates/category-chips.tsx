@@ -18,7 +18,7 @@ export interface ChipCategory {
   count: number;
 }
 
-/** `gap-2`, in pixels — the fit arithmetic has to know the gap it is spending. */
+/** `gap-2`, in pixels - the fit arithmetic has to know the gap it is spending. */
 const GAP = 8;
 /** Tailwind's `sm`. Below it the row scrolls and nothing is hidden. */
 const DESKTOP = 640;
@@ -43,7 +43,7 @@ export function CategoryChips({
   const rowRef = React.useRef<HTMLDivElement>(null);
   const moreRef = React.useRef<HTMLButtonElement>(null);
   // Measured once, while every chip is still in the DOM, and reused after the
-  // row has been trimmed — a hidden chip can no longer report its own width.
+  // row has been trimmed - a hidden chip can no longer report its own width.
   const widths = React.useRef<number[] | null>(null);
   // null = show everything (the first paint, and every phone).
   const [fits, setFits] = React.useState<number | null>(null);
@@ -64,7 +64,7 @@ export function CategoryChips({
       return;
     }
 
-    // The All chip is not optional — it is how you clear the filter — so the
+    // The All chip is not optional, it is how you clear the filter, so the
     // budget starts after it.
     const allChip = row.querySelector<HTMLElement>("[data-all-chip]");
     const budget =

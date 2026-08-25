@@ -12,7 +12,7 @@ const serverKeys = (...keys: string[]) => keys;
 
 test("a hidden key survives while the server still serves it", () => {
   const removed = new Set(["standalone:a"]);
-  // The refresh has not landed yet — the row is still in the RSC payload.
+  // The refresh has not landed yet - the row is still in the RSC payload.
   const kept = retainRemoved(
     removed,
     serverKeys("standalone:a", "standalone:b"),
@@ -20,7 +20,7 @@ test("a hidden key survives while the server still serves it", () => {
   assert.equal(
     kept,
     removed,
-    "must return the SAME set — a new one re-renders forever",
+    "must return the SAME set - a new one re-renders forever",
   );
 });
 
@@ -95,7 +95,7 @@ test("a child's key is matched against the id its row hides", () => {
   );
 });
 
-test("hiding every row leaves an empty list — the table's empty state", () => {
+test("hiding every row leaves an empty list - the table's empty state", () => {
   const rows = [{ id: "a" }, { id: "b" }];
   assert.deepEqual(
     withoutRemoved(rows, new Set(["a", "b"]), (r) => r.id),

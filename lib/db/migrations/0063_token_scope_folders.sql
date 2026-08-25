@@ -1,6 +1,6 @@
 -- Folders join the token scope tree.
 --
--- 0062 made the scope a tree of teams, projects and apps — and left out the level
+-- 0062 made the scope a tree of teams, projects and apps, and left out the level
 -- most apps actually live in. Filing an app into a Folder CLEARS its own
 -- `project_id` (see `resolveNewAppPlacement`), so on any real instance the
 -- picker showed nearly every app under "Apps outside a project", which is both
@@ -12,7 +12,7 @@
 -- authentication time rather than stored, so moving or nesting a folder takes
 -- effect immediately and nothing has to be re-materialized.
 --
--- Ticking a PROJECT keeps covering everything filed under it, folders included —
+-- Ticking a PROJECT keeps covering everything filed under it, folders included -
 -- that expansion is resolved the same way, by walking each folder's parent chain
 -- to its project.
 CREATE TABLE "api_token_folders" (

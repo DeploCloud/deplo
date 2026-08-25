@@ -115,7 +115,7 @@ async function main() {
 
   // Dial through the real connectAgent by inserting a Server row directly into the
   // relational `servers` table (servers are relational as of cut-set (e); the JSONB
-  // store + its `mutate()` are gone — Step 6 cutover).
+  // store + its `mutate()` are gone - Step 6 cutover).
   const { getDb } = await import("../lib/db/client");
   const { servers: serversTable } =
     await import("../lib/db/schema/control-plane");
@@ -278,7 +278,7 @@ async function main() {
 
   // ---- 6. ---- Start a second deploy, abandon the Deploy stream after the first
   // event (as if the control plane crashed mid-build), then reattach from the cursor
-  // and follow it to completion — the build kept going on the agent's background ctx.
+  // and follow it to completion - the build kept going on the agent's background ctx.
   await sh("docker", ["rm", "-f", NAME]);
   const DEPLOY_ID_2 = "dpl_e2e_partb_2";
   console.log("== mid-flight: start deploy, drop after 1 event, reattach ==");

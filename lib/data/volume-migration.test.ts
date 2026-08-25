@@ -194,3 +194,27 @@ test("a destination that refuses is surfaced, not swallowed", async () => {
     /no space left on device/,
   );
 });
+
+test("a volume that is not on that host is told apart from an empty one", async () => {
+  const conn = {
+    async *exportVolume(name: string) {
+      if (name === "gone")
+        throw Object.assign(new Error(`5 NOT_FOUND: no such volume: ${name}`), {
+          code: 5,
+        });
+      yield EMPTY;
+    },
+  } as unknown as AgentConnection;
+  const to = dest();
+
+  const absent = await copyVolumeBetween(conn, to.conn, "gone", "target");
+  // Nothing to copy either way, but only one of the two means "this workload
+  // never ran here" - and the callers that tear the SOURCE down read that flag.
+  assert.equal(absent.empty, true);
+  assert.equal(absent.missing, true);
+
+  const empty = await copyVolumeBetween(conn, to.conn, "there", "target");
+  assert.equal(empty.empty, true);
+  assert.equal(empty.missing, undefined);
+  assert.deepEqual(to.calls, [], "neither one may wipe the destination");
+});

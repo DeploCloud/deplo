@@ -5,8 +5,8 @@
  * `compose-stack.ts`): it joins the exposed service to the external `deplo`
  * network, adds Traefik routing labels (leaving published `ports:` intact), and
  * strips `container_name`. The linter's job is to catch the
- * mistakes that break that pipeline — and the everyday compose mistakes users
- * make — BEFORE they hit save, with a line number for each.
+ * mistakes that break that pipeline, and the everyday compose mistakes users
+ * make - BEFORE they hit save, with a line number for each.
  *
  * It runs in the browser (no `server-only`, only `js-yaml`, which is already a
  * dependency). The server still validates authoritatively at deploy time; this
@@ -50,7 +50,7 @@ function markOf(e: unknown): YamlMark | null {
  * Returns 1 when not found (so a marker still appears somewhere sane).
  */
 function lineOfAppKey(lines: string[], service: string): number {
-  // App keys are indented under `services:` — typically 2 spaces. Match a
+  // App keys are indented under `services:` - typically 2 spaces. Match a
   // line like `  app:` allowing any leading indentation of 1+ spaces.
   const re = new RegExp(`^\\s+${escapeRe(service)}\\s*:\\s*(?:#.*)?$`);
   for (let i = 0; i < lines.length; i++) {
@@ -133,7 +133,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
   } catch (e) {
     const mark = markOf(e);
     const message = e instanceof Error ? e.message.split("\n")[0] : String(e);
-    // A tab in the indentation is the most common cryptic YAML failure — give a
+    // A tab in the indentation is the most common cryptic YAML failure - give a
     // direct fix instead of js-yaml's raw "bad indentation" wording.
     const isTab =
       /tab/i.test(message) ||
@@ -143,7 +143,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
         severity: "error",
         rule: isTab ? "indentation-tabs" : "yaml-parse",
         message: isTab
-          ? "YAML doesn't allow tabs for indentation — use spaces."
+          ? "YAML doesn't allow tabs for indentation - use spaces."
           : `Invalid YAML: ${message}`,
         line: mark ? mark.line + 1 : 1,
         column: mark ? mark.column + 1 : undefined,
@@ -272,13 +272,13 @@ export function lintCompose(source: string): LintDiagnostic[] {
         diags.push({
           severity: "warning",
           rule: "image-untagged",
-          message: `\`${name}\` pins no image tag, so it defaults to \`:latest\` — non-reproducible. Pin a version.`,
+          message: `\`${name}\` pins no image tag, so it defaults to \`:latest\` - non-reproducible. Pin a version.`,
           line: lineOfServiceField(lines, svcLine, "image"),
         });
       }
     }
 
-    // ports must be a list, not a scalar — the single most common mistake.
+    // ports must be a list, not a scalar - the single most common mistake.
     if ("ports" in svc) {
       const ports = svc.ports;
       const portsLine = lineOfServiceField(lines, svcLine, "ports");
@@ -307,11 +307,11 @@ export function lintCompose(source: string): LintDiagnostic[] {
     checkListOrMap(svc, "environment", name, svcLine, lines, diags);
     // volumes: list
     checkList(svc, "volumes", name, svcLine, lines, diags);
-    // networks: list or mapping. Load-bearing — Deplo's appNetworks() reads
+    // networks: list or mapping. Load-bearing - Deplo's appNetworks() reads
     // this and a malformed value silently drops the service's real networks when
     // it attaches the `deplo` network.
     checkListOrMap(svc, "networks", name, svcLine, lines, diags);
-    // labels: list or mapping. Load-bearing — mergeLabels() only handles those
+    // labels: list or mapping. Load-bearing - mergeLabels() only handles those
     // two shapes; a scalar means Deplo's Traefik routing + tracking labels are
     // merged onto a broken base and the service loses routing/discovery.
     checkListOrMap(svc, "labels", name, svcLine, lines, diags);
@@ -355,7 +355,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
           diags.push({
             severity: "info",
             rule: "bind-mount-files-note",
-            message: `\`${name}\` mounts \`${src}\` — Deplo rewrites this to your project's isolated files directory at deploy time.`,
+            message: `\`${name}\` mounts \`${src}\` - Deplo rewrites this to your project's isolated files directory at deploy time.`,
             line: volLine,
           });
         } else if (isEscapingSource(src)) {
@@ -369,7 +369,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
           diags.push({
             severity: "warning",
             rule: "bind-mount-absolute",
-            message: `\`${name}\` bind-mounts host path \`${src}\` — it must exist on the deploy host and isn't isolated per project. Prefer a Volume (storage deplo creates and keeps).`,
+            message: `\`${name}\` bind-mounts host path \`${src}\` - it must exist on the deploy host and isn't isolated per project. Prefer a Volume (storage deplo creates and keeps).`,
             line: volLine,
           });
         }
@@ -395,7 +395,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
 
     // --- Platform-specific (how Deplo will transform this) ---
 
-    // container_name is stripped — let the user know it won't take effect.
+    // container_name is stripped - let the user know it won't take effect.
     if ("container_name" in svc) {
       diags.push({
         severity: "info",
@@ -421,7 +421,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
       diags.push({
         severity: "warning",
         rule: "network-mode-conflict",
-        message: `\`${name}\` sets both \`network_mode\` and \`networks\` — Compose forbids combining them, and Deplo needs \`networks\` to attach the \`deplo\` network.`,
+        message: `\`${name}\` sets both \`network_mode\` and \`networks\` - Compose forbids combining them, and Deplo needs \`networks\` to attach the \`deplo\` network.`,
         line: lineOfServiceField(lines, svcLine, "network_mode"),
       });
     }
@@ -441,7 +441,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
   }
 
   // Top-level volumes that point somewhere this app does not own. Same gate as
-  // a host bind, so the message names the same permission — and it is a warning
+  // a host bind, so the message names the same permission, and it is a warning
   // rather than an error because it IS a legitimate operator action, just not a
   // team-level one.
   const topLevelVolumes =
@@ -460,7 +460,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
   }
 
   // Top-level `secrets:`/`configs:` sourced from a host `file:` read that file
-  // into the container — same host-file access as a service `env_file`, gated on
+  // into the container - same host-file access as a service `env_file`, gated on
   // the same permission.
   for (const block of ["secrets", "configs"] as const) {
     const raw = doc[block];
@@ -490,7 +490,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
     });
   }
   // Joining a network this app doesn't own reaches another stack's private
-  // services (and can claim a DNS name there) — same permission as a host bind.
+  // services (and can claim a DNS name there) - same permission as a host bind.
   if (composeJoinsForeignNetwork(source)) {
     diags.push({
       severity: "warning",
@@ -578,7 +578,7 @@ export function volumeSource(v: unknown): string | null {
 }
 
 /** The app-files `./<x>` convention is rewritten to the project's isolated
- * files directory at deploy time — NOT a host bind mount the user picked a path
+ * files directory at deploy time, NOT a host bind mount the user picked a path
  * for. Matches `./x`, `./folder/`, bare `.`/`./`; explicitly NOT `../` (escape). */
 export function isFilesConventionSource(src: string): boolean {
   return /^\.(?:\/|$)/.test(src) && !isEscapingSource(src);
@@ -595,7 +595,7 @@ export function isEscapingSource(src: string | null | undefined): boolean {
 }
 
 /**
- * True if a single compose volume entry bind-mounts a real HOST path — an
+ * True if a single compose volume entry bind-mounts a real HOST path - an
  * absolute source, OR a `..`-escaping source, that is NOT the project-isolated
  * `./...` convention. Shared by the editor lint (warning) and the server-side
  * permission gate so the two never disagree about what counts as a host mount.
@@ -713,7 +713,7 @@ function volumeTarget(v: unknown): { mountPath: string; readOnly: boolean } {
 /**
  * The DNS names Deplo's own infrastructure answers to on the shared `deplo`
  * network. A container joining that network registers its SERVICE NAME as an
- * alias there, and Docker round-robins a name two containers both claim — so a
+ * alias there, and Docker round-robins a name two containers both claim, so a
  * stack with one of these on that network takes over traffic meant for the
  * platform:
  *
@@ -741,7 +741,7 @@ const SHARED_NETWORK = "deplo";
 
 /**
  * Every top-level network KEY in this compose that resolves to the shared
- * network — which is not only the key `deplo`.
+ * network, which is not only the key `deplo`.
  *
  * Compose lets a network be referenced under any key while pointing at another
  * network by `name:`, so
@@ -827,7 +827,7 @@ export function composeClaimsReservedName(composeYaml: string): string | null {
 /** The message both checks use, so the editor and the deploy say the same thing. */
 export function reservedNameMessage(service: string): string {
   return (
-    `The service \`${service}\` can't be on Deplo's shared network under that name — ` +
+    `The service \`${service}\` can't be on Deplo's shared network under that name - ` +
     `it is the name the platform itself answers to there, and two containers ` +
     `claiming one name split the traffic between them. Rename the service, or ` +
     `take it off the \`deplo\` network.`
@@ -836,7 +836,7 @@ export function reservedNameMessage(service: string): string {
 
 /**
  * Whether a TOP-LEVEL `volumes:` entry points at storage Deplo did not create
- * for this app — the other half of the host-volume permission, and the half no
+ * for this app - the other half of the host-volume permission, and the half no
  * check used to look at.
  *
  * `composeHasHostBindMount` reads the SERVICE mount list and calls a source a
@@ -883,7 +883,7 @@ function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
  * Top-level `secrets:`/`configs:` keys whose source is a host FILE (`file: …`).
  * Docker mounts that file into the container (at `/run/secrets|configs/<key>`);
  * the path resolves against the SHARED stack directory on the host, so even a
- * relative name reaches another tenant's rendered env-file — the same host-file
+ * relative name reaches another tenant's rendered env-file - the same host-file
  * read as a service `env_file`, one level up. Gated the same way. An
  * `environment:`-sourced secret carries no host path and is left alone.
  */
@@ -902,7 +902,7 @@ function fileSourcedKeys(entries: Record<string, unknown>): string[] {
  * that is neither `external:` nor pinned to a `name:` of its own, so compose
  * creates it as `<project>_<key>` and it belongs to this app alone.
  *
- * Used by the teardown to name what a `down -v` cannot reach — a stack that was
+ * Used by the teardown to name what a `down -v` cannot reach - a stack that was
  * never deployed has no compose file on the host, so `down` has nothing to read
  * and the volumes an import already filled would survive the app that owned
  * them. A volume the user pointed elsewhere is deliberately NOT in this list:
@@ -920,7 +920,7 @@ export function composeOwnVolumeKeys(composeYaml: string): string[] {
     return [];
   return Object.entries(declared as Record<string, unknown>)
     .filter(([, v]) => {
-      if (v == null) return true; // `vol:` with no body — compose creates it
+      if (v == null) return true; // `vol:` with no body - compose creates it
       if (typeof v !== "object") return false;
       const spec = v as { external?: unknown; name?: unknown };
       return !spec.external && typeof spec.name !== "string";
@@ -962,7 +962,7 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
 
 /**
  * Top-level network KEYS this compose points at a network Deplo did not create
- * for this app — the network twin of {@link foreignVolumeKeys}, and the half no
+ * for this app - the network twin of {@link foreignVolumeKeys}, and the half no
  * check used to look at.
  *
  * A network is "foreign" on exactly the markers a volume is: `external: true`
@@ -970,14 +970,14 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
  * thing spelled differently), or `driver_opts` / a host-reaching `driver`
  * (`macvlan`/`ipvlan` put the container on the host's own L2 segment). Compose
  * project names are deterministic (`deplo-<slug>`), so another team's default
- * network is `deplo-<their-slug>_default` — guessable from any app name.
+ * network is `deplo-<their-slug>_default` - guessable from any app name.
  *
  * Joining it is worse than reading their storage:
  *
  *  - every unpublished service of that stack becomes reachable at L3 (their
  *    database, their redis, their internal HTTP), and
  *  - a container on a network registers its SERVICE NAME as a DNS alias there,
- *    and Docker round-robins a name two containers both claim — so a service
+ *    and Docker round-robins a name two containers both claim, so a service
  *    called `postgres` or `redis` collects the victim's own internal lookups,
  *    password and all. The shared-network protections (`aliases:` drop,
  *    RESERVED_SHARED_NETWORK_NAMES) only fire for the `deplo` network, and
@@ -1023,7 +1023,7 @@ function foreignNetworkKeys(networks: Record<string, unknown>): string[] {
 
 /**
  * Parse a compose YAML string and report whether ANY service joins a network this
- * app does not own (see {@link foreignNetworkKeys}) — another team's stack
+ * app does not own (see {@link foreignNetworkKeys}) - another team's stack
  * network, or the host's L2 segment. Gated server-side behind
  * `canMountHostVolumes`, beside its storage sibling: both are a container
  * reaching past its own boundary, and a permission that stops one while allowing
@@ -1064,11 +1064,11 @@ export function composeJoinsForeignNetwork(composeYaml: string): boolean {
 
 /**
  * Parse a compose YAML string and report whether any service's `build:` reaches
- * a host path the app does not own — an absolute or `..`-escaping build
+ * a host path the app does not own - an absolute or `..`-escaping build
  * `context`/`dockerfile`, an `additional_contexts` source that does the same, an
  * `ssh:` key (loads host SSH keys/agents into the build), or `privileged: true`
  * (a privileged BuildKit build runs on the host). Each bakes host bytes into the
- * image the tenant then runs, or escapes at build time — the same host reach a
+ * image the tenant then runs, or escapes at build time - the same host reach a
  * bind mount has, so the same `canMountHostVolumes` grant. A project-relative
  * `./`-context (the normal case, rewritten to the isolated files dir) stays free.
  *
@@ -1120,12 +1120,12 @@ export function composeBuildReachesHost(composeYaml: string): boolean {
  * detectors cannot see, or null. `docker compose` resolves these on the host, so
  * the dangerous keys they pull in (`privileged`, host binds, published ports,
  * even `traefik.*` labels via `label_file`, past {@link buildComposeStack}'s
- * label strip) never appear in the authored YAML the gate — or a deploy-time
- * re-lint of it — parses. They cannot be denylisted key-by-key, so deplo refuses
+ * label strip) never appear in the authored YAML the gate, or a deploy-time
+ * re-lint of it - parses. They cannot be denylisted key-by-key, so deplo refuses
  * them: it owns the render, and an author who needs the merged config inlines it.
  *
  *  - a service `extends:` with a `file:` (a same-file `extends: {service: x}` is
- *    fine — x's own keys ARE linted);
+ *    fine - x's own keys ARE linted);
  *  - a top-level `include:` (pulls whole other compose files);
  *  - a service `label_file:` (loads labels from a file, past the traefik strip).
  */
@@ -1170,7 +1170,7 @@ export function composeUsesExternalMerge(composeYaml: string): string | null {
 export function externalMergeMessage(key: string): string {
   return (
     `\`${key}\` merges configuration from another file, which Deplo can't inspect ` +
-    `before it deploys — it could pull in host access or another team's hostname ` +
+    `before it deploys - it could pull in host access or another team's hostname ` +
     `past the checks here. Inline what you need into this compose file instead.`
   );
 }
@@ -1189,17 +1189,17 @@ export function externalMergeMessage(key: string): string {
  * bind arbitrary host ports and reach `127.0.0.1` host services (the control
  * plane, other stacks' internal ports), so it reaches past its own boundary like
  * the rest. `network_mode: container:<name>` joins another container's namespace
- * the same way. It ALSO costs the container its Traefik routing — the linter's
+ * the same way. It ALSO costs the container its Traefik routing - the linter's
  * separate `network-mode-host` warning still says so; both fire.
  *
  * `cgroup: host` shares the host's cgroup namespace (like `pid`/`ipc`).
  * `volumes_from: "container:<name>"` mounts ANOTHER container's volumes on the
- * same daemon — the reference is by container NAME, so it ignores the network
+ * same daemon - the reference is by container NAME, so it ignores the network
  * split and reaches another tenant's data (and the control-plane database volume
  * at rest); a bare service name is same-stack and left alone. `env_file` reads a
  * host file into the container's environment, and its paths resolve against the
  * SHARED stack directory on the host (`/data/stacks`), so even a relative name
- * reaches another tenant's rendered env-file — any non-empty value is gated. The
+ * reaches another tenant's rendered env-file - any non-empty value is gated. The
  * `file:`-sourced half of the top-level `secrets:`/`configs:` blocks is the same
  * host-file read one level up, handled in {@link composeMountsForeignStorage}.
  *
@@ -1207,7 +1207,7 @@ export function externalMergeMessage(key: string): string {
  * when NEGATIVE: it tells the kernel to kill the neighbours first.
  * `group_add` adds supplementary HOST groups inside the container, and `logging`
  * with a non-default driver/options makes DOCKERD dial an address or host socket
- * the author chose — both reach outside the container without naming a path.
+ * the author chose - both reach outside the container without naming a path.
  */
 const HOST_PRIVILEGE_KEYS = [
   "privileged",
@@ -1236,7 +1236,7 @@ const HOST_PRIVILEGE_KEYS = [
  * `label:disable`, a hand-written seccomp profile) removes a boundary.
  *
  * `no-new-privileges` is the one people actually write, and refusing it would
- * mean asking an admin for the host permission in order to HARDEN a container —
+ * mean asking an admin for the host permission in order to HARDEN a container -
  * a gate that punishes the right thing teaches people to skip it.
  *
  * `cap_drop` and `read_only` are not on the list at all, for the same reason.
@@ -1253,7 +1253,7 @@ const SAFE_SECURITY_OPTS = /^no-new-privileges\b/i;
  * `pid`/`ipc`/`uts`/`network_mode`/`cgroup` are namespace SELECTORS rather than
  * switches: `host` shares the host namespace, and `container:<name>`/
  * `service:<name>` join ANOTHER container's namespace on the same daemon (not
- * limited to this stack) — both escape, so both are flagged. An ordinary value (a
+ * limited to this stack) - both escape, so both are flagged. An ordinary value (a
  * bridge network name, a real hostname for uts, `cgroup: private`) is left alone.
  * `volumes_from` flags only the `container:<name>` form (a foreign container's
  * volumes); `env_file` flags any non-empty value (it reads a host file).
@@ -1265,7 +1265,7 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
     if (v == null) continue;
     if (key === "privileged" || key === "oom_kill_disable") {
       // `oom_kill_disable: true` means the kernel kills OTHER tenants' containers
-      // under memory pressure instead of this one — a cross-tenant availability
+      // under memory pressure instead of this one - a cross-tenant availability
       // hit, so it takes the same grant.
       if (v === true) out.push(key);
       continue;
@@ -1330,7 +1330,7 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
     }
     if (key === "volumes_from") {
       // Mounts another container's volumes. `container:<name>` names a container
-      // OUTSIDE this stack (another tenant's, or the platform's) — the escape;
+      // OUTSIDE this stack (another tenant's, or the platform's) - the escape;
       // a bare service name is same-stack and left alone.
       const list = Array.isArray(v) ? v : [v];
       if (
@@ -1375,8 +1375,8 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
 /**
  * Parse a compose YAML string and report whether ANY service asks for host
  * privileges (see {@link HOST_PRIVILEGE_KEYS}). Used server-side to gate compose
- * edits behind `canMountHostVolumes`, exactly like {@link composeHasHostBindMount}
- * — and for the same reason: both are a container reaching past its own boundary,
+ * edits behind `canMountHostVolumes`, exactly like {@link composeHasHostBindMount},
+ * and for the same reason: both are a container reaching past its own boundary,
  * and a permission that stops one while allowing the other stops nothing.
  *
  * Tolerant of malformed input, like its two siblings: the deploy-time parse is
@@ -1402,12 +1402,12 @@ export function composeNeedsHostPrivileges(composeYaml: string): boolean {
 }
 
 /**
- * Parse a compose YAML string and report whether ANY service publishes ports —
+ * Parse a compose YAML string and report whether ANY service publishes ports -
  * either host-published `ports:` (mapped onto the server's IP/port) or `expose:`
  * (advertised to other containers). Used server-side to gate compose edits
  * behind the `canExposePorts` grant. This is independent of Traefik routing:
  * giving a service a public DOMAIN does NOT publish a port and is never gated
- * here — only a `ports:`/`expose:` declaration in the compose itself is.
+ * here - only a `ports:`/`expose:` declaration in the compose itself is.
  *
  * Tolerant of malformed input: YAML it can't parse, or a doc with no services,
  * has no detectable published port (the deploy-time parse is authoritative). A

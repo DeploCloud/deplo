@@ -14,20 +14,20 @@ import { rerouteApp } from "@/lib/deploy/build";
 /* Object type                                                         */
 /* ------------------------------------------------------------------ */
 
-// The password is never a FIELD — the username, its authorship and its
+// The password is never a FIELD - the username, its authorship and its
 // timestamps are all that ride the object. Reading a password back is a separate,
 // deliberate `revealBasicAuthPassword` call for one credential (see below).
 const BasicAuthUserRef = builder
   .objectRef<BasicAuthUserDTO>("BasicAuthUser")
   .implement({
     description:
-      "An HTTP Basic Auth credential that gates every domain of an app. The password is never a field — read one back with revealBasicAuthPassword.",
+      "An HTTP Basic Auth credential that gates every domain of an app. The password is never a field - read one back with revealBasicAuthPassword.",
     fields: (t) => ({
       id: t.exposeID("id"),
       username: t.exposeString("username"),
       // Identity metadata, never a value. Null for credentials created before
       // authorship was tracked (migration 0045 does not backfill) or once the
-      // author's account is deleted — the UI renders "—".
+      // author's account is deleted - the UI renders "—".
       createdBy: t.field({
         type: VarAuthorRef,
         nullable: true,
@@ -74,7 +74,7 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "manage_basic_auth" },
     description:
       "Add a basic-auth user to an app. The login is required on every one of " +
-      "its domains within seconds — the routing is re-applied to the running " +
+      "its domains within seconds - the routing is re-applied to the running " +
       "container, no redeploy needed.",
     args: {
       appId: t.arg.string({ required: true }),
@@ -108,7 +108,7 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "manage_basic_auth" },
     description:
       "Reveal one credential's password. A basic-auth login is handed to a " +
-      "person, so whoever may change it may also read it back — otherwise the " +
+      "person, so whoever may change it may also read it back, otherwise the " +
       "only answer to “what is the password?” is to reset it and lock everyone " +
       "out. A mutation, not a query, so it is never cached or prefetched.",
     args: { id: t.arg.string({ required: true }) },

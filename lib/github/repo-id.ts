@@ -7,7 +7,7 @@ import type { GitRepo } from "../types";
 const OWNER_REPO = /^[\w.-]+\/[\w.-]+$/;
 
 /**
- * `owner/name` for a GitHub repo — the stored `repo.repo` when it already is one,
+ * `owner/name` for a GitHub repo - the stored `repo.repo` when it already is one,
  * else parsed out of a github.com URL.
  */
 export function githubFullName(

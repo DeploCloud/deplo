@@ -79,7 +79,7 @@ test("sections follow the project order given, whatever order the rows arrive in
   );
 
   // Drag "Internal Tools" above "Acme Shop" (the caller re-orders `projects`)
-  // and the sections follow — that IS the reorder.
+  // and the sections follow - that IS the reorder.
   const dragged = groupRowsByProject(
     [row("A", LOOSE), row("B", ADMIN), row("C", STOREFRONT)],
     [PROJECTS[1], PROJECTS[0]],
@@ -132,6 +132,6 @@ test("an unranked project sits after the ordered ones, before Standalone", () =>
   );
 });
 
-test("no rows means no sections — an empty card is never rendered", () => {
+test("no rows means no sections - an empty card is never rendered", () => {
   assert.deepEqual(groupRowsByProject([], PROJECTS), []);
 });

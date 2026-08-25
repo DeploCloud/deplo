@@ -994,7 +994,7 @@ test("mapDatabase keeps a non-canonical image and says so", () => {
   assert.equal(value?.customImage, "pgvector/pgvector:pg16");
   assert.equal(value?.version, "pg16");
   assert.match(notes.join(" "), /plain postgres/);
-  // A canonical image is pinned too, but silently — there is nothing to warn about.
+  // A canonical image is pinned too, but silently - there is nothing to warn about.
   assert.equal(
     mapDatabase("postgres", db()).notes.join(" ").includes("plain postgres"),
     false,

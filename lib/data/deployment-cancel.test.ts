@@ -30,7 +30,7 @@ import {
 } from "./deployments";
 
 /**
- * `cancelAllDeployments` against pglite — the "Stop all builds" bulk action.
+ * `cancelAllDeployments` against pglite - the "Stop all builds" bulk action.
  */
 
 let db: TestDb;
@@ -97,7 +97,7 @@ beforeEach(async () => {
   });
 });
 
-/** Ids currently in `canceled`, sorted — the terminal state cancel flips rows to. */
+/** Ids currently in `canceled`, sorted - the terminal state cancel flips rows to. */
 const canceledIds = async (): Promise<string[]> =>
   (
     await db
@@ -119,7 +119,7 @@ test("cancelAllDeployments(appId) stops queued/building, leaves finished", async
 });
 
 test("cancelAllDeployments() sweeps the whole team's in-progress builds", async () => {
-  // A second service with its own in-progress build — the team-wide sweep must
+  // A second service with its own in-progress build - the team-wide sweep must
   // reach it too, not just the first service.
   await seedDeployment(db, { id: "dep_q2", appId: SVC2, status: "queued" });
   const n = await as(OWNER, TEAM_A, () => cancelAllDeployments());
@@ -148,7 +148,7 @@ test("a caller can't cancel another team's builds (team isolation)", async () =>
   );
 });
 
-test("cancelAllDeployments(foreignAppId) throws — not this team's service", async () => {
+test("cancelAllDeployments(foreignAppId) throws, not this team's service", async () => {
   await assert.rejects(
     as(OWNER_B, TEAM_B, () => cancelAllDeployments(SVC)),
     /not found/i,
@@ -187,7 +187,7 @@ test("cancelAllDeployments(null, serverId) stops only that server's builds", asy
 });
 
 test("server filter matches the deployment's own server_id over the service's", async () => {
-  // SVC lives on SERVER_1, but THIS build ran on SERVER_2 (row server_id set) —
+  // SVC lives on SERVER_1, but THIS build ran on SERVER_2 (row server_id set) -
   // the effective-server coalesce must route it to the SERVER_2 sweep.
   await seedDeployment(db, {
     id: "dep_moved",
@@ -229,7 +229,7 @@ test("canceling a service's build settles the service off 'building'", async () 
 
 test("canceling one queued build leaves the service building while another is in progress", async () => {
   // SVC is building (dep_building) with dep_queued also in progress. Canceling
-  // ONLY the queued one must not settle the service — a build is still running.
+  // ONLY the queued one must not settle the service - a build is still running.
   await db
     .update(appsTable)
     .set({ status: "building" })
@@ -246,7 +246,7 @@ test("canceling one queued build leaves the service building while another is in
 test("canceling does not clobber a service that isn't building/queued", async () => {
   // SVC2 is running ("active") with a single stray queued build. Canceling it
   // leaves zero in-progress builds, but the status guard must still spare an
-  // active service — only building/queued ones settle to idle.
+  // active service - only building/queued ones settle to idle.
   await seedDeployment(db, {
     id: "dep_active_svc2",
     appId: SVC2,
@@ -275,7 +275,7 @@ const buildTimeOf = async (id: string): Promise<number | null> =>
 
 test("stopping a running build freezes the elapsed time as its build time", async () => {
   // A build claimed off the queue 30s ago. Stopping it must report what it
-  // actually cost — the number the page's live timer was showing — instead of
+  // actually cost, the number the page's live timer was showing, instead of
   // leaving "Build time" blank forever.
   await seedDeployment(db, {
     id: "dep_running",
@@ -291,7 +291,7 @@ test("stopping a running build freezes the elapsed time as its build time", asyn
   );
 });
 
-test("stopping a QUEUED build leaves its build time null — it never started", async () => {
+test("stopping a QUEUED build leaves its build time null - it never started", async () => {
   // dep_queued has no started_at: no build ran, so there is no duration to
   // claim. Inventing one (from created_at, say) would report a build that
   // never happened.

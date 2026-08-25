@@ -21,7 +21,7 @@ export interface OtpEdit {
 
 /**
  * Clamp an index to the reachable range. A box after the first empty one is not
- * a legal place to be — clicking box 5 of an empty field puts you in box 1.
+ * a legal place to be - clicking box 5 of an empty field puts you in box 1.
  */
 function reachable(value: string, index: number, length: number): number {
   return Math.max(0, Math.min(index, value.length, length - 1));

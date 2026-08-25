@@ -116,7 +116,7 @@ ensure_git
 #   2. NEVER clobber the operator's daemon.json: an existing pool setting wins.
 
 # Is the /13 at 10.<$1>.0.0 (second octets $1..$1+7) clear of every 10.x route on
-# this host? Pure awk — no python, jq or ipcalc required on the target.
+# this host? Pure awk - no python, jq or ipcalc required on the target.
 pool_candidate_is_free() {
   printf '%s\n' "$2" | awk -v start="$1" '
     BEGIN { end = start + 7; free = 1 }
@@ -144,7 +144,7 @@ configure_docker_address_pools() {
   SIZE=24
 
   if [ -f "$CFG" ] && grep -q '"default-address-pools"' "$CFG" 2>/dev/null; then
-    ok "Docker address pools already configured — leaving them untouched"
+    ok "Docker address pools already configured, leaving them untouched"
     return 0
   fi
 
@@ -157,7 +157,7 @@ configure_docker_address_pools() {
     fi
   done
   if [ -z "$BASE" ]; then
-    err "Every candidate address pool overlaps a route on this host — NOT touching Docker."
+    err "Every candidate address pool overlaps a route on this host, NOT touching Docker."
     err "This server is capped at ~31 apps until you set default-address-pools in $CFG yourself."
     return 0
   fi
@@ -172,14 +172,14 @@ cfg, base, size = sys.argv[1], sys.argv[2], int(sys.argv[3])
 with open(cfg) as f: d = json.load(f)
 d["default-address-pools"] = [{"base": base, "size": size}]
 sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP" 2>/dev/null || {
-      err "Could not parse $CFG as JSON — leaving it untouched."
+      err "Could not parse $CFG as JSON, leaving it untouched."
       err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
       rm -f "$TMP"; return 0
     }
   elif command -v jq >/dev/null 2>&1; then
     jq --arg b "$BASE" --argjson s "$SIZE" \
       '.["default-address-pools"] = [{base: $b, size: $s}]' "$CFG" > "$TMP" 2>/dev/null || {
-      err "Could not parse $CFG as JSON — leaving it untouched."
+      err "Could not parse $CFG as JSON, leaving it untouched."
       err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
       rm -f "$TMP"; return 0
     }
@@ -192,7 +192,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   # Never hand dockerd a config it will reject: it would fail to come back up.
   if command -v dockerd >/dev/null 2>&1 \
      && ! dockerd --validate --config-file="$TMP" >/dev/null 2>&1; then
-    err "The generated Docker config failed validation — leaving $CFG untouched."
+    err "The generated Docker config failed validation, leaving $CFG untouched."
     rm -f "$TMP"; return 0
   fi
 
@@ -222,11 +222,11 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   if docker info >/dev/null 2>&1; then
     ok "Docker address pool: $BASE, a /$SIZE per app (thousands of apps, not 31)"
   else
-    err "Docker did not come back after the address-pool change — rolling back."
+    err "Docker did not come back after the address-pool change - rolling back."
     if [ -f "$CFG.deplo-bak" ]; then mv "$CFG.deplo-bak" "$CFG"; else rm -f "$CFG"; fi
     systemctl restart docker >/dev/null 2>&1 || true
     if docker info >/dev/null 2>&1; then
-      err "Rolled back — Docker is up again, with the default ~31-network ceiling."
+      err "Rolled back - Docker is up again, with the default ~31-network ceiling."
     else
       err "Docker is STILL down. Inspect: journalctl -u docker -n 50"
     fi

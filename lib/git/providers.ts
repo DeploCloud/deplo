@@ -147,7 +147,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
  * (`assertSafeOutboundUrl` in lib/data/git-connections.ts). A 302 is the way out
  * of that check: the host passes as a public address and then answers every
  * subsequent call with `Location: http://169.254.169.254/…`, which this module
- * would dial and — worse than the usual blind case — hand back in `call`'s error
+ * would dial and, worse than the usual blind case, hand back in `call`'s error
  * message. `redirect: "manual"` closes it in one line, and is what
  * `lib/outbound-url.ts` documents every dialer as doing (the notification
  * channels already did).

@@ -28,7 +28,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
- * General settings for a database: its name and logo — its identity, so they share
+ * General settings for a database: its name and logo - its identity, so they share
  * one card, exactly like an App's General. The copy says so, because "will this
  * drop my database?"
  */
@@ -45,7 +45,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   const nameDirty = name.trim() !== savedName;
 
   function saveName() {
-    // Saved on the click — the field already shows the new name.
+    // Saved on the click - the field already shows the new name.
     const previous = savedName;
     const next = name.trim();
     setSavedName(next);
@@ -87,7 +87,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
     if (
       !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
     ) {
-      toast.error("Unsupported image — use PNG, JPEG, WebP, GIF or SVG");
+      toast.error("Unsupported image - use PNG, JPEG, WebP, GIF or SVG");
       return;
     }
     if (file.size > MAX_LOGO_BYTES) {
@@ -120,7 +120,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
           {/* Logo */}
           <div className="space-y-3">
             <FieldLabel
-              info={`Shown for this database on the dashboard. Defaults to the ${engine} logo — upload an image to use your own`}
+              info={`Shown for this database on the dashboard. Defaults to the ${engine} logo - upload an image to use your own`}
             >
               Logo
             </FieldLabel>
@@ -180,7 +180,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
             />
           </div>
 
-          {/* Name — saved with the button below; the logo saves on pick. */}
+          {/* Name - saved with the button below; the logo saves on pick. */}
           <div className="max-w-md space-y-2 border-t border-border pt-6">
             <Label htmlFor="db-name">Database name</Label>
             <Input
@@ -190,7 +190,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
             />
             <p className="text-xs text-muted-foreground">
               A label for the dashboard. The connection string keeps pointing at{" "}
-              <code className="font-mono">{db.host}</code> — renaming never
+              <code className="font-mono">{db.host}</code> - renaming never
               restarts the database or changes how apps reach it.
             </p>
           </div>

@@ -41,7 +41,7 @@ export interface SeedTeam {
   slug: string;
   /**
    * The team's founder (absolute owner / "crown"). Defaults to the first seeded
-   * `owner` user of the team — mirroring the backfill — so the existing
+   * `owner` user of the team, mirroring the backfill, so the existing
    * "owner is immutable" tests keep seeing USER_1 as TEAM_A's protected founder.
    */
   founderUserId?: string | null;
@@ -58,7 +58,7 @@ export interface SeedUser {
   capabilities?: Capability[];
   isInstanceAdmin?: boolean;
   suspended?: boolean;
-  /** Plaintext password — hashed on seed. Defaults to "password1". */
+  /** Plaintext password - hashed on seed. Defaults to "password1". */
   password?: string;
   email?: string;
 }
@@ -81,7 +81,7 @@ export const TRUNCATE_IDENTITY = `truncate table
 
 /**
  * Seed identity into the relational tables. Defaults to two teams (alpha/beta)
- * and one owner user in alpha — enough for "owner can mutate" + cross-team
+ * and one owner user in alpha - enough for "owner can mutate" + cross-team
  * isolation. Returns the seeded password (hashed in the DB) for login tests.
  */
 export async function seedIdentity(

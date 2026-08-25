@@ -1,6 +1,6 @@
 /**
  * The single source of truth for how Postgres timestamp columns are decoded into
- * JavaScript — shared by the production node-postgres client (`pg.ts`) and the
+ * JavaScript - shared by the production node-postgres client (`pg.ts`) and the
  * pglite test client so the two regimes can never drift (relational-store PLAN §1,
  * §8 GATE result 2026-06-24).
  */

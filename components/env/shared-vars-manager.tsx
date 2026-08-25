@@ -60,7 +60,7 @@ export function SharedVarsManager({
   environments,
 }: {
   vars: SharedVarDTO[];
-  /** Every app in the active team — the wizard's "specific apps" scope. */
+  /** Every app in the active team - the wizard's "specific apps" scope. */
   apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
@@ -82,7 +82,7 @@ export function SharedVarsManager({
   );
 
   // A deleted variable leaves the table on the click, instead of waiting out the
-  // mutation and then the `router.refresh()` behind it — the window in which a second
+  // mutation and then the `router.refresh()` behind it - the window in which a second
   // click on the same row earned a "Not found".
   const {
     visible: rows,
@@ -107,7 +107,7 @@ export function SharedVarsManager({
       label: "Shared with",
       allLabel: "Anyone it reaches",
       icon: Share2,
-      info: "How the variable is shared. A variable can use several modes at once — it then shows under each.",
+      info: "How the variable is shared. A variable can use several modes at once - it then shows under each.",
       options: [
         { value: "team", label: "The whole team" },
         { value: "project", label: "Projects" },
@@ -139,7 +139,7 @@ export function SharedVarsManager({
       label: "Project",
       allLabel: "All projects",
       icon: Boxes,
-      info: "Variables scoped to this project — as a whole, or through one of its environments. Team-wide variables reach it too: find those under “Shared with”.",
+      info: "Variables scoped to this project - as a whole, or through one of its environments. Team-wide variables reach it too: find those under “Shared with”.",
       options: projects
         .filter((p) => rows.some((v) => reachesProject(v, p.id)))
         .map((p) => ({ value: p.id, label: p.name })),
@@ -151,7 +151,7 @@ export function SharedVarsManager({
       label: "Environment",
       allLabel: "All environments",
       icon: Layers,
-      info: "Variables that reach this environment — picked directly, or through a scope on its whole project.",
+      info: "Variables that reach this environment - picked directly, or through a scope on its whole project.",
       options: environments
         .filter((e) => rows.some((v) => reachesEnvironment(v, e.id)))
         // Every project has a "Production": the project name is what tells two
@@ -208,7 +208,7 @@ export function SharedVarsManager({
           <h3 className="text-sm font-medium">Shared variables</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Define a variable once and make it available to the whole team, to
-            projects, or add it to single apps. Apps opt in — a shared variable
+            projects, or add it to single apps. Apps opt in - a shared variable
             is never added to an app automatically.
           </p>
         </div>

@@ -43,7 +43,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className="toaster group"
       style={TOAST_VARS}
       toastOptions={{
-        // Shape only — the per-type colours come from richColors + TOAST_VARS,
+        // Shape only - the per-type colours come from richColors + TOAST_VARS,
         // so this must NOT pin a background/text colour or it would flatten them.
         classNames: {
           toast:

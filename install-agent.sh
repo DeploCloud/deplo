@@ -4,10 +4,10 @@
 # it into a Deplo server: installs Docker (if absent) + the `deplo-agent` binary,
 # writes a systemd unit, and starts the agent in BOOTSTRAP mode. The agent then
 # generates its own key, sends a CSR to the control plane, gets a signed cert,
-# and starts serving — at which point the server flips to "online" in the
+# and starts serving - at which point the server flips to "online" in the
 # dashboard. The control plane NEVER SSHes into this box; the agent connects out.
 #
-# You do not run this by hand from memory — the dashboard's "Add remote server"
+# You do not run this by hand from memory - the dashboard's "Add remote server"
 # gives you the exact command, already filled in:
 #
 #   curl -fsSL https://<deplo>/install-agent.sh | sudo bash -s -- <TOKEN> <URL> [FINGERPRINT]
@@ -22,7 +22,7 @@
 # The agent binary ships as a GitHub Release asset (DeploCloud/deplo-agent).
 # The control plane serves this script over its own domain and substitutes the
 # release's per-arch download URL + sha256 below (read from the release's
-# checksums.txt at serve time) — the script REFUSES to run a binary whose
+# checksums.txt at serve time) - the script REFUSES to run a binary whose
 # checksum does not match (P2), even though the bytes come from github.com.
 set -euo pipefail
 
@@ -30,7 +30,7 @@ set -euo pipefail
 # pair per Linux arch; the script selects by `uname -m` below. An arch the
 # release didn't publish is left empty and the script errors on that host.
 # (When read straight from the repo these stay placeholders and the guard below
-# refuses to run — this file is a template, fetched via /install-agent.sh.)
+# refuses to run - this file is a template, fetched via /install-agent.sh.)
 AGENT_VERSION="__AGENT_VERSION__"
 AGENT_URL_AMD64="__AGENT_URL_AMD64__"
 AGENT_SHA256_AMD64="__AGENT_SHA256_AMD64__"
@@ -44,7 +44,7 @@ UNIT="/etc/systemd/system/deplo-agent.service"
 AGENT_PORT="${DEPLO_AGENT_PORT:-9443}"
 
 # A STORAGE-ONLY host: the agent is installed to hold backups and nothing else.
-# No Docker, no address pools, no Traefik, and no `docker` group on the unit —
+# No Docker, no address pools, no Traefik, and no `docker` group on the unit -
 # systemd refuses to start a service whose SupplementaryGroups does not exist
 # (status=216/GROUP), which under `set -e` aborts this script at the last line.
 # Set from the dashboard's Add server dialog, which prefixes the copy-paste
@@ -81,7 +81,7 @@ if [ -z "$TOKEN" ] || [ -z "$URL" ]; then
 fi
 # Detect the UNSUBSTITUTED template (someone ran the repo copy directly). The
 # control plane fills the values above via a plain text replace of the sentinel
-# tokens, so this check must NOT contain an exact token — otherwise it would be
+# tokens, so this check must NOT contain an exact token, otherwise it would be
 # rewritten to the real value too and the guard would always fire on the rendered
 # script. Match the sentinel's shape with a glob (the token split by a `*`) so the
 # exact string never appears literally anywhere a replace could touch.
@@ -164,7 +164,7 @@ fi
 #   2. NEVER clobber the operator's daemon.json: an existing pool setting wins.
 
 # Is the /13 at 10.<$1>.0.0 (second octets $1..$1+7) clear of every 10.x route on
-# this host? Pure awk — no python, jq or ipcalc required on the target.
+# this host? Pure awk - no python, jq or ipcalc required on the target.
 pool_candidate_is_free() {
   printf '%s\n' "$2" | awk -v start="$1" '
     BEGIN { end = start + 7; free = 1 }
@@ -192,7 +192,7 @@ configure_docker_address_pools() {
   SIZE=24
 
   if [ -f "$CFG" ] && grep -q '"default-address-pools"' "$CFG" 2>/dev/null; then
-    ok "Docker address pools already configured — leaving them untouched"
+    ok "Docker address pools already configured, leaving them untouched"
     return 0
   fi
 
@@ -205,7 +205,7 @@ configure_docker_address_pools() {
     fi
   done
   if [ -z "$BASE" ]; then
-    err "Every candidate address pool overlaps a route on this host — NOT touching Docker."
+    err "Every candidate address pool overlaps a route on this host, NOT touching Docker."
     err "This server is capped at ~31 apps until you set default-address-pools in $CFG yourself."
     return 0
   fi
@@ -220,14 +220,14 @@ cfg, base, size = sys.argv[1], sys.argv[2], int(sys.argv[3])
 with open(cfg) as f: d = json.load(f)
 d["default-address-pools"] = [{"base": base, "size": size}]
 sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP" 2>/dev/null || {
-      err "Could not parse $CFG as JSON — leaving it untouched."
+      err "Could not parse $CFG as JSON, leaving it untouched."
       err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
       rm -f "$TMP"; return 0
     }
   elif command -v jq >/dev/null 2>&1; then
     jq --arg b "$BASE" --argjson s "$SIZE" \
       '.["default-address-pools"] = [{base: $b, size: $s}]' "$CFG" > "$TMP" 2>/dev/null || {
-      err "Could not parse $CFG as JSON — leaving it untouched."
+      err "Could not parse $CFG as JSON, leaving it untouched."
       err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
       rm -f "$TMP"; return 0
     }
@@ -240,7 +240,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   # Never hand dockerd a config it will reject: it would fail to come back up.
   if command -v dockerd >/dev/null 2>&1 \
      && ! dockerd --validate --config-file="$TMP" >/dev/null 2>&1; then
-    err "The generated Docker config failed validation — leaving $CFG untouched."
+    err "The generated Docker config failed validation, leaving $CFG untouched."
     rm -f "$TMP"; return 0
   fi
 
@@ -269,11 +269,11 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   if docker info >/dev/null 2>&1; then
     ok "Docker address pool: $BASE, a /$SIZE per app (thousands of apps, not 31)"
   else
-    err "Docker did not come back after the address-pool change — rolling back."
+    err "Docker did not come back after the address-pool change - rolling back."
     if [ -f "$CFG.deplo-bak" ]; then mv "$CFG.deplo-bak" "$CFG"; else rm -f "$CFG"; fi
     systemctl restart docker >/dev/null 2>&1 || true
     if docker info >/dev/null 2>&1; then
-      err "Rolled back — Docker is up again, with the default ~31-network ceiling."
+      err "Rolled back - Docker is up again, with the default ~31-network ceiling."
     else
       err "Docker is STILL down. Inspect: journalctl -u docker -n 50"
     fi
@@ -299,7 +299,7 @@ case "$(uname -m)" in
   x86_64|amd64)        AGENT_BIN_URL="$AGENT_URL_AMD64"; AGENT_SHA256="$AGENT_SHA256_AMD64" ;;
   aarch64|arm64)       AGENT_BIN_URL="$AGENT_URL_ARM64"; AGENT_SHA256="$AGENT_SHA256_ARM64" ;;
   *)
-    err "Unsupported architecture '$(uname -m)' — the Deplo agent ships linux/amd64 and linux/arm64 only."
+    err "Unsupported architecture '$(uname -m)' - the Deplo agent ships linux/amd64 and linux/arm64 only."
     exit 1
     ;;
 esac
@@ -329,15 +329,15 @@ chmod 700 "$AGENT_DATA"
 
 # Re-provisioning: running this installer means a FRESH bootstrap is intended (you
 # pasted a one-time token from the dashboard). But the agent skips bootstrap when
-# it finds existing mTLS materials on disk — so a reinstall over a previous one
+# it finds existing mTLS materials on disk, so a reinstall over a previous one
 # (e.g. after removing + re-adding the server) would serve the STALE cert and
-# never call home, and the control plane — which pinned a new fingerprint at
-# re-add — would reject every dial (no metrics, never "online"). Clear the old
+# never call home, and the control plane, which pinned a new fingerprint at
+# re-add - would reject every dial (no metrics, never "online"). Clear the old
 # materials here so the agent genuinely re-bootstraps against the current pin.
 # (A plain `systemctl restart deplo-agent` carries no token through this script,
 # so it still reuses materials and serves straight away, as intended.)
 if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
-  step "Existing agent materials found — clearing them for a fresh bootstrap..."
+  step "Existing agent materials found - clearing them for a fresh bootstrap..."
   systemctl stop deplo-agent 2>/dev/null || true
   rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt"
   ok "Old materials cleared (the agent will re-provision with the new token)"
@@ -345,7 +345,7 @@ fi
 
 # 3a-bis. The shared `deplo` network -----------------------------------------
 # EVERY stack this host runs joins it, so it has to exist before anything is
-# deployed here — and it used to be created only inside the Traefik branch below.
+# deployed here, and it used to be created only inside the Traefik branch below.
 # A host that already runs a reverse proxy (which is every host anyone MIGRATES
 # from) skips that branch, so the network was never created: an app deploy still
 # worked, because the agent's Deploy opens with EnsureNetwork, but provisioning a
@@ -359,10 +359,10 @@ fi
 
 # 3b. Traefik reverse proxy (idempotent) ------------------------------------
 # Deplo's deploys emit `traefik.*` labels and join the shared `deplo` network, but
-# something must READ those labels and route traffic — that is Traefik. The master
+# something must READ those labels and route traffic - that is Traefik. The master
 # host runs it; a remote needs its own. Install it here, but never fight for the
 # box: skip if a Traefik is already running (idempotent re-runs, or the operator's
-# own proxy), and only claim :80/:443 if they are free — otherwise warn and let
+# own proxy), and only claim :80/:443 if they are free, otherwise warn and let
 # the operator wire their existing proxy to the `deplo` network.
 TRAEFIK_DIR="$AGENT_DATA/traefik"
 if [ "$STORAGE_ONLY" = "1" ]; then
@@ -373,7 +373,7 @@ elif [ "$IMPORT_ONLY" = "1" ]; then
   ok "Migration source: skipping Traefik (this host has its own, and it is not ours)"
 elif docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null \
      | grep -qi traefik; then
-  ok "Traefik already running — leaving it untouched"
+  ok "Traefik already running, leaving it untouched"
 else
   # Is anything already bound to 80 or 443? (ss if present, else netstat, else
   # a best-effort docker port check.) If so, don't try to bind them.
@@ -384,7 +384,7 @@ else
     netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|[.:])(80|443)$' && PORTS_FREE=false
   fi
   if [ "$PORTS_FREE" != true ]; then
-    err "Ports 80/443 are already in use on this host — NOT installing Traefik."
+    err "Ports 80/443 are already in use on this host, NOT installing Traefik."
     err "Routing for apps deployed here will not work until a reverse proxy on the"
     err "shared 'deplo' docker network handles their traefik.* labels. Point your"
     err "existing proxy at the 'deplo' network, or free 80/443 and re-run."
@@ -395,7 +395,7 @@ else
     chmod 600 "$TRAEFIK_DIR/acme/acme.json"
     # traefik:v3.7 (NOT v3.3): Docker Engine 29 raised the min API to 1.40, which
     # Traefik <=3.3 can't negotiate, breaking the docker provider on every poll.
-    # ACME is HTTP-01, same as the master — it issues certs for apps deployed here
+    # ACME is HTTP-01, same as the master - it issues certs for apps deployed here
     # whose domains resolve (DNS) to this host. The acme dir persists certs.
     cat > "$TRAEFIK_DIR/docker-compose.yml" <<YAML
 services:
@@ -464,7 +464,7 @@ YAML
        || docker-compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d 2>/dev/null; then
       ok "Traefik running (deplo-traefik)"
     else
-      err "Traefik failed to start — apps deployed here won't be routed until it is."
+      err "Traefik failed to start - apps deployed here won't be routed until it is."
       err "Inspect: docker compose -f $TRAEFIK_DIR/docker-compose.yml logs"
     fi
   fi
@@ -481,7 +481,7 @@ fi
 # The token travels in an EnvironmentFile, never on ExecStart. A process's argv
 # is world-readable on Linux (`/proc/<pid>/cmdline`, i.e. plain `ps aux`), so a
 # `--bootstrap-token` flag would leave the credential legible to every local
-# user for as long as the agent runs — and self-update `syscall.Exec`s with the
+# user for as long as the agent runs, and self-update `syscall.Exec`s with the
 # SAME argv, so it would outlive every upgrade. `Environment=` in the unit is no
 # better: `systemctl show` prints it to unprivileged callers. A 0600 file read by
 # systemd leaks through neither, and `/proc/<pid>/environ` is owner-only.
@@ -502,7 +502,7 @@ DEPLO_BOOTSTRAP_FINGERPRINT=$FINGERPRINT
 EOF
 # On a STORAGE-ONLY host neither Docker line may appear. `SupplementaryGroups`
 # names a group that does not exist there, and systemd refuses to spawn the
-# process at all (status=216/GROUP) rather than warning — which, under `set -e`,
+# process at all (status=216/GROUP) rather than warning, which, under `set -e`,
 # aborts this script on its very last command and leaves the host with an agent
 # that never runs.
 if [ "$STORAGE_ONLY" = "1" ]; then
@@ -555,6 +555,6 @@ systemctl enable --now deplo-agent
 ok "Deplo agent running on port $AGENT_PORT"
 echo ""
 echo "  The agent is calling home to $URL to finish provisioning."
-echo "  Watch the dashboard — this server will switch to 'online' shortly."
+echo "  Watch the dashboard - this server will switch to 'online' shortly."
 echo "  Logs: journalctl -u deplo-agent -f"
 echo ""

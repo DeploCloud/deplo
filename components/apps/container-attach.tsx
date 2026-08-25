@@ -7,7 +7,7 @@ import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 import type { ConsoleControls } from "@/components/console/console-controls";
 
 /** Where the attach stream is. Named for the pane, which renders the dot and
- *  the label for it — this component has no chrome of its own any more. */
+ *  the label for it - this component has no chrome of its own any more. */
 export type AttachStatus = "connecting" | "live" | "ended" | "error";
 
 /**
@@ -27,7 +27,7 @@ export function ContainerAttach({
   containerName: string;
   openStdin: boolean;
   /**
-   * Override the attach endpoint — the database console passes
+   * Override the attach endpoint - the database console passes
    * `/api/databases/<id>/attach` (same SSE/POST contract). Default: the app
    * route for `appId`.
    */
@@ -50,7 +50,7 @@ export function ContainerAttach({
 
   const base = apiBase ?? `/api/apps/${encodeURIComponent(appId)}/attach`;
 
-  // One POST helper for both stdin bytes and resize frames — same session route.
+  // One POST helper for both stdin bytes and resize frames - same session route.
   const post = React.useCallback(
     (
       payload: { data: string } | { resize: { cols: number; rows: number } },
@@ -74,7 +74,7 @@ export function ContainerAttach({
     )}&cols=${cols}&rows=${rows}`;
     const es = new EventSource(url);
 
-    // Custom `session` frame carries the server-side session id. (Not "open" —
+    // Custom `session` frame carries the server-side session id. (Not "open" -
     // that name collides with EventSource's reserved connection-open event,
     // whose data is undefined.)
     es.addEventListener("session", (e) => {
@@ -131,7 +131,7 @@ export function ContainerAttach({
     term.current = api;
     size.current = api.fit();
     setReady(true);
-    // Nothing to repaint on an attach stream — clearing really is just wiping
+    // Nothing to repaint on an attach stream - clearing really is just wiping
     // the screen, and the container keeps writing into it.
     onControlsRef.current?.({
       clear: () => api.reset(),
@@ -178,7 +178,7 @@ export function ContainerAttach({
       {status === "live" && !openStdin ? (
         <div className="border-t border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
           This container was started without stdin open, so it won&apos;t read
-          input — attach is streaming its live output only. Use the shell to run
+          input - attach is streaming its live output only. Use the shell to run
           commands.
         </div>
       ) : null}

@@ -23,7 +23,7 @@ import { buildComposeStack } from "../deploy/compose-stack";
 import type { VolumeMount } from "../types";
 
 /**
- * Storage volumes on a COMPOSE-STACK app — the writer that used to refuse them
+ * Storage volumes on a COMPOSE-STACK app - the writer that used to refuse them
  * outright ("volumes are managed inside the compose file"), which forced anyone on
  * a compose app to hand-edit YAML for something as ordinary as persistent uploads.
  */
@@ -138,7 +138,7 @@ test("a compose service the file does not declare is refused at save time", asyn
 test("a single-container app stores no service, and still saves volumes", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await asUser1(() =>
-    // A service picked against a single-container app is meaningless — dropped,
+    // A service picked against a single-container app is meaningless - dropped,
     // not an error (the UI never sends one).
     setAppVolumes("prj_1", [vol({ name: "cache", service: "web" })]),
   );
@@ -193,7 +193,7 @@ test("a host bind's propagation survives the write and the read back", async () 
   );
   const vols = (await loadAppGraph("prj_1"))!.volumes!;
   assert.equal(vols[0].propagation, "rslave");
-  // NULL in the column comes back as an ABSENT key, not `null` — the renderers
+  // NULL in the column comes back as an ABSENT key, not `null` - the renderers
   // and the dirty key both read "no propagation" from its absence.
   assert.ok(!("propagation" in vols[1]));
 });

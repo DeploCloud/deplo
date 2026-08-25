@@ -23,7 +23,7 @@ interface ServerLane {
   running: Set<string>;
   /** A pump loop is currently executing for this server. */
   pumping: boolean;
-  /** A wake-up arrived (enqueue / finish) — the pump makes another pass. */
+  /** A wake-up arrived (enqueue / finish) - the pump makes another pass. */
   dirty: boolean;
 }
 
@@ -134,7 +134,7 @@ function startOne(serverId: string, depId: string, key: string): void {
 /**
  * Wake a server's lane: mark it dirty and ensure exactly one pump loop is
  * running. Safe to call from anywhere (enqueue, finish, boot) and any number of
- * times — extra calls coalesce into the single loop via the `dirty` flag.
+ * times - extra calls coalesce into the single loop via the `dirty` flag.
  */
 export function scheduleServer(serverId: string): void {
   const lane = laneFor(serverId);
@@ -164,7 +164,7 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
     }
   } catch (e) {
     // concurrencyFor/pickNext hit the DB; a transient failure (a Postgres blip) must
-    // not strand the queued backlog with nothing left to re-arm the lane — `dirty` was
+    // not strand the queued backlog with nothing left to re-arm the lane - `dirty` was
     // already cleared when the await rejected.
     console.error("[deplo] deploy queue pump failed:", e);
     // `unref()`: the re-arm must not, by itself, hold the process open.
@@ -180,7 +180,7 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
 
 /**
  * Enqueue a freshly-inserted `queued` deployment for its owning server and wake
- * that server's lane. Returns immediately — the caller ({@link ../deploy/build}'s
+ * that server's lane. Returns immediately - the caller ({@link ../deploy/build}'s
  * `startDeployment`) never awaits the build.
  */
 export function enqueueDeployment(input: {

@@ -49,7 +49,7 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
   const prod =
     deployments.find((d) => d.id === project.latestDeployment?.id) ??
     project.latestDeployment;
-  // What backs this app — a git repo (real branch/commit) or a compose stack / docker
+  // What backs this app - a git repo (real branch/commit) or a compose stack / docker
   // image / upload (no git, so no branch). Same source of truth as the Overview card,
   // so the page never invents a "main" branch for a compose project.
   const src = describeAppSource(project);
@@ -152,7 +152,7 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
                   )}
                 </div>
                 {/**
-                 * What Deplo recognised in the app's own source (or what the user corrected it to —
+                 * What Deplo recognised in the app's own source (or what the user corrected it to -
                  * effectiveFramework settles that).
                  */}
                 {effectiveFramework(project) &&

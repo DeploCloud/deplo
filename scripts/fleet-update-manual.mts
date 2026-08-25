@@ -64,13 +64,13 @@ const provisioned = (await listAllServers()).filter((s) =>
 );
 const remotes = provisioned.filter((s) => s.ip !== localIp);
 if (!remotes.length) {
-  console.log("No remote servers — nothing to do.");
+  console.log("No remote servers, nothing to do.");
   process.exit(0);
 }
 const busy = await busyServerIds();
 console.log(
   `Fleet: ${provisioned.length} provisioned, ${remotes.length} remote to roll` +
-    `${dryRun ? "  [DRY RUN — no agent is touched]" : ""}`,
+    `${dryRun ? "  [DRY RUN - no agent is touched]" : ""}`,
 );
 
 let updated = 0;
@@ -78,7 +78,7 @@ for (const [i, s] of remotes.entries()) {
   const label = `${s.name} (${s.ip}, ${i === 0 ? "canary" : "remote"})`;
   if (busy.has(s.id)) {
     console.log(
-      `SKIP  ${label} — a deploy is in flight; an agent re-exec would drop it`,
+      `SKIP  ${label} - a deploy is in flight; an agent re-exec would drop it`,
     );
     continue;
   }
@@ -88,12 +88,12 @@ for (const [i, s] of remotes.entries()) {
     before = (await agentPreflight(s.id)).agentVersion;
   } catch (e) {
     console.log(
-      `SKIP  ${label} — unreachable before the update: ${(e as Error).message}`,
+      `SKIP  ${label} - unreachable before the update: ${(e as Error).message}`,
     );
     continue;
   }
   if (dryRun) {
-    console.log(`WOULD ${label} — currently ${before}`);
+    console.log(`WOULD ${label} - currently ${before}`);
     continue;
   }
 
@@ -104,7 +104,7 @@ for (const [i, s] of remotes.entries()) {
       `  ... ${label}: ${before} -> ${res.version} (restarting=${res.restarting})`,
     );
   } catch (e) {
-    console.log(`FAIL  ${label} — ${(e as Error).message}`);
+    console.log(`FAIL  ${label} - ${(e as Error).message}`);
     console.log("Stopping: do not roll on past a failure.");
     conn.close();
     break;
@@ -128,7 +128,7 @@ for (const [i, s] of remotes.entries()) {
           h.dockerVersion,
         );
         console.log(
-          `OK    ${label} — now ${h.agentVersion}, docker=${h.dockerAvailable}, caps=${h.capabilities.length}`,
+          `OK    ${label} - now ${h.agentVersion}, docker=${h.dockerAvailable}, caps=${h.capabilities.length}`,
         );
         break;
       }
@@ -137,7 +137,7 @@ for (const [i, s] of remotes.entries()) {
     }
   }
   if (!confirmed) {
-    console.log(`FAIL  ${label} — never came back on a new version. Stopping.`);
+    console.log(`FAIL  ${label}, never came back on a new version. Stopping.`);
     break;
   }
   updated++;

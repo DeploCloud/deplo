@@ -8,7 +8,7 @@ const CR = "letsencrypt";
 // --- The three live call-site flavours, asserted byte-for-byte against the
 // output each generator produced before consolidation (the golden baseline). ---
 
-test("single-image: one host, default port — no docker.network, no explicit service", () => {
+test("single-image: one host, default port - no docker.network, no explicit service", () => {
   assert.deepEqual(
     traefikRouterLabels({
       baseKey: "deplo-app",
@@ -27,7 +27,7 @@ test("single-image: one host, default port — no docker.network, no explicit se
   );
 });
 
-test("single-image: two domains, same port — one router, OR rule", () => {
+test("single-image: two domains, same port - one router, OR rule", () => {
   assert.deepEqual(
     traefikRouterLabels({
       baseKey: "deplo-app",
@@ -49,7 +49,7 @@ test("single-image: two domains, same port — one router, OR rule", () => {
   );
 });
 
-test("single-image: per-domain port override — two routers, __ separator, explicit service", () => {
+test("single-image: per-domain port override - two routers, __ separator, explicit service", () => {
   assert.deepEqual(
     traefikRouterLabels({
       baseKey: "deplo-app",
@@ -78,7 +78,7 @@ test("single-image: per-domain port override — two routers, __ separator, expl
   );
 });
 
-test("single-image: only an override, no default-port group — still gets __ suffix", () => {
+test("single-image: only an override, no default-port group - still gets __ suffix", () => {
   assert.deepEqual(
     traefikRouterLabels({
       baseKey: "deplo-app",
@@ -97,7 +97,7 @@ test("single-image: only an override, no default-port group — still gets __ su
   );
 });
 
-test("single-image: three ports — default first, then ascending; deterministic", () => {
+test("single-image: three ports - default first, then ascending; deterministic", () => {
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
     routes: [
@@ -222,7 +222,7 @@ test("__ separator keeps a non-default port group from colliding with a sibling 
 
 // --- Per-route TLS triplet (entrypoint / tls on-off / cert resolver) --------
 
-test("tls:false serves plain HTTP on the web entrypoint — no tls labels", () => {
+test("tls:false serves plain HTTP on the web entrypoint - no tls labels", () => {
   assert.deepEqual(
     traefikRouterLabels({
       baseKey: "deplo-app",
@@ -304,7 +304,7 @@ test("two hosts sharing the same non-default resolver fold into one router", () 
 
 test("a resolver matching the default does NOT suffix (byte-stable key)", () => {
   // Passing certResolver explicitly equal to the call default must not churn the
-  // router key — the route still belongs to the bare default group.
+  // router key - the route still belongs to the bare default group.
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
     routes: [
@@ -501,7 +501,7 @@ function effectivePriority(labels: string[]): number {
 
 test("a path router OUTRANKS a whole-host router on the same host (other app)", () => {
   // App A owns app.com with no path; app B wants app.com/api. Two containers,
-  // two separate renders — Traefik ranks them against each other globally.
+  // two separate renders - Traefik ranks them against each other globally.
   const hostOnly = traefikRouterLabels({
     baseKey: "deplo-web",
     routes: [{ name: "app.com", port: null }],
@@ -525,7 +525,7 @@ test("a path router OUTRANKS a whole-host router on the same host (other app)", 
 
 test("a path router outranks a whole-host router with MANY hosts (long rule)", () => {
   // The default priority grows with the rule string, so a whole-host router with
-  // a long OR-list has a large default. The path router must still win — this is
+  // a long OR-list has a large default. The path router must still win - this is
   // why the base is far above any reachable rule length, not a small constant.
   const manyHosts = traefikRouterLabels({
     baseKey: "deplo-web",
@@ -671,7 +671,7 @@ test("strip prefix prepends the strip mw BEFORE user middlewares (order)", () =>
   );
 });
 
-test("stripPrefix:true with NO path is a no-op — byte-identical to a bare route", () => {
+test("stripPrefix:true with NO path is a no-op - byte-identical to a bare route", () => {
   const withStrip = traefikRouterLabels({
     baseKey: "deplo-app",
     routes: [{ name: "app.com", port: null, stripPrefix: true }],
@@ -797,8 +797,8 @@ test("per-route mode applies PathPrefix + stripprefix too (compose path)", () =>
       `traefik.http.routers.deplo-svc-8080.priority=${1_000_000 + 4}`,
     ),
   );
-  // The path-less route stays byte-identical (no PathPrefix / priority / strip)
-  // — and the path router must still outrank it (its default = its rule length).
+  // The path-less route stays byte-identical (no PathPrefix / priority / strip),
+  // and the path router must still outrank it (its default = its rule length).
   assert.ok(
     labels.includes("traefik.http.routers.deplo-svc-3000.rule=Host(`app.com`)"),
   );
@@ -839,7 +839,7 @@ test("single-image: mixed null + explicit-default ports still fold into ONE rout
     defaultPort: 3000,
     certResolver: CR,
   });
-  // One router, one OR-rule, single loadbalancer port — no __3000 split.
+  // One router, one OR-rule, single loadbalancer port - no __3000 split.
   assert.ok(
     labels.includes(
       "traefik.http.routers.deplo-app.rule=Host(`a.example.com`) || Host(`b.example.com`)",
@@ -972,7 +972,7 @@ test("basicAuth: absent (and empty users) ⇒ byte-identical to no basic auth", 
 });
 
 /* ------------------------------------------------------------------ */
-/* redirectTo — the www / non-www pair                                 */
+/* redirectTo - the www / non-www pair                                 */
 /* ------------------------------------------------------------------ */
 
 test("redirectTo: a redirecting host gets its OWN router + redirectregex middleware", () => {
@@ -1011,7 +1011,7 @@ test("redirectTo: a redirecting host gets its OWN router + redirectregex middlew
     labels.filter((l) => l.includes(`middlewares.${key}-redirect.`)),
     [
       `traefik.http.middlewares.${key}-redirect.redirectregex.regex=^https?://[^/]+(.*)`,
-      // `$$` — these labels are embedded in a docker-compose YAML, which would
+      // `$$` - these labels are embedded in a docker-compose YAML, which would
       // otherwise interpolate `${1}` away and drop the path from every redirect.
       `traefik.http.middlewares.${key}-redirect.redirectregex.replacement=https://example.com` +
         "$${1}",
@@ -1024,7 +1024,7 @@ test("redirectTo: a redirecting host gets its OWN router + redirectregex middlew
   );
 });
 
-test("redirectTo: the redirect fires FIRST — ahead of basic auth and stripprefix", () => {
+test("redirectTo: the redirect fires FIRST - ahead of basic auth and stripprefix", () => {
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
     routes: [

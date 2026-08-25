@@ -17,7 +17,7 @@ import { hash as bcryptHash } from "bcryptjs";
 
 /**
  * Central secret material. Production refuses to boot without it (mirroring the
- * `DEPLO_DATABASE_URL` guard in lib/db/pg.ts) — silently deriving every key from a
+ * `DEPLO_DATABASE_URL` guard in lib/db/pg.ts) - silently deriving every key from a
  * public constant would make all secrets, sessions and the agent CA forgeable.
  */
 function rootSecret(): string {
@@ -35,7 +35,7 @@ function rootSecret(): string {
 
 /**
  * Derive a 32-byte key for a given purpose from the root secret. The root secret
- * is fixed for the process lifetime, so the derived key is stable too — memoize
+ * is fixed for the process lifetime, so the derived key is stable too - memoize
  * per purpose.
  */
 const keyCache = new Map<string, Buffer>();

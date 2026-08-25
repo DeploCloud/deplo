@@ -29,7 +29,7 @@ const CURRENT_VERSION: Record<DatabaseType, string> = {
   clickhouse: "25.8",
 };
 
-// The official images' documented data dirs — the volume must mount here.
+// The official images' documented data dirs - the volume must mount here.
 const EXPECTED_DATA_DIR: Record<DatabaseType, string> = {
   postgres: "/var/lib/postgresql/data",
   mysql: "/var/lib/mysql",
@@ -115,7 +115,7 @@ for (const [type, envLine] of Object.entries(DB_CREATE_ENV) as [
 
 // "Expose publicly": when a host port is given, the compose publishes it as
 // `0.0.0.0:<hostPort>:<enginePort>` (host:container) so external clients reach the
-// DB on the chosen host port — the whole point of the feature.
+// DB on the chosen host port - the whole point of the feature.
 test("generateDatabaseCompose: no ports block when hostPort omitted (internal only)", () => {
   const yaml = generateDatabaseCompose({
     name: "db-internal",
@@ -249,7 +249,7 @@ test("buildConnectionString: per-engine scheme + path", () => {
     buildConnectionString({ ...base, type: "mongodb", dbName: "shop" }),
     "mongodb://app:pw@db-x:5432/shop?authSource=admin",
   );
-  // redis has no logical DB — no path segment.
+  // redis has no logical DB, no path segment.
   assert.equal(
     buildConnectionString({
       ...base,
@@ -355,7 +355,7 @@ test("generateDatabaseCompose: customImage replaces the derived image", () => {
   assert.ok(!yaml.includes("postgres:16-alpine"), yaml);
 });
 
-// customCommand replaces the default verbatim — including redis's
+// customCommand replaces the default verbatim, including redis's
 // password-bearing `--requirepass` (the UI warns; this is the expert hatch).
 test("generateDatabaseCompose: customCommand replaces redis's requirepass command", () => {
   const yaml = generateDatabaseCompose({
@@ -378,7 +378,7 @@ test("generateDatabaseCompose: customCommand replaces redis's requirepass comman
 
 // Real per-engine healthchecks (replacing the historical `exit 0`), chosen to
 // avoid embedding the password literally. Under a customImage override the
-// engine tooling can't be assumed — fall back to the no-op probe.
+// engine tooling can't be assumed - fall back to the no-op probe.
 test("generateDatabaseCompose: real healthcheck per engine, exit 0 under customImage", () => {
   const mk = (type: DatabaseType, extra: Record<string, unknown> = {}) =>
     generateDatabaseCompose({
@@ -425,7 +425,7 @@ test("parseConnectionPassword: round-trips the embedded password", () => {
 });
 
 // Postgres 18+ defaults PGDATA to `/var/lib/postgresql/<major>/docker` and its
-// entrypoint EXITS when `/var/lib/postgresql/data` is a mount point — which the
+// entrypoint EXITS when `/var/lib/postgresql/data` is a mount point, which the
 // volume above always is.
 for (const version of ["15", "16", "17", "18", "19"]) {
   test(`generateDatabaseCompose(postgres ${version}): pins PGDATA to the mounted path`, () => {

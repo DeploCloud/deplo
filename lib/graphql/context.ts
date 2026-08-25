@@ -16,7 +16,7 @@ export interface GraphQLContext {
   viewer: PublicUser | null;
   teamId: string | null;
   capabilities: Capability[];
-  /** How this request authenticated — useful for docs/debugging, not security. */
+  /** How this request authenticated - useful for docs/debugging, not security. */
   via: "cookie" | "token" | "anonymous";
   /**
    * Set for a valid bearer-token request.
@@ -58,7 +58,7 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     });
   }
 
-  // Cookie path — same-origin browser. No override needed.
+  // Cookie path - same-origin browser. No override needed.
   const viewer = await getCurrentUser();
   const teamId = await getActiveTeamId();
   const capabilities = await reachableCapabilities();

@@ -2,7 +2,7 @@
 --
 -- Until now a person's capabilities in a team came from exactly one place: the
 -- role on their membership. The only per-node dimension was `folder_grants`, and
--- it could never GIVE anything — it was clamped live by the member's team caps,
+-- it could never GIVE anything - it was clamped live by the member's team caps,
 -- so it could only ever narrow. "This person owns Prod and nothing else" was
 -- unexpressible: to hand someone `manage_env` in one folder you had to hand it to
 -- them team-wide, which is exactly the escalation the fine-grained capability

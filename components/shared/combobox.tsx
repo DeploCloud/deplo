@@ -9,7 +9,7 @@ import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
 import { cn } from "@/lib/utils";
 
 /**
- * Pick one thing out of a list by typing — the shell, with no opinion about what
+ * Pick one thing out of a list by typing - the shell, with no opinion about what
  * the things are. Free text is never a value: the field resolves to one of `items`
  * or to nothing.
  */
@@ -43,7 +43,7 @@ export function Combobox<T>({
   matches: (item: T, query: string) => boolean;
   renderOption: (item: T) => React.ReactNode;
   /**
-   * An affordance at the RIGHT EDGE of a row — a link out to the thing, say.
+   * An affordance at the RIGHT EDGE of a row - a link out to the thing, say.
    */
   renderTrailing?: (item: T) => React.ReactNode;
   /**
@@ -51,7 +51,7 @@ export function Combobox<T>({
    */
   selectable?: (item: T) => boolean;
   /**
-   * A mark for the SELECTED item, drawn inside the field to the left of the text —
+   * A mark for the SELECTED item, drawn inside the field to the left of the text -
    * an app's own icon, say.
    */
   renderLeading?: (item: T) => React.ReactNode;
@@ -66,7 +66,7 @@ export function Combobox<T>({
   searchPlaceholder: string;
   /** Shown when nothing matches; a function gets the query's emptiness. */
   emptyLabel: (hasItems: boolean) => string;
-  /** Spinner instead of the chevron — work the caller kicked off in `onOpen`. */
+  /** Spinner instead of the chevron - work the caller kicked off in `onOpen`. */
   busy?: boolean;
   disabled?: boolean;
   /** Fired when the menu opens, e.g. to probe or refresh the list. */
@@ -78,7 +78,7 @@ export function Combobox<T>({
   const [query, setQuery] = React.useState("");
   const [highlight, setHighlight] = React.useState(0);
   // The focus `autoFocus` places is not a user gesture, so it must not open the
-  // menu — the same distinction `isOverlayAutoFocusing` draws for a dialog.
+  // menu - the same distinction `isOverlayAutoFocusing` draws for a dialog.
   const autoFocused = React.useRef(autoFocus);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const fieldRef = React.useRef<HTMLDivElement | null>(null);
@@ -135,7 +135,7 @@ export function Combobox<T>({
       const flipped = below < wanted && r.top > below;
       setRect({
         left: r.left - (o?.left ?? 0),
-        // Flipped, the menu is pulled up by its own height with a transform —
+        // Flipped, the menu is pulled up by its own height with a transform -
         // cheaper and more honest than measuring it to compute a `bottom`.
         top: (flipped ? r.top - 4 : r.bottom + 4) - (o?.top ?? 0),
         width: r.width,
@@ -167,7 +167,7 @@ export function Combobox<T>({
     return () => window.removeEventListener("keydown", onEscape, true);
   }, [open]);
 
-  // Close on outside press — the menu lives inside a dialog, so it must not
+  // Close on outside press - the menu lives inside a dialog, so it must not
   // swallow the click that lands on another field. POINTERdown, captured: a
   // Radix menu opening elsewhere sets `pointer-events: none` on the body, so
   // the mousedown that followed never reached this listener and two dropdowns
@@ -175,7 +175,7 @@ export function Combobox<T>({
   React.useEffect(() => {
     function onPointerDown(e: PointerEvent) {
       const target = e.target as Node;
-      // The menu is portaled, so it is NOT a descendant of the container — a
+      // The menu is portaled, so it is NOT a descendant of the container - a
       // press on an option would otherwise read as a press outside the field.
       if (menuRef.current?.contains(target)) return;
       if (containerRef.current && !containerRef.current.contains(target)) {
@@ -197,7 +197,7 @@ export function Combobox<T>({
     [items, q],
   );
   // The indices that can actually be landed on. Also guards a stale index after
-  // the list shrinks, so Enter never picks past the end — or a heading.
+  // the list shrinks, so Enter never picks past the end, or a heading.
   const pickable = React.useMemo(() => {
     const out: number[] = [];
     filtered.forEach((item, i) => {
@@ -300,7 +300,7 @@ export function Combobox<T>({
             setHighlight(0);
           }}
           onFocus={() => {
-            // A dialog placing focus here as it opens is Radix, not the user —
+            // A dialog placing focus here as it opens is Radix, not the user,
             // and it is not a reason to unfurl the menu or probe every bucket.
             if (isOverlayAutoFocusing()) return;
             if (autoFocused.current) {

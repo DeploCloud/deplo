@@ -39,7 +39,7 @@ import { assertServerAccessibleTx } from "./servers";
 import { withKeyedLock } from "./keyed-mutex";
 
 /**
- * Transferring an App to another team — the Danger Zone action that hands a whole
+ * Transferring an App to another team - the Danger Zone action that hands a whole
  * app (its build config, variables, domains, deployments and volumes) to a
  * different team the SAME person belongs to.
  */
@@ -67,9 +67,9 @@ export interface AppTransferInfo {
   serverName: string;
   /** Where the app sits inside its current team ("folder Marketing"), or null at the top level. */
   homeLabel: string | null;
-  /** Shared variables linked to this app — links that do not survive the move. */
+  /** Shared variables linked to this app - links that do not survive the move. */
   sharedVarCount: number;
-  /** Backup schedules targeting this app — they point at the source team's destination. */
+  /** Backup schedules targeting this app - they point at the source team's destination. */
   backupCount: number;
   githubConnected: boolean;
   /**
@@ -115,7 +115,7 @@ const appColumns = {
  */
 export const appTransferInfo = cache(
   async (appId: string): Promise<AppTransferInfo> => {
-    // The APP's gate, not the team's — the same one `transferAppToTeam` below applies,
+    // The APP's gate, not the team's - the same one `transferAppToTeam` below applies,
     // so what this screen shows and what the move allows agree.
     const { userId, teamId } = await requireAppCapability(appId, "move_apps");
     const db = getDb();
@@ -128,7 +128,7 @@ export const appTransferInfo = cache(
     )[0];
     if (!app) throw new Error("App not found");
 
-    // Candidate teams: the viewer's OTHER memberships that carry `deploy` — the
+    // Candidate teams: the viewer's OTHER memberships that carry `deploy` - the
     // "can manage apps there" bar, resolved from the capability junction (the
     // role name is only a preset, never the authority).
     const candidates = await db
@@ -173,7 +173,7 @@ export const appTransferInfo = cache(
           ).map((r) => r.teamId),
         );
 
-    // Which candidates could keep the repository connected — i.e. already have a
+    // Which candidates could keep the repository connected - i.e. already have a
     // GitHub App installed on the SAME account as the app's repository.
     const owner = repoOwner(app.repoRepo, app.repoUrl);
     const githubConnected = Boolean(app.repoInstallationId);
@@ -325,7 +325,7 @@ export async function transferAppToTeam(
       .limit(1)
   )[0];
 
-  // The app must land on a host the destination team may target — refuse with a
+  // The app must land on a host the destination team may target - refuse with a
   // message that says who fixes it, rather than parking the app on a server it can't
   // reach.
   const server = (
@@ -387,7 +387,7 @@ export async function transferAppToTeam(
   const githubDropped =
     Boolean(app.repoInstallationId) && installationId === null;
 
-  // The app's lifecycle lock — the same one a deploy and a delete take — so the
+  // The app's lifecycle lock, the same one a deploy and a delete take, so the
   // hand-over can't interleave with a bring-up of the very stack it re-homes.
   await withKeyedLock(`app-lifecycle:${appId}`, async () => {
     await db.transaction(async (tx) => {
@@ -420,7 +420,7 @@ export async function transferAppToTeam(
         .delete(teamRoleScopeApps)
         .where(eq(teamRoleScopeApps.appId, appId));
       // Shared variables stay with the team that owns them (ADR-0012: injection
-      // is the per-app link and nothing else) — the links go, the values never
+      // is the per-app link and nothing else) - the links go, the values never
       // travel.
       await tx
         .delete(sharedEnvVarAppsTable)
@@ -433,7 +433,7 @@ export async function transferAppToTeam(
         .where(
           and(eq(backupsTable.appId, appId), eq(backupsTable.teamId, teamId)),
         );
-      // Cron jobs carry BOTH team_id and app_id, like backups — and, like them, point at
+      // Cron jobs carry BOTH team_id and app_id, like backups, and, like them, point at
       // the SOURCE team and run the SOURCE team's command in the container.
       await tx
         .delete(cronJobsTable)
@@ -441,7 +441,7 @@ export async function transferAppToTeam(
           and(eq(cronJobsTable.appId, appId), eq(cronJobsTable.teamId, teamId)),
         );
       // An API token SCOPED to this app is the source team's credential, and its reach is
-      // derived live from `apps.teamId` — so a surviving row would follow the app into
+      // derived live from `apps.teamId`, so a surviving row would follow the app into
       // the destination team and show up in ITS "tokens reaching this team" list without
       await tx
         .delete(apiTokenAppsTable)

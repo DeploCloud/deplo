@@ -10,12 +10,12 @@ import { type AttachHandle } from "../infra/docker";
 
 export interface LogsSession {
   id: string;
-  /** App that authorised this session — the GET must match it. */
+  /** App that authorised this session - the GET must match it. */
   appId: string;
   /**
    * The principal the GET opened this session as. A session id is a capability
-   * on its own — anyone holding one could close somebody else's live log stream
-   * — so the DELETE re-checks it, the same way the attach session does.
+   * on its own - anyone holding one could close somebody else's live log stream,
+   * so the DELETE re-checks it, the same way the attach session does.
    */
   userId: string;
   /** Real container name being streamed. */
@@ -50,7 +50,7 @@ function armIdleReaper(s: LogsSession) {
 }
 
 // Hard ceilings on live sessions. The idle reaper only fires at zero subscribers,
-// so a client that holds its EventSource open forever is never reclaimed by it —
+// so a client that holds its EventSource open forever is never reclaimed by it -
 // without a cap each open() pins a backing (and its gRPC client) for good.
 const MAX_SESSIONS = 64;
 const MAX_SESSIONS_PER_APP = 8;
@@ -94,8 +94,8 @@ export function open(
 
   handle.onData((chunk) => {
     // Before anyone is listening, stash the chunk (the startup tail burst);
-    // once a subscriber exists, fan out live. The backlog is drained — and set
-    // to null — by the first subscribe().
+    // once a subscriber exists, fan out live. The backlog is drained, and set
+    // to null - by the first subscribe().
     if (session.subscribers.size === 0 && session.backlog) {
       session.backlog.push(chunk);
       return;

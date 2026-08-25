@@ -27,7 +27,7 @@ export default async function NewTokenPage(
       listScopeTree(),
       requireActiveTeamId(),
     ]);
-  // Reachable only from the "New token" menu, which is itself gated — but a
+  // Reachable only from the "New token" menu, which is itself gated, but a
   // typed URL must not open an editor whose save can only fail.
   if (!canManage) redirect("/settings/tokens");
   // `?preset=` is the template chosen in that menu. An unknown or stale id

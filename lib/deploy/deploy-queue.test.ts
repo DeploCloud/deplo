@@ -306,7 +306,7 @@ test("concurrency 2: two distinct services run, but never two of the same servic
   await setConcurrency(SRV_A, 2);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  // Two queued deploys for the SAME app x, plus one for y. (Seeded directly —
+  // Two queued deploys for the SAME app x, plus one for y. (Seeded directly -
   // the enqueue-time collapse lives in startDeployment, not the queue.)
   await seedDeployment(db, {
     id: "x1",
@@ -400,7 +400,7 @@ test("startDeployQueue re-drains an existing queued backlog on boot", async () =
   await seedServer(db, SRV_A);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  // Rows exist as `queued` (a restart mid-backlog) — nothing enqueued this run.
+  // Rows exist as `queued` (a restart mid-backlog), nothing enqueued this run.
   await seedDeployment(db, {
     id: "b1",
     appId: "svc_x",
@@ -498,7 +498,7 @@ test("deploy_concurrency is clamped to at least 1", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
-  await setConcurrency(SRV_A, 0); // nonsensical — must clamp to 1, not stall
+  await setConcurrency(SRV_A, 0); // nonsensical - must clamp to 1, not stall
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
   await seedDeployment(db, {
@@ -520,7 +520,7 @@ test("deploy_concurrency is clamped to at least 1", async () => {
   enqueueDeployment({ depId: "c2", serverId: SRV_A, appId: "svc_y" });
   await waitFor(() => started.length === 1, "clamp to 1 still dispatches");
   await settle();
-  assert.deepEqual(started, ["c1"], "0 clamped to 1 — serialized, not stalled");
+  assert.deepEqual(started, ["c1"], "0 clamped to 1 - serialized, not stalled");
   await finish("c1");
   await waitFor(() => started.length === 2, "drains after finish");
 });

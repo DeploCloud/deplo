@@ -21,7 +21,7 @@ interface LiveStatus {
  */
 const PROBE_MIN_INTERVAL_MS = 30_000;
 
-/** Shared across every picker on the page — see above. */
+/** Shared across every picker on the page - see above. */
 let lastProbeAt = 0;
 let probeInFlight = false;
 
@@ -89,7 +89,7 @@ export function DestinationCombobox({
       (d) => d.testDestinations,
     )
       .then((res) => {
-        // A failed call leaves the stored badges in place — opening a dropdown
+        // A failed call leaves the stored badges in place - opening a dropdown
         // is not the place to raise an error the user did not ask for.
         if (!res.ok || !res.data) return;
         setLive(

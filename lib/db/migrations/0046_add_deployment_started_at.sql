@@ -3,14 +3,14 @@
 -- `build_duration_ms` is measured from.
 --
 -- Why it must be persisted at all: "Build time" is shown LIVE while the build
--- runs, so the UI needs an origin to count from. `created_at` can't stand in —
--- it includes the queue wait, which can be minutes — and the build job's
+-- runs, so the UI needs an origin to count from. `created_at` can't stand in -
+-- it includes the queue wait, which can be minutes, and the build job's
 -- in-process `Date.now()` dies with the job, so a reload mid-build (or a second
 -- viewer) would have nothing to count from. One column turns the field from
 -- blank-until-finished into a real timer.
 --
 -- Nullable, NO BACKFILL. Rows that predate this migration never recorded a
 -- start, and deriving one from `created_at` would fabricate a build time that
--- never happened — they keep NULL and the UI renders "—". A still-queued row is
+-- never happened - they keep NULL and the UI renders "—". A still-queued row is
 -- legitimately NULL too: it hasn't started.
 ALTER TABLE "deployments" ADD COLUMN "started_at" timestamp with time zone;

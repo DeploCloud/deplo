@@ -22,7 +22,7 @@ test("every allowed flag passes with either boolean", () => {
   );
 });
 
-test("empty is fine — the field is optional", () => {
+test("empty is fine - the field is optional", () => {
   assert.equal(validateS3Args(""), null);
   assert.equal(validateS3Args("   "), null);
   assert.deepEqual(parseS3Args(null), []);

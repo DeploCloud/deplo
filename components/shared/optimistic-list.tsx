@@ -17,7 +17,7 @@ const OptimisticListContext = React.createContext<OptimisticListApi | null>(
 );
 
 export function OptimisticList({ children }: { children: React.ReactNode }) {
-  // toArray drops null/undefined children and namespaces the keys — `childKey`
+  // toArray drops null/undefined children and namespaces the keys - `childKey`
   // is the other half of that contract.
   const items = React.Children.toArray(children);
   const { visible, remove, restore } = useOptimisticRemove(items, (child) =>
@@ -37,7 +37,7 @@ export function OptimisticList({ children }: { children: React.ReactNode }) {
 export function useOptimisticRow(key: string): {
   /** Take this row off the list until the server stops serving it. */
   hide: () => void;
-  /** Put it back — the mutation behind the removal was refused. */
+  /** Put it back - the mutation behind the removal was refused. */
   restore: () => void;
 } {
   const ctx = React.useContext(OptimisticListContext);

@@ -24,7 +24,7 @@ test("scoreFaviconPath: ONLY files named `favicon` are candidates", () => {
   assert.notEqual(scoreFaviconPath("favicon.ico"), null);
   assert.notEqual(scoreFaviconPath("public/favicon.png"), null);
   assert.notEqual(scoreFaviconPath("public/favicon-32x32.png"), null);
-  // Rejected: everything NOT named favicon — logo, icon, apple-touch-icon, …
+  // Rejected: everything NOT named favicon - logo, icon, apple-touch-icon, …
   assert.equal(scoreFaviconPath("logo.svg"), null);
   assert.equal(scoreFaviconPath("public/logo.png"), null);
   assert.equal(scoreFaviconPath("app/icon.svg"), null);
@@ -126,7 +126,7 @@ test("pickBestFavicon: ties break on the smaller path deterministically", () => 
 });
 
 /* ------------------------------------------------------------------ */
-/* faviconSourceKind — which pile of files an app's icon comes from     */
+/* faviconSourceKind, which pile of files an app's icon comes from     */
 /* ------------------------------------------------------------------ */
 
 const APP = {
@@ -149,7 +149,7 @@ test("faviconSourceKind: a compose stack is scanned on its own server", () => {
 
 test("faviconSourceKind: compose wins over a repo the app no longer builds from", () => {
   // Switching an app to a compose stack KEEPS the repo (so it can switch back),
-  // but the deploy ignores it — detection must ignore it the same way.
+  // but the deploy ignores it - detection must ignore it the same way.
   assert.equal(
     faviconSourceKind({
       ...APP,
@@ -205,7 +205,7 @@ test("faviconSourceKind: a non-GitHub git host has nothing the control plane can
 
 test("faviconSourceKind: an upload is scanned from its archive", () => {
   assert.equal(faviconSourceKind({ ...APP, source: "upload" }), "upload");
-  // Even with a stale compose lingering from a previous source — an upload is
+  // Even with a stale compose lingering from a previous source - an upload is
   // explicit and still builds its archive.
   assert.equal(
     faviconSourceKind({ ...APP, source: "upload", compose: "services: {}" }),

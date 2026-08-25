@@ -25,7 +25,7 @@ function documentFor(query: string): DocumentNode {
 
 export interface ToolExecution {
   data: unknown;
-  /** The first GraphQL error's message, surfaced verbatim — never rewritten. */
+  /** The first GraphQL error's message, surfaced verbatim, never rewritten. */
   error?: string;
 }
 
@@ -47,7 +47,7 @@ export async function runGraphql(
     });
   // The route only ever builds a token principal, so `identity` is always set; the
   // guard is here because a null one must mean "resolve nothing" rather than "run
-  // unattributed" — `runWithIdentity` has no null form, and the data layer's own
+  // unattributed" - `runWithIdentity` has no null form, and the data layer's own
   const value = await (ctx.identity
     ? runWithIdentity(ctx.identity, run)
     : run());

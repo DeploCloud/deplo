@@ -59,14 +59,14 @@ export function titleCase(input: string): string {
 /**
  * Truncate `str` to at most `max` characters, appending an ellipsis when cut.
  * Used to cap the project-name portion of page titles so the trailing
- * "– Section – Deplo" suffix stays visible instead of a long name crowding it out.
+ * "- Section - Deplo" suffix stays visible instead of a long name crowding it out.
  */
 export function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
   return str.slice(0, max).trimEnd() + "…";
 }
 
-/** Display name for a server — the operator-chosen name. */
+/** Display name for a server - the operator-chosen name. */
 export function serverLabel(server: { name: string }): string {
   return server.name;
 }
@@ -129,7 +129,7 @@ export function repoCommitUrl(
 /**
  * The GitHub URL of a pull request a deployment was built from, or null for a
  * production build (no pull request) or a non-GitHub source. Derived, never
- * stored — same shape and rationale as {@link repoCommitUrl}.
+ * stored - same shape and rationale as {@link repoCommitUrl}.
  */
 export function githubPullRequestUrl(
   repo:
@@ -204,7 +204,7 @@ export function appBuildsItsOwnImage(project: {
 }
 
 /**
- * What KIND of thing an App is, in one short human phrase — the contextual
+ * What KIND of thing an App is, in one short human phrase - the contextual
  * subtitle its management header falls back to when the App has no domain linked
  * (and therefore no URL to show in that slot).
  */
@@ -257,7 +257,7 @@ export function hostVolumeName(slug: string, name: string): string {
 }
 
 /**
- * Validate a user-typed colour without throwing — accepts `#rgb`/`#rrggbb` (with
+ * Validate a user-typed colour without throwing - accepts `#rgb`/`#rrggbb` (with
  * or without the leading `#`, any case).
  */
 export function isHexColor(input: string): boolean {
@@ -285,7 +285,7 @@ export function normalizeHexColor(input: string): string {
 
 /**
  * Pick the readable foreground (`#000000` or `#ffffff`) for text/icons placed on a
- * solid `hex` background — automatic contrast.
+ * solid `hex` background - automatic contrast.
  */
 export function readableTextColor(hex: string): "#000000" | "#ffffff" {
   // Parse defensively (no throwing): tolerate a missing `#`, any case, and the

@@ -84,7 +84,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     // dialog, so it is offered only to someone who may actually create one.
     hasCapability("create_databases"),
     // Folders and projects each have their OWN create capability, and
-    // `requireCapability` gives an instance admin no bypass — so asking for exactly
+    // `requireCapability` gives an instance admin no bypass, so asking for exactly
     // what createFolder/createProject ask for is what keeps a menu entry from opening a
     hasCapability("create_folders"),
     hasCapability("create_projects"),
@@ -156,7 +156,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
   const visibleProjects = query || openFolder || openProject ? [] : projects;
 
   // Enrich each visible folder with the CURRENT caller's effective per-folder caps
-  // and whether they may share it — the two fields the folder cards gate their own
+  // and whether they may share it - the two fields the folder cards gate their own
   // rename/colour/move/delete/share menu on.
   const enrichedFolders = await Promise.all(
     visibleFolders.map(async (f) => ({
@@ -201,7 +201,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
 
   // The drill-in the user is standing in, threaded into every creation flow
   // (Add New menu, empty-state buttons) so an app created from here is born
-  // HERE — in the open folder, or in the open project's selected environment.
+  // HERE - in the open folder, or in the open project's selected environment.
   const placement: OverviewPlacement | null = openFolder
     ? { folderId: openFolder.id }
     : openProject
@@ -224,7 +224,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     visibleFolders.length === 0 &&
     visibleProjects.length === 0;
   // Re-seed the grid's optimistic state only on a structural change (navigation,
-  // search, add/remove of an app, folder or project) — never on a pure
+  // search, add/remove of an app, folder or project), never on a pure
   // reorder/move, so a drag survives its own drop. See AppsGrid.
   const gridKey = [
     view,
@@ -301,8 +301,8 @@ export default async function OverviewPage(props: PageProps<"/">) {
               canCreateProject={canCreateProject}
               isAdmin={isAdmin}
               // Drill-in context so "New folder" nests under the folder currently open (ADR-0009:
-              // folders nest via parentId). Null inside a project — folders never live in a
-              // project — so a folder made there stays at the top level.
+              // folders nest via parentId). Null inside a project - folders never live in a
+              // project, so a folder made there stays at the top level.
               parentFolder={
                 openFolder ? { id: openFolder.id, name: openFolder.name } : null
               }
@@ -349,8 +349,8 @@ export default async function OverviewPage(props: PageProps<"/">) {
               description={`Nothing found for “${query}”.`}
             />
           ) : openFolder ? (
-            // An empty open folder renders no grid, but the breadcrumb is the only way back out
-            // — so keep the "Overview / …" trail above the empty state regardless.
+            // An empty open folder renders no grid, but the breadcrumb is the only way back out,
+            // so keep the "Overview / …" trail above the empty state regardless.
             <div className="space-y-6">
               <div className="px-1 py-1">
                 <FolderTrail path={trailPath} view={view} />
@@ -365,7 +365,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
                 }
                 action={
                   <div className="flex gap-2">
-                    {/* Creating from inside the folder creates IN the folder —
+                    {/* Creating from inside the folder creates IN the folder -
                         the drill-in rides along as ?folder=. Offered only to
                         someone createApp won't refuse. */}
                     {canDeploy && (
@@ -480,7 +480,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
             canMoveApps={canMoveApps}
             canCreateFolder={canCreateFolder}
             canManageAllFolders={canManageAllFolders}
-            // The project card's manage menu (rename, recolor, delete, its environments) — each
+            // The project card's manage menu (rename, recolor, delete, its environments) - each
             // item has its own capability server-side, so this stays the wider "can shape the
             // fleet" proxy it has always been rather than borrowing the folder gate.
             canManageProjects={isAdmin || canDeploy}

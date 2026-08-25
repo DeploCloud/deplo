@@ -19,7 +19,7 @@ export const OAUTH_CLIENT_SECRET_PREFIX = "dplo_cs_";
 export const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
 
 /**
- * Better Auth's base path — and therefore the authorization server's ISSUER.
+ * Better Auth's base path, and therefore the authorization server's ISSUER.
  */
 export const AUTH_BASE_PATH = "/api/auth";
 
@@ -36,7 +36,7 @@ export function mcpResource(): string | null {
 }
 
 /**
- * The URL a `WWW-Authenticate` challenge points at — the path-suffixed form MCP
+ * The URL a `WWW-Authenticate` challenge points at - the path-suffixed form MCP
  * clients derive from the resource itself.
  */
 export function resourceMetadataUrl(): string | null {
@@ -63,7 +63,7 @@ export function protectedResourceMetadata(): ProtectedResourceMetadata | null {
   if (!base) return null;
   return {
     resource: `${base}${MCP_RESOURCE_PATH}`,
-    // The issuer, not the origin — see `oauthIssuer`. A client that follows this
+    // The issuer, not the origin - see `oauthIssuer`. A client that follows this
     // fetches `/.well-known/oauth-authorization-server/api/auth`, which is why
     // that route exists next to the bare one.
     authorization_servers: [`${base}${AUTH_BASE_PATH}`],

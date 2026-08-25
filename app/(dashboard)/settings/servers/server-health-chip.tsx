@@ -51,7 +51,7 @@ export function ServerHealthChip({
   const state = health(serverId) ?? fallback;
   const checking = isChecking(serverId);
 
-  // `provisioning` is a LIFECYCLE state, not an observation — the prober skips these
+  // `provisioning` is a LIFECYCLE state, not an observation - the prober skips these
   // rows on purpose (there is no agent to dial yet), so they have no checkedAt and
   // must not be aged out into "Unknown".
   if (state.status === "provisioning") {
@@ -66,7 +66,7 @@ export function ServerHealthChip({
   }
 
   if (!isObservationFresh(state.checkedAt, now)) {
-    // We genuinely do not know. Say so — and say when we last did know, which is the
+    // We genuinely do not know. Say so, and say when we last did know, which is the
     // one useful thing an unverified chip can offer.
     const tip = checking
       ? "Checking this server's agent…"

@@ -10,7 +10,7 @@ export const AVATAR_COLORS = [
 ] as const;
 
 /**
- * A stable colour for something that has no stored one — a team. Derived from the
+ * A stable colour for something that has no stored one - a team. Derived from the
  * NAME rather than the id because the letters on the mark are too: rename the team
  * and the whole mark changes together, instead of new letters on the old colour.
  */

@@ -2,7 +2,7 @@ import type { AlertKey } from "./types";
 import { ALL_ALERTS } from "./types";
 
 /**
- * The alert catalog — one entry per thing Deplo will tell a team about, plus the
+ * The alert catalog - one entry per thing Deplo will tell a team about, plus the
  * categories the notification settings browse them by. The one rule that governs
  * what may be listed here: **every key must have a real emitter**.
  */
@@ -358,7 +358,7 @@ export const ALERT_CATEGORIES: {
 ];
 
 /**
- * What a team is subscribed to before it ever opens the settings — and what an
+ * What a team is subscribed to before it ever opens the settings, and what an
  * alert key added in a LATER release falls back to for every existing team, so a
  * new alert never needs a backfill (`notification_alerts` stores a row only for
  * keys the team has actually decided about).

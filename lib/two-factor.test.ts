@@ -243,7 +243,7 @@ test("a backup code works exactly once", async () => {
   const code = backupCodes[0]!;
 
   // A backup code answers the LOGIN challenge, so it needs the short-lived
-  // two-factor cookie that the password step hands back — not a session cookie.
+  // two-factor cookie that the password step hands back, not a session cookie.
   const challenge = async () =>
     new Headers({ cookie: await signIn(EMAIL_1, PASSWORD) });
 

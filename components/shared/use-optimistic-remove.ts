@@ -19,7 +19,7 @@ export function useOptimisticRemove<T>(
   visible: T[];
   /** Hide a key from `visible` until the server stops serving it. */
   remove: (key: string) => void;
-  /** Put a key back — the mutation behind the removal was refused. */
+  /** Put a key back - the mutation behind the removal was refused. */
   restore: (key: string) => void;
 } {
   const [removed, setRemoved] =

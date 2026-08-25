@@ -26,7 +26,7 @@ import {
 } from "./instance-owner";
 
 /**
- * Instance-owner invariants — the lockout this whole feature exists to close.
+ * Instance-owner invariants - the lockout this whole feature exists to close.
  * Before the crown, `updateUserAdmin`'s only guard was "≥1 ACTIVE admin must
  * survive", which the ATTACKER satisfies by being that admin.
  */
@@ -221,7 +221,7 @@ test("the last-active-admin invariant still holds ahead of the owner guard", asy
 });
 
 /* ------------------------------------------------------------------ */
-/* Transfer — the crown is not a dead end                              */
+/* Transfer - the crown is not a dead end                              */
 /* ------------------------------------------------------------------ */
 
 test("only the owner can transfer ownership", async () => {
@@ -262,7 +262,7 @@ test("transfer refuses a non-admin and a suspended target", async () => {
   assert.equal(await instanceOwnerUserId(), OWNER);
 });
 
-test("a successful transfer moves the crown — and the protections with it", async () => {
+test("a successful transfer moves the crown, and the protections with it", async () => {
   await seedOwnedInstance();
   await asUser(OWNER, () =>
     transferInstanceOwner({ userId: ADMIN, password: SEEDED_PW }),

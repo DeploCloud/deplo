@@ -10,7 +10,7 @@ import { sep } from "node:path";
 /**
  * Canonicalise `candidate` (a path that joins a user-supplied rootDirectory onto
  * an extracted/cloned root) and confirm it is `base` itself or a real descendant
- * of it — defeating symlink escapes that a string-prefix check would miss.
+ * of it - defeating symlink escapes that a string-prefix check would miss.
  */
 export async function safeBuildDir(
   base: string,

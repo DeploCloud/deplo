@@ -45,7 +45,7 @@ export function LogoImage({
   fallback: React.ReactNode;
 }) {
   const [broken, setBroken] = React.useState(false);
-  // A new source deserves a fresh attempt — otherwise replacing a broken logo
+  // A new source deserves a fresh attempt, otherwise replacing a broken logo
   // would keep showing the fallback until a remount.
   const [triedSrc, setTriedSrc] = React.useState(src);
   if (triedSrc !== src) {
@@ -80,7 +80,7 @@ export function LogoImage({
         src={src}
         alt=""
         // The inset that keeps a full-bleed logo off the avatar's edge is worth 4px of a
-        // 36px tile and a quarter of a 16px one — at menu-icon size it would shrink the
+        // 36px tile and a quarter of a 16px one - at menu-icon size it would shrink the
         // mark to a smudge, so it only applies once there is room for it.
         className={cn("size-full object-contain", size >= 24 && "p-1")}
         loading="lazy"

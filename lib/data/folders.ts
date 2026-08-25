@@ -31,7 +31,7 @@ import { assembleFolder, folderToRow } from "./app-graph-rows";
 import type { Folder } from "../types";
 
 export interface FolderSummary extends Folder {
-  /** Live count of apps in this folder's WHOLE subtree — the folder itself
+  /** Live count of apps in this folder's WHOLE subtree - the folder itself
    *  plus every subfolder nested anywhere beneath it (derived, never stored). */
   appCount: number;
   /** Live count of immediate child folders (derived, never stored). */
@@ -55,8 +55,8 @@ function summarizeFolder(
 
 /**
  * The id of `folderId` plus every folder nested anywhere beneath it (its whole
- * subtree). Used to reject a move that would put a folder under its own descendant
- * — which would orphan a cycle out of the tree.
+ * subtree). Used to reject a move that would put a folder under its own descendant,
+ * which would orphan a cycle out of the tree.
  */
 export function descendantFolderIds(
   folderId: string,
@@ -83,7 +83,7 @@ export function descendantFolderIds(
 
 /**
  * Roll DIRECT per-folder app counts up the folder tree so each folder's total
- * covers its WHOLE subtree — itself plus every folder nested anywhere beneath it.
+ * covers its WHOLE subtree - itself plus every folder nested anywhere beneath it.
  */
 export function rollUpAppCounts(
   folders: Pick<Folder, "id" | "parentId">[],
@@ -118,7 +118,7 @@ async function teamFoldersWithCounts(teamId: string): Promise<{
     .where(eq(foldersTable.teamId, teamId));
   const folders = folderRows.map(assembleFolder);
   // App counts: GROUP BY folder_id over the team's apps, then rolled up the tree so a
-  // folder's count covers its whole subtree — the Overview shows one level at a time,
+  // folder's count covers its whole subtree - the Overview shows one level at a time,
   // so a parent tile saying "0 apps" over populated subfolders would read as empty.
   const projRows = await getDb()
     .select({ folderId: appsTable.folderId })
@@ -141,7 +141,7 @@ async function teamFoldersWithCounts(teamId: string): Promise<{
 
 /**
  * Folders in the active team, honouring the team-wide manual order (Overview
- * drag-and-drop) when present and falling back to newest-first — the same
+ * drag-and-drop) when present and falling back to newest-first - the same
  * contract as `listApps`. Each carries a live project count.
  */
 export const listFolders = cache(async function listFolders(): Promise<
@@ -161,7 +161,7 @@ export const listFolders = cache(async function listFolders(): Promise<
   const seen = granted.filter((f) => inFolderScope(f.id));
   // Recompute subfolderCount over the VISIBLE set so a folder doesn't disclose the
   // existence of child folders the caller can't see (child folders carry their own
-  // independent ownership/grants). appCount stays team-scoped — a folder's apps
+  // independent ownership/grants). appCount stays team-scoped - a folder's apps
   // (including the subtree roll-up) are part of what any folder-viewer works with.
   const shownSubfolderCounts =
     visible === "all"
@@ -231,7 +231,7 @@ export async function createFolder(
 ): Promise<FolderSummary> {
   // Creating a folder needs the SAME capability as creating a project: `deploy`.
   // The creator becomes the folder's owner and its per-folder caps are derived
-  // live from their team caps (never stored) — see lib/data/folder-access.ts.
+  // live from their team caps (never stored) - see lib/data/folder-access.ts.
   const { teamId, userId } = await requireCapability("create_folders");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
@@ -239,7 +239,7 @@ export async function createFolder(
   // `#rrggbb`; an empty/absent choice keeps the default neutral tile.
   const cleanColor = color ? normalizeHexColor(color) : null;
   // A nested folder must be created under a real folder of the same team that the
-  // creator can actually SEE — an unknown/foreign/invisible parent is rejected so
+  // creator can actually SEE - an unknown/foreign/invisible parent is rejected so
   // a stale client can't strand a subtree or nest under someone else's folder.
   if (parentId) {
     if (
@@ -380,7 +380,7 @@ export async function moveFolder(
   parentId: string | null,
 ): Promise<void> {
   // Manage the moved folder itself, AND (when nesting) be able to see the
-  // destination parent — so a user can't file a folder under one they can't use.
+  // destination parent, so a user can't file a folder under one they can't use.
   const { teamId, userName } = await requireFolderCapability(
     id,
     "organize_folders",
@@ -505,7 +505,7 @@ export async function moveAppToFolder(
   await getDb()
     .update(appsTable)
     // An app lives in ONE place: filing it into a folder also pulls it out of
-    // any project/environment (ADR-0009 — folders and projects don't nest).
+    // any project/environment (ADR-0009 - folders and projects don't nest).
     .set({
       folderId,
       ...(folderId ? { projectId: null, environmentId: null } : {}),
@@ -516,7 +516,7 @@ export async function moveAppToFolder(
 }
 
 /**
- * Move SEVERAL apps into a folder (or to the top level) in one write — the
+ * Move SEVERAL apps into a folder (or to the top level) in one write - the
  * bulk counterpart to `moveAppToFolder`. Team-scoped; foreign/stale ids and
  * apps already in place are skipped. Returns how many actually moved.
  */
@@ -602,7 +602,7 @@ export async function moveAppsToFolder(
  */
 export async function reorderFolders(orderedIds: string[]): Promise<void> {
   // The Overview folder order is a single TEAM-WIDE setting (like reorderApps),
-  // so a lone folder owner can't define it — gate on the super-user role.
+  // so a lone folder owner can't define it - gate on the super-user role.
   const { teamId } = await requireMembership();
   if (!(await isInstanceAdmin()) && !(await hasCapability("manage_team")))
     throw new Error("You don't have permission to reorder folders");

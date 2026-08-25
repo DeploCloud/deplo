@@ -341,7 +341,7 @@ export function TwoFactorWizard({
                       fgColor="#0a0a0a"
                       // "H" (30% recovery) is what pays for the excavated middle: the mark covers ~6% of
                       // the area, so the code still reads with room to spare. Any lower level and the
-                      // logo breaks it — see lib/two-factor-qr.test.ts.
+                      // logo breaks it - see lib/two-factor-qr.test.ts.
                       level="H"
                       marginSize={0}
                       imageSettings={{
@@ -391,7 +391,7 @@ export function TwoFactorWizard({
                     <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
                     <span>
                       Save these before you close this window. They cannot be
-                      shown again — only replaced.
+                      shown again - only replaced.
                     </span>
                   </div>
                   <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-muted/30 p-3">

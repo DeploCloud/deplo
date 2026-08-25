@@ -62,7 +62,7 @@ type LogsResponse = {
 };
 
 /**
- * One deployment's build output — the WHOLE of where build logs are read.
+ * One deployment's build output - the WHOLE of where build logs are read.
  */
 export function BuildLogStream({
   deploymentId,
@@ -123,7 +123,7 @@ export function BuildLogStream({
   // so the data already in the payload paints without a network round-trip.
   React.useEffect(() => {
     // Client-only seed: paints the RSC-payload logs post-hydration. Deliberate
-    // setState-in-effect — it is what keeps the rows out of the SSR output.
+    // setState-in-effect - it is what keeps the rows out of the SSR output.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLogs(initialLogs);
     // initialLogs is intentionally omitted: it is the SSR snapshot for this
@@ -158,7 +158,7 @@ export function BuildLogStream({
           router.refresh();
         }
       } catch {
-        // Transient fetch/abort error — keep polling; the next tick retries.
+        // Transient fetch/abort error - keep polling; the next tick retries.
       }
     }
 
@@ -213,7 +213,7 @@ export function BuildLogStream({
         <QueuedBanner position={queuePosition} />
       )}
       <div className="overflow-hidden rounded-xl border border-border bg-terminal">
-        {/* Every control beside the search input is h-9 — `size="sm"` is h-8,
+        {/* Every control beside the search input is h-9 - `size="sm"` is h-8,
             which lands a button 4px short of an Input and reads as a broken row. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
@@ -285,7 +285,7 @@ export function BuildLogStream({
 
           {/**
            * Claimed but silent: the build is running and hasn't printed a line yet. Gated on
-           * `live` — a finished deployment with no logs is done waiting, and a skeleton there
+           * `live` - a finished deployment with no logs is done waiting, and a skeleton there
            * would lie.
            */}
           {logs.length === 0 && live ? <LogLinesSkeleton /> : null}
@@ -306,7 +306,7 @@ export function BuildLogStream({
 
 /**
  * The "waiting in the build queue" banner shown above the console while a
- * deployment is `queued` with no logs yet — it hasn't been claimed off its owning
+ * deployment is `queued` with no logs yet - it hasn't been claimed off its owning
  * server's queue.
  */
 function QueuedBanner({ position }: { position: number | null }) {
@@ -320,10 +320,10 @@ function QueuedBanner({ position }: { position: number | null }) {
           {position == null
             ? "Waiting for a free build slot on the owning server."
             : ahead === 0
-              ? "It's next in line — the build starts as soon as a slot frees up on the owning server."
+              ? "It's next in line - the build starts as soon as a slot frees up on the owning server."
               : ahead === 1
-                ? "Position 2 in the build queue — it starts once the build ahead of it finishes on the owning server."
-                : `Position ${position} in the build queue — it starts once the ${ahead} builds ahead of it finish on the owning server.`}
+                ? "Position 2 in the build queue - it starts once the build ahead of it finishes on the owning server."
+                : `Position ${position} in the build queue - it starts once the ${ahead} builds ahead of it finish on the owning server.`}
         </p>
       </div>
     </div>

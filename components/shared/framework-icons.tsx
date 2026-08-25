@@ -77,7 +77,7 @@ const MARKS: Record<FrameworkId, string> = {
 /**
  * The brand mark for a recognised framework. Sized by the caller like every other
  * icon here (`className="size-4"`), and `aria-hidden` because the name always
- * travels next to it as real text — the icon is recognition, not the label.
+ * travels next to it as real text - the icon is recognition, not the label.
  */
 export function FrameworkIcon({
   id,

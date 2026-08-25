@@ -33,7 +33,7 @@ function applyClass(resolved: Resolved) {
 
 /**
  * Persist the RESOLVED theme in a cookie so the SERVER can set the <html> class on
- * the next load — the zero-flash mechanism that replaces an inline bootstrap
+ * the next load - the zero-flash mechanism that replaces an inline bootstrap
  * script (React 19.2 refuses to execute inline scripts rendered through React,
  * server or client, and warns).
  */
@@ -46,7 +46,7 @@ function writeCookie(resolved: Resolved) {
 }
 
 /**
- * Minimal theme provider — replaces `next-themes`, which rendered its no-flash
+ * Minimal theme provider - replaces `next-themes`, which rendered its no-flash
  * <script> from a client component (React 19.2 warns that such inline scripts
  * never run on the client).
  */
@@ -55,7 +55,7 @@ export function ThemeProvider({
   defaultTheme = "dark",
 }: {
   children: React.ReactNode;
-  /** SSR-resolved theme (from the cookie) — the deterministic initial value. */
+  /** SSR-resolved theme (from the cookie) - the deterministic initial value. */
   defaultTheme?: Theme;
 }) {
   const [theme, setThemeState] = React.useState<Theme>(defaultTheme);

@@ -56,7 +56,7 @@ export function AppLiveStatusProvider({
   children: React.ReactNode;
 }) {
   // The provider is keyed by slug in the layout, so it remounts (and re-seeds
-  // from `initial`) on slug navigation — no re-seed effect needed.
+  // from `initial`) on slug navigation, no re-seed effect needed.
   const [live, setLive] = React.useState<LiveApp>(initial);
 
   React.useEffect(() => {

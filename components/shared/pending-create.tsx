@@ -10,12 +10,12 @@ import type { ActionResult } from "@/lib/result";
 
 /**
  * Optimistic creation: the thing appears the instant you ask for it. It is not a
- * lie — the placeholder never pretends to be finished: it pulses, it is not
+ * lie - the placeholder never pretends to be finished: it pulses, it is not
  * interactive, and it says what it is waiting on.
  */
 export type PendingCreate = {
   id: string;
-  /** What the user typed — the identity of the thing being created. */
+  /** What the user typed - the identity of the thing being created. */
   label: string;
   /** What is happening to it, present tense: "Adding domain…", "Connecting…". */
   note: string;
@@ -26,7 +26,7 @@ export type PendingCreate = {
 };
 
 /** How long a settled placeholder waits for its real row before giving up and
- *  removing itself — a backstop for a refresh that never lands. */
+ *  removing itself - a backstop for a refresh that never lands. */
 const ARRIVAL_TIMEOUT_MS = 15_000;
 
 type CreateOptions<T> = {
@@ -34,7 +34,7 @@ type CreateOptions<T> = {
   success?: string;
   onSuccess?: (data: T | undefined) => void;
   /**
-   * Called with the server's message after it has been toasted — the dialog
+   * Called with the server's message after it has been toasted - the dialog
    * uses it to reopen itself with the values the user typed, which a modal that
    * closed optimistically would otherwise have thrown away.
    */
@@ -98,14 +98,14 @@ export function PendingCreateProvider({
           setPending((p) => p.filter((x) => x.id !== id));
           toast.error(res.error);
           // Refresh on failure too: several of these mutations write the row
-          // first and fail later, on the part that touches the server agent —
+          // first and fail later, on the part that touches the server agent -
           // an error can still leave something real the user has to see.
           router.refresh();
           opts?.onError?.(res.error);
           return;
         }
         if (opts?.success) toast.success(opts.success);
-        // Ask for the real row and mark the placeholder settled — it keeps its
+        // Ask for the real row and mark the placeholder settled - it keeps its
         // seat until `count` says the row is actually rendered. The timer is
         // only a backstop for a refresh that never brings one.
         router.refresh();
@@ -145,7 +145,7 @@ export function usePendingCreate(): PendingCreateApi {
 
 /**
  * Renders the list, falling back to `emptyState` only when there is genuinely
- * nothing to show — not even a creation in flight.
+ * nothing to show, not even a creation in flight.
  */
 export function PendingList({
   empty,
@@ -162,7 +162,7 @@ export function PendingList({
     <>
       {children}
       {/**
-       * The empty state usually carries its own "Add …" dialog — the one the user just
+       * The empty state usually carries its own "Add …" dialog - the one the user just
        * submitted from, when this is the FIRST item of the list.
        */}
       {empty && <div className="hidden">{emptyState}</div>}
@@ -171,7 +171,7 @@ export function PendingList({
 }
 
 /**
- * The placeholders as CARDS — drop this inside the same grid container as the
+ * The placeholders as CARDS - drop this inside the same grid container as the
  * real cards so they flow with them.
  */
 export function PendingCards({
@@ -223,7 +223,7 @@ export function PendingCards({
 }
 
 /**
- * The placeholders as TABLE ROWS — drop this inside `<TableBody>` after the
+ * The placeholders as TABLE ROWS - drop this inside `<TableBody>` after the
  * real rows. `columns` is the table's column count; the name occupies the first
  * cell and the rest are skeleton bars, so the row keeps the table's shape.
  */

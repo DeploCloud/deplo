@@ -211,7 +211,7 @@ function toCmDiagnostic(
   const lineNo = Math.min(Math.max(d.line, 1), doc.lines);
   const line = doc.line(lineNo);
   // Highlight the whole line (minus leading indent) when no column, else from
-  // the column to end of line — enough to make the marker findable.
+  // the column to end of line - enough to make the marker findable.
   const from = d.column
     ? Math.min(line.from + d.column - 1, line.to)
     : line.from;

@@ -2,7 +2,7 @@
 --
 -- A Preview is NOT an App and NOT an Environment. It is a (App, pull request)
 -- pair that owns its own Docker stack, rendered from the App's build config but
--- keyed on `<app slug>__pr-<n>` — the deploy-key scheme ADR-0008 spec'd and
+-- keyed on `<app slug>__pr-<n>` - the deploy-key scheme ADR-0008 spec'd and
 -- lib/deploy/deploy-key.ts has carried unused since. Because a slug is [a-z0-9-]
 -- and can never contain `__`, `deplo-<slug>__pr-42` can never byte-collide with
 -- another app's bare `deplo-<otherslug>`.
@@ -15,7 +15,7 @@
 -- production stack. The key is denormalized onto the deployment row for the same
 -- reason `server_id` already is: it records what was ACTUALLY deployed, it is
 -- read by the queue drain and by `runDeployment`'s single-row load without an
--- apps join, and it outlives the preview row — a deploy still in flight when its
+-- apps join, and it outlives the preview row - a deploy still in flight when its
 -- preview is destroyed must still be able to name the stack it touched.
 -- Existing rows backfill to the app slug, which is exactly what they deployed, so
 -- every production stack, volume and certificate stays byte-identical.
@@ -41,8 +41,8 @@ ALTER TABLE "deployments" ADD COLUMN "preview_id" text;
 -- One row per (App, pull request).
 --
 -- TWO STATE COLUMNS, ON PURPOSE:
---   `state`  is the LIFECYCLE  — open | closed. Set by the pull request itself.
---   `status` is the RUNTIME    — blocked | queued | building | active | error |
+--   `state`  is the LIFECYCLE  - open | closed. Set by the pull request itself.
+--   `status` is the RUNTIME    - blocked | queued | building | active | error |
 --                                idle. It mirrors what `apps.status` means for an
 --                                App, and it exists so a preview build can never
 --                                repaint the production app's badge.
@@ -53,14 +53,14 @@ ALTER TABLE "deployments" ADD COLUMN "preview_id" text;
 -- the row on close instead would mean an agent that was unreachable at that exact
 -- moment leaks a container and a volume set that nothing points at any more.
 --
--- `deploy_key` and `host` are minted ONCE at PR-open and never recomputed — the
+-- `deploy_key` and `host` are minted ONCE at PR-open and never recomputed - the
 -- URL gets commented on the pull request, so a resync that regenerated either
 -- would strand the link somebody is testing.
 --
 -- FORK SAFETY: a pull request from a fork is attacker-authored code that would
 -- run with this App's decrypted secrets on the operator's host. `is_fork` lands
 -- it `status = 'blocked'` until a member with `deploy` approves it, and the
--- approval is bound to `approved_sha` — a later push clears it, because
+-- approval is bound to `approved_sha` - a later push clears it, because
 -- approve-once is exactly the TOCTOU hole `pull_request_target` taught everyone.
 CREATE TABLE "app_previews" (
   "id" text PRIMARY KEY NOT NULL,
@@ -94,13 +94,13 @@ CREATE TABLE "app_previews" (
 );
 --> statement-breakpoint
 -- Preview-only environment variable OVERRIDES (advanced). A preview inherits the
--- App's variables verbatim by default — the Vercel behaviour, and the one that
+-- App's variables verbatim by default - the Vercel behaviour, and the one that
 -- needs no configuration. This table is the escape hatch for the one case that
 -- genuinely matters: pointing a preview at a scratch database instead of the
 -- production one.
 --
 -- A separate table rather than a second `env_vars` row because
--- `env_vars_app_key_uq` is UNIQUE(app_id, key) — two values for one key are not
+-- `env_vars_app_key_uq` is UNIQUE(app_id, key) - two values for one key are not
 -- representable there. It folds LAST in lib/deploy/env-resolve.ts (above the
 -- app's own vars AND above linked shared vars) and only for the `preview` target:
 -- an override is the most specific statement a user can make, and if a team-wide
@@ -128,7 +128,7 @@ CREATE TABLE "app_preview_env_vars" (
 ALTER TABLE "apps" ADD COLUMN "preview_enabled" boolean DEFAULT false NOT NULL;
 --> statement-breakpoint
 -- NULL ⇒ a deterministic nip.io host on plain HTTP (zero DNS configuration, and
--- nip.io can never hold a Let's Encrypt certificate — it is ONE registered domain
+-- nip.io can never hold a Let's Encrypt certificate - it is ONE registered domain
 -- sharing one rate limit across the whole internet). A base like
 -- `preview.example.com` needs ONE wildcard DNS record and gives each preview its
 -- own HTTP-01 certificate from the existing letsencrypt resolver.
@@ -137,7 +137,7 @@ ALTER TABLE "apps" ADD COLUMN "preview_base_domain" text;
 -- NULL ⇒ PREVIEW_MAX_ACTIVE_DEFAULT. "Keep at most N", meant literally: at the
 -- cap a NEW preview EVICTS the open one with the oldest `last_activity_at`.
 -- The evicted row survives (`status = 'evicted'`, `state` still `open`) and is
--- NOT revived by the next push — only by a person clicking Redeploy. Without
+-- NOT revived by the next push - only by a person clicking Redeploy. Without
 -- that asymmetry, three active pull requests under a cap of three would tear
 -- each other down on every commit, a full build per cycle.
 ALTER TABLE "apps" ADD COLUMN "preview_max_active" integer;
@@ -150,17 +150,17 @@ ALTER TABLE "apps" ADD COLUMN "preview_max_active" integer;
 ALTER TABLE "apps" ADD COLUMN "preview_ttl_days" integer;
 --> statement-breakpoint
 -- NULL ⇒ 'approve'. deny | approve | allow.
---   approve — a fork's pull request appears in the list as blocked and waits for
+--   approve - a fork's pull request appears in the list as blocked and waits for
 --             a member with `deploy`. Nothing is cloned, built or run before that.
---   deny    — fork pull requests are ignored entirely.
---   allow   — expert mode: build them like any other. Even then a fork preview
+--   deny    - fork pull requests are ignored entirely.
+--   allow   - expert mode: build them like any other. Even then a fork preview
 --             gets no `secret`-typed variables.
 ALTER TABLE "apps" ADD COLUMN "preview_fork_policy" text;
 --> statement-breakpoint
 -- Where previews run. NULL ⇒ the app's own `server_id`, which is the honest
 -- default: a preview is only worth trusting if it runs where production runs.
--- The override exists because deplo is multi-server and the competitors are not
--- — pointing pull request builds at a scrap machine keeps them off the box that
+-- The override exists because deplo is multi-server and the competitors are not -
+-- pointing pull request builds at a scrap machine keeps them off the box that
 -- serves production. SET NULL so retiring that server quietly returns later
 -- previews to the app's own server rather than failing to deploy.
 ALTER TABLE "apps" ADD COLUMN "preview_server_id" text;

@@ -1,7 +1,7 @@
 import type { DeploymentStatus } from "./types";
 
 /**
- * Terminal deployment statuses — the build is over and the row will not change
+ * Terminal deployment statuses - the build is over and the row will not change
  * again.
  */
 const TERMINAL: ReadonlySet<DeploymentStatus> = new Set<DeploymentStatus>([

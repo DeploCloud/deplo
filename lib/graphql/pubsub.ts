@@ -54,7 +54,7 @@ export function publishMigrationChanged(): void {
   emit("migrationActivity", MIGRATION_ACTIVITY_TOPIC, MIGRATION_ACTIVITY_TOPIC);
 }
 
-/** Notify every subscriber that this database's state changed — same contract
+/** Notify every subscriber that this database's state changed - same contract
  *  as {@link publishAppChanged}: the payload is just the id, "re-read it". */
 export function publishDatabaseChanged(databaseId: string): void {
   emit("databaseChanged", databaseId, databaseId);
@@ -65,7 +65,7 @@ export function publishDatabaseChanged(databaseId: string): void {
  */
 export const CLEANUP_RUNS_TOPIC = "instance";
 
-/** Notify every subscriber that the Docker cleanup history changed — a sweep
+/** Notify every subscriber that the Docker cleanup history changed - a sweep
  *  started, finished, or was pruned. Payload-free in spirit (the key is a
  *  constant): "re-read the runs". */
 export function publishCleanupRunsChanged(): void {

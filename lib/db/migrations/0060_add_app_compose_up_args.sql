@@ -1,7 +1,7 @@
 -- An app can add its own flags to the `docker compose up` that brings it up.
 --
--- Deplo assembles that command itself — `compose -p deplo-<slug> -f <stack>.yml
--- [--env-file …] up -d --remove-orphans` — and there was no way to influence it.
+-- Deplo assembles that command itself - `compose -p deplo-<slug> -f <stack>.yml
+-- [--env-file …] up -d --remove-orphans`, and there was no way to influence it.
 -- Real deploys occasionally need one more flag on it: `--pull always` for a
 -- floating image tag, `--scale web=3`, `--renew-anon-volumes`.
 --
@@ -13,7 +13,7 @@
 -- Deliberately additive flags, NOT the "custom command" other platforms ship
 -- (where the operator retypes the whole invocation from what the UI prints). That
 -- design rots the day the platform's own command changes, and one typo in the
--- project name or stack path aims compose at nothing — a green deploy of an app
+-- project name or stack path aims compose at nothing - a green deploy of an app
 -- that never restarted. Both sides here refuse the flags that decide WHICH stack
 -- comes up (-p/--project-name, -f/--file, --env-file, --project-directory): the
 -- control plane won't store them, and the agent drops the whole set if one

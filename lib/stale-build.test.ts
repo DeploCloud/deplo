@@ -40,7 +40,7 @@ test("recognises a chunk that the current build no longer has", () => {
     true,
   );
 
-  // The name alone is enough — some bundlers throw it with an empty message.
+  // The name alone is enough - some bundlers throw it with an empty message.
   const bare = new Error("");
   bare.name = "ChunkLoadError";
   assert.equal(isStaleBuildError(bare), true);

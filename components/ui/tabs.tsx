@@ -27,7 +27,7 @@ TabsList.displayName = TabsPrimitive.List.displayName;
 
 // Icon + label spacing, straight off `buttonVariants`: a trigger is a button with
 // an icon in it, and every one of ours has an icon. Without this each call site
-// re-invented the gap — or forgot it, and the glyph sat glued to the word.
+// re-invented the gap, or forgot it, and the glyph sat glued to the word.
 const TRIGGER_ICON = "gap-2 [&_svg]:size-4 [&_svg]:shrink-0";
 
 const TabsTrigger = React.forwardRef<

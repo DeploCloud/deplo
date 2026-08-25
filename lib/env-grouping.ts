@@ -8,7 +8,7 @@
 export const TOP_LEVEL = "__top_level__";
 
 /** What that section is CALLED. The Project facet's option says "No project"
- *  (with a "standalone" hint); a section header is not a filter — it names what
+ *  (with a "standalone" hint); a section header is not a filter - it names what
  *  is inside, and those apps stand on their own, outside every project. */
 export const TOP_LEVEL_NAME = "Standalone";
 
@@ -19,7 +19,7 @@ export interface GroupableApp {
   projectId: string | null;
 }
 
-/** A Project as the grouping needs it — enough to name and paint its section. */
+/** A Project as the grouping needs it - enough to name and paint its section. */
 export interface GroupProject {
   id: string;
   name: string;
@@ -39,14 +39,14 @@ export interface ProjectBucket<R extends { app: GroupableApp }> {
   name: string;
   color: string | null;
   apps: AppBucket<R>[];
-  /** Rows across every app of the section — what a COLLAPSED header counts. */
+  /** Rows across every app of the section - what a COLLAPSED header counts. */
   rowCount: number;
 }
 
 /**
- * Fold rows into Project → App buckets. The SECTIONS come out in `projects` order
- * — the team-wide Project order the Overview grid shows and the Variables page
- * lets you drag — with Standalone always last.
+ * Fold rows into Project → App buckets. The SECTIONS come out in `projects` order -
+ * the team-wide Project order the Overview grid shows and the Variables page
+ * lets you drag - with Standalone always last.
  */
 export function groupRowsByProject<R extends { app: GroupableApp }>(
   rows: readonly R[],
@@ -94,7 +94,7 @@ export function groupRowsByProject<R extends { app: GroupableApp }>(
 
   // Sections follow the caller's Project order. A section whose project the
   // caller never passed has no rank of its own: it sits after the ranked ones
-  // (before Standalone), in pass order — `sort` is stable.
+  // (before Standalone), in pass order - `sort` is stable.
   const rank = new Map(projects.map((p, i) => [p.id, i] as const));
   const rankOf = (section: ProjectBucket<R>) =>
     section.id === TOP_LEVEL

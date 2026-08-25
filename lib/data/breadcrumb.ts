@@ -26,7 +26,7 @@ import type { BreadcrumbGraph } from "../breadcrumb-model";
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   const teamId = await requireActiveTeamId();
   // The apps here are queried directly rather than through `listApps`, so the role
-  // scope has to be applied by hand — `appScopeWhere` answers for a token only.
+  // scope has to be applied by hand - `appScopeWhere` answers for a token only.
   const roleScope = await currentMemberScope();
   // Storage is a TEAM-WIDE list (`requireTeamWide` in listDatabases), so a member
   // narrowed to part of the team sees none of it.

@@ -70,7 +70,7 @@ async function revoke(capability: string) {
   );
 }
 
-test("a NEW team starts with MCP off — the kill switch ships closed", async () => {
+test("a NEW team starts with MCP off - the kill switch ships closed", async () => {
   // The COLUMN default is the whole test: no creation path writes this field, so what
   // the migration says is what a team created today gets.
   await db.insert(teamsTable).values({

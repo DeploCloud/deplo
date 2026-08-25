@@ -15,7 +15,7 @@ import { pickBestFavicon } from "./favicon-shared";
 /**
  * Compose-stack favicon detection talks to the owning agent through two narrow
  * seams, so a fake agent pins both halves without a server: - the WALK drives
- * ListFiles one directory at a time — what it descends into, what it prunes, what
+ * ListFiles one directory at a time - what it descends into, what it prunes, what
  */
 
 interface FakeEntry {
@@ -202,7 +202,7 @@ function fakeReader(opts: {
       used.push(`readFile:${path}`);
       const bytes = opts.files[path];
       if (!bytes) throw new Error("not found");
-      // The agent hands back a UTF-8 STRING plus the file's real byte size —
+      // The agent hands back a UTF-8 STRING plus the file's real byte size -
       // the two disagree exactly when the bytes are not valid UTF-8.
       return {
         text: opts.withholdText ? null : bytes.toString("utf8"),
@@ -239,7 +239,7 @@ test("read: an SVG comes back over the text RPC, no tar", async () => {
 });
 
 test("read: an SVG that is not valid UTF-8 falls through to the tar, byte-exact", async () => {
-  // latin1 `è` — a UTF-8 round trip would silently rewrite it, so the length
+  // latin1 `è` - a UTF-8 round trip would silently rewrite it, so the length
   // check must reject the text and take the tar path instead.
   const svg = Buffer.concat([
     Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><!-- caff'),
@@ -300,7 +300,7 @@ test("read: a file missing from the archive yields null", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* The icon a RUNNING app serves — the case a files walk can never see: */
+/* The icon a RUNNING app serves - the case a files walk can never see: */
 /* a compose stack of prebuilt images keeps its favicon in the image.   */
 /* ------------------------------------------------------------------ */
 
@@ -373,7 +373,7 @@ test("served: takes the icon the page declares, over the /favicon.ico fallback",
   assert.equal(found?.mime, "image/png");
   assert.deepEqual(found?.bytes, PNG_BYTES);
   assert.deepEqual(conn.asked, ["/", "/assets/icon-192.png"]);
-  // The app is asked on its OWN hostname — what an app with host authorization
+  // The app is asked on its OWN hostname - what an app with host authorization
   // (ALLOWED_HOSTS, a configured site URL) requires before it answers at all.
   assert.deepEqual(new Set(conn.hosts), new Set(["app.example.com"]));
 });
@@ -435,7 +435,7 @@ test("served: an SPA answering /favicon.ico with index.html is NOT an icon", asy
   const html = Buffer.from("<!DOCTYPE html><html><body>app</body></html>");
   const conn = fakeProber({
     "/": { contentType: "text/html", body: Buffer.from("<head></head>") },
-    // A 200, and even an image content type — only the bytes give it away.
+    // A 200, and even an image content type - only the bytes give it away.
     "/favicon.ico": { contentType: "image/x-icon", body: html },
   });
   assert.equal(await detectServedFaviconVia(conn, TARGET), null);
@@ -508,7 +508,7 @@ test("served: a path-routed app is read under the prefix it actually serves on",
 });
 
 /* ------------------------------------------------------------------ */
-/* Which container/port/host to ask — the same one Traefik was given.   */
+/* Which container/port/host to ask - the same one Traefik was given.   */
 /* ------------------------------------------------------------------ */
 
 const COMPOSE = `services:
@@ -555,7 +555,7 @@ test("target: the primary domain decides the service, port and Host header", asy
 });
 
 test("target: an app with no domain yet is still reachable, via the compose default", async () => {
-  // Not published is not the same as not running — and this is exactly the case
+  // Not published is not the same as not running, and this is exactly the case
   // a fetch from the outside could never cover.
   const target = servedIconTarget(APP, [], "");
   assert.equal(target?.service, "web");
@@ -615,7 +615,7 @@ test("target: null when there is no service to talk to at all", async () => {
 test("served: an icon URL that redirects within the app is followed", async () => {
   const conn = fakeProber({
     "/": { contentType: "text/html", body: Buffer.from("<head></head>") },
-    // A hashed-asset rewrite in front of the well-known path — ordinary, and
+    // A hashed-asset rewrite in front of the well-known path - ordinary, and
     // giving up on it would cost the icon.
     "/favicon.ico": { status: 301, location: "/assets/favicon.a1b2.ico" },
     "/assets/favicon.a1b2.ico": {
@@ -640,6 +640,6 @@ test("served: a redirect loop cannot turn the search into a crawl", async () => 
     "/b": { status: 302, location: "/a" },
   });
   assert.equal(await detectServedFaviconVia(conn, TARGET), null);
-  // The home page, then a bounded number of icon fetches — never unbounded.
+  // The home page, then a bounded number of icon fetches, never unbounded.
   assert.ok(conn.asked.length <= 8, `asked ${conn.asked.length} times`);
 });

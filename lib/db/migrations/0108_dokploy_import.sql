@@ -1,4 +1,4 @@
--- Import from Dokploy — the run and its report, kept after the tab is closed.
+-- Import from Dokploy - the run and its report, kept after the tab is closed.
 --
 -- The importer reads a Dokploy instance over its HTTP API and creates the deplo
 -- equivalents: a Project per project, an Environment per environment, an App per

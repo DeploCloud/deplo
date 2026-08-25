@@ -14,7 +14,7 @@ import type { DeploymentStatus } from "@/lib/types";
 const TICK_MS = 1000;
 
 /**
- * "Build time" — the one deployment field that has to be honest WHILE it is still
+ * "Build time" - the one deployment field that has to be honest WHILE it is still
  * happening.
  */
 export function BuildDuration({

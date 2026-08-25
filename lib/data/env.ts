@@ -40,13 +40,13 @@ function toDTO(e: EnvVar, authors: Map<string, VarAuthor>): EnvVarDTO {
     id: e.id,
     key: e.key,
     // Secret values are always masked in the DTO, so don't pay to decrypt them.
-    // Only plain vars need their stored value back — a secret has NO read-back
+    // Only plain vars need their stored value back - a secret has NO read-back
     // path at all, which is what makes its immutability worth anything.
     value: isSecret ? MASK : decryptSecret(e.valueEnc),
     masked: isSecret,
     targets: e.targets,
     type: e.type,
-    // Authorship is metadata, not value — safe to project while `value` stays masked.
+    // Authorship is metadata, not value - safe to project while `value` stays masked.
     createdBy: authorOf(e.createdByUserId, authors),
     updatedBy: authorOf(e.updatedByUserId, authors),
     createdAt: e.createdAt,
@@ -62,11 +62,11 @@ function authorIds(vars: EnvVar[]): (string | null)[] {
 /**
  * Env values are sensitive: VIEWING them requires `manage_env`, not just team
  * membership. A member without it can't see the Variables / Environment UIs
- * (the data calls below return empty / throw) — matching the hidden tabs.
+ * (the data calls below return empty / throw) - matching the hidden tabs.
  */
 export async function listEnv(appId: string): Promise<EnvVarDTO[]> {
   // Env vars are owned through their app, and `manage_env` can be held on the app
-  // alone (ADR-0016) — so the reach question is asked once, at the app. A project
+  // alone (ADR-0016), so the reach question is asked once, at the app. A project
   // the caller can't reach yields nothing rather than an error.
   if (!(await hasAppCapability(appId, "manage_env"))) return [];
   const vars = (await loadEnvVarsForApp(appId)).sort((a, b) =>
@@ -89,7 +89,7 @@ export interface AppEnvGroup {
     projectId: string | null;
     environmentId: string | null;
     logo: string | null;
-    /** Hostname of the app's primary domain — at most one per app (DB-enforced). */
+    /** Hostname of the app's primary domain - at most one per app (DB-enforced). */
     primaryDomain: string | null;
   };
   vars: EnvVarDTO[];
@@ -129,11 +129,11 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
   // The gate is asked PER APP, not once for the team: `manage_env` can now be held on
   // a single folder or app (ADR-0016), so a team-level check would both refuse
-  // someone who legitimately holds it somewhere and — the old bug — wave through
+  // someone who legitimately holds it somewhere and, the old bug, wave through
   const reach = await appCapabilitiesForTeam(teamId, rows);
   const apps = rows.filter((p) => reach.get(p.id)?.includes("manage_env"));
   // Batch-load every var across the team's apps (one pair of queries), then
-  // group in memory — no per-project round-trip.
+  // group in memory, no per-project round-trip.
   const all = await loadEnvVarsForApps(apps.map((p) => p.id));
   // Same shape for the primary domains: one query for the whole team, keyed by
   // app. `domains_one_primary_uq` guarantees at most one row per app.
@@ -172,7 +172,7 @@ export async function upsertEnv(input: {
   value: string;
   /**
    * Omitted (the UI no longer asks): a NEW var gets every runtime; an EDIT keeps
-   * whatever targets the var already has — an edit must never widen them.
+   * whatever targets the var already has - an edit must never widen them.
    */
   targets?: EnvTarget[];
   type: "plain" | "secret";
@@ -209,7 +209,7 @@ export async function upsertEnv(input: {
           updatedAt: nowIso(),
         })
         .where(eq(envVarsTable.id, varId));
-      // Whole-set replace of the targets junction — only when the caller sent one.
+      // Whole-set replace of the targets junction - only when the caller sent one.
       if (targets) {
         await tx
           .delete(envVarTargetsTable)
@@ -325,7 +325,7 @@ export async function importEnv(
       skippedSecrets++;
       continue;
     }
-    // Imported vars are PLAIN by default — never silently marked secret. A user
+    // Imported vars are PLAIN by default, never silently marked secret. A user
     // can flip individual vars to secret afterwards from the table.
     await upsertEnv({ appId, key, value, targets, type: "plain" });
     added++;

@@ -2,7 +2,7 @@ import type { ScopeTreeFolder, ScopeTreeTeam } from "./data/tokens";
 
 /**
  * The scope picker's search, as a pure function over the tree. A node survives
- * when anything UNDER it matches — otherwise a hit three folders deep is
+ * when anything UNDER it matches, otherwise a hit three folders deep is
  * unreachable.
  */
 

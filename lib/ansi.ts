@@ -10,7 +10,7 @@ export interface AnsiSegment {
 }
 
 // Standard 16-color palette mapped to Tailwind text utilities. We map both the
-// normal (30–37) and bright (90–97) ranges; bright maps to the lighter shade.
+// normal (30-37) and bright (90-97) ranges; bright maps to the lighter shade.
 const FG: Record<number, string> = {
   30: "text-zinc-500", // black → readable on a dark bg
   31: "text-red-400",
@@ -84,7 +84,7 @@ function applySgr(state: SgrState, params: number[]): void {
         state.fg = "text-zinc-200";
       }
     }
-    // Background colors (40–47/100–107/48) are intentionally ignored: full-width
+    // Background colors (40-47/100-107/48) are intentionally ignored: full-width
     // backgrounds look wrong in a reflowing, non-grid pane.
   }
 }
@@ -137,7 +137,7 @@ export function parseAnsi(input: string): AnsiSegment[] {
       applySgr(state, params);
       cls = classOf(state);
     }
-    // Non-SGR CSI/OSC (cursor, clear, title): swallowed — no output.
+    // Non-SGR CSI/OSC (cursor, clear, title): swallowed - no output.
   }
   push(input.slice(last));
   return segments;

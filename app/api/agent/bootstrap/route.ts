@@ -39,8 +39,8 @@ export async function POST(request: Request) {
       agentPort,
       advertisedHost,
     });
-    // The agent recomputes this HMAC with its copy of the token and refuses a mismatch
-    // — binding the response (and the CA it carries) to a party that knew the token.
+    // The agent recomputes this HMAC with its copy of the token and refuses a mismatch -
+    // binding the response (and the CA it carries) to a party that knew the token.
     const payload = JSON.stringify({ certPem, caPem });
     const mac = signResponse(token, payload);
     return new Response(payload, {
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   } catch (e) {
     if (e instanceof BootstrapError) {
       // A bad/expired/used token or malformed CSR: 401 (the caller is not, or no
-      // longer, authorised) — never reveal which server or why beyond the reason
+      // longer, authorised), never reveal which server or why beyond the reason
       // code, which is safe to share (it does not leak the token).
       return Response.json({ error: e.reason }, { status: 401 });
     }

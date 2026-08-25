@@ -81,8 +81,8 @@ export function AddMemberDialog({
       );
       if (cancelled || !res.ok || !res.data) return;
       setRoles(res.data);
-      // Default to the team's Member role — what a new teammate almost always
-      // gets — falling back to the first assignable role for a team that
+      // Default to the team's Member role - what a new teammate almost always
+      // gets - falling back to the first assignable role for a team that
       // reworked its defaults.
       const assignable = res.data.filter(
         (r) => canAssignOwner || r.builtinKey !== "owner",

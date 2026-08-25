@@ -121,7 +121,7 @@ export function TimelineMenu({
   );
 
   // A disabled trigger swallows pointer events, so the tooltip has to wrap it
-  // rather than sit on it — otherwise the one control that needs to explain
+  // rather than sit on it, otherwise the one control that needs to explain
   // itself is the one that cannot.
   if (disabled) {
     return (

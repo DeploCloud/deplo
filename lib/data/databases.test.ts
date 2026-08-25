@@ -135,7 +135,7 @@ test("getConnectionString decrypts; getDatabase is team-scoped", async () => {
 
 /**
  * The seeded server has no agent record, so `connectAgent` throws before a socket
- * is opened — the "host we cannot clean" case, without any gRPC in the test.
+ * is opened - the "host we cannot clean" case, without any gRPC in the test.
  * A delete that cannot prove the container and volume are gone must delete
  * NOTHING: the database stays Deplo's to retry, stop or move, instead of becoming
  * a live container the control plane has forgotten about.
@@ -184,7 +184,7 @@ test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)",
   });
 
   // `force` is the "this host is never coming back" path: the teardown still runs
-  // (and fails — no agent), but its failure no longer blocks the record delete.
+  // (and fails - no agent), but its failure no longer blocks the record delete.
   // This also proves the agent call is OUTSIDE the delete (a thrown dial can't
   // roll the row removal back).
   await asUser1(() => deleteDatabase("db_1", { force: true }));
@@ -213,7 +213,7 @@ test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)",
   assert.equal(run[0]!.databaseId, null, "run.databaseId SET NULL");
 
   // A forced delete leaves real leftovers on the host, so it must leave a durable
-  // trace of them — the activity log, not just a process warning — and it must
+  // trace of them (the activity log, not just a process warning), and it must
   // queue the teardown rather than hand the cleanup to a human.
   const queuedRows = await db.select().from(pendingTeardownsTable);
   assert.deepEqual(
@@ -245,7 +245,7 @@ test("dbVolumeHostName matches the rendered DB compose volume (move copies the r
 
   // Cross-check: derive the host volume name(s) from the ACTUAL rendered compose
   // exactly as buildProjectDescriptor does for a compose-stack backup. The DB
-  // stack declares one unnamed volume, so this yields the single data volume — and
+  // stack declares one unnamed volume, so this yields the single data volume, and
   // it must equal dbVolumeHostName. If someone changes the compose (e.g. pins a
   // `name:` on the volume), this fails loudly instead of breaking moves silently.
   const yaml = generateDatabaseCompose({
@@ -345,7 +345,7 @@ test("restart/redeploy/rebuild: gated while provisioning with the curated messag
 });
 
 // The destructive rebuild dials the agent BEFORE any write: an unreachable
-// host must fail clearly with the row (and its status) untouched — nothing was
+// host must fail clearly with the row (and its status) untouched, nothing was
 // torn down, so flipping status would lie.
 test("rebuildDatabase: unreachable agent fails clearly and leaves the row intact", async () => {
   await seedDatabase(db, { id: "db_rb", name: "rb" });
@@ -356,7 +356,7 @@ test("rebuildDatabase: unreachable agent fails clearly and leaves the row intact
     assert.equal(
       dto.status,
       "running",
-      "status untouched — nothing was torn down",
+      "status untouched - nothing was torn down",
     );
   });
 });
@@ -379,7 +379,7 @@ test("rebuild/redeploy refuse to render an undecryptable password (no empty-auth
       redeployDatabase("db_undec"),
       /could not be decrypted/,
     );
-    // Nothing was torn down or dialed — the row is exactly as seeded.
+    // Nothing was torn down or dialed - the row is exactly as seeded.
     assert.equal((await getDatabase("db_undec"))!.status, "running");
   });
 });
@@ -392,7 +392,7 @@ test("rotateDatabasePassword: requires a running database and a policy-clean pas
       /Start the database/,
     );
     // A password the PERSON chose gets the account policy, like every other
-    // chosen credential. The generated default (no argument) does not — it is
+    // chosen credential. The generated default (no argument) does not - it is
     // base64url and would fail "at least 1 special character" a third of the time.
     await assert.rejects(
       rotateDatabasePassword("db_rot", { password: "weakpass" }),
@@ -410,7 +410,7 @@ test("rotateDatabasePassword: requires a running database and a policy-clean pas
 
 test("focused mutations reject a member without manage_infra", async () => {
   // Re-seed identity with an extra low-capability member (the server row from
-  // beforeEach survives the identity truncate — servers are cross-team).
+  // beforeEach survives the identity truncate - servers are cross-team).
   await pg.exec(`${TRUNCATE_BACKUPS}
     truncate table users, teams restart identity cascade;`);
   await seedIdentity(db, {
@@ -528,7 +528,7 @@ test("reorderDatabases self-heals on delete (FK cascade) and rejects without man
 // physical does. `host` is the compose project / data volume / DNS name and it
 // is baked into the connection string, so if a rename ever touched it, every
 // client DSN would break and the next reroute would adopt a different volume.
-test("renameDatabase changes only the display name — host and connection string are untouched", async () => {
+test("renameDatabase changes only the display name - host and connection string are untouched", async () => {
   await seedDatabase(db, { id: "db_r", name: "main" });
   await asUser1(async () => {
     const before = await getDatabase("db_r");
@@ -598,7 +598,7 @@ test("updateDatabaseLogo: set, clear, validate, and stay team-scoped", async () 
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
   await seedDatabase(db, { id: "db_l", name: "logo" });
   await asUser1(async () => {
-    // Born with no logo of its own — the UI falls back to the engine's mark.
+    // Born with no logo of its own - the UI falls back to the engine's mark.
     assert.equal((await getDatabase("db_l"))?.logo, null);
 
     await updateDatabaseLogo("db_l", png);
@@ -634,7 +634,7 @@ test("updateDatabaseLogo: set, clear, validate, and stay team-scoped", async () 
  * The password lands in a command line the agent may run through a shell
  * (`ExecRequest.command` is documented as "shell-interpreted or argv"), so a
  * value that closes a quote used to be arbitrary code execution inside the
- * database container for anyone holding `configure_databases` — which does NOT
+ * database container for anyone holding `configure_databases`, which does NOT
  * include `open_database_console`.
  *
  * The command is now assembled with shell/SQL quoting instead of a character

@@ -10,7 +10,7 @@ import {
 import type { Environment } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
-/* Object type — an Environment (ADR-0008 Phase 3)                     */
+/* Object type - an Environment (ADR-0008 Phase 3)                     */
 /* ------------------------------------------------------------------ */
 
 export const EnvironmentRef = builder

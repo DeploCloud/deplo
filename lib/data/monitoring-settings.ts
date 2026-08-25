@@ -10,7 +10,7 @@ import { clearMetricsHistory } from "../monitoring/history";
 import { clearContainerHistory } from "../monitoring/container-history";
 
 /**
- * Monitoring settings — the instance-wide singleton behind the Monitoring page's
+ * Monitoring settings - the instance-wide singleton behind the Monitoring page's
  * "Save metrics on server" switch (see the `monitoring_settings` table comment for
  * why it is fleet-scoped like the cleanup policy, not team-scoped).
  */
@@ -27,7 +27,7 @@ const SETTINGS_ID = "default";
 /**
  * DEFAULT ON: keeping ~15 minutes of numbers in RAM costs ~0.5 MB per server and
  * makes the Monitoring page behave the way a non-expert expects (reload the page,
- * the charts are still there) — the mission's favor-automatic-over-manual call.
+ * the charts are still there) - the mission's favor-automatic-over-manual call.
  */
 const DEFAULTS: MonitoringSettings = { saveMetrics: true, updatedAt: null };
 
@@ -41,7 +41,7 @@ async function loadSettings(): Promise<MonitoringSettings> {
 }
 
 /** The settings, for the Monitoring page (any logged-in member: the value only
- *  says how the page behaves — flipping it stays `manage_infra`, below). */
+ *  says how the page behaves - flipping it stays `manage_infra`, below). */
 export async function getMonitoringSettings(): Promise<MonitoringSettings> {
   await assertUser();
   return loadSettings();
@@ -71,7 +71,7 @@ export async function isMetricsSavingEnabled(): Promise<boolean> {
 /* ------------------------------------------------------------------ */
 
 /**
- * Flip "save metrics on server". Instance-wide infra, so `manage_infra` — the same
+ * Flip "save metrics on server". Instance-wide infra, so `manage_infra` - the same
  * gate as the cleanup policy. Turning it OFF also DROPS what is buffered: the
  * switch says "save", so off must mean nothing stays saved, not "stops growing".
  */

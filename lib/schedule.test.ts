@@ -140,12 +140,12 @@ test("expressions outside the picker's vocabulary stay custom, not broken", () =
     "0 1-5 * * *", // range
     "0 0 1 6 *", // one specific month
     "0 0 13 * 5", // both day fields restricted (Vixie union)
-    "0 0 31 * *", // day 31 — deliberately not offered
+    "0 0 31 * *", // day 31 - deliberately not offered
     "0-30/10 * * * *", // stepped range
   ]) {
     assert.equal(partsFromCron(cron), null, `${cron} should be custom`);
     assert.equal(describeCron(cron), null, `${cron} should have no phrase`);
-    // Custom does NOT mean invalid — the scheduler still runs these.
+    // Custom does NOT mean invalid - the scheduler still runs these.
     assert.ok(isValidSchedule(cron), `${cron} should still be a valid cron`);
   }
 });
@@ -175,7 +175,7 @@ test("the compact description keeps the facts and drops the filler", () => {
     describeCron("15 4 12 * *", { compact: true }),
     "Monthly, 12th 04:15 UTC",
   );
-  // Fixed intervals are already short — compact leaves them alone.
+  // Fixed intervals are already short - compact leaves them alone.
   assert.equal(describeCron("0 * * * *", { compact: true }), "Every hour");
 });
 

@@ -4,7 +4,7 @@
  * applied, the gateway keeps failing, and nothing anywhere says why.
  */
 
-/** At most this many flags — a destination has a quirk or two, not a config file. */
+/** At most this many flags - a destination has a quirk or two, not a config file. */
 export const S3_ARGS_MAX_TOKENS = 8;
 /** At most this many characters per flag. */
 export const S3_ARGS_MAX_TOKEN_LENGTH = 128;
@@ -20,7 +20,7 @@ export const S3_ARGS_ALLOWED: Record<string, string> = {
   "--s3-force-path-style":
     "Address the bucket in the URL path instead of the hostname. Deplo already picks this from the provider; set it to override.",
   "--s3-insecure-skip-verify":
-    "Accept any TLS certificate from the endpoint — for a self-hosted store on a self-signed certificate.",
+    "Accept any TLS certificate from the endpoint - for a self-hosted store on a self-signed certificate.",
   "--s3-disable-content-sha256":
     "Upload without the streaming content hash, for a gateway that rejects it.",
 };
@@ -30,7 +30,7 @@ export const S3_ARGS_ALLOWED: Record<string, string> = {
  *  what someone might try. */
 const TOKEN_RE = /^[A-Za-z0-9._:/=,+@-]+$/;
 
-/** Split the stored string into flags (whitespace-separated, no quoting) —
+/** Split the stored string into flags (whitespace-separated, no quoting) -
  *  exactly the elements the agent receives. */
 export function parseS3Args(raw: string | null | undefined): string[] {
   return (raw ?? "").trim().split(/\s+/).filter(Boolean);
@@ -50,7 +50,7 @@ export function validateS3Args(raw: string): string | null {
   const tokens = parseS3Args(raw);
   if (tokens.length === 0) return null;
   if (tokens.length > S3_ARGS_MAX_TOKENS)
-    return `That is ${tokens.length} flags — ${S3_ARGS_MAX_TOKENS} is the most a destination can take.`;
+    return `That is ${tokens.length} flags - ${S3_ARGS_MAX_TOKENS} is the most a destination can take.`;
   for (const token of tokens) {
     if (token.length > S3_ARGS_MAX_TOKEN_LENGTH)
       return `"${token.slice(0, 20)}…" is longer than ${S3_ARGS_MAX_TOKEN_LENGTH} characters.`;

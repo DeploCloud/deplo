@@ -101,7 +101,7 @@ const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
 /* ------------------------------------------------------------------ */
-/* deleteApp CASCADE — the orphan-bug fix                          */
+/* deleteApp CASCADE - the orphan-bug fix                          */
 /* ------------------------------------------------------------------ */
 
 test("deleteApp cascades every child + shared-var link (no orphans)", async () => {
@@ -179,13 +179,13 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
 });
 
 /* ------------------------------------------------------------------ */
-/* deleting_at — the delete is irreversible before the host catches up */
+/* deleting_at - the delete is irreversible before the host catches up */
 /* ------------------------------------------------------------------ */
 
 test("an app being deleted is locked, unlisted, and finished at boot", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await seedApp(db, { id: "prj_2", status: "active" });
-  // What `startAppDelete` leaves behind the instant someone confirms — stamped,
+  // What `startAppDelete` leaves behind the instant someone confirms - stamped,
   // teardown still running (or, here, its process already gone).
   await db
     .update(appsTable)
@@ -194,7 +194,7 @@ test("an app being deleted is locked, unlisted, and finished at boot", async () 
 
   await asUser1(async () => {
     // Every app-shaped mutation goes through requireAppCapability, so one
-    // refusal covers all of them — rename stands in for the whole set.
+    // refusal covers all of them - rename stands in for the whole set.
     await assert.rejects(
       () => renameApp("prj_1", "Second thoughts"),
       /being deleted/,
@@ -222,7 +222,7 @@ test("an app being deleted is locked, unlisted, and finished at boot", async () 
 });
 
 /* ------------------------------------------------------------------ */
-/* setPrimaryDomain — single-UPDATE flip + concurrent race            */
+/* setPrimaryDomain - single-UPDATE flip + concurrent race            */
 /* ------------------------------------------------------------------ */
 
 test("setPrimaryDomain flips exactly one primary per project", async () => {
@@ -267,7 +267,7 @@ test("two concurrent setPrimaryDomain calls leave exactly one primary", async ()
 });
 
 /* ------------------------------------------------------------------ */
-/* Ordering junction — reorderApps                                 */
+/* Ordering junction - reorderApps                                 */
 /* ------------------------------------------------------------------ */
 
 test("reorderApps writes the team_app_order junction; dead ids drop", async () => {
@@ -305,7 +305,7 @@ test("reorderApps writes the team_app_order junction; dead ids drop", async () =
 
 test("summarizeForTeam is cookie-free and team-scoped", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, status: "active" });
-  // No runWithIdentity wrapper — proves it never reads a cookie/active team.
+  // No runWithIdentity wrapper - proves it never reads a cookie/active team.
   const mine = await summarizeForTeam("prj_1", TEAM_A, USER_1);
   assert.ok(mine, "found for the owning team");
   assert.equal(mine!.id, "prj_1");
@@ -353,7 +353,7 @@ test("an app env var records its author and defaults to every runtime", async ()
 test("an edit that names no targets PRESERVES the stored ones", async () => {
   // The dialogs no longer send targets. A legacy production-only variable must
   // not silently widen to every runtime on a value edit. (Plain on purpose: a
-  // secret accepts no edit at all — see env-secret-immutable.test.ts.)
+  // secret accepts no edit at all - see env-secret-immutable.test.ts.)
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
@@ -524,7 +524,7 @@ test("ensureExtraDomain regenerates (not skips) when the template host collides 
       ip: IP,
     }),
   );
-  // App B is handed the SAME host by its (hypothetical) template — it must
+  // App B is handed the SAME host by its (hypothetical) template - it must
   // get a fresh unique host, NOT silently skip and NOT duplicate A's host.
   await asUser1(() =>
     ensureExtraDomain("prj_b", shared, {
@@ -579,7 +579,7 @@ test("ensureExtraDomain is idempotent on the SAME project (re-run does not dupli
 
 test("a template's displaced domain gets an address of its own, not silence", async () => {
   // garage-s3's web-ui variant with `primary = true` on the WEB UI: the UI takes the
-  // generated main host, so the S3 API — which is the entry that declared that host —
+  // generated main host, so the S3 API, which is the entry that declared that host,
   // is left asking for a name the primary now owns.
   const serverIp = "10.0.0.1"; // `beforeEach`'s seedServer(db)
   const main = nipDomain("garage-s3", "bold-otter", serverIp);
@@ -640,7 +640,7 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
     }),
   );
   assert.equal(xName, preferred);
-  // Y is given the SAME preferred — it must regenerate a distinct primary.
+  // Y is given the SAME preferred - it must regenerate a distinct primary.
   const yName = await asUser1(() =>
     ensureAutoDomain("prj_y", {
       slug: "yeti",
@@ -654,7 +654,7 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
 });
 
 /* ------------------------------------------------------------------ */
-/* Path-routed domains — a hostname carries one row per path          */
+/* Path-routed domains - a hostname carries one row per path          */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -663,7 +663,7 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
  * used to silently kill it in the data layer:
  *
  *  1. the new row was inserted `pending`, and `routableRoutes` only routes
- *     `valid`/`cloudflare` — so the path row was filtered off the router even
+ *     `valid`/`cloudflare`, so the path row was filtered off the router even
  *     though its hostname's DNS was already proven by the sibling row. DNS is a
  *     property of the HOSTNAME, not of the path;
  *  2. the row's `pathPrefix`/`stripPrefix` had to survive the round trip into the
@@ -673,7 +673,7 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
 test("a path row on an already-verified hostname inherits its DNS status (and routes)", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
-    // ensureAutoDomain inserts a `valid` row — the verified sibling.
+    // ensureAutoDomain inserts a `valid` row - the verified sibling.
     const auto = await ensureAutoDomain("prj_1", {
       slug: "app",
       ip: "1.2.3.4",
@@ -723,7 +723,7 @@ test("a path row on an UNVERIFIED hostname stays pending (DNS is still unproven)
 });
 
 /* ------------------------------------------------------------------ */
-/* Certificate defaults — no cert is registered unless opted in        */
+/* Certificate defaults, no cert is registered unless opted in        */
 /* ------------------------------------------------------------------ */
 
 test("addDomain without a certProvider is born WITHOUT a certificate (`none`)", async () => {
@@ -735,7 +735,7 @@ test("addDomain without a certProvider is born WITHOUT a certificate (`none`)", 
       "none",
       "omitted provider ⇒ no certificate",
     );
-    // An explicit choice is stored verbatim — opting in still works.
+    // An explicit choice is stored verbatim - opting in still works.
     const secure = await addDomain("prj_1", "secure.example.io", {
       certProvider: "letsencrypt",
     });

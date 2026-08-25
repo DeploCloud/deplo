@@ -22,12 +22,12 @@ import {
 } from "../infra/agent-client";
 
 /**
- * Browse and edit a single-container project's files directory — the on-disk
+ * Browse and edit a single-container project's files directory - the on-disk
  * `<stacks>/files/<slug>` tree that backs the `./` app-files volume convention
  * (see `lib/deploy/compose-stack.ts`).
  */
 
-/** Reject writes whose body exceeds this — the editor is for config, not blobs. */
+/** Reject writes whose body exceeds this - the editor is for config, not blobs. */
 const MAX_WRITE_BYTES = 1024 * 1024; // 1 MiB
 
 export interface FileEntry {
@@ -35,7 +35,7 @@ export interface FileEntry {
   path: string;
   /** Final path segment (the display name). */
   name: string;
-  /** "dir" or "file" — symlinks are resolved; anything else is skipped. */
+  /** "dir" or "file" - symlinks are resolved; anything else is skipped. */
   kind: "dir" | "file";
   /** Byte size (0 for directories). */
   size: number;
@@ -94,7 +94,7 @@ export function normalizeRel(relPath: string): string {
 async function requireAppInTeam(
   appId: string,
   // Reading a file and changing one are separate permissions, so each op names
-  // which it needs. Defaults to the read side — the weaker of the two.
+  // which it needs. Defaults to the read side - the weaker of the two.
   cap: Capability = "read_app_files",
 ): Promise<{ slug: string; teamId: string; serverId: string }> {
   const { teamId } = await requireAppCapability(appId, cap);
@@ -128,8 +128,8 @@ function toEntry(e: {
 }
 
 /**
- * Whether a project's on-disk files directory exists AND the caller may manage it
- * — the single gate that drives the Files tab's visibility.
+ * Whether a project's on-disk files directory exists AND the caller may manage it -
+ * the single gate that drives the Files tab's visibility.
  */
 export async function appFilesExist(appId: string): Promise<boolean> {
   // Per-app, not team-wide: `read_app_files` held somewhere else in the team is
@@ -140,7 +140,7 @@ export async function appFilesExist(appId: string): Promise<boolean> {
   if (!teamId) return false;
   const project = await loadTeamApp(appId, teamId);
   if (!project) return false;
-  // Ask the owning agent — the files dir is on its host's disk (PLAN Part C, D9),
+  // Ask the owning agent - the files dir is on its host's disk (PLAN Part C, D9),
   // the host running Deplo included. An unreachable agent yields false so the tab
   // is hidden (never a 500 during the project layout render).
   let conn: AgentConnection | undefined;
@@ -156,8 +156,8 @@ export async function appFilesExist(appId: string): Promise<boolean> {
 
 /**
  * List the immediate children of `path` (the root when omitted), directories
- * first then files, each alphabetical. Symlinks and special files are skipped
- * — only real dirs/files inside the sandbox are returned.
+ * first then files, each alphabetical. Symlinks and special files are skipped -
+ * only real dirs/files inside the sandbox are returned.
  */
 export async function listAppFiles(
   appId: string,
@@ -235,7 +235,7 @@ export function storageFileStateForError(e: unknown): StorageFileState | null {
 }
 
 /**
- * The user-facing failure for a read deplo could NOT classify — the editor puts
+ * The user-facing failure for a read deplo could NOT classify - the editor puts
  * this next to a "Try again" button, so it has to say what happened.
  */
 export function storageFileReadError(e: unknown): Error {
@@ -257,7 +257,7 @@ export interface StorageFile {
 
 /**
  * Read the file a **File** storage entry points at (Settings → Storage), where a
- * path that isn't there yet is a normal answer — `state: "new"` — rather than an
+ * path that isn't there yet is a normal answer, `state: "new"`, rather than an
  * error.
  */
 export async function readAppStorageFile(
@@ -286,7 +286,7 @@ export async function readAppStorageFile(
 }
 
 /**
- * Upload a file from a base64 body — the path the UI uses for binary files the
+ * Upload a file from a base64 body - the path the UI uses for binary files the
  * text editor can't represent. Same sandboxing and size cap as a text write.
  * Returns the entry's fresh metadata.
  */
@@ -335,7 +335,7 @@ export async function createAppDir(
 
 /**
  * Delete a file or directory (recursively) at `path`. The root itself can't be
- * deleted — only entries strictly inside it.
+ * deleted - only entries strictly inside it.
  */
 export async function deleteAppFile(
   appId: string,

@@ -21,13 +21,13 @@ const OPTIONAL = ALL_CAPABILITIES.filter((c) => c !== "view");
 /**
  * The permission list shared by the role editor and the API-token editor: every
  * capability deplo enforces, one checkbox each, grouped into categories only so
- * they can be FOUND — there is no category-level grant, because a permission you
+ * they can be FOUND - there is no category-level grant, because a permission you
  */
 export function PermissionPicker({
   capabilities,
   onChange,
   disabled = false,
-  hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do — search by what you want it to reach.",
+  hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do - search by what you want it to reach.",
   muted,
   scroll = false,
 }: {
@@ -35,7 +35,7 @@ export function PermissionPicker({
   onChange: (caps: Capability[]) => void;
   /** Read-only rendering (the locked Owner role, or a viewer). */
   disabled?: boolean;
-  /** Tooltip beside the heading — name the thing being granted. */
+  /** Tooltip beside the heading - name the thing being granted. */
   hint?: string;
   /**
    * Bound the category list and scroll it, the way `ScopePicker` bounds its tree.
@@ -43,7 +43,7 @@ export function PermissionPicker({
   scroll?: boolean;
   /**
    * Capabilities the current SCOPE makes meaningless. They stay ticked, stay
-   * tickable and keep their value — only the rendering says they do nothing right
+   * tickable and keep their value - only the rendering says they do nothing right
    * now, because widening the scope brings them back with no edit to undo.
    */
   muted?: { caps: Capability[]; reason: string };
@@ -71,7 +71,7 @@ export function PermissionPicker({
     ...cat,
     shown: cat.caps.filter(matches),
   })).filter((cat) => cat.shown.length > 0);
-  /** The always-on floor is listed like any other permission — it just can't be unticked. */
+  /** The always-on floor is listed like any other permission - it just can't be unticked. */
   const viewShown = matches("view");
   const shownCount =
     sections.reduce((n, s) => n + s.shown.length, 0) + (viewShown ? 1 : 0);
@@ -154,7 +154,7 @@ export function PermissionPicker({
             "space-y-3",
             // The scope tree's own `max-h-96`, and a `dvh` ceiling so a short
             // window cannot push the dialog past its 85dvh cap and take the
-            // footer with it — which is the whole reason this exists.
+            // footer with it, which is the whole reason this exists.
             scroll &&
               "focus-safe-scroll max-h-[min(24rem,40dvh)] overflow-y-auto",
           )}
@@ -253,14 +253,14 @@ export function PermissionPicker({
               </section>
             );
           })}
-          {/* view — the floor, last and category-less: same row, permanently ticked. */}
+          {/* view - the floor, last and category-less: same row, permanently ticked. */}
           {viewShown && (
             <div className="overflow-hidden rounded-lg border border-border">
               <div className="flex items-start gap-3 px-3 py-2.5">
                 <Checkbox
                   checked
                   disabled
-                  aria-label={`${CAPABILITY_META.view.label} — always granted`}
+                  aria-label={`${CAPABILITY_META.view.label}, always granted`}
                   className="mt-0.5"
                 />
                 <span className="min-w-0">

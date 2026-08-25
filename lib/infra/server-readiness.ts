@@ -10,8 +10,8 @@ import type { Server } from "../types";
 
 /**
  * The readiness CLASSIFIER: given everything one bounded probe of a server can
- * honestly learn — a Hello (or the error it rejected with), two host-port bind
- * tests, host metrics, and the control-plane's own row — decide what we can
+ * honestly learn - a Hello (or the error it rejected with), two host-port bind
+ * tests, host metrics, and the control-plane's own row - decide what we can
  */
 
 /* ------------------------------------------------------------------ */
@@ -55,7 +55,7 @@ export interface ReadinessReport {
   checks: ReadinessCheck[];
 }
 
-/** The outcome of one CheckPort RPC, as a closed set — never a raw error. */
+/** The outcome of one CheckPort RPC, as a closed set, never a raw error. */
 export type PortProbe =
   /** The agent could NOT bind it: something on the host is listening. */
   | { kind: "held" }
@@ -97,7 +97,7 @@ export interface ReadinessProbe {
 export const READINESS_MESSAGES = {
   // agent
   notProvisioned:
-    "No agent has been provisioned for this server yet — nothing has called home, so there is nothing on the host to check.",
+    "No agent has been provisioned for this server yet - nothing has called home, so there is nothing on the host to check.",
   untrusted:
     "The agent's certificate is not the one we trust for this server. Reissue the install command to re-provision it.",
   contract:
@@ -108,7 +108,7 @@ export const READINESS_MESSAGES = {
     "The agent did not answer (connection refused). Is it running on the host?",
   timedOut: "The agent did not answer within the readiness check's deadline.",
   featuresUnknown:
-    "This agent does not report which features it supports — it predates the feature list.",
+    "This agent does not report which features it supports - it predates the feature list.",
   // docker
   dockerDown:
     "The agent is up, but the Docker daemon did not answer. Nothing can be built or run on this server.",
@@ -139,16 +139,16 @@ export const READINESS_HINTS = {
   startDocker:
     "Install Docker on the host, or start it (systemctl start docker), then run this check again.",
   installTraefik:
-    "Normal for a database-only or worker host. Otherwise re-run the install command on the host — it brings Traefik up.",
+    "Normal for a database-only or worker host. Otherwise re-run the install command on the host - it brings Traefik up.",
   // NOT installTraefik: Traefik is already running here, and this is demonstrably not a
-  // database-only host — telling the operator it is "normal" would invite them to dismiss the
+  // database-only host - telling the operator it is "normal" would invite them to dismiss the
   // one row that explains why every domain on this host 404s.
   publishWebPorts:
     "Traefik is running but is not publishing the web ports. Check its port bindings on the host, then re-run the install command so it binds them.",
   freeWebPort:
     "Stop whatever holds the port on the host, then re-run the install command so Traefik can bind it.",
   freeDisk:
-    "Free space on the host — remove unused images and build caches (docker system prune -af).",
+    "Free space on the host - remove unused images and build caches (docker system prune -af).",
   retry:
     "Run the check again; if it keeps failing, check the agent's logs on the host.",
   grantTeamAccess:
@@ -169,7 +169,7 @@ export const READINESS_DETAILS = {
     `This agent does not support ${names.length} feature${names.length === 1 ? "" : "s"} Deplo uses (${names.join(", ")}). Apps still deploy here, but those features won't work on this server.`,
   dockerOk: (version: string) =>
     version
-      ? `The Docker daemon answered on the host — engine ${version}.`
+      ? `The Docker daemon answered on the host - engine ${version}.`
       : "The Docker daemon answered on the host.",
   dockerSkippedStorageOnly:
     "This server only stores backups, so Docker is not installed. Nothing is deployed here.",
@@ -179,17 +179,17 @@ export const READINESS_DETAILS = {
   // image and name, which the agent's own comment says "covers the deplo-traefik
   // instance and a bring-your-own proxy alike".
   traefikOk:
-    'A container whose image or name contains "traefik" is running on this host — consistent with a proxy that can route apps to their domains. Deplo cannot verify from here that it is the one it installed, or that it is on the deplo network.',
+    'A container whose image or name contains "traefik" is running on this host - consistent with a proxy that can route apps to their domains. Deplo cannot verify from here that it is the one it installed, or that it is on the deplo network.',
   portHeldWithTraefik: (port: number) =>
-    `Port ${port} is held by a listener on the host, and a Traefik container is running — consistent with Traefik serving it.`,
+    `Port ${port} is held by a listener on the host, and a Traefik container is running - consistent with Traefik serving it.`,
   portHeldNoTraefik: (port: number) =>
     `Port ${port} is already held on the host, but no Traefik container is running. Another process owns the web port, so Traefik cannot bind it.`,
   portHeldTraefikUnknown: (port: number) =>
     `Port ${port} is held by a listener on the host.`,
   portFreeWithTraefik: (port: number) =>
-    `Nothing is listening on port ${port}, although a Traefik container is running — it is up but not publishing the web ports, so apps here won't be reachable on their domains.`,
+    `Nothing is listening on port ${port}, although a Traefik container is running - it is up but not publishing the web ports, so apps here won't be reachable on their domains.`,
   portFreeNoTraefik: (port: number) =>
-    `Nothing is listening on port ${port} — consistent with no Traefik container running on this host.`,
+    `Nothing is listening on port ${port} - consistent with no Traefik container running on this host.`,
   portFreeTraefikUnknown: (port: number) =>
     `Nothing is listening on port ${port}.`,
   portUnsupported: (port: number) =>
@@ -204,7 +204,7 @@ export const READINESS_DETAILS = {
   diskCritical: (pct: number, free: string) =>
     `The host's root filesystem is ${pct}% full (${free} free). A build or an image pull will almost certainly fail.`,
   buildMissing: (label: string) =>
-    `This server's agent does not support ${label} builds — it predates the feature. An app on this server that builds this way will fail.`,
+    `This server's agent does not support ${label} builds - it predates the feature. An app on this server that builds this way will fail.`,
   teamsAll: "Every team can deploy to this server.",
   teamsSome: (n: number) =>
     `${n} team${n === 1 ? "" : "s"} can deploy to this server.`,
@@ -219,7 +219,7 @@ export const READINESS_DETAILS = {
 /* ------------------------------------------------------------------ */
 
 /**
- * Disk thresholds, on the filesystem the AGENT measures — which the installer
+ * Disk thresholds, on the filesystem the AGENT measures, which the installer
  * points at `/` (the host's ROOT filesystem), not `/var/lib/docker`.
  */
 export const DISK_WARN_PCT = 90;
@@ -267,28 +267,28 @@ export const BUILD_METHODS: readonly BuildMethodSpec[] = [
     capability: "deploy.static",
     label: "Static site",
     supported:
-      "The agent supports static-site builds. The nginx and Node images it needs are pulled from the registry on the first build — nothing is installed on the host.",
+      "The agent supports static-site builds. The nginx and Node images it needs are pulled from the registry on the first build, nothing is installed on the host.",
   },
   {
     id: "build.nixpacks",
     capability: "deploy.nixpacks",
     label: "Nixpacks",
     supported:
-      "The agent supports Nixpacks builds. The nixpacks binary itself is downloaded to the host on the first Nixpacks build — Deplo cannot verify from here that it is already there.",
+      "The agent supports Nixpacks builds. The nixpacks binary itself is downloaded to the host on the first Nixpacks build - Deplo cannot verify from here that it is already there.",
   },
   {
     id: "build.buildpacks",
     capability: "deploy.buildpacks",
     label: "Buildpacks",
     supported:
-      "The agent supports Cloud Native Buildpacks. pack and the builder images run in containers, pulled on the first build — nothing is installed on the host.",
+      "The agent supports Cloud Native Buildpacks. pack and the builder images run in containers, pulled on the first build - nothing is installed on the host.",
   },
   {
     id: "build.railpack",
     capability: "deploy.railpack",
     label: "Railpack",
     supported:
-      "The agent supports Railpack builds. Railpack and BuildKit run in throwaway containers, pulled on the first build — nothing is installed on the host.",
+      "The agent supports Railpack builds. Railpack and BuildKit run in throwaway containers, pulled on the first build - nothing is installed on the host.",
   },
 ] as const;
 
@@ -315,7 +315,7 @@ export const PLATFORM_FEATURES: readonly {
 /* ------------------------------------------------------------------ */
 
 /**
- * `fail` beats everything — a brand-new server that no team can reach is "not ready", not
+ * `fail` beats everything - a brand-new server that no team can reach is "not ready", not
  * "provisioning". `skip` never moves the verdict: "we didn't look" is not "it's broken".
  */
 export function readinessVerdict(
@@ -343,15 +343,15 @@ export function readinessSummary(
   const passes = checks.filter((c) => c.severity === "pass").length;
   switch (verdict) {
     case "provisioning":
-      return "No agent has called home for this server yet — run its install command on the host.";
+      return "No agent has called home for this server yet - run its install command on the host.";
     case "not_ready":
-      return `Not ready to deploy — ${fails === 1 ? "1 check failed" : `${fails} checks failed`}.`;
+      return `Not ready to deploy - ${fails === 1 ? "1 check failed" : `${fails} checks failed`}.`;
     case "degraded":
       return `Deploys will run, but ${warns === 1 ? "1 check needs" : `${warns} checks need`} attention.`;
     case "ready":
       return skips === 0
-        ? "Ready to deploy — every check passed."
-        : `Deploys should run — ${passes === 1 ? "1 check passed" : `${passes} checks passed`}, ${skips === 1 ? "1 could not be checked" : `${skips} could not be checked`}.`;
+        ? "Ready to deploy - every check passed."
+        : `Deploys should run - ${passes === 1 ? "1 check passed" : `${passes} checks passed`}, ${skips === 1 ? "1 could not be checked" : `${skips} could not be checked`}.`;
   }
 }
 
@@ -426,8 +426,8 @@ export function classifyServerReadiness(
   checks.push(versionCheck(hello.agentVersion));
   checks.push(featuresCheck(hello.capabilities ?? []));
 
-  // docker. A STORAGE-ONLY server has none by design — it holds backups and runs
-  // nothing — so the absence is a `skip`, not a `fail`.
+  // docker. A STORAGE-ONLY server has none by design - it holds backups and runs
+  // nothing, so the absence is a `skip`, not a `fail`.
   checks.push(
     hello.dockerAvailable
       ? {
@@ -456,7 +456,7 @@ export function classifyServerReadiness(
   );
 
   // routing. `traefikRunning` is FORCED false by the agent when Docker is unreachable, so with
-  // Docker down we never actually looked — that is `skip`, not `warn`. Downstream, `traefik`
+  // Docker down we never actually looked - that is `skip`, not `warn`. Downstream, `traefik`
   // becomes null ("unknown") so the port rows stop reasoning about a fact we don't have.
   const traefik: boolean | null = hello.dockerAvailable
     ? hello.traefikRunning
@@ -600,7 +600,7 @@ function featuresCheck(capabilities: string[]): ReadinessCheck {
 }
 
 /**
- * Traefik being down is a WARN, never a fail — a database-only or worker host legitimately has
+ * Traefik being down is a WARN, never a fail - a database-only or worker host legitimately has
  * none, and a status that fires on a normal configuration is one operators learn to ignore
  * (the same decision `classifyServerHealth` makes and lib/infra/server-health.test.ts pins).
  */
@@ -704,7 +704,7 @@ function portCheck(
             detail: READINESS_DETAILS.portFreeWithTraefik(port),
             hint: READINESS_HINTS.publishWebPorts,
           }
-        : // Restating what routing.traefik already warned about — `info`, not a second warn.
+        : // Restating what routing.traefik already warned about - `info`, not a second warn.
           {
             ...base,
             severity: "info",
@@ -713,7 +713,7 @@ function portCheck(
   }
 }
 
-/** `diskTotal === 0` means the agent's statfs FAILED. It is not "0% used" — it is unknown. */
+/** `diskTotal === 0` means the agent's statfs FAILED. It is not "0% used" - it is unknown. */
 function diskCheck(metrics: HostMetrics | null): ReadinessCheck {
   const base = {
     id: "capacity.disk",
@@ -798,7 +798,7 @@ function buildChecks(capabilities: string[]): ReadinessCheck[] {
 }
 
 /**
- * Control-plane facts. No dial, so these are in EVERY report — including a provisioning one,
+ * Control-plane facts. No dial, so these are in EVERY report - including a provisioning one,
  * where "you restricted this server and granted it to nobody" is exactly what an operator
  * needs to see before they wonder why they can't target it.
  */

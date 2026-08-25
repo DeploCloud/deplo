@@ -5,7 +5,7 @@ import { frameworkById } from "@/lib/apps/framework-catalog";
 import { cn } from "@/lib/utils";
 
 /**
- * How a recognised framework is shown — the whole visible surface of framework
+ * How a recognised framework is shown - the whole visible surface of framework
  * recognition, so the wizard, the build settings and the app overview say the same
  * thing in the same shape.
  */
@@ -64,7 +64,7 @@ export function FrameworkRow({
   );
 }
 
-/** The same row while the repository is still being read — a skeleton, so the
+/** The same row while the repository is still being read - a skeleton, so the
  * layout doesn't jump when the answer lands. */
 export function FrameworkRowSkeleton({ className }: { className?: string }) {
   return (

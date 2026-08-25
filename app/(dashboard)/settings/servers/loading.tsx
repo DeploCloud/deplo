@@ -10,7 +10,7 @@ export default function Loading() {
       aria-label="Loading servers"
     >
       {/**
-       * PageHeader — "Servers" + description + Check-status / Check-for-updates /
+       * PageHeader - "Servers" + description + Check-status / Check-for-updates /
        * Add-server actions.
        */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -102,7 +102,7 @@ test("adding a domain with www:toThis registers the counterpart as a redirect", 
   // Provenance: only a companion Deplo generated may be deleted when the pair is
   // broken, so it is marked as one.
   assert.equal(www.source, "redirect");
-  // The 301 answers on https://www — which needs a certificate THERE, or the
+  // The 301 answers on https://www, which needs a certificate THERE, or the
   // browser hits a certificate error before it is ever told where to go.
   assert.equal(www.certProvider, "letsencrypt");
   assert.equal(www.port, 3000, "same container port as the host it points at");
@@ -143,7 +143,7 @@ test("www:toCounterpart makes www serve and moves primary (and the URL) with it"
   const www = await byName("www.example.com");
   assert.equal(apex!.redirectTo, "www.example.com", "the apex now redirects");
   assert.equal(www!.redirectTo, null, "the www host serves the app");
-  // The canonical host is the one that serves — the badge, and the app's
+  // The canonical host is the one that serves - the badge, and the app's
   // production URL, follow it rather than advertising a hostname that 301s.
   assert.equal(www!.primary, true);
   assert.equal(apex!.primary, false);
@@ -162,7 +162,7 @@ test("flipping a pair back turns the redirect around without losing a hostname",
   assert.equal((await byName("example.com"))!.redirectTo, null);
   assert.equal((await byName("www.example.com"))!.redirectTo, "example.com");
   assert.equal((await asUser1(() => listDomains("prj_1"))).length, 2);
-  // Primary rides along in BOTH directions — the canonical host is whichever
+  // Primary rides along in BOTH directions - the canonical host is whichever
   // half serves, never the one answering 301.
   assert.equal((await byName("example.com"))!.primary, true);
   assert.equal(await productionUrl(), "http://example.com");

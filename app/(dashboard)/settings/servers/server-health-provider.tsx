@@ -8,7 +8,7 @@ import type { ServerStatus } from "@/lib/types";
 
 /**
  * The live health of every server card on this page. The stored status is now a
- * timestamped OBSERVATION, so the page can't just render it — it has to say how
+ * timestamped OBSERVATION, so the page can't just render it - it has to say how
  * old it is, and refuse to paint it once it's stale.
  */
 
@@ -49,7 +49,7 @@ export function isObservationFresh(
   checkedAt: string | null,
   now: number | null,
 ): boolean {
-  // "Never observed" is deterministic — it does not depend on the clock — so it is
+  // "Never observed" is deterministic, it does not depend on the clock, so it is
   // decided the same way on the server and the client, no hydration risk.
   if (!checkedAt) return false;
   // Pre-mount (now null): a server with a checkedAt paints its seed. Branching on the
@@ -131,7 +131,7 @@ export function ServerHealthProvider({
   const [health, setHealth] = React.useState(seed);
   const [checking, setChecking] = React.useState<Record<string, boolean>>({});
   const [sweeping, setSweeping] = React.useState(true);
-  // Starts null (SSR-safe), becomes a ticking clock after mount — see `now` above.
+  // Starts null (SSR-safe), becomes a ticking clock after mount - see `now` above.
   const [now, setNow] = React.useState<number | null>(null);
   React.useEffect(() => {
     const raf = requestAnimationFrame(() => setNow(Date.now()));
@@ -171,7 +171,7 @@ export function ServerHealthProvider({
     /** `quiet` = the ambient re-sweep: no spinner on the chips, no toast. */
     const sweep = async (quiet: boolean) => {
       // A hidden tab is nobody watching. Don't dial every agent in the fleet on its
-      // behalf — the visibility listener below re-verifies the instant it comes back.
+      // behalf - the visibility listener below re-verifies the instant it comes back.
       if (quiet && document.hidden) return;
       if (sweepInFlight.current) return;
       sweepInFlight.current = true;
@@ -186,7 +186,7 @@ export function ServerHealthProvider({
         if (!quiet) setSweeping(false);
         if (!res.ok) {
           // The cards fall back to the last observation, which the chip already ages out to
-          // "Unknown" on its own — so a failed sweep degrades to "we don't know", never to a
+          // "Unknown" on its own, so a failed sweep degrades to "we don't know", never to a
           // confident stale value.
           if (quiet)
             console.error(
@@ -205,7 +205,7 @@ export function ServerHealthProvider({
     void sweep(false);
     const timer = setInterval(() => void sweep(true), SWEEP_INTERVAL_MS);
     // Coming back to a backgrounded tab is exactly the moment a stale chip must not be on
-    // screen — re-verify immediately rather than waiting out the rest of the interval.
+    // screen - re-verify immediately rather than waiting out the rest of the interval.
     const onVisibility = () => {
       if (!document.hidden) void sweep(true);
     };
@@ -220,7 +220,7 @@ export function ServerHealthProvider({
 
   const checkOne = React.useCallback(
     (serverId: string) => {
-      // The timestamp we had going in — to tell a real re-check apart from a throttled
+      // The timestamp we had going in - to tell a real re-check apart from a throttled
       // no-op. Toasting "online" off that would be reporting a result we never observed.
       const before = health[serverId]?.checkedAt ?? null;
       setChecking((c) => ({ ...c, [serverId]: true }));
@@ -241,10 +241,10 @@ export function ServerHealthProvider({
         const row = res.data.checkServerHealth;
         merge([row]);
         if (row.statusCheckedAt && row.statusCheckedAt === before) {
-          toast.info("Checked a moment ago — status is up to date");
+          toast.info("Checked a moment ago - status is up to date");
           return;
         }
-        // Say what we found, not "done" — the whole point of the button is the answer.
+        // Say what we found, not "done" - the whole point of the button is the answer.
         if (row.status === "online") toast.success("Server is online");
         else if (row.status === "provisioning")
           toast.info("Server is still provisioning");

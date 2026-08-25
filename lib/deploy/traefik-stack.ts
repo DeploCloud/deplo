@@ -60,7 +60,7 @@ export function withTraefikDashboard(
 
   // Our own labels always come off first, so enabling twice is idempotent and
   // disabling leaves whatever the operator added untouched. `traefik.enable` is
-  // deliberately NOT treated as ours here — see the disable branch.
+  // deliberately NOT treated as ours here - see the disable branch.
   const kept = labels.filter(
     (l) => !isOurs(l) && !l.startsWith("traefik.enable="),
   );
@@ -95,7 +95,7 @@ export function withTraefikDashboard(
       "Credentials are required to publish the Traefik dashboard",
     );
 
-  // Claim the flag only when we are the one adding it — a host that already had
+  // Claim the flag only when we are the one adding it - a host that already had
   // it keeps it when the panel is turned off again.
   const ourFlag =
     !command.includes(DASHBOARD_FLAG) || labels.includes(FLAG_MARKER);
@@ -112,7 +112,7 @@ export function withTraefikDashboard(
     `traefik.http.routers.${ROUTER}.service=api@internal`,
     `traefik.http.routers.${ROUTER}.middlewares=${AUTH_MIDDLEWARE}`,
     // `$` is doubled because this lands in a compose file, which reads a single
-    // `$` as variable interpolation and would eat the hash — the same escaping
+    // `$` as variable interpolation and would eat the hash - the same escaping
     // routing.ts applies to an app's basic-auth label.
     `traefik.http.middlewares.${AUTH_MIDDLEWARE}.basicauth.users=` +
       dashboard.htpasswdUsers.replace(/\$/g, "$$$$"),
@@ -213,7 +213,7 @@ const FILE_WATCH_FLAG = "--providers.file.watch=true";
 
 /**
  * The certificates Deplo installed on this host, read back out of its own stack
- * file — the same read-live-not-stored rule the ACME email follows, so a host
+ * file - the same read-live-not-stored rule the ACME email follows, so a host
  * someone edited by hand reports what it is actually serving.
  */
 export function traefikCertificates(currentYaml: string): CustomCertificate[] {
@@ -249,11 +249,11 @@ export function traefikCertificates(currentYaml: string): CustomCertificate[] {
  *
  * Two pieces are needed and neither can come from a label: Traefik only reads
  * certificates from its FILE provider, and the file has to exist inside the
- * container. Both ride in the stack file itself — a compose `configs` entry with
+ * container. Both ride in the stack file itself - a compose `configs` entry with
  * inline `content`, which Docker materialises into the container on `up`. That
  * is deliberate: the agent has no RPC that writes an arbitrary path on the host
  * (ADR-0006 keeps host writes to the ones it exposes), and the stack file is
- * something Deplo is already allowed to rewrite. The PEM goes in verbatim —
+ * something Deplo is already allowed to rewrite. The PEM goes in verbatim -
  * Traefik's `certFile`/`keyFile` take either a path or the certificate itself.
  *
  * The operator's own file provider is respected when they have one: our file is
@@ -444,7 +444,7 @@ function readOnlyMountOver(service: YAMLMap, dir: string): string | null {
 
 /**
  * Take one of our configs off both the service and the top level, in either
- * compose syntax, leaving every other entry — and the comments attached to them —
+ * compose syntax, leaving every other entry, and the comments attached to them,
  * where they are.
  */
 function dropOurConfig(doc: Stack, service: YAMLMap, name: string): void {
@@ -732,7 +732,7 @@ function parseCompose(text: string): Stack {
 
 /**
  * The service holding Traefik. Matched by container_name first (the installer
- * pins `deplo-traefik`), then by image, then by the conventional `traefik` key —
+ * pins `deplo-traefik`), then by image, then by the conventional `traefik` key,
  * so a hand-renamed service still resolves.
  */
 function traefikServiceNode(doc: Stack): YAMLMap | null {
@@ -849,7 +849,7 @@ function certResolver(command: string[]): string {
 }
 
 /**
- * Our labels, identified by router/middleware name — the removal marker.
+ * Our labels, identified by router/middleware name - the removal marker.
  */
 function isOurs(label: string): boolean {
   return (
@@ -860,7 +860,7 @@ function isOurs(label: string): boolean {
 }
 
 function dump(doc: Stack): string {
-  // lineWidth 0 disables folding — a wrapped basicauth hash or a wrapped
+  // lineWidth 0 disables folding - a wrapped basicauth hash or a wrapped
   // `Host(...)` rule is still valid YAML but unreadable in the file the operator
   // may end up looking at on the host.
   return doc.toString({ lineWidth: 0 });

@@ -1,5 +1,5 @@
 /**
- * What a GitHub `pull_request` delivery MEANS for one app — the preview twin of
+ * What a GitHub `pull_request` delivery MEANS for one app - the preview twin of
  * [git-webhook](./git-webhook.ts), and pure for the same reason: the decision is
  * the part worth testing, and the route around it is plumbing.
  */
@@ -41,20 +41,20 @@ export interface PullRequestEvent {
   /** `owner/name` of the head repo; "" when the fork has been deleted. */
   headRepo: string;
   headCloneUrl: string;
-  /** The repo the App is installed on — what candidate apps are matched against. */
+  /** The repo the App is installed on - what candidate apps are matched against. */
   baseRepo: string;
   baseBranch: string;
   /** The head lives somewhere the operator does not control. */
   isFork: boolean;
   draft: boolean;
   merged: boolean;
-  /** The pull request's labels, lower-cased — GitHub matches them that way. */
+  /** The pull request's labels, lower-cased - GitHub matches them that way. */
   labels: string[];
 }
 
 /** The app-side facts the decision needs. */
 export interface PreviewTriggerConfig {
-  /** The branch the app tracks — pull requests must TARGET it. */
+  /** The branch the app tracks - pull requests must TARGET it. */
   branch: string;
   previewsEnabled: boolean;
   /** Rebuild when the pull request receives a new commit. */

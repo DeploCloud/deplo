@@ -8,7 +8,7 @@ import { LineEditor } from "@/lib/exec-line-editor";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 import type { ConsoleControls } from "@/components/console/console-controls";
 
-// SGR wrappers — the exec pane colours its own chrome (prompt/banner/errors);
+// SGR wrappers - the exec pane colours its own chrome (prompt/banner/errors);
 // command OUTPUT is written verbatim so the container's own ANSI renders.
 const GREEN = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const CYAN = (s: string) => `\x1b[36m${s}\x1b[0m`;
@@ -28,16 +28,16 @@ export function ExecTerminal({
   exec,
   onControls,
 }: {
-  /** e.g. `root@web$` — no trailing space (added with the prompt colour). */
+  /** e.g. `root@web$`, no trailing space (added with the prompt colour). */
   prompt: string;
   /** System lines printed above the first prompt. */
   banner: string[];
   /** Late-resolved distroless caveat, appended once when it arrives. */
   note: string | null;
   /**
-   * How a line is executed. The pane owns this — it is what applies the shell
+   * How a line is executed. The pane owns this - it is what applies the shell
    * wrapper and picks between the app's `execConsole` and a database's
-   * `execDatabaseConsole` — so this component only has to render the REPL.
+   * `execDatabaseConsole`, so this component only has to render the REPL.
    */
   exec: (
     command: string,
@@ -90,7 +90,7 @@ export function ExecTerminal({
   }
 
   // Behind a ref so a fresh `onControls` closure each render never re-runs the
-  // mount path — `onReady` fires exactly once per terminal.
+  // mount path - `onReady` fires exactly once per terminal.
   const onControlsRef = React.useRef(onControls);
   React.useEffect(() => {
     onControlsRef.current = onControls;
@@ -161,7 +161,7 @@ export function ExecTerminal({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* The terminal takes whatever height the pane has left — the route is
+      {/* The terminal takes whatever height the pane has left - the route is
           full-bleed, so that is floor to ceiling. */}
       <div className="min-h-0 flex-1 bg-terminal p-2">
         <XtermView

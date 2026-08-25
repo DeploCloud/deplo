@@ -125,7 +125,7 @@ function rowToInstance(
 
 /**
  * Every configured destination of the active team, oldest first. There is no
- * masked variant to fall back to — the edit modal needs the real address — so the
+ * masked variant to fall back to, the edit modal needs the real address, so the
  * read carries the same gate as the write.
  */
 export async function listNotificationChannels(): Promise<
@@ -234,7 +234,7 @@ export async function saveNotificationChannel(
     await assertSafeOutboundHost(next.smtpHost, "SMTP host");
 
   // Read the stored ciphertext BEFORE the transaction (a query on its own connection
-  // inside one deadlocks the test harness) — an empty secret means "keep the stored
+  // inside one deadlocks the test harness) - an empty secret means "keep the stored
   // one", so an edit that only moves the channel's NAME must not require retyping the
   const prev = id ? await channelRow(teamId, id) : null;
   if (id && !prev) throw new Error("Channel not found");
@@ -399,7 +399,7 @@ function channelFor(row: ChannelRow, userId?: string): AlertChannel | string {
     case "push":
       return { kind: "push", teamId: row.teamId, userId };
     default: {
-      // A kind the catalog retired would otherwise be a silent no-op — the exact
+      // A kind the catalog retired would otherwise be a silent no-op - the exact
       // bug this feature exists to close. The `never` makes forgetting a NEW
       // kind a compile error; the return handles a stale row.
       const unreachable: never = kind;
@@ -493,7 +493,7 @@ export async function channelsForAlert(
  * Browser push goes to the CALLER's own devices.
  */
 export async function sendTestNotification(channelId: string): Promise<void> {
-  // Sending a real outbound POST is a side-effecting infra action — gate it the
+  // Sending a real outbound POST is a side-effecting infra action - gate it the
   // same way as editing, so a view-only member can't drive traffic to the team's
   // configured endpoints.
   const { teamId, userId } = await requireCapability("manage_notifications");
@@ -534,7 +534,7 @@ export async function getWebPushPublicKey(): Promise<string> {
 
 /**
  * Opt this browser in. The endpoint is a URL the CALLER supplies and the control
- * plane later dials from a background loop with nobody behind it — the same shape
+ * plane later dials from a background loop with nobody behind it - the same shape
  * as a webhook, and so it takes the same guard.
  */
 export async function subscribeWebPush(

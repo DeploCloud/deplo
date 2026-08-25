@@ -8,13 +8,13 @@ import { requirePersonalSession } from "../auth/request-context";
 import { describeUserAgent, type DeviceKind } from "../user-agent";
 
 /**
- * The devices signed in to the current account — Settings → Security. The hard
+ * The devices signed in to the current account - Settings → Security. The hard
  * rule on top of that: **`session.token` never leaves this module.
  */
 
 export interface UserSessionDTO {
   id: string;
-  /** True for the session making this request — it cannot revoke itself. */
+  /** True for the session making this request - it cannot revoke itself. */
   current: boolean;
   /** "Chrome on macOS", "curl", "Unknown device". */
   label: string;

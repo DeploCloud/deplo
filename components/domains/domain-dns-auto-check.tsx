@@ -42,7 +42,7 @@ export function DomainDnsAutoCheck({
 
   // The poll loop reads the CURRENT props through a ref so the single mounted
   // interval survives router.refresh() prop updates without re-arming. Synced
-  // in an effect (not during render — react-hooks/refs).
+  // in an effect (not during render - react-hooks/refs).
   const domainsRef = React.useRef(domains);
   React.useEffect(() => {
     domainsRef.current = domains;
@@ -56,7 +56,7 @@ export function DomainDnsAutoCheck({
 
     async function checkAll() {
       // Never overlap two rounds, and only check while the tab is actually
-      // being looked at — a background tab just waits for the next tick.
+      // being looked at - a background tab just waits for the next tick.
       if (cancelled || running || document.hidden) return;
       running = true;
       setChecking(true);
@@ -85,10 +85,10 @@ export function DomainDnsAutoCheck({
         if (status && status !== d.status) {
           changed = true;
           if (status === "valid")
-            toast.success(`${d.name} verified — routing is live`);
+            toast.success(`${d.name} verified - routing is live`);
           else if (status === "cloudflare")
             toast.warning(
-              `${d.name} is proxied through Cloudflare — routed, but deplo can’t confirm it reaches this app`,
+              `${d.name} is proxied through Cloudflare - routed, but deplo can’t confirm it reaches this app`,
             );
         }
       }
@@ -96,7 +96,7 @@ export function DomainDnsAutoCheck({
       setChecking(false);
       if (cancelled) return;
       // Every call failing (twice in a row, so one transient blip doesn't
-      // count) means the user can't verify domains at all — stop polling.
+      // count) means the user can't verify domains at all - stop polling.
       if (failures > 0 && failures === domainsRef.current.length) {
         if (++failedRounds >= 2) {
           setDisabled(true);
@@ -131,7 +131,7 @@ export function DomainDnsAutoCheck({
         <p className="font-medium">
           {disabled
             ? "Waiting for DNS"
-            : "Waiting for DNS — checked automatically"}
+            : "Waiting for DNS - checked automatically"}
         </p>
         <p className="text-muted-foreground">
           A domain starts routing once its DNS points at this server
@@ -155,7 +155,7 @@ export function DomainDnsAutoCheck({
           ) : (
             <>
               While you’re on this page deplo re-checks DNS every 30 seconds and
-              starts routing the moment the record resolves — no manual step
+              starts routing the moment the record resolves, no manual step
               needed. Verify forces an immediate check.
             </>
           )}

@@ -39,7 +39,7 @@ export interface BreadcrumbGraph {
   folders: BreadcrumbFolder[];
   apps: BreadcrumbApp[];
   projects: BreadcrumbProject[];
-  /** Empty for a member whose role or token does not reach the whole team —
+  /** Empty for a member whose role or token does not reach the whole team -
    *  Storage is a team-wide list, so a narrowed caller sees none of it. */
   databases: BreadcrumbDatabase[];
 }
@@ -51,7 +51,7 @@ export interface BreadcrumbContext {
   openFolderId: string | null;
   /** ?project= on the Overview (project drill-in), else null. */
   openProjectId: string | null;
-  /** ?view=list|grid — preserved in the folder/project/overview links. */
+  /** ?view=list|grid - preserved in the folder/project/overview links. */
   view: "grid" | "list";
 }
 
@@ -65,7 +65,7 @@ export interface DropItem {
   kind: "folder" | "app" | "project" | "database" | "section";
   /** The entry that IS the current path at this level (checkmarked, non-navigating). */
   current: boolean;
-  /** An app's or database's logo — the renderer shows it in place of the
+  /** An app's or database's logo - the renderer shows it in place of the
    *  generic glyph. Null/absent on every other kind. */
   logo?: string | null;
   /** A database entry's engine, so a logo-less one still gets its own mark. */
@@ -92,11 +92,11 @@ export interface BreadcrumbSegment {
   items: DropItem[];
   /**
    * The crumb's own avatar, when the thing it names has one. Only on the crumbs
-   * that name a THING (app, database, folder, project) — never on "Overview" or on
+   * that name a THING (app, database, folder, project), never on "Overview" or on
    * a section like "Logs", which are places.
    */
   logo?: string | null;
-  /** A database crumb's engine — the fallback mark when it has no logo. */
+  /** A database crumb's engine - the fallback mark when it has no logo. */
   dbType?: string | null;
 }
 
@@ -157,7 +157,7 @@ const SETTINGS_SUBS: {
 }[] = [
   { seg: "", label: "General" },
   { seg: "deployments", label: "Deployments" },
-  // Listed for every app, GitHub or not — the page itself explains why it is
+  // Listed for every app, GitHub or not - the page itself explains why it is
   // closed to the ones that cannot use it, which is the whole point of the
   // settings entry existing (the operational page is hidden instead).
   { seg: "pull-requests", label: "Pull requests", requires: "managePreviews" },
@@ -216,7 +216,7 @@ export function folderChainFor(
 /**
  * Build the breadcrumb segments for the current location, or null when it isn't an
  * apps-tree location (a plain page like /storage, or an app/folder not in the
- * graph) — the topbar then falls back to its plain top-level label.
+ * graph) - the topbar then falls back to its plain top-level label.
  */
 export function buildBreadcrumb(
   ctx: BreadcrumbContext,
@@ -233,7 +233,7 @@ export function buildBreadcrumb(
   let service: BreadcrumbApp | null = null;
   let rest: string[] = [];
 
-  // Storage is its own short trail — Storage / <database> / <section> — and not
+  // Storage is its own short trail, Storage / <database> / <section>, and not
   // part of the apps tree, so it is resolved and returned before any of the
   // folder/project machinery below runs.
   const dbMatch = pathname.match(/^\/storage\/databases\/([^/]+)(\/.*)?$/);
@@ -264,7 +264,7 @@ export function buildBreadcrumb(
       project = projects.find((p) => p.id === openProjectId) ?? null;
       if (!project) return null;
     }
-    // else: the plain Overview root — just the Overview crumb, current.
+    // else: the plain Overview root - just the Overview crumb, current.
   } else {
     return null;
   }
@@ -281,14 +281,14 @@ export function buildBreadcrumb(
 
   const segments: BreadcrumbSegment[] = [];
 
-  // What comes right after Overview — used to checkmark it in the root dropdown.
+  // What comes right after Overview - used to checkmark it in the root dropdown.
   const rootFolderId = chain[0]?.id ?? null;
   const rootProjectId = chain.length === 0 && project ? project.id : null;
   const rootAppId =
     chain.length === 0 && !project && service ? service.id : null;
 
-  // Overview root crumb: dropdown is the top level — root folders, projects, and
-  // ungrouped apps — so you can jump anywhere from the root.
+  // Overview root crumb: dropdown is the top level - root folders, projects, and
+  // ungrouped apps, so you can jump anywhere from the root.
   const rootItems: DropItem[] = [
     ...folders
       .filter((f) => (f.parentId ?? null) === null)
@@ -332,7 +332,7 @@ export function buildBreadcrumb(
     items: rootItems,
   });
 
-  // A crumb per ancestor folder. Its dropdown is that folder's children — the NEXT
+  // A crumb per ancestor folder. Its dropdown is that folder's children - the NEXT
   // folder in the chain (or, at the leaf folder, the open app) is marked
   // current so you can see where you are and pivot to a sibling.
   chain.forEach((folder, idx) => {
@@ -505,7 +505,7 @@ function buildDatabaseTrail(
   const base = (dbId: string) => `/storage/databases/${dbId}`;
   const mainSeg = rest[0] ?? "";
   // Keep your tab when pivoting to another database, exactly as the app trail
-  // does — minus the sections that hinge on per-database facts a sibling may
+  // does - minus the sections that hinge on per-database facts a sibling may
   // not share, and minus any deeper id in the path.
   const UNSAFE = new Set(["console", "cron-jobs"]);
   const suffix = mainSeg && !UNSAFE.has(mainSeg) ? `/${mainSeg}` : "";

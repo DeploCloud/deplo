@@ -18,7 +18,7 @@ process.env.DEPLO_SECRET = "test-secret-for-agent-mtls-pki-aaaaaaaa";
 
 /**
  * `completeBootstrap` consume-single-use under concurrency (relational-store PLAN
- * Step 6 — servers are relational now).
+ * Step 6 - servers are relational now).
  */
 
 let db: TestDb;

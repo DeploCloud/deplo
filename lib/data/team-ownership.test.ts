@@ -22,7 +22,7 @@ import { removeMember } from "./members";
 import { transferTeamOwnership } from "./team-ownership";
 
 /**
- * Handing a team over — the one write that ever moves `teams.founder_user_id`.
+ * Handing a team over - the one write that ever moves `teams.founder_user_id`.
  */
 
 let db: TestDb;
@@ -107,7 +107,7 @@ test("a wrong password refuses the transfer", async () => {
 });
 
 /**
- * The crown IS full access, so a plain member can receive it — the transfer puts
+ * The crown IS full access, so a plain member can receive it - the transfer puts
  * them on the Owner role itself. Requiring the rank up front blocked nothing (the
  * same admin grants it with one click) and allowed the incoherent end state this
  * asserts against: a crowned member who reaches only part of their own team, and
@@ -189,7 +189,7 @@ test("somebody outside the team can't be handed it", async () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * The column changing is not the point — every founder guard reading it is. So
+ * The column changing is not the point - every founder guard reading it is. So
  * this drives the invariant from the other side: after the transfer the NEW
  * founder is the unremovable one, and the old one is just an owner again.
  */

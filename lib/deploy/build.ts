@@ -123,7 +123,7 @@ import type {
 import { mountOptions, parseMountPropagation } from "../apps/volume-model";
 
 /**
- * The owning server id for a DEPLOY KEY's app — its lifecycle verbs run on that
+ * The owning server id for a DEPLOY KEY's app - its lifecycle verbs run on that
  * server's agent (every app is agent-backed now, the host running Deplo included).
  */
 async function owningServerIdForDeployKey(
@@ -302,7 +302,7 @@ async function markStopped(depId: string, target: DeployTarget): Promise<void> {
   log(
     depId,
     "warn",
-    "Build stopped by user — result discarded. A build already running on the host may finish in the background; its output is not deployed.",
+    "Build stopped by user - result discarded. A build already running on the host may finish in the background; its output is not deployed.",
   );
   // Settle ONLY if this canceled deploy is still its owner's current one.
   const settled =
@@ -351,7 +351,7 @@ async function commitOutcome(
   await setDeployState(target, appPatch);
   // Every terminal outcome of every deploy funnels through here, so this one hook
   // covers success, build failure, an unreachable agent, an agent too old and a
-  // thrown error, on both the single-image and the compose path — and, since previews
+  // thrown error, on both the single-image and the compose path, and, since previews
   // share the path, a pull request build too.
   const ok = depPatch.status === "ready";
   const what =
@@ -390,7 +390,7 @@ async function commitOutcome(
 
 /**
  * Deploy-time image retention: drop the superseded images beyond the policy's
- * keep-count on this deploy's server NOW, not at the next nightly sweep — a
+ * keep-count on this deploy's server NOW, not at the next nightly sweep - a
  * fast-iterating app mints gigabytes of tagged-but-dead images between ticks (see
  * {@link sweepSupersededAppImages}).
  */
@@ -439,13 +439,13 @@ export function noCacheForDeploy(build: {
     return {
       noCache: true,
       reason:
-        "Build cache cleared — building from scratch, then caching again.",
+        "Build cache cleared - building from scratch, then caching again.",
     };
   }
   if (!build.buildCache) {
     return {
       noCache: true,
-      reason: "Build cache is off for this app — building from scratch.",
+      reason: "Build cache is off for this app - building from scratch.",
     };
   }
   return { noCache: false, reason: "" };
@@ -464,7 +464,7 @@ export async function consumeCacheClear(appId: string): Promise<void> {
 }
 
 /**
- * Set an auto-detected logo ONLY when the app has none yet — a conditional `WHERE
+ * Set an auto-detected logo ONLY when the app has none yet - a conditional `WHERE
  * logo IS NULL` UPDATE.
  */
 async function setLogoIfUnset(
@@ -482,7 +482,7 @@ async function setLogoIfUnset(
 
 /**
  * Auto-detect a display logo from the source tree the deploy just extracted (an
- * upload build) and set it when the app has none yet. Best-effort — never fails or
+ * upload build) and set it when the app has none yet. Best-effort, never fails or
  * delays the deploy.
  */
 async function autoDetectLogoFromTree(
@@ -491,7 +491,7 @@ async function autoDetectLogoFromTree(
   root: string,
   rootDirectory: string | null | undefined,
 ): Promise<void> {
-  if (currentLogo) return; // already has a logo (template default / user's) — leave it
+  if (currentLogo) return; // already has a logo (template default / user's) - leave it
   try {
     await setLogoIfUnset(appId, await detectTreeFavicon(root, rootDirectory));
   } catch {
@@ -518,8 +518,8 @@ function autoDetectRepoLogo(
 
 /**
  * Store the framework recognised in an app's source. Clearing is spelled `is not
- * null` rather than `is distinct from <null>` — the same split `updateAppLogo`
- * makes — because an untyped NULL parameter is not something to hand Postgres.
+ * null` rather than `is distinct from <null>` - the same split `updateAppLogo`
+ * makes, because an untyped NULL parameter is not something to hand Postgres.
  */
 async function setFramework(
   appId: string,
@@ -542,7 +542,7 @@ async function setFramework(
 
 /**
  * Whether THIS deploy can recognise a framework at all: only the auto-detecting
- * builders (Nixpacks / Railpack — the one gate, shared with the API and the UI)
+ * builders (Nixpacks / Railpack - the one gate, shared with the API and the UI)
  * and only for a source whose files Deplo can read (a repo, an uploaded archive).
  */
 function canRecognizeFramework(app: {
@@ -591,7 +591,7 @@ const ICON_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
 
 /**
  * Auto-detect a display logo for a COMPOSE STACK on its owning host: the app's own
- * files first, then — the case that covers most compose apps — the icon the
+ * files first, then, the case that covers most compose apps, the icon the
  * running app SERVES, since a stack of prebuilt images keeps its favicon inside
  * the image where no file walk can reach it.
  */
@@ -639,7 +639,7 @@ interface PreviewEnvContext {
 }
 
 /**
- * The `DEPLO_*` variables a preview's containers get for free — enough for an app
+ * The `DEPLO_*` variables a preview's containers get for free - enough for an app
  * to know it is a preview and to build absolute self-links (an OAuth callback, a
  * canonical URL) without the user configuring anything per pull request.
  */
@@ -717,7 +717,7 @@ async function loadPreviewEnvOverrides(
 }
 
 /**
- * The NAMES of the env vars a production deploy resolves for a project — exactly
+ * The NAMES of the env vars a production deploy resolves for a project - exactly
  * the keys `appEnv` would carry (same selection seam), but WITHOUT decrypting any
  * value.
  */
@@ -769,12 +769,12 @@ export function renderCompose(opts: {
   port: number;
   appId: string;
   /**
-   * The stack's DEPLOY KEY — what the files dir, the named volumes and the
+   * The stack's DEPLOY KEY - what the files dir, the named volumes and the
    * `deplo.slug` label are named after.
    */
   deployKey: string;
   /**
-   * What the `deplo.project` label carries — the value the telemetry stream
+   * What the `deplo.project` label carries - the value the telemetry stream
    * buckets container stats by.
    */
   trackingId?: string;
@@ -815,7 +815,7 @@ export function renderCompose(opts: {
   const injectPort = opts.injectPort ?? true;
   const vols = opts.volumes ?? [];
   const namedVols = vols.filter((v) => v.type !== "host" && v.type !== "app");
-  // Absolute, per-project files dir — the same sandbox the `./<x>` compose
+  // Absolute, per-project files dir - the same sandbox the `./<x>` compose
   // convention resolves to. A "service" mount's source is rendered here so it
   // stays isolated (never resolved against the stack dir by docker).
   const filesDir = stackFilesDir(deployKey);
@@ -912,7 +912,7 @@ networks:
 ${topVolsYaml}`;
 }
 
-/** A deployment status that is non-terminal — a build was in flight. */
+/** A deployment status that is non-terminal - a build was in flight. */
 export function isInFlightStatus(s: Deployment["status"]): boolean {
   return s === "queued" || s === "building";
 }
@@ -1069,7 +1069,7 @@ export async function startDeployment(
       : "https";
   const url = domain ? `${scheme}://${domain}` : "";
   const depId = newId("dpl");
-  // The stack this build owns. Production keeps the bare app slug — which is why
+  // The stack this build owns. Production keeps the bare app slug, which is why
   // introducing the key changed nothing that was already running.
   const deployKey = preview ? preview.deployKey : project.slug;
 
@@ -1168,7 +1168,7 @@ export async function startDeployment(
   );
 
   // Supersede: a newer trigger for the SAME STACK wins, so cancel any of its
-  // still-QUEUED deploys that haven't started yet (nothing was built — safe to drop)
+  // still-QUEUED deploys that haven't started yet (nothing was built - safe to drop)
   // EXCEPT the one just inserted.
   await getDb()
     .update(deploymentsTable)
@@ -1182,7 +1182,7 @@ export async function startDeployment(
       ),
     );
 
-  // A new deployment flips its owner to "queued" and sets latestDeployment —
+  // A new deployment flips its owner to "queued" and sets latestDeployment -
   // push it to live subscribers so the header/tabs (and the pull requests list)
   // update without a reload.
   publishAppChanged(appId);
@@ -1480,7 +1480,7 @@ async function tryAgent(opts: {
       log(
         opts.depId,
         "error",
-        "App was deleted during the build — deploy aborted.",
+        "App was deleted during the build - deploy aborted.",
       );
       return { outcome: "failed", commitSha: "" };
     }
@@ -1572,10 +1572,10 @@ async function runDeployment(depId: string): Promise<void> {
   // for a preview.
   const trackingId = preview ? preview.id : project.id;
   // Production routes through the project's EXISTING registered primary domain (never
-  // resurrected — see startDeployment).
+  // resurrected - see startDeployment).
   const domain = preview ? preview.host : await primaryDomainName(project.id);
   // Production routes to every verified domain (primary first); a preview uses only
-  // its own host (which is never a registered `domains` row — that would leak it into
+  // its own host (which is never a registered `domains` row - that would leak it into
   // the PRODUCTION router set and into the per-team certificate quota).
   const routeDomains = await routableForDeploy(
     project.id,
@@ -1586,7 +1586,7 @@ async function runDeployment(depId: string): Promise<void> {
   );
 
   // Claim the deploy: queued -> building, but ONLY while it is still queued. The
-  // terminal commitOutcome CAS only covers a cancel that arrives DURING the build —
+  // terminal commitOutcome CAS only covers a cancel that arrives DURING the build -
   // this covers the window before it starts.
   const claimed = await getDb()
     .update(deploymentsTable)
@@ -1676,7 +1676,7 @@ async function runDeployment(depId: string): Promise<void> {
         ...composeOpts,
         serverId: runServerId,
       });
-      // Auto-set the display logo when the app has none yet — the compose-stack arm of
+      // Auto-set the display logo when the app has none yet - the compose-stack arm of
       // the same detection git/upload apps get. PRODUCTION ONLY: this writes the APP's
       // logo.
       if (!preview) {
@@ -1791,11 +1791,11 @@ async function runDeployment(depId: string): Promise<void> {
         routes: routeDomains,
         env,
         basicAuthUsers,
-        // A prebuilt image is deployed as-is — never inject PORT and override the
+        // A prebuilt image is deployed as-is, never inject PORT and override the
         // listen address its author baked in. Built sources (git/upload/
         // dockerfile) DO get PORT so 12-factor apps bind where Traefik forwards.
         injectPort: project.source !== "docker-image",
-        // The deploy path is the only writer of volumes into the stack — sourced
+        // The deploy path is the only writer of volumes into the stack - sourced
         // from the project. A reroute reads them back from the file instead.
         volumes: project.volumes ?? [],
         // Per-app resource caps, baked into the rendered compose at deploy time
@@ -1816,7 +1816,7 @@ async function runDeployment(depId: string): Promise<void> {
       failOnMissing: boolean;
       notFoundMessage?: string;
     }): Promise<void> => {
-      // Only the rootDirectory containment happens here — the agent does the build.
+      // Only the rootDirectory containment happens here - the agent does the build.
       const buildDir = await resolveBuildDir({
         root: treeOpts.root,
         rootDirectory: project.build.rootDirectory,
@@ -1856,7 +1856,7 @@ async function runDeployment(depId: string): Promise<void> {
         ? { kind: "rollback", image: dep.imageRef, of: dep.rollbackOf }
         : planDeploySource(project);
     // A cache-less build is minutes slower than a cached one, so say why before the log
-    // fills with build output — and spend the one-shot clear here, where a build is
+    // fills with build output, and spend the one-shot clear here, where a build is
     // genuinely about to run (a prebuilt image never builds, so its deploy must not
     // swallow the clear the user armed for the next real build).
     if (noCache && (plan.kind === "git" || plan.kind === "upload")) {
@@ -1916,7 +1916,7 @@ async function runDeployment(depId: string): Promise<void> {
       }
       case "git": {
         const repo = plan.repo;
-        // Auto-set the display logo from a favicon/icon in the repo (via the GitHub API —
+        // Auto-set the display logo from a favicon/icon in the repo (via the GitHub API -
         // the tree is cloned on the agent, not here) when the app has none yet.
         // Fire-and-forget so a GitHub round-trip never delays the deploy.
         autoDetectRepoLogo(
@@ -1936,7 +1936,7 @@ async function runDeployment(depId: string): Promise<void> {
           );
         }
         // The OWNING AGENT clones the repo itself (PLAN Part B, D3), the host running Deplo
-        // included, so the whole tree never crosses the wire — only the descriptor does.
+        // included, so the whole tree never crosses the wire - only the descriptor does.
         const forkUrl = preview?.isFork
           ? forkCloneUrl(repo.url, preview.headCloneUrl)
           : null;
@@ -2005,7 +2005,7 @@ async function runDeployment(depId: string): Promise<void> {
           imageRef = deployImageRef(deployKey, depId);
           await setDep(depId, { imageRef });
           // Auto-set the display logo from an icon/favicon in the extracted tree
-          // when the app has none yet (reusing this tree — no re-extract).
+          // when the app has none yet (reusing this tree, no re-extract).
           await autoDetectLogoFromTree(
             project.id,
             project.logo,
@@ -2035,7 +2035,7 @@ async function runDeployment(depId: string): Promise<void> {
         throw new Error("Nothing to deploy: no Docker image or repository set");
     }
 
-    // The agent built, rendered, ran, and waited — settle the deploy from its
+    // The agent built, rendered, ran, and waited - settle the deploy from its
     // terminal result. Every source arm above goes through the agent, so
     // `agentOutcome` is always set by the time we get here.
     const buildDurationMs = Date.now() - started;
@@ -2068,7 +2068,7 @@ async function runDeployment(depId: string): Promise<void> {
           "success",
           dep.url
             ? `Deployment ready at ${dep.url}`
-            : "Deployment ready (no domain — add one to route traffic)",
+            : "Deployment ready (no domain - add one to route traffic)",
         );
         // If this PRODUCTION deploy landed on a NEW server after a move, copy the data
         // across now that the fresh stack + empty volumes exist on the new host. Errors are
@@ -2104,9 +2104,9 @@ async function runDeployment(depId: string): Promise<void> {
       { status: "error" },
     );
   } finally {
-    // GUARANTEED final flush (PLAN §6 Decision 18): every deploy end/error path —
+    // GUARANTEED final flush (PLAN §6 Decision 18): every deploy end/error path -
     // success, build failure, agent-unavailable, a thrown error, or an early return
-    // inside the try — persists the buffered build logs before the fire-and-forget job
+    // inside the try - persists the buffered build logs before the fire-and-forget job
     // exits, instead of relying on the periodic timer.
     await finalizeDeploymentLogs(depId);
   }
@@ -2119,7 +2119,7 @@ async function runDeployment(depId: string): Promise<void> {
  */
 interface ComposeStackApp {
   id: string;
-  /** Named so a terminal alert can say whose deploy it was — the full app row is
+  /** Named so a terminal alert can say whose deploy it was - the full app row is
    * what callers actually pass, so these are already there at runtime. */
   teamId: string;
   name: string;
@@ -2140,7 +2140,7 @@ interface ComposeStackOpts {
   name: string;
   /** The stack key: the app slug for production, `<slug>__pr-<n>` for a preview. */
   deployKey: string;
-  /** The `deplo.project` label value — the app id, or a preview's own id. */
+  /** The `deplo.project` label value - the app id, or a preview's own id. */
   trackingId: string;
   /** Where this deploy's live state is written (the App, or its preview row). */
   target: DeployTarget;
@@ -2165,7 +2165,7 @@ interface ComposeStackOpts {
 /**
  * The host directory a project's compose stack reads its template config files
  * (mounts) from. buildComposeStack rewrites every `./<x>` bind source to
- * `<filesDir>/<x>`, so this path is baked into the rendered YAML — and MUST be the
+ * `<filesDir>/<x>`, so this path is baked into the rendered YAML, and MUST be the
  * same on whichever host runs the stack.
  */
 function composeFilesDir(deployKey: string): string {
@@ -2183,13 +2183,13 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   const { project, name, deployKey, trackingId, domainRoutes } = opts;
 
   // A multi-domain template's extra hostnames are registered ONCE at project creation
-  // (createApp), NOT here — a deploy never creates domain rows, so an extra domain
+  // (createApp), NOT here - a deploy never creates domain rows, so an extra domain
   // the user deletes is never resurrected on the next deploy.
 
   const filesDir = composeFilesDir(deployKey);
   const basicAuthUsers = await basicAuthUsersValue(project.id);
   // The settings env-var NAMES injected into every service as bare `- KEY`
-  // pass-throughs — the value itself rides the env-file the agent writes (see
+  // pass-throughs - the value itself rides the env-file the agent writes (see
   // deployComposeStackViaAgent), so no secret lands in the rendered YAML.
   const envKeys = await appEnvKeys(project.id, opts.environment, {
     preview: opts.preview,
@@ -2198,7 +2198,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     compose: project.compose ?? "",
     name,
     deployKey,
-    // A preview publishes no host ports — see ComposeStackInput. Production is
+    // A preview publishes no host ports - see ComposeStackInput. Production is
     // untouched, so its render stays byte-identical.
     stripPublishedPorts: Boolean(opts.preview),
     appId: project.id,
@@ -2247,9 +2247,9 @@ async function finishComposeStack(
         "success",
         url
           ? `Deployment ready at ${url}`
-          : "Deployment ready (no domain — add one to route traffic)",
+          : "Deployment ready (no domain - add one to route traffic)",
       );
-      // Same post-success data-migration hook as the single-image path — production
+      // Same post-success data-migration hook as the single-image path - production
       // only (a preview must not consume the marker or tear down the old host).
       if (environment === "production") {
         await completePendingAppMigration(project.id, (level, text) =>
@@ -2345,7 +2345,7 @@ async function deployComposeStackViaAgent(
 
 /**
  * Which compose service a PREVIEW's router forwards to, and on which port. A
- * preview host is never a `domains` row, so it carries no service of its own — and
+ * preview host is never a `domains` row, so it carries no service of its own, and
  * `buildComposeStack` skips every route that names none.
  */
 async function previewRouteTarget(
@@ -2464,7 +2464,7 @@ function readStackEnvFromYaml(
 
 /**
  * The named volumes baked into a single-image stack file, read back so a reroute
- * preserves the mounts the container is ACTUALLY running with — never pulling a
+ * preserves the mounts the container is ACTUALLY running with, never pulling a
  * pending (unsaved-to-stack) volume edit off the project.
  */
 /** The shape `renderCompose` accepts and `parseStackVolumes` reconstructs. */
@@ -2490,7 +2490,7 @@ function readStackVolumesFromYaml(
 }
 
 /**
- * The pure parser behind `readStackVolumes` (no fs) — exported for tests.
+ * The pure parser behind `readStackVolumes` (no fs) - exported for tests.
  */
 export function parseStackVolumes(
   yamlText: string,
@@ -2515,7 +2515,7 @@ export function parseStackVolumes(
     // Absent unless set, so an unchanged mount still deep-equals what it was.
     const prop = propagation ? { propagation } : {};
     if (source.startsWith(filesRoot)) {
-      // `<filesRoot><slug>/<rel>` — drop the slug segment, the rest is the
+      // `<filesRoot><slug>/<rel>` - drop the slug segment, the rest is the
       // project-relative path the "service" mount was authored with.
       const afterRoot = source.slice(filesRoot.length);
       const slash = afterRoot.indexOf("/");
@@ -2592,7 +2592,7 @@ export async function rerouteApp(
         filesDir: composeFilesDir(deployKey),
         basicAuthUsers: await basicAuthUsersValue(appId),
         // Inject the current settings env-var names so a reroute keeps the same
-        // pass-throughs a deploy would render — the env-file (sent below) still carries the
+        // pass-throughs a deploy would render - the env-file (sent below) still carries the
         // values.
         envKeys: await appEnvKeys(appId),
         // The stack's volumes must be re-rendered too: omitting them here would make a
@@ -2608,13 +2608,13 @@ export async function rerouteApp(
     } else {
       // Single-image / built path: the image ref and env live only in the stack
       // file (not on the project), so read them back from the agent's copy to keep
-      // this a pure routing change — never a rebuild or a silent env/image change.
+      // this a pure routing change, never a rebuild or a silent env/image change.
       const image = readStackImageFromYaml(current.yaml, name);
       if (!image) return "deferred"; // can't safely reroute without the running image
       const env =
         readStackEnvFromYaml(current.yaml, name) ?? (await appEnv(appId));
       // Volumes are read back from the stack (like image/env), NOT from
-      // project.volumes — so a domain-only reroute keeps the running mounts and
+      // project.volumes, so a domain-only reroute keeps the running mounts and
       // never silently applies a volume edit the user hasn't redeployed.
       const volumes = readStackVolumesFromYaml(current.yaml, name);
       const basicAuthUsers = await basicAuthUsersValue(appId);
@@ -2635,7 +2635,7 @@ export async function rerouteApp(
       });
     }
 
-    // No-op when the labels already match — avoids a pointless container restart
+    // No-op when the labels already match - avoids a pointless container restart
     // (e.g. re-verifying an already-valid domain, or toggling primary back).
     if (current.yaml === rendered) return "unchanged";
 
@@ -2647,7 +2647,7 @@ export async function rerouteApp(
     // For a single-image stack the env is baked into the YAML, so send no env-file
     // (mirrors the deploy path); compose stacks interpolate ${VAR} from the env.
     const env = useCompose && hasCompose ? await appEnv(appId) : {};
-    // A reroute is a bring-up too, so the app's extra flags apply here as well —
+    // A reroute is a bring-up too, so the app's extra flags apply here as well,
     // otherwise "re-apply routing" would quietly run a different command than a
     // deploy does.
     const r = await conn.reroute({
@@ -2671,7 +2671,7 @@ export async function rerouteApp(
 export async function renderAppStack(appId: string): Promise<string | null> {
   const project = await loadAppGraph(appId);
   if (!project) return null;
-  // The App's OWN stack — a pull request preview has no compose preview surface.
+  // The App's OWN stack - a pull request preview has no compose preview surface.
   const deployKey = project.slug;
   const name = stackName(deployKey);
 
@@ -2694,7 +2694,7 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       filesDir: composeFilesDir(deployKey),
       basicAuthUsers: await basicAuthUsersValue(appId),
       // Show the injected pass-throughs in the preview so "View full compose"
-      // matches what the next deploy/reroute writes. Only NAMES appear — the
+      // matches what the next deploy/reroute writes. Only NAMES appear - the
       // values never enter the rendered YAML (they ride the env-file).
       envKeys: await appEnvKeys(appId),
       // Include the per-app resource caps so the preview matches the next deploy.

@@ -78,7 +78,7 @@ test("an agent that advertises no capabilities at all is treated as old", async 
 });
 
 /* ------------------------------------------------------------------ */
-/* dropUnsupportedScopes — the opposite failure mode                    */
+/* dropUnsupportedScopes - the opposite failure mode                    */
 /* ------------------------------------------------------------------ */
 
 /**

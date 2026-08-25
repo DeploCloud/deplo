@@ -8,7 +8,7 @@
  * under /storage) has to come before anything that could shadow it.
  */
 const RESOURCE_ROUTES: ReadonlyArray<{ base: string; fallback: string }> = [
-  // A database — the Storage list exists in every team, and it is where
+  // A database - the Storage list exists in every team, and it is where
   // databaseNav's "Back to storage" goes.
   { base: "/storage/databases", fallback: "/storage" },
   // An App. There is no /apps list page (the Overview grid IS the list), which

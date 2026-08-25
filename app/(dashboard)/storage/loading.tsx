@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 // Same scheme as the Overview skeleton: the grid mirrors DatabasesGrid's
 // breakpoints (1 col, 2 from `sm`, 3 from `3xl`) and each extra placeholder
-// only appears once a column exists for it — two full rows at every width.
+// only appears once a column exists for it - two full rows at every width.
 const ROW_FILL = [
   "",
   "",

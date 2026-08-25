@@ -13,7 +13,7 @@ export type ServerConnectionState = "connected" | "disconnected";
  * the web server can't be reached.
  */
 export const SERVER_UNREACHABLE_MESSAGE =
-  "Can’t reach the server — navigation and actions are paused until the connection is back.";
+  "Can’t reach the server - navigation and actions are paused until the connection is back.";
 
 /**
  * Thrown in place of whatever low-level failure actually happened when a
@@ -46,7 +46,7 @@ export function getServerConnectionSnapshot(): ServerConnectionState {
 }
 
 /**
- * True once the state has latched — i.e. the notification is up, navigation is
+ * True once the state has latched - i.e. the notification is up, navigation is
  * paused, and any request a client fires can only fail.
  */
 export function isServerDisconnected(): boolean {
@@ -61,7 +61,7 @@ async function ping(): Promise<boolean> {
       signal: AbortSignal.timeout(PING_TIMEOUT_MS),
     });
     // Behind a reverse proxy (e.g. Cloudflare) a dead origin still produces an
-    // HTTP response — the proxy's 502 error page — so only 2xx counts.
+    // HTTP response, the proxy's 502 error page, so only 2xx counts.
     return res.ok;
   } catch {
     return false;
@@ -122,8 +122,8 @@ export function reportServerUnreachable(): void {
 }
 
 /**
- * Test-only: wait out any check still in flight — so its delayed second ping can't
- * latch a LATER test — then drop the latch, leaving a clean "connected" module.
+ * Test-only: wait out any check still in flight, so its delayed second ping can't
+ * latch a LATER test, then drop the latch, leaving a clean "connected" module.
  */
 export async function __resetServerConnectionForTests(): Promise<void> {
   // A check's `finally` can chain one more (the recheck), so drain until none.

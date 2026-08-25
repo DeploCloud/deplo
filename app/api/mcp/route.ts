@@ -17,8 +17,8 @@ import {
 import { buildMcpServer, type McpPrincipal } from "@/lib/mcp/server";
 
 /**
- * The deplo MCP server — protocol revision **2026-07-28**. There is no
- * MCP-specific credential and there must never be one — "how do I take this access
+ * The deplo MCP server - protocol revision **2026-07-28**. There is no
+ * MCP-specific credential and there must never be one - "how do I take this access
  * away" has to keep having one answer, and that answer is "revoke the token".
  */
 
@@ -58,7 +58,7 @@ const handler = createMcpHandler((ctx) =>
 /**
  * The RFC 6750 challenge, carrying RFC 9728 discovery. A terminal agent keeps
  * ignoring the header and sending a `deplo_` token, exactly as before. It names no
- * team, user or token — a challenge must not be an oracle.
+ * team, user or token - a challenge must not be an oracle.
  */
 function unauthorized(message: string) {
   const metadata = resourceMetadataUrl();
@@ -228,7 +228,7 @@ export async function POST(request: Request) {
 
 /**
  * A browser hitting this URL, or a client configured for the 2025 GET stream, gets
- * a sentence instead of a blank failure — the same courtesy the deploy hook pays.
+ * a sentence instead of a blank failure - the same courtesy the deploy hook pays.
  */
 export async function GET() {
   return Response.json(

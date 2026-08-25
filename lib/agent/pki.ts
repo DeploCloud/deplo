@@ -13,7 +13,7 @@ import {
 import { agentCaSeed } from "../crypto";
 
 /**
- * The agent mTLS PKI — the trust layer behind the second system boundary (the
+ * The agent mTLS PKI - the trust layer behind the second system boundary (the
  * control plane <-> server-agent RPC; see ADR-0006, PLAN P4).
  */
 
@@ -82,7 +82,7 @@ async function getCa(): Promise<{
   if (caCache) return caCache;
   const caKeys = await toWebCryptoKeys(ed25519KeyFromSeed(agentCaSeed()));
   // A FIXED notBefore/serial keeps the CA cert bytes stable across restarts.
-  // The validity window is wide (10y) — the CA's lifetime is the instance's.
+  // The validity window is wide (10y) - the CA's lifetime is the instance's.
   const caCert = await x509.X509CertificateGenerator.createSelfSigned({
     serialNumber: "01",
     name: "CN=Deplo Agent CA",
@@ -117,14 +117,14 @@ export interface CertBundle {
   certPem: string;
   /** The leaf private key, PEM (PKCS#8). */
   keyPem: string;
-  /** The pinned CA certificate, PEM — both sides verify against it. */
+  /** The pinned CA certificate, PEM - both sides verify against it. */
   caPem: string;
 }
 
 type SanEntry = { type: "dns"; value: string } | { type: "ip"; value: string };
 
 /**
- * The validity window for every minted leaf — server, client, or CSR-signed agent
+ * The validity window for every minted leaf - server, client, or CSR-signed agent
  * cert: one year.
  */
 const LEAF_LIFETIME_MS = 365 * 24 * 3600_000;
@@ -201,7 +201,7 @@ export async function issueControlPlaneClientCert(): Promise<CertBundle> {
 /**
  * The result of signing a remote agent's CSR during call-home bootstrap: the
  * agent's signed SERVER cert, the pinned CA, and the cert's fingerprint (which the
- * control plane stores in the Server row to authenticate — and later revoke — this
+ * control plane stores in the Server row to authenticate, and later revoke, this
  * exact agent).
  */
 export interface SignedAgentCert {
@@ -209,13 +209,13 @@ export interface SignedAgentCert {
   certPem: string;
   /** The pinned CA certificate, PEM (the agent verifies the control plane with it). */
   caPem: string;
-  /** sha256(DER) of the issued cert, lowercase hex — the pinning identity (P6). */
+  /** sha256(DER) of the issued cert, lowercase hex - the pinning identity (P6). */
   fingerprint: string;
 }
 
 /**
  * THE TRUST-DIRECTION INVERSION (PLAN P1-P4). In Part A the control plane minted
- * the agent's cert AND its key and wrote both to the agent's disk — possible only
+ * the agent's cert AND its key and wrote both to the agent's disk - possible only
  * because the agent was local.
  */
 export async function signAgentCsr(
@@ -254,7 +254,7 @@ export async function certFingerprint(certPem: string): Promise<string> {
 
 /**
  * IPv4 literal matcher. Exported so the dial path (agent-client) classifies a host
- * the SAME way SAN generation does here — an IP literal gets an `ip` SAN and,
+ * the SAME way SAN generation does here - an IP literal gets an `ip` SAN and,
  * because TLS SNI forbids IP servernames, is verified via a DNS SAN at dial time.
  */
 export const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;

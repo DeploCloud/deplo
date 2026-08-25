@@ -1,4 +1,4 @@
--- ADR-0009: Projects are "advanced folders" — a project's CONTENTS are scoped
+-- ADR-0009: Projects are "advanced folders" - a project's CONTENTS are scoped
 -- per Environment (each environment holds its OWN services, like a sub-folder,
 -- selected via a dropdown on the Overview drill-in). This adds the membership
 -- axis: `services.environment_id`, the environment a service LIVES in. NULL

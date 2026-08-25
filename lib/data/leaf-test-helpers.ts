@@ -10,7 +10,7 @@ import type { Capability, Role } from "../types";
 
 /**
  * Shared seeding for the leaf cut-set data-layer tests (relational-store PLAN Step
- * 2). So this seeds ONLY the relational identity tables — there is no JSONB store
+ * 2). So this seeds ONLY the relational identity tables - there is no JSONB store
  * left to reset.
  */
 
@@ -32,7 +32,7 @@ interface SeedUser {
   id: string;
   teamId: string;
   role?: Role;
-  /** Override the role's preset — for gates that need a deliberately narrow set. */
+  /** Override the role's preset - for gates that need a deliberately narrow set. */
   capabilities?: Capability[];
 }
 
@@ -46,7 +46,7 @@ const DEFAULT_USERS: SeedUser[] = [
 
 /**
  * Seed identity into the pglite FK roots. Defaults to two teams (alpha/beta) and
- * one owner user in alpha — enough for "owner can mutate" + "cross-team
+ * one owner user in alpha - enough for "owner can mutate" + "cross-team
  * isolation" assertions. Call in `beforeEach` AFTER truncating.
  */
 export async function seedIdentity(

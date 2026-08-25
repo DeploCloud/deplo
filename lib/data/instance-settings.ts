@@ -62,7 +62,7 @@ import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
 // The flag itself lives in the leaf `lib/avatar.ts`, not here: this module
 // imports `getCurrentUser` from `lib/auth`, and `lib/auth` needs the flag to
-// build its own DTO — reading it here would close an import cycle.
+// build its own DTO - reading it here would close an import cycle.
 import { gravatarEnabled } from "../avatar";
 
 /**
@@ -180,7 +180,7 @@ export async function logMaxDays(): Promise<number> {
 
 /** Clamp, never reject. The field is a number input with these same bounds, so
  *  anything outside them arrived from an API client, and the honest answer to
- *  "keep 900 days" is the ceiling — not an error about a number nobody typed. */
+ *  "keep 900 days" is the ceiling, not an error about a number nobody typed. */
 function clampLogMaxDays(days: number): number {
   return Number.isFinite(days)
     ? Math.min(
@@ -221,7 +221,7 @@ export async function setLogMaxDays(days: number): Promise<InstanceSettings> {
 
 /**
  * Turn Gravatar fallback on or off for the whole instance. The panel itself never
- * dials out either way — off simply stops the data layer emitting the URL, so the
+ * dials out either way - off simply stops the data layer emitting the URL, so the
  * read side needs no network awareness at all.
  */
 export async function setGravatarEnabled(

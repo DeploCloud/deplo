@@ -11,14 +11,14 @@ import type { DatabaseType } from "@/lib/types";
 export interface BackupTargetOption {
   id: string;
   name: string;
-  /** The app's slug, or the database's engine — what tells two same-named ones
+  /** The app's slug, or the database's engine - what tells two same-named ones
    *  apart, and the second thing typing searches. */
   detail?: string | null;
   serverId?: string | null;
   /** An app's logo, or a database's own; a database with none falls back to its
    *  engine's brand mark. */
   logo?: string | null;
-  /** Databases only — picks the engine mark. */
+  /** Databases only - picks the engine mark. */
   type?: DatabaseType;
 }
 
@@ -41,7 +41,7 @@ export function TargetCombobox({
   disabled?: boolean;
 }) {
   const noun = kind === "app" ? "app" : "database";
-  /** The thing's own icon — the one its card and its header already wear. */
+  /** The thing's own icon - the one its card and its header already wear. */
   const mark = (t: BackupTargetOption) =>
     kind === "app" ? (
       <AppLogo logo={t.logo ?? null} size={20} />

@@ -159,7 +159,7 @@ test("updateCleanupPolicy clamps minAgeHours and keepImagesPerApp into range", a
   assert.equal(
     tooLow.keepImagesPerApp,
     1,
-    "keep-per-app floors at 1 — never zero images kept",
+    "keep-per-app floors at 1, never zero images kept",
   );
 
   const tooHigh = await asOwner(() =>
@@ -228,7 +228,7 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
   assert.equal(policy.enabled, true, "cleanup is ON by default");
   assert.equal(policy.schedule, "0 4 * * *");
   // A DAY, not a week: the old 168h default was the root cause of a recurring disk
-  // saturation — a fast-redeploying host fills in hours, so nothing ever aged into
+  // saturation - a fast-redeploying host fills in hours, so nothing ever aged into
   // eligibility and every sweep "succeeded" with 0 bytes (migration 0040 moves
   // stored policies off the old default too).
   assert.equal(policy.minAgeHours, 24);
@@ -251,7 +251,7 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
   ]);
 });
 
-test("a saved policy always wins over the defaults — an explicit disable survives", async () => {
+test("a saved policy always wins over the defaults - an explicit disable survives", async () => {
   await seedCleanupPolicy(db, { enabled: false });
   const policy = await asOwner(() => getCleanupPolicy());
   assert.equal(
@@ -336,7 +336,7 @@ test("a plain member is refused by every entry point", async () => {
   assert.equal((await allRuns()).length, 0);
 });
 
-test("manage_infra alone does NOT reach Docker cleanup — the gate is instance-admin", async () => {
+test("manage_infra alone does NOT reach Docker cleanup - the gate is instance-admin", async () => {
   await seedCleanupPolicy(db, { enabled: true });
 
   // The whole point of the gate: this member may manage their own team's infra, but
@@ -355,7 +355,7 @@ test("runCleanupNow answers `running` at once and records the failure in the bac
   await seedCleanupPolicy(db, { enabled: true });
 
   // THE contract the UI is built on: the call returns a `running` run without waiting
-  // for the host, so "Clean up now" is a click, not a spinner — and it does NOT throw
+  // for the host, so "Clean up now" is a click, not a spinner, and it does NOT throw
   // for anything the host fails at, because by then there is no caller left to tell.
   const started = await asOwner(() => runCleanupNow(SERVER_1));
   assert.equal(started.status, "running");
@@ -365,7 +365,7 @@ test("runCleanupNow answers `running` at once and records the failure in the bac
   assert.deepEqual(started.items, []);
 
   // The detached half settles the same row it handed back. (Nothing in production
-  // awaits this — a page can be closed the moment the button is clicked.)
+  // awaits this - a page can be closed the moment the button is clicked.)
   await __settleCleanupSweeps();
 
   // The seeded server has no agent, and the invariant holds: the `running` row was
@@ -395,7 +395,7 @@ test("runCleanupNow answers `running` at once and records the failure in the bac
 
 test("a second sweep is refused while one is already running on that host", async () => {
   await seedCleanupPolicy(db, { enabled: true });
-  // A sweep in flight on this host — durably, so the guard holds across control-plane
+  // A sweep in flight on this host - durably, so the guard holds across control-plane
   // instances too, not just within one process.
   await seedCleanupRun(db, {
     id: "dcr_live",
@@ -404,7 +404,7 @@ test("a second sweep is refused while one is already running on that host", asyn
   });
 
   // Refused BEFORE anything is recorded: this is a pre-flight problem, so it is one of
-  // the few things the mutation still throws — the button says the host is busy rather
+  // the few things the mutation still throws - the button says the host is busy rather
   // than stacking a second `docker rmi` sweep that would race the first's candidates.
   await asOwner(async () => {
     await assert.rejects(() => runCleanupNow(SERVER_1), /already running/);
@@ -430,7 +430,7 @@ test("reconcileInFlightCleanupRuns fails a stranded run and leaves a fresh one a
     startedAt: fresh,
   });
 
-  // Session-free by construction — a boot hook has no user to gate on.
+  // Session-free by construction - a boot hook has no user to gate on.
   const flipped = await reconcileInFlightCleanupRuns();
   assert.equal(
     flipped,
@@ -497,14 +497,14 @@ test("pruneCleanupRunHistory keeps the newest 3×servers and never a running row
   const left = (await allRuns()).map((r) => r.id).sort();
   assert.deepEqual(left, ["dcr_stuck", "dcr_t3", "dcr_t4", "dcr_t5"]);
 
-  // The deleted runs took their per-scope items with them (FK CASCADE) — no orphans.
+  // The deleted runs took their per-scope items with them (FK CASCADE), no orphans.
   const itemRuns = (await db.select().from(runItemsTable))
     .map((i) => i.runId)
     .sort();
   assert.deepEqual(itemRuns, ["dcr_t3", "dcr_t4", "dcr_t5"]);
 });
 
-test("the executor prunes after every sweep — even a failed one", async () => {
+test("the executor prunes after every sweep - even a failed one", async () => {
   await seedCleanupPolicy(db, { enabled: true });
   // Six terminal rows, all older than the run about to happen. Cap (1 server) = 3.
   for (let i = 1; i <= 6; i++) {
@@ -519,7 +519,7 @@ test("the executor prunes after every sweep — even a failed one", async () => 
   await __settleCleanupSweeps();
 
   // …and the history is back at the cap: the just-failed run plus the two newest
-  // survivors. Retention rides the executor — there is no janitor to schedule.
+  // survivors. Retention rides the executor - there is no janitor to schedule.
   const runs = await allRuns();
   assert.equal(runs.length, 3);
   const ids = runs.map((r) => r.id);
@@ -552,7 +552,7 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
   });
   assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
 
-  // Scope on and not excluded: the seeded server has no agent, so the dial fails —
+  // Scope on and not excluded: the seeded server has no agent, so the dial fails -
   // swallowed and reported as 0 bytes, because a failed sweep must never fail the
   // deploy that just succeeded. And history-silent by design: no run row, ever.
   await pg.exec(TRUNCATE_CLEANUP);
@@ -563,7 +563,7 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
     0,
     "the deploy-time sweep writes no history",
   );
-  // The in-flight signal the scheduler reads must be cleaned up on every exit path —
+  // The in-flight signal the scheduler reads must be cleaned up on every exit path -
   // a leaked id would exclude that host from the nightly sweep forever.
   assert.deepEqual(
     serversWithDeploySweepInFlight(),

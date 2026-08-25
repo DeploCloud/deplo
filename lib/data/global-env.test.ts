@@ -23,7 +23,7 @@ import { appEnvSnapshot } from "./project-backup-descriptor";
 
 /**
  * Data-layer tests for INSTANCE-wide global env vars (the one scope that survives
- * ADR-0010; team-global vars became team-wide shared vars — see shared-vars.test).
+ * ADR-0010; team-global vars became team-wide shared vars - see shared-vars.test).
  */
 
 let db: TestDb;
@@ -184,7 +184,7 @@ test("an instance secret refuses every edit, targets included", async () => {
 
 test("an omitted target set means every runtime", async () => {
   // The production/preview picker is gone from the UI (an App belongs
-  // to exactly ONE Environment) — a write that names no target reaches them all.
+  // to exactly ONE Environment) - a write that names no target reaches them all.
   await asUser1(() =>
     upsertInstanceEnv({ key: "NOTARGET", value: "1", type: "plain" }),
   );
@@ -237,7 +237,7 @@ test("authorship is stamped on create and only updatedBy changes on edit", async
   const [created] = await asUser1(() => listInstanceEnv());
   assert.equal(created!.createdBy?.id, USER_1);
   assert.equal(created!.updatedBy?.id, USER_1);
-  // Identity only — no email, no hash. `avatarUrl` is the RESOLVED picture, and
+  // Identity only - no email, no hash. `avatarUrl` is the RESOLVED picture, and
   // this is the assertion that proves resolving it server-side did not smuggle
   // the address out with it: the query selects `email` to build the Gravatar
   // hash, and the DTO must still not carry it.

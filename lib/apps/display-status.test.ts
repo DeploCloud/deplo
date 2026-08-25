@@ -15,7 +15,7 @@ const runtime = (over: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot => ({
 /**
  * The bug these lock down: `apps.status` is the last thing the control plane was
  * ASKED to do, so a container that crash-loops right after a successful deploy
- * leaves the row saying "active" — and the UI said "Online" while docker was
+ * leaves the row saying "active", and the UI said "Online" while docker was
  */
 
 test("a crash-looping container is Restarting, never Online", () => {
@@ -121,7 +121,7 @@ test("never deployed reads as such, not as stopped", () => {
   assert.equal(displayStatus("idle", null, true), "not_deployed");
   // Someone stopped it AFTER a build: still "Stopped".
   assert.equal(displayStatus("idle", none, false), "idle");
-  // The flag only ever speaks for an app at rest — a build in flight, a failed
+  // The flag only ever speaks for an app at rest - a build in flight, a failed
   // deploy or a running container all outrank "it has no deployment row".
   assert.equal(displayStatus("building", none, true), "building");
   assert.equal(displayStatus("error", none, true), "error");

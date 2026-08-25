@@ -28,7 +28,7 @@ function freshWords(): string {
 
 /**
  * Produce a brand-new zero-config nip.io host from a server suggestion by swapping
- * only its random words — the label and hex-IP suffix are preserved, so the result
+ * only its random words - the label and hex-IP suffix are preserved, so the result
  * still routes to the correct server.
  */
 export function regenerateNipDomain(suggested: string): string {

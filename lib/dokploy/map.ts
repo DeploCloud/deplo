@@ -101,7 +101,7 @@ const DOKPLOY_NETWORK = "dokploy-network";
 
 /**
  * Every top-level network KEY in this compose that resolves to Dokploy's shared
- * network — which is not only the key `dokploy-network`.
+ * network, which is not only the key `dokploy-network`.
  */
 function dokployNetworkKeys(doc: { networks?: unknown }): Set<string> {
   const keys = new Set<string>();
@@ -128,7 +128,7 @@ function dokployNetworkKeys(doc: { networks?: unknown }): Set<string> {
 
 /**
  * Turn a Dokploy compose file into a Deplo one. Left alone, a `../` source is not
- * merely wrong — Deplo reads it as climbing OUT of the sandbox, so the stack would
+ * merely wrong - Deplo reads it as climbing OUT of the sandbox, so the stack would
  * demand the host-volumes grant and then bind a path that holds nothing.
  */
 export function adaptComposeForDeplo(source: string): {
@@ -399,7 +399,7 @@ const BUILD_METHOD: Record<string, BuildMethod> = {
   static: "static",
   // Neither buildpack family has a deplo equivalent. Nixpacks is the closest
   // thing: an auto-detecting builder that reads the same repos. Noted, never
-  // silent — a Heroku buildpack with a custom `bin/compile` will not survive it.
+  // silent - a Heroku buildpack with a custom `bin/compile` will not survive it.
   heroku_buildpacks: "nixpacks",
   paketo_buildpacks: "nixpacks",
 };
@@ -524,7 +524,7 @@ export function parseMemoryMb(raw: string | null | undefined): number | null {
 /**
  * Dokploy's CPU limit → deplo's milli-CPUs.
  *
- * ponytail: the column is free text and holds two conventions — cores as a
+ * ponytail: the column is free text and holds two conventions - cores as a
  * decimal (`0.5`, what Dokploy's form asks for) and nano-CPUs (`500000000`, what
  * Docker's API takes). Split on 1000, because a 1000-core limit is not a thing
  * anyone types and half a nano-CPU is not either. If a third convention ever

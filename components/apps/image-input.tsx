@@ -81,7 +81,7 @@ export function ImageInput({
   const containerRef = React.useRef<HTMLDivElement | null>(null);
 
   const debouncedValue = useDebounced(value, 280);
-  // Whether the user is currently completing a tag (after a ":") — drives the
+  // Whether the user is currently completing a tag (after a ":") - drives the
   // empty-state copy and whether we offered name vs tag suggestions.
   const mode = React.useMemo<"name" | "tag">(
     () => (splitForCompletion(value).tagPart !== null ? "tag" : "name"),
@@ -102,7 +102,7 @@ export function ImageInput({
       setLoading(true);
       try {
         if (tagPart !== null) {
-          // Completing a tag — forward the fragment as a server-side filter so a
+          // Completing a tag - forward the fragment as a server-side filter so a
           // specific/old version surfaces (Docker Hub `name=`), not only newest.
           const filterParam = tagPart
             ? `&filter=${encodeURIComponent(tagPart)}`
@@ -121,7 +121,7 @@ export function ImageInput({
             })),
           );
         } else {
-          // Completing a name — only Docker Hub returns results; others no-op.
+          // Completing a name - only Docker Hub returns results; others no-op.
           const res = await fetch(
             `/api/registry/images?action=search&q=${encodeURIComponent(namePart)}`,
             { signal: controller.signal },
@@ -134,7 +134,7 @@ export function ImageInput({
         }
         setHighlight(0);
       } catch {
-        // aborted or failed — leave existing suggestions
+        // aborted or failed - leave existing suggestions
       } finally {
         setLoading(false);
       }
@@ -166,7 +166,7 @@ export function ImageInput({
         const json = await res.json();
         setExistence((json.status as Existence) ?? "unknown");
       } catch {
-        // aborted or failed — leave the previous status
+        // aborted or failed - leave the previous status
       }
     }
     validate();

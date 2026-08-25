@@ -18,7 +18,7 @@ export const UserSessionRef = builder
   .objectRef<UserSessionDTO>("UserSession")
   .implement({
     description:
-      "A browser or client currently signed in to the viewer's account. Carries no credential — a session is addressed by its id, never by its token.",
+      "A browser or client currently signed in to the viewer's account. Carries no credential - a session is addressed by its id, never by its token.",
     fields: (t) => ({
       id: t.exposeID("id"),
       current: t.exposeBoolean("current", {
@@ -54,7 +54,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { loggedIn: true },
     description:
-      "Sign one device out. Refuses the viewer's own session — use `logout` for that. Returns true.",
+      "Sign one device out. Refuses the viewer's own session - use `logout` for that. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await revokeSession(id);

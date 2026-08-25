@@ -21,7 +21,7 @@ import {
 import { getQueuePosition } from "./deployments";
 
 /**
- * `getQueuePosition` against pglite — the 1-based slot the deployment-detail "in
+ * `getQueuePosition` against pglite - the 1-based slot the deployment-detail "in
  * queue" banner shows.
  */
 
@@ -106,7 +106,7 @@ test("positions queued builds oldest-first (1 = next to build)", async () => {
   });
 });
 
-test("counts only queued rows ahead — a building/ready one doesn't shift it", async () => {
+test("counts only queued rows ahead - a building/ready one doesn't shift it", async () => {
   await seedDeployment(db, {
     id: "d_building",
     appId: SVC,

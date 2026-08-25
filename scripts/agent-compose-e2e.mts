@@ -132,7 +132,7 @@ networks:
   check("agent reports the stack ready", ready);
 
   // Both services run, discoverable by the deplo.slug label (NOT by a
-  // deplo-<slug> container name — the whole point of the label-based wait).
+  // deplo-<slug> container name - the whole point of the label-based wait).
   const ids = (
     await sh("docker", [
       "ps",

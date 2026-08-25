@@ -6,7 +6,7 @@ import { supportsFrameworkDetection } from "@/lib/apps/framework-catalog";
 import type { BuildMethod } from "@/lib/types";
 
 /**
- * Live framework recognition for a repository the user is still choosing — the
+ * Live framework recognition for a repository the user is still choosing - the
  * new-app wizard's "we already know what this is" moment, before any app row
  * exists to carry the answer.
  */
@@ -81,7 +81,7 @@ export function useRepoFramework(input: RepoFrameworkInput): {
             setAnswer({ query, framework: data.detectRepoFramework ?? null });
           }
         })
-        // Nothing is broken when a repository can't be read — the badge simply
+        // Nothing is broken when a repository can't be read - the badge simply
         // never appears. Recording the empty answer stops the skeleton.
         .catch(() => {
           if (!controller.signal.aborted) setAnswer({ query, framework: null });

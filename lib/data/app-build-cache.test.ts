@@ -146,7 +146,7 @@ test("the deploy decides no-cache from the setting OR the armed clear", () => {
   });
   assert.equal(off.noCache, true);
   assert.match(off.reason, /off for this app/);
-  // An armed clear beats the setting, and says so — "why was this build slow"
+  // An armed clear beats the setting, and says so - "why was this build slow"
   // has two different answers and the log must not blur them.
   const cleared = noCacheForDeploy({
     buildCache: true,

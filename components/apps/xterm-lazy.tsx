@@ -4,8 +4,8 @@ import dynamic from "next/dynamic";
 
 /**
  * The terminal, code-split and client-only. `@xterm/xterm` touches the DOM at
- * construction and ships ~55–80KB gzipped, so it must not enter SSR or the shared
- * bundle — it loads only when a console pane actually mounts.
+ * construction and ships ~55-80KB gzipped, so it must not enter SSR or the shared
+ * bundle - it loads only when a console pane actually mounts.
  */
 export const XtermView = dynamic(
   () => import("./xterm-view").then((m) => m.XtermView),

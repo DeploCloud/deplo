@@ -25,7 +25,7 @@ const FAKE = {
 /**
  * Stub global fetch to serve a release whose assets include both arch binaries
  * plus a checksums.txt. resolveLatestAgentRelease makes two calls: the release
- * JSON, then the checksums asset — we branch on the URL.
+ * JSON, then the checksums asset - we branch on the URL.
  */
 function stubReleaseFetch() {
   const orig = globalThis.fetch;
@@ -135,7 +135,7 @@ test("the self-guard PASSES on the rendered script (would-fire bug regression)",
     const url = shVar(script!, "AGENT_URL_AMD64")!;
     assert.ok(
       !guardMatches(url),
-      "rendered AGENT_URL_AMD64 trips the install guard — the script can never run",
+      "rendered AGENT_URL_AMD64 trips the install guard - the script can never run",
     );
   } finally {
     restore();
@@ -219,7 +219,7 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
     );
     assert.ok(
       configured < firstNetwork,
-      "pools are configured AFTER the first network is created — the host stays capped at ~31 apps",
+      "pools are configured AFTER the first network is created - the host stays capped at ~31 apps",
     );
 
     const host = await readFile(join(process.cwd(), "install.sh"), "utf8");
@@ -235,7 +235,7 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
     );
     assert.ok(
       hostConfigured < hostNetwork,
-      "install.sh configures pools AFTER creating the deplo network — the step is a no-op",
+      "install.sh configures pools AFTER creating the deplo network - the step is a no-op",
     );
   } finally {
     restore();
@@ -254,7 +254,7 @@ test("no installer ever hardcodes 10.0.0.0/8 as the address pool", async () => {
       .join("\n");
     assert.ok(
       !code.includes("10.0.0.0/8"),
-      `${file} hardcodes 10.0.0.0/8 — it swallows the host's own LAN/VPN and dockerd won't start`,
+      `${file} hardcodes 10.0.0.0/8 - it swallows the host's own LAN/VPN and dockerd won't start`,
     );
   }
 });
@@ -265,6 +265,6 @@ test("both installers carry the SAME address-pool block", async () => {
   assert.equal(
     poolBlock(host),
     poolBlock(agent),
-    "install.sh and install-agent.sh have drifted — the address-pool block must stay identical",
+    "install.sh and install-agent.sh have drifted - the address-pool block must stay identical",
   );
 });

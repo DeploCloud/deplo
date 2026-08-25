@@ -9,7 +9,7 @@ import {
 } from "./domains";
 
 /**
- * No certificate is ever registered by default — a new domain's provider is `none`
+ * No certificate is ever registered by default - a new domain's provider is `none`
  * unless the user (or a blueprint that expects HTTPS) opts in.
  */
 
@@ -26,7 +26,7 @@ test("blueprintWantsTls fires on an https URL to the app's OWN host in env", () 
     blueprintWantsTls([HOST.toUpperCase()], [`API=HTTPS://${HOST}/gotrue`]),
     true,
   );
-  // Any of the blueprint's hosts counts — an extra host referenced with https
+  // Any of the blueprint's hosts counts - an extra host referenced with https
   // opts the whole app in.
   assert.equal(blueprintWantsTls([HOST, EXTRA], [`UI=https://${EXTRA}`]), true);
 });

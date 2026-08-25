@@ -65,7 +65,7 @@ test("appStatusStream yields the initial snapshot + multiple change pings (cooki
     status: "active",
   });
 
-  // NO runWithIdentity — there is no request scope. If the generator read a
+  // NO runWithIdentity - there is no request scope. If the generator read a
   // cookie it would throw here.
   const gen = appStatusStream("alpha", TEAM_A, USER_1);
 
@@ -82,7 +82,7 @@ test("appStatusStream yields the initial snapshot + multiple change pings (cooki
   assert.equal(second.done, false);
   assert.equal(second.value.id, "prj_1");
 
-  // Ping 2: a SECOND change across another iteration tick — this is the case the
+  // Ping 2: a SECOND change across another iteration tick - this is the case the
   // cookie-free guarantee protects (the old crash point).
   const p2 = gen.next();
   publishAppChanged("prj_1");
@@ -123,7 +123,7 @@ test("appStatusStream ends when the project is deleted mid-stream", async () => 
   });
   const gen = appStatusStream("alpha", TEAM_A, USER_1);
   await gen.next(); // initial
-  // Delete the project, then ping — the reload returns null → the generator ends.
+  // Delete the project, then ping - the reload returns null → the generator ends.
   const p = gen.next();
   await pg.exec(`delete from apps where id = 'prj_1';`);
   publishAppChanged("prj_1");
@@ -172,7 +172,7 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
   const gen = asScoped(() => appStatusStream("alpha", TEAM_A, USER_1));
   await assert.rejects(() => asScoped(() => gen.next()), /App not found/);
 
-  // And with the scope covering the app, the stream survives past tick 1 — the
+  // And with the scope covering the app, the stream survives past tick 1 - the
   // regression this wrapper exists for.
   const ok = {
     id: "tok_test",
@@ -198,7 +198,7 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
 });
 
 /* ------------------------------------------------------------------ */
-/* Folder privacy — a live feed is not a way around it                 */
+/* Folder privacy - a live feed is not a way around it                 */
 /* ------------------------------------------------------------------ */
 
 test("a member who can't see the folder can't watch the app inside it", async () => {
@@ -239,7 +239,7 @@ test("a member who can't see the folder can't watch the app inside it", async ()
     .set({ folderId: "fld_private" })
     .where(eq(appsTable.id, "prj_1"));
 
-  // The snapshot carries the app's name, source repo, URL and every deployment —
+  // The snapshot carries the app's name, source repo, URL and every deployment -
   // a member refused the app's own page must not read it off a live feed either.
   await assert.rejects(
     () => appStatusStream("alpha", TEAM_A, "u_outsider").next(),
@@ -297,7 +297,7 @@ test("an app moved into a folder the watcher can't see ends their stream", async
   const gen = appStatusStream("alpha", TEAM_A, "u_outsider");
   assert.equal((await gen.next()).value.id, "prj_1");
 
-  // Filed away mid-stream — the revocation has to bite on the next tick, or a
+  // Filed away mid-stream - the revocation has to bite on the next tick, or a
   // subscription opened a second before the move outlives it.
   const pending = gen.next();
   await db
@@ -386,7 +386,7 @@ test("a build inside a folder the member can't see is not counted", async () => 
   await seedDeployment(db, { id: "dep_1", appId: "prj_1", status: "building" });
 
   // A count is small, but it is still "something is happening in a folder you
-  // are refused" — and clicking the chip would show an empty Deployments page.
+  // are refused", and clicking the chip would show an empty Deployments page.
   assert.equal(
     (await activeDeploymentsStream(TEAM_A, "u_outsider").next()).value,
     0,

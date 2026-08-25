@@ -136,7 +136,7 @@ test("listDestinations is team-scoped and newest-first", async () => {
  * `testDestinations` is what the destination picker fires when it opens, so the two
  * properties that matter are "every destination gets a verdict" and "one bad
  * destination never sinks the list". The seeded server has no agent certificate,
- * so no host can serve the probe — every destination lands on the SAME recorded
+ * so no host can serve the probe - every destination lands on the SAME recorded
  * failure, which is exactly the case that used to be invisible.
  */
 test("testDestinations probes every destination and records each verdict", async () => {
@@ -158,7 +158,7 @@ test("testDestinations probes every destination and records each verdict", async
     assert.deepEqual(
       probed.map((d) => d.id),
       ["s3_b", "s3_a"],
-      "same order as listDestinations — newest first",
+      "same order as listDestinations - newest first",
     );
     for (const d of probed) {
       assert.equal(
@@ -171,7 +171,7 @@ test("testDestinations probes every destination and records each verdict", async
     }
   });
 
-  // Persisted, not just returned — a reopened dialog reads the same verdict.
+  // Persisted, not just returned - a reopened dialog reads the same verdict.
   const rows = await db
     .select()
     .from(destTable)
@@ -214,7 +214,7 @@ test("toDestinationOption describes a server destination by server and folder", 
     kind: "server",
     serverId: SERVER_1,
   });
-  // Whatever the last check resolved is what the picker shows — the folder the
+  // Whatever the last check resolved is what the picker shows - the folder the
   // agent actually used, not the one that was (or was not) typed.
   await db
     .update(destTable)
@@ -326,7 +326,7 @@ test("deleteDestination is team-scoped (a foreign destination is not found)", as
 /* ------------------------------------------------------------------ */
 
 /**
- * `destinationTestReport` is a pure READ of the four `last_test_*` columns — opening the
+ * `destinationTestReport` is a pure READ of the four `last_test_*` columns - opening the
  * log must never re-dial. The probe itself (`testDestination`) needs a live
  * agent, so its verdict-to-report mapping is covered by the pure tests in
  * s3-test-report.test.ts; here we pin what the STORED verdict turns into.
@@ -429,7 +429,7 @@ test("destinationTestReport refuses a cross-team destination", async () => {
  * The control plane dials notification webhooks itself, and the agents dial the
  * S3 endpoint, so these fields are the two places a member picks a URL somebody
  * else's process will fetch. The guard used to inspect only the literal spelling
- * of the host — which stopped `http://169.254.169.254/` and nothing else, since
+ * of the host, which stopped `http://169.254.169.254/` and nothing else, since
  * a NAME pointing at the same address sailed past.
  */
 test("the outbound guard refuses every private-address literal", async () => {
@@ -441,7 +441,7 @@ test("the outbound guard refuses every private-address literal", async () => {
     "http://192.168.1.1/x",
     "http://169.254.169.254/latest/meta-data/",
     "http://100.64.0.1/x",
-    "http://0177.0.0.1/x", // octal — WHATWG canonicalises it to 127.0.0.1
+    "http://0177.0.0.1/x", // octal - WHATWG canonicalises it to 127.0.0.1
     "http://[::1]/x",
     "http://[fd00::1]/x",
     "http://[::ffff:127.0.0.1]/x",
@@ -473,7 +473,7 @@ test("a hostname is resolved, so a name pointing inside is refused too", async (
       /private or internal/,
       "a name that answers with a private address is the same attack, spelled politely",
     );
-    // ANY answer being internal is enough — a round-robin that mixes one in is
+    // ANY answer being internal is enough - a round-robin that mixes one in is
     // still a way in.
     await assert.rejects(
       () =>
@@ -496,7 +496,7 @@ test("a hostname is resolved, so a name pointing inside is refused too", async (
  * treat a non-canonical numeric IP as a self-answering literal: `2130706433`,
  * `127.1`, `0177.0.0.1` and `2852039166` (= 169.254.169.254) all sail past
  * isInternalHost's dotted-quad regex, and getaddrinfo(inet_aton) then dials the
- * real internal address — SSRF via the manage_notifications SMTP field. They
+ * real internal address - SSRF via the manage_notifications SMTP field. They
  * must fall through to DNS and be refused on the resolved address.
  */
 test("the bare-host guard resolves non-canonical numeric IPs instead of trusting them", async () => {
@@ -540,7 +540,7 @@ test("the bare-host guard resolves non-canonical numeric IPs instead of trusting
  * The IPv6 twin of the case above: the fix must not be IPv4-only. An
  * un-compressed spelling of an internal IPv6 address (`0:0:0:0:0:0:0:1`, a
  * padded loopback, `[::1]`, an expanded v4-mapped loopback) is a LITERAL, so it
- * never reaches DNS — it must be canonicalized (compressed) and refused on the
+ * never reaches DNS - it must be canonicalized (compressed) and refused on the
  * spot, not sailed past because it "contains a colon".
  */
 test("the bare-host guard canonicalizes non-canonical IPv6 literals too", async () => {
@@ -623,8 +623,8 @@ test("a name that doesn't resolve is left alone, not refused", async () => {
 /**
  * `ensureDefaultDestination` runs on every render of the three pages that show a
  * destination picker. Seeding on "this team has no destinations" therefore made
- * the default UNDELETABLE — Remove deleted the row and the next render put it
- * straight back — and let two concurrent renders each insert one. The claim on
+ * the default UNDELETABLE - Remove deleted the row and the next render put it
+ * straight back, and let two concurrent renders each insert one. The claim on
  * `teams.backupDefaultSeededAt` is what fixes both.
  */
 
@@ -698,7 +698,7 @@ test("a team that already has a destination is never given another", async () =>
 });
 
 test("no backup-capable server yet: nothing is seeded, and the seed can still happen later", async () => {
-  // `beforeEach` truncates users/teams/backups, not servers — so clear the one
+  // `beforeEach` truncates users/teams/backups, not servers, so clear the one
   // the tests above provisioned. What is left is the seeded server, which has no
   // agent certificate and can therefore hold nothing.
   await db.delete(serversTable).where(eq(serversTable.id, "srv_store"));
@@ -720,8 +720,8 @@ test("no backup-capable server yet: nothing is seeded, and the seed can still ha
 /* ------------------------------------------------------------------ */
 
 test("a new S3 destination gets its own keypair, and never leaks the private half", async () => {
-  // A project archive carries the app's ENTIRE decrypted env — the restore has
-  // to write the real .env back — so the destination shape that shipped first
+  // A project archive carries the app's ENTIRE decrypted env - the restore has
+  // to write the real .env back, so the destination shape that shipped first
   // was the one putting every secret in somebody else's storage in the clear.
   await asUser1(async () => {
     const created = await createDestination({
@@ -745,7 +745,7 @@ test("a new S3 destination gets its own keypair, and never leaks the private hal
 
 test("an S3 destination created before encryption keeps writing plaintext", async () => {
   // Its existing objects already are plaintext, and rewriting history is not on
-  // offer — so a null recipient stays null and the run's own key extension is
+  // offer, so a null recipient stays null and the run's own key extension is
   // what says which of the two any artifact is.
   await seedDestination(db, {
     id: "dst_old",
@@ -799,8 +799,8 @@ test("a bucket name or region carrying shell syntax is refused at creation", asy
 /* ------------------------------------------------------------------ */
 
 test("listDestinationOptions carries no credential and no test history", async () => {
-  // It is readable by a member scoped to one folder — who may hold
-  // `manage_backups` on an app and still needs somewhere to send its backups —
+  // It is readable by a member scoped to one folder - who may hold
+  // `manage_backups` on an app and still needs somewhere to send its backups,
   // so what it carries has to be exactly what a picker shows.
   await seedDestination(db, { id: "dst_s3", kind: "s3" });
   await asUser1(async () => {

@@ -2,7 +2,7 @@ import "server-only";
 
 /**
  * Retirement sweep for the withdrawn Plugins feature (ADR-0013). With no UI left,
- * the only way for the owner to remove that would be a shell on the host — which
+ * the only way for the owner to remove that would be a shell on the host, which
  * the core mission forbids.
  */
 
@@ -48,7 +48,7 @@ export async function retireInstalledPlugins(
       .where(eq(installedPluginsTable.id, row.id));
     retired++;
     console.log(
-      `[deplo] retired installed plugin ${slug} (the feature is deferred — ADR-0013)`,
+      `[deplo] retired installed plugin ${slug} (the feature is deferred - ADR-0013)`,
     );
   }
   return retired;

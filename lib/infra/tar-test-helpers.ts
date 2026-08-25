@@ -74,7 +74,7 @@ export async function* tarStream(
 
 /**
  * A PAX extended-header record, `"<len> <key>=<value>\n"`, where `<len>` counts
- * its own bytes — the same fixpoint Go's `archive/tar` computes when it writes
+ * its own bytes - the same fixpoint Go's `archive/tar` computes when it writes
  * one (which it does for any path over 100 bytes).
  */
 export function paxRecord(key: string, value: string): Buffer {

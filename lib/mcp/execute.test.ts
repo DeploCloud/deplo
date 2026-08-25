@@ -98,7 +98,7 @@ test("a capability the token was not granted is refused, not silently allowed", 
 
 test("the team hint decides which team a document resolves in", async () => {
   // USER_1 belongs to TEAM_A only, so TEAM_B is unreachable and the hint must be
-  // ignored rather than honoured — a token can never be talked into a team its
+  // ignored rather than honoured - a token can never be talked into a team its
   // creator has no membership in.
   const raw = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     createToken({ name: "mcp", capabilities: ["view"] }),

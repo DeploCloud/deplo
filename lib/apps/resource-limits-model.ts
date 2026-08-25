@@ -1,7 +1,7 @@
 import type { ResourceLimits } from "../types";
 
 /**
- * The pure data model behind the Resources settings form — the string ⇄ number
+ * The pure data model behind the Resources settings form - the string ⇄ number
  * mapping, dirty-key serialization, and quick-pick presets, with NO React so it
  * unit-tests directly (the same split as `volumesKey` / `breadcrumb-model`).
  */

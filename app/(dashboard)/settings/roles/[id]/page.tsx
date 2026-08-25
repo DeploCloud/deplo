@@ -22,7 +22,7 @@ export default async function RolePage(
     listTeamScopeTree(),
   ]);
   // A role of another team resolves to nothing here, exactly as it does in the
-  // data layer — there is no id to guess your way into.
+  // data layer - there is no id to guess your way into.
   if (!role) notFound();
 
   return (

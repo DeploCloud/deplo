@@ -7,7 +7,7 @@
 import type { CertProvider, DomainStatus } from "../types";
 
 /**
- * Cloudflare's published proxy **IPv4** ranges — the anycast addresses a domain
+ * Cloudflare's published proxy **IPv4** ranges - the anycast addresses a domain
  * resolves to while proxied through Cloudflare.
  */
 export const CLOUDFLARE_IPV4_RANGES = [
@@ -42,7 +42,7 @@ export const CLOUDFLARE_IPV6_RANGES = [
 ] as const;
 
 /** Parse a dotted-quad into an unsigned 32-bit int, or null if it is not a
- * syntactically valid IPv4 (each octet a plain 0–255 integer). */
+ * syntactically valid IPv4 (each octet a plain 0-255 integer). */
 function ipv4ToInt(ip: string): number | null {
   const parts = ip.trim().split(".");
   if (parts.length !== 4) return null;
@@ -65,7 +65,7 @@ function inV4Cidr(ipInt: number, cidr: string): boolean {
     return false;
   }
   if (bits === 0) return true;
-  // A /bits mask, unsigned. (bits is 13–22 for every Cloudflare range, never 0.)
+  // A /bits mask, unsigned. (bits is 13-22 for every Cloudflare range, never 0.)
   const mask = (0xffffffff << (32 - bits)) >>> 0;
   return (ipInt & mask) >>> 0 === (baseInt & mask) >>> 0;
 }
@@ -113,7 +113,7 @@ function inV6Cidr(ipInt: bigint, cidr: string): boolean {
 
 /**
  * True iff `ip` (an IPv4 dotted-quad or IPv6 literal) belongs to one of
- * Cloudflare's published proxy ranges — i.e. the address is a Cloudflare edge, so
+ * Cloudflare's published proxy ranges - i.e. the address is a Cloudflare edge, so
  * a domain resolving to it is sitting behind the orange-cloud proxy rather than
  */
 export function isCloudflareIp(ip: string): boolean {
@@ -127,12 +127,12 @@ export function isCloudflareIp(ip: string): boolean {
 
 /** The three outcomes of classifying a domain's resolved A records against the
  * server it should point at. A subset of `DomainStatus` (the settled states a
- * verify can produce — `pending`/`error` are lifecycle states set elsewhere). */
+ * verify can produce - `pending`/`error` are lifecycle states set elsewhere). */
 export type DomainDnsClass = "valid" | "cloudflare" | "misconfigured";
 
 /**
  * Classify a domain's resolved A records against the `target` server IP it must
- * point at — the CORE of the DNS check, kept pure so it is exhaustively testable
+ * point at - the CORE of the DNS check, kept pure so it is exhaustively testable
  * without a live resolver: - `valid` an A record points straight at this server.
  */
 export function classifyDomainDns(
@@ -146,7 +146,7 @@ export function classifyDomainDns(
 
 /**
  * The certificate provider a domain carries once a DNS check has settled its
- * status — the ONE place the "proxied ⇒ Cloudflare issues the certificate" rule
+ * status - the ONE place the "proxied ⇒ Cloudflare issues the certificate" rule
  * lives, so adding, verifying and renaming a domain all reach the same answer.
  */
 export function certProviderForDns<T extends CertProvider | undefined>(

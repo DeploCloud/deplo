@@ -5,8 +5,8 @@ import { AgentUnreachableError } from "./agent-client";
 import type { ServerStatus } from "../types";
 
 /**
- * The health CLASSIFIER: given the outcome of one agent `Hello` — a response, or
- * the error it rejected with — decide what the server's status is and what we tell
+ * The health CLASSIFIER: given the outcome of one agent `Hello` - a response, or
+ * the error it rejected with - decide what the server's status is and what we tell
  * the operator.
  */
 
@@ -14,7 +14,7 @@ export interface ServerHealth {
   status: ServerStatus;
   /**
    * The operator-facing reason, or null when `online`. Drawn from the CLOSED set
-   * below — see the warning on {@link classifyServerHealth}.
+   * below - see the warning on {@link classifyServerHealth}.
    */
   message: string | null;
 }
@@ -28,13 +28,13 @@ export const HEALTH_MESSAGES = {
   untrusted:
     "The agent's certificate is not the one we trust for this server. Reissue the install command to re-provision it.",
   certExpired:
-    "The agent's certificate has expired (or is not yet valid). The host is up — re-run the install command on this server to re-provision the certificate.",
+    "The agent's certificate has expired (or is not yet valid). The host is up - re-run the install command on this server to re-provision the certificate.",
   contract:
     "The agent speaks an unsupported protocol version. Update the agent on this server.",
   agentError:
     "The agent answered with an error. Check the agent's logs on the host.",
   dockerDown:
-    "The agent is up but Docker is unreachable — deploys to this server will fail.",
+    "The agent is up but Docker is unreachable - deploys to this server will fail.",
   refused:
     "The agent did not answer (connection refused). Is it running on the host?",
   timedOut: "The agent did not answer within the health-check deadline.",
@@ -71,7 +71,7 @@ export function classifyServerHealth(
     if (err.trust)
       return { status: "error", message: HEALTH_MESSAGES.untrusted };
     // A cert-validity failure (expired / not-yet-valid) is the host answering with a
-    // stale identity, not a dead host — surface it as its own re-bootstrap `error`
+    // stale identity, not a dead host - surface it as its own re-bootstrap `error`
     // rather than the misleading "connection refused" it flattens into.
     if (isCertValidityError(err))
       return { status: "error", message: HEALTH_MESSAGES.certExpired };

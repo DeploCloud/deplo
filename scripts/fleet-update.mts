@@ -46,14 +46,14 @@ const agentZero = provisioned.filter((s) => s.ip === localIp);
 const order = [...remotes, ...agentZero];
 
 if (!order.length) {
-  console.log("No provisioned servers — nothing to update.");
+  console.log("No provisioned servers, nothing to update.");
   process.exit(0);
 }
 
 const busy = await busyServerIds();
 console.log(
   `Fleet: ${provisioned.length} provisioned (${remotes.length} remote, ${agentZero.length} local)` +
-    `${dryRun ? "  [DRY RUN — no agent is touched]" : ""}`,
+    `${dryRun ? "  [DRY RUN - no agent is touched]" : ""}`,
 );
 
 let updated = 0;
@@ -69,7 +69,7 @@ for (const [i, s] of order.entries()) {
 
   if (busy.has(s.id)) {
     console.log(
-      `SKIP  ${label} — a deploy is in flight; an agent re-exec would drop it`,
+      `SKIP  ${label} - a deploy is in flight; an agent re-exec would drop it`,
     );
     skipped++;
     continue;
@@ -81,14 +81,14 @@ for (const [i, s] of order.entries()) {
     before = (await agentPreflight(s.id)).agentVersion;
   } catch (e) {
     console.log(
-      `SKIP  ${label} — unreachable before the update: ${(e as Error).message}`,
+      `SKIP  ${label} - unreachable before the update: ${(e as Error).message}`,
     );
     skipped++;
     continue;
   }
 
   if (dryRun) {
-    console.log(`WOULD ${label} — currently ${before}`);
+    console.log(`WOULD ${label} - currently ${before}`);
     continue;
   }
 
@@ -102,12 +102,12 @@ for (const [i, s] of order.entries()) {
   } catch (e) {
     if (e instanceof AgentUpdateUnsupportedError) {
       console.log(
-        `SKIP  ${label} — agent too old to self-update; re-run install-agent.sh there`,
+        `SKIP  ${label} - agent too old to self-update; re-run install-agent.sh there`,
       );
     } else if (e instanceof AgentUnreachableError) {
-      console.log(`FAIL  ${label} — unreachable: ${e.message}`);
+      console.log(`FAIL  ${label} - unreachable: ${e.message}`);
     } else {
-      console.log(`FAIL  ${label} — ${(e as Error).message}`);
+      console.log(`FAIL  ${label} - ${(e as Error).message}`);
     }
     skipped++;
     console.log("Stopping: do not roll on past a failure.");
@@ -116,7 +116,7 @@ for (const [i, s] of order.entries()) {
 
   // A host ALREADY on the release has nothing to come back as.
   if (target && target === before) {
-    console.log(`OK    ${label} — already on ${before}`);
+    console.log(`OK    ${label} - already on ${before}`);
     continue;
   }
 
@@ -141,7 +141,7 @@ for (const [i, s] of order.entries()) {
           h.hostArch,
         );
         console.log(
-          `OK    ${label} — now ${h.agentVersion}, docker=${h.dockerAvailable}, caps=${h.capabilities.length}`,
+          `OK    ${label} - now ${h.agentVersion}, docker=${h.dockerAvailable}, caps=${h.capabilities.length}`,
         );
         break;
       }
@@ -150,7 +150,7 @@ for (const [i, s] of order.entries()) {
     }
   }
   if (!confirmed) {
-    console.log(`FAIL  ${label} — never came back on a new version. Stopping.`);
+    console.log(`FAIL  ${label}, never came back on a new version. Stopping.`);
     break;
   }
   updated++;

@@ -33,7 +33,7 @@ import {
 /**
  * Data-layer tests for the unified shared-variable model (ADR-0010, opt-in per
  * ADR-0012): the three availability scopes + per-app link, ≥1-scope validation,
- * secret masking, team isolation, and the deploy loader — which injects ONLY the
+ * secret masking, team isolation, and the deploy loader, which injects ONLY the
  */
 
 let db: TestDb;
@@ -64,7 +64,7 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
-      // A second TEAM_A member (member ⇒ has manage_env) — the authorship tests
+      // A second TEAM_A member (member ⇒ has manage_env) - the authorship tests
       // need an editor who is NOT the creator.
       { id: "user_3", teamId: TEAM_A, role: "member" },
     ],
@@ -247,7 +247,7 @@ test("an omitted target set means every runtime", async () => {
 test("an edit that names no targets PRESERVES the stored ones", async () => {
   // The dialogs no longer send targets. A legacy production-only variable must not
   // silently widen to every runtime on a value edit. (Plain on purpose: a secret
-  // takes no value edit at all — env-secret-immutable.test.ts.)
+  // takes no value edit at all - env-secret-immutable.test.ts.)
   const id = await asUser1(() =>
     mkVar({
       key: "STRIPE_LIVE_KEY",
@@ -298,7 +298,7 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
 test("the appIds whole-set replace is folder-gated on every link it adds or removes", async () => {
   // `link` is the HIGHEST deploy precedence, so a member holding team `manage_env`
   // but no grant on the folder must not be able to inject a var into an app inside
-  // it — nor to unlink one (that silently strips the var off the app's next deploy).
+  // it, nor to unlink one (that silently strips the var off the app's next deploy).
   await db.insert(foldersTable).values({
     id: FLD,
     teamId: TEAM_A,
@@ -352,7 +352,7 @@ test("the appIds whole-set replace is folder-gated on every link it adds or remo
   assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
     "app_p",
   ]);
-  // An UNCHANGED link is not a new write — resending it doesn't need the grant.
+  // An UNCHANGED link is not a new write - resending it doesn't need the grant.
   await asUser3(() => saveSharedVar(save(["app_p"])));
   assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
     "app_p",
@@ -367,7 +367,7 @@ test("authorship: create stamps both columns, an edit only touches updatedBy", a
   const [created] = await asUser1(() => listSharedVars());
   assert.equal(created!.createdBy?.id, USER_1);
   assert.equal(created!.updatedBy?.id, USER_1);
-  // A different member rotates the value — the creator must not be rewritten.
+  // A different member rotates the value - the creator must not be rewritten.
   await asUser3(() =>
     saveSharedVar({
       id: created!.id,
@@ -382,7 +382,7 @@ test("authorship: create stamps both columns, an edit only touches updatedBy", a
   const [edited] = await asUser1(() => listSharedVars());
   assert.equal(edited!.createdBy?.id, USER_1);
   assert.equal(edited!.updatedBy?.id, "user_3");
-  // Identity only — never an email. `avatarUrl` is DERIVED from the address
+  // Identity only, never an email. `avatarUrl` is DERIVED from the address
   // server-side (a Gravatar hash) precisely so the address itself never leaves
   // the data layer, so it is asserted apart from the rest: pinning the hash here
   // would only re-state the seed's email in a second place, and what this test
@@ -414,7 +414,7 @@ test("linking a var to an app stamps the author (a scope change IS a modificatio
 
 test("appIds shares with specific apps and whole-set replaces the link junction", async () => {
   // A var reaching apps ONLY through explicit links is legal (it is the shape
-  // migration 0027 produced) — the wizard's "specific apps" scope mints it.
+  // migration 0027 produced) - the wizard's "specific apps" scope mints it.
   const id = await asUser1(() =>
     mkVar({ key: "APPSCOPED", appIds: ["app_p"] }),
   );
@@ -450,7 +450,7 @@ test("appIds is filtered to the active team's apps", async () => {
 
 test("an empty appIds set with no mode reaches nothing and is rejected", async () => {
   // The caller OWNS the link set when it sends one, so the stored links can't
-  // vouch for reach — they are about to be deleted.
+  // vouch for reach - they are about to be deleted.
   const id = await asUser1(() => mkVar({ key: "EMPTIED", appIds: ["app_p"] }));
   await assert.rejects(
     asUser1(() =>
@@ -470,7 +470,7 @@ test("an empty appIds set with no mode reaches nothing and is rejected", async (
 });
 
 test("listSharedVarsForApp returns EVERY team var so any can be linked", async () => {
-  // Including one scoped to an environment this app does not live in — scopes
+  // Including one scoped to an environment this app does not live in - scopes
   // are suggestions, not gates, so any team var can be opted into from any app.
   await asUser1(() => mkVar({ key: "OTHERENV", environmentIds: [ENV_PROD] }));
   const rows = await asUser1(() => listSharedVarsForApp("app_top")); // top-level app
@@ -484,7 +484,7 @@ test("listSharedVarsForApp returns EVERY team var so any can be linked", async (
 test("listSharedVarsForApp reads values like the Variables page does", async () => {
   // The app's own table shows what its next deploy will get, so a shared PLAIN
   // value is readable there (same `manage_env` gate as the Shared tab) while a
-  // shared SECRET stays masked — an app page is not a reveal path.
+  // shared SECRET stays masked - an app page is not a reveal path.
   await asUser1(() =>
     mkVar({ key: "PLAIN", value: "readable", teamWide: true }),
   );
@@ -515,7 +515,7 @@ test("a secret shared var is masked, and NOTHING reads it back", async () => {
 });
 
 test("a scope-only edit of a secret keeps the stored value", async () => {
-  // The wizard sends the MASK back for a secret while it changes WHO gets it —
+  // The wizard sends the MASK back for a secret while it changes WHO gets it -
   // the one write a secret still accepts. `keepValue` is what stops that mask
   // from being encrypted over the real value.
   const id = await asUser1(() =>
@@ -546,7 +546,7 @@ test("a scope-only edit of a secret keeps the stored value", async () => {
 });
 
 test("loadSharedVarsForApp: an availability scope alone injects NOTHING (opt-in, ADR-0012)", async () => {
-  // Team-wide, project and environment scopes only say who MAY opt in — no app
+  // Team-wide, project and environment scopes only say who MAY opt in, no app
   // receives any of these until it links the var itself.
   await asUser1(() => mkVar({ key: "TW", teamWide: true }));
   await asUser1(() => mkVar({ key: "PROJ", projectIds: [PRJ] }));
@@ -616,7 +616,7 @@ test("deleteSharedVar removes it (and its scope + link rows cascade)", async () 
 
 /**
  * Exactly the payload components/env/shared-var-edit-dialog.tsx sends: the scope
- * fields round-tripped verbatim off the DTO, and `appIds` / `targets` ABSENT —
+ * fields round-tripped verbatim off the DTO, and `appIds` / `targets` ABSENT,
  * which is the whole contract that makes a value edit unable to change what the
  * variable reaches. These tests exist to fail loudly if that contract ever
  * quietly changes (e.g. `appIds` starting to arrive as `[]`, which REPLACES the
@@ -636,7 +636,7 @@ async function editValueLikeDialog(
   await saveSharedVar({
     id: dto.id,
     key: dto.key,
-    // The dialog prefills the field with the DTO's value — the MASK for a secret.
+    // The dialog prefills the field with the DTO's value - the MASK for a secret.
     value: patch.value ?? dto.value,
     type: patch.type ?? "plain",
     teamWide: dto.teamWide,
@@ -703,7 +703,7 @@ test("a secret is frozen: the mask round-trip can no longer downgrade it", async
 
     // THE hole this test used to assert as correct: flip secret → plain without
     // touching the prefilled mask, and the row kept its ciphertext while the label
-    // changed — so the very next list decrypted it for anyone holding `manage_env`.
+    // changed, so the very next list decrypted it for anyone holding `manage_env`.
     await assert.rejects(
       () => editValueLikeDialog(masked, { type: "plain" }),
       /cannot be edited/i,
@@ -713,7 +713,7 @@ test("a secret is frozen: the mask round-trip can no longer downgrade it", async
     assert.equal(after.masked, true);
     assert.notEqual(after.value, "s3cret");
 
-    // Typing a new value over it is refused too — a secret is write-once.
+    // Typing a new value over it is refused too - a secret is write-once.
     await assert.rejects(
       () => editValueLikeDialog(masked, { value: "n3w", type: "secret" }),
       /cannot be edited/i,

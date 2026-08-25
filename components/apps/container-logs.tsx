@@ -50,7 +50,7 @@ type Status = "connecting" | "live" | "reattaching" | "ended" | "error";
 
 /** The curated reasons the log route can refuse a stream (lib/infra/agent-client.ts). */
 const FAILURE_TEXT: Record<string, string> = {
-  unreachable: "The server agent is unreachable — the host may be down.",
+  unreachable: "The server agent is unreachable - the host may be down.",
   "not-found": "That container no longer exists on the host.",
   denied: "That container does not belong to this app.",
   failed: "The log stream failed.",
@@ -59,7 +59,7 @@ const FAILURE_TEXT: Record<string, string> = {
 /** Reattach backoff after the container dies, capped so a crash loop settles into
  *  a steady poll rather than hammering the agent. */
 const REATTACH_MS = [1_000, 2_000, 4_000, 8_000, 10_000];
-/** Give up auto-reattaching eventually — a tab left open for days on a container
+/** Give up auto-reattaching eventually - a tab left open for days on a container
  *  that will never come back should not keep dialling forever. */
 const MAX_REATTACHES = 60;
 /** After a reattach, `docker logs --tail` replays lines we already show. Treat
@@ -74,7 +74,7 @@ const MAX_BUFFER_CHARS = 512_000;
  *  DOM even inside the char cap. */
 const MAX_RENDER_LINES = 5_000;
 /** A single mega-line (a minified bundle dumped to stdout) is classified from
- *  its head only — the level regexes must not scan megabytes per line. */
+ *  its head only - the level regexes must not scan megabytes per line. */
 const MAX_DETECT_CHARS = 2_000;
 
 /** Trim `text` to the newest {@link MAX_BUFFER_CHARS}, cutting on a line
@@ -144,13 +144,13 @@ export function ContainerLogs({
    *  stands in for the title entirely. The per-resource routes pass nothing. */
   toolbar?: React.ReactNode;
   /**
-   * Override the logs endpoint — the database logs viewer passes
+   * Override the logs endpoint - the database logs viewer passes
    * `/api/databases/<id>/logs` (same SSE contract). Default: the app route
    * for `appId`.
    */
   apiBase?: string;
 }) {
-  // Active instance — default to the server-preferred first entry (the app's own
+  // Active instance - default to the server-preferred first entry (the app's own
   // container, even when a sidecar is the only healthy one in the stack).
   const [active, setActive] = React.useState<ConsoleInstance>(
     () => instances[0],
@@ -161,7 +161,7 @@ export function ContainerLogs({
   );
   const [failure, setFailure] = React.useState<string | null>(null);
   const [output, setOutput] = React.useState("");
-  // Parsed, levelled lines for render — updated incrementally by
+  // Parsed, levelled lines for render - updated incrementally by
   // `publishLines` below, never re-split from the whole buffer per chunk.
   const [lines, setLines] = React.useState<ParsedLine[]>([]);
   // Auto-follow keeps the view pinned to the newest line. Turned off when the
@@ -180,7 +180,7 @@ export function ContainerLogs({
   const replayBurstRef = React.useRef("");
   const replayUntilRef = React.useRef(0);
   // Incremental parse state for `publishLines`: the exact buffer the last pass saw,
-  // how far into it complete lines were parsed, and those parsed lines — so a new
+  // how far into it complete lines were parsed, and those parsed lines, so a new
   // chunk parses only the appended tail instead of re-splitting the whole buffer
   // (O(n²) across a chatty stream).
   const parseRef = React.useRef<{
@@ -228,7 +228,7 @@ export function ContainerLogs({
   // Consecutive auto-reattaches; reset by any manual action or new output.
   const reattachCount = React.useRef(0);
 
-  // The container we are streaming, as the host has it right now — so the stream
+  // The container we are streaming, as the host has it right now, so the stream
   // knows whether an ended follow means "it crashed and will be back" or "it is
   // gone". Read from the runtime poll, which is the only live source of that.
   const liveState = runtime?.containers.find((c) => c.name === active.name);
@@ -239,7 +239,7 @@ export function ContainerLogs({
       runtime.restarting > 0 ||
       !!liveState?.running);
   // Mirrored into a ref so the stream effect can read the CURRENT answer when a
-  // follow ends, without listing it as a dependency — re-running the effect on
+  // follow ends, without listing it as a dependency - re-running the effect on
   // every runtime poll would tear the stream down and rebuild it every 5s.
   const comingBackRef = React.useRef(comingBack);
   React.useEffect(() => {
@@ -282,7 +282,7 @@ export function ContainerLogs({
       replayBurstRef.current = "";
     }
 
-    // The window rides the URL, so changing it reopens the stream — which is the point:
+    // The window rides the URL, so changing it reopens the stream, which is the point:
     // `--since` is decided when `docker logs` starts, not filtered afterwards.
     const params = new URLSearchParams({ container: active.name });
     if (supportsTimeline) {
@@ -313,7 +313,7 @@ export function ContainerLogs({
           replayBurstRef.current,
         );
         // A "replay" bigger than the whole retention cap is not docker's ~500
-        // replayed lines — it is live flood. Close the window so the burst
+        // replayed lines - it is live flood. Close the window so the burst
         // accumulator cannot grow without bound.
         if (replayBurstRef.current.length > MAX_BUFFER_CHARS) {
           replayBaseRef.current = null;
@@ -338,7 +338,7 @@ export function ContainerLogs({
       appendChunk(JSON.parse((e as MessageEvent).data) as string);
     });
 
-    // The stream refused to open, or died on a real failure — say so instead of
+    // The stream refused to open, or died on a real failure - say so instead of
     // leaving an empty pane. A permanent refusal (no such container, not ours)
     // must not be retried; an unreachable host may recover, but the user asks.
     es.addEventListener("failure", (e) => {
@@ -349,7 +349,7 @@ export function ContainerLogs({
     });
 
     // `docker logs -f` ends every time the container dies. For a container docker
-    // is restarting, that is not the end of the story — it is one turn of the
+    // is restarting, that is not the end of the story - it is one turn of the
     // loop, so reattach (with backoff) and keep the output flowing across it.
     es.addEventListener("exit", () => {
       es.close();
@@ -366,7 +366,7 @@ export function ContainerLogs({
 
     es.onerror = () => {
       // No `session` frame yet ⇒ the stream failed to open. Once live, an error
-      // is the connection dropping — reattach if the container is still there.
+      // is the connection dropping - reattach if the container is still there.
       setStatus((s) => {
         if (s !== "live") return "error";
         if (comingBackRef.current && reattachCount.current < MAX_REATTACHES) {
@@ -440,7 +440,7 @@ export function ContainerLogs({
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
-    // Ignore the scroll event our own auto-follow effect just triggered — only a
+    // Ignore the scroll event our own auto-follow effect just triggered - only a
     // genuine user scroll should toggle following.
     if (programmaticScroll.current) {
       programmaticScroll.current = false;
@@ -492,7 +492,7 @@ export function ContainerLogs({
     }
   }
 
-  // The connection's own state, which is not the same thing as the container's — a
+  // The connection's own state, which is not the same thing as the container's - a
   // stream can be live against a container that is dead, because `docker logs` reads
   // a file.
   const statusLabel: Record<Status, string> = {
@@ -557,7 +557,7 @@ export function ContainerLogs({
           </Select>
         ) : title ? null : (
           // With a name in front of it, one container's own name is the same
-          // fact twice — the picker earns its place only when there is a choice.
+          // fact twice - the picker earns its place only when there is a choice.
           <span className="shrink-0 font-mono text-xs">{active.name}</span>
         )}
 
@@ -705,14 +705,14 @@ export function ContainerLogs({
 
         {status === "reattaching" ? (
           <p className="mt-1 text-[11px] text-[var(--warning)]">
-            The container exited — waiting for docker to restart it, then
+            The container exited - waiting for docker to restart it, then
             picking the stream back up.
           </p>
         ) : null}
 
         {(status === "live" || busy) && output === "" && !failure ? (
           <p className="mt-1 text-[11px] text-zinc-500">
-            No output yet — new log lines will appear here as the container
+            No output yet - new log lines will appear here as the container
             emits them.
           </p>
         ) : null}

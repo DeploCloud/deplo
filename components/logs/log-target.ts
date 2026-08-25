@@ -11,7 +11,7 @@ export interface LogTarget {
   key: string;
   kind: "app" | "database";
   name: string;
-  /** The App's slug, or the database's engine. The second thing typing matches —
+  /** The App's slug, or the database's engine. The second thing typing matches -
    *  the rows themselves show the name, and the tree above it says the rest. */
   detail: string;
   status: AppStatus | DatabaseStatus;
@@ -127,7 +127,7 @@ export interface LogTreeRow {
   /** Set on exactly the rows that can be picked. */
   target?: LogTarget;
   /**
-   * Lowercased: this row's own words, every ANCESTOR's, and — on a heading — every
+   * Lowercased: this row's own words, every ANCESTOR's, and, on a heading, every
    * descendant's.
    */
   haystack: string;

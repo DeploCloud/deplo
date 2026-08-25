@@ -17,7 +17,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 
 /**
- * Danger zone: the two actions that take this app away from the team —
+ * Danger zone: the two actions that take this app away from the team -
  * transferring it to another team the viewer belongs to, and deleting it outright.
  */
 export function DangerSettings({
@@ -52,7 +52,7 @@ export function DangerSettings({
           <div className="min-w-56 flex-1 space-y-1">
             <p className="text-sm font-medium">Transfer to another team</p>
             <p className="text-sm text-muted-foreground">
-              Move this app — with its variables, domains, volumes and history —
+              Move this app (with its variables, domains, volumes and history)
               to another team you belong to. It keeps running throughout; this
               team loses access to it.
             </p>

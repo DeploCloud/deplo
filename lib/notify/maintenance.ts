@@ -56,7 +56,7 @@ async function sweepExpiredVerifications(): Promise<void> {
 
 /**
  * Drop OAuth clients that registered and then never got approved. RFC 7591
- * registration has to be open — claude.ai and ChatGPT cannot pre-register — so
+ * registration has to be open, claude.ai and ChatGPT cannot pre-register, so
  * anyone who can reach the instance can create rows here.
  */
 async function sweepAbandonedOauthClients(): Promise<void> {

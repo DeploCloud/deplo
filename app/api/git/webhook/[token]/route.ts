@@ -47,7 +47,7 @@ export async function POST(
       `[git-webhook] 401 invalid signature for ${conn.provider} connection ${conn.id}` +
         (secret
           ? ""
-          : " (stored webhook secret is empty — DEPLO_SECRET changed?)"),
+          : " (stored webhook secret is empty - DEPLO_SECRET changed?)"),
     );
     return new Response("invalid signature", { status: 401 });
   }

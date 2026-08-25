@@ -2,7 +2,7 @@ import { displayStatus, type RuntimeSnapshot } from "@/lib/apps/display-status";
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
- * The status a database's badge actually renders — the DB twin of {@link
+ * The status a database's badge actually renders - the DB twin of {@link
  * displayStatus} for apps.
  */
 export type DatabaseDisplayStatus =

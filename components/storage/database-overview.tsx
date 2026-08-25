@@ -23,7 +23,7 @@ export function DatabaseOverview({
 }: {
   db: DatabaseDTO;
   serverName: string;
-  /** The viewer holds `manage_infra` — the capability `revealConnection` needs. */
+  /** The viewer holds `manage_infra` - the capability `revealConnection` needs. */
   canReveal: boolean;
 }) {
   const status = useLiveDatabaseStatus(db.status);
@@ -31,7 +31,7 @@ export function DatabaseOverview({
   const creds = ENGINE_CREDS[db.type];
 
   // A database the row calls running but the agent can't see any container for
-  // was almost certainly provisioned before the deplo.* labels existed — the
+  // was almost certainly provisioned before the deplo.* labels existed - the
   // agent's label check finds nothing. Redeploy stamps the labels.
   const needsRelabel =
     status === "running" &&
@@ -50,7 +50,7 @@ export function DatabaseOverview({
               This database was created before live status, logs and the
               terminal were available. Click{" "}
               <strong className="font-medium text-foreground">Redeploy</strong>{" "}
-              above to enable them — the data volume is preserved.
+              above to enable them - the data volume is preserved.
             </p>
           </div>
         </div>
@@ -76,7 +76,7 @@ export function DatabaseOverview({
 
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             <Field label="Engine">
-              {/* Engine display name, not the raw id — `capitalize` used to
+              {/* Engine display name, not the raw id - `capitalize` used to
                   render "Mysql · V8.4" (it title-cases the version's "v" too). */}
               <span>
                 {DB_NAMES[db.type] ?? db.type} · v{db.version}

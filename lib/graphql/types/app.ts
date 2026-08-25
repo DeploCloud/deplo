@@ -135,7 +135,7 @@ export const DeploymentRef = builder
       startedAt: t.exposeString("startedAt", {
         nullable: true,
         description:
-          "When the build was claimed off the queue and started running — the " +
+          "When the build was claimed off the queue and started running - the " +
           "origin `buildDurationMs` is measured from, and what a live build " +
           "timer counts up from. Null while still queued.",
       }),
@@ -143,7 +143,7 @@ export const DeploymentRef = builder
       buildDurationMs: t.exposeInt("buildDurationMs", { nullable: true }),
       creator: t.exposeString("creator"),
       // Who `creator` names, when it names an account here. Null for a webhook
-      // push (a GitHub login, not a deplo user) and for rows predating it — both
+      // push (a GitHub login, not a deplo user) and for rows predating it - both
       // of which show the bare string with no picture.
       creatorUser: t.field({
         type: VarAuthorRef,
@@ -195,18 +195,18 @@ const MountPropagationEnum = builder.enumType("MountPropagation", {
     "the container. Null is docker's `rprivate` default: the container sees only " +
     "the submounts that existed when it started, so a network disk, a FUSE share " +
     "or a volume another container mounts there never appears. `rslave` keeps " +
-    "following the server; `rshared` is two-way. Host binds only — docker rejects " +
+    "following the server; `rshared` is two-way. Host binds only - docker rejects " +
     "the option on a managed volume.",
   values: MOUNT_PROPAGATIONS,
 });
 
 const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   description:
-    "A persistent volume mounted into an app — a docker named volume, an " +
+    "A persistent volume mounted into an app - a docker named volume, an " +
     "app-files bind, or a host bind mount.",
   fields: (t) => ({
     id: t.exposeID("id"),
-    // "named" (default), "app", or "host" — the UI re-derives its source
+    // "named" (default), "app", or "host" - the UI re-derives its source
     // control from this, so it must round-trip back on read.
     type: t.string({ resolve: (v) => v.type ?? "named" }),
     name: t.exposeString("name"),
@@ -263,7 +263,7 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         '("nextjs", "astro", "nestjs", …), or null when none was found or the ' +
         "app doesn't build with one of the auto-detecting builders (Nixpacks / " +
         "Railpack). Detected on every deploy, unless setAppFramework has " +
-        "corrected it — in which case that choice is what this returns.",
+        "corrected it - in which case that choice is what this returns.",
       resolve: (p) => effectiveFramework(p),
     }),
     frameworkDetected: t.exposeString("framework", {
@@ -294,13 +294,13 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
     deployHookEnabled: t.exposeBoolean("deployHookEnabled", {
       description:
         "Whether this app's deploy hook answers. The hook URL itself is never " +
-        "a field — read it back with revealAppDeployHook.",
+        "a field - read it back with revealAppDeployHook.",
     }),
     composeUpArgs: t.exposeString("composeUpArgs", {
       nullable: true,
       description:
         "Extra flags this app appends to the `docker compose up` that brings " +
-        "it up, or null for the untouched command. Additive only — the flags " +
+        "it up, or null for the untouched command. Additive only - the flags " +
         "that choose the project, stack file or env-file are refused.",
     }),
     rollbackKeep: t.exposeInt("rollbackKeep", {
@@ -494,7 +494,7 @@ const CreateAppInputType = builder.inputType("CreateAppInput", {
     extraDomains: t.field({ type: [ExtraDomainInput], required: false }),
     autoDomain: t.string({ required: false }),
     mounts: t.field({ type: [MountInput], required: false }),
-    // Where the app is created (ADR-0009 — one home only): the folder, or the
+    // Where the app is created (ADR-0009 - one home only): the folder, or the
     // project environment, the user had open on the Overview. Omitted ⇒ top
     // level. Authorized like a move into the same destination.
     folderId: t.string({ required: false }),
@@ -511,7 +511,7 @@ const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
     serverId: t.string({ required: false }),
     compose: t.string({ required: false }),
     // Routing (the Traefik domains) lives in the `domains` table, managed via the
-    // Domains tab — not threaded through the deploy-source edit.
+    // Domains tab, not threaded through the deploy-source edit.
   }),
 });
 
@@ -520,12 +520,12 @@ const RecognizedFrameworkRef = builder
   .implement({
     description:
       "A JavaScript framework Deplo recognised in an app's source, with what it " +
-      "knows about it. Detection only — Deplo never writes build commands from a " +
+      "knows about it. Detection only - Deplo never writes build commands from a " +
       "framework; the auto-detecting builders own that.",
     fields: (t) => ({
       id: t.exposeString("id", {
         description:
-          'Stable id, e.g. "nextjs" — also the key for its brand mark.',
+          'Stable id, e.g. "nextjs" - also the key for its brand mark.',
       }),
       name: t.exposeString("name", {
         description: 'Display name, e.g. "Next.js".',
@@ -533,7 +533,7 @@ const RecognizedFrameworkRef = builder
       defaultPort: t.exposeInt("defaultPort", {
         description:
           "The port this framework's production server binds when nothing tells " +
-          "it otherwise — what a new app's container port defaults to.",
+          "it otherwise - what a new app's container port defaults to.",
       }),
     }),
   });
@@ -542,7 +542,7 @@ const AppTransferTargetRef = builder
   .objectRef<AppTransferTarget>("AppTransferTarget")
   .implement({
     description:
-      "A team the viewer could hand this app to — one of their OWN other teams " +
+      "A team the viewer could hand this app to - one of their OWN other teams " +
       "where they hold the deploy capability.",
     fields: (t) => ({
       id: t.exposeID("id"),
@@ -551,7 +551,7 @@ const AppTransferTargetRef = builder
       serverAvailable: t.exposeBoolean("serverAvailable", {
         description:
           "False when the app's server is restricted and not shared with that " +
-          "team — the transfer is refused until an instance admin grants access.",
+          "team - the transfer is refused until an instance admin grants access.",
       }),
       githubFollows: t.exposeBoolean("githubFollows", {
         description:
@@ -584,7 +584,7 @@ const AppTransferInfoRef = builder
       }),
       backupCount: t.exposeInt("backupCount", {
         description:
-          "Backup schedules targeting this app — removed on transfer, because " +
+          "Backup schedules targeting this app - removed on transfer, because " +
           "they point at the current team's backup destination.",
       }),
       githubConnected: t.exposeBoolean("githubConnected"),
@@ -592,7 +592,7 @@ const AppTransferInfoRef = builder
         nullable: true,
         description:
           "The git connection authenticating this app's clone, or null. It is " +
-          "always dropped on transfer — a token is owned by the current team " +
+          "always dropped on transfer - a token is owned by the current team " +
           "and cannot be assumed to reach the repository from another one.",
       }),
       targets: t.field({
@@ -643,7 +643,7 @@ builder.queryFields((t) => ({
     authScopes: { capability: "create_apps" },
     description:
       "Recognise the JavaScript framework in a GitHub repository before an app " +
-      "exists for it — what the new-app wizard shows while you pick a repo. " +
+      "exists for it - what the new-app wizard shows while you pick a repo. " +
       "Null when there is nothing to recognise: a build method other than " +
       "Nixpacks / Railpack (the only ones this applies to), a repository Deplo " +
       "can't read, or a repository with no framework in it. Reads only; the " +
@@ -894,7 +894,7 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "configure_apps" },
     description:
-      "Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.",
+      "Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included - each volume names the service it mounts into.",
     args: {
       id: t.arg.string({ required: true }),
       volumes: t.arg({ type: [VolumeInput], required: true }),
@@ -1001,7 +1001,7 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "configure_apps" },
     description:
-      "Auto-detect a favicon from the app's own files — its GitHub repo, its uploaded archive, or (for a compose stack) its files dir on its server — and set it as the logo. Errors if none is found.",
+      "Auto-detect a favicon from the app's own files - its GitHub repo, its uploaded archive, or (for a compose stack) its files dir on its server, and set it as the logo. Errors if none is found.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await redetectAppLogo(id);
@@ -1044,7 +1044,7 @@ builder.mutationFields((t) => ({
     description:
       "Clear this app's build cache: the next deployment builds from scratch " +
       "instead of reusing cached layers, then caches again. Nothing is pruned " +
-      "on the server — the build cache is shared by every app on it.",
+      "on the server - the build cache is shared by every app on it.",
     authScopes: { capability: "configure_apps" },
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
@@ -1084,8 +1084,8 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "delete_apps" },
     description:
-      "Delete the app. Returns as soon as the deletion is RECORDED — from that " +
-      "moment the app is refused by every gate and gone from the product — and " +
+      "Delete the app. Returns as soon as the deletion is RECORDED - from that " +
+      "moment the app is refused by every gate and gone from the product, and " +
       "the stack teardown finishes on the host behind the response.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
@@ -1280,7 +1280,7 @@ async function reloadApp(id: string): Promise<AppSummary> {
 
 /**
  * Live project status, served over SSE on the same `/api/graphql` endpoint (Yoga
- * negotiates `text/event-stream` for subscriptions — no separate WebSocket
+ * negotiates `text/event-stream` for subscriptions, no separate WebSocket
  * server).
  */
 builder.subscriptionType({});
@@ -1291,7 +1291,7 @@ builder.subscriptionFields((t) => ({
     description:
       "Emits the app whenever its status (power / deployment) changes. " +
       "Fires once immediately with the current snapshot, then on every change.",
-    // `loggedIn` (synchronous `!!ctx.viewer` — no cookie call) gates opening the
+    // `loggedIn` (synchronous `!!ctx.viewer`, no cookie call) gates opening the
     // stream; the generator enforces team ownership AND per-app access below.
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
@@ -1345,13 +1345,13 @@ export async function* appStatusStream(
 ): AsyncGenerator<AppSummary> {
   if (!teamId || !userId) throw new Error("App not found");
   // Cookie-free (PLAN §6): both lookups take the explicit `teamId` + `userId` and
-  // query Postgres directly — they never call a cookie-reading helper, so they remain
+  // query Postgres directly - they never call a cookie-reading helper, so they remain
   // callable across the async-iteration ticks of this long-lived SSE response.
   const project = await findAppSummaryBySlugForTeam(slug, teamId, userId);
   if (!project) throw new Error("App not found");
   const appId = project.id;
 
-  // Initial snapshot — a fresh subscriber paints current state immediately.
+  // Initial snapshot - a fresh subscriber paints current state immediately.
   yield project;
 
   // Forward each change ping as a freshly-reloaded snapshot.

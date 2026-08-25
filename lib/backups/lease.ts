@@ -9,7 +9,7 @@ import { getPool, isPostgresEnabled } from "../db/pg";
  */
 
 /** A lease is reclaimable once its heartbeat is older than this. */
-export const LEASE_STALE_MS = 2 * 60 * 60 * 1000; // 2h — see PLAN "stale > 2h".
+export const LEASE_STALE_MS = 2 * 60 * 60 * 1000; // 2h - see PLAN "stale > 2h".
 
 /** The scheduler's lease name (one row in `scheduler_lease`). */
 export const BACKUP_SCHEDULER_LEASE = "backup-scheduler";
@@ -120,7 +120,7 @@ async function acquirePostgres(
 }
 
 async function releasePostgres(name: string, owner: string): Promise<void> {
-  // Only the holder releases — a stale-steal by someone else must not be undone.
+  // Only the holder releases - a stale-steal by someone else must not be undone.
   await getPool().query(
     `DELETE FROM scheduler_lease WHERE name = $1 AND owner = $2`,
     [name, owner],

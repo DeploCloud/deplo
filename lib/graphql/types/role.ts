@@ -61,7 +61,7 @@ export const TeamRoleRef = builder
       memberCount: t.exposeInt("memberCount"),
       modified: t.exposeBoolean("modified", {
         description:
-          "A default role edited away from what deplo ships — it can be reset.",
+          "A default role edited away from what deplo ships - it can be reset.",
       }),
       locked: t.exposeBoolean("locked", {
         description:
@@ -129,7 +129,7 @@ builder.queryFields((t) => ({
     type: [TeamRoleRef],
     authScopes: { loggedIn: true },
     description:
-      "Every role of the active team — defaults first, then the team's own.",
+      "Every role of the active team - defaults first, then the team's own.",
     resolve: () => listRoles(),
   }),
 }));

@@ -39,7 +39,7 @@ export interface AgentDef {
   icon: React.ComponentType<{ className?: string }>;
   /**
    * The agent's own colours, as a tile behind its mark. Literal hexes and not
-   * tokens, because a brand colour is not themeable — the tile carries its own
+   * tokens, because a brand colour is not themeable - the tile carries its own
    * foreground so it is legible on either theme's background.
    */
   brand?: { bg: string; fg: string };
@@ -61,7 +61,7 @@ export interface AgentDef {
   /** Language hint for the code block. */
   language?: string;
   /**
-   * How to get there, in one sentence — the exact path through that client's own
+   * How to get there, in one sentence - the exact path through that client's own
    * UI, in that client's own words.
    */
   hint: string;

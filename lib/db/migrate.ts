@@ -31,7 +31,7 @@ export async function runMigrations(): Promise<void> {
     try {
       await migrate(getDb(), {
         // The committed migrations live at <repo>/lib/db/migrations. `next start` /
-        // `next dev` run from the repo root, so this cwd-relative path resolves — the
+        // `next dev` run from the repo root, so this cwd-relative path resolves - the
         // same resolution the test harness uses. Plain fs reads, no drizzle-kit.
         migrationsFolder: path.join(process.cwd(), "lib", "db", "migrations"),
       });

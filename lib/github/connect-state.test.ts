@@ -16,7 +16,7 @@ test("connect state round-trips the return path for its own user only", () => {
   // Another account replaying it gets nothing, not a redirect.
   assert.equal(readConnectState(withReturn, "usr_2"), null);
 
-  // A flow started with no return address is still valid — it just ends where
+  // A flow started with no return address is still valid - it just ends where
   // it always did, on Settings → Git.
   const bare = signConnectState("usr_1");
   assert.deepEqual(readConnectState(bare, "usr_1"), { returnTo: null });

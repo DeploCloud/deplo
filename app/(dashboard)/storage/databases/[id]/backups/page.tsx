@@ -51,7 +51,7 @@ export default async function DatabaseBackupsPage(
     hasCapability("delete_backups"),
     hasCapability("manage_backup_destinations"),
   ]);
-  // Only this database's schedules — listBackups returns the whole team's.
+  // Only this database's schedules - listBackups returns the whole team's.
   const schedules = allBackups.filter(
     (b) => b.targetKind === "database" && b.databaseId === db.id,
   );

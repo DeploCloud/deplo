@@ -1,5 +1,5 @@
 /**
- * Schedules the way a person states them — "every day at 03:00" — with cron kept
+ * Schedules the way a person states them, "every day at 03:00", with cron kept
  * as the *storage* format, not the *input* format.
  */
 
@@ -9,7 +9,7 @@ export { nextCronRun, parseCron } from "./backups/cron";
 
 /**
  * The schedule shapes the UI can express as controls. `custom` is the escape
- * hatch — it has no parts, the caller keeps the raw cron string.
+ * hatch - it has no parts, the caller keeps the raw cron string.
  */
 export type ScheduleMode =
   | "every-minute"
@@ -80,7 +80,7 @@ export const WEEKDAY_LABELS: readonly string[] = [
   "Saturday",
 ];
 
-/** The same weekdays, abbreviated — for the compact description a table cell wants. */
+/** The same weekdays, abbreviated - for the compact description a table cell wants. */
 const WEEKDAY_SHORT: readonly string[] = [
   "Sun",
   "Mon",
@@ -106,13 +106,13 @@ export const DEFAULT_SCHEDULE = "0 3 * * *";
  */
 export interface ScheduleParts {
   mode: ScheduleMode;
-  /** Hour of day, UTC (0–23). Used by daily / weekly / monthly. */
+  /** Hour of day, UTC (0-23). Used by daily / weekly / monthly. */
   hour: number;
-  /** Minute past the hour (0–59). Used by daily / weekly / monthly. */
+  /** Minute past the hour (0-59). Used by daily / weekly / monthly. */
   minute: number;
   /** Cron day-of-week, 0 = Sunday. Used by weekly. */
   weekday: number;
-  /** Day of month, 1–{@link MAX_MONTH_DAY}. Used by monthly. */
+  /** Day of month, 1-{@link MAX_MONTH_DAY}. Used by monthly. */
   day: number;
 }
 
@@ -137,7 +137,7 @@ function intField(field: string, min: number, max: number): number | null {
   return n >= min && n <= max ? n : null;
 }
 
-/** The cron expression for these parts. `custom` has none — callers keep their raw text. */
+/** The cron expression for these parts. `custom` has none - callers keep their raw text. */
 export function cronFromParts(parts: ScheduleParts): string {
   const minute = clamp(parts.minute, 0, 59);
   const hour = clamp(parts.hour, 0, 23);
@@ -158,7 +158,7 @@ export function cronFromParts(parts: ScheduleParts): string {
 /**
  * Read an expression back into controls, or null when it says something the
  * controls can't (a comma list, a range, a specific month, day 29+). Null is the
- * signal to fall back to the raw-cron escape hatch — never an error.
+ * signal to fall back to the raw-cron escape hatch, never an error.
  */
 export function partsFromCron(cron: string): ScheduleParts | null {
   const expr = normalize(cron);
@@ -195,7 +195,7 @@ export function partsFromCron(cron: string): ScheduleParts | null {
     if (day === null) return null;
     return { ...DEFAULT_PARTS, mode: "monthly", hour, minute, day };
   }
-  // Both day fields restricted — the Vixie union rule, which no control models.
+  // Both day fields restricted - the Vixie union rule, which no control models.
   return null;
 }
 
@@ -220,8 +220,8 @@ function ordinal(day: number): string {
 const FIXED_LABELS = new Map(SCHEDULE_OPTIONS.map((o) => [o.mode, o.label]));
 
 /**
- * Say what an expression does in one phrase — "Every week on Sunday at 03:00 UTC"
- * — or null when it isn't one of the shapes the picker knows.
+ * Say what an expression does in one phrase - "Every week on Sunday at 03:00 UTC",
+ * or null when it isn't one of the shapes the picker knows.
  */
 export function describeCron(
   cron: string,
@@ -256,10 +256,10 @@ export function isValidSchedule(cron: string): boolean {
   return parseCron(cron) !== null;
 }
 
-/** The message shown when {@link isValidSchedule} says no — shared by UI and API. */
+/** The message shown when {@link isValidSchedule} says no - shared by UI and API. */
 export function invalidScheduleMessage(cron: string): string {
   return (
-    `"${cron.trim()}" is not a valid cron expression. Use 5 fields — ` +
-    `minute hour day month weekday — e.g. "${DEFAULT_SCHEDULE}" for daily at 03:00 UTC.`
+    `"${cron.trim()}" is not a valid cron expression. Use 5 fields - ` +
+    `minute hour day month weekday - e.g. "${DEFAULT_SCHEDULE}" for daily at 03:00 UTC.`
   );
 }

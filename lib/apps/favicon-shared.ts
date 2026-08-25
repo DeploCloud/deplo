@@ -1,6 +1,6 @@
 /**
  * Pure logic for auto-detecting an app's display logo from a favicon/icon shipped
- * in its own files (a GitHub repo, an uploaded archive, or — for a compose stack —
+ * in its own files (a GitHub repo, an uploaded archive, or, for a compose stack,
  * its files dir on the server that runs it).
  */
 
@@ -28,14 +28,14 @@ export function mimeForFaviconPath(path: string): string | null {
 }
 
 /**
- * Directory segments that never hold a project's OWN icon — dependencies, build
+ * Directory segments that never hold a project's OWN icon - dependencies, build
  * output, examples, test fixtures, VCS/tooling metadata.
  */
 const EXCLUDED_DIR_RE =
   /^(node_modules|bower_components|vendor|\.git|\.github|\.next|\.nuxt|\.svelte-kit|\.cache|\.turbo|dist|build|out|coverage|tmp|temp|__tests__|__mocks__|tests?|e2e|examples?|samples?|fixtures?|docs?|storybook|\.storybook)$/i;
 
 /**
- * Whether an app's repo is GitHub-hosted — the ONLY provider the control plane can
+ * Whether an app's repo is GitHub-hosted - the ONLY provider the control plane can
  * read files from over the API for favicon auto-detection (a git repo is otherwise
  * cloned only on the deploy agent).
  */
@@ -52,15 +52,15 @@ export function isGithubRepo(
 }
 
 /**
- * WHICH pile of files an app's icon is detected from — the single dispatch both
+ * WHICH pile of files an app's icon is detected from - the single dispatch both
  * the detector and the settings UI read, so the "Detect from source" button is
- * offered exactly when the server can actually scan something. - `github` — the
- * repo's own tree, read over the GitHub API. - `upload` — the uploaded archive,
- * extracted control-plane-side. - `app-files` — the app's files dir ON ITS OWNING
+ * offered exactly when the server can actually scan something. - `github`: the
+ * repo's own tree, read over the GitHub API. - `upload`: the uploaded archive,
+ * extracted control-plane-side. - `app-files`: the app's files dir ON ITS OWNING
  * SERVER: a **compose stack** has no repo and no archive, its files are the
  * `<stacks>/files/<slug>` tree its `./x` bind mounts resolve into (the Files tab),
- * so that is where its own web assets — favicon included — actually live. - `none`
- * — a prebuilt docker image and nothing else: no files to scan.
+ * so that is where its own web assets, favicon included, actually live. - `none`:
+ * a prebuilt docker image and nothing else: no files to scan.
  */
 export type FaviconSourceKind =
   | "github"
@@ -119,7 +119,7 @@ const EXT_SCORES: Record<string, number> = {
 };
 
 /**
- * The format preference above, for the OTHER detector — the one that reads a
+ * The format preference above, for the OTHER detector - the one that reads a
  * running app's declared icons ({@link file://./favicon-http.ts}) rather than
  * files on disk.
  */
@@ -187,7 +187,7 @@ export function scoreFaviconPath(path: string, rootRel = ""): number | null {
 export interface FaviconFile {
   /** Repo/tree-relative POSIX path. */
   path: string;
-  /** Size in bytes (0 when unknown — never filtered out on an unknown size). */
+  /** Size in bytes (0 when unknown, never filtered out on an unknown size). */
   size: number;
 }
 

@@ -24,7 +24,7 @@ import { teardownTeamResources, type TeardownPlan } from "./team-delete";
 import type { Capability } from "../types";
 
 /**
- * PERMANENTLY deleting a user account — the counterpart to suspending one, and the
+ * PERMANENTLY deleting a user account - the counterpart to suspending one, and the
  * only path in the product that removes a `users` row.
  */
 
@@ -45,25 +45,25 @@ export interface DeleteUserImpact {
   name: string;
   /** Non-null ⇒ this account can't be deleted at all; the reason to show. */
   blockedReason: string | null;
-  /** Teams where they are the ONLY member — always deleted with the account. */
+  /** Teams where they are the ONLY member, always deleted with the account. */
   soloTeams: DeleteUserTeamImpact[];
-  /** Teams they founded that still have other members — deleted only on request. */
+  /** Teams they founded that still have other members - deleted only on request. */
   foundedTeams: DeleteUserTeamImpact[];
   /** Teams they merely belong to: those keep everything, minus this membership. */
   keptTeams: { teamId: string; name: string }[];
-  /** Apps they created that live in a team which SURVIVES — deleted on request. */
+  /** Apps they created that live in a team which SURVIVES - deleted on request. */
   createdAppCount: number;
-  /** Folders/Projects they own in a surviving team — deleted on request. */
+  /** Folders/Projects they own in a surviving team - deleted on request. */
   ownedFolderCount: number;
   ownedProjectCount: number;
   /** Apps sitting directly inside those folders/Projects (may overlap the above). */
   ownedAppCount: number;
-  /** API tokens they minted — always revoked with the account. */
+  /** API tokens they minted, always revoked with the account. */
   tokenCount: number;
   /**
    * Surviving teams that would be left with nobody able to manage members or the
    * team. The delete heals them (the longest-standing remaining member inherits
-   * the capability) — this list exists so the operator is told, not surprised.
+   * the capability) - this list exists so the operator is told, not surprised.
    */
   vacatedTeams: string[];
 }
@@ -86,7 +86,7 @@ export interface DeleteUserResult {
   databasesDeleted: number;
 }
 
-// A team must never be left with zero holders of these — that locks it out of
+// A team must never be left with zero holders of these - that locks it out of
 // member/team management irrecoverably (same set as `members.ts`, which enforces
 // it for removeMember; a cascaded membership can't be caught there).
 const CRITICAL_CAPABILITIES: Capability[] = ["manage_members", "manage_team"];
@@ -157,7 +157,7 @@ async function teamsAroundUser(
 }
 
 /**
- * A team dies with the account when the user is its ONLY member — nobody is left
+ * A team dies with the account when the user is its ONLY member - nobody is left
  * who could ever open it again. Founded teams that still have other members are
  * a separate, opt-in bucket.
  */
@@ -212,7 +212,7 @@ async function blockedReasonFor(
 /* ------------------------------------------------------------------ */
 
 /**
- * Exactly what deleting `userId` would take with it — computed live, so the
+ * Exactly what deleting `userId` would take with it - computed live, so the
  * dialog states facts ("2 apps, 1 database") instead of warning in the abstract.
  * Read-only and instance-admin gated, like the rest of the Users tab.
  */
@@ -371,7 +371,7 @@ async function appsInWorkspaces(
 
 /**
  * Surviving teams where the user is the LAST holder of a critical capability.
- * Same question the delete asks after the fact — asked here so the dialog can
+ * Same question the delete asks after the fact - asked here so the dialog can
  * say who is about to inherit the keys.
  */
 async function vacatedTeamNames(
@@ -455,7 +455,7 @@ export async function deleteUser(
       if (blocked) throw new Error(blocked);
 
       // No "keep one active admin" check is needed here, unlike `updateUserAdmin`: the
-      // caller passed `requireInstanceAdmin` (so they ARE an active instance admin — a
+      // caller passed `requireInstanceAdmin` (so they ARE an active instance admin - a
       // suspended account can't authenticate at all) and cannot be the target (blocked
       // above), so an active admin always survives this delete by construction.
 
@@ -510,7 +510,7 @@ export async function deleteUser(
         ? await ownedProjectIds(tx, userId, survivingTeamIds)
         : [];
       // Individually deleted apps: the ones they created (if asked) plus the ones
-      // living in a folder/Project they own (if asked). De-duplicated by id — the
+      // living in a folder/Project they own (if asked). De-duplicated by id - the
       // two sets overlap for anyone who works inside their own folder.
       const looseApps = new Map<
         string,
@@ -572,7 +572,7 @@ export async function deleteUser(
         await tx
           .delete(projectsTable)
           .where(inArray(projectsTable.id, ownedProjects));
-      // One DELETE per team — the FK CASCADEs drop everything team-scoped, exactly
+      // One DELETE per team - the FK CASCADEs drop everything team-scoped, exactly
       // as deleteTeam does.
       if (deletedTeamIds.length > 0)
         await tx
@@ -609,7 +609,7 @@ export async function deleteUser(
     },
   );
 
-  // Containers, volumes and uploads — best-effort, detached, from the snapshot.
+  // Containers, volumes and uploads - best-effort, detached, from the snapshot.
   if (plan.services.length || plan.databases.length || plan.appSlugs.length)
     teardownTeamResources(plan, "user-delete");
 
@@ -628,7 +628,7 @@ export async function deleteUser(
     await recordActivity(
       "member",
       `Passed member/team management to the longest-standing member of ` +
-        `${healedTeams.join(", ")} — @${result.username} was the last one who could`,
+        `${healedTeams.join(", ")} - @${result.username} was the last one who could`,
       actor.username,
       null,
     );

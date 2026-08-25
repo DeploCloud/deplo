@@ -12,7 +12,7 @@ import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * The build cache of one app, as ONE setting: reuse the layers from its last build
- * (on by default — it is what makes a redeploy of an unchanged app take seconds),
+ * (on by default - it is what makes a redeploy of an unchanged app take seconds),
  * with the button that starts the next build from scratch sitting beside its own
  */
 export function BuildCachePanel({
@@ -45,7 +45,7 @@ export function BuildCachePanel({
         toast.success(value ? "Build cache enabled" : "Build cache disabled");
         router.refresh();
       } else {
-        setEnabled(!value); // the server refused — don't show a state it doesn't have
+        setEnabled(!value); // the server refused - don't show a state it doesn't have
         toast.error(res.error);
       }
     });
@@ -77,7 +77,7 @@ export function BuildCachePanel({
                 Deplo reuses the Docker layers your last build produced on this
                 app&apos;s server, so a deploy that changes nothing takes
                 seconds instead of minutes. Turn it off when a build must pull
-                fresh dependencies every time — it makes every deploy slower.
+                fresh dependencies every time - it makes every deploy slower.
               </>
             }
             docs="build.cache"
@@ -85,7 +85,7 @@ export function BuildCachePanel({
         </p>
         <p className="text-xs text-muted-foreground">
           {pending
-            ? "Cleared — the next deployment builds from scratch, then caches again."
+            ? "Cleared - the next deployment builds from scratch, then caches again."
             : "Reuse the layers from this app's last build. Off rebuilds everything, on every deploy."}
         </p>
       </div>
@@ -97,14 +97,14 @@ export function BuildCachePanel({
         <SimpleTooltip
           content={
             !enabled
-              ? "Not needed while the build cache is off — every build already starts from scratch."
+              ? "Not needed while the build cache is off - every build already starts from scratch."
               : pending
                 ? "Already armed. The next deployment builds from scratch."
-                : "The next deployment builds from scratch, then caches again. Only this app is affected — the server's cache is shared, so nothing is deleted from it."
+                : "The next deployment builds from scratch, then caches again. Only this app is affected - the server's cache is shared, so nothing is deleted from it."
           }
         >
           {/* A disabled button fires no pointer events, so the tooltip needs a
-              wrapper to hang off — otherwise the explanation is unreachable in
+              wrapper to hang off, otherwise the explanation is unreachable in
               exactly the state that needs it. */}
           <span className="inline-flex">
             <Button

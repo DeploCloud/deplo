@@ -94,8 +94,8 @@ test("deleting an environment re-parents its apps to the project's default", asy
 });
 
 test("with no default anywhere, the apps still land somewhere real", async () => {
-  // A project with no default at all shouldn't happen — creation seeds one and this
-  // refuses to delete it — so if it ever does, silently clearing `environment_id` is
+  // A project with no default at all shouldn't happen - creation seeds one and this
+  // refuses to delete it, so if it ever does, silently clearing `environment_id` is
   // the worst possible answer: the apps vanish from the drill-in with nothing to
   await seedProjectWith(null);
   await asUser1(() => deleteEnvironment("environ_dev"));
@@ -103,7 +103,7 @@ test("with no default anywhere, the apps still land somewhere real", async () =>
   assert.equal(
     app.environmentId,
     "environ_prod",
-    "the first remaining environment, in display order — never null",
+    "the first remaining environment, in display order, never null",
   );
   assert.equal(app.projectId, PRC);
 });
@@ -114,7 +114,7 @@ test("the default is undeletable, so a project always keeps one", async () => {
     () => asUser1(() => deleteEnvironment("environ_prod")),
     /default environment/i,
   );
-  // Emptying the project down to its default still leaves it standing — the
+  // Emptying the project down to its default still leaves it standing - the
   // default guard is what enforces "at least one" in practice, and the explicit
   // last-one guard below it only ever fires for a project with no default.
   await asUser1(() => deleteEnvironment("environ_dev"));

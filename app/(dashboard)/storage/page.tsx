@@ -109,14 +109,14 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     listApps(),
     // Gates the "Expose publicly" toggle: only a user with the publish-ports
     // grant may open a database to the internet (same grant as an app's
-    // compose `ports:`). Server-enforced too — this only hides the affordance.
+    // compose `ports:`). Server-enforced too - this only hides the affordance.
     canExposePorts(),
-    // Gates drag-to-reorder of the databases grid (persisted team-wide) — the
+    // Gates drag-to-reorder of the databases grid (persisted team-wide) - the
     // same capability every database mutation is gated on.
     hasCapability("configure_databases"),
     // The two bulk lifecycle actions on a multi-selection, each gated on exactly
     // the capability its mutation requires (the same one the card's own menu
-    // uses) — without them the button is simply not on the selection bar.
+    // uses) - without them the button is simply not on the selection bar.
     hasCapability("control_databases"),
     hasCapability("delete_databases"),
     // The three create surfaces of this page, each gated on exactly the capability its
@@ -143,7 +143,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   // serverId → name, so a card can show which host each database runs on.
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
   // A backup destination can live on ANY server the team reaches, including a
-  // storage-only box that hosts nothing — which is exactly the point of one.
+  // storage-only box that hosts nothing, which is exactly the point of one.
   const destinationServers = servers
     .filter((s) => Boolean(s.agent?.certFingerprint) && !s.importOnly)
     .map((s) => ({ id: s.id, name: s.name, storageOnly: s.storageOnly }));
@@ -218,7 +218,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
             >
               <DatabasesGrid
                 // Remount only when the SET of databases changes (create/delete),
-                // so a reorder — same set — never remounts and its optimistic
+                // so a reorder, same set, never remounts and its optimistic
                 // order survives the drop (mirrors the Overview grid's gridKey).
                 key={[...databases.map((d) => d.id)].sort().join(",")}
                 databases={databases}

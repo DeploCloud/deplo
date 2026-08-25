@@ -1,8 +1,8 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * The fallback for the role OPEN ON THE RIGHT — and nothing else. `new` renders
- * the same editor, and the index page under it only checks a capability — it
+ * The fallback for the role OPEN ON THE RIGHT, and nothing else. `new` renders
+ * the same editor, and the index page under it only checks a capability - it
  * resolves before a frame, so its fallback is never actually seen.
  */
 export default function Loading() {

@@ -88,7 +88,7 @@ export default async function DeploymentDetailPage(
             <span className="flex items-center gap-1.5 text-sm">
               <Clock className="size-3.5" />
               {/* Ticks live while the build runs, then freezes on the measured
-                  duration — see BuildDuration. */}
+                  duration - see BuildDuration. */}
               <BuildDuration
                 status={deployment.status}
                 startedAt={deployment.startedAt}

@@ -24,7 +24,7 @@ import type { BackupDestination, BackupTargetKind } from "../types";
 import { parseS3Args } from "../backups/s3-args";
 
 /**
- * HOW bytes get to and from a destination — the one place that knows there are
+ * HOW bytes get to and from a destination - the one place that knows there are
  * three shapes, so `executeBackup` and `restoreBackup` stay about WHAT is being
  * backed up rather than about topology.
  */
@@ -43,7 +43,7 @@ export interface BackupOutcome {
   objectKey: string;
   sizeBytes: number;
   /**
-   * The artifact's size with its age layer off — what a download delivers, so what
+   * The artifact's size with its age layer off - what a download delivers, so what
    * its Content-Length must be.
    */
   decryptedSizeBytes: number;
@@ -55,7 +55,7 @@ export interface BackupOutcome {
 
 /**
  * Thrown out of the relay's byte generator to CANCEL the destination write
- * rather than end it cleanly. Never surfaces to a caller — {@link relayBackup}
+ * rather than end it cleanly. Never surfaces to a caller - {@link relayBackup}
  * catches it and reports the source's own failure instead.
  */
 class RelayAborted extends Error {
@@ -74,7 +74,7 @@ function wireKind(kind: BackupTargetKind): BackupKind {
 /**
  * Run a backup to wherever the destination says, and report what landed.
  */
-/** Whether this destination carries advanced S3 flags — the soft capability gate
+/** Whether this destination carries advanced S3 flags - the soft capability gate
  *  in `connectBackupAgent` warns when the host is too old to apply them. */
 function hasS3Args(dest: BackupDestination): boolean {
   return dest.kind === "s3" && parseS3Args(dest.s3ExtraArgs).length > 0;
@@ -207,7 +207,7 @@ async function relayBackup(
   // `store: true` even though the SOURCE writes nothing: `stream_out` is part of the
   // same `backup-store` capability, and an agent that predates it passes a
   // `"backup"`-only preflight and then answers in-band ("backup request missing S3
-  // target") rather than UNIMPLEMENTED — so mapBackupUnsupported never fires and the
+  // target") rather than UNIMPLEMENTED, so mapBackupUnsupported never fires and the
   // operator is told their bucket is misconfigured when what they actually need is an
   // agent update.
   const src = await connectBackupAgent(target.serverId, { store: true });
@@ -297,7 +297,7 @@ async function relayBackup(
         sha256: "",
       };
     }
-    // Both halves must agree, and the CONTENT is what has to agree — not just how much
+    // Both halves must agree, and the CONTENT is what has to agree, not just how much
     // of it there was.
     const mismatch = digestMismatch(produced, landed);
     if (mismatch) {
@@ -367,7 +367,7 @@ export async function restoreFromDestination(
         dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
       // The identity travels on BOTH kinds now that a bucket artifact is
       // encrypted too. Empty on a destination created before that, whose objects
-      // are plaintext — the agent then skips the age layer.
+      // are plaintext - the agent then skips the age layer.
       ageIdentity: creds.ageIdentity,
       expectedSha256,
     };
@@ -486,7 +486,7 @@ export async function deleteFromDestination(
 }
 
 /**
- * Delete SEVERAL artifacts over ONE connection — what retention does.
+ * Delete SEVERAL artifacts over ONE connection - what retention does.
  */
 export async function deleteManyFromDestination(
   creds: DestinationWithSecrets,
@@ -515,7 +515,7 @@ export async function deleteManyFromDestination(
       } catch (e) {
         const mapped = mapBackupUnsupported(e);
         // An agent that cannot serve the verb at all will fail every key the same
-        // way — surface it rather than logging it fifty times.
+        // way - surface it rather than logging it fifty times.
         if (mapped.name.startsWith("AgentBackup")) throw mapped;
         out.push({ ok: false, error: mapped.message, deleted: 0 });
       }

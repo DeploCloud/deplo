@@ -27,7 +27,7 @@ export function AvatarPicker({
   disabled,
   label = "Change picture",
 }: {
-  /** The avatar to render — the caller's own `<UserAvatar>` / `<TeamAvatar>`. */
+  /** The avatar to render - the caller's own `<UserAvatar>` / `<TeamAvatar>`. */
   preview: React.ReactNode;
   /** Whether there is an uploaded picture to remove. Gravatar is not removable
    *  here: it is not stored, and turning it off is an instance-wide decision. */

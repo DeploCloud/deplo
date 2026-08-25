@@ -17,7 +17,7 @@ import { cleanupRunsStream } from "../graphql/types/cleanup";
 import { __settleCleanupSweeps, runCleanupNow } from "./docker-cleanup";
 
 /**
- * The Docker-cleanup history stream — the sibling of `app-sse.test.ts`, and the
+ * The Docker-cleanup history stream - the sibling of `app-sse.test.ts`, and the
  * thing that makes "Clean up now" instant honest: the click is answered before the
  * host is touched, so the run row it hands back has to keep moving on its own.
  */
@@ -50,7 +50,7 @@ test("cleanupRunsStream yields the initial snapshot + multiple change pings (coo
     startedAt: "2026-01-01T00:00:00.000Z",
   });
 
-  // NO runWithIdentity — there is no request scope. The gate lives on the subscription
+  // NO runWithIdentity - there is no request scope. The gate lives on the subscription
   // field (instance-admin, evaluated when the stream is opened); if the generator read
   // a cookie or re-gated, it would throw here.
   const gen = cleanupRunsStream();
@@ -76,7 +76,7 @@ test("cleanupRunsStream yields the initial snapshot + multiple change pings (coo
     ["dcr_2", "dcr_1"],
   );
 
-  // Ping 2: a SECOND change across another iteration tick — the case the cookie-free
+  // Ping 2: a SECOND change across another iteration tick - the case the cookie-free
   // guarantee protects.
   const p2 = gen.next();
   await seedCleanupRun(db, {
@@ -106,8 +106,8 @@ test("a detached sweep's outcome is in the stream, with no caller left to catch 
   // …and settles outside of one (the seeded server has no agent, so it fails).
   await __settleCleanupSweeps();
 
-  // A page opening the stream now — a fresh subscriber, or one whose SSE connection
-  // dropped and self-healed — is handed the settled truth, not the `running` row it
+  // A page opening the stream now - a fresh subscriber, or one whose SSE connection
+  // dropped and self-healed - is handed the settled truth, not the `running` row it
   // last saw.
   const gen = cleanupRunsStream();
   const snapshot = await gen.next();

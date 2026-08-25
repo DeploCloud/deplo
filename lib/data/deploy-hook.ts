@@ -38,7 +38,7 @@ async function baseUrl(): Promise<string> {
 }
 
 /**
- * The masked hook URL for the settings page — the real link with its secret
+ * The masked hook URL for the settings page - the real link with its secret
  * segment replaced by dots, so the page can show the SHAPE of the URL (and which
  * app it points at) without the token ever reaching a browser that only asked to
  */
@@ -122,12 +122,12 @@ export async function setDeployHookEnabled(
   );
 }
 
-/** Why a hook call was refused — the endpoint maps these onto status codes. */
+/** Why a hook call was refused - the endpoint maps these onto status codes. */
 export type DeployHookRejection = "not-found" | "disabled" | "bad-token";
 
 /**
  * Check a hook call's URL token against the stored one. The AUTHENTICATOR, not a
- * gated read — like `authenticateToken` for bearer tokens, it runs before any
+ * gated read - like `authenticateToken` for bearer tokens, it runs before any
  * identity exists and therefore takes no capability.
  */
 export async function verifyDeployHookToken(
@@ -157,7 +157,7 @@ export async function verifyDeployHookToken(
 }
 
 /**
- * The team that owns an app, by id — un-gated on purpose, and deliberately kept
+ * The team that owns an app, by id - un-gated on purpose, and deliberately kept
  * beside the other pre-identity helper in this file.
  */
 export async function owningTeamId(appId: string): Promise<string | null> {

@@ -25,7 +25,7 @@ import type { AlertKey, NotificationChannel } from "../types";
 /**
  * The dispatcher end to end against pglite: settings in the database, real channel
  * senders, one stubbed `fetch`. The first test is the regression net for the whole
- * feature — it pins the exact body each channel puts on the wire.
+ * feature - it pins the exact body each channel puts on the wire.
  */
 
 let db: TestDb;

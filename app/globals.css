@@ -61,7 +61,7 @@
      order, and a sixth would offer itself to real data. */
   --violet: #7c3aed;
 
-  /* Chart series — categorical, assigned in fixed slot order (1→5), stepped
+  /* Chart series - categorical, assigned in fixed slot order (1→5), stepped
      per theme and CVD-validated against the card surface. Marks only; text
      next to them stays on the text tokens. */
   --chart-1: #2a78d6;
@@ -86,7 +86,7 @@
 
   /* Template store veil: the lightness and alpha of the monochrome wash a
      template card wears in its logo's hue. Per-theme for the same reason the
-     shimmer is — a wash that reads as a hint on white is invisible on black. */
+     shimmer is - a wash that reads as a hint on white is invisible on black. */
   --tpl-veil-l: 0.62;
   --tpl-veil-a: 0.16;
 
@@ -255,12 +255,12 @@ p:not([class*="leading-"]) {
     outline-offset: 2px;
   }
   /* …but never around a surface that focused ITSELF.
-     Every overlay — dialog, sheet, popover, menu, select — is a `tabindex="-1"`
+     Every overlay (dialog, sheet, popover, menu, select) is a `tabindex="-1"`
      container that Radix focuses programmatically: on open, and again when its
      focus trap pulls focus back after a click that landed outside it. That last
      case is why clicking a modal's backdrop drew a ring around the whole modal
      for the length of its exit animation. A focus ring answers "you tabbed
-     here", and an element with `tabindex="-1"` is one nobody can tab to — so on
+     here", and an element with `tabindex="-1"` is one nobody can tab to, so on
      a container it is never that answer, only noise. The real controls inside
      keep their rings, which is where the question is ever asked. */
   :focus-visible[tabindex="-1"] {
@@ -270,7 +270,7 @@ p:not([class*="leading-"]) {
      cursor so anything clickable reads as clickable. Lives in @layer base, so a
      cursor-* utility on the element (drag handles' cursor-grab, the few
      cursor-default controls, disabled:cursor-not-allowed) always wins over it.
-     Disabled controls are excluded — they use pointer-events-none anyway. */
+     Disabled controls are excluded - they use pointer-events-none anyway. */
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
@@ -283,8 +283,8 @@ p:not([class*="leading-"]) {
 }
 
 /* A scroll box whose rows are focusable (option lists, pickers, wizard bodies).
-   Focus indicators paint OUTSIDE the element — the base rule above is a 2px
-   outline at a 2px offset, and a field's ring reaches just as far — while a
+   Focus indicators paint OUTSIDE the element - the base rule above is a 2px
+   outline at a 2px offset, and a field's ring reaches just as far, while a
    scroll container clips everything at its padding edge. A full-width row in a
    zero-padding scroll box therefore comes out with its focus ring sliced down
    both sides - and the first and last rows lose theirs along the top and the
@@ -343,7 +343,7 @@ p:not([class*="leading-"]) {
 /* The server sends ONE number, `--tpl-hue` (0-359, the dominant hue of the
    template's logo). Lightness, chroma and alpha are fixed here, so the wash can
    never come out as two tints and a garish logo cannot produce a garish card.
-   Both gradient stops carry the hue — the far one at zero alpha — because
+   Both gradient stops carry the hue, the far one at zero alpha, because
    fading to `transparent` interpolates through grey and dirties the wash.
    `isolation: isolate` is load-bearing: it makes the element a stacking context
    so the `z-index: -1` pseudo paints above the card's own background and below
@@ -374,7 +374,7 @@ p:not([class*="leading-"]) {
 
 /* A logo drawn in a single neutral has no hue, but it still has a colour: its
    own ink. Wash the card in that instead of leaving it the only flat tile in
-   the grid — chroma 0, and the lightness of the ink itself (white on the dark
+   the grid - chroma 0, and the lightness of the ink itself (white on the dark
    theme, near-black on the light one), so a white wordmark lights its card
    white. Same gradient, same alpha, two variables. */
 .dark .tpl-veil-neutral {
@@ -402,12 +402,12 @@ p:not([class*="leading-"]) {
 
 /* A logo drawn only in black vanishes on the dark theme's near-black card, and
    one drawn only in white vanishes on the light theme's white one. Give it the
-   plate it would have had on paper — and only in the theme where it needs one,
+   plate it would have had on paper, and only in the theme where it needs one,
    because on the other surface the same logo is already perfect.
 
    The plate is `--card-foreground`: by construction the colour that contrasts
    with the card it sits on, so this needs no new token and follows the theme
-   for free. A logo that has any COLOUR never gets one — chroma carries it even
+   for free. A logo that has any COLOUR never gets one - chroma carries it even
    when its lightness sits near the card's. */
 .dark .tpl-plate-dark,
 :root:not(.dark) .tpl-plate-light {
@@ -444,7 +444,7 @@ p:not([class*="leading-"]) {
 
 /* One dot's life: lit, out as the lens reaches it, lit again as the sweep
    restarts. Every dot shares this and differs only by `animation-delay`, which
-   for an infinite animation is a permanent phase offset — so the delay is
+   for an infinite animation is a permanent phase offset, so the delay is
    literally the lens's position over that dot. */
 @keyframes deplo-find-dot {
   0%,
@@ -492,7 +492,7 @@ p:not([class*="leading-"]) {
 /* Page and skeleton entrances are intentionally NOT animated (no fade-in-up). */
 /* ------------------------------------------------------------------ */
 
-/* Plain opacity fade — used only by the auth pages (not a fade-in-up). */
+/* Plain opacity fade - used only by the auth pages (not a fade-in-up). */
 @keyframes deplo-fade-in {
   from {
     opacity: 0;
@@ -507,7 +507,7 @@ p:not([class*="leading-"]) {
 }
 
 /* Sidebar sub-menu transitions: the left navigation slides in horizontally when
- * it swaps — entering a sub-menu (e.g. Settings) slides in from the right, going
+ * it swaps - entering a sub-menu (e.g. Settings) slides in from the right, going
  * back slides in from the left. */
 @keyframes deplo-slide-in-right {
   from {
@@ -540,7 +540,7 @@ p:not([class*="leading-"]) {
 }
 
 /* iOS-style "jiggle" for the project grid's reorder (edit) mode. Applied to an
- * inner wrapper so it composes with — and never fights — the translate transform
+ * inner wrapper so it composes with, and never fights, the translate transform
  * dnd-kit writes on the outer (sortable) element while dragging/reflowing. Cards
  * are given a small per-card negative animation-delay so adjacent ones wiggle
  * slightly out of phase, like the iOS home-screen edit mode. */
@@ -559,10 +559,10 @@ p:not([class*="leading-"]) {
   transform-origin: center center;
 }
 
-/* Skeleton shimmer — a soft highlight streak sweeps left→right across a loading
+/* Skeleton shimmer - a soft highlight streak sweeps left→right across a loading
  * placeholder, a step up from the flat opacity blink of animate-pulse. A
  * translating ::after overlay (the technique production skeleton libs use) keeps
- * the streak on-screen for the whole cycle — a background-position sweep parks it
+ * the streak on-screen for the whole cycle - a background-position sweep parks it
  * off-screen for ~half of every loop. The streak is --foreground at the
  * per-theme --skeleton-shimmer alpha over the bar's muted base, so it reads as
  * the same subtle sweep in light and dark. Opt in via the Skeleton component's
@@ -617,7 +617,7 @@ p:not([class*="leading-"]) {
 
 /* The notification settings' illustration: alerts landing on a phone. Three
  * cards share one loop, staggered by --notif-delay, so the stream never stops
- * and nothing has to be scripted in JS. Decoration only — the whole figure is
+ * and nothing has to be scripted in JS. Decoration only - the whole figure is
  * aria-hidden, and reduced motion freezes it into a static phone. */
 @keyframes deplo-notif-card {
   0% {
@@ -685,7 +685,7 @@ p:not([class*="leading-"]) {
 /* The Pull requests empty state draws a pull request: the branch leaves the
    trunk, two commits land on it, the merge point lights up, then it fades and
    goes again. One 5s timeline shared by four elements, each entering on its own
-   delay — the order IS the explanation, so the delays are the design.
+   delay - the order IS the explanation, so the delays are the design.
 
    Everything animates transform/opacity or stroke-dashoffset, so it stays on the
    compositor and costs nothing while the page sits idle. */
@@ -705,7 +705,7 @@ p:not([class*="leading-"]) {
   }
 }
 
-/* Commits and the merge dot pop in slightly over-sized and settle — the beat a
+/* Commits and the merge dot pop in slightly over-sized and settle - the beat a
    real commit landing has, without a bounce that would read as cartoonish. */
 @keyframes deplo-pr-pop {
   0%,
@@ -780,14 +780,14 @@ p:not([class*="leading-"]) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Not `animation: none` — that would leave the branch undrawn and the dots at
+  /* Not `animation: none` - that would leave the branch undrawn and the dots at
      scale(0), i.e. an empty box. Hold the FINISHED frame instead: the same
      picture, just already told. */
   .deplo-pr-branch {
     animation: none;
     stroke-dashoffset: 0;
   }
-  /* The "off" branch holds its furthest reach — still visibly incomplete, which
+  /* The "off" branch holds its furthest reach - still visibly incomplete, which
      is the state it exists to show. */
   .deplo-pr-branch-off {
     animation: none;
@@ -2507,7 +2507,7 @@ p:not([class*="leading-"]) {
    step nobody is reading. */
 
 /* Idle: the head's antenna ball drifts, and the eyes track with it. Two
-   elements on ONE timeline on purpose — a robot whose eyes and antenna move
+   elements on ONE timeline on purpose - a robot whose eyes and antenna move
    independently reads as broken rather than as looking around. */
 @keyframes deplo-robot-antenna {
   0%,
@@ -2583,7 +2583,7 @@ p:not([class*="leading-"]) {
 }
 
 /* Reaching: the cable draws most of the way to the port, stops short, and
-   retreats. Stopping SHORT is the whole message — the config is copied and
+   retreats. Stopping SHORT is the whole message - the config is copied and
    deplo has not heard from the agent yet, and a cable that completed the trip
    would say the opposite of what the step is waiting for. 44 is the path's
    length; 12 is the gap it never closes. */
@@ -2606,7 +2606,7 @@ p:not([class*="leading-"]) {
 }
 
 /* Connected: one slow halo out of the port. Slow and single because it marks a
-   state, not an event — the burst that marks the event is the confetti. */
+   state, not an event - the burst that marks the event is the confetti. */
 @keyframes deplo-robot-halo {
   0%,
   100% {
@@ -2725,7 +2725,7 @@ p:not([class*="leading-"]) {
 }
 
 /* The robot glyph on "N agents connected" (components/settings/mcp/robot-graphic.tsx).
-   Still while the page sits, awake when the row is pointed at or focused — a
+   Still while the page sits, awake when the row is pointed at or focused - a
    header that animates on its own is noise, one that answers the pointer is an
    invitation. Reuses the wizard's own blip so the small robot and the large one
    move the same way. */
@@ -2749,8 +2749,8 @@ p:not([class*="leading-"]) {
 /* The connect wizard's robot is drawn in the SELECTED agent's colour, so the
    picture and the card you just ticked agree. Only the hue comes from the
    agent (`RobotGraphic`'s `accent`); lightness and chroma are a theme
-   decision — a stroke has to be brighter on a dark background than on a light
-   one — and an agent whose mark has no hue at all (the near-black ones) never
+   decision - a stroke has to be brighter on a dark background than on a light
+   one, and an agent whose mark has no hue at all (the near-black ones) never
    sets the variable, so the robot keeps the theme's own ink. */
 :root {
   --deplo-robot-ink: var(--primary);

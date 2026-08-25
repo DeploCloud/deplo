@@ -7,7 +7,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
-// The hidden-value placeholder — the same dots the variables table uses, so a
+// The hidden-value placeholder - the same dots the variables table uses, so a
 // covered password reads identically wherever a secret is shown.
 const MASK = "••••••••••••";
 
@@ -19,7 +19,7 @@ const OUTER =
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 
 /**
- * The password of one basic-auth credential — masked, with a deliberate reveal.
+ * The password of one basic-auth credential - masked, with a deliberate reveal.
  * The reveal is a mutation, so it is never cached or prefetched.
  */
 export function BasicAuthPasswordCell({
@@ -50,7 +50,7 @@ export function BasicAuthPasswordCell({
     );
     setPending(false);
     // A password that can't be decrypted (rotated DEPLO_SECRET, restored dump) comes
-    // back as an error, not as an empty string — surface it verbatim so the fix ("set a
+    // back as an error, not as an empty string - surface it verbatim so the fix ("set a
     // new password") is the message itself.
     if (res.ok) setValue(res.data ?? null);
     else toast.error(res.error);
@@ -68,7 +68,7 @@ export function BasicAuthPasswordCell({
             ? `Hide ${username}'s password`
             : `Reveal ${username}'s password`
         }
-        // No password in the title either — a tooltip is a DOM attribute, and the
+        // No password in the title either - a tooltip is a DOM attribute, and the
         // whole point is that the value is nowhere in the DOM until revealed.
         title={revealed ? "Click to hide" : "Click to reveal"}
         className={cn(
@@ -101,7 +101,7 @@ export function BasicAuthPasswordCell({
               {value}
             </code>
           ) : (
-            // Placeholder ONLY. Nothing in this subtree — text or attribute —
+            // Placeholder ONLY. Nothing in this subtree, text or attribute,
             // carries the password while it is hidden.
             <code
               aria-hidden

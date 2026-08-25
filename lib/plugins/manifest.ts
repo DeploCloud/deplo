@@ -1,12 +1,12 @@
 /**
- * Plugin catalog + manifest contract — PURE. A manifest's `image` and `env` values
- * are treated as OPAQUE — never eval'd.
+ * Plugin catalog + manifest contract - PURE. A manifest's `image` and `env` values
+ * are treated as OPAQUE, never eval'd.
  */
 
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
-/** A url-safe random token of `bytes` bytes — the same shape as crypto's
+/** A url-safe random token of `bytes` bytes - the same shape as crypto's
  * `randomToken`, inlined from `node:crypto` so this module stays pure (no
  * `server-only` taint) and unit-testable. */
 function randomToken(bytes: number): string {
@@ -67,7 +67,7 @@ export const PluginExposeSchema = z.object({
 
 export type PluginExpose = z.infer<typeof PluginExposeSchema>;
 
-/** `plugins/<id>/manifest.json` — the install spec for one plugin. */
+/** `plugins/<id>/manifest.json` - the install spec for one plugin. */
 export const PluginManifestSchema = z.object({
   id: z
     .string()
@@ -79,7 +79,7 @@ export const PluginManifestSchema = z.object({
     ),
   name: z.string().min(1).max(120),
   version: z.string().min(1).max(64),
-  /** The runnable image ref. Opaque — handed to docker, never parsed/eval'd. */
+  /** The runnable image ref. Opaque - handed to docker, never parsed/eval'd. */
   image: z.string().min(1).max(512),
   /** The container port the plugin path forwards to. */
   expose: PluginExposeSchema,
@@ -108,7 +108,7 @@ export class PlaceholderError extends Error {}
 /**
  * Resolve every `${…}` placeholder in a manifest's env into concrete values.
  * Settle that before the feature ships. The image and other manifest fields are
- * never touched here — only env values are interpolated.
+ * never touched here - only env values are interpolated.
  */
 export function resolvePluginEnv(
   env: PluginEnvVar[],

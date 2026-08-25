@@ -68,7 +68,7 @@ test("buildSpecFor flattens the build config", () => {
   assert.equal(spec.startCommand, "node server.js");
   assert.equal(spec.runtimeVersion, "20");
   // Node is the one pinnable runtime Deplo surfaces, so a pinned version declares
-  // "node" — that's how the agent knows to set NIXPACKS_NODE_VERSION.
+  // "node" - that's how the agent knows to set NIXPACKS_NODE_VERSION.
   assert.equal(spec.runtimeLanguage, "node");
   assert.equal(spec.nixpacksPublishDirectory, "dist");
   assert.equal(spec.staticSinglePageApp, true);

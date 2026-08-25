@@ -114,9 +114,9 @@ export function LevelChip({
 }
 
 /**
- * The scrolling body of a log console. Owns the vertical rhythm — a small,
+ * The scrolling body of a log console. Owns the vertical rhythm - a small,
  * consistent gap between lines so a dense stream reads as lines rather than as a
- * wall — and the monospace type.
+ * wall, and the monospace type.
  */
 export function LogLines({
   children,
@@ -154,12 +154,12 @@ export function LogRow({
    */
   tintMessage?: boolean;
   /**
-   * `"auto"` draws the chip only when there is something to say — i.e. not for
+   * `"auto"` draws the chip only when there is something to say - i.e. not for
    * `info`.
    */
   chip?: "always" | "auto";
   /**
-   * Draw this row on the banded background instead of the bare slab — the caller
+   * Draw this row on the banded background instead of the bare slab - the caller
    * alternates it, so a live stream reads as lines rather than as one black field.
    */
   zebra?: boolean;
@@ -171,7 +171,7 @@ export function LogRow({
   return (
     <div
       className={cn(
-        // items-start, not the default stretch — see LevelChip.
+        // items-start, not the default stretch - see LevelChip.
         "group relative flex items-start gap-3 rounded-md py-px pr-1.5 pl-3 log-row",
         "transition-colors",
         // Before the level, never after: `cn` keeps the LAST background, so a

@@ -10,7 +10,7 @@ import type { SharedVarDTO } from "@/lib/data/shared-vars";
 const CHIP_LIMIT = 2;
 
 /**
- * WHO a shared variable is available to (and which apps added it), BY NAME — not
+ * WHO a shared variable is available to (and which apps added it), BY NAME, not
  * by count.
  */
 export function SharedWithChips({

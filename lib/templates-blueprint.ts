@@ -3,8 +3,8 @@ import "server-only";
 import { randomBytes, randomUUID } from "node:crypto";
 
 /**
- * Turns a one-click template's files — the docker-compose.yml plus the
- * template.toml the catalog serves alongside it — into a deployable blueprint: the
+ * Turns a one-click template's files - the docker-compose.yml plus the
+ * template.toml the catalog serves alongside it - into a deployable blueprint: the
  * variables it declares, the environment it injects, which service is exposed
  * publicly, and any config files to mount into the stack.
  */

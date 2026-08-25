@@ -28,7 +28,7 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
 }
 
 /**
- * The same feed narrowed to what ONE person did — the Activity tab of a member's
+ * The same feed narrowed to what ONE person did - the Activity tab of a member's
  * page.
  */
 export async function listActivityByActor(
@@ -55,7 +55,7 @@ async function queryActivity(
         eq(activitiesTable.teamId, teamId),
         actorUserId ? eq(activitiesTable.actorUserId, actorUserId) : undefined,
         // An API token limited to Projects reads only its own apps' history.
-        // Team-level events (`app_id IS NULL` — members, roles, tokens, the team
+        // Team-level events (`app_id IS NULL` - members, roles, tokens, the team
         // itself) belong to nothing it can reach, so they drop out with the rest.
         await scopedActivityWhere(),
       ),
@@ -109,8 +109,8 @@ async function scopedActivityWhere(): Promise<SQL | undefined> {
 }
 
 /**
- * Internal: record an event. When neither resolves — e.g. a background deploy with
- * no request context — it falls back to the first team so the row is never written
+ * Internal: record an event. When neither resolves - e.g. a background deploy with
+ * no request context - it falls back to the first team so the row is never written
  * team-less (which would make it invisible to every team).
  */
 export async function recordActivity(
@@ -122,7 +122,7 @@ export async function recordActivity(
   alert: AlertKey | null = null,
 ): Promise<void> {
   // Best-effort (PLAN §1(c): an audit-log insert must NEVER roll back the user's
-  // action — it stays a standalone, non-transactional, fire-and-forget insert).
+  // action - it stays a standalone, non-transactional, fire-and-forget insert).
   let written = false;
   try {
     const db = getDb();
@@ -132,7 +132,7 @@ export async function recordActivity(
       resolved = (await loadAppGraph(appId))?.teamId ?? null;
     }
     // Last-resort fallback so a row is never written team-less (invisible to every
-    // team) — the first team by creation order.
+    // team) - the first team by creation order.
     if (!resolved) {
       const firstTeam = await db
         .select({ id: teams.id })
@@ -240,7 +240,7 @@ export async function resolveActorUserId(
     const u = await getCurrentUser();
     if (u && (u.name === actor || u.username === actor)) return u.id;
   } catch {
-    // No request scope — leave the row unattributed.
+    // No request scope - leave the row unattributed.
   }
   return null;
 }

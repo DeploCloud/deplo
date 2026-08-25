@@ -43,7 +43,7 @@ const COLORS: Record<string, string> = {
   connected: "bg-[var(--success)]",
   active: "bg-[var(--success)]",
   success: "bg-[var(--success)]",
-  // amber — in-progress / transitioning. "stopping" is the transient state
+  // amber - in-progress / transitioning. "stopping" is the transient state
   // between a Stop click and the container settling to "idle"; it shares the
   // deploying colour so "something is happening" reads the same everywhere.
   building: "bg-[var(--warning)]",
@@ -62,28 +62,28 @@ const COLORS: Record<string, string> = {
   cloudflare: "bg-[var(--warning)]",
   // Docker is restart-looping the container: it is neither up nor off, it is
   // dying and being started again. Amber + a pulse, like every other "something
-  // is happening" state — the red is saved for the deploy that failed outright.
+  // is happening" state - the red is saved for the deploy that failed outright.
   restarting: "bg-[var(--warning)]",
   // Part of a compose stack is up, part is not.
   degraded: "bg-[var(--warning)]",
   // Running, and failing its own healthcheck. Up is not the same as working.
   unhealthy: "bg-[var(--warning)]",
   // A server whose agent answers but whose host is degraded (Docker unreachable):
-  // up, but nothing can deploy there. Amber, not red — the box is not down — and
+  // up, but nothing can deploy there. Amber, not red, the box is not down, and
   // deliberately not grey, which would make a broken host look merely stopped.
   warning: "bg-[var(--warning)]",
   never: "bg-muted-foreground",
-  // red — a genuine failure/unreachable state (a crash, a build error, a server
+  // red - a genuine failure/unreachable state (a crash, a build error, a server
   // that's down). NOT a user-initiated stop; that is "idle" below.
   error: "bg-destructive",
   failed: "bg-destructive",
   misconfigured: "bg-destructive",
   offline: "bg-destructive",
   // Deplo believes this app is deployed and up, and the host has nothing
-  // running. Nobody asked for that, so it is a failure, not a "stopped" — grey
+  // running. Nobody asked for that, so it is a failure, not a "stopped" - grey
   // here would read as "off on purpose", which is the lie we are removing.
   down: "bg-destructive",
-  // neutral / grey — "off, but healthy". "idle" is an app the user stopped: it
+  // neutral / grey - "off, but healthy". "idle" is an app the user stopped: it
   // reads as a calm "Stopped", deliberately distinct from the red error states so
   // a stopped container is never mistaken for a crashed one.
   idle: "bg-muted-foreground",
@@ -168,16 +168,16 @@ export function StatusDot({
 }
 
 /**
- * Friendlier labels for a few raw status keys — the ones whose raw key would
+ * Friendlier labels for a few raw status keys - the ones whose raw key would
  * read as the wrong thing. Every other status falls back to its capitalized key.
  */
 const LABELS: Record<string, string> = {
   idle: "Stopped",
   // Never built, never started. "Stopped" would say someone stopped it, which
-  // is the one thing that did not happen — an imported app has simply not shipped
+  // is the one thing that did not happen - an imported app has simply not shipped
   // yet, and the only control that makes sense on it is a first Deploy.
   not_deployed: "Not deployed",
-  // A fork's preview waiting on a maintainer — not a failure, and not something
+  // A fork's preview waiting on a maintainer, not a failure, and not something
   // Deplo is doing. "Blocked" would read like an error; this names the action.
   blocked: "Needs approval",
   // Not an error and not a failure: the app hit its own `Live previews` limit and
@@ -200,7 +200,7 @@ export function StatusBadge({
   status: AnyStatus;
   /**
    * Fill the badge with a translucent, status-coloured background (per
-   * {@link VARIANTS}) instead of the default outline — e.g. a green "Online"
+   * {@link VARIANTS}) instead of the default outline - e.g. a green "Online"
    * chip. Off by default so existing call sites are unaffected.
    */
   tinted?: boolean;

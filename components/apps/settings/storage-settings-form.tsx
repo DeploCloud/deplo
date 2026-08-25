@@ -38,7 +38,7 @@ import { gql, gqlAction } from "@/lib/graphql-client";
 
 /**
  * A canonical string for the volume list, ignoring row ids and normalising
- * whitespace/case exactly as a save would — so a saved list matches its snapshot
+ * whitespace/case exactly as a save would, so a saved list matches its snapshot
  * even though the server may re-key the rows.
  */
 function volumesKey(vs: VolumeMount[], workdir?: string | null): string {
@@ -146,7 +146,7 @@ export function StorageSettingsForm({
   const [savedVolumesKey, setSavedVolumesKey] =
     React.useState(currentVolumesKey);
 
-  // Every File entry and the path it names right now — an entry that has not been
+  // Every File entry and the path it names right now - an entry that has not been
   // named yet is IN this list, with an empty path.
   const fileTargets = React.useMemo(
     () =>
@@ -167,7 +167,7 @@ export function StorageSettingsForm({
   });
 
   /**
-   * In-flight reads, so a re-render can't fire the same read twice — and so a read
+   * In-flight reads, so a re-render can't fire the same read twice, and so a read
    * the user has already superseded (they kept typing the path) can tell that it
    * lost and leave the newer answer alone.
    */
@@ -221,13 +221,13 @@ export function StorageSettingsForm({
   );
 
   // Read every File entry's path, and re-read it when the path changes. An entry
-  // whose read FAILED is left alone — retrying it on every keystroke would hammer an
+  // whose read FAILED is left alone - retrying it on every keystroke would hammer an
   // unreachable agent; the editor offers a "Try again" button instead.
   React.useEffect(() => {
     if (!canManageFiles) return;
     const timer = setTimeout(() => {
       for (const t of targetsRef.current) {
-        if (!t.path) continue; // not named yet — nothing to read
+        if (!t.path) continue; // not named yet, nothing to read
         const current = filesRef.current[t.id];
         if (current && current.path === t.path) continue;
         void loadFile(t.id, t.path);
@@ -248,7 +248,7 @@ export function StorageSettingsForm({
     });
   }
 
-  // Content counts as unsaved work just like a changed path does — otherwise
+  // Content counts as unsaved work just like a changed path does, otherwise
   // typing a config file and leaving the page would lose it with the Save button
   // still greyed out.
   const contentDirty = fileTargets.some((t) =>
@@ -259,7 +259,7 @@ export function StorageSettingsForm({
   function saveVolumes() {
     // The SAME validator the editor rings fields with, so nothing can be typed here
     // that the save then rejects with different words. (The server remains
-    // authoritative — this is the snappy first pass, not the boundary.)
+    // authoritative - this is the snappy first pass, not the boundary.)
     for (const v of volumes) {
       const problem = volumeProblem(v, containerWorkdir);
       if (problem) {
@@ -358,8 +358,8 @@ export function StorageSettingsForm({
       router.refresh();
       toast.success(
         written.length === 0
-          ? "Storage saved — applied on the next production deploy"
-          : `Storage saved, ${written.length === 1 ? "1 file" : `${written.length} files`} written — mounted on the next production deploy`,
+          ? "Storage saved - applied on the next production deploy"
+          : `Storage saved, ${written.length === 1 ? "1 file" : `${written.length} files`} written - mounted on the next production deploy`,
       );
     });
   }
@@ -377,7 +377,7 @@ export function StorageSettingsForm({
           </CardTitle>
         </CardHeader>
         {/**
-         * A real form, so Enter in any field saves — `display: contents` keeps Card's own
+         * A real form, so Enter in any field saves - `display: contents` keeps Card's own
          * layout untouched.
          */}
         <form
@@ -419,7 +419,7 @@ export function StorageSettingsForm({
             />
             <p className="mt-3 text-xs text-muted-foreground">
               Applied on the next production deploy. Removing an entry stops
-              mounting it — the data itself is never deleted automatically, and
+              mounting it - the data itself is never deleted automatically, and
               a Volume is included in this app&apos;s backups.
             </p>
           </CardContent>

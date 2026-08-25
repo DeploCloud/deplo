@@ -61,7 +61,7 @@ test("an app starts on the untouched bring-up command", async () => {
 
 test("flags are stored the way the deploy edge will send them", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
-  // Ragged whitespace in, canonical argv out — so the settings page shows the
+  // Ragged whitespace in, canonical argv out, so the settings page shows the
   // command that actually runs, with no stray spacing to puzzle over.
   await asUser1(() =>
     setAppComposeUpArgs("prj_1", "  --pull   always \n --wait "),

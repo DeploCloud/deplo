@@ -23,7 +23,7 @@ export interface RuntimeSnapshot {
 export function displayStatus(
   status: AppStatus,
   runtime: RuntimeSnapshot | null | undefined,
-  /** This app has no deployment at all — see {@link DisplayStatus}. */
+  /** This app has no deployment at all - see {@link DisplayStatus}. */
   neverDeployed?: boolean,
 ): DisplayStatus {
   // Never built, so never running: "Stopped" would claim somebody stopped it, and the
@@ -31,7 +31,7 @@ export function displayStatus(
   if (neverDeployed && status === "idle") return "not_deployed";
 
   // No probe, or the agent never answered: we do NOT know what the host is
-  // doing. Say what we were told last and nothing more — inventing "down" from
+  // doing. Say what we were told last and nothing more - inventing "down" from
   // an unreachable agent would trade one lie for another.
   if (!runtime || runtime.unreachable) return status;
 
@@ -46,7 +46,7 @@ export function displayStatus(
   // Nothing of the app is up: neither a container that is running, nor one that
   // could be. (An app whose containers are all missing lands here too.)
   if (runtime.running === 0) return "down";
-  // Part of the app is up and part is not — including a service whose container
+  // Part of the app is up and part is not, including a service whose container
   // is missing entirely, which the running/total counts alone cannot see.
   if (runtime.running < runtime.total || runtime.missing.length > 0)
     return "degraded";

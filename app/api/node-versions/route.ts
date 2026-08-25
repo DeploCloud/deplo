@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
  * the "Node.js version" autocomplete in build settings.
  */
 const INDEX_URL = "https://nodejs.org/dist/index.json";
-const TTL_MS = 6 * 60 * 60 * 1000; // 6h — Node majors change very slowly.
+const TTL_MS = 6 * 60 * 60 * 1000; // 6h - Node majors change very slowly.
 /** How many distinct majors to surface (newest first). Covers current + recent. */
 const MAX_MAJORS = 6;
 /** Minimal fallback so the field still works if nodejs.org is unreachable. */
@@ -60,7 +60,7 @@ async function fetchVersions(): Promise<NodeVersion[]> {
 }
 
 // Process-wide (per server instance) cache. `Date.now()` is fine in a request
-// handler — this is app runtime, not a workflow script.
+// handler - this is app runtime, not a workflow script.
 let cache: { at: number; versions: NodeVersion[] } | null = null;
 
 export async function GET() {
@@ -76,7 +76,7 @@ export async function GET() {
     cache = { at: now, versions };
     return Response.json({ versions });
   } catch {
-    // nodejs.org unreachable — serve the last good cache if any, else a minimal
+    // nodejs.org unreachable - serve the last good cache if any, else a minimal
     // fallback so the field is still usable (it accepts free text too).
     return Response.json({ versions: cache?.versions ?? FALLBACK });
   }

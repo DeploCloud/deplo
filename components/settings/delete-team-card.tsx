@@ -37,7 +37,7 @@ export function DeleteTeamCard({
       <CardContent className="flex items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground">
           {onlyTeam
-            ? "You can't delete your only team — create another team first."
+            ? "You can't delete your only team - create another team first."
             : "Every app and database stack is torn down (data volumes included). This cannot be undone."}
         </p>
         <ConfirmAction
@@ -53,14 +53,14 @@ export function DeleteTeamCard({
           successMessage="Team deleted"
           confirmText={teamName}
           onConfirm={async () => {
-            // Echo back the id the user confirmed — the server fails closed if
+            // Echo back the id the user confirmed - the server fails closed if
             // the active team changed in another tab meanwhile.
             const res = await gqlAction(
               `mutation($teamId: String!) { deleteTeam(teamId: $teamId) }`,
               { teamId },
             );
             if (res.ok) {
-              // The active team is gone — land on the next team's overview.
+              // The active team is gone - land on the next team's overview.
               router.push("/");
               router.refresh();
             }

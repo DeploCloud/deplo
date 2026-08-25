@@ -29,7 +29,7 @@ export default async function AppAccessSettingsPage(
         docs="domains.overview"
       />
       {/* Adding a credential closes its dialog immediately and shows the new
-          card pulsing in the grid while the routing is applied — the provider
+          card pulsing in the grid while the routing is applied - the provider
           holds that placeholder, so it has to sit above the manager. */}
       <CapabilityFieldset cap="manage_basic_auth">
         <PendingCreateProvider count={basicAuthUsers.length}>

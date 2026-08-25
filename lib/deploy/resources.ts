@@ -33,7 +33,7 @@ export function resourceLimitsToComposeKeys(
 }
 
 /**
- * Render the resource-limit keys as a YAML FRAGMENT indented `indent` spaces — for
+ * Render the resource-limit keys as a YAML FRAGMENT indented `indent` spaces - for
  * the string-built single-image path (`renderCompose`), which has no service
  * object to mutate.
  */

@@ -60,7 +60,7 @@ async function seedPlugin(
 
 const remaining = () => db.select().from(installedPluginsTable);
 
-test("an empty table is a no-op — nothing is torn down", async () => {
+test("an empty table is a no-op - nothing is torn down", async () => {
   const torn: string[] = [];
   assert.equal(
     await retireInstalledPlugins(async (s) => {
@@ -93,7 +93,7 @@ test("a legacy row with no stored slug derives the one the container actually ha
     torn.push(s);
   });
 
-  // `pluginSlug("relay", "alpha")` — the value the installer would have frozen.
+  // `pluginSlug("relay", "alpha")` - the value the installer would have frozen.
   assert.deepEqual(torn, ["relay__alpha"]);
   assert.deepEqual(await remaining(), []);
 });

@@ -41,7 +41,7 @@ after(async () => {
 
 beforeEach(async () => {
   // Truncating `servers` cascades to `server_teams` and `databases`; truncating
-  // `teams` cascades to the rest of identity — so each test starts from scratch.
+  // `teams` cascades to the rest of identity, so each test starts from scratch.
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {
@@ -139,7 +139,7 @@ test("restricting SUCCEEDS when the team with workloads stays included", async (
 });
 
 test("setServerTeams requires instance admin", async () => {
-  // user_member is a plain team member (not an instance admin) — server
+  // user_member is a plain team member (not an instance admin) - server
   // administration is instance-admin-only, so the mutation must reject.
   await assert.rejects(
     runWithIdentity({ userId: "user_member", teamId: TEAM_A }, () =>

@@ -11,7 +11,7 @@ export interface DokployCredential {
 }
 
 /* ------------------------------------------------------------------ */
-/* Row shapes — only the fields the import actually maps               */
+/* Row shapes - only the fields the import actually maps               */
 /* ------------------------------------------------------------------ */
 
 /** Dokploy's build packs. `heroku_buildpacks`/`paketo_buildpacks` have no deplo twin. */
@@ -229,7 +229,7 @@ export interface DokployCompose {
 
 /** The five database engines share one shape; only the id field's name differs. */
 export interface DokployDatabase {
-  /** Optional for the same reason as {@link DokployApplication.name} — and a
+  /** Optional for the same reason as {@link DokployApplication.name}, and a
    *  database row from `project.all` really does carry NOTHING but its id. */
   name?: string | null;
   appName?: string | null;
@@ -497,7 +497,7 @@ async function get<T>(
 
 /**
  * One POST against Dokploy. The ONLY writes this client ever makes are the
- * `*.stop` calls of a data cutover — deliberately, so "the source instance is
+ * `*.stop` calls of a data cutover - deliberately, so "the source instance is
  * only read" stays true of everything else and it keeps working as the rollback.
  */
 async function post<T>(

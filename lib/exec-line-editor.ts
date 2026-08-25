@@ -40,7 +40,7 @@ export class LineEditor {
     private host: LineEditorHost,
     /** The prompt as written to the terminal (SGR colour wrappers welcome). */
     private promptStr: string,
-    /** VISIBLE prompt width — SGR sequences are zero-width. */
+    /** VISIBLE prompt width - SGR sequences are zero-width. */
     private promptLen: number,
     /** Fired with the raw line on Enter (non-blank lines only). */
     private onSubmit: (command: string) => void,
@@ -124,10 +124,10 @@ export class LineEditor {
         return;
       }
 
-      case "\x7f": // Backspace — delete left of the caret
+      case "\x7f": // Backspace - delete left of the caret
         if (c > 0) this.repaint(l.slice(0, c - 1) + l.slice(c), c - 1);
         return;
-      case "\x1b[3~": // Delete — delete under the caret
+      case "\x1b[3~": // Delete - delete under the caret
         if (c < l.length) this.repaint(l.slice(0, c) + l.slice(c + 1), c);
         return;
 
@@ -151,43 +151,43 @@ export class LineEditor {
       case "\x05":
         if (c < l.length) this.repaint(l, l.length);
         return;
-      case "\x1b[1;5D": // Ctrl-← / Alt-b — previous word
+      case "\x1b[1;5D": // Ctrl-← / Alt-b - previous word
       case "\x1bb":
         if (c > 0) this.repaint(l, prevWord(l, c));
         return;
-      case "\x1b[1;5C": // Ctrl-→ / Alt-f — next word
+      case "\x1b[1;5C": // Ctrl-→ / Alt-f - next word
       case "\x1bf":
         if (c < l.length) this.repaint(l, nextWord(l, c));
         return;
 
-      case "\x15": // Ctrl-U — kill to start of line
+      case "\x15": // Ctrl-U - kill to start of line
         if (c > 0) this.repaint(l.slice(c), 0);
         return;
-      case "\x0b": // Ctrl-K — kill to end of line
+      case "\x0b": // Ctrl-K - kill to end of line
         if (c < l.length) this.repaint(l.slice(0, c), c);
         return;
       case "\x17": {
-        // Ctrl-W — kill the word left of the caret
+        // Ctrl-W - kill the word left of the caret
         if (c === 0) return;
         const start = prevWord(l, c);
         this.repaint(l.slice(0, start) + l.slice(c), start);
         return;
       }
 
-      case "\x03": // Ctrl-C — abandon the current line
+      case "\x03": // Ctrl-C - abandon the current line
         this.repaint(l, l.length);
         this.host.write("^C\r\n");
         this.histIdx = -1;
         this.draft = "";
         this.freshPrompt();
         return;
-      case "\x0c": // Ctrl-L — clear the screen, keep line + caret
+      case "\x0c": // Ctrl-L - clear the screen, keep line + caret
         this.host.reset();
         this.repaint(l, c, true);
         return;
 
       case "\x1b[A": {
-        // ↑ older — park the draft on first entry into history
+        // ↑ older - park the draft on first entry into history
         const next = Math.min(this.histIdx + 1, this.history.length - 1);
         if (next < 0 || next === this.histIdx) return;
         if (this.histIdx === -1) this.draft = l;
@@ -196,7 +196,7 @@ export class LineEditor {
         return;
       }
       case "\x1b[B": {
-        // ↓ newer — past the newest returns to the parked draft
+        // ↓ newer - past the newest returns to the parked draft
         if (this.histIdx < 0) return;
         this.histIdx -= 1;
         const value =
@@ -207,7 +207,7 @@ export class LineEditor {
     }
 
     // Remaining escape sequences (F-keys, PgUp/PgDn, mouse reports) have no
-    // meaning in a one-line editor — swallow them so they can't desync it.
+    // meaning in a one-line editor - swallow them so they can't desync it.
     if (d.charCodeAt(0) === 0x1b) return;
 
     // Printable input (keystroke or paste) inserts at the caret.

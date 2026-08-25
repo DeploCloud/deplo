@@ -117,7 +117,7 @@ test("signAgentCsr: a CSR-signed agent cert chains to the CA and uses control-pl
     signingAlgorithm: { name: "Ed25519" },
     extensions: [
       new x509.SubjectAlternativeNameExtension([
-        { type: "ip", value: "9.9.9.9" }, // the agent's claim — must be ignored
+        { type: "ip", value: "9.9.9.9" }, // the agent's claim - must be ignored
       ]),
     ],
   });
@@ -219,7 +219,7 @@ test("the CSR-signed agent cert completes a real mTLS handshake with the control
   await new Promise<void>((resolve, reject) => {
     const srv = tls.createServer(
       {
-        key: agentKeyPem, // the agent's own key — never left "the agent"
+        key: agentKeyPem, // the agent's own key, never left "the agent"
         cert: signed.certPem,
         ca: signed.caPem,
         requestCert: true,

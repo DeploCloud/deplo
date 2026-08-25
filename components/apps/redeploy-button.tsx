@@ -17,7 +17,7 @@ export function RedeployButton({
   size = "sm",
 }: {
   appId: string;
-  /** Owning app slug — used to route to the new deployment's live logs. */
+  /** Owning app slug - used to route to the new deployment's live logs. */
   slug: string;
   variant?: "outline" | "default" | "secondary";
   size?: "sm" | "default";
@@ -25,7 +25,7 @@ export function RedeployButton({
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
   const can = useAppCan("deploy_apps");
-  // Nothing has ever been built for this app — an imported one, or one created by
+  // Nothing has ever been built for this app - an imported one, or one created by
   // someone without `deploy_apps`.
   const first = useNeverDeployed();
   const label = first ? "Deploy" : "Redeploy";
@@ -82,7 +82,7 @@ export function RedeployButton({
         onClick={redeploy}
         disabled={pending}
       >
-        {/* The house spinner while it fires — a spinning rocket is not a thing. */}
+        {/* The house spinner while it fires - a spinning rocket is not a thing. */}
         {pending ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (

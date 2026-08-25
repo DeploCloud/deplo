@@ -117,7 +117,7 @@ test("apps match on their slug as well as their name", () => {
   );
 });
 
-test("every term must match — the search is an AND", () => {
+test("every term must match - the search is an AND", () => {
   assert.deepEqual(filterScopeTree(TREE, ["landing", "pages"]).length, 1);
   assert.deepEqual(filterScopeTree(TREE, ["landing", "nope"]), []);
 });

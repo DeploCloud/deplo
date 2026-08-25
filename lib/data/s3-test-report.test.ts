@@ -217,7 +217,7 @@ test("an unplaceable failure claims only the step we can vouch for", () => {
 test("servers skipped on the way are logged as warnings", () => {
   const r = report({
     ok: true,
-    agentAttempts: ["eu-main-1 — the agent is too old to back up"],
+    agentAttempts: ["eu-main-1 - the agent is too old to back up"],
   });
   const warn = r.lines.find((l) => l.level === "warn");
   assert.match(warn?.text ?? "", /eu-main-1/);
@@ -271,7 +271,7 @@ test("a bucket name carrying shell syntax cannot escape the reproduce block", ()
 
 test("reproduce commands NEVER carry a real credential", () => {
   const cmd = reproduceCommand(target);
-  // Placeholders only — a stored secret has no reveal path in deplo, and this
+  // Placeholders only - a stored secret has no reveal path in deplo, and this
   // block must not become one.
   assert.match(cmd, /AWS_ACCESS_KEY_ID='<access key>'/);
   assert.match(cmd, /AWS_SECRET_ACCESS_KEY='<secret key>'/);

@@ -40,7 +40,7 @@ test("isHostBindSource: absolute and escaping sources are host binds", () => {
   assert.equal(isHostBindSource("./config"), false);
   assert.equal(isHostBindSource("./folder/x"), false);
   assert.equal(isHostBindSource("."), false);
-  // A `..` climb escapes the sandbox — now treated as a host bind (gated).
+  // A `..` climb escapes the sandbox - now treated as a host bind (gated).
   assert.equal(isHostBindSource("../files/config"), true);
   assert.equal(isHostBindSource("../sibling/data"), true);
   assert.equal(isHostBindSource("./../escape"), true);
@@ -262,12 +262,12 @@ volumes:
       device: /
       o: bind`;
   assert.equal(composeMountsForeignStorage(yaml), true);
-  // And the bind check still does not see it — which is exactly why this exists.
+  // And the bind check still does not see it, which is exactly why this exists.
   assert.equal(composeHasHostBindMount(yaml), false);
 });
 
 test("composeMountsForeignStorage: an ordinary app volume is not foreign", () => {
-  // No `name:`, no `external:`, no `driver_opts:` — compose creates it per
+  // No `name:`, no `external:`, no `driver_opts:` - compose creates it per
   // project and Deplo pins its host name at RENDER time, after this has run.
   const yaml = `services:
   app:
@@ -341,7 +341,7 @@ test("composeNeedsHostPrivileges: volumes_from container: escapes; a bare servic
     ),
     true,
   );
-  // A bare service name shares only THIS stack's volumes — left alone.
+  // A bare service name shares only THIS stack's volumes - left alone.
   assert.equal(
     composeNeedsHostPrivileges(
       `services:\n  a:\n    image: x\n    volumes_from:\n      - db`,
@@ -378,7 +378,7 @@ test("composeMountsForeignStorage: a top-level secrets/configs file: source is a
     ),
     true,
   );
-  // An `environment:`-sourced secret carries no host path — left alone.
+  // An `environment:`-sourced secret carries no host path - left alone.
   assert.equal(
     composeMountsForeignStorage(
       `services:\n  a:\n    image: x\nsecrets:\n  s:\n    environment: FOO`,
@@ -410,7 +410,7 @@ test("oom_kill_disable is a cross-tenant DoS and needs the grant; false does not
 
 /**
  * `build:` reaching a host path bakes host bytes into the image (or escapes at
- * build time), the same host reach a bind mount has — gated the same. A
+ * build time), the same host reach a bind mount has - gated the same. A
  * project-relative `./`-context (the normal case) stays free.
  */
 test("composeBuildReachesHost: absolute/ssh/privileged build reaches the host; a relative build is free", () => {
@@ -488,7 +488,7 @@ test("composeJoinsForeignNetwork: an app's own network, and the shared one, stay
     ),
     false,
   );
-  // The shared `deplo` network is governed by its own choke point — by key AND
+  // The shared `deplo` network is governed by its own choke point - by key AND
   // under an alias that points at it by name.
   assert.equal(
     composeJoinsForeignNetwork(
@@ -520,7 +520,7 @@ test("oom_score_adj is a privilege only when NEGATIVE; group_add and a foreign l
     composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n${line}`);
   // Negative = "kill my neighbours first", the oom_kill_disable effect by degrees.
   assert.equal(svc("    oom_score_adj: -1000"), true);
-  // Positive only volunteers this container — free.
+  // Positive only volunteers this container - free.
   assert.equal(svc("    oom_score_adj: 500"), false);
   assert.equal(svc(`    group_add: ["docker"]`), true);
   assert.equal(
@@ -529,7 +529,7 @@ test("oom_score_adj is a privilege only when NEGATIVE; group_add and a foreign l
     ),
     true,
   );
-  // json-file's own size knobs are what deplo's logs read from — free.
+  // json-file's own size knobs are what deplo's logs read from - free.
   assert.equal(
     svc(
       `    logging:\n      driver: json-file\n      options:\n        max-size: 10m`,
@@ -615,7 +615,7 @@ test("an ordinary stack collects neither warning", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* composeFileBindings — where a stack mounts its own config files      */
+/* composeFileBindings, where a stack mounts its own config files      */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -664,4 +664,54 @@ test("composeFileBindings ignores what it cannot show as one file", () => {
   assert.deepEqual(composeFileBindings(yaml), []);
   // And a document it cannot read declares nothing rather than throwing.
   assert.deepEqual(composeFileBindings("services: [oops"), []);
+});
+
+/**
+ * Every host-escape gate reads the compose with the same parser the RENDERER uses,
+ * and each one fails open on YAML it cannot read. So a shape the gate cannot parse
+ * but the renderer can is a way past all of them at once - which is what an
+ * explicitly tagged merge key was.
+ */
+test("no host-escape gate is blind to a value that arrives through an anchor", () => {
+  const via = (
+    block: string,
+    service = "    <<: *anchor\n    image: alpine\n",
+  ) => `x-anchor: &anchor\n${block}services:\n  a:\n${service}`;
+
+  assert.equal(
+    composeNeedsHostPrivileges(via("  privileged: true\n")),
+    true,
+    "privileged",
+  );
+  assert.equal(
+    composeNeedsHostPrivileges(
+      `x-anchor: &anchor\n  !!merge <<: {}\n  privileged: true\nservices:\n  a:\n    <<: *anchor\n    image: alpine\n`,
+    ),
+    true,
+    "privileged behind a TAGGED merge key",
+  );
+  assert.equal(
+    composeNeedsHostPrivileges(via("  cap_add: [SYS_ADMIN]\n")),
+    true,
+    "cap_add",
+  );
+  assert.equal(composeNeedsHostPrivileges(via("  pid: host\n")), true, "pid");
+  assert.equal(
+    composeHasHostBindMount(via('  volumes: ["/:/host"]\n')),
+    true,
+    "bind mount",
+  );
+  assert.equal(
+    composeBuildReachesHost(
+      via("  build: {context: /}\n", "    <<: *anchor\n"),
+    ),
+    true,
+    "build context",
+  );
+  // And a stack that reaches nowhere still reaches nowhere.
+  assert.equal(
+    composeNeedsHostPrivileges(via("  restart: always\n")),
+    false,
+    "a clean anchor",
+  );
 });

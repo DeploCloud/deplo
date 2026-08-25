@@ -30,7 +30,7 @@ let capture: FetchCapture | null = null;
 const USER_2 = "user_2";
 /**
  * `rateLimit`'s buckets are process-global and outlive one test, so every case
- * here counts against an address of its own — sharing one would make the second
+ * here counts against an address of its own - sharing one would make the second
  * assertion depend on the first having run.
  */
 const USER_3 = "user_3";
@@ -51,7 +51,7 @@ beforeEach(async () => {
   await pg.exec(
     `truncate table notification_alerts, notification_channels, users, teams restart identity cascade;`,
   );
-  // TEAM_A is the OLDEST team — the one the old fallback would have picked.
+  // TEAM_A is the OLDEST team - the one the old fallback would have picked.
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },

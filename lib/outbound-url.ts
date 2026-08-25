@@ -12,7 +12,7 @@ import { isIP } from "node:net";
 
 /**
  * The one name resolver the outbound guard goes through, swappable so the pglite
- * suite stays hermetic (a real lookup would hit the network — and answer
+ * suite stays hermetic (a real lookup would hit the network, and answer
  * differently on every machine). Production always uses node's resolver.
  */
 let dnsLookup: (host: string) => Promise<{ address: string }[]> = (host) =>
@@ -55,7 +55,7 @@ export async function assertSafeOutboundUrl(
 }
 
 /**
- * The same guard for a destination that is a bare HOST rather than a URL — an SMTP
+ * The same guard for a destination that is a bare HOST rather than a URL - an SMTP
  * server, which nodemailer dials by `host` + `port` and which therefore never goes
  * near {@link assertSafeOutboundUrl}.
  */
@@ -80,7 +80,7 @@ export async function assertSafeOutboundHost(
   // loopback, an expanded v4-mapped address) sails past it.
   if (isIP(host) === 6) {
     // Strip a zone id (`::1%eth0`) before canonicalizing: WHATWG URL THROWS on
-    // one, and a throw used to fall through to "allowed" — an internal literal
+    // one, and a throw used to fall through to "allowed" - an internal literal
     // could dodge the guard just by naming an interface.
     const bare = host.split("%")[0];
     let canon: string | null = null;
@@ -95,7 +95,7 @@ export async function assertSafeOutboundHost(
     if (canon === null) throw refuseError();
     if (isInternalHost(canon)) refuse();
     // NAT64 (`64:ff9b::<v4>`) carries an embedded IPv4 that a NAT64 gateway
-    // translates back — read it out and judge the address it really reaches.
+    // translates back - read it out and judge the address it really reaches.
     const nat64 = /^64:ff9b:(?::|.*:)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(
       canon,
     );
@@ -113,7 +113,7 @@ export async function assertSafeOutboundHost(
   try {
     addresses = await dnsLookup(host);
   } catch {
-    return; // unresolvable today — the dial fails too, see the docblock
+    return; // unresolvable today - the dial fails too, see the docblock
   }
   if (addresses.some((a) => isInternalHost(a.address.toLowerCase()))) refuse();
 }
@@ -141,7 +141,7 @@ function isInternalHost(host: string): boolean {
       host === "::1" || // loopback
       /^fe[89ab]/.test(host) || // link-local fe80::/10
       /^f[cd]/.test(host) || // ULA fc00::/7 (covers fd00::/8)
-      host.startsWith("::ffff:") // v4-mapped — must not dodge the v4 checks
+      host.startsWith("::ffff:") // v4-mapped - must not dodge the v4 checks
     );
   }
   return false;

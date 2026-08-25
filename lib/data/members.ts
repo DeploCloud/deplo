@@ -88,7 +88,7 @@ export interface MemberDTO {
   username: string;
   name: string;
   /**
-   * The member's RANK — 'owner' outranks everyone else and is what the guards
+   * The member's RANK - 'owner' outranks everyone else and is what the guards
    * read. For what to SHOW, use {@link roleName}: two members can both rank as
    * `member` while holding different roles.
    */
@@ -105,11 +105,11 @@ export interface MemberDTO {
   /**
    * How their access compares with the role they hold: `less` when an admin took
    * something away from this one person, `more` when they were given something
-   * extra, `null` when they are exactly their role — which is almost everybody.
+   * extra, `null` when they are exactly their role, which is almost everybody.
    */
   accessDelta: "less" | "more" | null;
   /**
-   * True for the team's ABSOLUTE owner — the founder who created the team (the
+   * True for the team's ABSOLUTE owner - the founder who created the team (the
    * "crown" 👑).
    */
   isPrimaryOwner: boolean;
@@ -147,7 +147,7 @@ export interface GlobalUserDTO {
   avatarUrl: string | null;
   teamCount: number;
   isInstanceAdmin: boolean;
-  /** Owns the instance — their row is closed to every other admin. */
+  /** Owns the instance - their row is closed to every other admin. */
   isInstanceOwner: boolean;
   suspended: boolean;
   canExposePorts: boolean;
@@ -160,13 +160,13 @@ export interface UserDetailDTO {
   userId: string;
   username: string;
   name: string;
-  /** Shown ONLY in the admin detail view — never in lists or search. */
+  /** Shown ONLY in the admin detail view, never in lists or search. */
   email: string;
   avatarColor: string;
   /** Resolved picture: uploaded image, else Gravatar, else null for the monogram. */
   avatarUrl: string | null;
   isInstanceAdmin: boolean;
-  /** Owns the instance — their row is closed to every other admin. */
+  /** Owns the instance - their row is closed to every other admin. */
   isInstanceOwner: boolean;
   suspended: boolean;
   canExposePorts: boolean;
@@ -205,7 +205,7 @@ export interface RegistrationLinkDTO {
   expiresAt: string;
   createdAt: string;
   /**
-   * The link can still be read back with {@link revealRegistrationLink} — it is
+   * The link can still be read back with {@link revealRegistrationLink} - it is
    * pending, unexpired, and was minted after the token started being stored
    * encrypted.
    */
@@ -269,7 +269,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
   const db = getDb();
   // Self-healing: a team that predates roles (or was created by another path)
   // gets its three defaults here, and the memberships that already match one
-  // adopt it — so the list names a real role instead of "Custom" for everyone.
+  // adopt it, so the list names a real role instead of "Custom" for everyone.
   await ensureTeamRoles(db, teamId);
   const founderId = await teamFounderUserId(db, teamId);
   const rows = await db
@@ -479,7 +479,7 @@ export async function teamFounderUserId(
 
 /**
  * List registered users available to add to the active team, matching on USERNAME
- * (and display name) only — emails are never searched or returned.
+ * (and display name) only - emails are never searched or returned.
  */
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   const teamId = await requireActiveTeamId();
@@ -499,7 +499,7 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
-      // Consumed by `avatarUrl` below and dropped — this DTO carries no email.
+      // Consumed by `avatarUrl` below and dropped - this DTO carries no email.
       image: usersTable.image,
       email: usersTable.email,
     })
@@ -591,7 +591,7 @@ interface ResolvedAssignment {
 }
 
 /**
- * Resolve either shape of a member assignment: - `roleId` — the current path: the
+ * Resolve either shape of a member assignment: - `roleId` - the current path: the
  * member gets EXACTLY that role's capabilities.
  */
 async function resolveAssignment(
@@ -607,7 +607,7 @@ async function resolveAssignment(
     );
     if (beyond.length > 0)
       throw new Error(
-        `You can only assign a role whose permissions you hold yourself — ${a.name} grants more than you do`,
+        `You can only assign a role whose permissions you hold yourself - ${a.name} grants more than you do`,
       );
     return {
       rank: a.rank,
@@ -618,7 +618,7 @@ async function resolveAssignment(
   }
   if (!input.role) throw new Error("Choose a role for this member");
   const raw = cleanCapabilities(input.capabilities, input.role);
-  // A caller can only hand out capabilities they hold THEMSELVES — bounding the
+  // A caller can only hand out capabilities they hold THEMSELVES - bounding the
   // assignment to the actor's own caps (same clamp as folder grants) closes the
   // escalation where a plain `manage_members` holder mints a member with capabilities
   const caps = withView(boundedBy(raw, actor.capabilities));
@@ -645,7 +645,7 @@ export async function addExistingMember(input: {
   const db = getDb();
   await ensureTeamRoles(db, teamId);
   const assignment = await resolveAssignment(db, teamId, input, membership);
-  // Granting the `owner` role is escalation — only an existing owner (the founder
+  // Granting the `owner` role is escalation - only an existing owner (the founder
   // or an assigned owner) may add another owner. A plain `manage_members` holder
   // can add members/viewers but cannot mint an owner above their own rank.
   if (assignment.rank === "owner" && membership.role !== "owner")
@@ -744,7 +744,7 @@ const CRITICAL_LABEL: Record<string, string> = {
 
 /**
  * Assert that, after the proposed change to `targetUserId`'s membership, the team
- * still has at least one holder of each critical admin capability — under a
+ * still has at least one holder of each critical admin capability - under a
  * `SELECT … FOR UPDATE` lock over the holder set so two concurrent demotions
  */
 export async function assertAdminCoverage(
@@ -817,8 +817,8 @@ export async function updateMember(input: {
     const m = rows[0];
     if (!m) throw new Error("Member not found");
     // The ABSOLUTE owner (founder / "crown") is immutable: their role and
-    // permissions can't be changed by anyone — including themselves and instance
-    // admins — so the creator can never be demoted or locked out of their team.
+    // permissions can't be changed by anyone, including themselves and instance
+    // admins, so the creator can never be demoted or locked out of their team.
     if (input.userId === founderId) {
       throw new Error(
         "The team's primary owner's role and permissions can't be changed.",
@@ -830,7 +830,7 @@ export async function updateMember(input: {
     if (m.role === "owner" && !actorIsOwner) {
       throw new Error("Only an owner can change another owner's permissions.");
     }
-    // Promoting someone to the `owner` role is escalation — only an owner may do
+    // Promoting someone to the `owner` role is escalation - only an owner may do
     // it (so a non-owner manager can't mint an owner above their own rank).
     if (assignment.rank === "owner" && !actorIsOwner) {
       throw new Error("Only an owner can grant the owner role.");
@@ -897,8 +897,8 @@ export async function removeMember(userId: string): Promise<void> {
       .limit(1);
     const m = rows[0];
     if (!m) throw new Error("Member not found");
-    // The ABSOLUTE owner (founder / "crown") can never be removed by anyone —
-    // including instance admins — so the team always keeps its creator.
+    // The ABSOLUTE owner (founder / "crown") can never be removed by anyone,
+    // including instance admins, so the team always keeps its creator.
     if (userId === founderId) {
       throw new Error("The team's primary owner can't be removed.");
     }
@@ -945,7 +945,7 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
-      // Consumed by `avatarUrl` below and dropped — this list carries no email.
+      // Consumed by `avatarUrl` below and dropped - this list carries no email.
       image: usersTable.image,
       email: usersTable.email,
       isInstanceAdmin: usersTable.isInstanceAdmin,
@@ -984,7 +984,7 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
 
 /**
  * Full detail for one user, for the admin editor: teams & roles, account metadata
- * and the email (admin-only — never in lists/search).
+ * and the email (admin-only, never in lists/search).
  */
 export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
   await requireInstanceAdmin();
@@ -1093,7 +1093,7 @@ export async function updateUserAdmin(input: {
         "Only the instance owner can edit the instance owner's account",
       );
 
-    // The owner can't uncrown themselves by dropping their own admin flag — the same
+    // The owner can't uncrown themselves by dropping their own admin flag - the same
     // rule the team founder has (a founder cannot be demoted even by themselves).
     if (input.userId === ownerUserId && !input.isInstanceAdmin)
       throw new Error(
@@ -1142,7 +1142,7 @@ export async function updateUserAdmin(input: {
       })
       .where(eq(usersTable.id, input.userId));
     // The credential lives on the Better Auth `account` row since 0055, so a
-    // reset writes there — in the same transaction, so a failed lockout check
+    // reset writes there - in the same transaction, so a failed lockout check
     // rolls the new password back with everything else.
     if (newPassword) await setUserPassword(input.userId, newPassword, tx);
   });
@@ -1293,7 +1293,7 @@ export async function resetUserPasskeys(userId: string): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 export interface MintRegistrationResult {
-  /** Absolute /register/<token> URL — always returned for copying/sharing. */
+  /** Absolute /register/<token> URL, always returned for copying/sharing. */
   link: string;
 }
 
@@ -1319,7 +1319,7 @@ export async function mintRegistrationLink(input: {
     id: linkId,
     tokenHash: sha256Hex(rawToken),
     // Kept beside the hash so the admin can copy the link again for the 24 hours
-    // it lives — see `revealRegistrationLink`. The hash stays the lookup key.
+    // it lives - see `revealRegistrationLink`. The hash stays the lookup key.
     tokenEnc: encryptSecret(rawToken),
     status: "pending",
     createdBy,
@@ -1339,14 +1339,14 @@ export async function mintRegistrationLink(input: {
       throw new Error("Select at least one team for the new user");
     if (assignments.length > MAX_REGISTRATION_TEAMS)
       throw new Error("Too many teams selected");
-    // A new user joins existing teams as member/viewer ONLY — never as an owner.
+    // A new user joins existing teams as member/viewer ONLY, never as an owner.
     for (const a of assignments) {
       if (a.role !== "member" && a.role !== "viewer")
         throw new Error(
           "A new user can only join a team as a member or viewer",
         );
     }
-    // The minting admin may only place a new user into teams THEY belong to — an
+    // The minting admin may only place a new user into teams THEY belong to - an
     // instance admin is NOT implicitly a member of every team.
     const me = await getCurrentUser();
     if (!me) throw new Error("Not authenticated");
@@ -1408,7 +1408,7 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
       usedByUsername: registrationLinksTable.usedByUsername,
       expiresAt: registrationLinksTable.expiresAt,
       createdAt: registrationLinksTable.createdAt,
-      // Presence only — the ciphertext never leaves this function.
+      // Presence only - the ciphertext never leaves this function.
       tokenEnc: registrationLinksTable.tokenEnc,
     })
     .from(registrationLinksTable)
@@ -1456,7 +1456,7 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
 
 /**
  * The public base URL, or "" when there is no request to read it from (the
- * scheduler, a test). Only ever used for DISPLAY here — a mint that needs a real
+ * scheduler, a test). Only ever used for DISPLAY here - a mint that needs a real
  * URL still lets the failure through.
  */
 async function publicBaseUrl(): Promise<string> {
@@ -1469,7 +1469,7 @@ async function publicBaseUrl(): Promise<string> {
 
 /**
  * Read a pending registration link back, in full, so the admin who minted it can
- * hand it over again — the alternative was minting a second link because the first
+ * hand it over again - the alternative was minting a second link because the first
  * one got lost between the clipboard and the chat window.
  */
 export async function revealRegistrationLink(id: string): Promise<string> {
@@ -1482,7 +1482,7 @@ export async function revealRegistrationLink(id: string): Promise<string> {
   if (!row) throw new Error("Link not found");
   if (row.status === "used")
     throw new Error(
-      `This link was already used${row.usedByUsername ? ` by @${row.usedByUsername}` : ""} — registration links work once. Mint a new one.`,
+      `This link was already used${row.usedByUsername ? ` by @${row.usedByUsername}` : ""} - registration links work once. Mint a new one.`,
     );
   if (row.status !== "pending")
     throw new Error("This link was revoked. Mint a new one.");
@@ -1494,7 +1494,7 @@ export async function revealRegistrationLink(id: string): Promise<string> {
     );
   const rawToken = decryptSecret(row.tokenEnc);
   // Fails closed to "" (a rotated DEPLO_SECRET), and a half-URL is worse than a
-  // clear error — the admin can always mint a fresh link.
+  // clear error - the admin can always mint a fresh link.
   if (rawToken === "")
     throw new Error(
       "This link could not be decrypted. Revoke it and mint a new one.",

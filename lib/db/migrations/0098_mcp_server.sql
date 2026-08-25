@@ -3,7 +3,7 @@
 --
 -- Deliberately JUST the columns: the `manage_mcp` backfill is 0099, because a
 -- backfill reads tables that a historical replay may not have created yet, while
--- an additive column on `teams` is safe to apply at any point (the 0085 case —
+-- an additive column on `teams` is safe to apply at any point (the 0085 case -
 -- see the pre-seed lists in lib/db/*-migration.test.ts, which this file joins).
 --
 -- Both DEFAULT true, so every existing team is AI-ready the moment it upgrades:

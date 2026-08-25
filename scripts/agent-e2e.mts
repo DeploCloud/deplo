@@ -58,7 +58,7 @@ async function main() {
   const tar = await tarToBytes(ctxDir);
 
   // A rendered single-image compose, exactly as renderCompose would emit (no
-  // routes needed for the e2e — we only assert the container runs).
+  // routes needed for the e2e - we only assert the container runs).
   const composeYaml = `services:
   ${NAME}:
     image: deplo/${SLUG}:e2e

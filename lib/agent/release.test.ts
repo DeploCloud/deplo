@@ -174,7 +174,7 @@ test("null when an asset has no matching checksum line", async () => {
 
 /**
  * A stub whose served "latest" can change between calls and that counts how many
- * times the release endpoint was hit — so a test can assert the memo coalesces
+ * times the release endpoint was hit, so a test can assert the memo coalesces
  * within the TTL and that refreshAgentRelease() forces a fresh hit that surfaces a
  */
 function countingStub(version: () => string) {
@@ -223,7 +223,7 @@ test("memo coalesces repeated resolves within the TTL (one GitHub hit)", async (
     const b = await resolveLatestAgentRelease();
     assert.equal(a!.version, "1.0.0");
     assert.equal(b!.version, "1.0.0");
-    // Second resolve served from the memo — no extra GitHub call.
+    // Second resolve served from the memo, no extra GitHub call.
     assert.equal(s.hits(), 1);
   } finally {
     s.restore();
@@ -254,7 +254,7 @@ test("refreshAgentRelease busts the memo and surfaces a newly-published version"
     assert.equal(refreshed!.version, "1.5.0");
     assert.equal(s.hits(), 2);
     assert.equal((await resolveLatestAgentRelease())!.version, "1.5.0");
-    assert.equal(s.hits(), 2); // re-populated — no third hit
+    assert.equal(s.hits(), 2); // re-populated - no third hit
   } finally {
     s.restore();
   }

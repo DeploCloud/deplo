@@ -32,7 +32,7 @@ export function ServerConnectionGuard() {
     }, HEARTBEAT_INTERVAL_MS);
     // The browser knows instantly when the machine drops off the network, and
     // a tab waking from the background may have missed ticks (timers are
-    // throttled while hidden) — check right away in both cases.
+    // throttled while hidden) - check right away in both cases.
     const onOffline = () => void checkServerConnection();
     const onVisibilityChange = () => {
       if (!document.hidden) void checkServerConnection();
@@ -52,7 +52,7 @@ export function ServerConnectionGuard() {
 
 // Auto-reconnect cadence. The first probe fires quickly (outages are often a
 // blip), then backs off geometrically up to a ceiling so a long outage doesn't
-// hammer a dead server — while still checking often enough to feel responsive.
+// hammer a dead server, while still checking often enough to feel responsive.
 const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 const RECONNECT_BACKOFF = 1.7;
@@ -131,7 +131,7 @@ function useAutoReconnect(): {
     };
 
     // The browser knows the moment the machine rejoins the network, and a tab
-    // waking from the background may have idled through the wait — probe right
+    // waking from the background may have idled through the wait - probe right
     // away in both cases rather than letting the bar run out.
     const onOnline = () => retryNowRef.current();
     const onVisible = () => {
@@ -160,7 +160,7 @@ const NAV_BLOCK_TOAST_ID = "deplo-nav-paused";
 
 /**
  * Pauses navigation to any OTHER page while the notification is up, WITHOUT
- * locking the current page. Both the primary and middle mouse buttons are paused —
+ * locking the current page. Both the primary and middle mouse buttons are paused -
  * a middle-click would otherwise open the dead route in a background tab.
  */
 function useBlockNavigationWhileDisconnected(active: boolean): void {
@@ -173,13 +173,13 @@ function useBlockNavigationWhileDisconnected(active: boolean): void {
         {
           id: NAV_BLOCK_TOAST_ID,
           description:
-            "You can stay on this page — it reloads itself once the server is back.",
+            "You can stay on this page - it reloads itself once the server is back.",
         },
       );
 
     // Is this click headed for an in-app route change we should hold back?
     const isInternalNavClick = (e: MouseEvent): boolean => {
-      // Primary (0) and middle (1) buttons navigate — a middle-click opens a new
+      // Primary (0) and middle (1) buttons navigate - a middle-click opens a new
       // tab on the dead route. Right-click (2, context menu) and already-handled
       // clicks are left alone.
       if ((e.button !== 0 && e.button !== 1) || e.defaultPrevented)
@@ -220,7 +220,7 @@ function useBlockNavigationWhileDisconnected(active: boolean): void {
       try {
         window.history.pushState(null, "", window.location.href);
       } catch {
-        /* pushState can throw in rare sandboxed contexts — degrade gracefully */
+        /* pushState can throw in rare sandboxed contexts - degrade gracefully */
       }
     };
     const onPopState = () => {
@@ -253,8 +253,8 @@ function DisconnectedNotification() {
   useBlockNavigationWhileDisconnected(!restored);
 
   // Accent tracks the phase: destructive while the server is gone, emerald the
-  // moment a probe brings it back. These must be complete literal class strings
-  // — Tailwind can't see interpolated (`bg-${x}`) ones, so it never emits them.
+  // moment a probe brings it back. These must be complete literal class strings -
+  // Tailwind can't see interpolated (`bg-${x}`) ones, so it never emits them.
   const tone = restored
     ? {
         core: "border-emerald-500/30 bg-emerald-500/15 text-emerald-500",
@@ -287,7 +287,7 @@ function DisconnectedNotification() {
 
         <div className="overflow-hidden rounded-xl border border-border bg-card p-3.5 shadow-2xl">
           {/* Icon rides INLINE with the title on one row, so it owns no tall
-              empty column — a compact chip whose accent tracks the phase
+              empty column - a compact chip whose accent tracks the phase
               (destructive → emerald on recovery). */}
           <div className="flex items-center gap-2.5">
             <span
@@ -312,8 +312,8 @@ function DisconnectedNotification() {
             className="mt-2 text-xs leading-relaxed text-muted-foreground"
           >
             {restored
-              ? "Reconnected — reloading to pick up right where you left off."
-              : "Can’t reach the server. You can keep reading this page — navigation and actions are paused until it’s back."}
+              ? "Reconnected - reloading to pick up right where you left off."
+              : "Can’t reach the server. You can keep reading this page - navigation and actions are paused until it’s back."}
           </p>
 
           {/* One button. Its own fill IS the timer: a bar sweeps left-to-right

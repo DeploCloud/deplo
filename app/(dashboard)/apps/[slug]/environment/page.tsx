@@ -24,7 +24,7 @@ export default async function AppEnvPage(
   const teamWideEnv =
     (await hasCapability("manage_env")) && (await reachesWholeTeam());
 
-  // Viewing env values requires manage_env ON THIS APP — it can be held here and
+  // Viewing env values requires manage_env ON THIS APP - it can be held here and
   // nowhere else (ADR-0016). Without it the tab is hidden, but guard the page too
   // in case of a direct link / stale navigation.
   if (!(await hasAppCapability(project.id, "manage_env"))) {

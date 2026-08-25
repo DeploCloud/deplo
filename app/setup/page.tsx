@@ -19,7 +19,7 @@ export default async function SetupPage() {
         <SetupForm />
       </div>
       <p className="relative z-10 mt-8 text-center text-xs text-muted-foreground">
-        Deplo — self-hosted deployments with Docker &amp; Traefik
+        Deplo - self-hosted deployments with Docker &amp; Traefik
       </p>
     </div>
   );

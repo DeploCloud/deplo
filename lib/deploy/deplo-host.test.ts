@@ -53,7 +53,7 @@ test("matches the server row's host when only the host (not ip) carries the addr
     { DEPLO_SERVER_IP: "203.0.113.10", DEPLO_PUBLIC_URL: undefined },
     () => {
       const self = deploHostSelfAddresses();
-      // host holds the self-address, ip is something else — still the Deplo host.
+      // host holds the self-address, ip is something else - still the Deplo host.
       assert.equal(
         isDeploHostServer({ ip: "10.0.0.5", host: "203.0.113.10" }, self),
         true,

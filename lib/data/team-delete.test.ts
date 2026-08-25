@@ -25,7 +25,7 @@ import { canDeleteTeam, deleteTeam } from "./team-delete";
 
 /**
  * deleteTeam gating + cascade against pglite. The cookie switch after the delete
- * throws outside a request scope and is best-effort by design — asserted
+ * throws outside a request scope and is best-effort by design - asserted
  * indirectly by the delete succeeding.
  */
 
@@ -102,7 +102,7 @@ test("an assigned owner (not the founder, not an admin) is rejected", async () =
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       // Assigned owner: owner ROLE in TEAM_A but not its founder. seedIdentity
-      // defaults owners to instance admin, so pin that off — it would bypass
+      // defaults owners to instance admin, so pin that off - it would bypass
       // the founder gate.
       { id: USER_2, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
     ],

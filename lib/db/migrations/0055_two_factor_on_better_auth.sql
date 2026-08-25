@@ -10,7 +10,7 @@
 --
 -- What that costs, stated plainly: the session cookie changes name and becomes a DB
 -- row, so EVERY user is signed out once when this lands. Nobody has to reset a
--- password — the backfill below hands Better Auth the existing scrypt hashes, and
+-- password - the backfill below hands Better Auth the existing scrypt hashes, and
 -- `emailAndPassword.password.{hash,verify}` is wired to the same
 -- `hashPassword`/`verifyPassword` that produced them (lib/crypto.ts).
 --
@@ -89,7 +89,7 @@ CREATE TABLE "verification" (
 
 -- The twoFactor plugin's own table. `secret` and `backup_codes` are ciphertext
 -- (the plugin encrypts both with the Better Auth secret, which deplo derives from
--- DEPLO_SECRET) — so rotating DEPLO_SECRET now also orphans enrolled authenticators,
+-- DEPLO_SECRET), so rotating DEPLO_SECRET now also orphans enrolled authenticators,
 -- on top of the `*_enc` / session / agent-CA blast radius it already had.
 -- `failed_verification_count` + `locked_until` are the plugin's built-in brute-force
 -- lockout, which is why deplo hand-rolls no attempt counter of its own.

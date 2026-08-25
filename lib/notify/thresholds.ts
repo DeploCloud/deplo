@@ -4,7 +4,7 @@ import { dispatchServerAlert } from "./dispatch";
 import type { ServerMetrics } from "../data/monitoring";
 
 /**
- * "This server is about to stop working" — the one thing the metrics stream knew
+ * "This server is about to stop working" - the one thing the metrics stream knew
  * and never told anybody.
  */
 
@@ -87,7 +87,7 @@ export function evaluateThresholds(
         path: "/monitoring",
       });
     } else if (value < CLEAR_PCT) {
-      // Only announce a recovery from something that was actually announced —
+      // Only announce a recovery from something that was actually announced,
       // otherwise every healthy server says "back to normal" on its first frame.
       const wasAlerted = highSince.get(slot)?.alerted === true;
       highSince.delete(slot);
@@ -120,7 +120,7 @@ function gb(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-/** Test hook — the sustain map outlives a single test file otherwise. */
+/** Test hook - the sustain map outlives a single test file otherwise. */
 export function __resetThresholds(): void {
   highSince.clear();
 }

@@ -193,7 +193,7 @@ test("an ancestor grant reaches the subtree, and the nearer node wins", async ()
     await capsOn({ kind: "app", id: APP_IN_CHILD }),
     ["view", "manage_env"].sort(),
   );
-  // A grant on the child replaces the ancestor's outright — not a union.
+  // A grant on the child replaces the ancestor's outright, not a union.
   await grantFolder(FLD_CHILD, ["view_logs"]);
   assert.deepEqual(
     await capsOn({ kind: "app", id: APP_IN_CHILD }),
@@ -233,7 +233,7 @@ test("a project grant governs the apps filed under it, and never hides them", as
 /**
  * The gate a move runs, rather than the set it resolves. A grant REPLACES the
  * role inside its node, so a team-wide capability must stop at the boundary of
- * a node whose grant withholds it — and `moveAppToFolder` used to ask the TEAM
+ * a node whose grant withholds it, and `moveAppToFolder` used to ask the TEAM
  * for `move_apps` and then gate only the source FOLDER, which left every app
  * inside a project answering to the team-wide set alone.
  */

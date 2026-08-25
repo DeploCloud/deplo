@@ -22,7 +22,7 @@ import { syncPreviewComment } from "../deploy/preview-comment";
 import { parseRequiredLabels } from "../deploy/preview-lifecycle";
 
 /**
- * The `pull_request` arm of the GitHub webhook — the twin of the `push` arm in
+ * The `pull_request` arm of the GitHub webhook - the twin of the `push` arm in
  * [the route](../../app/api/github/webhook/route.ts), and shaped the same way.
  */
 export async function handlePullRequestDelivery(

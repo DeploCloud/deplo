@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { teamSwitchDestination } from "./team-switch";
 
-/** Section pages exist in every team — switching keeps the viewer on them. */
+/** Section pages exist in every team - switching keeps the viewer on them. */
 test("stays on team-agnostic section pages", () => {
   for (const path of [
     "/",
@@ -28,7 +28,7 @@ test("stays on team-agnostic section pages", () => {
   }
 });
 
-test("drops the query string — filters and selections name the old team's rows", () => {
+test("drops the query string - filters and selections name the old team's rows", () => {
   assert.equal(teamSwitchDestination("/variables?tab=shared"), "/variables");
   assert.equal(teamSwitchDestination("/?project=prc_1&env=environ_1"), "/");
   assert.equal(teamSwitchDestination("/templates?folder=fld_1"), "/templates");

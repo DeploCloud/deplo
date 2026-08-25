@@ -16,7 +16,7 @@ import {
 
 /**
  * `htpasswdLine` produces a Traefik-compatible `user:$2b$<cost>$<salt+hash>`
- * credential — bcrypt, which Traefik's `go-htpasswd` reads alongside the MD5
+ * credential - bcrypt, which Traefik's `go-htpasswd` reads alongside the MD5
  * (apr1) scheme this used to emit.
  */
 

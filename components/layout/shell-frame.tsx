@@ -39,7 +39,7 @@ export function ShellFrame({
   /** Topbar plus anything that stacks under it (banners, reminders). */
   header: React.ReactNode;
   /** The active team's id. Keys the content so switching teams REMOUNTS the
-   *  page instead of re-rendering it in place — see the note in `AppShell`. */
+   *  page instead of re-rendering it in place - see the note in `AppShell`. */
   contentKey: string;
   children: React.ReactNode;
 }) {

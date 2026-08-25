@@ -114,7 +114,7 @@ test("renameEnv moves the key in place, preserving value, type and identity", as
     false,
   );
   const renamed = after.find((e) => e.key === "new_name")!;
-  // Same ROW — the value and type ride along, no new var was minted.
+  // Same ROW - the value and type ride along, no new var was minted.
   assert.equal(renamed.id, before.id);
   assert.equal(renamed.value, "keepme");
   assert.equal(renamed.type, "plain");
@@ -136,7 +136,7 @@ test("renameEnv refuses to collide with an existing key on the same app", async 
     () => asUser1(() => renameEnv(beta.id, "ALPHA")),
     /already exists/,
   );
-  // Neither var was touched — the guard fires before the update.
+  // Neither var was touched - the guard fires before the update.
   const rows = await asUser1(() => listEnv("app_web"));
   assert.deepEqual(rows.map((e) => e.key).sort(), ["ALPHA", "BETA"]);
 });

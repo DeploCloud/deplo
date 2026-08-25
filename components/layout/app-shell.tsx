@@ -26,9 +26,9 @@ export function AppShell({
   teams: TeamSummary[];
   /** Team snapshot for the topbar breadcrumb (folders/apps/projects). */
   breadcrumb: BreadcrumbGraph;
-  /** Current member's capabilities — drives capability-gated nav visibility. */
+  /** Current member's capabilities - drives capability-gated nav visibility. */
   capabilities: string[];
-  /** Instance admin — gates admin-only nav (the Users settings section). */
+  /** Instance admin - gates admin-only nav (the Users settings section). */
   isAdmin: boolean;
   /** Holds a passkey that works here: already a second factor. */
   hasPasskey?: boolean;

@@ -6,22 +6,22 @@ import type {
 } from "../data/container-metrics";
 
 /**
- * Per-CONTAINER (per-app / per-database) metrics HISTORY — the sibling of {@link
+ * Per-CONTAINER (per-app / per-database) metrics HISTORY - the sibling of {@link
  * import("./history")} for the Monitoring TAB on an app or database page.
  */
 
-/** Keep samples this far back — the largest chart window (15m) plus slack. */
+/** Keep samples this far back - the largest chart window (15m) plus slack. */
 export const CONTAINER_HISTORY_WINDOW_MS = 16 * 60_000;
 
 /**
  * Ignore a sample landing within this of the previous one. A RATE CEILING, not a
- * de-dupe — see the identical constant in history.ts for why the distinction
+ * de-dupe - see the identical constant in history.ts for why the distinction
  * matters and why it sits below the agent's 1000ms cadence clamp floor.
  */
 const MIN_GAP_MS = 250;
 
 /** Backstop against unbounded growth if both the window + gap guards misbehave.
- *  Sized for the fastest cadence the agent will serve (1s), not the default 5s —
+ *  Sized for the fastest cadence the agent will serve (1s), not the default 5s -
  *  see history.ts. */
 const HARD_CAP = 1200;
 
@@ -83,7 +83,7 @@ export function recordContainerInstances(
   instances.set(id, rows);
 }
 
-/** The last known breakdown for one resource — empty before the first frame. */
+/** The last known breakdown for one resource - empty before the first frame. */
 export function latestContainerInstances(
   id: string,
 ): ContainerInstanceMetrics[] {
@@ -122,7 +122,7 @@ export function clearContainerHistory(id?: string): void {
 }
 
 /**
- * Drop buffers for ids that no longer EXIST — deleted apps/databases. A container
+ * Drop buffers for ids that no longer EXIST - deleted apps/databases. A container
  * merely ABSENT from a frame must NOT be pruned here, and that is a behavioural
  * change from the poll era.
  */

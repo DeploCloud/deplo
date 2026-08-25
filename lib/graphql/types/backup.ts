@@ -35,7 +35,7 @@ const BackupTargetKindEnum = builder.enumType("BackupTargetKind", {
   values: ["database", "app"] as const,
 });
 
-// A single run's terminal/in-flight state — distinct from `BackupStatus`
+// A single run's terminal/in-flight state - distinct from `BackupStatus`
 // (which has the schedule-only `"never"`). Local to this domain.
 const BackupRunStatusEnum = builder.enumType("BackupRunStatus", {
   values: ["running", "success", "failed", "canceled"] as const,
@@ -85,7 +85,7 @@ export const BackupRunRef = builder
   .objectRef<BackupRun>("BackupRun")
   .implement({
     description:
-      "One executed backup — a single dump+upload artifact, and the source " +
+      "One executed backup - a single dump+upload artifact, and the source " +
       "for an in-place restore.",
     fields: (t) => ({
       id: t.exposeID("id"),
@@ -111,7 +111,7 @@ export const BackupRunRef = builder
           "False for runs taken before integrity checking shipped.",
         resolve: (r) => Boolean(r.sha256),
       }),
-      // Float, not Int — a backup artifact can exceed 2^31 bytes (>2 GB).
+      // Float, not Int - a backup artifact can exceed 2^31 bytes (>2 GB).
       sizeBytes: t.exposeFloat("sizeBytes"),
       status: t.field({
         type: BackupRunStatusEnum,
@@ -345,8 +345,8 @@ builder.mutationFields((t) => ({
   }),
   deleteBackupArtifacts: t.field({
     type: "Int",
-    // The precise capability VARIES by target kind — `delete_apps` for a project,
-    // `delete_databases` for a database, each mirroring that target's OWN delete gate —
+    // The precise capability VARIES by target kind - `delete_apps` for a project,
+    // `delete_databases` for a database, each mirroring that target's OWN delete gate,
     // which one static authScope cannot express.
     authScopes: { loggedIn: true },
     description:
@@ -372,7 +372,7 @@ builder.mutationFields((t) => ({
           `Could not delete every backup artifact (failed for ` +
             `${failedDestinations.length} destination` +
             `${failedDestinations.length === 1 ? "" : "s"}). The ${targetKind} ` +
-            `was not deleted — check the destination is reachable and retry.`,
+            `was not deleted - check the destination is reachable and retry.`,
         );
       }
       return deleted;

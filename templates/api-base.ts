@@ -1,7 +1,7 @@
 /**
  * Where the one-click template catalog lives. Shared by the catalog client and the
  * CSP in `proxy.ts`, which has to allow the same origin the cards load their logos
- * from — a default in one and not the other silently blocks every template image.
+ * from - a default in one and not the other silently blocks every template image.
  */
 
 /** The public catalog. Overridable so an instance can point at its own mirror. */

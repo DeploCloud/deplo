@@ -646,7 +646,7 @@ test("the plan tells an enrolled-but-unreachable machine apart from a missing on
 });
 
 test("a resource this run did not create is not reachable at all", async () => {
-  // The database is here and its name matches a Dokploy service exactly — which is
+  // The database is here and its name matches a Dokploy service exactly, which is
   // all the old name-matching needed to offer it up for a copy that WIPES it.
   const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
   await seedRunItems(runId, [
@@ -675,7 +675,7 @@ test("a resource the run only SKIPPED is left alone, data included", async () =>
       sourceName: "blink-db",
       targetKind: "database",
       targetId: "db_blink",
-      // "already here, left as it is" — which has to include its data.
+      // "already here, left as it is", which has to include its data.
       outcome: "skipped",
     },
   ]);
@@ -917,6 +917,52 @@ test("accepting the loss unblocks the app, and says so in the trail", async () =
     "select message from activities where message like '%without the data%'",
   );
   assert.equal(trail.rows.length, 1);
+});
+
+test("a database with nothing to copy is left RUNNING, not stopped", async () => {
+  await seedDokployHostServer();
+  // Never started on Dokploy, so the data volume it declares is not there.
+  notFoundVolumes.add("blink-db-abc_data");
+  const runId = await openRun();
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "postgres",
+      sourceId: "dok-pg-1",
+    }),
+  );
+  assert.equal(res.moved, 0);
+  assert.equal(res.failed, 0);
+
+  // The copy stops the destination before it writes. Nothing to write is not a
+  // reason to leave somebody's database down.
+  assert.ok(agentCalls.includes(`${SERVER_1}:stop:db-blink-db`));
+  assert.ok(
+    agentCalls.includes(`${SERVER_1}:start:db-blink-db`),
+    agentCalls.join(" | "),
+  );
+  const rows = await db.execute(
+    "select status, data_copy_error from databases where id = 'db_blink'",
+  );
+  assert.equal(rows.rows[0].status, "running");
+  assert.equal(rows.rows[0].data_copy_error, "");
+
+  const items = await db.execute(
+    `select message from dokploy_import_items where run_id = '${runId}' order by seq`,
+  );
+  const messages = items.rows.map((r) => String(r.message ?? ""));
+  assert.ok(
+    messages.some((m) => /Nothing was copied into it/.test(m)),
+    messages.join(" | "),
+  );
+  assert.equal(
+    messages.some((m) => /up on the copied data/.test(m)),
+    false,
+    "nothing was copied, so nothing may claim it was",
+  );
 });
 
 test("a copied database is started again and checked, and the report says what landed", async () => {

@@ -200,7 +200,7 @@ test("skipUnchanged normalises a ./-prefixed root and matches changed files unde
   );
 });
 
-test("skipUnchanged is inert at the repo root (rootDirectory empty/'.') — always deploys", () => {
+test("skipUnchanged is inert at the repo root (rootDirectory empty/'.') - always deploys", () => {
   const cfg: RepoTriggerConfig = {
     branch: "main",
     triggerType: "push",
@@ -277,7 +277,7 @@ test("pathMatchesGlob: * stays within a segment, ** crosses separators", () => {
 });
 
 test("pathMatchesGlob: **/ is anchored to a path boundary (no partial-segment match)", () => {
-  // The leading **/ must consume WHOLE segments — it may not swallow a partial
+  // The leading **/ must consume WHOLE segments - it may not swallow a partial
   // filename, so a sibling that merely shares the suffix does not match.
   assert.equal(pathMatchesGlob("config.json", "**/config.json"), true); // zero dirs
   assert.equal(pathMatchesGlob("a/b/config.json", "**/config.json"), true);

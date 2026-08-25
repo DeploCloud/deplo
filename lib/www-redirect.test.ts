@@ -23,7 +23,7 @@ test("a two-label public suffix still reads as an apex", () => {
 });
 
 test("an ordinary subdomain has no www variant to offer", () => {
-  // `www.api.example.com` is nobody's site — offering it would be a knob about
+  // `www.api.example.com` is nobody's site - offering it would be a knob about
   // a hostname that never gets used.
   assert.equal(wwwCounterpart("api.example.com"), null);
   assert.equal(wwwCounterpart("staging.app.example.com"), null);
@@ -56,7 +56,7 @@ test("scheme, case, trailing dot and slash are normalised away", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* deriveWwwRedirect — state is READ from the rows, never stored twice  */
+/* deriveWwwRedirect - state is READ from the rows, never stored twice  */
 /* ------------------------------------------------------------------ */
 
 test("no counterpart row ⇒ none", () => {
@@ -87,7 +87,7 @@ test("this row pointing at the counterpart ⇒ toCounterpart", () => {
     "toCounterpart",
   );
   // Read from the www row itself, the same pair reads as "the counterpart
-  // redirects here" — the state is always relative to the row being edited.
+  // redirects here" - the state is always relative to the row being edited.
   assert.equal(
     deriveWwwRedirect("www.example.com", [
       { name: "example.com", redirectTo: "www.example.com" },

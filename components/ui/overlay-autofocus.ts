@@ -36,8 +36,8 @@ export function overlayAutoFocus(event: Event, content: HTMLElement | null) {
   const tabbables = content
     ? [...content.querySelectorAll<HTMLElement>(TABBABLE)]
     : [];
-  // Only step in when the first candidate is a hint. Radix's default — focus the
-  // first real field, so the user can type straight away — is what we want
+  // Only step in when the first candidate is a hint. Radix's default - focus the
+  // first real field, so the user can type straight away - is what we want
   // everywhere else, and Enter-to-submit depends on it.
   if (!tabbables[0]?.hasAttribute("data-hint-trigger")) return;
   event.preventDefault();

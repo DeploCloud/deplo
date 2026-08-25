@@ -28,7 +28,7 @@ export function ConnectedClients({
 }) {
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<McpConnectionDTO | null>(null);
-  // The client leaves the list on the click — its credential is already gone by
+  // The client leaves the list on the click - its credential is already gone by
   // the time the mutation answers.
   const {
     visible: rows,

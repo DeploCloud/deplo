@@ -12,7 +12,7 @@ import { GRAVATAR_ORIGINS } from "@/lib/apps/avatar-shared";
 const SESSION_COOKIES = ["deplo.session_token", "__Secure-deplo.session_token"];
 // Paths reachable WITHOUT a session. `/register/<token>` is how a brand-new
 // person self-registers an account + team from a single-use link, so it must be
-// public — otherwise the proxy bounces them to /login before the page renders.
+// public, otherwise the proxy bounces them to /login before the page renders.
 const PUBLIC_PATHS = ["/login", "/signup", "/setup", "/register"];
 
 /**
@@ -64,7 +64,7 @@ export function proxy(request: NextRequest) {
       isDev ? " 'unsafe-eval'" : ""
     }`,
     // Browser push registers /sw.js. `worker-src` falls back to `script-src`,
-    // where `'strict-dynamic'` makes `'self'` inert — so without this line the
+    // where `'strict-dynamic'` makes `'self'` inert, so without this line the
     // service worker registration is refused outright.
     `worker-src 'self'`,
     `style-src 'self' 'unsafe-inline'`,

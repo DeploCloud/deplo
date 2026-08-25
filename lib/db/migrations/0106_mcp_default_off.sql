@@ -8,7 +8,7 @@
 -- is one nobody knows they have until they go looking for it.
 --
 -- The DEFAULT moves; no row is touched. Every existing team keeps exactly the
--- value it has, so nothing that works today stops working — this only changes
+-- value it has, so nothing that works today stops working - this only changes
 -- what a team created from now on starts with, and turning it on is one switch
 -- on the screen that explains what it does.
 

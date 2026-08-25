@@ -22,7 +22,7 @@ import {
 import { titleClass } from "@/components/shared/page-header";
 
 // Cap the app-name portion of the browser-tab title so the trailing
-// "– <Section> - Deplo" stays legible instead of a long name crowding it out.
+// "- <Section> - Deplo" stays legible instead of a long name crowding it out.
 const PROJECT_TITLE_MAX = 24;
 
 // Titles nest as "<project> - <section> - Deplo".

@@ -30,12 +30,12 @@ import { previewDeployKey } from "../deploy/deploy-key";
 import { MAX_ROLLBACK_KEEP } from "../types";
 
 /**
- * Docker cleanup — reclaiming disk on a server's host. There is exactly one
+ * Docker cleanup - reclaiming disk on a server's host. There is exactly one
  * schedule to reason about, and a newly added server cannot silently go un-swept.
  * This module never touches a Docker socket (ADR-0006).
  */
 
-/** The singleton policy row's PK — see the `docker_cleanup_policy` table comment. */
+/** The singleton policy row's PK - see the `docker_cleanup_policy` table comment. */
 const POLICY_ID = "default";
 
 /**
@@ -56,7 +56,7 @@ export type CleanupRunStatus = "running" | "success" | "failed";
 /** The instance-wide schedule + the hosts that sit it out. */
 export interface CleanupPolicy {
   enabled: boolean;
-  /** 5-field cron, evaluated in UTC. Validated on write — see {@link updateCleanupPolicy}. */
+  /** 5-field cron, evaluated in UTC. Validated on write - see {@link updateCleanupPolicy}. */
   schedule: string;
   minAgeHours: number;
   keepImagesPerApp: number;
@@ -88,7 +88,7 @@ export interface CleanupRunItem {
 
 export interface CleanupRunDTO {
   id: string;
-  /** Null once the server is removed — `serverName` is what keeps the row readable. */
+  /** Null once the server is removed - `serverName` is what keeps the row readable. */
   serverId: string | null;
   serverName: string;
   trigger: CleanupTrigger;
@@ -107,7 +107,7 @@ export interface CleanupRunDTO {
 
 const DEFAULT_SCHEDULE = "0 4 * * *";
 /**
- * A day — and it gates only the CACHE scopes (build cache, dangling images, orphan
+ * A day, and it gates only the CACHE scopes (build cache, dangling images, orphan
  * buildkit volumes).
  */
 const DEFAULT_MIN_AGE_HOURS = 24;
@@ -123,7 +123,7 @@ const MIN_AGE_HOURS_MAX = 8760; // a year
 const KEEP_IMAGES_MAX = 20;
 
 /**
- * Retention: how many runs PER SERVER the history keeps — the newest `3 ×
+ * Retention: how many runs PER SERVER the history keeps - the newest `3 ×
  * serverCount` rows overall.
  */
 const RUNS_KEPT_PER_SERVER = 3;
@@ -148,7 +148,7 @@ function clampInt(
 
 /**
  * Canonicalize a scope list on WRITE: reject anything outside the allow-list, then
- * dedupe and order by {@link CLEANUP_SCOPES}. Deduping is not cosmetic —
+ * dedupe and order by {@link CLEANUP_SCOPES}. Deduping is not cosmetic -
  * `(policy_id, scope)` is the junction's PK, so a repeated scope would fail the save.
  */
 function normalizeScopes(scopes: readonly string[]): CleanupScopeId[] {
@@ -167,9 +167,9 @@ function knownScopes(scopes: readonly string[]): CleanupScopeId[] {
   return CLEANUP_SCOPES.filter((s) => scopes.includes(s));
 }
 
-/** The message every "this host has no agent yet" path produces — one story, one string. */
+/** The message every "this host has no agent yet" path produces - one story, one string. */
 function notProvisionedMessage(serverName: string): string {
-  return `${serverName} is not provisioned yet — its agent has never called home. Finish provisioning the server, then clean up Docker.`;
+  return `${serverName} is not provisioned yet - its agent has never called home. Finish provisioning the server, then clean up Docker.`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -273,7 +273,7 @@ export async function getCleanupPolicy(): Promise<CleanupPolicy> {
 }
 
 /**
- * The policy, read WITHOUT a session — for the scheduler tick, which has no
+ * The policy, read WITHOUT a session - for the scheduler tick, which has no
  * request context to gate against (no cookies, no active team).
  */
 export async function loadCleanupPolicyForScheduler(): Promise<CleanupPolicy> {
@@ -281,7 +281,7 @@ export async function loadCleanupPolicyForScheduler(): Promise<CleanupPolicy> {
 }
 
 /**
- * The servers with a sweep already in flight — session-free, for the same reason
+ * The servers with a sweep already in flight - session-free, for the same reason
  * as {@link loadCleanupPolicyForScheduler}.
  */
 export async function listServersWithCleanupRunning(): Promise<string[]> {
@@ -305,7 +305,7 @@ async function runHistoryCap(): Promise<number> {
 }
 
 /**
- * Cleanup history, newest first. NOT team-scoped — servers are the one shared
+ * Cleanup history, newest first. NOT team-scoped - servers are the one shared
  * cross-team resource, so a run belongs to a host, not to a team; the gate is
  * instance-admin, checked here.
  */
@@ -317,7 +317,7 @@ export async function listCleanupRuns(
 }
 
 /**
- * The history, read WITHOUT a session — for the live subscription's generator,
+ * The history, read WITHOUT a session - for the live subscription's generator,
  * which re-reads it on every published change.
  */
 export async function listCleanupRunsForSubscriber(): Promise<CleanupRunDTO[]> {
@@ -384,8 +384,8 @@ function orderItems(items: CleanupRunItem[]): CleanupRunItem[] {
 }
 
 /**
- * Retention: trim the run history to {@link runHistoryCap} — the newest `3 ×
- * serverCount` rows — deleting the older TERMINAL rows (their per-scope items go
+ * Retention: trim the run history to {@link runHistoryCap} - the newest `3 ×
+ * serverCount` rows - deleting the older TERMINAL rows (their per-scope items go
  * with them via the FK CASCADE).
  */
 export async function pruneCleanupRunHistory(): Promise<number> {
@@ -421,20 +421,20 @@ export async function pruneCleanupRunHistory(): Promise<number> {
 /**
  * Save the instance-wide policy: the singleton row + a whole-set replace of its
  * scopes (and of the exclusion list, when one is sent) in ONE transaction, so a
- * save is never half-applied — a policy that kept a scope the operator just
+ * save is never half-applied - a policy that kept a scope the operator just
  */
 export async function updateCleanupPolicy(
   input: UpdateCleanupPolicyInput,
 ): Promise<CleanupPolicy> {
   await requireInstanceAdmin();
-  // Only to attribute the activity row — the policy itself is instance-wide.
+  // Only to attribute the activity row - the policy itself is instance-wide.
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
 
   const schedule = input.schedule.trim();
   if (!parseCron(schedule)) {
     throw new Error(
-      `"${schedule}" is not a valid cron expression. Use 5 fields — minute hour day month weekday — e.g. "0 4 * * *" for daily at 04:00 UTC.`,
+      `"${schedule}" is not a valid cron expression. Use 5 fields, minute hour day month weekday, e.g. "0 4 * * *" for daily at 04:00 UTC.`,
     );
   }
   const scopes = normalizeScopes(input.scopes);
@@ -599,7 +599,7 @@ async function beginCleanupRun(args: {
       finishedAt: null,
     });
   });
-  // Every watching settings page shows the new row immediately — including the one
+  // Every watching settings page shows the new row immediately, including the one
   // belonging to the admin who clicked, whose own mutation result says the same thing.
   publishCleanupRunsChanged();
 
@@ -619,7 +619,7 @@ async function beginCleanupRun(args: {
 }
 
 /**
- * The executor's SECOND half — the slow one: dial the host, then settle the run
+ * The executor's SECOND half - the slow one: dial the host, then settle the run
  * row that {@link beginCleanupRun} already wrote. NEVER throws.
  */
 async function finishCleanupRun(args: {
@@ -638,7 +638,7 @@ async function finishCleanupRun(args: {
   let items: CleanupRunItem[] = [];
   try {
     // The provisioning check lives HERE, after the run row exists, so a host whose
-    // agent never called home leaves the same failed run as one that went offline —
+    // agent never called home leaves the same failed run as one that went offline,
     // and an actionable message, rather than the dial's "not provisioned" internals.
     const server = await getServerById(serverId);
     if (!server) throw new Error("Server not found");
@@ -658,7 +658,7 @@ async function finishCleanupRun(args: {
         ? await liveStackSlugs()
         : [],
     });
-    // A per-scope `error`/`skipped` is NOT a run failure — the agent declines a scope it
+    // A per-scope `error`/`skipped` is NOT a run failure - the agent declines a scope it
     // cannot prove is safe and sweeps the rest. Only `ok:false` (the sweep could not
     // start at all) fails the run, and its partial results are still worth recording.
     items = toRunItems(resp.results ?? []);
@@ -673,7 +673,7 @@ async function finishCleanupRun(args: {
 
   const finishedAt = nowIso();
   // TERMINAL transaction (short): the run's final status + its per-scope breakdown,
-  // together — a run that reports bytes with no lines, or lines with no status, is a
+  // together - a run that reports bytes with no lines, or lines with no status, is a
   // half-truth. Rule (b): the agent call is already done, outside any tx.
   const finished = await getDb().transaction(
     async (tx): Promise<CleanupRunDTO> => {
@@ -716,7 +716,7 @@ async function finishCleanupRun(args: {
     },
   );
 
-  // Retention rides the executor: every finished sweep — success or failure — trims
+  // Retention rides the executor: every finished sweep, success or failure, trims
   // the history to its cap. Best-effort: a failed trim must never turn a recorded
   // sweep into a thrown one, so it only warns.
   try {
@@ -729,7 +729,7 @@ async function finishCleanupRun(args: {
 
   // Rule (c): outside every transaction, fire-and-forget. A scheduled run passes
   // teamId `null` (a tick has no active team) and recordActivity attributes it to the
-  // first team — the same compromise the nightly backup makes.
+  // first team - the same compromise the nightly backup makes.
   await recordActivity(
     "cleanup",
     failure
@@ -800,7 +800,7 @@ function detachSweep(runId: string, work: Promise<CleanupRunDTO>): void {
 
 /**
  * Test-only: wait for every detached sweep this process started. Production code
- * must never call it — the whole point of a detached sweep is that no request
+ * must never call it - the whole point of a detached sweep is that no request
  * waits on one.
  */
 export async function __settleCleanupSweeps(): Promise<void> {
@@ -818,7 +818,7 @@ export async function __settleCleanupSweeps(): Promise<void> {
  */
 export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   await requireInstanceAdmin();
-  // Only to attribute the activity row — the sweep belongs to a host, not a team.
+  // Only to attribute the activity row - the sweep belongs to a host, not a team.
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   // UNSCOPED resolve, and correct now that the gate is instance-admin: this page
@@ -840,7 +840,7 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   // set is an ok response with zero bytes, indistinguishable from a sweep that worked.
   if (policy.scopes.length === 0) {
     throw new Error(
-      "No cleanup scopes are selected — choose what to reclaim, then clean up",
+      "No cleanup scopes are selected - choose what to reclaim, then clean up",
     );
   }
   // The same never-stack-sweeps rule the scheduler follows, and it matters more now
@@ -872,7 +872,7 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
 
 /**
  * The session-free twin of {@link runCleanupNow}, for the scheduler tick. NEVER
- * throws — the failure is already on the run row, and one unreachable host must
+ * throws - the failure is already on the run row, and one unreachable host must
  * not abort the rest of the tick.
  */
 export async function runScheduledCleanup(
@@ -904,7 +904,7 @@ export async function runScheduledCleanup(
   }
 }
 
-/** Servers with a deploy-triggered sweep in flight — a second one would only race the
+/** Servers with a deploy-triggered sweep in flight - a second one would only race the
  *  first's candidate list; the next deploy catches anything it missed. */
 const deploySweepInFlight = new Set<string>();
 
@@ -949,7 +949,7 @@ export async function rollbackKeepBySlug(
 }
 
 /**
- * Every stack slug this Deplo still knows about — the proof `leftover_app_files`
+ * Every stack slug this Deplo still knows about - the proof `leftover_app_files`
  * rests on, and the one list that decides whether a directory on a host is
  * somebody's configuration or litter.
  */
@@ -971,8 +971,8 @@ export async function liveStackSlugs(): Promise<string[]> {
 }
 
 /**
- * Remove the superseded app images a deploy just left behind on `serverId` — the
- * deploy-time half of app-image retention. Scope is `unused_app_images` ONLY — the
+ * Remove the superseded app images a deploy just left behind on `serverId` - the
+ * deploy-time half of app-image retention. Scope is `unused_app_images` ONLY - the
  * cache scopes stay on the schedule where their age filter belongs.
  */
 export async function sweepSupersededAppImages(
@@ -1020,7 +1020,7 @@ export async function sweepSupersededAppImages(
 }
 
 /**
- * Settle cleanup runs orphaned by a control-plane restart — the cleanup analogue
+ * Settle cleanup runs orphaned by a control-plane restart - the cleanup analogue
  * of `reconcileInFlightBackupRuns`. Session-free by construction: a boot hook has
  * no user to gate.
  */

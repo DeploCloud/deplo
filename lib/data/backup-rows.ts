@@ -63,7 +63,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     connectionStringEnc: d.connectionStringEnc,
     exposedPublicly: d.exposedPublicly,
     exposedPort: d.exposedPort,
-    // Flattened ResourceLimits — shared with `appToRow` via the one mapping in
+    // Flattened ResourceLimits - shared with `appToRow` via the one mapping in
     // app-graph-rows.ts (the `resource_*` block is declared identically on both
     // tables), so the two tables can't drift on the column↔field fold.
     ...resourceLimitsToRow(d.resources),
@@ -106,7 +106,7 @@ export function assembleDatabase(
     connectionStringEnc: row.connectionStringEnc,
     exposedPublicly: row.exposedPublicly,
     exposedPort: row.exposedPort,
-    // All-NULL resource columns ⇒ no limits set (null) — same fold as apps.
+    // All-NULL resource columns ⇒ no limits set (null) - same fold as apps.
     resources: assembleResources(row),
     customImage: row.customImage,
     customCommand: row.customCommand,
@@ -270,7 +270,7 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
 
 /**
  * Reassemble a `backup_runs` row into a {@link BackupRun}. Drops `seq` (the domain
- * object never carries it — retention reads it via a dedicated `seq`-bearing
+ * object never carries it - retention reads it via a dedicated `seq`-bearing
  * projection, {@link import("./backup-objectkey").RunForRetention}).
  */
 export function assembleBackupRun(row: BackupRunRow): BackupRun {

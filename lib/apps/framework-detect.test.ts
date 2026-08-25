@@ -90,7 +90,7 @@ test("a meta-framework wins over the library it is built on", () => {
 
 test("a bare Vite SPA is Vite, not the library it renders with", () => {
   // Vue 3 and Solid both scaffold as plain Vite projects today, and a Vite
-  // project is served by `vite preview` on 4173 — which is the reason the
+  // project is served by `vite preview` on 4173, which is the reason the
   // catalog refuses to name them: the port would be a guess.
   assert.equal(
     detectFramework(
@@ -140,7 +140,7 @@ test("only the build root's own files count", () => {
     "apps/api/package.json",
     "packages/ui/src/index.ts",
   ];
-  // At the repo root there is no manifest and no config — a Next.js config three
+  // At the repo root there is no manifest and no config - a Next.js config three
   // directories down says nothing about what is being deployed.
   assert.deepEqual(rootFileNames(tree), ["readme.md"]);
   assert.equal(detectFramework(rootFileNames(tree), null), null);

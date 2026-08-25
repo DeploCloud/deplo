@@ -48,7 +48,7 @@ export function UsersPanel({
   currentUserId: string;
 }) {
   const [registerOpen, setRegisterOpen] = React.useState(false);
-  // A revoked link leaves the list on the click — the row is dead server-side
+  // A revoked link leaves the list on the click - the row is dead server-side
   // the moment the mutation is sent, and a live Revoke on a dead link is only
   // good for a red "Not found".
   const {
@@ -57,7 +57,7 @@ export function UsersPanel({
     restore,
   } = useOptimisticRemove(links, (l) => l.id);
   const pendingLinks = liveLinks.filter((l) => l.status === "pending");
-  // `?user=<id>` opens that account's editor on arrival — the deep link a
+  // `?user=<id>` opens that account's editor on arrival - the deep link a
   // member's page uses, since accounts are instance-wide and edited here.
   const focusUserId = useSearchParams().get("user");
   return (
@@ -131,7 +131,7 @@ function UserRow({
 }: {
   user: GlobalUserDTO;
   isSelf: boolean;
-  /** Arrived here linked straight at this account — open its editor. */
+  /** Arrived here linked straight at this account - open its editor. */
   defaultOpen?: boolean;
 }) {
   const router = useRouter();
@@ -173,7 +173,7 @@ function UserRow({
     });
   }
 
-  // Compact, horizontal card — deliberately distinct from the team Members cards
+  // Compact, horizontal card - deliberately distinct from the team Members cards
   // (which stack vertically with a badge row): here the avatar sits left, status
   // badges sit inline with the handle, and a single meta line carries name · team
   const meta = [
@@ -205,7 +205,7 @@ function UserRow({
               <span className="ml-1 text-xs text-muted-foreground">(you)</span>
             )}
           </p>
-          {/* Owner supersedes Admin — the owner IS an admin, so showing both
+          {/* Owner supersedes Admin - the owner IS an admin, so showing both
               would just be noise on the one row that matters most. */}
           {user.isInstanceOwner ? (
             <Badge variant="secondary" className="gap-1 px-1.5 py-0">
@@ -331,7 +331,7 @@ function UserRow({
                   ? "You can't delete your own account."
                   : ownerLocked
                     ? "The instance owner's account can't be deleted. Transfer ownership on Settings, Deplo first."
-                    : "Permanently delete this account — and, optionally, what it owns"
+                    : "Permanently delete this account, and, optionally, what it owns"
               }
               side="left"
             >

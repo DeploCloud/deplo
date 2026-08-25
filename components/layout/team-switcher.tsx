@@ -48,7 +48,7 @@ export function TeamSwitcher({
   // row to 50% (data-[disabled]:opacity-50) while the mutation and the refresh ran,
   // which is the one thing an optimistic reorder must not do - the list has already
   const [, startReorder] = React.useTransition();
-  // What the drag has said so far, as ids — null until somebody drags. Ids the drag
+  // What the drag has said so far, as ids - null until somebody drags. Ids the drag
   // never saw (a team joined in another tab) fall in at the end instead of vanishing.
   const [draggedIds, setDraggedIds] = React.useState<string[] | null>(null);
   const order = React.useMemo(() => {
@@ -113,7 +113,7 @@ export function TeamSwitcher({
       if (dest !== window.location.pathname + window.location.search) {
         router.replace(dest);
       }
-      // Staying put still needs the refresh — it is what re-runs the RSC reads
+      // Staying put still needs the refresh - it is what re-runs the RSC reads
       // (and the layout) with the new deplo_team cookie.
       router.refresh();
     });

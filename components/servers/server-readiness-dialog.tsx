@@ -193,9 +193,9 @@ const GROUP_INFO: Partial<Record<ReadinessGroup, string>> = {
   routing:
     'Deplo looks for a running container whose image or name contains "traefik", and bind-tests ports 80 and 443 on the host. It cannot tell whether that container is the one it installed.',
   capacity:
-    "Measured on the host's root filesystem — the one the agent runs from. If Docker's images live on a separate volume, this does not describe it.",
+    "Measured on the host's root filesystem - the one the agent runs from. If Docker's images live on a separate volume, this does not describe it.",
   build:
-    "Supported means this server's agent knows how to run the build method. The images and binaries it needs are fetched on the first build that uses it — Deplo cannot check from here that they are already on the host.",
+    "Supported means this server's agent knows how to run the build method. The images and binaries it needs are fetched on the first build that uses it - Deplo cannot check from here that they are already on the host.",
 };
 
 /* ------------------------------------------------------------------ */
@@ -233,7 +233,7 @@ export function ServerReadinessDialog({
         const res = await gqlAction<{
           checkServerReadiness: ReadinessReportRow;
         }>(CHECK_READINESS, { id: serverId });
-        // A newer run — or a reopen — superseded this one; its answer is stale.
+        // A newer run, or a reopen, superseded this one; its answer is stale.
         if (id !== runId.current) return;
         setLoading(false);
         if (!res.ok) {
@@ -251,7 +251,7 @@ export function ServerReadinessDialog({
 
   React.useEffect(() => {
     if (!open) return;
-    // Opening the dialog IS the probe — it synchronises with an external system (the
+    // Opening the dialog IS the probe - it synchronises with an external system (the
     // owning server's agent), and `run` manages its own state. Same shape, and the
     // same scoped exemption, as the repo-picker's load-on-change effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -272,7 +272,7 @@ export function ServerReadinessDialog({
           <DialogDescription>
             A live look at what this server can actually do: Deplo dials the
             agent, asks the host what it can see, and lists what it found.
-            Nothing is stored — re-run it whenever you like.
+            Nothing is stored - re-run it whenever you like.
           </DialogDescription>
         </DialogHeader>
 

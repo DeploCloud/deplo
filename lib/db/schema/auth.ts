@@ -53,7 +53,7 @@ export const account = pgTable("account", {
   refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
   scope: text("scope"),
   idToken: text("id_token"),
-  /** The credential provider's password. Since 0055 this is the ONLY stored copy —
+  /** The credential provider's password. Since 0055 this is the ONLY stored copy -
    *  `users.password_hash` was dropped. Format is unchanged (`scrypt$salt$hash`),
    *  because Better Auth is configured with deplo's own hash/verify pair. */
   password: text("password"),
@@ -143,7 +143,7 @@ export const passkey = pgTable(
 );
 
 /**
- * The `@better-auth/oauth-provider` plugin's four tables — deplo as an OAuth 2.1
+ * The `@better-auth/oauth-provider` plugin's four tables - deplo as an OAuth 2.1
  * authorization server, so claude.ai and ChatGPT can connect to `/api/mcp` (they
  * cannot be handed a bearer token by hand the way a terminal agent can).
  */

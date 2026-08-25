@@ -12,7 +12,7 @@ export default async function NewRolePage(
   const sp = await props.searchParams;
   const from = Array.isArray(sp.from) ? sp.from[0] : sp.from;
   const canManage = await hasCapability("manage_roles");
-  // Reachable only from the "New role" menu, which is itself gated — but a typed
+  // Reachable only from the "New role" menu, which is itself gated, but a typed
   // URL must not open an editor whose save can only fail.
   if (!canManage) redirect("/settings/roles");
   // `?from=` is the base chosen in that menu. A stale or foreign id degrades to a

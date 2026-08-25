@@ -74,7 +74,7 @@ test("no tool can reveal a secret", () => {
   }
 });
 
-/** Console exec is RCE by another name — the token preset's own words. */
+/** Console exec is RCE by another name - the token preset's own words. */
 test("no tool runs an arbitrary command in a container", () => {
   for (const t of MCP_TOOLS)
     assert.doesNotMatch(

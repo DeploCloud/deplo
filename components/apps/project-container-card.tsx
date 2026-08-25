@@ -39,7 +39,7 @@ import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import { cn, readableTextColor } from "@/lib/utils";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
-// Shared with the Overview SERVER component — must stay in a plain module (an
+// Shared with the Overview SERVER component - must stay in a plain module (an
 // RSC cannot call a function exported from a "use client" file).
 import { projectHref } from "@/lib/overview-links";
 
@@ -68,7 +68,7 @@ type MenuKit = {
 };
 
 /**
- * A Project tile on the Overview — an "advanced folder" (ADR-0009) whose
+ * A Project tile on the Overview - an "advanced folder" (ADR-0009) whose
  * environments each hold their own apps.
  */
 export function ProjectContainerCard({
@@ -353,7 +353,7 @@ export function ProjectContainerCard({
         description={
           deleteApps
             ? `${project.name} and every app in it are deleted, containers and volumes included. This cannot be undone.`
-            : `${project.name} is removed, but its apps are kept — they move back to the Overview top level. This cannot be undone.`
+            : `${project.name} is removed, but its apps are kept - they move back to the Overview top level. This cannot be undone.`
         }
         confirmLabel="Delete project"
         successMessage="Project deleted"

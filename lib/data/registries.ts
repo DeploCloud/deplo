@@ -32,7 +32,7 @@ export const REGISTRY_HOSTS: Record<RegistryType, string> = {
   generic: "",
 };
 
-/** The non-secret projection — never selects `password_enc`. */
+/** The non-secret projection, never selects `password_enc`. */
 const DTO_COLUMNS = {
   id: registriesTable.id,
   name: registriesTable.name,
@@ -62,7 +62,7 @@ export async function addRegistry(input: {
 }): Promise<void> {
   const { membership } = await requireCapability("manage_registries");
   // The actor's display name for the activity log lives in the JSONB users
-  // collection (cut-set b — still authoritative this step).
+  // collection (cut-set b, still authoritative this step).
   const user = (await getCurrentUser())!;
   const name = input.name.trim();
   if (!name) throw new Error("Enter a name");

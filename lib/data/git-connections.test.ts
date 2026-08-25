@@ -228,7 +228,7 @@ test("a repo URL on a FOREIGN host does NOT carry the connection's token", async
     branch: "main",
     connectionId: created.id,
   });
-  // Unchanged, anonymous — no username/password embedded.
+  // Unchanged, anonymous - no username/password embedded.
   assert.equal(url, attackerUrl);
   const parsed = new URL(url);
   assert.equal(parsed.username, "");

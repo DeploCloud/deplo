@@ -67,7 +67,7 @@ export function PasswordCard({
           <InfoTip
             content={
               twoFactorEnabled
-                ? "Changing it signs out every device, this one included — you will be asked to sign in again."
+                ? "Changing it signs out every device, this one included - you will be asked to sign in again."
                 : "Changing it signs out every other device. This one stays signed in."
             }
             docs="team.password"

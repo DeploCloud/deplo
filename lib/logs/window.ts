@@ -5,7 +5,7 @@
 export const MINUTES_PER_DAY = 24 * 60;
 
 export interface LogWindow {
-  /** Unix SECONDS, or 0 for "no lower bound" — the agent's own "unset". */
+  /** Unix SECONDS, or 0 for "no lower bound" - the agent's own "unset". */
   sinceUnix: number;
   /** Prefix each line with its RFC3339Nano write time. */
   timestamps: boolean;

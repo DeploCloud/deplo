@@ -1,5 +1,5 @@
 -- Docker cleanup: lower the stored min_age_hours from the old 168h default to the
--- new 24h one — the root-cause fix for the recurring disk saturation. A host that
+-- new 24h one - the root-cause fix for the recurring disk saturation. A host that
 -- redeploys many times a day fills its disk in hours, so with a week-long floor no
 -- superseded image or cache record EVER aged into eligibility: every nightly sweep
 -- "succeeded" reclaiming 0 bytes while the disk died (measured on neon-s2: 24

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseAnsi, stripAnsi } from "./ansi";
 
-/** Flatten segments back to plain text — what the user reads on screen. */
+/** Flatten segments back to plain text - what the user reads on screen. */
 function visible(segments: ReturnType<typeof parseAnsi>): string {
   return segments.map((s) => s.text).join("");
 }

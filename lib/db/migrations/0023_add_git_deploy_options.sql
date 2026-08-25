@@ -1,5 +1,5 @@
 -- Git deploy options, flattened onto `services` alongside the other repo_* fields:
---   - repo_trigger_type  which git event auto-deploys — "push" (to repo_branch) or
+--   - repo_trigger_type  which git event auto-deploys - "push" (to repo_branch) or
 --                        "tag" (any new tag). NULL ⇒ "push" (historical behaviour).
 --   - repo_watch_paths   newline-separated path globs; an auto-deploy only fires
 --                        when a pushed commit touched a matching file. NULL ⇒ any.

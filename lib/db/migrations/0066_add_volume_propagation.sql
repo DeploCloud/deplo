@@ -3,8 +3,8 @@
 -- A bind rendered as `- /srv/x:/srv/x` gets docker's `rprivate` default, which
 -- hands the container a SNAPSHOT of the submounts that existed the instant it
 -- started and never follows them again. Anything mounted under that folder
--- afterwards — a network disk, a FUSE share, a volume another container puts
--- there — is simply invisible inside the app, with no error on either side. The
+-- afterwards - a network disk, a FUSE share, a volume another container puts
+-- there - is simply invisible inside the app, with no error on either side. The
 -- panel had no way to ask for anything else, so neither did the API.
 --
 -- NULL keeps the historical rendering byte-for-byte (`:ro` or nothing at all),

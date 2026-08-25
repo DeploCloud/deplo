@@ -158,7 +158,7 @@ test("servers: observedTraefik reports nothing when the Hello never looked", () 
     observedTraefik({ dockerAvailable: true, traefikRunning: false }),
     false,
   );
-  // The agent FORCES traefikRunning false when Docker is unreachable — it has no
+  // The agent FORCES traefikRunning false when Docker is unreachable - it has no
   // container list to match against. That is "we didn't look", not "it's off".
   assert.equal(
     observedTraefik({ dockerAvailable: false, traefikRunning: false }),
@@ -334,12 +334,12 @@ test("activities: recordActivity falls back to the first team when none resolves
   });
   const rows = await db.select().from(activitiesTable);
   assert.equal(rows.length, 1);
-  // The first team by createdAt — seedIdentity seeds team_a before team_b.
+  // The first team by createdAt - seedIdentity seeds team_a before team_b.
   assert.equal(rows[0]!.teamId, TEAM_A);
 });
 
 test("activities: listActivity is team-scoped, newest-first, and seq breaks a same-instant tie", async () => {
-  // Three activities at the SAME timestamp in team_a — insertion order (seq) must
+  // Three activities at the SAME timestamp in team_a - insertion order (seq) must
   // break the tie deterministically, newest (last inserted) first.
   await seedActivity(db, {
     id: "act_1",

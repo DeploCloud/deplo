@@ -247,7 +247,7 @@ test("a misconfigured host still beats no primary at all", async () => {
 /* The URL itself                                                      */
 /* ------------------------------------------------------------------ */
 
-test("deleting the LAST domain clears the URL — the card reads 'No domain yet'", async () => {
+test("deleting the LAST domain clears the URL - the card reads 'No domain yet'", async () => {
   await seedDomains([{ id: "d_pri", name: "example.com", primary: true }]);
   assert.equal(await url(), "http://example.com");
 
@@ -350,7 +350,7 @@ test("successorPrimary is pure, deterministic and null-safe", () => {
     "bare.example.com",
   );
 
-  // Equal rank ⇒ oldest, then name — never "whatever the table returned".
+  // Equal rank ⇒ oldest, then name, never "whatever the table returned".
   const a = d({ name: "a.example.com", createdAt: T(2) });
   const b = d({ name: "b.example.com", createdAt: T(1) });
   assert.equal(

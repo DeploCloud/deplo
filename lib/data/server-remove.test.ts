@@ -21,7 +21,7 @@ import {
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 
 /**
- * Removal is TRUST REVOCATION + FORGETTING, not a host uninstall — these tests pin
+ * Removal is TRUST REVOCATION + FORGETTING, not a host uninstall - these tests pin
  * that contract, which previously had zero coverage while the UI claimed the
  * opposite ("tells it to tear down its containers").
  */
@@ -126,7 +126,7 @@ test("blocks removal while a backup destination keeps its artifacts here", async
       assert.match(e.message, /Nightly backups/);
       // The whole point: backup_destination.server_id is RESTRICT, so without
       // this guard the preflight passes, trust is revoked, and only THEN does
-      // the DELETE blow up — leaving the operator a Postgres constraint string
+      // the DELETE blow up, leaving the operator a Postgres constraint string
       // and a server that can never be removed.
       assert.doesNotMatch(e.message, /foreign key|violates/i);
       return true;
@@ -136,7 +136,7 @@ test("blocks removal while a backup destination keeps its artifacts here", async
   assert.notEqual(await pinnedCert(), "");
 });
 
-test("blocks removal while a database is hosted — a clean message, not a raw FK error", async () => {
+test("blocks removal while a database is hosted - a clean message, not a raw FK error", async () => {
   await seedDatabase(db, { id: "db_1", name: "pg-main", serverId: SERVER });
 
   await assert.rejects(
@@ -152,7 +152,7 @@ test("blocks removal while a database is hosted — a clean message, not a raw F
   );
 });
 
-test("a blocked removal has NO side effects — trust is not revoked on the way out", async () => {
+test("a blocked removal has NO side effects - trust is not revoked on the way out", async () => {
   await seedDatabase(db, { id: "db_1", name: "pg-main", serverId: SERVER });
 
   await assert.rejects(() => asAdmin(() => removeServer(SERVER)));
@@ -176,7 +176,7 @@ test("a clean removal deletes the row and returns the host-side uninstall comman
 });
 
 test("warns (but does not block) when an App is mid-move OFF the server", async () => {
-  // The App lives on OTHER now, but its volumes are still on SERVER — that is what
+  // The App lives on OTHER now, but its volumes are still on SERVER - that is what
   // migrate_from_server_id means, and it is SET NULL when SERVER is deleted.
   const appId = await seedApp(db, {
     id: "prj_api",
@@ -201,7 +201,7 @@ test("warns (but does not block) when an App is mid-move OFF the server", async 
 });
 
 test("refuses to remove the host running Deplo itself", async () => {
-  // Registered under the very address this instance answers on — that IS the
+  // Registered under the very address this instance answers on - that IS the
   // control-plane box. Removing it revokes the trust Deplo needs to reach its own
   // server and forgets the row, with no in-product way back.
   await seedServerRow(db, {
@@ -260,7 +260,7 @@ test("the guard matches on host as well as ip, and spares unrelated remotes", as
     /host running Deplo itself/i,
   );
 
-  // And the remote at a TEST-NET address is still perfectly removable — the guard
+  // And the remote at a TEST-NET address is still perfectly removable - the guard
   // must not turn into "no server can ever be deleted".
   await asAdmin(() => removeServer(OTHER));
   assert.equal(await getServerById(OTHER), null);

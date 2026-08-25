@@ -64,7 +64,7 @@ test("a folder created with a parent nests under it (parentId is set)", async ()
     assert.equal(
       child.parentId,
       parent.id,
-      "the child's parentId is the open folder — it nests, not top-level",
+      "the child's parentId is the open folder - it nests, not top-level",
     );
   });
   // Persisted, not just returned.

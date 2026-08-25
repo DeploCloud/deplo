@@ -337,7 +337,7 @@ test("an environment scope reaches one environment of a project", async () => {
     () => as(DEV, () => requireAppCapability("prj_prod", "deploy_apps")),
     /App not found/,
   );
-  // The project container stays navigable — you cannot drill into staging
+  // The project container stays navigable - you cannot drill into staging
   // without seeing the project that holds it.
   assert.ok(await reaches({ kind: "project", id: PRC_IN }));
   assert.deepEqual(
@@ -592,7 +592,7 @@ test("a scoped member can still pick where an app runs", async () => {
 /**
  * The sweep that found two leaks the rest of this file could not: a read that
  * assembles its OWN rows never passes through `node-access.ts`, which is where a
- * role scope is applied for free — so it has to ask, and two of them didn't.
+ * role scope is applied for free, so it has to ask, and two of them didn't.
  *
  * Written as a loop over the reads rather than an assertion each, because the
  * failure mode is "somebody adds a list and forgets", and a loop is what catches
@@ -798,7 +798,7 @@ test("the live database stream refuses a scoped member, with no request to read"
 
   // Driven exactly as production drives it: a generator's ticks run after the
   // HTTP handler returned the streaming Response, so there is no request scope
-  // and no cookies. The principal has to ride in from the GraphQL context —
+  // and no cookies. The principal has to ride in from the GraphQL context -
   // leaning on a request-scoped gate here answered "unrestricted" and handed a
   // limited member the database's host, port, user and masked connection string.
   await assert.rejects(
@@ -892,7 +892,7 @@ test("every team-wide read refuses a scoped member, in their own words", async (
         );
         // A person is not an API token, and the enforcement mechanism is not
         // theirs to be told about. Matched on the sentence, not on the words
-        // "API token" — one of these resources IS the team's API tokens.
+        // "API token" - one of these resources IS the team's API tokens.
         assert.doesNotMatch(
           e.message,
           /This API token is limited/,
@@ -1023,7 +1023,7 @@ test("a backup RUN history is reachable only through the app it belongs to", asy
     ["run_in"],
   );
   // `backupTargetInScope` used to fall through to `appInTeam`, whose only scope
-  // clause reads `narrowedScope()` — the TOKEN's reach, null for this session.
+  // clause reads `narrowedScope()` - the TOKEN's reach, null for this session.
   // The run row carries status, timings, byte size, the destination id and an
   // objectKey naming the team and the app.
   assert.deepEqual(
@@ -1157,8 +1157,8 @@ test("the picker mutes exactly what the save clamps away", async () => {
  * The member page edits ONE person against their role: untick a place and their
  * ticks become their reach, untick a permission and the set becomes theirs.
  *
- * Both are the same trap in reverse — a limit that isn't enforced, and a limit
- * the next role edit silently hands back — so each is asserted against data
+ * Both are the same trap in reverse - a limit that isn't enforced, and a limit
+ * the next role edit silently hands back, so each is asserted against data
  * seeded OUTSIDE what the member ends up with.
  */
 test("a member limited to one folder stops reaching the rest of the team", async () => {
@@ -1222,7 +1222,7 @@ test("a permission taken from one member survives the next role edit", async () 
   );
   assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_PRC }), ["view"]);
 
-  // The role is saved again — a rename, touching nobody's permissions on
+  // The role is saved again - a rename, touching nobody's permissions on
   // purpose. Before `custom_capabilities`, this handed deploy_apps straight
   // back, which is the failure that makes the whole editor a lie.
   await as(ADMIN, () =>

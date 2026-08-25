@@ -4,7 +4,7 @@ import { listActivity } from "@/lib/data/activity";
 import type { Activity } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
-/* Enums (local — not shared in enums.ts)                              */
+/* Enums (local, not shared in enums.ts)                              */
 /* ------------------------------------------------------------------ */
 
 // The kind of event an Activity row records. Defined locally because no other
@@ -43,7 +43,7 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
     // "github") and rows predating the column stay null.
     actorUserId: t.exposeID("actorUserId", { nullable: true }),
     // That person, resolved for display: the avatar the row shows before the
-    // name. Same shape as an env var's author, deliberately — one identity type.
+    // name. Same shape as an env var's author, deliberately - one identity type.
     actorUser: t.field({
       type: VarAuthorRef,
       nullable: true,
@@ -72,5 +72,5 @@ builder.queryFields((t) => ({
 /* Mutations                                                           */
 /* ------------------------------------------------------------------ */
 
-// None — `recordActivity` is internal (called by other data-layer writes) and
+// None - `recordActivity` is internal (called by other data-layer writes) and
 // is not exposed as a mutation.

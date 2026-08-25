@@ -9,7 +9,7 @@ import { DatabaseConnectionSettings } from "@/components/storage/database-connec
 export const metadata = { title: "Connection" };
 
 /**
- * Connection: how clients reach this database and authenticate — public exposure
+ * Connection: how clients reach this database and authenticate - public exposure
  * and its host port, the server it runs on, and password rotation.
  */
 export default async function DatabaseConnectionSettingsPage(
@@ -24,7 +24,7 @@ export default async function DatabaseConnectionSettingsPage(
   if (!db) notFound();
 
   // Only provisioned servers can host a database (provisioning routes through a
-  // live agent), so those are the only move targets — and neither a storage-only
+  // live agent), so those are the only move targets, and neither a storage-only
   // host (runs nothing) nor a migration source (not our machine) is ever one.
   const dbServers = servers
     .filter(

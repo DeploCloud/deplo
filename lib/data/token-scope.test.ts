@@ -67,7 +67,7 @@ const scoped = <T>(
 ): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A, token: grant(over) }, fn);
 
-/** As the same user over a cookie session — the control for every assertion. */
+/** As the same user over a cookie session - the control for every assertion. */
 const asUser = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
@@ -112,7 +112,7 @@ beforeEach(async () => {
   await seedApp(db, { id: "prj_top", slug: "top-app" });
 });
 
-test("listApps shows only the scoped project's apps — a top-level app is outside every scope", async () => {
+test("listApps shows only the scoped project's apps - a top-level app is outside every scope", async () => {
   const ids = await scoped(async () => (await listApps()).map((a) => a.id));
   assert.deepEqual(ids, ["prj_in"]);
 
@@ -245,7 +245,7 @@ test("an unscoped token, and a cookie session, are both untouched", async () => 
   );
   assert.deepEqual(viaToken.sort(), ["prj_in", "prj_out", "prj_top"]);
 
-  // And a token holding the WHOLE team is not narrowed either — breadth is not
+  // And a token holding the WHOLE team is not narrowed either - breadth is not
   // depth, so it sees everything and keeps every capability.
   const wholeTeam = await scoped(
     async () => (await listApps()).map((a) => a.id),

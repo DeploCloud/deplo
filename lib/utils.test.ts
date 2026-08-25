@@ -58,7 +58,7 @@ test("appTypeLabel names the App kind, tracking usesComposeStack", () => {
     appTypeLabel({ ...base, source: "docker-image", dockerImage: "nginx" }),
     "Application",
   );
-  // An upload keeps a stale compose around for switching back — still a
+  // An upload keeps a stale compose around for switching back, still a
   // single-image build, so it must not read as a stack.
   assert.equal(
     appTypeLabel({ ...base, source: "upload", compose: "services: {}" }),
@@ -84,7 +84,7 @@ test("formatBuildDuration rounds DOWN so a live timer never over-reports", () =>
 
 test("formatBuildDuration: a sub-second build reports milliseconds, not 0s", () => {
   // A redeploy that only restarts a container really does finish in a few
-  // hundred ms — "0s" would read as "we didn't measure it".
+  // hundred ms - "0s" would read as "we didn't measure it".
   assert.equal(formatBuildDuration(400), "400ms");
   assert.equal(formatBuildDuration(7), "7ms");
   assert.equal(formatBuildDuration(999), "999ms");
@@ -95,7 +95,7 @@ test("formatBuildDuration: a sub-second build reports milliseconds, not 0s", () 
 });
 
 test("formatBuildDuration: no duration renders empty, a negative one clamps to 0ms", () => {
-  // Null = never measured (still queued, or a build orphaned by a restart) —
+  // Null = never measured (still queued, or a build orphaned by a restart) -
   // the caller renders its own placeholder rather than a fabricated duration.
   assert.equal(formatBuildDuration(null), "");
   // A viewer's clock running ahead of the host's must not show a negative build.

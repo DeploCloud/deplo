@@ -22,7 +22,7 @@ import type { Environment, EnvironmentKind } from "../types";
 
 /**
  * Environment CRUD (ADR-0008 Phase 3). Environments are owned by a Project
- * container and gate on the container's team (`deploy`) — there are no
+ * container and gate on the container's team (`deploy`) - there are no
  * per-environment grants.
  */
 
@@ -105,7 +105,7 @@ async function requireOwnedProject(projectId: string): Promise<string> {
     .where(eq(projectsTable.id, projectId))
     .limit(1);
   // A container outside an API token's project scope reads exactly like one that
-  // doesn't exist — same message, no existence oracle.
+  // doesn't exist - same message, no existence oracle.
   if (
     rows[0]?.teamId !== teamId ||
     !inProjectScope(projectId) ||
@@ -152,7 +152,7 @@ export interface TeamEnvironment {
 
 /**
  * Every environment across the active team's projects, ordered by project then
- * position — the source for the "share to environments" multi-select on the
+ * position - the source for the "share to environments" multi-select on the
  * unified Shared-variables tab.
  */
 export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
@@ -340,7 +340,7 @@ export async function deleteEnvironment(id: string): Promise<void> {
   await requireOwnedProject(env.projectId);
   if (env.isDefault)
     throw new Error(
-      "Can't delete the default environment — pick another default first.",
+      "Can't delete the default environment - pick another default first.",
     );
   const siblings = await getDb()
     .select({
@@ -352,7 +352,7 @@ export async function deleteEnvironment(id: string): Promise<void> {
     .orderBy(asc(environmentsTable.position));
   if (siblings.length <= 1)
     throw new Error("A project must keep at least one environment.");
-  // The project's default, else its FIRST remaining environment — never null.
+  // The project's default, else its FIRST remaining environment, never null.
   const others = siblings.filter((e) => e.id !== id);
   const fallback = others.find((e) => e.isDefault) ?? others[0];
   await getDb().transaction(async (tx) => {

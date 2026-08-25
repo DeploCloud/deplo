@@ -13,7 +13,7 @@ import { assertUser } from "../auth";
 import { recordActivity } from "./activity";
 
 /**
- * The active team's MCP policy — the one switch on Settings → MCP Server.
+ * The active team's MCP policy - the one switch on Settings → MCP Server.
  */
 export interface McpSettings {
   /** Whether this team's API tokens may drive it over `/api/mcp`. */

@@ -34,7 +34,7 @@ import { users } from "@/lib/db/schema/control-plane";
  * they become mutations).
  */
 
-/** Best-effort client IP — a secondary, spoofable limiter dimension only. */
+/** Best-effort client IP - a secondary, spoofable limiter dimension only. */
 async function clientKey(scope: string): Promise<string> {
   const h = await headers();
   const ip =
@@ -336,7 +336,7 @@ builder.mutationFields((t) => ({
       const usernameError = validateUsername(username);
       if (usernameError) throw new Error(usernameError);
 
-      // The team handling is dictated by the link's stored mode — NEVER the client.
+      // The team handling is dictated by the link's stored mode, NEVER the client.
       const info = await getRegistrationLinkInfo(parsed.data.token);
       if (!info.valid)
         throw new Error("This registration link is no longer valid");

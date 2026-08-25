@@ -8,7 +8,7 @@
 --                                services.server_id at insert) so the queue can
 --                                drain per-server without a services join. Nullable
 --                                + backfilled for pre-existing rows; every new
---                                deploy sets it. NOT a FK — a deployment is a
+--                                deploy sets it. NOT a FK - a deployment is a
 --                                historical record that outlives its server.
 --   deployments_queued_server_idx  the drain's hot path: oldest queued deploy per
 --                                server. PARTIAL (queued-only) so it indexes just

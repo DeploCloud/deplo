@@ -24,7 +24,7 @@ const ROWS = [
   { key: "w-44", value: "w-28", when: "w-24", author: false, masked: false },
 ];
 
-// 90ms between rows — enough to read as a wave, short enough to feel alive. A
+// 90ms between rows - enough to read as a wave, short enough to feel alive. A
 // negative delay starts each row mid-cycle so the whole table is already in motion
 // on first paint.
 const rowDelay = (i: number): React.CSSProperties =>
@@ -154,8 +154,8 @@ export function EnvTableSkeleton({
 
 /**
  * Full loading state for an app's Environment Variables tab: the title block, then
- * the toolbar row <EnvManager> renders — the search/filter/sort bar on the left,
- * the Reveal all / Add / view-toggle actions pinned right — above the table.
+ * the toolbar row <EnvManager> renders - the search/filter/sort bar on the left,
+ * the Reveal all / Add / view-toggle actions pinned right - above the table.
  */
 export function EnvManagerSkeleton({ rows = 5 }: { rows?: number }) {
   return (

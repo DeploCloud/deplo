@@ -57,7 +57,7 @@ async function prime<E>(
   await settle();
   // BOXED, not returned bare: `await` unwraps a promise-of-a-promise recursively, so
   // returning `first` directly would make `await prime(gen)` block until the first
-  // frame arrives — which is exactly what has not been pushed yet.
+  // frame arrives, which is exactly what has not been pushed yet.
   return { first };
 }
 
@@ -68,7 +68,7 @@ test("pauseAbove pauses the producer at the bound and resumes on drain", async (
 
   // The first pull consumes frame 0 as soon as it arrives, so push five to leave
   // four actually queued. The fourth queued frame is the one that trips the
-  // bound — reaching it is the signal, not exceeding it.
+  // bound - reaching it is the signal, not exceeding it.
   s.push(0);
   assert.equal((await first).value, 0);
   for (let i = 1; i <= 3; i++)
@@ -78,7 +78,7 @@ test("pauseAbove pauses the producer at the bound and resumes on drain", async (
   assert.equal(s.paused, true, "at the bound the producer is paused");
   assert.equal(s.pauses, 1);
 
-  // A paused producer emits nothing more — which is the whole point: without
+  // A paused producer emits nothing more, which is the whole point: without
   // this the queue grows to the size of the artifact.
   assert.equal(s.push(99), false, "a paused stream delivers nothing");
 
@@ -98,7 +98,7 @@ test("pauseAbove pauses the producer at the bound and resumes on drain", async (
   assert.equal((await gen.next()).done, true);
 });
 
-test("pauseAbove never drops a frame — it refuses the producer instead", async () => {
+test("pauseAbove never drops a frame - it refuses the producer instead", async () => {
   const s = new FakeStream<number>();
   const gen = streamEvents<number>(s.asStream(), { pauseAbove: 2 });
   const { first } = await prime(gen);
@@ -121,7 +121,7 @@ test("pauseAbove never drops a frame — it refuses the producer instead", async
   assert.deepEqual(got, [0, 1, 2], "every frame arrives, in order, none lost");
 });
 
-test("maxQueued still drops the OLDEST — telemetry's contract is unchanged", async () => {
+test("maxQueued still drops the OLDEST - telemetry's contract is unchanged", async () => {
   const s = new FakeStream<number>();
   const gen = streamEvents<number>(s.asStream(), { maxQueued: 2 });
   const { first } = await prime(gen);
@@ -141,7 +141,7 @@ test("maxQueued still drops the OLDEST — telemetry's contract is unchanged", a
   assert.deepEqual(got, [3, 4]);
 });
 
-test("the default is unbounded and never pauses — a log line is never dropped", async () => {
+test("the default is unbounded and never pauses - a log line is never dropped", async () => {
   const s = new FakeStream<number>();
   const gen = streamEvents<number>(s.asStream());
   const { first } = await prime(gen);

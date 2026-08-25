@@ -18,20 +18,20 @@ import {
 
 /**
  * Turn a raw template/user docker-compose file into a Deplo-deployable stack. (Two
- * stacks that pin the SAME fixed host port will collide at `compose up` — that's
+ * stacks that pin the SAME fixed host port will collide at `compose up` - that's
  * the user's explicit mapping, surfaced loudly rather than silently dropped.) 4.
  */
 
 const NETWORK = "deplo";
 
 /**
- * One routed hostname for a compose stack — the SOLE source of compose routing
+ * One routed hostname for a compose stack - the SOLE source of compose routing
  * (the `domains` table is authoritative; there is no separate `exposes`).
  */
 export interface ComposeDomainRoute {
   /** The hostname this router answers on. */
   name: string;
-  /** Compose service to route to. Null ⇒ unroutable (skipped — compose domains
+  /** Compose service to route to. Null ⇒ unroutable (skipped - compose domains
    * always carry a service). */
   service: string | null;
   /** Container port; null ⇒ the chosen service's compose-declared port. */
@@ -59,7 +59,7 @@ export interface ComposeStackInput {
   /** Router/service name + label namespace, e.g. `deplo-<deployKey>`. */
   name: string;
   /**
-   * The stack's DEPLOY KEY — what the named volumes and the `deplo.slug` label are
+   * The stack's DEPLOY KEY - what the named volumes and the `deplo.slug` label are
    * named after.
    */
   deployKey: string;
@@ -69,12 +69,12 @@ export interface ComposeStackInput {
   stripPublishedPorts?: boolean;
   appId: string;
   /**
-   * What the `deplo.project` label carries — the value the telemetry stream
+   * What the `deplo.project` label carries - the value the telemetry stream
    * buckets container stats by.
    */
   trackingId?: string;
   /**
-   * The routed domains — one Traefik router each, to the route's named compose
+   * The routed domains - one Traefik router each, to the route's named compose
    * service.
    */
   domainRoutes: ComposeDomainRoute[];
@@ -92,8 +92,8 @@ export interface ComposeStackInput {
   /**
    * The NAMES of the project's settings env vars (production target), injected
    * into every service's `environment:` as bare `- KEY` pass-through entries so
-   * they reach the containers without the user hand-writing them into the compose
-   * — the env-var analogue of the auto domain labels.
+   * they reach the containers without the user hand-writing them into the compose -
+   * the env-var analogue of the auto domain labels.
    */
   envKeys?: string[];
   /**
@@ -105,7 +105,7 @@ export interface ComposeStackInput {
   resources?: ResourceLimits | null;
   /**
    * The app's Storage-settings volumes, each mounted into the compose service it
-   * names (`VolumeMount.service`; empty ⇒ the stack's default service — the one a
+   * names (`VolumeMount.service`; empty ⇒ the stack's default service - the one a
    * domain would route to).
    */
   volumes?: VolumeMount[] | null;
@@ -141,7 +141,7 @@ function publishedPort(svc: App): number | null {
 
 /**
  * Pick a default `{service, port}` to seed a compose project's FIRST domain when
- * neither the template nor the user named one. Used at project creation only —
+ * neither the template nor the user named one. Used at project creation only -
  * after that the `domains` table (each row's `service`) is authoritative.
  */
 export function detectDefaultApp(
@@ -357,7 +357,7 @@ function mergeBuildLabels(svc: App, service: string, tracking: string[]): void {
  * Inject the project's settings env-var KEYS into a service's `environment:` as
  * bare `- KEY` pass-through entries (the value comes from the `--env-file` at
  * `compose up`), so a var added in settings reaches the container without the user
- * hand-writing it — the env analogue of `mergeLabels`.
+ * hand-writing it - the env analogue of `mergeLabels`.
  */
 function mergeEnvironment(svc: App, keys: string[]): void {
   if (keys.length === 0) return;
@@ -375,7 +375,7 @@ function mergeEnvironment(svc: App, keys: string[]): void {
     }
   } else if (env && typeof env === "object") {
     for (const [k, v] of Object.entries(env as Record<string, unknown>)) {
-      // A null map value (`KEY:`) is compose's own pass-through form — emit the
+      // A null map value (`KEY:`) is compose's own pass-through form - emit the
       // bare key, not `KEY=null`, so it keeps reading from the env-file.
       existing.push(v === null || v === undefined ? k : `${k}=${String(v)}`);
       declared.add(k);
@@ -439,7 +439,7 @@ function mergeVolumes(svc: App, mounts: StackMount[]): void {
  * files dir.
  */
 function rewriteMountSource(source: string, filesDir: string): string {
-  if (source.includes("..")) return source; // escape — leave for the gate to block
+  if (source.includes("..")) return source; // escape - leave for the gate to block
   const m = source.match(/^\.\/?(.*)$/);
   if (!m) return source;
   const rel = m[1].replace(/^\/+/, "").replace(/\/+$/, "");
@@ -488,7 +488,7 @@ function injectAppVolumes(
   if (volumes.length === 0) return;
 
   const fallback = detectExpose(services)?.service ?? Object.keys(services)[0];
-  // Existing top-level volume keys — ours must not collide with a key the user
+  // Existing top-level volume keys - ours must not collide with a key the user
   // already declared (that would silently re-point their volume at our mount).
   const topLevel = (
     doc.volumes && typeof doc.volumes === "object" ? doc.volumes : {}
@@ -535,7 +535,7 @@ function injectAppVolumes(
       if (!input.filesDir) {
         throw new Error(
           `Volume "${v.name || v.mountPath}" mounts a file from this app, which ` +
-            `needs the app's files directory — internal error.`,
+            `needs the app's files directory - internal error.`,
         );
       }
       source = `${input.filesDir}/${(v.projectPath ?? "").replace(/^\.\/+/, "")}`;
@@ -554,7 +554,7 @@ function injectAppVolumes(
       source,
       target: v.mountPath,
       readOnly: Boolean(v.readOnly),
-      // Host binds only — `propagation` is dropped for the other kinds on write.
+      // Host binds only - `propagation` is dropped for the other kinds on write.
       ...(v.propagation ? { propagation: v.propagation } : {}),
     });
     byService.set(svcName, list);
@@ -599,7 +599,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
 
   // Strip globally-unique container names everywhere, point template file mounts at
   // this project's isolated files dir, and stamp Deplo tracking labels on EVERY
-  // service so the whole stack (not just the routed ones) is discoverable by label —
+  // service so the whole stack (not just the routed ones) is discoverable by label,
   // otherwise sidecars/databases are invisible to the container count, console,
   // health wait and teardown.
   const tracking = [
@@ -621,7 +621,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
       // so the cleanup's count-based retention can see and rank them.
       mergeBuildLabels(svc as App, serviceName, tracking);
       // Inject the project's settings env vars as bare `- KEY` pass-throughs on
-      // EVERY service (the value rides the env-file) — the env analogue of the
+      // EVERY service (the value rides the env-file) - the env analogue of the
       // tracking/routing labels above. A key the service already declares wins.
       mergeEnvironment(svc as App, envKeys);
       // Apply the app-level resource caps to EVERY service, existing-wins: a
@@ -656,7 +656,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
 
   // The `domains` table IS the routing: one Traefik router per routed domain, each to
   // its named compose service. A route with no service (or a service not in the
-  // stack) can't be wired — skip it rather than emit a router pointing at nothing.
+  // stack) can't be wired - skip it rather than emit a router pointing at nothing.
   for (const route of domainRoutes) {
     const service = route.service;
     if (!service || !services[service]) continue;

@@ -3,13 +3,13 @@ import "server-only";
 import type { ServerMetrics } from "../data/monitoring";
 
 /**
- * The server-side metrics HISTORY — a rolling in-memory ring buffer of {@link
+ * The server-side metrics HISTORY - a rolling in-memory ring buffer of {@link
  * ServerMetrics} samples per server, so the Monitoring page's charts survive a
  * page reload instead of starting empty (before this, history lived only in the
  * open tab's React state and died with it).
  */
 
-/** Keep samples this far back — the largest chart window (15m) plus slack. */
+/** Keep samples this far back - the largest chart window (15m) plus slack. */
 export const HISTORY_WINDOW_MS = 16 * 60_000;
 
 /**
@@ -50,7 +50,7 @@ export function recordMetricsSample(sample: ServerMetrics): void {
   buffers.set(sample.serverId, buf);
 }
 
-/** The buffered window for one server, oldest first (a copy — callers may not mutate). */
+/** The buffered window for one server, oldest first (a copy - callers may not mutate). */
 export function getMetricsHistory(serverId: string): ServerMetrics[] {
   const buf = buffers.get(serverId);
   if (!buf || buf.length === 0) return [];
@@ -58,7 +58,7 @@ export function getMetricsHistory(serverId: string): ServerMetrics[] {
   return [...buf];
 }
 
-/** Epoch ms of the newest buffered sample, or 0 — the collector's "is anyone
+/** Epoch ms of the newest buffered sample, or 0 - the collector's "is anyone
  *  already feeding this server?" probe. */
 export function latestSampleTs(serverId: string): number {
   const buf = buffers.get(serverId);
@@ -67,8 +67,8 @@ export function latestSampleTs(serverId: string): number {
 
 /**
  * Drop every buffer (or one server's). Called when the operator turns saving
- * OFF — "save metrics on server: off" must mean nothing stays saved, not
- * "stops growing" — and by tests.
+ * OFF - "save metrics on server: off" must mean nothing stays saved, not
+ * "stops growing", and by tests.
  */
 export function clearMetricsHistory(serverId?: string): void {
   if (serverId) buffers.delete(serverId);

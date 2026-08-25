@@ -46,7 +46,7 @@ import {
 
 /**
  * The two axes 0062 added: WHICH teams a token reaches, and how far down inside
- * one it can be narrowed — to a whole project, or to a single app.
+ * one it can be narrowed - to a whole project, or to a single app.
  */
 
 let db: TestDb;
@@ -87,7 +87,7 @@ beforeEach(async () => {
     `truncate table projects, folders, api_tokens restart identity cascade;`,
   );
   await seedIdentity(db);
-  // The same person in a SECOND team — the case a one-team token could not express.
+  // The same person in a SECOND team - the case a one-team token could not express.
   await db.insert(membershipsTable).values({
     id: "mem_user_1_b",
     userId: USER_1,
@@ -336,7 +336,7 @@ test("a foreign team can't be put in a scope", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Folders — the level most apps actually live in                      */
+/* Folders - the level most apps actually live in                      */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -555,7 +555,7 @@ test("a folder in a team you don't belong to can't be put in a scope", async () 
 
 /**
  * A folder is private to its owner and its grantees. The picker draws the tree
- * the scope is ticked in, and the tree is bounded by the AUTHOR's memberships —
+ * the scope is ticked in, and the tree is bounded by the AUTHOR's memberships,
  * but membership of the team is not access to every folder in it, so the picker
  * has to ask the per-node question too. It used to list every private folder in
  * the team by name, with the apps inside it; and because the list paths then
@@ -648,7 +648,7 @@ test("the scope picker never offers a folder its author can't see", async () => 
     );
   });
 
-  // The owner's own picker still shows it — the bound is access, not existence.
+  // The owner's own picker still shows it - the bound is access, not existence.
   const mine = (await asUser1(() => listScopeTree())).find(
     (t) => t.id === TEAM_A,
   )!;
@@ -672,7 +672,7 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
   });
   await seedPrivateFolder();
 
-  // The picker won't offer it, but the API takes ids — so the read path is what
+  // The picker won't offer it, but the API takes ids, so the read path is what
   // has to hold, not the tree.
   const raw = await asOutsider(
     async () =>
@@ -690,7 +690,7 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
     assert.deepEqual(
       (await listApps()).map((a) => a.id),
       [],
-      "the folder's app stays invisible — a token is never more than its author",
+      "the folder's app stays invisible - a token is never more than its author",
     );
     assert.deepEqual(
       (await listFolders()).map((f) => f.id),
@@ -770,7 +770,7 @@ test("a folder-scoped token creates apps in its own folder, and nowhere else", a
       folderIds: ["fld_root"],
     },
     async () => {
-      // The scope IS a folder, and a folder has no `project_id` of its own — so
+      // The scope IS a folder, and a folder has no `project_id` of its own, so
       // asking "is your PROJECT in scope?" answered "you have no project" and
       // refused the token the one place it was pointed at.
       const made = await newApp("in-folder", { folderId: "fld_root" });

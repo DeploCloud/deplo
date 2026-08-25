@@ -99,7 +99,7 @@ const CONNECT = { url: URL_BASE, apiKey: "dk_test_key" };
 type Fixtures = Record<string, unknown | { __status: number; body?: string }>;
 
 let fixtures: Fixtures = {};
-/** Every procedure the importer called, in order — the calls are the contract. */
+/** Every procedure the importer called, in order - the calls are the contract. */
 let calls: string[] = [];
 
 const DOKPLOY_ICON = `data:image/svg+xml;base64,${Buffer.from(
@@ -955,7 +955,7 @@ test("a project's and an environment's own variables become linked shared variab
     "ENV_LEVEL",
     "SHARED_TOKEN",
   ]);
-  // The LINK is what injects (ADR-0012) — a scope alone would inject nothing.
+  // The LINK is what injects (ADR-0012) - a scope alone would inject nothing.
   const links = await db.select().from(sharedVarAppsTable);
   assert.ok(links.length >= 2, `expected app links, got ${links.length}`);
   assert.equal(
@@ -1502,7 +1502,7 @@ test("an import run belongs to its team", async () => {
 
 /**
  * A fetch that answers `application.one` by the id in the query string, so one
- * fake can serve a project with several applications — and can be told to fail
+ * fake can serve a project with several applications, and can be told to fail
  * exactly one of them.
  */
 function routingFetch(

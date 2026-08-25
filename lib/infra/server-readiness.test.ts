@@ -137,12 +137,12 @@ const countOf = (r: ReadinessReport, sev: ReadinessCheck["severity"]) =>
 /* 1. the happy path                                                   */
 /* ------------------------------------------------------------------ */
 
-test("a fully-installed host is `ready` — every check passed", () => {
+test("a fully-installed host is `ready` - every check passed", () => {
   const r = classifyServerReadiness(probe());
   assert.equal(r.verdict, "ready");
   assert.equal(countOf(r, "fail"), 0);
   assert.equal(countOf(r, "warn"), 0);
-  assert.equal(r.summary, "Ready to deploy — every check passed.");
+  assert.equal(r.summary, "Ready to deploy - every check passed.");
   assert.equal(r.serverId, "srv_1");
   assert.equal(r.serverName, "eu-west-1");
   assert.equal(r.checkedAt, "2026-07-13T10:00:00.000Z");
@@ -169,7 +169,7 @@ test("no agent yet → `provisioning`, and we never pretend to have dialed", () 
 });
 
 test("a trust-revoked server (certFingerprint: '') is fenced exactly like an unprovisioned one", () => {
-  // `removeServer` revokes trust by writing "" — not NULL — so the empty string is a second
+  // `removeServer` revokes trust by writing "", not NULL, so the empty string is a second
   // sentinel and must be treated as "there is no agent on the other end".
   const server = srv({
     agent: { port: 9443, certFingerprint: "", certPem: "", version: "" },
@@ -227,7 +227,7 @@ test("a deadline overrun says so specifically", () => {
   assert.equal(byId(r, "agent.hello").detail, READINESS_MESSAGES.timedOut);
 });
 
-test("a cert-pin mismatch is `untrusted`, NEVER 'did not answer' — the peer answered, it just isn't ours", () => {
+test("a cert-pin mismatch is `untrusted`, NEVER 'did not answer' - the peer answered, it just isn't ours", () => {
   const r = classifyServerReadiness(
     probe({
       hello: null,
@@ -282,7 +282,7 @@ test("a contract mismatch fails the protocol row and trusts NOTHING else the age
 
 test("a report NEVER leaks the pinned fingerprint or the dial address, in ANY failure branch", () => {
   // The raw errors carry our trust anchor and the dial address. They go to console.error in
-  // lib/data/server-readiness.ts and nowhere else — this is the assertion that keeps the
+  // lib/data/server-readiness.ts and nowhere else - this is the assertion that keeps the
   // closed message set closed.
   const raw =
     "14 UNAVAILABLE: agent cert fingerprint mismatch: pinned deadbeefcafe, got 0badf00d (10.4.2.9:9443)";
@@ -338,7 +338,7 @@ test("a report NEVER leaks the pinned fingerprint or the dial address, in ANY fa
 /* 10-15. docker + routing                                             */
 /* ------------------------------------------------------------------ */
 
-test("Docker down fails the engine row AND SKIPS Traefik — the agent forces traefikRunning false, so we never looked", () => {
+test("Docker down fails the engine row AND SKIPS Traefik - the agent forces traefikRunning false, so we never looked", () => {
   const r = classifyServerReadiness(
     probe({ hello: hello({ dockerAvailable: false, traefikRunning: false }) }),
   );
@@ -355,7 +355,7 @@ test("Docker down fails the engine row AND SKIPS Traefik — the agent forces tr
   assert.equal(r.verdict, "not_ready");
 });
 
-test("Traefik being down (with Docker up) is a WARN, never a fail — a DB/worker host legitimately has none", () => {
+test("Traefik being down (with Docker up) is a WARN, never a fail - a DB/worker host legitimately has none", () => {
   // Same call lib/infra/server-health.test.ts:46 makes: a status that fires on a normal
   // configuration is a status operators learn to ignore.
   const r = classifyServerReadiness(
@@ -415,7 +415,7 @@ test("Traefik down but :80 held → warn: another process owns the web port, so 
   assert.equal(byId(r, "routing.port80").hint, READINESS_HINTS.freeWebPort);
 });
 
-test("Traefik down + :80 free is INFO, not a second warn — the Traefik row already carries it", () => {
+test("Traefik down + :80 free is INFO, not a second warn - the Traefik row already carries it", () => {
   const r = classifyServerReadiness(
     probe({
       hello: hello({ traefikRunning: false }),
@@ -438,7 +438,7 @@ test("Traefik down + :80 free is INFO, not a second warn — the Traefik row alr
 /* ------------------------------------------------------------------ */
 
 test("CheckPort unsupported → both port rows skip, and a skip NEVER moves the verdict", () => {
-  // "We didn't look" is not "it's broken" — degrading to a skipped row is the honest answer,
+  // "We didn't look" is not "it's broken" - degrading to a skipped row is the honest answer,
   // and it must not cost the operator a red banner.
   const r = classifyServerReadiness(
     probe({
@@ -524,7 +524,7 @@ test("disk headroom: 20% passes, 92% warns, 97% fails the whole report", () => {
   assert.equal(critical.verdict, "not_ready");
 });
 
-test("diskTotal === 0 means statfs FAILED — that is a skip, never '0% used'", () => {
+test("diskTotal === 0 means statfs FAILED - that is a skip, never '0% used'", () => {
   const r = classifyServerReadiness(
     probe({ metrics: metrics({ diskTotal: 0, diskUsed: 0, diskPct: 0 }) }),
   );
@@ -545,7 +545,7 @@ test("no metrics at all → the disk row is skipped, and says so", () => {
   );
 });
 
-test("an unset disk_pct (proto3 default 0) is classified from used/total — never a green 98%-full pass", () => {
+test("an unset disk_pct (proto3 default 0) is classified from used/total, never a green 98%-full pass", () => {
   // `diskPct` is a proto3 double with no field presence: an agent that fills disk_total /
   // disk_used but not disk_pct arrives here as 0. Classifying on the raw field while printing
   // the used/total fallback rendered a nearly-full host as `pass`.
@@ -564,7 +564,7 @@ test("an unset disk_pct (proto3 default 0) is classified from used/total — nev
   }
 });
 
-test("the disk percentage shown is the one classified — a fraction never crosses a threshold on display", () => {
+test("the disk percentage shown is the one classified - a fraction never crosses a threshold on display", () => {
   // 94.7 must not render "95% full" (the documented hard-fail number) next to a warn icon.
   const warn = classifyServerReadiness(
     probe({
@@ -618,7 +618,7 @@ test("a restricted server with zero team grants can never receive a deploy → F
   assert.equal(some.verdict, "ready");
 });
 
-test("a `fail` outranks `provisioning` — an unreachable, ungranted server is NOT ready", () => {
+test("a `fail` outranks `provisioning` - an unreachable, ungranted server is NOT ready", () => {
   const r = classifyServerReadiness(
     probe({
       server: srv({ agent: undefined, allTeams: false }),
@@ -626,7 +626,7 @@ test("a `fail` outranks `provisioning` — an unreachable, ungranted server is N
     }),
   );
   assert.equal(r.verdict, "not_ready");
-  assert.equal(r.summary, "Not ready to deploy — 1 check failed.");
+  assert.equal(r.summary, "Not ready to deploy - 1 check failed.");
 });
 
 /* ------------------------------------------------------------------ */
@@ -716,7 +716,7 @@ test("readinessVerdict: fail beats everything, skips alone leave `ready`, provis
 test("a supported build method NEVER claims the tool is installed on the host", () => {
   // A Hello flag is a compiled-in constant of the agent BINARY. It proves the agent knows how
   // to run a Nixpacks build; the nixpacks binary is downloaded on the first such build. If
-  // someone rewrites this copy to say "Nixpacks installed", this test fails — on purpose.
+  // someone rewrites this copy to say "Nixpacks installed", this test fails - on purpose.
   const r = classifyServerReadiness(probe());
   const passes = r.checks.filter(
     (c) => c.group === "build" && c.severity === "pass",
@@ -728,7 +728,7 @@ test("a supported build method NEVER claims the tool is installed on the host", 
       `a build row must say what the flag PROVES: ${c.detail}`,
     );
     // The guard hunts for a CLAIM. The copy's explicit DENIALS ("nothing is installed on the
-    // host") are the opposite of one — they are what honesty looks like here — so they are
+    // host") are the opposite of one, they are what honesty looks like here, so they are
     // dropped before the hunt. Everything that survives is an assertion the row is making.
     const claimed = c.detail.replace(/nothing is installed on the host/gi, "");
     assert.ok(
@@ -739,7 +739,7 @@ test("a supported build method NEVER claims the tool is installed on the host", 
 });
 
 test("a `ready` report with skipped rows NEVER claims 'every check passed'", () => {
-  // A skip must not move the verdict ("we didn't look" is not "it's broken") — but it must not
+  // A skip must not move the verdict ("we didn't look" is not "it's broken"), but it must not
   // be laundered into a pass by the one sentence the operator actually reads either.
   const ports = classifyServerReadiness(
     probe({
@@ -766,12 +766,12 @@ test("a `ready` report with skipped rows NEVER claims 'every check passed'", () 
   // The genuinely clean report still says it plainly.
   assert.equal(
     classifyServerReadiness(probe()).summary,
-    "Ready to deploy — every check passed.",
+    "Ready to deploy - every check passed.",
   );
 });
 
 test("the Traefik row states what it OBSERVED, and never promises routing works", () => {
-  // The signal is a substring match over running containers' image/name — it matches a
+  // The signal is a substring match over running containers' image/name - it matches a
   // bring-your-own proxy, and cannot see whether the container is on the `deplo` network app
   // routers are pinned to. The copy may not turn that into a guarantee.
   const detail = byId(
@@ -785,7 +785,7 @@ test("the Traefik row states what it OBSERVED, and never promises routing works"
   assert.match(detail, /cannot verify/i);
 });
 
-test("a `pass` row never carries a hint — there is nothing to do about good news", () => {
+test("a `pass` row never carries a hint - there is nothing to do about good news", () => {
   const reports = [
     classifyServerReadiness(probe()),
     classifyServerReadiness(probe({ hello: hello({ traefikRunning: false }) })),

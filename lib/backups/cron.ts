@@ -1,5 +1,5 @@
 /**
- * A tiny standard 5-field cron evaluator — `minute hour day-of-month month
+ * A tiny standard 5-field cron evaluator - `minute hour day-of-month month
  * day-of-week`. An unparseable expression is treated as "never matches" rather
  * than throwing, so one malformed schedule can't crash the scheduler tick.
  */
@@ -73,7 +73,7 @@ interface ParsedCron {
 
 /**
  * Parse a 5-field cron string. Returns null if it does not have exactly five
- * fields or any field is malformed — the scheduler treats null as "never".
+ * fields or any field is malformed - the scheduler treats null as "never".
  */
 export function parseCron(expr: string): ParsedCron | null {
   const fields = expr.trim().split(/\s+/);
@@ -126,7 +126,7 @@ export function cronMatches(expr: string, at: Date): boolean {
 
 /**
  * The first instant strictly AFTER `from` at which `expr` fires, or null when it
- * is unparseable or fires nowhere inside `limitDays` (e.g. `0 0 30 2 *` — the 30th
+ * is unparseable or fires nowhere inside `limitDays` (e.g. `0 0 30 2 *` - the 30th
  * of February).
  */
 export function nextCronRun(

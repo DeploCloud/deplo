@@ -95,14 +95,14 @@ export type TrailSeg = { id: string; name: string; href?: string };
 
 function gridClass(view: "grid" | "list"): string {
   // Grid view: 1 col on mobile, 2 from sm up, and 3 only on Full-HD (1920px) screens
-  // and wider (the `3xl` breakpoint) — applied to every grouped surface (Overview,
+  // and wider (the `3xl` breakpoint) - applied to every grouped surface (Overview,
   // folder contents, sub-folders, projects).
   return view === "list"
     ? "flex flex-col gap-3"
     : "grid gap-4 sm:grid-cols-2 3xl:grid-cols-3";
 }
 
-/** "1 app is" / "3 apps are" — both forms spelled out by the caller. */
+/** "1 app is" / "3 apps are" - both forms spelled out by the caller. */
 function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -114,7 +114,7 @@ function allAppsHref(view: "grid" | "list"): string {
 /** Selection-aware bulk actions, composed by the grid that owns the selection. */
 interface SelectionBulk {
   count: number;
-  /** How many of the selected cards are APPS — the only kind that lives inside a
+  /** How many of the selected cards are APPS - the only kind that lives inside a
    *  folder, so the two folder actions stay hidden for a projects/folders-only
    *  selection instead of offering a button that would do nothing. */
   appCount: number;
@@ -241,7 +241,7 @@ export interface AppsGridProps {
    *  top level. */
   openFolder: (FolderRef & { parentId: string | null }) | null;
   /** The project container currently open (drill-in view), or null. Mutually
-   *  exclusive with `openFolder` — a folder param wins over a project param. */
+   *  exclusive with `openFolder` - a folder param wins over a project param. */
   openProject: ProjectRef | null;
   /** Breadcrumb trail from the top level down to the open folder or project. */
   folderPath: TrailSeg[];
@@ -254,18 +254,18 @@ export interface AppsGridProps {
    * holds `move_apps` somewhere (off during search).
    */
   canMoveApps: boolean;
-  /** The viewer may CREATE folders (has `deploy`, or is an instance admin) —
+  /** The viewer may CREATE folders (has `deploy`, or is an instance admin) -
    *  gates the "New ▸ Folder" and "New folder with selection" affordances. */
   canCreateFolder: boolean;
-  /** The viewer is a super-user (manage_team / instance admin) — gates the
+  /** The viewer is a super-user (manage_team / instance admin) - gates the
    *  team-wide bulk move/delete, reorder, and the manage menu on folders they
    *  don't own. Per-folder manage is derived from each folder's own capabilities. */
   canManageAllFolders: boolean;
   /** The viewer may mutate project containers (holds `deploy`, or is an
-   *  instance admin) — gates each project card's rename/colour/delete menu and
+   *  instance admin) - gates each project card's rename/colour/delete menu and
    *  the app cards' "Move to environment" action. */
   canManageProjects: boolean;
-  /** The open project's environments — set only in the drill-in view, where it
+  /** The open project's environments - set only in the drill-in view, where it
    *  feeds each app card's "Move to environment" submenu (ADR-0009). */
   environments?: { id: string; name: string }[];
 }
@@ -344,7 +344,7 @@ function StaticGrid({
           <FolderTrail path={folderPath} view={view} />
         </div>
       )}
-      {/* Projects and folders share one grid — projects first, then folders,
+      {/* Projects and folders share one grid - projects first, then folders,
           on the same level (ADR-0009). */}
       {(projects.length > 0 || folders.length > 0) && (
         <div className={gridClass(view)}>
@@ -488,7 +488,7 @@ function SortableGrid({
   // folder drop-target highlight; cleared on release so nothing lingers.
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const dragging = activeId !== null;
-  // The droppable the pointer is currently over (tracked during the drag) — used
+  // The droppable the pointer is currently over (tracked during the drag) - used
   // to shrink the dragged card into a folder it's hovering.
   const [overId, setOverId] = React.useState<string | null>(null);
 
@@ -505,7 +505,7 @@ function SortableGrid({
     [projects],
   );
 
-  // Clear optimistic move-hides whenever the visible projection actually changes —
+  // Clear optimistic move-hides whenever the visible projection actually changes -
   // the move's refresh landing, or navigating in/out of a folder.
   const sig = [
     ...services.map((p) => `${p.id}:${p.folderId ?? ""}`),
@@ -580,8 +580,8 @@ function SortableGrid({
     (folderIdSet.has(overId) || projectIdSet.has(overId));
 
   /* ---- Multi-selection (marquee + ctrl/shift-click) + bulk actions ------- */
-  // Selectable ids in DISPLAY order — projects, then folders, then the visible
-  // apps — so a shift-click range spans the grid exactly as it reads on screen.
+  // Selectable ids in DISPLAY order - projects, then folders, then the visible
+  // apps, so a shift-click range spans the grid exactly as it reads on screen.
   const selectableIds = React.useMemo(
     () => [
       ...projectItems.map((p) => p.id),
@@ -643,7 +643,7 @@ function SortableGrid({
       canManageAllFolders);
 
   // The confirm copy names exactly what is selected: the three kinds have very
-  // different consequences (only apps are actually destroyed — a folder or a project
+  // different consequences (only apps are actually destroyed - a folder or a project
   // is just removed, its contents survive), so one fixed sentence would either scare
   // or mislead depending on the selection.
   const deleteParts: string[] = [];
@@ -655,13 +655,13 @@ function SortableGrid({
     deleteParts.push(
       bulkDeleteApps
         ? `${count(selectedFolderIds.length, "folder is", "folders are")} removed with every app inside.`
-        : `${count(selectedFolderIds.length, "folder is", "folders are")} removed — the apps inside move back to the top level.`,
+        : `${count(selectedFolderIds.length, "folder is", "folders are")} removed - the apps inside move back to the top level.`,
     );
   if (selectedProjectIds.length)
     deleteParts.push(
       bulkDeleteApps
         ? `${count(selectedProjectIds.length, "project is", "projects are")} removed with every app inside.`
-        : `${count(selectedProjectIds.length, "project is", "projects are")} removed — the apps inside move back to the top level.`,
+        : `${count(selectedProjectIds.length, "project is", "projects are")} removed - the apps inside move back to the top level.`,
     );
   deleteParts.push("This can't be undone.");
   const bulkDeleteDescription = deleteParts.join(" ");
@@ -703,7 +703,7 @@ function SortableGrid({
     const all = [...appIds, ...folderIds, ...projectIds];
     // Every card goes on the CLICK, like a single delete does. A partial
     // failure puts them all back and the refresh below re-hides whatever really
-    // went — the same contract `moveAppsToProject` uses for a batch.
+    // went - the same contract `moveAppsToProject` uses for a batch.
     onDeleted(all);
     // Apps go through ONE bulk mutation (one server write, bounded-
     // concurrency teardown); folders and projects (usually few) delete per id.
@@ -719,7 +719,7 @@ function SortableGrid({
     router.refresh();
     const failed = results.find((r) => !r.ok);
     // Clear only on FULL success: a partial failure keeps the still-selected
-    // items so re-confirming retries them and the error stays meaningful — and
+    // items so re-confirming retries them and the error stays meaningful, and
     // keeps their cards, for the same reason.
     if (!failed) clearSelection();
     else onRestored(all);
@@ -800,7 +800,7 @@ function SortableGrid({
     });
   }
 
-  // Move a nested SUB-FOLDER out one level — to the open folder's own parent, or to
+  // Move a nested SUB-FOLDER out one level - to the open folder's own parent, or to
   // the top level when that parent is a root.
   function moveFolderOut(folderId: string) {
     const dest = openFolder?.parentId ?? null;
@@ -896,7 +896,7 @@ function SortableGrid({
 
   // Reorder a whole multi-selection together: lift every selected project out of
   // the order (keeping their relative order) and re-insert the block at the drop
-  // target — so a marquee/ctrl-selected group can be repositioned in one drag.
+  // target, so a marquee/ctrl-selected group can be repositioned in one drag.
   function reorderAppGroup(activeId: string, overId: string, selIds: string[]) {
     const selSet = new Set(selIds);
     if (selSet.has(overId)) return; // dropped onto a group member → no-op
@@ -940,7 +940,7 @@ function SortableGrid({
   // closestCenter never resolves a drag onto a neighbour the drop handler would
   // ignore (which makes reordering feel broken): - a project container only reorders
   // among other projects; - a folder only reorders among other folders (folders never
-  // enter a project — ADR-0009: a project's contents are its environments' apps); -
+  // enter a project - ADR-0009: a project's contents are its environments' apps); -
   // an app keeps every droppable (siblings to reorder among, folders and projects to
   // drop into, and the breadcrumb to move out a level).
   const collisionDetection = React.useCallback<CollisionDetection>(
@@ -955,7 +955,7 @@ function SortableGrid({
         });
       }
       if (folderIdSet.has(a)) {
-        // A folder reorders among other folders, and — when nested — can also be
+        // A folder reorders among other folders, and, when nested, can also be
         // dropped on the breadcrumb "move out" zone to climb out of its parent.
         return closestCenter({
           ...args,
@@ -1014,7 +1014,7 @@ function SortableGrid({
         else moveApp(a, dest);
       } else if (openProject) {
         // selectedAppIds (not the raw selection) so a stale off-screen id
-        // left in `selected` by a concurrent move is never dragged along — the
+        // left in `selected` by a concurrent move is never dragged along - the
         // same visibility guard every other bulk action routes through.
         if (groupDrag) moveAppsToProject(selectedAppIds, null);
         else moveAppToProject(a, null);
@@ -1031,10 +1031,10 @@ function SortableGrid({
       if (oIsProject && canReorder) reorderProjectList(a, o);
     } else if (aIsFolder) {
       if (oIsFolder && canReorder) reorderFolderList(a, o); // reorder among folders
-      // (folder onto an app/project: ignored — folders don't nest there)
+      // (folder onto an app/project: ignored - folders don't nest there)
     } else if (oIsProject) {
       // App(s) dropped onto a project container card. The group path uses
-      // selectedAppIds — the visibility-guarded selection — not the raw
+      // selectedAppIds, the visibility-guarded selection, not the raw
       // `selApps` (see the breadcrumb branch above).
       if (!canMoveApps) return;
       if (groupDrag) moveAppsToProject(selectedAppIds, o);
@@ -1046,7 +1046,7 @@ function SortableGrid({
       if (groupDrag) bulkMoveTo(o);
       else moveApp(a, o);
     } else {
-      // Reorder among apps — the whole selected group when multi-selecting.
+      // Reorder among apps - the whole selected group when multi-selecting.
       if (!canReorder) return;
       if (groupDrag) reorderAppGroup(a, o, selApps);
       else reorderAppList(a, o);
@@ -1118,7 +1118,7 @@ function SortableGrid({
               dragging={dragging && (activeIsApp || activeIsFolder)}
             />
           )}
-          {/* Projects and folders share one grid — projects first, then folders,
+          {/* Projects and folders share one grid - projects first, then folders,
               on the same level. Each kind keeps its own SortableContext (renders
               no DOM) so drag-reorder stays scoped to its kind (ADR-0009). */}
           {(projectItems.length > 0 || folderItems.length > 0) && (
@@ -1366,7 +1366,7 @@ function SortableItem({
 }: {
   id: string;
   dragging: boolean;
-  /** When this item is the one being dragged, shrink it to nothing (smoothly) —
+  /** When this item is the one being dragged, shrink it to nothing (smoothly) -
    *  used to preview an app being absorbed into the folder it hovers. */
   scaleOut?: boolean;
   /** Whether this card is part of the current multi-selection (shows a ring). */
@@ -1374,7 +1374,7 @@ function SortableItem({
   /** A multi-selection group drag is in flight → dim every selected card (not
    *  only the lifted one) so the whole moving group reads as picked up. */
   groupDragging?: boolean;
-  /** "project" | "folder" | "service" — surfaced as data-card-kind for marquee
+  /** "project" | "folder" | "service" - surfaced as data-card-kind for marquee
    *  hit-testing. */
   dataKind?: string;
   /** Modifier-click (ctrl/cmd/shift) selection handler. */
@@ -1444,7 +1444,7 @@ function SortableItem({
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
     // Menus and modals this card opens are portalled to <body> but stay REACT children
     // of it, so their clicks arrive here first (capture runs before the event ever
-    // reaches the surface, so the surface cannot stop it — see
+    // reaches the surface, so the surface cannot stop it - see
     // lib/portal-event-scope.ts).
     if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(
@@ -1494,7 +1494,7 @@ function SortableItem({
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
         // Multi-selection highlight (marquee / ctrl+click).
         selected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
-        // Only the stacking lives on the outer node — the translate dnd-kit
+        // Only the stacking lives on the outer node - the translate dnd-kit
         // writes here must stay instant so the card tracks the pointer. The lift
         // and the scale animation go on the inner wrapper below.
         isDragging && "relative z-10",
@@ -1511,7 +1511,7 @@ function SortableItem({
           dragging && !isDragging && "animate-jiggle",
           isDragging && "opacity-40 transition-transform duration-200 ease-out",
           // A selected sibling during a group drag also dims (held in place),
-          // so the whole moving group reads as picked up — not just the lifted one.
+          // so the whole moving group reads as picked up, not just the lifted one.
           !isDragging &&
             groupDragging &&
             selected &&

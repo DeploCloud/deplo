@@ -81,7 +81,7 @@ export function LiveLogs({
   initialSupportsTimeline: boolean;
   /** The instance ceiling on that window, in days. */
   initialLogMaxDays: number;
-  /** This app's deployment list (`/apps/<slug>/deployments`) — where the empty
+  /** This app's deployment list (`/apps/<slug>/deployments`), where the empty
    *  state sends somebody whose app has no container yet, to read the build. */
   deploymentsHref: string;
   /** Extra toolbar controls. The general Logs page passes its target picker;
@@ -103,7 +103,7 @@ export function LiveLogs({
   );
   const [logMaxDays, setLogMaxDays] = React.useState(initialLogMaxDays);
 
-  // What the containers are really doing — drives the banner above the stream
+  // What the containers are really doing - drives the banner above the stream
   // and tells a crash loop apart from a container that has simply stopped.
   const runtime = useAppRuntime(appId);
 

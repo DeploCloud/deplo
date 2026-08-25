@@ -3,9 +3,9 @@
 ## Core mission (north star)
 
 **deplo makes self-hosting exhaustively simple. The user must NEVER be required to know Docker or
-SSH** — that non-requirement is the whole differentiator vs. the other self-hosted platforms. The
+SSH** - that non-requirement is the whole differentiator vs. the other self-hosted platforms. The
 experience to match is the one the big clouds give, on the user's own infrastructure, and the
-audience is everyone who wants it — people leaving a cloud over the bill, teams that never
+audience is everyone who wants it - people leaving a cloud over the bill, teams that never
 self-hosted, and other platforms' users too, but never _only_ that last group.
 Every feature is tested exhaustively and judged on UX/DX for a non-expert: if the happy path only
 works from a shell or by hand-editing YAML, the feature is unfinished. Favor
@@ -14,7 +14,7 @@ demanding they stand up more.
 
 Also binding:
 
-- **Every feature must make sense in the UX and name its audience — exactly two exist:**
+- **Every feature must make sense in the UX and name its audience - exactly two exist:**
   **non-expert** (default-on, obvious, zero config) or **expert** (_advanced mode_: opt-in, behind
   an "Advanced" affordance, never on the first-run path).
 - **Design for teams and companies, not just the solo self-hoster.** Assume several people with
@@ -28,7 +28,7 @@ Also binding:
   advanced options exposed by default.
 - **Build everything so it could become a managed service.** deplo plans its own proprietary cloud
   later (idea still rough): keep things multi-tenant-safe and free of "operator == end user"
-  assumptions — while self-hosted + open source stay first-class and never get starved for it.
+  assumptions, while self-hosted + open source stay first-class and never get starved for it.
 - **Flag a mission conflict once, then build it.** A request (yours or the user's) that collides
   with the above gets at most three lines of warning _before_ the code (what it collides with, the
   cheaper thing covering the same need), and then you build it anyway. Only the five listed

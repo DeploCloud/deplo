@@ -31,7 +31,7 @@ export function CodeBlock({
       <div className="absolute top-2 right-2 z-10">
         <CopyButton value={code} />
       </div>
-      {/* Bounded box that scrolls on BOTH axes — long lines scroll sideways and a
+      {/* Bounded box that scrolls on BOTH axes - long lines scroll sideways and a
           tall block scrolls vertically, instead of stretching/overflowing the page. */}
       <pre className="max-h-[60vh] overflow-auto p-4 pr-12 text-xs leading-relaxed">
         <code className="font-mono text-zinc-200">{code}</code>
@@ -40,7 +40,7 @@ export function CodeBlock({
   );
 }
 
-/** Inline command with copy button — for install one-liners. */
+/** Inline command with copy button - for install one-liners. */
 export function CommandLine({
   command,
   truncate,
@@ -66,7 +66,7 @@ export function CommandLine({
       </span>
       {/**
        * By default WRAP the command (break-all) instead of scrolling it: the whole
-       * one-liner — long bootstrap token and all — stays visible and fully selectable, so
+       * one-liner, long bootstrap token and all, stays visible and fully selectable, so
        * it copies correctly by hand too, with zero horizontal overflow.
        */}
       <code

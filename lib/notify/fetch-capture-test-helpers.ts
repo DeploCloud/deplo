@@ -16,7 +16,7 @@ export interface FetchCapture {
 }
 
 /**
- * @param respond decides the response per URL — default 200 `{}`. Return a
+ * @param respond decides the response per URL - default 200 `{}`. Return a
  * `Response` to simulate a provider refusing.
  */
 export function captureFetch(
@@ -32,7 +32,7 @@ export function captureFetch(
       try {
         body = JSON.parse(body);
       } catch {
-        // Not JSON — keep the raw string, which is itself worth asserting on.
+        // Not JSON - keep the raw string, which is itself worth asserting on.
       }
     }
     calls.push({

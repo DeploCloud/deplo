@@ -52,8 +52,8 @@ import type { BasicAuthUserDTO } from "@/lib/data/basic-auth";
 
 /**
  * One credential as the shared variables toolbar sees it. `key` is that
- * toolbar's identifying-name field (see `FilterableVar`) — here the username, so
- * the search box matches on it and the A–Z sort orders by it.
+ * toolbar's identifying-name field (see `FilterableVar`) - here the username, so
+ * the search box matches on it and the A-Z sort orders by it.
  */
 type CredentialRow = BasicAuthUserDTO & { key: string };
 
@@ -91,7 +91,7 @@ export function BasicAuthManager({
     [liveUsers],
   );
 
-  // One app's credentials: what/when/who is all there is to slice by — a Project
+  // One app's credentials: what/when/who is all there is to slice by - a Project
   // or an App filter would have exactly one value here. "Added by" is not
   // persistent, so it only appears once more than one person has added one.
   const facets = React.useMemo(
@@ -154,7 +154,7 @@ export function BasicAuthManager({
           counts={counts}
           actions={addButton("default")}
           noun="credentials"
-          keySortLabel="Username (A–Z)"
+          keySortLabel="Username (A-Z)"
         />
       )}
 
@@ -200,11 +200,11 @@ export function BasicAuthManager({
         title="Delete login?"
         description={
           rows.length === 1
-            ? `${deleting?.username ?? "This login"} is the last credential — deleting it drops the login prompt entirely, and every domain of this app becomes reachable by anyone within seconds.`
+            ? `${deleting?.username ?? "This login"} is the last credential - deleting it drops the login prompt entirely, and every domain of this app becomes reachable by anyone within seconds.`
             : `${deleting?.username ?? "This login"} stops working within seconds; the app's other credentials keep working.`
         }
         confirmLabel="Delete"
-        successMessage="Credential deleted — that login no longer works"
+        successMessage="Credential deleted - that login no longer works"
         optimistic
         onConfirm={async () => {
           const id = deleting!.id;
@@ -231,7 +231,7 @@ export function BasicAuthManager({
 
 /**
  * A credential tile: who signs in, the (revealable) password, and the audit line
- * the Environment tab shows as its "Last modified / Modified by" columns —
+ * the Environment tab shows as its "Last modified / Modified by" columns -
  * "added by @ada three months ago, password last changed by @linus yesterday".
  */
 function CredentialCard({
@@ -346,13 +346,13 @@ function MetaRow({
 /* Add / change password                                               */
 /* ------------------------------------------------------------------ */
 
-// Unambiguous alphabet — no 0/O/1/l/I — because these passwords get read out
+// Unambiguous alphabet, no 0/O/1/l/I, because these passwords get read out
 // loud, pasted into a chat, and typed by hand into a browser prompt.
 const PASSWORD_ALPHABET =
   "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 /** A 20-character password from the platform CSPRNG, so the obvious path is also
- *  the strong one — nobody has to invent a password to protect an app. */
+ *  the strong one - nobody has to invent a password to protect an app. */
 function generatePassword(): string {
   const bytes = new Uint32Array(20);
   crypto.getRandomValues(bytes);
@@ -386,8 +386,8 @@ function BasicAuthDialog({
   }
 
   function submit() {
-    // Changing a password has nowhere to show progress — the card looks
-    // identical before and after — so that one still resolves in the dialog.
+    // Changing a password has nowhere to show progress - the card looks
+    // identical before and after, so that one still resolves in the dialog.
     if (editing) {
       startTransition(async () => {
         const res = await gqlAction<{
@@ -399,7 +399,7 @@ function BasicAuthDialog({
           { id: editing.id, password },
         );
         if (res.ok) {
-          toast.success("Password updated — live on every domain");
+          toast.success("Password updated - live on every domain");
           onOpenChange(false);
         } else {
           // The dialog stays open (a rejected password must keep what was typed), but the
@@ -414,7 +414,7 @@ function BasicAuthDialog({
 
     // Adding: the credential belongs in the grid, so it goes there NOW as a
     // pulsing placeholder and the dialog gets out of the way. What was typed is
-    // kept aside — an error puts the form back exactly as it was.
+    // kept aside - an error puts the form back exactly as it was.
     const typed = { username: username.trim(), password };
     onOpenChange(false);
     setUsername("");
@@ -430,7 +430,7 @@ function BasicAuthDialog({
           { appId, username: typed.username, password: typed.password },
         ),
       {
-        success: "Credential added — every domain now asks for this login",
+        success: "Credential added - every domain now asks for this login",
         onError: () => {
           setUsername(typed.username);
           setPassword(typed.password);
@@ -446,7 +446,7 @@ function BasicAuthDialog({
         <DialogHeader>
           <DialogTitle>
             {editing
-              ? `Change password — ${editing.username}`
+              ? `Change password - ${editing.username}`
               : "Add basic-auth credential"}
           </DialogTitle>
           <DialogDescription>
@@ -476,7 +476,7 @@ function BasicAuthDialog({
                   <Input
                     id="basic-auth-password"
                     // Typed passwords stay covered; a GENERATED one is shown, so
-                    // it can be copied out before the dialog closes — it is about
+                    // it can be copied out before the dialog closes - it is about
                     // to be handed to someone.
                     type={visible ? "text" : "password"}
                     value={password}

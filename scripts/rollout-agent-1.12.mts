@@ -16,9 +16,9 @@ import { CleanupScope } from "../lib/agent/gen/agent";
 const TARGET = "1.12.1";
 /** Rollout order per the runbook: canary first, agent 0 (runs the control plane) last. */
 const ORDER = [
-  "srv_f47d8cba7db4c813", // neon-s1 (canary — fewest Apps)
+  "srv_f47d8cba7db4c813", // neon-s1 (canary - fewest Apps)
   "srv_07b0be4ab9ef9533", // neon-s2 (the saturated host this fix is for)
-  "srv_3667cf1973005952", // eu-main-1 (agent 0 — LAST)
+  "srv_3667cf1973005952", // eu-main-1 (agent 0 - LAST)
 ];
 /** Capabilities the control plane relies on; one disappearing = release regression. */
 const REQUIRED_CAPS = [
@@ -46,7 +46,7 @@ async function updateOne(serverId: string, name: string): Promise<void> {
   const busy = await inFlightDeploys(serverId);
   if (busy > 0) {
     throw new Error(
-      `${name}: ${busy} in-flight deploy(s) — a self-update re-exec would kill their streams. Re-run later.`,
+      `${name}: ${busy} in-flight deploy(s) - a self-update re-exec would kill their streams. Re-run later.`,
     );
   }
 
@@ -60,20 +60,20 @@ async function updateOne(serverId: string, name: string): Promise<void> {
   const hello = await agentPreflight(serverId);
   if (hello.agentVersion !== TARGET) {
     throw new Error(
-      `${name}: Hello says ${hello.agentVersion}, want ${TARGET} — STOP the rollout`,
+      `${name}: Hello says ${hello.agentVersion}, want ${TARGET} - STOP the rollout`,
     );
   }
   const missing = REQUIRED_CAPS.filter((c) => !hello.capabilities.includes(c));
   if (missing.length > 0) {
     throw new Error(
-      `${name}: capabilities disappeared: ${missing.join(", ")} — STOP the rollout`,
+      `${name}: capabilities disappeared: ${missing.join(", ")} - STOP the rollout`,
     );
   }
   await markServerSeen(serverId, hello.agentVersion);
 
   // Live smoke of the changed RPC: a dry run enumerates with the new rules and
   // must answer ok. (The owner just pruned the fleet by hand, so ~0 candidates
-  // is the expected shape — the point is the RPC answering sanely, per scope.)
+  // is the expected shape - the point is the RPC answering sanely, per scope.)
   const dry = await runAgentCleanup(serverId, {
     scopes: [
       CleanupScope.CLEANUP_SCOPE_BUILD_CACHE,
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
     const s = byId.get(id);
     if (!s) throw new Error(`server ${id} not found`);
     if (!s.agent?.certFingerprint) {
-      console.log(`[${s.name}] not provisioned — skipping`);
+      console.log(`[${s.name}] not provisioned - skipping`);
       continue;
     }
     await updateOne(id, s.name);

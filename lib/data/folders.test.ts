@@ -119,7 +119,7 @@ test("rollUpAppCounts tolerates cycles and dangling parents", async () => {
       ["z", 3],
     ]),
   );
-  // Each cycle member is credited exactly once — and the walk terminates.
+  // Each cycle member is credited exactly once, and the walk terminates.
   assert.equal(totals.get("x"), 1);
   assert.equal(totals.get("y"), 1);
   // A dangling parentId just ends the walk (folder treated as top-level).

@@ -12,7 +12,7 @@ import { PUBLIC_URL_PLACEHOLDER, resolveManifestBaseUrl } from "../public-url";
 
 /**
  * The ONE comment Deplo keeps on a pull request, edited in place. A pull request
- * with twenty pushes must still have one Deplo comment, not twenty — so the
+ * with twenty pushes must still have one Deplo comment, not twenty, so the
  * comment id is stored on the preview row and every later transition is a `PATCH`.
  */
 

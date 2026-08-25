@@ -62,11 +62,11 @@ export interface McpConnectionDTO {
   clientIcon: string | null;
   redirectOrigin: string | null;
   username: string | null;
-  /** The team it is MANAGED from — which may not be the team reading this list. */
+  /** The team it is MANAGED from, which may not be the team reading this list. */
   teamId: string;
   teamName: string;
   capabilities: Capability[];
-  /** Any authenticated use — GraphQL and the deploy hook included. */
+  /** Any authenticated use - GraphQL and the deploy hook included. */
   lastUsedAt: string | null;
   /** The last MCP call specifically. What makes a `token` row appear at all. */
   mcpLastUsedAt: string | null;
@@ -75,7 +75,7 @@ export interface McpConnectionDTO {
   createdAt: string;
 }
 
-/** Names longer than this are clamped — `createToken` refuses over 40. */
+/** Names longer than this are clamped - `createToken` refuses over 40. */
 const MAX_CLIENT_NAME = 40;
 
 /** How recently the consent must have been given for a mint to follow it. */
@@ -117,7 +117,7 @@ async function assertFreshConsent(
 
 /**
  * The teams the named projects, folders and apps belong to. A connection reaches
- * every team its scope touches, not only the ones ticked as wholes — so a project
+ * every team its scope touches, not only the ones ticked as wholes, so a project
  * is a grant of its team, and has to pass the same per-team gate.
  */
 async function teamsOfNodes(input: TokenScopeInput): Promise<string[]> {
@@ -297,7 +297,7 @@ export async function mintMcpConnection(
       ),
     );
 
-  // Which teams this connection may work in — and the gate runs once PER TEAM, in
+  // Which teams this connection may work in, and the gate runs once PER TEAM, in
   // that team. The team being connected FROM is always included: you cannot connect a
   // client from a team and leave that team out.
   const nodeTeams = await teamsOfNodes(input);
@@ -350,7 +350,7 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
   const teamId = await requireActiveTeamId();
   await requireTeamWide("connected MCP clients");
 
-  // Every connection that can ACT here, not the ones minted here — the same rule
+  // Every connection that can ACT here, not the ones minted here - the same rule
   // `listTokens` follows, and for its reason: a team that cannot see a credential
   // operating inside it cannot revoke it either.
   const reaching = await tokenIdsReaching(teamId);
@@ -443,8 +443,8 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
 }
 
 /**
- * Has this token spoken MCP yet? It is deliberately a boolean and not a timestamp
- * — the caller is asking one question, and an id from another team must answer it
+ * Has this token spoken MCP yet? It is deliberately a boolean and not a timestamp -
+ * the caller is asking one question, and an id from another team must answer it
  * with `false` rather than with an error that confirms the row exists.
  */
 export async function mcpTokenConnected(tokenId: string): Promise<boolean> {

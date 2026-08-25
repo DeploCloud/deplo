@@ -5,7 +5,7 @@ import { parseCron, cronMatches, nextCronRun } from "./cron";
 
 /**
  * The cron matcher is the scheduler's "is this due now?" Bad expressions must
- * degrade to "never matches" — never throw — so one malformed schedule can't crash
+ * degrade to "never matches", never throw, so one malformed schedule can't crash
  * the tick.
  */
 
@@ -122,7 +122,7 @@ test("whitespace is tolerated between fields", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* nextCronRun — the UI's "prove what I just picked actually means"     */
+/* nextCronRun - the UI's "prove what I just picked actually means"     */
 /* ------------------------------------------------------------------ */
 
 const iso = (d: Date | null) => (d === null ? null : d.toISOString());
@@ -168,7 +168,7 @@ test("nextCronRun walks steps, weekdays and months", () => {
 });
 
 test("nextCronRun honours the Vixie day union", () => {
-  // "the 13th OR any Friday" — 2026-06-23 is a Tuesday, so Friday the 26th wins.
+  // "the 13th OR any Friday" - 2026-06-23 is a Tuesday, so Friday the 26th wins.
   assert.equal(
     iso(nextCronRun("0 0 13 * 5", at("2026-06-23T10:00:00Z"))),
     "2026-06-26T00:00:00.000Z",

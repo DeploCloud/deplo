@@ -25,7 +25,7 @@ import { previewHost, resolveServerIp } from "./domains";
 import { mapLimit } from "../utils";
 
 /**
- * The lifecycle of a **pull request preview** — open, sync, close, tear down.
+ * The lifecycle of a **pull request preview** - open, sync, close, tear down.
  */
 
 /** How many previews one app may have open at once when it sets no limit. */
@@ -78,7 +78,7 @@ export interface PullRequestFacts {
   headSha: string;
   /** `owner/name` of the head repo; differs from the app's repo ⇒ a fork. */
   headRepo: string;
-  /** The fork's own clone URL — a fork's head ref does not exist on the base. */
+  /** The fork's own clone URL - a fork's head ref does not exist on the base. */
   headCloneUrl: string;
   baseBranch: string;
   isFork: boolean;
@@ -151,8 +151,8 @@ export async function openOrSyncPreview(
 
     const now = nowIso();
     let previewId = existing?.id ?? null;
-    // An evicted preview keeps taking pull request updates — its title, head SHA and
-    // state stay honest in the list — but a push does NOT rebuild it.
+    // An evicted preview keeps taking pull request updates - its title, head SHA and
+    // state stay honest in the list, but a push does NOT rebuild it.
     const evictedAndUnasked = existing?.status === "evicted" && !opts.manual;
     if (existing) {
       await getDb()
@@ -168,7 +168,7 @@ export async function openOrSyncPreview(
           baseBranch: pr.baseBranch,
           isFork: pr.isFork,
           // Reopening a closed pull request revives the same preview, key and
-          // host included — so the old link starts working again.
+          // host included, so the old link starts working again.
           state: "open",
           closedAt: null,
           tornDownAt: null,
@@ -186,7 +186,7 @@ export async function openOrSyncPreview(
         .where(eq(appPreviewsTable.id, existing.id));
     } else {
       // At the cap, the NEW preview wins and the least recently active one is torn down.
-      // An existing preview's own next push never evicts anything — it already holds its
+      // An existing preview's own next push never evicts anything - it already holds its
       // slot. ONLY when this preview is actually going to build.
       if (approved && (await countOpenPreviews(appId)) >= settings.maxActive) {
         await evictToFit(appId, settings.maxActive);
@@ -284,7 +284,7 @@ export async function deployPreviewRow(
   const p = row[0];
   if (!p) return null;
   // A preview that holds no slot is about to start holding one, so it claims its
-  // place exactly like a new preview would — otherwise reviving an evicted one, or
+  // place exactly like a new preview would, otherwise reviving an evicted one, or
   // approving a fork that has been sitting blocked, would silently put the app over
   if ((SLOTLESS as readonly string[]).includes(p.status)) {
     const settings = await previewSettings(p.appId);
@@ -361,7 +361,7 @@ export async function closePreview(
     gone
       ? `Destroyed the preview for pull request #${p.prNumber}${app ? ` of ${app.name}` : ""} (${reason})`
       : `Could not reach the server to destroy the preview for pull request #${p.prNumber}` +
-          `${app ? ` of ${app.name}` : ""} — Deplo will retry`,
+          `${app ? ` of ${app.name}` : ""} - Deplo will retry`,
     "system",
     p.appId,
   );
@@ -437,7 +437,7 @@ export async function previewSettings(appId: string): Promise<{
   forkPolicy: PreviewForkPolicy;
   /** Where previews run. NULL ⇒ the app's own server. */
   serverId: string | null;
-  /** HTTPS on preview hosts. Forced OFF without a base domain — see below. */
+  /** HTTPS on preview hosts. Forced OFF without a base domain - see below. */
   https: boolean;
   /** Rebuild when the pull request receives a new commit. */
   autoDeploy: boolean;
@@ -583,7 +583,7 @@ async function loadPreviewRow(
 }
 
 /**
- * Previews the reaper should act on, in two disjoint sets: - `retry` — closed but
+ * Previews the reaper should act on, in two disjoint sets: - `retry` - closed but
  * never verifiably torn down (the agent was down).
  */
 export async function previewsDueForReaping(
@@ -627,7 +627,7 @@ export async function previewsDueForReaping(
 }
 
 /**
- * Open previews whose pull request should be re-checked against GitHub — the
+ * Open previews whose pull request should be re-checked against GitHub - the
  * missed-`closed`-webhook safety net. Ordered oldest-checked first so one batch
  * per tick eventually covers everything.
  */

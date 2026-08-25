@@ -65,7 +65,7 @@ beforeEach(async () => {
     ],
   });
   await registerClientRow(CLIENT, "Claude");
-  // The mint requires a FRESH approval on file — the row `POST /oauth2/consent`
+  // The mint requires a FRESH approval on file - the row `POST /oauth2/consent`
   // writes after verifying the provider's signature.
   await consentRow(CLIENT, OWNER);
   await consentRow(CLIENT, MEMBER);
@@ -80,7 +80,7 @@ async function registerClientRow(clientId: string, name: string) {
 }
 
 /**
- * Seeded the way the APPLICATION writes it — a JS `Date` through the driver — and
+ * Seeded the way the APPLICATION writes it, a JS `Date` through the driver, and
  * never with SQL `now()`.
  */
 async function consentRow(clientId: string, userId: string, ageMs = 0) {
@@ -174,7 +174,7 @@ test("re-approving replaces the connection instead of widening the old token", a
 test("the minted capabilities are the ones the form submitted, never the client's ask", async () => {
   // A consent screen that trusted the OAuth `scope` parameter would grant what
   // the client asked for while showing the user something else. `scope` is not
-  // even an argument here — Capabilities and OAuth scopes are different things.
+  // even an argument here - Capabilities and OAuth scopes are different things.
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
@@ -278,8 +278,8 @@ test("a team that drifted between the screen and the submit is refused", async (
 });
 
 test("another team may be granted, and then the connection really reaches it", async () => {
-  // The multi-team rule. Naming a project of TEAM_B grants TEAM_B — a scope
-  // reaches every team it touches, not only the ones ticked whole — so the same
+  // The multi-team rule. Naming a project of TEAM_B grants TEAM_B - a scope
+  // reaches every team it touches, not only the ones ticked whole, so the same
   // gate has to pass there, and here it does.
   await grantOwnerIn(TEAM_B);
   await pg.query(
@@ -705,7 +705,7 @@ test("the consent path mints through createToken and never inserts a token itsel
   ])
     assert.ok(
       !src.includes(forbidden),
-      `${forbidden} in mcp-clients.ts — the mint must go through createToken`,
+      `${forbidden} in mcp-clients.ts - the mint must go through createToken`,
     );
   assert.ok(src.includes("createToken("), "the mint stopped using createToken");
 });
@@ -735,7 +735,7 @@ test("the connection appears in the API tokens list, marked", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Bearer connections — the half this list used to be blind to          */
+/* Bearer connections - the half this list used to be blind to          */
 /* ------------------------------------------------------------------ */
 
 /**

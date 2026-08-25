@@ -1,8 +1,8 @@
 # Deplo control plane  multi-stage build (Bun + Next.js standalone)
 #
 # The per-server agent (DeploCloud/deplo-agent) is NO LONGER bundled in this
-# image: the control plane never spawns an in-process local agent. EVERY server —
-# the host running Deplo included — installs the agent on its own host via
+# image: the control plane never spawns an in-process local agent. EVERY server -
+# the host running Deplo included - installs the agent on its own host via
 # install-agent.sh (served from /install-agent.sh, which pins the latest release's
 # checksum), bootstraps via call-home, and is dialed over mTLS. So there is no Go
 # binary to ship here; the dashboard's agent badge surfaces version drift.
@@ -27,14 +27,14 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-# Placeholders, builder stage ONLY — they never reach the runtime image below.
+# Placeholders, builder stage ONLY - they never reach the runtime image below.
 # `next build` collects page data by IMPORTING every route module, and lib/db/pg.ts
 # fail-fasts on a missing DEPLO_DATABASE_URL at module load (deliberately: a real
 # run with no database is a misconfiguration, not a silent fall-through). That
 # import is enough to abort the build with "Failed to collect page data for
 # /api/auth/[...all]", which is what has kept every image build since v1.0.0 red.
-# Nothing connects during a build — `pg.Pool` is lazy and `getPool()` is only
-# reached by a query — so a syntactically valid URL satisfies the check and the
+# Nothing connects during a build - `pg.Pool` is lazy and `getPool()` is only
+# reached by a query, so a syntactically valid URL satisfies the check and the
 # real values arrive as environment variables at run time.
 ENV DEPLO_DATABASE_URL=postgres://build:build@127.0.0.1:5432/build
 ENV DEPLO_SECRET=build-time-placeholder-not-a-real-secret
@@ -83,7 +83,7 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Replace the standalone tracer's node-pty (JS only — Next doesn't trace the
+# Replace the standalone tracer's node-pty (JS only - Next doesn't trace the
 # native .node) with the runtime-compiled one built above against Node 22/musl,
 # which carries build/Release/pty.node. node-addon-api is build-time-only
 # (header-only; no runtime require), so it isn't copied. The load check fails the

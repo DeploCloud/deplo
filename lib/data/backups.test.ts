@@ -176,7 +176,7 @@ test("createBackup rejects an unknown target / foreign destination", async () =>
   });
 });
 
-test("an unparseable cron is rejected, not stored — on create and on edit", async () => {
+test("an unparseable cron is rejected, not stored - on create and on edit", async () => {
   // `cronMatches` treats a bad expression as "never matches", so storing one
   // would be a schedule the UI reports as enabled and that never fires.
   await seedBackup(db, {
@@ -207,7 +207,7 @@ test("an unparseable cron is rejected, not stored — on create and on edit", as
         }),
       /not a valid cron expression/,
     );
-    // An OMITTED schedule is "didn't choose", not "chose something broken" — it
+    // An OMITTED schedule is "didn't choose", not "chose something broken" - it
     // still falls back to the daily default.
     const dto = await createBackup({
       name: "defaulted",
@@ -262,7 +262,7 @@ test("toggleBackup / updateBackup / deleteBackup", async () => {
 /* Run list ordering (seq tiebreak) + destination sweep                */
 /* ------------------------------------------------------------------ */
 
-test("listBackupRuns is newest-first by (startedAt, seq) — deterministic under a tie", async () => {
+test("listBackupRuns is newest-first by (startedAt, seq) - deterministic under a tie", async () => {
   // Three runs at the SAME instant; insertion order (seq) decides newest-first.
   await seedRun(db, {
     id: "r1",
@@ -308,7 +308,7 @@ test("backupDestinationsForTarget returns the distinct buckets a target ran to",
 
 test("countBackupArtifacts counts only SUCCESSFUL runs of the given target", async () => {
   // Two stored artifacts (success), plus a failed + a running run that left no
-  // object — and an artifact for a DIFFERENT target that must not leak in.
+  // object, and an artifact for a DIFFERENT target that must not leak in.
   await seedRun(db, {
     id: "r_ok1",
     destinationId: "s3_1",
@@ -419,7 +419,7 @@ test("reconcileInFlightBackupRuns flips stale running runs + stuck schedules to 
     .where(eq(backupsTable.id, "bkp_1"));
 
   // An OLD running run (orphaned by a restart) + a FRESH running run (genuinely
-  // in flight — must be left alone).
+  // in flight - must be left alone).
   await seedRun(db, {
     id: "r_old",
     destinationId: "s3_1",
@@ -504,7 +504,7 @@ test("a deleted target's runs stay findable, and the sweep stamps them", async (
   assert.equal(row!.orphanedAt, null, "nothing has noticed yet");
 
   // FIRST sighting: stamped, never deleted. The backup is two years old and the
-  // app went a second ago — measuring the keep window from the RUN would expire
+  // app went a second ago - measuring the keep window from the RUN would expire
   // it immediately, which is the opposite of "keep the backup files".
   const reclaimed = await sweepOrphanedBackupArtifacts();
   assert.equal(reclaimed, 0, "the first sweep only starts the clock");
@@ -568,7 +568,7 @@ test("a successful orphan is kept until its artifact is confirmed gone", async (
 
 test("the sweep never touches a LIVE target, however old its runs", async () => {
   // The only shape it looks for is "both FKs null", which is precisely what a
-  // deleted target leaves behind. Age alone must never be enough — that would
+  // deleted target leaves behind. Age alone must never be enough - that would
   // make it a second, unasked-for retention policy.
   await seedRun(db, {
     id: "r_live",
@@ -622,7 +622,7 @@ test("deleteAllBackupArtifacts (database) needs delete_databases, not manage_bac
       /permission|not allowed|delete/i,
     );
   });
-  // The run — and therefore the artifact it names — is untouched.
+  // The run, and therefore the artifact it names, is untouched.
   const rows = await db
     .select()
     .from(backupRunsTable)
@@ -650,7 +650,7 @@ test("runDatabaseBackup refuses a target or destination this team does not own",
 });
 
 test("runDatabaseBackup records a failed run rather than throwing past the executor", async () => {
-  // No agent is reachable in-process, so the dump cannot start — the point is
+  // No agent is reachable in-process, so the dump cannot start - the point is
   // that the attempt is still HISTORY: an ad-hoc database backup that failed
   // shows up in the same artifacts table a scheduled one does.
   await asUser1(async () => {

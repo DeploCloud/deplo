@@ -26,14 +26,14 @@ export interface StorageFileDraft {
   message: string;
 }
 
-/** Why a file can't be written from here — stated, never silently ignored. */
+/** Why a file can't be written from here - stated, never silently ignored. */
 const BLOCKED_MESSAGE: Record<"folder" | "binary" | "too-large", string> = {
   folder:
-    "This path is a folder in this app's Files, not a file. It stays mounted as it is — open the Files tab to change what's inside it.",
+    "This path is a folder in this app's Files, not a file. It stays mounted as it is - open the Files tab to change what's inside it.",
   binary:
-    "This file isn't text, so it can't be written here. It stays mounted as it is — replace it from the Files tab.",
+    "This file isn't text, so it can't be written here. It stays mounted as it is - replace it from the Files tab.",
   "too-large":
-    "This file is too big to edit here (1 MiB max). It stays mounted as it is — edit it from the Files tab.",
+    "This file is too big to edit here (1 MiB max). It stays mounted as it is - edit it from the Files tab.",
 };
 
 /**
@@ -64,7 +64,7 @@ export function storageFileDraft(
     draft: "",
     message: known
       ? BLOCKED_MESSAGE[file.state as keyof typeof BLOCKED_MESSAGE]
-      : "This path can't be written from here. It stays mounted as it is — open the Files tab to change it.",
+      : "This path can't be written from here. It stays mounted as it is - open the Files tab to change it.",
   };
 }
 
@@ -110,7 +110,7 @@ export function failedFileDraft(
 }
 
 /**
- * Whether this entry has content the user hasn't saved yet — so the Save button
+ * Whether this entry has content the user hasn't saved yet, so the Save button
  * lights up for a typed config file exactly as it does for a changed path, and
  * leaving the page warns instead of dropping it.
  */
@@ -133,7 +133,7 @@ export function pendingFileWrite(
   draft: StorageFileDraft | undefined,
   path: string,
 ): string | null {
-  if (!path) return null; // typed before the entry named a file — nowhere to put it
+  if (!path) return null; // typed before the entry named a file - nowhere to put it
   if (!draft || draft.path !== path) return null; // read for another path, or not read
   if (draft.status !== "editable") return null; // a folder, a binary, too big, unreadable
   if (draft.exists && draft.draft === draft.saved) return null; // unchanged

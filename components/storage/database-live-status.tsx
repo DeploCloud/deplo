@@ -5,7 +5,7 @@ import { gqlSubscribe } from "@/lib/graphql-client";
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
- * The live, client-tracked slice of a database's state — the DB twin of {@link
+ * The live, client-tracked slice of a database's state - the DB twin of {@link
  * import("@/components/apps/app-live-status").
  */
 export type LiveDatabase = {

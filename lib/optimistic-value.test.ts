@@ -9,7 +9,7 @@ test("the override stands while the server still serves the old value", () => {
   assert.equal(
     settled,
     override,
-    "must return the SAME object — a new one re-renders forever",
+    "must return the SAME object - a new one re-renders forever",
   );
   assert.equal(overrideValue(settled, "api"), "api-v2");
 });

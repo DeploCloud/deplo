@@ -19,7 +19,7 @@ import type { Capability } from "../types";
 
 /**
  * The revision deplo targets, spelled out rather than taken from the SDK's
- * `LATEST_PROTOCOL_VERSION` — which still names the PREVIOUS revision
+ * `LATEST_PROTOCOL_VERSION`, which still names the PREVIOUS revision
  * (`2025-11-25`), because "latest" there means "latest of the two eras this build
  */
 const PROTOCOL = "2026-07-28";

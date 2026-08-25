@@ -20,7 +20,7 @@ import type {
 } from "@/lib/types";
 
 /**
- * One channel's own fields — where to send, and what to send with. These used to
+ * One channel's own fields - where to send, and what to send with. These used to
  * sit inline under twelve stacked rows, which made the page a wall of inputs
  * before you had decided anything.
  */
@@ -108,7 +108,7 @@ function host(url: string): string {
   }
 }
 
-/** Host and path minus the last segment — the token, on every brand here. */
+/** Host and path minus the last segment - the token, on every brand here. */
 function trimSecret(url: string): string {
   try {
     const u = new URL(url);

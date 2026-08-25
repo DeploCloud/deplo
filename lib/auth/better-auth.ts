@@ -27,7 +27,7 @@ import {
 import { MCP_RESOURCE_PATH } from "@/lib/auth/oauth-metadata";
 
 /**
- * Better Auth configuration — the LIVE login path since ADR-0014. The secret is
+ * Better Auth configuration - the LIVE login path since ADR-0014. The secret is
  * DERIVED from `DEPLO_SECRET` rather than being it, so the TOTP secrets the
  * twoFactor plugin encrypts are not sealed under the same key as `*_enc`.
  */
@@ -195,7 +195,7 @@ function oauthProviderOptions() {
     disableJwtPlugin: true,
     storeTokens: { hash: (token: string) => sha256Hex(token) },
     // Client secrets stay at the plugin's default for this mode ("encrypted", symmetric
-    // under the Better Auth secret) — the same treatment the twoFactor plugin gives a
+    // under the Better Auth secret) - the same treatment the twoFactor plugin gives a
     // TOTP secret, keyed the same way.
     prefix: {
       opaqueAccessToken: "dplo_at_",
@@ -256,7 +256,7 @@ function createAuth(db: DrizzleClient) {
     user: { modelName: "users" },
     emailAndPassword: {
       enabled: true,
-      // Accounts are created via first-run setup / registration links only —
+      // Accounts are created via first-run setup / registration links only,
       // never through the public /api/auth/sign-up/email endpoint.
       disableSignUp: true,
       minPasswordLength: 8,
@@ -277,8 +277,8 @@ function createAuth(db: DrizzleClient) {
       cookiePrefix: "deplo",
       database: { generateId: () => newId("bas") },
       ipAddress: {
-        // Better Auth defaults to `x-forwarded-for` alone, and — this is the part that
-        // bites — it REFUSES a forwarded chain with more than one hop unless
+        // Better Auth defaults to `x-forwarded-for` alone, and - this is the part that
+        // bites - it REFUSES a forwarded chain with more than one hop unless
         // `trustedProxies` is configured, returning no address at all.
         ipAddressHeaders: ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"],
       },

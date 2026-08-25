@@ -7,7 +7,7 @@ import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-f
 export const metadata = { title: "Resources" };
 
 /**
- * Per-database resource caps — the same form apps use, saving through
+ * Per-database resource caps - the same form apps use, saving through
  * updateDatabaseResources. Applied on the next redeploy/reroute (the row is
  * truth), so the copy says "redeploy", not "deploy".
  */
@@ -26,13 +26,13 @@ export default async function DatabaseResourcesSettingsPage(
         docs="resources.overview"
         info="Cap how much RAM, CPU, disk and processes this database may use. Applied on the next redeploy."
       />
-      {/* MySQL/MariaDB InnoDB needs headroom — a note so a too-small memory cap
+      {/* MySQL/MariaDB InnoDB needs headroom - a note so a too-small memory cap
           doesn't OOM-loop silently. */}
       {(db.type === "mysql" || db.type === "mariadb") && (
         <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
           {db.type === "mysql" ? "MySQL" : "MariaDB"} generally needs at least{" "}
           <strong className="font-medium text-foreground">512 MB</strong> of
-          memory — a smaller limit can send InnoDB into a restart loop.
+          memory - a smaller limit can send InnoDB into a restart loop.
         </p>
       )}
       <ResourceLimitsForm
@@ -40,7 +40,7 @@ export default async function DatabaseResourcesSettingsPage(
         resources={db.resources}
         isComposeStack={false}
         mutationName="updateDatabaseResources"
-        savedMessage="Resource limits saved — Redeploy to apply"
+        savedMessage="Resource limits saved - Redeploy to apply"
       />
     </section>
   );

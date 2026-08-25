@@ -110,7 +110,7 @@ export async function listMyTeams(): Promise<
   const user = await assertUser();
   const db = getDb();
   // A bearer token acts only in the teams its scope names, so this is the list
-  // it may switch between with `X-Deplo-Team` — not every team the person is in.
+  // it may switch between with `X-Deplo-Team`, not every team the person is in.
   const scope = currentIdentity()?.token?.scope;
   const teams = (await teamsForUser(user.id)).filter(
     (t) => !scope || scope.teamIds.includes(t.id),
@@ -241,7 +241,7 @@ export async function updateTeam(input: {
 
 /**
  * Set or clear the active team's picture. `manage_team`, the same gate that
- * renames the team — because it IS the same action: changing how the team presents
+ * renames the team, because it IS the same action: changing how the team presents
  * itself.
  */
 export async function updateTeamAvatar(image: string | null): Promise<Team> {
@@ -283,7 +283,7 @@ export async function updateTeamAvatar(image: string | null): Promise<Team> {
 
 /**
  * This person's arrangement of the topbar team switcher. `requirePersonalSession`
- * is the gate that matters — an API token has no switcher and no business
+ * is the gate that matters - an API token has no switcher and no business
  * rewriting somebody's.
  */
 export async function reorderMyTeams(orderedIds: string[]): Promise<void> {
@@ -317,7 +317,7 @@ export async function reorderMyTeams(orderedIds: string[]): Promise<void> {
 }
 
 /**
- * How many members of the active team have no second factor yet — what the team
+ * How many members of the active team have no second factor yet - what the team
  * Security card shows before an admin flips the policy on, so "3 of 8 members"
  * is visible rather than discovered by those three being locked out.
  */

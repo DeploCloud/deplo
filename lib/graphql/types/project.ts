@@ -16,7 +16,7 @@ import { EnvironmentRef } from "./environment";
 import type { Project } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
-/* Object type — the Project CONTAINER (ADR-0008)                      */
+/* Object type - the Project CONTAINER (ADR-0008)                      */
 /* ------------------------------------------------------------------ */
 
 export const ProjectRef = builder
@@ -25,7 +25,7 @@ export const ProjectRef = builder
     description:
       "A top-level, team-scoped CONTAINER (ADR-0008): folder-like, but it owns " +
       "Environments and holds folders/apps via their `projectId`. NOT the " +
-      "deployable app — that is an `App`. A Project never nests in a Project.",
+      "deployable app - that is an `App`. A Project never nests in a Project.",
     fields: (t) => ({
       id: t.exposeID("id"),
       teamId: t.exposeID("teamId"),
@@ -84,7 +84,7 @@ const reorderScope = {
   $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
-// One scope per action — creating a project, renaming it, deleting it and moving an
+// One scope per action - creating a project, renaming it, deleting it and moving an
 // app into it are four different permissions.
 const createScope = { capability: "create_projects" } as const;
 const organizeScope = { capability: "organize_projects" } as const;

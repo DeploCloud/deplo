@@ -69,7 +69,7 @@ export async function avatarUrlFor(row: AvatarSource): Promise<string | null> {
 
 /**
  * A team's picture. Sync and flagless: a team has no email, so there is no
- * Gravatar to fall back to and nothing to ask the instance about — it is the
+ * Gravatar to fall back to and nothing to ask the instance about - it is the
  * uploaded image or the monogram.
  */
 export function teamAvatarUrl(image: string | null | undefined): string | null {

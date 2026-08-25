@@ -72,7 +72,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   other: "S3-compatible",
 };
 
-/** What the card needs. Narrower than the DTO — no secrets reach the client. */
+/** What the card needs. Narrower than the DTO, no secrets reach the client. */
 export interface DestinationCardView {
   id: string;
   name: string;
@@ -89,7 +89,7 @@ export interface DestinationCardView {
   accessKeyMasked: string | null;
   serverName: string | null;
   resolvedPath: string | null;
-  /** Whether artifacts written here are encrypted — true for every server
+  /** Whether artifacts written here are encrypted - true for every server
    *  destination, and for any bucket connected since buckets were encrypted. */
   encrypted: boolean;
   freeBytes: number | null;
@@ -305,7 +305,7 @@ export function DestinationCard({
                   )}
                   <DropdownMenuSeparator />
                   <SimpleTooltip
-                    content="Remove this destination — the backup files themselves are not deleted"
+                    content="Remove this destination - the backup files themselves are not deleted"
                     side="left"
                   >
                     <DropdownMenuItem
@@ -412,7 +412,7 @@ export function DestinationCard({
                 </span>
                 <span className="block text-xs text-muted-foreground">
                   {dest.lastTestAt
-                    ? `Last tested ${timeAgo(dest.lastTestAt)} — open the connection log`
+                    ? `Last tested ${timeAgo(dest.lastTestAt)} - open the connection log`
                     : "Open the connection log"}
                 </span>
               </span>

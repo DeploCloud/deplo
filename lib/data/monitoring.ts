@@ -43,7 +43,7 @@ export interface ServerMetrics {
    */
   agentVersion: string | null;
   /**
-   * The agent version every server should be running — the latest GitHub release,
+   * The agent version every server should be running - the latest GitHub release,
    * resolved once per poll and stamped onto every server's snapshot.
    */
   expectedAgentVersion: string;
@@ -52,7 +52,7 @@ export interface ServerMetrics {
 
 /**
  * The live agent-version pair stamped onto every snapshot. `server` may be
- * absent (a server we couldn't even look up) — then the version is unknown.
+ * absent (a server we couldn't even look up), then the version is unknown.
  */
 function agentVersionFields(
   expected: string,
@@ -92,22 +92,22 @@ function unavailable(
 
 /**
  * Measure a remote server via its agent's Metrics RPC. An unreachable / not-yet-
- * provisioned agent reports no live data (online:false) — never fabricated, never
+ * provisioned agent reports no live data (online:false), never fabricated, never
  * the control plane's own numbers.
  */
 async function measureRemote(
   server: Server,
   expected: string,
 ): Promise<ServerMetrics> {
-  // Watermark for any health we learn on this poll — see recordServerHealth.
+  // Watermark for any health we learn on this poll - see recordServerHealth.
   const observedAt = nowIso();
   const conn = await connectAgent(server.id);
   try {
     // Empty dataDir => the agent measures its own configured --data-dir.
     const m = await conn.metrics("");
     // Read the Traefik state live on this same poll (the poll already holds the mTLS
-    // connection open). This is the ONLY steady-state path — the deploy preflight aside
-    // — so without it traefikEnabled would only ever update on a deploy.
+    // connection open). This is the ONLY steady-state path - the deploy preflight aside,
+    // so without it traefikEnabled would only ever update on a deploy.
     let traefik = server.traefikEnabled;
     // The agent version reported on THIS poll's Hello (if it succeeds). Used for
     // the live outdated check so a just-updated agent self-corrects in the same
@@ -116,7 +116,7 @@ async function measureRemote(
     try {
       const hello = await conn.hello();
       // `?? traefik` keeps the last-known flag when the Hello observed nothing (Docker
-      // unreachable) — see observedTraefik. Same reason the catch below keeps it.
+      // unreachable) - see observedTraefik. Same reason the catch below keeps it.
       traefik = observedTraefik(hello) ?? traefik;
       if (hello.agentVersion) liveAgentVersion = hello.agentVersion;
       // Persist the live value (read-live-not-stored, like health).
@@ -200,7 +200,7 @@ export async function getServerMetrics(
 }
 
 /**
- * The buffered metrics HISTORY for one server (lib/monitoring/history.ts) — what
+ * The buffered metrics HISTORY for one server (lib/monitoring/history.ts) - what
  * the Monitoring page seeds its charts from on load, so a reload no longer starts
  * them empty.
  */
@@ -217,7 +217,7 @@ export async function getServerMetricsHistory(
 /**
  * Session-free measure for the background collector (lib/monitoring/collector.ts),
  * which has no request context to team-scope against: it takes an already-resolved
- * Server row — never a caller-supplied id — and its result reaches no client
+ * Server row, never a caller-supplied id, and its result reaches no client
  */
 export const measureServerForCollector = metricsFor;
 
@@ -236,7 +236,7 @@ function withSpecTimeout<T>(p: Promise<T>, ms = 4000): Promise<T> {
 }
 
 /**
- * Fill in each server's hardware specs (cores / RAM / disk) for a STATIC render —
+ * Fill in each server's hardware specs (cores / RAM / disk) for a STATIC render -
  * the Servers page shows capacity without polling.
  */
 export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
@@ -302,7 +302,7 @@ export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
       load: [0, 0, 0],
       uptimeSec: 0,
       containers: 0,
-      // Stored version + the resolved "latest" — keeps the hydration badge identical
+      // Stored version + the resolved "latest" - keeps the hydration badge identical
       // to what the RSC card renders, so the first poll doesn't visibly flip it.
       ...agentVersionFields(expected, s),
       ts: Date.now(),

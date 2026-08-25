@@ -42,7 +42,7 @@ import { nodeCapabilitiesFor, withView } from "./node-access";
 import type { Activity, AlertKey, Capability, Membership } from "../types";
 
 /**
- * Instance-admin administration of ONE person's access across the whole instance —
+ * Instance-admin administration of ONE person's access across the whole instance -
  * the server half of Settings → Users → a user.
  */
 
@@ -61,7 +61,7 @@ export interface UserTeamAccessDTO {
   /** The assigned role, or null for a hand-picked ("Custom") capability set. */
   roleId: string | null;
   roleName: string | null;
-  /** The membership RANK — `owner` outranks everyone. */
+  /** The membership RANK - `owner` outranks everyone. */
   rank: string;
   /** Their reach is the nodes below, not their role's (the admin's choice). */
   granular: boolean;
@@ -241,7 +241,7 @@ async function nodeGrantsFor(
 }
 
 /**
- * The scope tree rooted at the TARGET's teams — the same picker the token editor
+ * The scope tree rooted at the TARGET's teams - the same picker the token editor
  * draws, built from someone else's memberships. The flag is therefore derived here
  * rather than passed in, so a second caller cannot arrive with it set.
  */
@@ -267,7 +267,7 @@ export async function getMemberAccess(
 }
 
 /**
- * What this person has DONE, newest first, across every team — the Activity card
+ * What this person has DONE, newest first, across every team - the Activity card
  * on their page. Instance admin only; served by `activities_actor_created_idx`.
  */
 export async function listUserActivity(
@@ -365,7 +365,7 @@ async function writeAccess(
     );
     if (beyond.length > 0)
       throw new Error(
-        `You can only give someone permissions you hold yourself — you don't have ${CAPABILITY_META[beyond[0]].label.toLowerCase()}`,
+        `You can only give someone permissions you hold yourself - you don't have ${CAPABILITY_META[beyond[0]].label.toLowerCase()}`,
       );
     if (assignment.rank === "owner" && actor.role !== "owner")
       throw new Error("Only an owner can make someone an owner");
@@ -432,7 +432,7 @@ async function writeAccess(
 }
 
 /**
- * The set that lands in `membership_capabilities` — the member's own when the page
+ * The set that lands in `membership_capabilities` - the member's own when the page
  * sent one, the role's otherwise.
  */
 function memberCapabilities(
@@ -497,7 +497,7 @@ export async function addUserToTeam(input: {
 }
 
 /**
- * Take this person out of a team entirely — the answer to "revoke their access",
+ * Take this person out of a team entirely - the answer to "revoke their access",
  * and since ADR-0016 the ONE thing that revokes every node grant at once.
  * Instance admin only.
  */
@@ -515,7 +515,7 @@ export async function removeUserFromTeam(input: {
     );
     await assertAdminCoverage(tx, input.teamId, input.userId, null);
     // The node grants are NOT cascaded by the membership FK (they hang off the
-    // app/folder/project), so removal has to clear them itself — otherwise
+    // app/folder/project), so removal has to clear them itself, otherwise
     // re-adding the person later would silently restore their old corners.
     await clearNodeGrants(tx, input.userId, input.teamId);
     await tx.delete(membershipsTable).where(eq(membershipsTable.id, m.id));
@@ -554,7 +554,7 @@ async function requireEditableMembership(
   const owner = await instanceOwnerUserId(tx);
   if (owner && userId === owner && actingUserId !== owner) {
     throw new Error(
-      "That account owns the instance — only its owner can change it.",
+      "That account owns the instance - only its owner can change it.",
     );
   }
   const rows = await tx
@@ -724,7 +724,7 @@ async function writeNodeGrants(
 
 /**
  * Log the change in the AFFECTED team's Activity, so "who can do what, and who
- * changed it" is answerable from the UI — including by people who can't see
+ * changed it" is answerable from the UI, including by people who can't see
  * Settings → Users.
  */
 async function recordUserAccess(
@@ -740,7 +740,7 @@ async function recordUserAccess(
     .limit(1);
   const who = rows[0]?.username ?? "a user";
   // The ACTING admin is the actor, so the trail names a person rather than a
-  // role — `recordActivity` attributes it to their account when the name matches.
+  // role - `recordActivity` attributes it to their account when the name matches.
   const actor = (await getCurrentUser())?.name ?? "Someone";
   await recordActivity(
     "member",

@@ -4,7 +4,7 @@
 -- told to "declare volumes directly in your docker-compose.yml", which is exactly
 -- the Docker knowledge deplo exists to NOT require. Volumes are now settable for
 -- every source, and a stack with more than one service needs to say WHICH service
--- gets the mount — mounting one volume into all of them races on first-use
+-- gets the mount - mounting one volume into all of them races on first-use
 -- seeding (whichever container starts first fills the empty volume) and can
 -- silently shadow an image's own content.
 --

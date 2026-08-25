@@ -15,7 +15,7 @@ import { rateLimit } from "../security";
 import { recordActivity } from "./activity";
 
 /**
- * The instance owner — the instance-level twin of a team's founder "crown"
+ * The instance owner - the instance-level twin of a team's founder "crown"
  * (`teams.founder_user_id`), stored on the `instance_settings` singleton.
  */
 
@@ -23,7 +23,7 @@ import { recordActivity } from "./activity";
 const SETTINGS_ID = "default";
 
 /**
- * The owning user's id, or null when the instance is unowned (no row yet — a
+ * The owning user's id, or null when the instance is unowned (no row yet - a
  * pre-0038 instance that never replayed the backfill, or one with no admin to
  * backfill from).
  */
@@ -76,7 +76,7 @@ export async function claimInstanceOwner(
 
 /**
  * Hand the crown to another user. The ONLY way `owner_user_id` ever changes after
- * setup, and the one thing here the owner alone may do — an instance admin calling
+ * setup, and the one thing here the owner alone may do - an instance admin calling
  * this is rejected even though they pass {@link requireInstanceAdmin}.
  */
 export async function transferInstanceOwner(input: {
@@ -115,7 +115,7 @@ export async function transferInstanceOwner(input: {
     if (input.userId === actingUserId)
       throw new Error("You already own this instance");
 
-    // The password check reads the actor's CURRENT hash inside the transaction —
+    // The password check reads the actor's CURRENT hash inside the transaction -
     // a hash rotated between the session being issued and this call must win.
     const me = (
       await tx

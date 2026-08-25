@@ -1,4 +1,4 @@
--- ADR-0008 Phase 3: Environments — per-Project, first-class isolated deploy
+-- ADR-0008 Phase 3: Environments - per-Project, first-class isolated deploy
 -- targets. Seeded (Development/Preview/Production) by the app on Project create;
 -- no backfill needed (the Project container is itself brand-new in 0016). The
 -- deploy-pipeline wiring (per-env keys/URLs/branches) lands in a later migration.

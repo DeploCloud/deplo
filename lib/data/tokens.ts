@@ -55,7 +55,7 @@ import {
 } from "../auth/request-context";
 
 /**
- * API tokens — bearer credentials that drive deplo's API from outside the
+ * API tokens - bearer credentials that drive deplo's API from outside the
  * dashboard.
  */
 
@@ -65,7 +65,7 @@ export interface ApiTokenDTO {
   id: string;
   name: string;
   prefix: string;
-  /** What the token itself may do — its own set, before the creator clamp. */
+  /** What the token itself may do - its own set, before the creator clamp. */
   capabilities: Capability[];
   /** False ⇒ every team its creator belongs to, and everything in it. */
   scoped: boolean;
@@ -84,7 +84,7 @@ export interface ApiTokenDTO {
    */
   teamsReached: TokenTeam[];
   instanceAdmin: boolean;
-  /** The team this token is MANAGED from — where it was created. */
+  /** The team this token is MANAGED from, where it was created. */
   homeTeamId: string;
   /**
    * That team, named. The list is a personal one and spans teams, so every row
@@ -100,7 +100,7 @@ export interface ApiTokenDTO {
   createdByAvatarUrl: string | null;
   /**
    * That member's id. A token is minted on a PERSON's account and can reach
-   * several teams, so its creator manages it from any of them — this is what a
+   * several teams, so its creator manages it from any of them - this is what a
    * screen asks to know whether it is looking at its own credential.
    */
   createdByUserId: string;
@@ -110,7 +110,7 @@ export interface ApiTokenDTO {
    */
   oauthClientName: string | null;
   /**
-   * When this credential stops working, or null for "never" — which is what every
+   * When this credential stops working, or null for "never", which is what every
    * token minted before expiry existed still is.
    */
   expiresAt: string | null;
@@ -122,7 +122,7 @@ export interface ApiTokenDTO {
   createdAt: string;
 }
 
-/** The non-secret projection — never selects `token_hash` (relational-store PLAN §1 "Secrets"). */
+/** The non-secret projection, never selects `token_hash` (relational-store PLAN §1 "Secrets"). */
 const DTO_COLUMNS = {
   id: apiTokens.id,
   name: apiTokens.name,
@@ -137,7 +137,7 @@ const DTO_COLUMNS = {
 } as const;
 
 /**
- * Every token that can act in `teamId` — not merely the ones created there.
+ * Every token that can act in `teamId`, not merely the ones created there.
  */
 export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
   const db = getDb();
@@ -277,7 +277,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
       homeTeamName: teamsTable.name,
       createdByUsername: usersTable.username,
       createdByAvatarColor: usersTable.avatarColor,
-      // Consumed by `createdByAvatarUrl` and dropped — no email in this DTO.
+      // Consumed by `createdByAvatarUrl` and dropped, no email in this DTO.
       createdByImage: usersTable.image,
       createdByEmail: usersTable.email,
       oauthClientName: oauthClient.name,
@@ -291,7 +291,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   if (rows.length === 0) return [];
 
   const ids = rows.map((r) => r.id);
-  // Every junction in one query each — never per-token (PLAN §6 "batch-load").
+  // Every junction in one query each, never per-token (PLAN §6 "batch-load").
   const [reachedByToken, caps, teamRows, projRows, folderRows, appRows] =
     await Promise.all([
       teamsReachedByTokens(ids),
@@ -341,7 +341,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   const avatarUrl = await avatarResolver();
   // `createdByImage` / `createdByEmail` are DESTRUCTURED OUT before the spread: the
   // row carries them so the avatar can be resolved, and `...rest` would otherwise
-  // walk both straight into the DTO — an email this list has never exposed.
+  // walk both straight into the DTO - an email this list has never exposed.
   return rows.map(({ createdByImage, createdByEmail, ...r }) => ({
     ...r,
     createdByAvatarUrl: avatarUrl({
@@ -362,8 +362,8 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 }
 
 /**
- * One token by id. Deliberately `listTokens().find(…)` — the same trick
- * `getRole` uses — so there is exactly ONE place that assembles the DTO and its
+ * One token by id. Deliberately `listTokens().find(…)` - the same trick
+ * `getRole` uses, so there is exactly ONE place that assembles the DTO and its
  * five junctions, and no way for the detail page to disagree with the list.
  */
 export async function getToken(id: string): Promise<ApiTokenDTO | null> {
@@ -389,7 +389,7 @@ export interface ScopeTreeFolder {
   apps: ScopeTreeApp[];
 }
 /**
- * An environment of a project — where an app lives inside it (ADR-0009). A
+ * An environment of a project, where an app lives inside it (ADR-0009). A
  * sibling of the project's folders, not a parent of them: a folder never lives
  * in an environment, and filing an app into one clears its environment.
  */
@@ -422,7 +422,7 @@ export interface ScopeTreeTeam {
 
 /**
  * Every team the CURRENT USER belongs to, with its projects, its folders and their
- * apps — the tree the scope picker draws.
+ * apps - the tree the scope picker draws.
  */
 export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
   // Deliberately NOT gated on `manage_tokens`: a member without it still opens a
@@ -436,7 +436,7 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
 }
 
 /**
- * The same tree, narrowed to the ACTIVE team — what a ROLE editor draws, since a
+ * The same tree, narrowed to the ACTIVE team - what a ROLE editor draws, since a
  * role belongs to exactly one team and cannot reach past it.
  */
 export async function listTeamScopeTree(): Promise<ScopeTreeTeam[]> {
@@ -506,7 +506,7 @@ export async function buildScopeTree(
   ]);
 
   // Per-node visibility, when the tree is the CALLER's own picker: a folder they
-  // can't see, and an app they hold nothing on, must not be listed — the same answer
+  // can't see, and an app they hold nothing on, must not be listed - the same answer
   // `listFolders` and `listApps` give.
   const { folders: visibleFolders, apps: visibleApps } = opts.asCaller
     ? await visibleNodes(teamIds, folderRows, appRows)
@@ -601,7 +601,7 @@ export async function buildScopeTree(
 }
 
 /**
- * The folder and app ids the CURRENT caller may see, across several teams — the
+ * The folder and app ids the CURRENT caller may see, across several teams - the
  * per-node half of the picker's bound.
  */
 async function visibleNodes(
@@ -638,7 +638,7 @@ async function visibleNodes(
       );
       for (const [id, caps] of reach) if (caps.length > 0) apps.add(id);
     } catch {
-      // A team the caller can't currently resolve at all — an unmet two-factor
+      // A team the caller can't currently resolve at all - an unmet two-factor
       // policy is the live example. It contributes nothing rather than taking
       // down the whole picker: they could not use that team's nodes anyway.
     }
@@ -710,10 +710,10 @@ export async function createToken(
     await tx.insert(apiTokens).values({
       id,
       // The team it is MANAGED from. Its reach is the scope below, which may be
-      // wider — but exactly one team owns the row that can edit it.
+      // wider, but exactly one team owns the row that can edit it.
       teamId,
       // The token acts as its creator for user-scoped fields, and its power is
-      // clamped to theirs on every request — but it is NOT them: what it may do
+      // clamped to theirs on every request, but it is NOT them: what it may do
       // is the set below, chosen here and editable later.
       userId,
       name,
@@ -758,7 +758,7 @@ export async function createToken(
         (await teamsForUser(userId)).find((t) => t.id === teamId)?.name ?? "",
       createdByUsername: (await getCurrentUser())?.username ?? null,
       // The minter is the current user, whose picture is already resolved on the
-      // session DTO — no second lookup.
+      // session DTO, no second lookup.
       createdByAvatarColor: (await getCurrentUser())?.avatarColor ?? null,
       createdByAvatarUrl: (await getCurrentUser())?.avatarUrl ?? null,
       createdByUserId: userId,
@@ -913,7 +913,7 @@ export async function updateToken(
 interface TokenRow {
   id: string;
   userId: string;
-  /** The team the token is MANAGED from — where it was created. */
+  /** The team the token is MANAGED from, where it was created. */
   teamId: string;
   instanceAdmin: boolean;
   scoped: boolean;
@@ -948,7 +948,7 @@ export async function authenticateToken(
   }
   if (raw.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
     const row = await oauthTokenRow(raw);
-    // No hint means the connection's OWN team — never `reachable[0]`, the OLDEST team
+    // No hint means the connection's OWN team, never `reachable[0]`, the OLDEST team
     // its approver belongs to, which is how an agent once worked somewhere nobody
     // chose.
     return row ? identityForTokenRow(row, teamHint ?? row.teamId) : null;
@@ -1163,7 +1163,7 @@ async function forgetOauthGrant(
       );
   } catch (e) {
     // Not fatal: the credential is already gone, so a leftover consent or refresh row
-    // grants nothing — the join that resolves an access token has no `api_tokens` row
+    // grants nothing - the join that resolves an access token has no `api_tokens` row
     // to land on.
     console.warn(
       `[deplo] could not clear the OAuth rows for a revoked connection (client ${clientId}):`,
@@ -1196,7 +1196,7 @@ interface ResolvedScope {
   folderIds: string[];
   appIds: string[];
   /**
-   * Every team the ticked nodes put in reach — the whole teams plus the owning
+   * Every team the ticked nodes put in reach - the whole teams plus the owning
    * team of each project, folder and app.
    */
   teamsReached: string[];
@@ -1205,7 +1205,7 @@ interface ResolvedScope {
 /**
  * Decide the two orthogonal switches, refusing the combination that cannot mean
  * what it says. Instance-admin gates read the user's admin flag and nothing else,
- * so a scope could not narrow one — offering both would be a switch that lies.
+ * so a scope could not narrow one - offering both would be a switch that lies.
  */
 async function validateScope(
   input: { instanceAdmin?: boolean } & TokenScopeInput,
@@ -1334,8 +1334,8 @@ async function actorAcross(
 }
 
 /**
- * Bound a token edit by what the ACTOR may do in every team the token will act in
- * — not merely in the team it is managed from.
+ * Bound a token edit by what the ACTOR may do in every team the token will act in,
+ * not merely in the team it is managed from.
  */
 async function assertWithinActorEverywhere(
   capabilities: Capability[],

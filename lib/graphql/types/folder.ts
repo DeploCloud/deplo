@@ -43,7 +43,7 @@ export const FolderRef = builder.objectRef<FolderSummary>("Folder").implement({
     createdAt: t.exposeString("createdAt"),
     updatedAt: t.exposeString("updatedAt"),
     // The CURRENT caller's effective capabilities on this folder (team-bounded).
-    // Drives per-folder action gating in the UI — rename/delete/move/share are
+    // Drives per-folder action gating in the UI - rename/delete/move/share are
     // shown only when the relevant capability is present here.
     capabilities: t.field({
       type: ["String"],
@@ -51,7 +51,7 @@ export const FolderRef = builder.objectRef<FolderSummary>("Folder").implement({
         "The current caller's effective capabilities on this folder (bounded by their team caps).",
       resolve: (f) => folderCapabilities(f.id),
     }),
-    // True when the caller may administer sharing for this folder — the owner or a
+    // True when the caller may administer sharing for this folder - the owner or a
     // super-user (manage_team / instance admin). Gates the "Share folder" affordance.
     isOwner: t.field({
       type: "Boolean",
@@ -118,7 +118,7 @@ builder.queryFields((t) => ({
     // The data layer restricts this to the folder owner / super-user.
     authScopes: { loggedIn: true },
     description:
-      "Who can access a folder — its owner plus every user it's shared with. Owner/admin only.",
+      "Who can access a folder - its owner plus every user it's shared with. Owner/admin only.",
     args: { folderId: t.arg.id({ required: true }) },
     resolve: (_r, { folderId }) => listFolderGrants(String(folderId)),
   }),

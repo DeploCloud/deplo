@@ -24,7 +24,7 @@ import {
 } from "./basic-auth";
 
 /**
- * HTTP Basic Auth credentials — the rows the deploy/reroute renderers turn into a
+ * HTTP Basic Auth credentials - the rows the deploy/reroute renderers turn into a
  * Traefik `basicauth` middleware in front of every one of an app's domains. -
  * **The password reveal is the ONLY way back to a plaintext, and it is gated.
  */
@@ -36,7 +36,7 @@ let pg: PGlite;
 
 const OWNER_A = "u_owner_a";
 const OWNER_B = "u_owner_b";
-/** A second manage_domains holder in TEAM_A — "who added it" and "who changed it
+/** A second manage_domains holder in TEAM_A - "who added it" and "who changed it
  *  last" can only be told apart when two different people did them. */
 const MATE_A = "u_mate_a";
 /** A TEAM_A member with `view` only: the Access page is hidden from them, and the
@@ -51,7 +51,7 @@ const as = <T>(
   fn: () => Promise<T>,
 ): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
-/** `user:$2b$<cost>$<salt+digest>` — the bcrypt htpasswd line Traefik parses. */
+/** `user:$2b$<cost>$<salt+digest>` - the bcrypt htpasswd line Traefik parses. */
 const HTPASSWD_LINE = /^[^\s:,]+:\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 
 before(async () => {
@@ -93,7 +93,7 @@ test("every mutation returns the owning app, so the edge can re-apply routing", 
     assert.equal(
       updated.appId,
       APP_A,
-      "the update edge only knows the credential id — the app must come back with it",
+      "the update edge only knows the credential id - the app must come back with it",
     );
 
     const appId = await removeBasicAuthUser(added.id);
@@ -123,7 +123,7 @@ test("the rendered value is one htpasswd line per user, alphabetical, comma-join
   });
 });
 
-test("only this app's credentials are rendered — never another app's", async () => {
+test("only this app's credentials are rendered, never another app's", async () => {
   await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "alice", "Pw1!xxxxx"),
   );
@@ -142,7 +142,7 @@ test("a password that cannot be decrypted fails the render (never fails open)", 
   });
   // Simulate a rotated DEPLO_SECRET / restored dump: the ciphertext no longer
   // decrypts. decryptSecret fails closed to "", which would otherwise hash into a
-  // perfectly valid hash OF THE EMPTY STRING — a middleware that lets anyone
+  // perfectly valid hash OF THE EMPTY STRING - a middleware that lets anyone
   // in with a blank password. The render must abort instead.
   await db
     .update(appBasicAuthUsers)
@@ -170,7 +170,7 @@ test("changing a password replaces the rendered credential", async () => {
   });
 });
 
-test("removing the last user renders nothing — the login prompt disappears", async () => {
+test("removing the last user renders nothing - the login prompt disappears", async () => {
   await as(OWNER_A, TEAM_A, async () => {
     const u = await addBasicAuthUser(APP_A, "alice", "Hunter2!x");
     await removeBasicAuthUser(u.id);
@@ -229,7 +229,7 @@ test("another team's credentials are invisible and untouchable", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Authorship — "who set this login up, and who last rotated it"       */
+/* Authorship - "who set this login up, and who last rotated it"       */
 /* ------------------------------------------------------------------ */
 
 test("add names the creator; a password change moves only “modified by”", async () => {
@@ -242,7 +242,7 @@ test("add names the creator; a password change moves only “modified by”", as
     OWNER_A,
     "a brand-new credential was last touched by whoever added it",
   );
-  // The DTO carries the display identity, not just an id — the card renders it.
+  // The DTO carries the display identity, not just an id - the card renders it.
   assert.equal(added.createdBy?.username, OWNER_A);
   assert.equal(added.createdBy?.avatarColor, "#abc");
 
@@ -280,10 +280,10 @@ test("a credential from before authorship tracking is never attributed to anyone
 });
 
 /* ------------------------------------------------------------------ */
-/* Reveal — the one way back to a plaintext password                   */
+/* Reveal - the one way back to a plaintext password                   */
 /* ------------------------------------------------------------------ */
 
-test("no DTO ever carries the password — the reveal is the only way to it", async () => {
+test("no DTO ever carries the password - the reveal is the only way to it", async () => {
   const u = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
@@ -339,7 +339,7 @@ test("a password that cannot be decrypted fails the reveal (never returns empty)
   const u = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
-  // Rotated DEPLO_SECRET / restored dump. decryptSecret fails closed to "" —
+  // Rotated DEPLO_SECRET / restored dump. decryptSecret fails closed to "" -
   // showing that as "the password" would send someone off to try a login that
   // cannot work, so the reveal must say what actually happened.
   await db

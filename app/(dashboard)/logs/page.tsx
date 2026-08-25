@@ -58,7 +58,7 @@ export default async function LogsPage(props: PageProps<"/logs">) {
       status: a.status,
       logo: a.logo,
       // Where the picker files it. All three are tolerated when they point at
-      // something this viewer cannot see — the tree drops the app to the top
+      // something this viewer cannot see - the tree drops the app to the top
       // level rather than out of the list.
       projectId: a.projectId ?? null,
       environmentId: a.environmentId ?? null,

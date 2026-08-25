@@ -54,7 +54,7 @@ const ACTIVE_TEAM_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
 /**
  * Reassemble the `capabilities` array for a set of memberships from the junction
- * in ONE query (batch-load, never per-membership — relational-store PLAN §6
+ * in ONE query (batch-load, never per-membership - relational-store PLAN §6
  * "N+1 on capabilities"). Returns a map of membershipId → capabilities.
  */
 async function capabilitiesByMembership(
@@ -179,7 +179,7 @@ async function assertTwoFactor(userId: string, teamId: string): Promise<void> {
 
 /**
  * The policy blocking (or that would block) the CURRENT user, across every team
- * they belong to — what Settings → Security needs to explain why 2FA cannot be
+ * they belong to - what Settings → Security needs to explain why 2FA cannot be
  * turned off. Returns null when nothing requires it.
  */
 export async function twoFactorMandateForCurrentUser(): Promise<string | null> {
@@ -269,7 +269,7 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
   if (!user) return null;
   const teams = await teamsForUser(user.id);
   if (teams.length === 0) return null;
-  // A bearer-token request is scoped to the token's team — and ONLY that team.
+  // A bearer-token request is scoped to the token's team, and ONLY that team.
   const override = currentIdentity();
   if (override) {
     if (!teams.some((t) => t.id === override.teamId))
@@ -384,7 +384,7 @@ export async function reachableCapabilities(): Promise<Capability[]> {
   );
   if (granted.length === 0) return own;
   // A grant bypasses `membershipFor`, so the token clamp has to be applied here
-  // too — the same reason `lib/data/node-access.ts` ends with it.
+  // too - the same reason `lib/data/node-access.ts` ends with it.
   const union = new Set<Capability>([
     ...own,
     ...clampToToken(granted, user.id, teamId),
@@ -400,7 +400,7 @@ export async function hasCapabilityAnywhere(cap: Capability): Promise<boolean> {
 /**
  * Authorize a mutating action: assert the user is a member of the active team
  * AND holds `cap`. Returns the active membership so callers can read the user.
- * Throws a user-facing "Unauthorized" — caught by the action `run()` wrapper.
+ * Throws a user-facing "Unauthorized" - caught by the action `run()` wrapper.
  */
 export async function requireCapability(
   cap: Capability,
@@ -419,7 +419,7 @@ export async function requireCapability(
 /* ------------------------------------------------------------------ */
 
 /**
- * True if the current user is a global instance admin — the gate for the
+ * True if the current user is a global instance admin - the gate for the
  * Settings → Users list, minting registration links, and the per-user admin
  * editor. Orthogonal to per-team capabilities.
  */
@@ -449,7 +449,7 @@ function tokenHoldsInstanceAdmin(): boolean {
 
 /**
  * Refuse a resource that has no per-Project meaning to a principal who reaches
- * only part of this team — a narrowed API token, or a member whose ROLE is scoped.
+ * only part of this team - a narrowed API token, or a member whose ROLE is scoped.
  */
 export async function requireTeamWide(what: string): Promise<void> {
   if (narrowedScope())
@@ -463,8 +463,8 @@ export async function requireTeamWide(what: string): Promise<void> {
 }
 
 /**
- * The CURRENT caller's reach in the active team, or null when they reach all of it
- * — their own nodes when their membership carries a set, their role's scope
+ * The CURRENT caller's reach in the active team, or null when they reach all of it -
+ * their own nodes when their membership carries a set, their role's scope
  * otherwise ({@link memberScopeFor}).
  */
 export async function currentMemberScope(): Promise<NodeScope | null> {
@@ -522,14 +522,14 @@ async function hasGrant(
 }
 
 /**
- * True if the current user may publish container ports — a compose service's
+ * True if the current user may publish container ports - a compose service's
  * `ports:` (bound to the host) or `expose:` (advertised to linked containers).
  */
 export async function canExposePorts(): Promise<boolean> {
   return hasGrant(await getCurrentUser(), "canExposePorts");
 }
 
-/** Throwing variant — gate any action that publishes container ports. */
+/** Throwing variant - gate any action that publishes container ports. */
 export async function requireExposePorts(): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!(await hasGrant(user, "canExposePorts")))
@@ -542,7 +542,7 @@ export async function canMountHostVolumes(): Promise<boolean> {
   return hasGrant(await getCurrentUser(), "canMountHostVolumes");
 }
 
-/** Throwing variant — gate any host bind mount behind this. */
+/** Throwing variant - gate any host bind mount behind this. */
 export async function requireMountHostVolumes(): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!(await hasGrant(user, "canMountHostVolumes")))

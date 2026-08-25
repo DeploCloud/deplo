@@ -70,7 +70,7 @@ import {
 } from "./deploy-hook";
 
 /**
- * ESCAPING YOUR OWN BOUNDARY — the three ways deplo hands out less than
+ * ESCAPING YOUR OWN BOUNDARY - the three ways deplo hands out less than
  * everything, and what happens when a caller tries to reach past the line. a
  * DEPLOY HOOK, which is one app's URL secret plus a bearer token.
  */
@@ -106,7 +106,7 @@ const grant = (over: Partial<TokenGrant> = {}): TokenGrant => ({
 const scoped = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A, token: grant() }, fn);
 
-/** The same owner over a cookie session — the control for every refusal below. */
+/** The same owner over a cookie session - the control for every refusal below. */
 const asUser = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
@@ -120,13 +120,13 @@ async function refused(
 ): Promise<string> {
   try {
     await fn();
-    assert.fail(`${what} — the call went through`);
+    assert.fail(`${what} - the call went through`);
   } catch (e) {
     const msg = (e as Error).message;
     assert.match(
       msg,
       /not found|permission|can't access|only|Unauthorized/i,
-      `${what} — refused, but for the wrong reason: ${msg}`,
+      `${what} - refused, but for the wrong reason: ${msg}`,
     );
     return msg;
   }
@@ -210,7 +210,7 @@ async function teamWideSecret(): Promise<string> {
 test("a project-scoped token can't read the team's shared secrets back", async () => {
   await teamWideSecret();
 
-  // The control: the same library, the same user, over a session — masked even
+  // The control: the same library, the same user, over a session - masked even
   // there, because a secret has no read-back path for anyone.
   const mine = await asUser(() => listSharedVars());
   assert.ok(
@@ -224,7 +224,7 @@ test("a project-scoped token can't read the team's shared secrets back", async (
   );
 });
 
-test("nor author one — a team-wide var reaches every app in the team", async () => {
+test("nor author one - a team-wide var reaches every app in the team", async () => {
   const id = await teamWideSecret();
 
   // Creating: the var would be injected into apps in `prc_out` too, at the
@@ -297,8 +297,8 @@ test("nor enumerate them from an app it does reach", async () => {
     "a session still sees the whole team's shared vars from any app",
   );
 
-  // The scoped token holds `manage_env` on APP_IN — it survives the project
-  // clamp on purpose — so this page is INSIDE its scope and cannot refuse. What
+  // The scoped token holds `manage_env` on APP_IN - it survives the project
+  // clamp on purpose, so this page is INSIDE its scope and cannot refuse. What
   // it must not do is hand over the team's catalogue while it's there.
   const theirs = await scoped(() => listSharedVarsForApp(APP_IN));
   assert.deepEqual(
@@ -316,7 +316,7 @@ test("nor link one into an app it controls", async () => {
   const id = await teamWideSecret();
 
   // Linking injects the value at the highest deploy precedence into an app the
-  // token holds a console and logs on, so it is a read-back by other means —
+  // token holds a console and logs on, so it is a read-back by other means,
   // which is why the whole shared library is `requireTeamWide`.
   const refusal = await refused(
     () => scoped(() => setSharedVarAppLink(id, APP_IN, true)),
@@ -372,7 +372,7 @@ test("nor delete one", async () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * A move is the one verb that changes what a scope CONTAINS, from inside it —
+ * A move is the one verb that changes what a scope CONTAINS, from inside it,
  * and the reason it is not an escape today is upstream of every gate:
  * `move_apps` is deliberately absent from `PROJECT_SCOPED_CAPABILITIES`
  * ("a token editing its own boundary"), so the clamp strips it and a narrowed
@@ -410,7 +410,7 @@ test("a narrowed token holds no move at all, in or out of its scope", async () =
 
 /**
  * A database backup schedule + one successful run. A database belongs to no
- * Project, so NOTHING here is reachable by a project-scoped token — but
+ * Project, so NOTHING here is reachable by a project-scoped token, but
  * `manage_backups` / `restore_backups` both survive the project clamp (they mean
  * something on an app), so each entry point has to say so itself.
  */
@@ -443,7 +443,7 @@ test("a project-scoped token can't restore a database it can't even see", async 
   );
 });
 
-test("nor download its artifact — a dump is every byte the database holds", async () => {
+test("nor download its artifact - a dump is every byte the database holds", async () => {
   const { runId } = await dbBackup();
   // Downloading is the quiet sibling of restoring: it does not touch the live
   // database, so it looks harmless, and it hands over the entire contents. It is
@@ -520,7 +520,7 @@ test("nor schedule a new dump of one, nor wipe its artifacts", async () => {
   );
 });
 
-test("and the refusal is scope, not permission — the session still does all of it", async () => {
+test("and the refusal is scope, not permission - the session still does all of it", async () => {
   const { backupId } = await dbBackup();
   // The control that keeps the fix honest: the same calls, the same user, over a
   // cookie session. If these break, the guard is over-refusing.
@@ -546,7 +546,7 @@ test("and the refusal is scope, not permission — the session still does all of
   await asUser(() => deleteBackup(backupId));
 });
 
-test("an APP backup inside the scope is still reachable — the guard is about databases", async () => {
+test("an APP backup inside the scope is still reachable - the guard is about databases", async () => {
   const created = await scoped(() =>
     createBackup({
       name: "in-scope",
@@ -579,7 +579,7 @@ test("an APP backup inside the scope is still reachable — the guard is about d
 });
 
 /* ------------------------------------------------------------------ */
-/* 3. Roles — every door into a role carries the same bound            */
+/* 3. Roles - every door into a role carries the same bound            */
 /* ------------------------------------------------------------------ */
 
 /** The team's built-in Member role, as stored. */
@@ -605,7 +605,7 @@ test("resetting a default role can't hand out more than the actor holds", async 
   );
 
   // "Reset to default" rewrites the capabilities of everyone holding the role,
-  // so it is authoring a role by another name — and it answers to the same bound
+  // so it is authoring a role by another name, and it answers to the same bound
   // as `updateRole`, or it is the way around it.
   await refused(
     () => as("u_roles", () => resetRole(member.id)),
@@ -674,7 +674,7 @@ test("an owner still resets it, and a custom role still has no default", async (
 });
 
 /* ------------------------------------------------------------------ */
-/* 4. Deploy hooks — one URL secret, one app                           */
+/* 4. Deploy hooks - one URL secret, one app                           */
 /* ------------------------------------------------------------------ */
 
 test("one app's hook secret is useless against another app", async () => {
@@ -688,8 +688,8 @@ test("one app's hook secret is useless against another app", async () => {
     ok: true,
     teamId: TEAM_A,
   });
-  // The secret is per app, so holding one app's URL — legitimately, as its
-  // deployer — says nothing about any other app's.
+  // The secret is per app, so holding one app's URL - legitimately, as its
+  // deployer - says nothing about any other app's.
   assert.deepEqual(await verifyDeployHookToken(APP_IN, secretOut), {
     ok: false,
     reason: "bad-token",
@@ -717,7 +717,7 @@ test("the masked hook URL is a mask, not a prefix of the secret", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* 5. Rank is not authority — the bound reads capabilities, never role  */
+/* 5. Rank is not authority - the bound reads capabilities, never role  */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -725,7 +725,7 @@ test("the masked hook URL is a mask, not a prefix of the secret", async () => {
  * token clamp does NOT narrow: a token gets its creator's `role` verbatim and
  * only their capabilities intersected. So every place that used to read
  * `actor.role === "owner"` as "may hand out anything" was a door out of the
- * token's own capability set — the owner behind an ordinary token could mint an
+ * token's own capability set - the owner behind an ordinary token could mint an
  * all-powerful successor, re-scope the role every member holds, or promote a
  * member, from a token that was granted one administrative permission.
  *
@@ -756,7 +756,7 @@ test("an owner's manage_tokens token can't mint a successor above itself", async
       ),
     "a one-permission token minted an all-powerful one",
   );
-  // It still mints what it actually holds — the bound is a ceiling, not a ban.
+  // It still mints what it actually holds - the bound is a ceiling, not a ban.
   const ok = await asToken("manage_tokens", () =>
     createToken({ name: "Sibling", capabilities: ["view", "manage_tokens"] }),
   );
@@ -793,7 +793,7 @@ test("an owner's manage_roles token can't widen the role every member holds", as
 
 test("an owner's manage_members token can't promote anyone past itself", async () => {
   // The legacy rank + capabilities path CLAMPS rather than refusing (that is its
-  // documented contract, and what the registration links rely on) — so the proof
+  // documented contract, and what the registration links rely on), so the proof
   // is the set that lands, not an error.
   await asToken("manage_members", () =>
     updateMember({

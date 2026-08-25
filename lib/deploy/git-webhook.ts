@@ -112,14 +112,14 @@ export function shouldAutoDeploy(
     if (ev.refName !== cfg.branch) return false;
   }
 
-  // Watch-path filter — only gate when we have BOTH globs and a known file list.
+  // Watch-path filter - only gate when we have BOTH globs and a known file list.
   // A delivery with no file list (annotated-tag push) falls open, matching the
   // "best effort" contract documented on GitRepo.watchPaths.
   if (cfg.watchPaths.length > 0 && ev.changedPaths.length > 0) {
     return ev.changedPaths.some((f) => pathMatchesAnyGlob(f, cfg.watchPaths));
   }
 
-  // "Skip when the root directory is untouched" — like an implicit watch path of the
+  // "Skip when the root directory is untouched" - like an implicit watch path of the
   // root directory.
   if (cfg.skipUnchanged && ev.changedPaths.length > 0) {
     const root = normalizeRoot(cfg.rootDirectory);
@@ -162,7 +162,7 @@ function globToRegExp(glob: string): RegExp {
       if (glob[i + 1] === "*") {
         i++;
         if (glob[i + 1] === "/") {
-          // "**/" matches zero or more WHOLE leading path segments — anchored to a
+          // "**/" matches zero or more WHOLE leading path segments - anchored to a
           // "/" boundary so "**/config.json" matches "config.json" and "a/b/config.json"
           // but NOT "myconfig.json" (the leading part must end at a separator).
           re += "(?:.*/)?";

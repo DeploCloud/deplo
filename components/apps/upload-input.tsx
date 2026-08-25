@@ -52,7 +52,7 @@ export function UploadInput({
       return;
     }
 
-    // Deferred mode: just hand the File to the parent — the create wizard streams
+    // Deferred mode: just hand the File to the parent - the create wizard streams
     // it after the app exists (there's nothing to upload to yet).
     if (deferred) {
       setSelected(file);
@@ -64,9 +64,9 @@ export function UploadInput({
     uploadArchive(appId!, file, setProgress)
       .then(() => {
         setProgress(null);
-        // Archive stored, not deployed — refresh so it shows as the current
+        // Archive stored, not deployed - refresh so it shows as the current
         // upload and the form's "Save & Deploy" button enables.
-        toast.success("Archive saved — click Save & Deploy to deploy it");
+        toast.success("Archive saved - click Save & Deploy to deploy it");
         router.refresh();
       })
       .catch((e: unknown) => {

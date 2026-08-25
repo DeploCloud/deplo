@@ -20,7 +20,7 @@ export function useOptimisticValue<T>(serverValue: T): [
     next: T,
     mutate: () => Promise<ActionResult<unknown>>,
     opts?: {
-      /** Toasted when the server confirms — never on the click, so a toast
+      /** Toasted when the server confirms, never on the click, so a toast
        *  never claims something the server went on to refuse. */
       success?: string;
       /** Called with the server's message after it has been toasted. */
@@ -52,7 +52,7 @@ export function useOptimisticValue<T>(serverValue: T): [
         toast.success(opts.success);
       }
       // Refresh either way: several of these mutations write the row first and
-      // fail later, on the part that talks to the server agent — an error can
+      // fail later, on the part that talks to the server agent - an error can
       // still leave a change the user has to see.
       router.refresh();
     });

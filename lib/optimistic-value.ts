@@ -8,7 +8,7 @@ export type ValueOverride<T> = { base: T; value: T } | null;
 
 /**
  * Retire the override once the server's value has moved off the base it was taken
- * against — that move IS the refresh landing (or somebody else changing the same
+ * against - that move IS the refresh landing (or somebody else changing the same
  * thing in another tab).
  */
 export function settleOverride<T>(

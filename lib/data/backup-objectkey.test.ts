@@ -39,7 +39,7 @@ test("an encrypted artifact is named .age; a plaintext one is unchanged", () => 
 });
 
 test("artifactExt falls back to .gz for an unknown engine", () => {
-  // @ts-expect-error — deliberately exercising the defensive default arm.
+  // @ts-expect-error - deliberately exercising the defensive default arm.
   assert.equal(artifactExt("database", "cassandra"), "gz");
   assert.equal(artifactExt("database", null), "gz");
 });
@@ -140,7 +140,7 @@ test("retention: nothing to prune while under the count", () => {
   assert.deepEqual(selectDoomedRuns(runs, opts(3)), []);
 });
 
-test("retention: age is irrelevant — old runs survive if they are within the count", () => {
+test("retention: age is irrelevant - old runs survive if they are within the count", () => {
   // Every one of these is a year old. Retention is a QUANTITY now: nothing about
   // being old dooms a run, only being the (N+1)th.
   const runs = [run("a", 365), run("b", 400), run("c", 500)];
@@ -161,7 +161,7 @@ test("retention: a running run is never pruned, and does not use up a slot", () 
     run("a", 1),
     run("b", 2),
   ];
-  // keepLast 2: both successes survive — the run in flight is neither an
+  // keepLast 2: both successes survive - the run in flight is neither an
   // artifact to keep nor a record to bound.
   assert.deepEqual(selectDoomedRuns(runs, opts(2)), []);
 });
@@ -184,7 +184,7 @@ test("retention: FAILED runs do not evict a kept success", () => {
     run("ok3", 5),
   ];
   // Every failure is newer than every success, and none of them is doomed while
-  // inside the record cap — but all three successes are still kept.
+  // inside the record cap, but all three successes are still kept.
   assert.deepEqual(selectDoomedRuns(runs, opts(3)), []);
 });
 
@@ -209,7 +209,7 @@ test("retention: failed runs are bounded by the record cap, not by the count", (
 });
 
 /* ------------------------------------------------------------------ */
-/* Retention seq tiebreak (PLAN §5) — same-millisecond runs               */
+/* Retention seq tiebreak (PLAN §5) - same-millisecond runs               */
 /* ------------------------------------------------------------------ */
 
 /** Two runs at the SAME instant, ordered only by their DB `seq`. */
@@ -229,7 +229,7 @@ test("retention: a same-ms tie keeps the higher-seq success (newest), prunes the
 });
 
 test("retention: same-ms tiebreak is independent of input array order", () => {
-  // Same three runs, shuffled — seq, not array position, decides "newest".
+  // Same three runs, shuffled - seq, not array position, decides "newest".
   const runs = [sameMsRun("mid", 2), sameMsRun("high", 3), sameMsRun("low", 1)];
   const doomed = selectDoomedRuns(runs, opts(1));
   assert.deepEqual(doomed.map((r) => r.id).sort(), ["low", "mid"]);

@@ -1,6 +1,6 @@
 /**
  * The header set deplo hands to Better Auth's server API. Pure (no `next/headers`)
- * so the selection can be tested — and it needs to be, because BOTH directions of
+ * so the selection can be tested, and it needs to be, because BOTH directions of
  * this list are load-bearing and both fail silently.
  */
 

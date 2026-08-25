@@ -16,7 +16,7 @@ import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * Extra flags for the `docker compose up` that brings this app up. Validated as
- * you type, with the offending token named — the field is advanced, but "invalid
+ * you type, with the offending token named - the field is advanced, but "invalid
  * input" would still leave you guessing which of six flags Deplo objected to.
  */
 export function ComposeArgsPanel({
@@ -29,8 +29,8 @@ export function ComposeArgsPanel({
   slug: string;
   /** The stored flags, or null for the untouched command. */
   value: string | null;
-  /** A compose stack interpolates `${VAR}`, so its bring-up carries an env-file
-   * — shown in the preview so it matches what the host actually runs. */
+  /** A compose stack interpolates `${VAR}`, so its bring-up carries an env-file -
+   * shown in the preview so it matches what the host actually runs. */
   usesEnvFile: boolean;
 }) {
   const router = useRouter();
@@ -42,7 +42,7 @@ export function ComposeArgsPanel({
   const extra = React.useMemo(() => parseComposeUpArgs(text), [text]);
   const dirty = text.trim() !== saved.trim();
   // Deplo's half of the command, so the preview can print it muted next to the
-  // operator's — same builder the deploy path uses, so it can't drift.
+  // operator's - same builder the deploy path uses, so it can't drift.
   const base = composeUpCommandPreview({ slug, usesEnvFile, extra: [] });
 
   function save(e: React.FormEvent) {
@@ -79,7 +79,7 @@ export function ComposeArgsPanel({
             content={
               <>
                 Deplo builds the command that starts your app. These flags are
-                added to the end of it — the project, the stack file and the
+                added to the end of it - the project, the stack file and the
                 env-file stay Deplo&apos;s, so a flag here can never point the
                 command at another app. Applied on every deploy and every
                 routing change.

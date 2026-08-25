@@ -11,13 +11,13 @@ import {
 } from "@/lib/server-connection";
 
 /**
- * Reject an archive the server would refuse anyway — an unsupported extension or
+ * Reject an archive the server would refuse anyway - an unsupported extension or
  * one past the size cap. Returns a user-facing message, or null when the file is
  * acceptable. Mirrors the server-side guards so the failure surfaces instantly.
  */
 export function validateArchive(file: File): string | null {
   if (!ACCEPT_RE.test(file.name)) {
-    return "Unsupported archive — use .tar.gz, .tgz, .tar or .zip";
+    return "Unsupported archive - use .tar.gz, .tgz, .tar or .zip";
   }
   if (file.size > MAX_UPLOAD_BYTES) {
     return `Archive too large (max ${formatBytes(MAX_UPLOAD_BYTES)})`;
@@ -27,7 +27,7 @@ export function validateArchive(file: File): string | null {
 
 /**
  * Stream `file` to an app's upload route as a raw body (filename in a header),
- * reporting progress via `onProgress` (0–100). Uses XHR rather than `fetch`
+ * reporting progress via `onProgress` (0-100). Uses XHR rather than `fetch`
  * because only XHR reports upload progress.
  */
 export function uploadArchive(
@@ -65,7 +65,7 @@ export function uploadArchive(
             return;
           }
         } catch {
-          /* not JSON — handled below */
+          /* not JSON - handled below */
         }
         // The route always answers JSON, so a body we can't parse (a proxy's
         // HTML error page) or a gateway status means we never reached it.

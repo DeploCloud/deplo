@@ -26,7 +26,7 @@ import { assertNotMigrationSource, getServerById } from "./servers";
 import { stopStackOn, startStackOn } from "./volume-migration";
 
 /**
- * Host-level maintenance for ONE server — the actions on Settings → Servers →
+ * Host-level maintenance for ONE server - the actions on Settings → Servers →
  * <server> that operate on the box rather than on anything deployed to it. There
  * is no per-team variant on purpose.
  */
@@ -54,13 +54,13 @@ export type ServerHostInfo = {
   controlPlaneTimeUnixMs: number;
   utcOffsetMinutes: number;
   /**
-   * Whether Deplo installed the Traefik on this host — i.e. whether there is a
+   * Whether Deplo installed the Traefik on this host - i.e. whether there is a
    * stack of ours to reconfigure. False for a host behind the operator's own
    * proxy, which is exactly when the dashboard toggle must not be offered.
    */
   traefikManaged: boolean;
   /** The domain the host is CURRENTLY publishing the dashboard on, read from the
-   *  live stack file rather than from our stored column — the same read-live-not
+   *  live stack file rather than from our stored column - the same read-live-not
    *  -stored rule status and URLs follow. */
   traefikDashboardDomain: string | null;
   /** Whether the panel runs in a container the agent could restart. */
@@ -305,7 +305,7 @@ export async function restartServerTraefik(id: string): Promise<void> {
   const { applyTraefikConfig } = await import("../infra/agent-client");
   const res = await applyTraefikConfig(id, { restartOnly: true });
   // The agent reports a refusal (a Traefik it did not install) as ok:false with
-  // a reason — surface that verbatim rather than inventing copy for it.
+  // a reason - surface that verbatim rather than inventing copy for it.
   if (!res.ok)
     throw new Error(res.error || `Could not restart Traefik on ${server.name}`);
   await recordActivity(
@@ -318,7 +318,7 @@ export async function restartServerTraefik(id: string): Promise<void> {
 }
 
 /**
- * Restart the Deplo panel — only ever on the host that runs it.
+ * Restart the Deplo panel - only ever on the host that runs it.
  */
 export async function restartDeploPanel(id: string): Promise<void> {
   await requireInstanceAdmin();
@@ -328,7 +328,7 @@ export async function restartDeploPanel(id: string): Promise<void> {
   if (!server) throw new Error("Server not found");
   if (!isDeploHostServer(server))
     throw new Error(
-      `${server.name} does not run the Deplo panel — only the host running Deplo can restart it.`,
+      `${server.name} does not run the Deplo panel - only the host running Deplo can restart it.`,
     );
 
   const { restartControlPlaneOn } = await import("../infra/agent-client");
@@ -368,7 +368,7 @@ export type TraefikDashboardInput = {
 
 /**
  * Publish (or unpublish) the host's Traefik dashboard. The compose file is read
- * from the LIVE host and transformed, never re-rendered from a template — see
+ * from the LIVE host and transformed, never re-rendered from a template - see
  * lib/deploy/traefik-stack.ts for why.
  */
 export async function setServerTraefikDashboard(
@@ -382,7 +382,7 @@ export async function setServerTraefikDashboard(
   if (!server) throw new Error("Server not found");
 
   // Validate BEFORE dialing. A request missing a password must be refused on its
-  // own merits, not after a round trip that may itself fail — otherwise the
+  // own merits, not after a round trip that may itself fail, otherwise the
   // operator gets "server unreachable" for a form they simply filled in wrong.
   let credentials: {
     domain: string;
@@ -406,13 +406,13 @@ export async function setServerTraefikDashboard(
       await assertPasswordNotPwned(input.password);
     }
 
-    // An empty password means "keep the stored one" — an edit that only moves the
+    // An empty password means "keep the stored one" - an edit that only moves the
     // domain must not require retyping it. Empty with nothing stored is the
     // first-time case, and that is exactly what may never be published.
     const password = input.password || (await storedPassword(id));
     if (!password)
       throw new Error(
-        "Enter a password for the Traefik panel — it cannot be published without one",
+        "Enter a password for the Traefik panel - it cannot be published without one",
       );
     credentials = { domain, username, password };
   }
@@ -463,7 +463,7 @@ export async function setServerTraefikDashboard(
     return true;
   });
 
-  // Only now — the row describes what the host is serving, not what we asked for.
+  // Only now - the row describes what the host is serving, not what we asked for.
   await getDb()
     .update(serversTable)
     .set({
@@ -490,7 +490,7 @@ export async function setServerTraefikDashboard(
 }
 
 /** The stored dashboard password, so changing the domain does not mean retyping
- *  it. Never leaves this module — there is no reveal path for it. */
+ *  it. Never leaves this module - there is no reveal path for it. */
 async function storedPassword(id: string): Promise<string> {
   const [row] = await getDb()
     .select({ enc: serversTable.traefikDashboardPasswordEnc })

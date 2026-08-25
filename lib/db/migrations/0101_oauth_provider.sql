@@ -4,7 +4,7 @@
 -- `/api/mcp` (ADR-0021) works with every terminal and IDE agent, because all of
 -- them let you paste `Authorization: Bearer deplo_…`. claude.ai and chatgpt.com
 -- have no such field: their connectors require the OAuth 2.1 flow the MCP spec
--- mandates — Protected Resource Metadata (RFC 9728), authorization server
+-- mandates - Protected Resource Metadata (RFC 9728), authorization server
 -- metadata (RFC 8414), dynamic client registration (RFC 7591) and PKCE.
 -- ADR-0021 recorded that as "deferred, not rejected"; this is it landing.
 --
@@ -23,15 +23,15 @@
 -- outside the plugin writes these tables; the rules stay in force everywhere else.
 --
 -- Access and refresh tokens are stored HASHED with deplo's own `sha256Hex`, the
--- same digest `api_tokens.token_hash` uses — wired through the plugin's
+-- same digest `api_tokens.token_hash` uses - wired through the plugin's
 -- `storeTokens` option, so a row here is never a usable credential.
 --
 -- `api_tokens.oauth_client_id` is the whole design in one column. Approving a
 -- consent MINTS AN ORDINARY API TOKEN and the OAuth access token is only a
 -- pointer at it, which is what keeps ADR-0021 §2 true: there is exactly one
--- authorization path, and every gate a `deplo_` token passes — the capability
+-- authorization path, and every gate a `deplo_` token passes - the capability
 -- clamp, the project scope, the two-factor policy, the fail-closed check that
--- the minter is still a member — applies unchanged. It also makes revocation
+-- the minter is still a member - applies unchanged. It also makes revocation
 -- instant: delete the `api_tokens` row and the join that resolves an access
 -- token returns nothing, whatever the token's own expiry says.
 --
@@ -41,7 +41,7 @@
 --
 -- One file, no DDL/backfill split: 0098 and 0099 were split because a backfill
 -- reads tables a historical replay may not have created yet. There is nothing to
--- backfill here — four new tables and one nullable column with no default.
+-- backfill here - four new tables and one nullable column with no default.
 --
 -- Note for the next person: this touches `api_tokens`, NOT `teams`/`users`/
 -- `memberships`, so the hand-maintained `preSeed` predicates in

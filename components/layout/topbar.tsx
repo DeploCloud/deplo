@@ -71,11 +71,11 @@ export function Topbar({
         </SheetContent>
       </Sheet>
 
-      {/* Only present while the sidebar is collapsed — it has no header of its
+      {/* Only present while the sidebar is collapsed - it has no header of its
           own to host the control at zero width. */}
       <SidebarExpandButton />
 
-      {/* Team switcher — replaced by a neutral label on personal/system settings,
+      {/* Team switcher - replaced by a neutral label on personal/system settings,
           which act outside any single team. */}
       {hideTeam ? (
         <span className="flex items-center gap-2 text-sm font-medium">
@@ -110,7 +110,7 @@ export function Topbar({
 
       <div className="flex flex-1 items-center justify-end gap-2">
         {/**
-         * Creation lives on the Overview's "Add New" menu only — the header stays lean
+         * Creation lives on the Overview's "Add New" menu only - the header stays lean
          * (theme + account).
          */}
         <MigrationChip canOpen={capabilities.includes("create_projects")} />

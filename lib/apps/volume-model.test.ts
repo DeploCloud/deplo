@@ -235,7 +235,7 @@ test("a clean row of each kind has no problem", () => {
   );
 });
 
-test("a blank name is fine — the server derives one", () => {
+test("a blank name is fine - the server derives one", () => {
   assert.equal(volumeProblem(vol({ name: "" })), null);
 });
 

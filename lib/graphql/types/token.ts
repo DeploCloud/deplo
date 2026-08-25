@@ -17,7 +17,7 @@ export const ApiTokenRef = builder
   .objectRef<ApiTokenDTO>("ApiToken")
   .implement({
     description:
-      "A team API token. Only the prefix is ever exposed — the raw token " +
+      "A team API token. Only the prefix is ever exposed - the raw token " +
       "is shown once at creation and only its hash is persisted.",
     fields: (t) => ({
       id: t.exposeID("id"),
@@ -58,7 +58,7 @@ export const ApiTokenRef = builder
       }),
       homeTeamId: t.exposeID("homeTeamId", {
         description:
-          "The team this token is MANAGED from — where it was created. Any team " +
+          "The team this token is MANAGED from, where it was created. Any team " +
           "it reaches can revoke it; only this one can change it.",
       }),
       homeTeamName: t.exposeString("homeTeamName", {
@@ -66,8 +66,8 @@ export const ApiTokenRef = builder
       }),
       instanceAdmin: t.exposeBoolean("instanceAdmin", {
         description:
-          "The token may administer the whole instance — users, servers and " +
-          "the global environment — not just its team. Mutually exclusive " +
+          "The token may administer the whole instance - users, servers and " +
+          "the global environment, not just its team. Mutually exclusive " +
           "with a project scope.",
       }),
       createdByUsername: t.exposeString("createdByUsername", {
@@ -116,7 +116,7 @@ const CreateTokenPayloadRef = builder
   .implement({
     description:
       "Result of creating a token. `raw` is the full secret and is returned " +
-      "only here, once — store it now, it cannot be recovered later.",
+      "only here, once - store it now, it cannot be recovered later.",
     fields: (t) => ({
       raw: t.exposeString("raw", {
         description: "The full token secret. Shown once and never again.",

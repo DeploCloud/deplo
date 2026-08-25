@@ -33,7 +33,7 @@ export const McpConnectionRef = builder
     description:
       "An AI client that can act in this team over MCP. Either a web connector " +
       "approved on the consent screen, or an API token somebody pasted into a " +
-      "terminal or IDE agent — both are ordinary API tokens, so `id` is that " +
+      "terminal or IDE agent - both are ordinary API tokens, so `id` is that " +
       "token's id and revoking it is `revokeToken`, which deletes the " +
       "credential and disconnects the client from every team it reached.",
     fields: (t) => ({
@@ -42,7 +42,7 @@ export const McpConnectionRef = builder
         description:
           "`web` for an OAuth connector, listed from the moment it is approved. " +
           "`token` for a bearer credential, listed once it has actually called " +
-          "`/api/mcp` — a token that merely could is not a connected client.",
+          "`/api/mcp` - a token that merely could is not a connected client.",
       }),
       clientName: t.exposeString("clientName"),
       clientUri: t.exposeString("clientUri", { nullable: true }),
@@ -90,7 +90,7 @@ builder.queryFields((t) => ({
   }),
   mcpConnected: t.boolean({
     // `loggedIn`, not `manage_mcp`: this answers one yes/no about a token the caller
-    // has just minted, and the person who mints a token holds `manage_tokens` — which
+    // has just minted, and the person who mints a token holds `manage_tokens`, which
     // is not `manage_mcp`.
     authScopes: { loggedIn: true },
     description:
@@ -121,9 +121,9 @@ builder.mutationFields((t) => ({
       "Approve an AI client: mint an API token with the chosen capabilities and " +
       "scope, and link it to the client. Also needs `manage_tokens`, and cannot " +
       "grant more than the approver holds. The OAuth handshake itself is then " +
-      "finished by the browser posting to `/api/auth/oauth2/consent` — that " +
+      "finished by the browser posting to `/api/auth/oauth2/consent` - that " +
       "endpoint refuses a server-side call, so it cannot be done here. " +
-      "`teamIds` names the teams the connection may work in — the team it is " +
+      "`teamIds` names the teams the connection may work in - the team it is " +
       "created from is always included, and each one is gated in that team.",
     args: {
       clientId: t.arg.string({ required: true }),
@@ -135,8 +135,8 @@ builder.mutationFields((t) => ({
       expectedTeamId: t.arg.string({
         required: false,
         description:
-          "The team the consent screen showed. Not a choice — the server takes " +
-          "the team from the session — but a disagreement is refused rather " +
+          "The team the consent screen showed. Not a choice - the server takes " +
+          "the team from the session, but a disagreement is refused rather " +
           "than connecting the client to a team nobody read.",
       }),
     },

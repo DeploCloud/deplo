@@ -22,14 +22,14 @@ import {
 } from "../data/docker-cleanup";
 
 /**
- * The Docker-cleanup scheduler — the thing that makes the stored cron `schedule`
+ * The Docker-cleanup scheduler - the thing that makes the stored cron `schedule`
  * actually fire.
  */
 
 const TICK_MS = 60_000;
 
 /**
- * A host is OVERDUE once its last sweep STARTED more than this long ago — the
+ * A host is OVERDUE once its last sweep STARTED more than this long ago - the
  * catch-up predicate, and the reason a 3-day outage does not cost 3 nights of
  * cleanup: the boot tick sees no run inside the window and sweeps immediately
  */
@@ -67,7 +67,7 @@ function minuteKey(at: Date): string {
 }
 
 /**
- * The servers whose most recent sweep STARTED inside the catch-up window — i.e.
+ * The servers whose most recent sweep STARTED inside the catch-up window - i.e.
  * the ones that are not overdue.
  */
 async function listServersSweptSince(cutoff: Date): Promise<Set<string>> {
@@ -83,7 +83,7 @@ async function listServersSweptSince(cutoff: Date): Promise<Set<string>> {
 /**
  * One scheduler tick: claim the lease, then sweep every server the enabled policy
  * is due on this minute. Exported for tests + an immediate first run; safe to call
- * directly. Never throws — one unreachable host is contained so the rest still run.
+ * directly. Never throws - one unreachable host is contained so the rest still run.
  */
 export async function runCleanupSchedulerTick(
   now: Date = new Date(),
@@ -133,7 +133,7 @@ export async function runCleanupSchedulerTick(
     for (const s of due) {
       // Heartbeat mid-drain: a fleet's worth of sequential sweeps can outlast
       // LEASE_STALE_MS, and a lease whose heartbeat only advances at tick start would go
-      // stale — free for another instance to steal and double-sweep.
+      // stale - free for another instance to steal and double-sweep.
       if (!(await acquireLease(DOCKER_CLEANUP_LEASE, state.owner))) break;
       // Stamp BEFORE awaiting so a re-entrant/overlapping tick in the same minute
       // can't double-sweep this host even before the run resolves.
@@ -162,7 +162,7 @@ export async function runCleanupSchedulerTick(
 }
 
 /**
- * Start the once-a-minute cleanup loop. Idempotent — a second call is a no-op, so
+ * Start the once-a-minute cleanup loop. Idempotent - a second call is a no-op, so
  * importing this through more than one Next module graph can't start two loops.
  */
 export function startDockerCleanupScheduler(): void {
@@ -175,7 +175,7 @@ export function startDockerCleanupScheduler(): void {
   }, TICK_MS);
   if (typeof timer.unref === "function") timer.unref();
   state.timer = timer;
-  // Kick an immediate tick: this is where the catch-up predicate earns its keep — a
+  // Kick an immediate tick: this is where the catch-up predicate earns its keep - a
   // control plane that was down at 04:00 sweeps NOW, at boot, instead of waiting a
   // full day. Floated; its own try/finally contains any failure.
   void runCleanupSchedulerTick();
@@ -184,7 +184,7 @@ export function startDockerCleanupScheduler(): void {
 
 /**
  * Release this process's hold on the cleanup lease. Best-effort and safe when we
- * never held it — the lease layer ignores a release by a non-holder.
+ * never held it - the lease layer ignores a release by a non-holder.
  */
 export async function releaseDockerCleanupLease(): Promise<void> {
   await releaseLease(DOCKER_CLEANUP_LEASE, state.owner);

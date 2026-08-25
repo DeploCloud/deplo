@@ -1,4 +1,4 @@
-# ADR-0017 — Pull request previews are per-pull-request stacks, keyed off the deploy key
+# ADR-0017: Pull request previews are per-pull-request stacks, keyed off the deploy key
 
 **Status:** Accepted (2026-08-07). Supersedes the withdrawn ADR-0014 of the same name
 (shipped and reverted on 2026-08-01, commit `a88a050`; the slot was reused by
@@ -15,8 +15,8 @@ the loudest gap in the competitive analysis and the feature that makes "self-hos
 credible rather than aspirational.
 
 This decision was made once already. The feature shipped on 2026-08-01 and was withdrawn the
-same day (`a88a050`) for scheduling reasons — the roles epic was about to land on the same
-files — not because anything here was found wrong. It is restored on today's `main` with five
+same day (`a88a050`) for scheduling reasons - the roles epic was about to land on the same
+files, not because anything here was found wrong. It is restored on today's `main` with five
 changes, recorded below as Decisions 11-15. The revert also put the two latent bugs in the
 Context back into the tree, where they sat as dead code until this ADR was implemented again.
 
@@ -40,7 +40,7 @@ destroyed production the first time anything reached them:
    production app's badge orange and repointed its URL at a host that disappears when the
    pull request closes.
 
-Separately, `defaultRoute` hardcoded `letsencrypt` — which is precisely wrong for the nip.io
+Separately, `defaultRoute` hardcoded `letsencrypt`, which is precisely wrong for the nip.io
 hosts previews use, since nip.io is a single registered domain whose Let's Encrypt issuance
 budget is shared with the entire internet (the same reason deplo's own auto domains are born
 `certProvider: "none"`).
@@ -55,14 +55,14 @@ an App row would multiply every team/folder/ordering/quota/domain invariant and 
 `apps_slug_uq` authority over preview naming; making it an Environment would collide with the
 `kind: "preview"` Environment that already exists and means a per-Project scope.
 
-The user-facing word is **pull request preview**, and the nav entry is "Pull requests" — never
+The user-facing word is **pull request preview**, and the nav entry is "Pull requests", never
 a bare "Preview", which is already an Environment's name in the same product.
 
 ### 2. The deploy key becomes a real parameter, and production's key is the app slug
 
 Every host-side artifact is named after the **deploy key**: the container, the stack file, the
 files dir, the named volumes, the router `baseKey`, every slug-shaped agent RPC. Production's
-key IS `apps.slug`, so introducing the concept changed nothing that was already running —
+key IS `apps.slug`, so introducing the concept changed nothing that was already running -
 byte-identically, which is what preserves the reroute contract of ADR-0006 §D6.
 
 Alternative rejected: `if (environment === "preview")` at each `deplo-${slug}` site. About
@@ -74,8 +74,8 @@ The key resolves back to its app **structurally**: a slug is `[a-z0-9-]`, so eve
 the first `__` is the app slug and nothing else can be. No new column, index or join.
 
 The key is denormalized onto `deployments.deploy_key`, for the reasons `server_id` already is:
-read on `runDeployment`'s one-row hot path and by the queue drain, and — the part that matters
-— it outlives the preview row, so a deploy still in flight when its preview is destroyed can
+read on `runDeployment`'s one-row hot path and by the queue drain, and, the part that matters,
+it outlives the preview row, so a deploy still in flight when its preview is destroyed can
 still name the stack it touched.
 
 ### 3. A preview writes its own state, and only its own
@@ -83,7 +83,7 @@ still name the stack it touched.
 `apps.status` / `latest_deployment_id` / `production_url` belong to production. A preview
 writes `app_previews.status` / `latest_deployment_id` / `url`. Its containers carry
 `deplo.project=<previewId>` (with `deplo.app=<appId>` alongside), because the telemetry stream
-buckets container stats by that label — which is what keeps a preview out of the App's live
+buckets container stats by that label, which is what keeps a preview out of the App's live
 status, monitoring charts and console instance list without touching the agent.
 
 The supersede is scoped to the deploy key, so a push to pull request #42 cannot cancel #43's
@@ -105,11 +105,11 @@ and a volume set the moment an agent happened to be unreachable.
 
 ### 5. The zero-configuration URL is nip.io on plain HTTP; a real domain is advanced
 
-`previewHost` is **deterministic** per (app, pull request) — the URL is commented on the pull
+`previewHost` is **deterministic** per (app, pull request) - the URL is commented on the pull
 request, so a host regenerated on each rebuild would strand a link somebody is testing. With
 no configuration it is `<slug>-pr-<n>-<hash6>-<hexip>.nip.io` with `certProvider: "none"`.
 With a base domain set, it is `<slug>-pr-<n>.<base>` with a per-preview HTTP-01 certificate
-from the resolver that already exists — one wildcard DNS record, and no change to Traefik's
+from the resolver that already exists - one wildcard DNS record, and no change to Traefik's
 static configuration. A wildcard certificate was rejected: it needs DNS-01, which needs static
 config and provider credentials.
 
@@ -117,7 +117,7 @@ Preview hosts are never `domains` rows. One there would be picked up by `routabl
 baked into the **production** router's rule, and would count against the per-team certificate
 quota.
 
-### 6. A preview override outranks a linked shared variable — amending ADR-0012
+### 6. A preview override outranks a linked shared variable - amending ADR-0012
 
 A preview inherits the App's variables in full (which, since the env-target picker was
 removed, means all of them). `app_preview_env_vars` folds LAST in `resolveEnvEntries`, above
@@ -126,12 +126,12 @@ the app's own value and above a linked Shared variable, and only for the `previe
 This is a deliberate exception to ADR-0012 §Decision 3's "the link keeps the top slot",
 applying that decision's own logic once more: a shared variable is a **team default**, an
 override is the most specific statement a user can make ("in previews, use this"). Without it
-the feature cannot do the one thing it exists for — pointing a pull request's preview at a
+the feature cannot do the one thing it exists for - pointing a pull request's preview at a
 scratch database instead of the production one. ADR-0012's substance is untouched: scopes
 still never inject, only the explicit per-app link does.
 
 A separate table, not a second `env_vars` row, because `env_vars_app_key_uq` is
-`UNIQUE(app_id, key)` — two values for one key are not representable there.
+`UNIQUE(app_id, key)`: two values for one key are not representable there.
 
 ### 7. Fork pull requests wait for a person
 
@@ -166,7 +166,7 @@ pull request is the honest promotion, and the existing push auto-deploy already 
 ### 9. The reaper needs no cron and no catch-up window
 
 A third lease-guarded loop beside backups and docker-cleanup (`scheduler_lease.name` is the
-PK, so a third loop is a third row — no migration, no coupling). Unlike those two, every
+PK, so a third loop is a third row - no migration, no coupling). Unlike those two, every
 predicate here is a DB state query, so a tick that never ran costs nothing: the next one sees
 the same rows. Catch-up is intrinsic; the boot tick is what turns an outage into minutes of
 delay rather than a lost day.
@@ -178,7 +178,7 @@ both reading pull requests and posting the one sticky comment). GitHub has **no 
 change an existing App's permissions or events, so an instance that connected GitHub before
 this feature keeps the old set. `readAppCapabilities` reads what the App actually has, and
 three surfaces say what to click. Meanwhile the manual "Deploy a pull request" action still
-works, because listing pull requests needs only `pull_requests: read` — which every Deplo
+works, because listing pull requests needs only `pull_requests: read`, which every Deplo
 GitHub App has always had.
 
 ### 11. At the limit the cap evicts the stalest preview; it does not refuse the new one
@@ -192,7 +192,7 @@ the one the team has been reviewing all week; killing it to make room for a driv
 is exactly backwards.
 
 The evicted row **survives** at `status = 'evicted'` with `state` still `open`. It keeps its
-deploy key and host, so Redeploy revives the same URL — and nothing revives it automatically.
+deploy key and host, so Redeploy revives the same URL, and nothing revives it automatically.
 That asymmetry is the whole design: if a push brought an evicted preview back, then N active
 pull requests under a cap of N would evict each other on every commit, burning a full build per
 cycle forever. A push onto an evicted preview still updates its title and head SHA, so the list
@@ -200,7 +200,7 @@ never lies about the pull request; it just does not build.
 
 `blocked` (an unapproved fork) and `evicted` previews hold **no slot**: neither has a stack, so
 neither may keep a real one out. Reviving an evicted preview reclaims a slot exactly like a new
-one, which is why that logic lives in `deployPreviewRow` — every way back through it.
+one, which is why that logic lives in `deployPreviewRow` - every way back through it.
 
 ### 12. `manage_previews` is the 41st capability, not a reuse of the deploy one
 
@@ -211,14 +211,14 @@ distinction a company will actually want. It covers the switch, the advanced set
 deploy/redeploy/destroy of a preview, and approving a fork.
 
 The real gate is `requireAppCapability(appId, "manage_previews")`, which resolves team, folder
-and per-node grants together (ADR-0016) and answers "App not found" to all three — so it is
+and per-node grants together (ADR-0016) and answers "App not found" to all three, so it is
 never an oracle for which ids exist. `lib/deploy/preview-lifecycle.ts` stays session-free; the
 gate belongs to its callers.
 
 ### 13. Previews may run on a different server than production
 
 `apps.preview_server_id`, NULL ⇒ the app's own server, set from Advanced. The default is the
-honest one — a preview is only worth trusting if it runs where production runs — but deplo is
+honest one, a preview is only worth trusting if it runs where production runs, but deplo is
 multi-server and the competitors are not, so an operator who wants pull request builds off the
 box serving users can have that for one dropdown.
 
@@ -231,7 +231,7 @@ server rather than failing to deploy.
 
 ### 14. A preview publishes no host ports
 
-Production keeps its `ports:` — a published port is a deliberate choice by the person who wrote
+Production keeps its `ports:` - a published port is a deliberate choice by the person who wrote
 the compose. A preview did not make that choice, it inherited it, and a host port is a
 singleton: the second preview of an app, or the first alongside its own production stack, would
 die with "port is already allocated". So the preview render drops every published `ports:`
@@ -249,7 +249,7 @@ how many it is about to destroy. Turning previews **on** destroys nothing and as
 
 - Previews are **off by default**. They are containers on the operator's own server, and
   turning them on for every existing GitHub app unasked is not a default anyone chose.
-- Four brakes bound host usage: the switch, a per-app live limit (default 3, which EVICTS —
+- Four brakes bound host usage: the switch, a per-app live limit (default 3, which EVICTS -
   see Decision 11), destroy-on-close, and an idle timeout (default 3 days).
 - Production deploys are ordered ahead of previews in the queue, so a wall of pull request
   builds never delays a release.

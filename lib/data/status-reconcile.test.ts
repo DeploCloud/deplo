@@ -14,7 +14,7 @@ test("reconcileStatus: non-stopping statuses pass through unchanged", () => {
 });
 
 test("reconcileStatus: a fresh 'stopping' stays 'stopping'", () => {
-  // Within the stop timeout window — the stop is still legitimately in flight.
+  // Within the stop timeout window - the stop is still legitimately in flight.
   assert.equal(reconcileStatus("stopping", at(5_000), NOW), "stopping");
 });
 
@@ -30,7 +30,7 @@ test("reconcileStatus: exactly at the threshold is still 'stopping'", () => {
 });
 
 test("reconcileStatus: a fresh 'restoring' stays 'restoring'", () => {
-  // A restore is unbounded in practice — a big volume takes as long as it takes,
+  // A restore is unbounded in practice - a big volume takes as long as it takes,
   // and the badge must not give up on it halfway through.
   assert.equal(reconcileStatus("restoring", at(60 * 60_000), NOW), "restoring");
 });

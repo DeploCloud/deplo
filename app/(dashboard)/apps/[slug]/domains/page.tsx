@@ -33,17 +33,17 @@ export default async function AppDomainsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The ADDRESS of the host this app runs on, asked about the app — not the fleet.
+  // The ADDRESS of the host this app runs on, asked about the app, not the fleet.
   const [domains, serverIp] = await Promise.all([
     listDomains(project.id),
     serverIpForApp(project.id),
   ]);
   // A zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`) the
-  // user can drop into the Domain field with one click — resolved here so the
+  // user can drop into the Domain field with one click - resolved here so the
   // server-only IP detection never reaches the client bundle.
   const suggestedDomain = productionDomain(project.slug, serverIp);
   // Whether each row routes to a compose service or to the app's single
-  // container — the authoritative source check, not "does the app carry compose
+  // container - the authoritative source check, not "does the app carry compose
   // text" (an app can keep leftover YAML while deploying a repo or an image).
   const isComposeStack = usesComposeStack(project);
   // The Container column only says something when there is a choice to say it about.
@@ -70,7 +70,7 @@ export default async function AppDomainsPage(
 
   return (
     // Adding a domain closes its dialog at once and puts the hostname in the
-    // table as a pulsing row while the DNS check and the reroute run — the
+    // table as a pulsing row while the DNS check and the reroute run - the
     // provider holds that row, so it wraps both the dialog and the table.
     <PendingCreateProvider count={domains.length}>
       <div className="space-y-4">

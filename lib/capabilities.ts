@@ -4,7 +4,7 @@ import type { Capability } from "./types";
 import { ALL_CAPABILITIES } from "./types";
 
 /**
- * The capability catalog — one entry per thing a member can be allowed to do, plus
+ * The capability catalog - one entry per thing a member can be allowed to do, plus
  * the categories the role editor browses them by.
  */
 
@@ -15,7 +15,7 @@ export interface CapabilityMeta {
   description: string;
   /** Extra weight in search: words a user might type that aren't in the label. */
   keywords?: string;
-  /** Handing this out can cost data or hand over access — flagged in the UI. */
+  /** Handing this out can cost data or hand over access - flagged in the UI. */
   sensitive?: boolean;
 }
 
@@ -144,7 +144,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   create_projects: {
     label: "Create projects",
-    description: "Add a project — a folder with environments of its own.",
+    description: "Add a project - a folder with environments of its own.",
     keywords: "new project container group",
   },
   organize_projects: {
@@ -250,8 +250,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   manage_mcp: {
     label: "Manage MCP access",
-    // The old wording promised a second half — "and whether they must ask before
-    // destructive actions" — that migration 0100 removed: that switch was a second
+    // The old wording promised a second half, "and whether they must ask before
+    // destructive actions" - that migration 0100 removed: that switch was a second
     // permission system beside Capabilities, and a permission description naming a
     description:
       "Decide whether AI agents may drive this team, and approve the web apps that connect to it.",
@@ -296,7 +296,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   manage_roles: {
     label: "Manage roles",
     description:
-      "Create, edit, reset and delete the roles on this page — including what they grant.",
+      "Create, edit, reset and delete the roles on this page - including what they grant.",
     keywords: "permissions roles access control",
     sensitive: true,
   },
@@ -315,7 +315,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
 
 /**
  * The role editor's browse order. A category is a place to LOOK, not a thing to
- * grant — there is no category-level switch, because a permission that can only be
+ * grant - there is no category-level switch, because a permission that can only be
  * handed out as part of a bundle isn't a permission, it's a bundle.
  */
 export const CAPABILITY_CATEGORIES: {

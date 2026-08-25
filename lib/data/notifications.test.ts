@@ -151,7 +151,7 @@ test("a channel with NO alert rows lands on the catalog defaults", async () => {
   await asUser1(async () => {
     id = (await saveNotificationChannel(null, draft())).id;
   });
-  // A channel nobody has decided about — which is exactly the state a brand-new
+  // A channel nobody has decided about, which is exactly the state a brand-new
   // one is in, since nothing is seeded on create.
   await db
     .delete(notificationAlerts)
@@ -262,7 +262,7 @@ test("a stored token is never forwarded to an address that just changed", async 
   const before = (await db.select().from(notificationChannels))[0]!;
 
   // Repointing the channel while leaving the secret blank would have the stored
-  // token delivered to whoever owns the new address — in a header, on the first
+  // token delivered to whoever owns the new address - in a header, on the first
   // alert. The save is refused instead, and nothing is written.
   await assert.rejects(
     () =>

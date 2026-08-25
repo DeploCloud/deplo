@@ -22,13 +22,13 @@ export function isStaleBuildError(error: unknown): boolean {
   return STALE_PATTERNS.some((re) => re.test(text));
 }
 
-/** Only one automatic reload per tab per window of time — see {@link reloadOnce}. */
+/** Only one automatic reload per tab per window of time - see {@link reloadOnce}. */
 const RELOAD_KEY = "deplo:stale-build-reload";
 const RELOAD_COOLDOWN_MS = 30_000;
 
 /**
  * Reload the page once to pick up the current build. Returns false when a reload
- * was already attempted moments ago — a chunk that 404s on the fresh build too
+ * was already attempted moments ago - a chunk that 404s on the fresh build too
  * (a half-finished deploy) must land on a message, never in a reload loop.
  */
 export function reloadOnce(): boolean {
@@ -39,7 +39,7 @@ export function reloadOnce(): boolean {
     window.sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
   } catch {
     // Storage blocked (private mode, embedded browsers): reloading once is still
-    // the right move — the cooldown is a nicety, not the guard that matters.
+    // the right move - the cooldown is a nicety, not the guard that matters.
   }
   window.location.reload();
   return true;

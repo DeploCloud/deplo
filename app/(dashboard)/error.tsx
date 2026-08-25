@@ -10,12 +10,12 @@ export default function DashboardError({
   retry,
 }: {
   error: Error & { digest?: string };
-  // `retry` re-fetches and re-renders the children — including the Server Components
+  // `retry` re-fetches and re-renders the children, including the Server Components
   // that failed.
   retry: () => void;
 }) {
   // A tab left open across a deplo update asks for chunk files that build
-  // replaced. Nothing is wrong with the page — reloading renders it.
+  // replaced. Nothing is wrong with the page - reloading renders it.
   const stale = isStaleBuildError(error);
 
   useEffect(() => {

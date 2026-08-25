@@ -147,7 +147,7 @@ test("with the instance switch off, no Gravatar address is emitted anywhere", as
   await as(OWNER, () => setGravatarEnabled(false));
   assert.equal((await memberRow(MEMBER)).avatarUrl, null);
 
-  // An UPLOADED picture is unaffected — the switch is about talking to
+  // An UPLOADED picture is unaffected - the switch is about talking to
   // gravatar.com, not about whether people may have a face.
   await as(MEMBER, () => updateMyAvatar(PICTURE));
   assert.equal((await memberRow(MEMBER)).avatarUrl, PICTURE);

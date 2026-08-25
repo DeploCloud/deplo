@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Mirrors `GitPanel`: the header, then the card grid. Two cards stand in — most
+ * Mirrors `GitPanel`: the header, then the card grid. Two cards stand in - most
  * instances have one or two connected hosts, and drawing an empty state instead
  * would say "nothing is coming", which is a lie half the time.
  */

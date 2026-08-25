@@ -69,7 +69,7 @@ export function normalizePreferredHost(raw: string | null | undefined): string {
 }
 
 /**
- * Whether a caller-supplied hostname is a CLAIM on a name — the thing
+ * Whether a caller-supplied hostname is a CLAIM on a name - the thing
  * `manage_domains` exists to gate.
  */
 export function isHostnameClaim(raw: string | null | undefined): boolean {
@@ -104,7 +104,7 @@ export function __resetDnsResolve4ForTest(): void {
  * service's compose definition, or the per-domain `port` when set).
  */
 const SERVICE_UNSUPPORTED =
-  "Picking a container is only available for compose stacks — a single-image app has exactly one, so use the container port field.";
+  "Picking a container is only available for compose stacks - a single-image app has exactly one, so use the container port field.";
 
 /**
  * Refuse a hostname an app in ANOTHER TEAM already routes. The stored uniqueness
@@ -187,7 +187,7 @@ export async function uniqueAutoDomainName(
     const candidate = nipDomain(label, randomWords(), ip);
     if (!(await domainNameExists(candidate))) return candidate;
   }
-  // Exhausted retries (effectively impossible) — fall back to a guaranteed-unique
+  // Exhausted retries (effectively impossible) - fall back to a guaranteed-unique
   // host by folding a random id segment into the words, so creation never wedges.
   return nipDomain(label, `${randomWords()}-${newId("").slice(1, 5)}`, ip);
 }
@@ -251,7 +251,7 @@ export async function ensureAutoDomain(
 
   // A template-baked `preferred` host is honored as-is UNLESS it already belongs to
   // another project (a re-used template domain, or a regenerate-after-delete that
-  // drew the same words) — in which case fall back to a freshly-generated unique
+  // drew the same words) - in which case fall back to a freshly-generated unique
   // host.
   const preferred = normalizePreferredHost(opts.preferred) || undefined;
   // Only honor a preferred host that is one of our OWN generated nip.io hosts or
@@ -312,7 +312,7 @@ export async function ensureExtraDomain(
     service?: string | null;
     slug: string;
     ip: string;
-    /** TLS choice — same rule as {@link ensureAutoDomain}: absent ⇒ `none`. */
+    /** TLS choice - same rule as {@link ensureAutoDomain}: absent ⇒ `none`. */
     certProvider?: CertProvider;
   },
 ): Promise<void> {
@@ -484,7 +484,7 @@ export async function primaryDomainName(appId: string): Promise<string> {
 }
 
 /**
- * The full stored row behind {@link primaryDomainName} — for callers that also
+ * The full stored row behind {@link primaryDomainName} - for callers that also
  * need the domain's config (e.g. its cert provider, to pick the URL scheme).
  * Same primary-first-then-first fallback; null when the project has no domains.
  */
@@ -559,7 +559,7 @@ export async function listDomains(
 }
 
 /**
- * The per-domain routing config a user sets when adding a domain — the same knobs
+ * The per-domain routing config a user sets when adding a domain - the same knobs
  * the Edit dialog exposes (port, entrypoint, cert provider, middlewares).
  */
 export interface DomainConfig {
@@ -573,7 +573,7 @@ export interface DomainConfig {
   stripPrefix?: boolean;
   /** Compose-stack only: which compose service this host targets. */
   service?: string;
-  /** `www` ⇄ non-`www` pairing for this hostname — see {@link applyWwwRedirect}.
+  /** `www` ⇄ non-`www` pairing for this hostname - see {@link applyWwwRedirect}.
    * Absent/`none` ⇒ the hostname is routed on its own, exactly as before. */
   www?: WwwRedirect;
 }
@@ -597,7 +597,7 @@ export async function addDomain(
   const isCompose = usesComposeStack(project);
 
   // A path lets several rows share one hostname (e.g. `app.com` for `/` and
-  // `app.com` for `/api`), so uniqueness is on (host + path), not host alone —
+  // `app.com` for `/api`), so uniqueness is on (host + path), not host alone -
   // the long-standing single-row case is `pathPrefix === ""` on both sides.
   const pathPrefix = normalizePath(config.pathPrefix);
   // Friendly pre-check (the `(name, coalesce(path_prefix,'')) UNIQUE` index is
@@ -631,7 +631,7 @@ export async function addDomain(
     throw new Error("Application port is required");
   const middlewares = normalizeMiddlewares(config.middlewares);
   // Strip is only meaningful with a path (a stripprefix middleware needs a
-  // prefix to strip), so drop it otherwise — the router grammar does the same.
+  // prefix to strip), so drop it otherwise - the router grammar does the same.
   const stripPrefix = Boolean(pathPrefix && config.stripPrefix);
   // First domain on the project becomes primary.
   const existing = await loadDomainsForApp(appId);
@@ -646,11 +646,11 @@ export async function addDomain(
   // until someone finds the Verify button: a host whose record is already in place (a
   // suggested nip.io domain, a pre-pointed custom domain) is born
   // `valid`/`cloudflare` and the caller's routing re-apply makes it live in the same
-  // click — zero manual steps.
+  // click - zero manual steps.
   const status =
     sibling?.status ?? (await checkDomainDns(clean, await appServerIp(appId)));
   // A host the check found PROXIED is served over HTTPS by Cloudflare, so it is born
-  // with the `cloudflare` provider instead of the cert-less default — the user never
+  // with the `cloudflare` provider instead of the cert-less default - the user never
   // has to open Advanced settings to match what Cloudflare already does.
   const certProvider = certProviderForDns(
     status,
@@ -741,7 +741,7 @@ export function normalizePath(input?: string | null): string {
     try {
       p = new URL(p).pathname;
     } catch {
-      /* not a URL — fall through and treat it as a raw path */
+      /* not a URL - fall through and treat it as a raw path */
     }
   }
   // Strip the backtick (the value is interpolated into a Traefik backtick literal
@@ -773,7 +773,7 @@ export function composeServiceNames(compose?: string | null): string[] {
 
 /**
  * Validate + normalise a domain's chosen compose `service`: REQUIRED on a compose
- * stack (a domain must name the service it routes to — there is no "default
+ * stack (a domain must name the service it routes to - there is no "default
  * service"), must name a real service in that stack, and is rejected (→ error) on
  * single-image apps.
  */
@@ -827,7 +827,7 @@ export interface DomainPatch {
   stripPrefix?: boolean;
   /** Compose-stack only: which compose service this host targets; "" clears it. */
   service?: string;
-  /** `www` ⇄ non-`www` pairing — see {@link applyWwwRedirect}. Absent ⇒ the
+  /** `www` ⇄ non-`www` pairing - see {@link applyWwwRedirect}. Absent ⇒ the
    * pairing is left exactly as it is (the Edit dialog always sends the derived
    * current value, so an untouched dropdown is a no-op). */
   www?: WwwRedirect;
@@ -843,8 +843,8 @@ export interface DomainPatch {
 }
 
 /**
- * Apply a full edit to a domain — name, port override, entrypoint, cert provider,
- * middleware chain, path prefix (+strip), and compose service in one mutation —
+ * Apply a full edit to a domain - name, port override, entrypoint, cert provider,
+ * middleware chain, path prefix (+strip), and compose service in one mutation,
  * and return the appId so the caller can re-apply routing (the new Traefik labels
  * only reach the running container once its stack file is re-rendered).
  */
@@ -866,7 +866,7 @@ export async function updateDomain(
   const isCompose = usesComposeStack(project);
 
   // The next name (after an optional rename) and the next path together form the
-  // uniqueness key — several rows may share a host on different paths.
+  // uniqueness key - several rows may share a host on different paths.
   let nextName = current.name;
   if (patch.name !== undefined) {
     nextName = patch.name
@@ -939,7 +939,7 @@ export async function updateDomain(
   }
   if (patch.service !== undefined) next.service = nextApp ?? undefined;
   // A renamed domain points at a new host whose DNS the stored status says nothing
-  // about — so check the NEW name right now, exactly like addDomain does: a
+  // about, so check the NEW name right now, exactly like addDomain does: a
   // pre-pointed host keeps routing across the rename with zero manual steps, an
   // unpointed one drops to pending/misconfigured and stops routing until the
   // automatic re-checks see it settle.
@@ -950,7 +950,7 @@ export async function updateDomain(
     );
     next.ssl = next.status === "valid" || next.status === "cloudflare";
     // The rename's check can discover the NEW host is proxied, so it gets the same
-    // automatic Cloudflare provider an add would have given it — UNLESS this edit
+    // automatic Cloudflare provider an add would have given it, UNLESS this edit
     // deliberately moved the provider, which always wins.
     const chosen =
       patch.certProvider !== undefined &&
@@ -974,7 +974,7 @@ export async function updateDomain(
   });
   const dom = next;
   // A rename moves the hostname every dependent redirect points AT, so the
-  // dependents follow it — otherwise a `www` companion would keep 301-ing to a
+  // dependents follow it, otherwise a `www` companion would keep 301-ing to a
   // hostname this app no longer answers on.
   if (renamed) await repointRedirects(dom.appId, current.name, dom.name);
   // The www pairing is applied last: it reads the app's rows back, so it must see
@@ -1003,7 +1003,7 @@ export async function updateDomain(
 /**
  * Pair a hostname with its `www`/non-`www` counterpart so one of the two serves
  * the app and the other permanently redirects to it. `mode` is expressed relative
- * to `domain` — the row the user is editing: - `none` — break the pair.
+ * to `domain`, the row the user is editing: - `none`, break the pair.
  */
 async function applyWwwRedirect(
   domain: Domain,
@@ -1017,13 +1017,13 @@ async function applyWwwRedirect(
   const counterpart = wwwCounterpart(self.name);
   if (!counterpart)
     throw new Error(
-      `${self.name} has no www variant to pair with — the www redirect is for a site's own domain, e.g. example.com.`,
+      `${self.name} has no www variant to pair with - the www redirect is for a site's own domain, e.g. example.com.`,
     );
   // A path-routed row serves ONE path of its host, not the site, so pairing it
   // with a whole-host redirect would send the rest of the host nowhere.
   if ((self.pathPrefix ?? "").trim())
     throw new Error(
-      `${self.name} routes the path ${self.pathPrefix} — a www redirect applies to a whole hostname, so it can't be set on a path route.`,
+      `${self.name} routes the path ${self.pathPrefix} - a www redirect applies to a whole hostname, so it can't be set on a path route.`,
     );
   const other = all.find((d) => d.name === counterpart);
 
@@ -1052,7 +1052,7 @@ async function applyWwwRedirect(
       // redirect would send the rest of that hostname nowhere.
       if ((other.pathPrefix ?? "").trim())
         throw new Error(
-          `${counterpart} routes the path ${other.pathPrefix} — remove that domain before redirecting the hostname.`,
+          `${counterpart} routes the path ${other.pathPrefix} - remove that domain before redirecting the hostname.`,
         );
       await writeRedirectTo(other.id, self.name);
     }
@@ -1157,7 +1157,7 @@ async function writeRedirectTo(
 }
 
 /** Drop a domain row (its `domain_middlewares` children CASCADE). Used only for
- * a companion this feature created — see {@link applyWwwRedirect}. */
+ * a companion this feature created - see {@link applyWwwRedirect}. */
 async function deleteDomainRow(id: string): Promise<void> {
   await getDb().delete(domainsTable).where(eq(domainsTable.id, id));
 }
@@ -1165,7 +1165,7 @@ async function deleteDomainRow(id: string): Promise<void> {
 /**
  * Create the other half of a `www` pair, cloned from the row the user is editing:
  * same container port, same compose service, same entrypoint and the same
- * certificate provider — a redirect that answers on `https://www.…` needs its own
+ * certificate provider - a redirect that answers on `https://www.…` needs its own
  * valid certificate there, or the browser hits a certificate error BEFORE it is
  * ever told where to go.
  */
@@ -1180,7 +1180,7 @@ async function insertPairedDomain(
 ): Promise<void> {
   if (await domainNameExists(name))
     throw new Error(
-      `${name} is already routed by another app — remove it there first.`,
+      `${name} is already routed by another app - remove it there first.`,
     );
   const status = await checkDomainDns(name, await appServerIp(from.appId));
   // Mirror the canonical host's certificate choice, upgrading to `cloudflare`
@@ -1208,8 +1208,8 @@ async function insertPairedDomain(
 
 /**
  * Verify a domain against real DNS and settle its status into one of three
- * outcomes (the classification is pure — {@link classifyDomainDns}): - `valid` its
- * A records — following any CNAME chain, which resolve4 does — include the public
+ * outcomes (the classification is pure - {@link classifyDomainDns}): - `valid` its
+ * A records (following any CNAME chain, which resolve4 does) include the public
  * IPv4 of the server this project runs on.
  */
 export async function verifyDomain(
@@ -1219,13 +1219,13 @@ export async function verifyDomain(
   if (!dom) throw new Error("Not found");
   await requireAppCapability(dom.appId, "manage_domains");
 
-  // The domain must point at the server THIS project runs on — not always the
+  // The domain must point at the server THIS project runs on, not always the
   // panel host: a project on a remote server needs its A record on that server.
   const target = await appServerIp(dom.appId);
   const status = await checkDomainDns(dom.name, target);
-  // `valid` (points straight here) and `cloudflare` (proxied — DNS delegated to
+  // `valid` (points straight here) and `cloudflare` (proxied - DNS delegated to
   // Cloudflare, origin masked) are the two routable states, so `ssl` (a cert is in
-  // effect for end users) is on for those two only — a `pending`/ `misconfigured`
+  // effect for end users) is on for those two only - a `pending`/ `misconfigured`
   // host has no working DNS and thus no live cert.
   const ssl = status === "valid" || status === "cloudflare";
   // Discovering the host is proxied also settles WHO issues its certificate:
@@ -1233,7 +1233,7 @@ export async function verifyDomain(
   const certProvider = certProviderForDns(status, dom.certProvider);
   const providerChanged = certProvider !== dom.certProvider;
   // `statusChanged` is what tells the caller a routing re-apply is worth an agent
-  // round-trip — a provider move rewrites the router's entrypoint and TLS labels,
+  // round-trip - a provider move rewrites the router's entrypoint and TLS labels,
   // so it counts as a change even when the status itself didn't budge.
   const statusChanged =
     status !== dom.status || ssl !== dom.ssl || providerChanged;
@@ -1350,7 +1350,7 @@ export interface RoutableDomain {
   /** Whether the router terminates TLS (`false` for the `none` provider). */
   tls: boolean;
   /** Resolved ACME resolver name. Empty when `tls` is false, and also when the
-   *  provider is `custom` — TLS from a certificate already in the proxy's store
+   *  provider is `custom` - TLS from a certificate already in the proxy's store
    *  asks no ACME provider for one. */
   certResolver: string;
   /** Traefik middlewares applied to this host's router, in order (empty ⇒ none). */
@@ -1399,7 +1399,7 @@ export async function routableRoutes(appId: string): Promise<RoutableDomain[]> {
   const all = await loadDomainsForApp(appId);
   return (
     all
-      // `valid` (points straight here) and `cloudflare` (proxied — Cloudflare may or may
+      // `valid` (points straight here) and `cloudflare` (proxied - Cloudflare may or may
       // not forward here, which DNS cannot tell us) are both routable hosts; a
       // pending/misconfigured host has no working DNS at all and is left off the router.
       .filter((d) => d.status === "valid" || d.status === "cloudflare")
@@ -1447,7 +1447,7 @@ function redirectTargetUrl(d: Domain, siblings: Domain[]): string {
 }
 
 /**
- * The primary's stored row as a route, verified or NOT — the fallback a deploy
+ * The primary's stored row as a route, verified or NOT - the fallback a deploy
  * uses when the canonical host hasn't passed its DNS check yet (a brand-new app,
  * or a custom domain added minutes ago).
  */
@@ -1459,7 +1459,7 @@ export async function pendingPrimaryRoute(
   const all = await loadDomainsForApp(appId);
   const rows = all.filter((d) => d.name === primary);
   // A hostname can carry SEVERAL rows (one per path), so prefer the one actually
-  // flagged primary — `primary` is only a name, and picking whichever row happens to
+  // flagged primary - `primary` is only a name, and picking whichever row happens to
   // come back first would route an arbitrary sibling's path as the canonical host.
   const row = rows.find((d) => d.primary) ?? rows[0];
   return row ? toRoutableDomain(row, all) : null;
@@ -1473,18 +1473,18 @@ export async function setPrimaryDomain(id: string): Promise<string> {
   if (!dom) throw new Error("Not found");
   await requireAppCapability(dom.appId, "manage_domains");
   // A misconfigured domain has no working DNS to this server, so it can't be the
-  // canonical host — block promoting it until its DNS is fixed and re-verified.
+  // canonical host - block promoting it until its DNS is fixed and re-verified.
   // (A `pending` domain is allowed: the first domain added is pending+primary.)
   if (dom.status === "misconfigured")
     throw new Error(
-      "This domain’s DNS is misconfigured — fix its DNS and re-verify before setting it as primary.",
+      "This domain’s DNS is misconfigured - fix its DNS and re-verify before setting it as primary.",
     );
   // A redirecting hostname serves nothing: making it canonical would advertise a
   // URL that answers 301 to another one. The pair is flipped from the Redirect
   // setting of the domain that serves, which moves `primary` with it.
   if (dom.redirectTo)
     throw new Error(
-      `${dom.name} redirects to ${dom.redirectTo}, so it can't be the canonical host — flip the redirect from ${dom.redirectTo} instead.`,
+      `${dom.name} redirects to ${dom.redirectTo}, so it can't be the canonical host - flip the redirect from ${dom.redirectTo} instead.`,
     );
   // The multi-row primary flip is CLEAR-then-SET in one transaction (PLAN §4).
   await getDb().transaction(async (tx) => {
@@ -1579,8 +1579,8 @@ export async function removeDomain(id: string): Promise<string> {
   // would vanish from the domains list).
   const rest = (await loadDomainsForApp(dom.appId)).filter((d) => d.id !== id);
   // Removing a hostname takes its redirects with it: a companion Deplo generated for
-  // the pair (`source: "redirect"`) is deleted — it exists only to point at this host
-  // — while a hostname the USER added is merely un-redirected, so it stays as a
+  // the pair (`source: "redirect"`) is deleted - it exists only to point at this host,
+  // while a hostname the USER added is merely un-redirected, so it stays as a
   // domain of the app and starts serving instead of 301-ing into a hole.
   const dependents = rest.filter((d) => d.redirectTo === dom.name);
   const orphaned = dependents.filter((d) => d.source === "redirect");
@@ -1615,7 +1615,7 @@ export async function removeDomain(id: string): Promise<string> {
         .set({ isPrimary: true })
         .where(eq(domainsTable.id, heir.id));
   });
-  // The canonical URL follows immediately — either onto the heir, or to null when
+  // The canonical URL follows immediately - either onto the heir, or to null when
   // that was the last domain. Otherwise the app card and the title bar keep
   // advertising the hostname the user just deleted until the next deploy.
   await syncProductionUrl(dom.appId);

@@ -14,7 +14,7 @@ const OUTER =
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 
 /**
- * The click-to-reveal chip — one covered value with an eye toggle. - `locked` — a
+ * The click-to-reveal chip, one covered value with an eye toggle. - `locked`, a
  * secret the server will never hand back: dots + a padlock, and it never opens.
  */
 export function RevealChip({
@@ -25,7 +25,7 @@ export function RevealChip({
   placeholderClassName,
   pending = false,
   locked = false,
-  lockedHint = "Secret — hidden, and can never be read back.",
+  lockedHint = "Secret - hidden, and can never be read back.",
   readOnly = false,
   labels = { reveal: "Reveal value", hide: "Hide value" },
   className,
@@ -37,7 +37,7 @@ export function RevealChip({
   /** What stands in for the value while it is covered. */
   placeholder?: string;
   placeholderClassName?: string;
-  /** The value is being fetched — the chip is inert and spins. */
+  /** The value is being fetched - the chip is inert and spins. */
   pending?: boolean;
   /** Write-only secret: masked with a padlock, never openable. */
   locked?: boolean;
@@ -88,7 +88,7 @@ export function RevealChip({
       disabled={pending}
       aria-pressed={revealed}
       aria-label={revealed ? labels.hide : labels.reveal}
-      // No `value` in the title while hidden either — the tooltip is a DOM
+      // No `value` in the title while hidden either - the tooltip is a DOM
       // attribute, and the whole point is that the value is nowhere in the DOM
       // until revealed.
       title={revealed && value !== null ? value : "Click to reveal"}
@@ -125,7 +125,7 @@ export function RevealChip({
           </code>
         ) : (
           // Placeholder ONLY. The real value is never rendered while hidden, so
-          // nothing in this subtree — text or attribute — carries it.
+          // nothing in this subtree, text or attribute, carries it.
           <code
             aria-hidden
             className={cn(

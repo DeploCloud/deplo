@@ -11,13 +11,13 @@ import {
 } from "../infra/agent-client";
 
 /**
- * Cross-host data migration for a server MOVE — the shared relay that both the
+ * Cross-host data migration for a server MOVE - the shared relay that both the
  * database move (a single data volume) and the app move (N data volumes + the
  * files dir) build on.
  */
 
 /** Stop a stack on a specific server, throwing on failure (a move can't proceed if
- *  the stack won't quiesce — its data would change under the copy). */
+ *  the stack won't quiesce - its data would change under the copy). */
 export async function stopStackOn(
   serverId: string,
   slug: string,
@@ -47,7 +47,7 @@ export async function startStackOn(
 
 /**
  * Destroy a stack on a specific server, throwing on failure. `removeVolumes`
- * (default true) also reclaims the stack's named volumes — used to tear down the
+ * (default true) also reclaims the stack's named volumes - used to tear down the
  * OLD host after a verified copy, or to roll back a half-built NEW stack.
  */
 export async function destroyStackOn(
@@ -84,7 +84,7 @@ function isNotFound(e: unknown): boolean {
 }
 
 /**
- * A gzipped tar of an EMPTY directory is about 45 bytes — a header, two zero
+ * A gzipped tar of an EMPTY directory is about 45 bytes - a header, two zero
  * blocks and the gzip trailer.
  */
 const EMPTY_ARCHIVE_CEILING = 512;
@@ -251,7 +251,7 @@ export async function copyVolumeBetween(
 }
 
 /**
- * Copy one HOST DIRECTORY from `source` to `dest` — the bind-mount half of a
+ * Copy one HOST DIRECTORY from `source` to `dest` - the bind-mount half of a
  * migration from a platform that keeps service data in a plain directory.
  */
 export async function copyHostPathBetween(

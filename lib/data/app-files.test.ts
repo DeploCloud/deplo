@@ -60,7 +60,7 @@ test("resolveWithinRoot: refuses a symlink pointing outside the sandbox", async 
     await writeFile(join(outside, "secret"), "nope");
     // A planted symlink inside the root that points at a sibling dir.
     await symlink(outside, join(root, "escape"));
-    // Reading *through* the symlink must be blocked — realpath lands outside.
+    // Reading *through* the symlink must be blocked - realpath lands outside.
     await assert.rejects(
       () => resolveWithinRoot(root, "escape/secret"),
       /escapes/,
@@ -89,7 +89,7 @@ test("resolveWithinRoot: a sibling dir with the root as a name prefix can't matc
 
 test("a path with nothing behind it reads as a new file, not a failure", () => {
   // The agent's NOT_FOUND covers the file, a missing parent dir, and an app that
-  // has no files dir yet — all three are "there is nothing there to read", which
+  // has no files dir yet - all three are "there is nothing there to read", which
   // for an editor whose job is to CREATE that file is the normal case.
   const notFound = Object.assign(
     new Error(
@@ -105,7 +105,7 @@ test("a directory at the entry's path is reported as a folder", () => {
   assert.equal(storageFileStateForError(notAFile), "folder");
 });
 
-test("anything else stays an error — an unreachable server is not an empty file", () => {
+test("anything else stays an error - an unreachable server is not an empty file", () => {
   // Reporting "new" here would show an empty editor for a file we never read,
   // and the next save would overwrite it with whatever is on screen.
   assert.equal(

@@ -132,7 +132,7 @@ test("a token holding the capability keeps it at the node", async () => {
 
 test("a NARROWED token also loses the team-wide capabilities at a node", async () => {
   // Scoped below the whole team (to this one app), so PROJECT_SCOPED_CAPABILITIES
-  // applies on top of the token's own set — same rule as everywhere else.
+  // applies on top of the token's own set - same rule as everywhere else.
   const viaToken = await asToken(
     () => nodeCapabilities({ kind: "app", id: APP }),
     {

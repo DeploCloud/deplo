@@ -39,10 +39,10 @@ import type { Project, AppStatus } from "../types";
 
 export interface ProjectSummary extends Project {
   /** Live count of folders directly in this container (derived, never stored).
-   *  Legacy — the ADR-0009 model no longer files folders into projects; kept for
+   *  Legacy - the ADR-0009 model no longer files folders into projects; kept for
    *  rows written before the pivot. */
   folderCount: number;
-  /** Live count of apps in this project, across all environments —
+  /** Live count of apps in this project, across all environments -
    *  including apps living anywhere inside a legacy folder-in-project
    *  subtree (pre-ADR-0009 rows), which carry no `project_id` of their own. */
   appCount: number;
@@ -132,7 +132,7 @@ async function counts(teamId: string): Promise<{
   for (const r of folderRows)
     if (r.projectId)
       folders.set(r.projectId, (folders.get(r.projectId) ?? 0) + 1);
-  // An app counts toward a project either DIRECTLY (its own `project_id` — the
+  // An app counts toward a project either DIRECTLY (its own `project_id` - the
   // ADR-0009 per-environment membership) or through a LEGACY folder-in-project row:
   // filing into a folder clears the app's own project link, so an app anywhere inside
   const folderById = new Map(folderRows.map((r) => [r.id, r] as const));
@@ -185,14 +185,14 @@ function summarize(
 
 /**
  * Containers in the active team, honouring the team-wide manual order and
- * falling back to newest-first — the same contract as `listFolders`/`listApps`.
+ * falling back to newest-first - the same contract as `listFolders`/`listApps`.
  */
 export const listProjects = cache(async function listProjects(): Promise<
   ProjectSummary[]
 > {
   const teamId = await requireActiveTeamId();
   // Both reaches, because a project list is one of the few reads that assembles
-  // its own rows instead of resolving them through `node-access.ts` — which is
+  // its own rows instead of resolving them through `node-access.ts`, which is
   // where a role scope is applied for free, and why this one had to ask.
   const roleScope = await currentMemberScope();
   const rows = (
@@ -202,7 +202,7 @@ export const listProjects = cache(async function listProjects(): Promise<
       .where(eq(projectsTable.teamId, teamId))
   )
     // A narrowed API token, or a member on a limited role, sees ONLY the
-    // containers it reaches — the ones given wholly, plus the ones holding a node
+    // containers it reaches - the ones given wholly, plus the ones holding a node
     // it was given individually.
     .filter((p) => inProjectScope(p.id) && projectInScope(roleScope, p.id));
   const rank = await projectOrderRank(teamId);
@@ -227,7 +227,7 @@ export async function projectContents(projectId: string): Promise<{
 }> {
   const teamId = await requireActiveTeamId();
   const scope = await currentMemberScope();
-  // Out of scope reads exactly like a container that isn't there — never a
+  // Out of scope reads exactly like a container that isn't there, never a
   // different answer that would confirm it exists.
   if (!inProjectScope(projectId)) return { folders: [], apps: [] };
   if (!projectInScope(scope, projectId)) return { folders: [], apps: [] };
@@ -525,8 +525,8 @@ export async function defaultEnvironmentFor(
 }
 
 /**
- * Move an app into a project — landing in the project's DEFAULT environment
- * (ADR-0009: a project's contents live per environment) — or back to the top level
+ * Move an app into a project - landing in the project's DEFAULT environment
+ * (ADR-0009: a project's contents live per environment), or back to the top level
  * (`null`).
  */
 export async function moveAppToProject(
@@ -644,7 +644,7 @@ export async function moveAppToEnvironment(
       .limit(1)
   )[0];
   // The DESTINATION, asked the way the app itself would be asked if it already lived
-  // there — `appInScope`, not `projectInScope`.
+  // there - `appInScope`, not `projectInScope`.
   if (
     !env ||
     env.teamId !== teamId ||

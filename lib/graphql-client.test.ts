@@ -13,7 +13,7 @@ import {
 /**
  * What every one of these guards against: while the panel can't reach its web
  * server, a request either fails at the network level ("Failed to fetch") or lands
- * on a reverse proxy's HTML error page — and `res.json()` on that page throws
+ * on a reverse proxy's HTML error page, and `res.json()` on that page throws
  */
 
 const HTML_ERROR_PAGE =

@@ -20,7 +20,7 @@
 -- This migration changes NOBODY's access. Every existing token is backfilled with
 -- its creator's current effective capabilities in the token's own team, gets no
 -- project rows (unscoped, which is what it reaches today), and gets
--- instance_admin = false — implicit root is exactly what is being removed, so it
+-- instance_admin = false - implicit root is exactly what is being removed, so it
 -- is not carried forward; an instance admin can turn it back on per token.
 CREATE TABLE "api_token_capabilities" (
 	"token_id" text NOT NULL,
@@ -43,7 +43,7 @@ ALTER TABLE "api_tokens" ADD COLUMN "instance_admin" boolean DEFAULT false NOT N
 --> statement-breakpoint
 ALTER TABLE "api_tokens" ADD COLUMN "project_scoped" boolean DEFAULT false NOT NULL;
 --> statement-breakpoint
--- Backfill: exactly what each token can do TODAY — its creator's effective
+-- Backfill: exactly what each token can do TODAY - its creator's effective
 -- capabilities in the token's own team, read from the same junction every
 -- authorization check reads.
 INSERT INTO "api_token_capabilities" ("token_id", "capability")

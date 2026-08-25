@@ -13,7 +13,7 @@ export default async function RolesLayout({
   children,
 }: LayoutProps<"/settings/roles">) {
   // The guard belongs in the LAYOUT, not the pages under it: this runs before
-  // every child, so a throw here took out the whole section — the read-only role
+  // every child, so a throw here took out the whole section - the read-only role
   // viewer included.
   if (!(await reachesWholeTeam()))
     return (

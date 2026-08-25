@@ -69,14 +69,14 @@ function detailFor(runtime: AppRuntimeView | null): string | null {
     const sick = runtime.containers
       .filter((c) => c.health === "unhealthy")
       .map((c) => c.service);
-    return `Everything is running, but ${sick.join(", ") || "a container"} is failing its healthcheck — up, but not working.`;
+    return `Everything is running, but ${sick.join(", ") || "a container"} is failing its healthcheck - up, but not working.`;
   }
   return null;
 }
 
 /**
  * The project header's power indicator. Green running / amber building, stopping
- * or restarting / grey stopped / red failed or not-running — flipping in real
+ * or restarting / grey stopped / red failed or not-running - flipping in real
  * time, and never green for a container that is not there.
  */
 export function AppStatusDot({ status }: { status: AppStatus }) {
@@ -94,14 +94,14 @@ export function AppStatusDot({ status }: { status: AppStatus }) {
 /**
  * The same live app status as {@link AppStatusDot}, but as a LABELLED badge
  * ("Online" / "Restarting" / "Degraded" / "Not running" / "Stopped" / "Not
- * deployed" / "Building" / "Error") for the app header — so the container's
+ * deployed" / "Building" / "Error") for the app header, so the container's
  */
 export function AppStatusBadge({ status }: { status: AppStatus }) {
   const { status: shown, detail } = useDisplayStatus(status);
   const badge = (
     <StatusBadge status={shown} tinted labels={{ active: "Online" }} />
   );
-  // A tooltip only when the badge is reporting trouble — explaining "Online"
+  // A tooltip only when the badge is reporting trouble - explaining "Online"
   // would be noise.
   return detail ? (
     <SimpleTooltip content={detail}>

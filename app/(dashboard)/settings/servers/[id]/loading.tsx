@@ -3,7 +3,7 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 
 /**
  * Without this, the route fell back to the LIST's loading.tsx and a click on
- * "Manage" flashed a grid of server cards — a skeleton of the page you just left.
+ * "Manage" flashed a grid of server cards - a skeleton of the page you just left.
  */
 export default function Loading() {
   return (
@@ -27,7 +27,7 @@ export default function Loading() {
         <Skeleton className="mt-1 h-4 w-32" />
       </div>
 
-      {/* Tab strip — six triggers on a 48px underlined row */}
+      {/* Tab strip - six triggers on a 48px underlined row */}
       <div className="flex h-12 items-center gap-1 border-b border-border">
         {["w-20", "w-16", "w-24", "w-26", "w-18", "w-22"].map((w, tab) => (
           <Skeleton key={tab} className={`mx-3 h-4 ${w}`} />

@@ -159,7 +159,7 @@ export function WindowSelector({
   );
 }
 
-/** "Live · streaming", or an amber "not answering — showing data up to …". */
+/** "Live · streaming", or an amber "not answering - showing data up to …". */
 export function LiveStatusLine({
   stale,
   asOf,
@@ -173,7 +173,7 @@ export function LiveStatusLine({
     return (
       <div className="flex items-center gap-2 text-xs text-[var(--warning)]">
         <span className="inline-flex size-2 rounded-full bg-[var(--warning)]" />
-        Not answering — showing data up to {fmtClock(asOf)}
+        Not answering - showing data up to {fmtClock(asOf)}
       </div>
     );
   }
@@ -185,7 +185,7 @@ export function LiveStatusLine({
       </span>
       {/**
        * NOT "sampling every Ns": the cadence is the agent's to choose (it clamps our hint
-       * into [1s, 60s]) and this timer no longer causes a measurement at all — it only
+       * into [1s, 60s]) and this timer no longer causes a measurement at all - it only
        * re-reads a buffer the agent is pushing into.
        */}
       Live · streaming

@@ -228,7 +228,7 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
   },
   {
     // A cap-holder gets "Add a Discord webhook URL first", which is not a
-    // refusal — the same trick the old testNotification case relied on.
+    // refusal - the same trick the old testNotification case relied on.
     name: "testNotificationChannel",
     doc: `mutation { testNotificationChannel(id: "${CHANNEL}") }`,
     cap: "manage_notifications",

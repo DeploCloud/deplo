@@ -1,15 +1,15 @@
--- Docker cleanup — reclaim build cache and unused images on the fleet, on a schedule.
+-- Docker cleanup - reclaim build cache and unused images on the fleet, on a schedule.
 --
 -- The schedule is a SINGLETON policy (`docker_cleanup_policy`, PK fixed at 'default'),
 -- not a row per server: "daily at 04:00, keep 3 images, drop caches older than a week"
 -- is a property of the fleet, and a host that must be left alone opts OUT via
 -- `docker_cleanup_excluded_servers`. One schedule to reason about, and a server added
 -- tomorrow cannot silently go un-swept. The manual "clean up now" ignores the exclusion
--- list — an operator pressing the button has already made that decision.
+-- list - an operator pressing the button has already made that decision.
 --
 -- The selected scopes are a LIST, so `docker_cleanup_policy_scopes` is a junction, never
--- a JSONB array. `scope` is one of four wire ids — build_cache, dangling_images,
--- orphan_buildkit_cache, unused_app_images — and that set is an ALLOW-LIST: the agent
+-- a JSONB array. `scope` is one of four wire ids - build_cache, dangling_images,
+-- orphan_buildkit_cache, unused_app_images, and that set is an ALLOW-LIST: the agent
 -- only ever removes objects it can PROVE are unreferenced. There is no container /
 -- volume / network / `system` prune scope and there must never be one. On a Deplo host a
 -- STOPPED app is a LIVE app (StopStack is `docker compose stop`, so the container must
@@ -21,20 +21,20 @@
 -- allow-list, plus the data layer's validation on write. A CHECK here would only add a
 -- second place for the set to drift from the proto enum, while protecting nothing.
 --
--- `docker_cleanup_runs` is the history — one row per server per execution, written as
+-- `docker_cleanup_runs` is the history - one row per server per execution, written as
 -- `running` BEFORE the agent is dialled, so an unreachable agent still lands as a failed
 -- run. History never lies about a sweep that was attempted. `server_id` is SET NULL and
 -- `server_name` is denormalized beside it: the history outlives the server, so "we
 -- reclaimed 9 GB on eu-main-1 last Tuesday" still reads as that sentence once the host is
 -- gone. `seq bigint identity` breaks same-millisecond ties, so `ORDER BY started_at DESC,
 -- seq DESC` is a total order. Byte counts are `bigint` (the `backup_runs.size_bytes`
--- rule) — a full build cache passes 2 GB routinely and would overflow `integer`.
+-- rule) - a full build cache passes 2 GB routinely and would overflow `integer`.
 --
 -- The partial index on `status = 'running'` serves the boot reconcile (settle rows
 -- stranded by a control-plane restart) and the scheduler's never-stack-runs check.
 --
 -- All five tables are NEW, so there is nothing to backfill and no NOT NULL to add to a
--- populated table — the migrator auto-applies at boot against live self-hosted DBs. A
+-- populated table - the migrator auto-applies at boot against live self-hosted DBs. A
 -- MISSING policy row is legal and means "never configured"; the data layer answers with
 -- disabled defaults, the way a missing `notification_settings` row does.
 CREATE TABLE "docker_cleanup_excluded_servers" (

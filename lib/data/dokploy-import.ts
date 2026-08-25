@@ -317,7 +317,7 @@ export interface ConnectInput {
   url: string;
   apiKey: string;
   /**
-   * Reach an address `lib/outbound-url.ts` would refuse — which is what the
+   * Reach an address `lib/outbound-url.ts` would refuse, which is what the
    * internal migration needs (`http://172.17.0.1:3000`). Instance admin only,
    * exactly like `allowPrivateEndpoint` on a git connection or an S3 endpoint.
    */
@@ -402,7 +402,7 @@ function servicesOf(env: DokployEnvironment): SourceService[] {
   return out;
 }
 
-/** The detail call for one service — the only shape difference between kinds. */
+/** The detail call for one service - the only shape difference between kinds. */
 function loadService(
   c: DokployCredential,
   svc: SourceService,
@@ -467,7 +467,7 @@ function nameOf(
 /* ------------------------------------------------------------------ */
 
 /**
- * Read the source instance and describe what an import would do — without writing
+ * Read the source instance and describe what an import would do - without writing
  * anything.
  */
 export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
@@ -500,7 +500,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
       const list = servicesOf(env);
       const services: PlanService[] = new Array(list.length);
       // `mapLimit` runs the callback for its side effects, so the slot is filled
-      // by index — which is also what keeps the preview in Dokploy's own order.
+      // by index, which is also what keeps the preview in Dokploy's own order.
       await mapLimit(
         list.map((svc, index) => ({ svc, index })),
         5,
@@ -1320,7 +1320,7 @@ export async function finishDokployImport(runId: string): Promise<void> {
   await refreshCounts(runId, teamId);
 }
 
-/** The open run of this team, as ids only — the writer's cheap ownership check.
+/** The open run of this team, as ids only - the writer's cheap ownership check.
  *  Exported for the data cutover, which appends to a run the import opened. */
 export async function ownRun(runId: string, teamId: string): Promise<boolean> {
   const rows = await getDb()
@@ -1362,7 +1362,7 @@ export async function refreshCounts(
 
 /**
  * A report collector: rows go to the run AND come back to the caller. `at()`
- * deepens the breadcrumb but SHARES the items array — the caller gets one flat
+ * deepens the breadcrumb but SHARES the items array - the caller gets one flat
  * report for the whole project, in the order things happened.
  */
 class Report {
@@ -1382,7 +1382,7 @@ class Report {
     sourceKind: string;
     sourceName: string;
     /** The Dokploy service id, when this row IS a service. What the data cutover
-     *  pairs on — see `dokploy_import_items.source_id`. */
+     *  pairs on - see `dokploy_import_items.source_id`. */
     sourceId?: string | null;
     outcome: "created" | "skipped" | "failed" | "manual" | "unsupported";
     targetKind?: string | null;
@@ -1611,14 +1611,14 @@ async function runImportDokployProject(
     const environmentId = await ensureEnvironment(projectId, env, envReport);
     if (!environmentId) continue;
 
-    /** Apps landed in this environment — the link set for its shared vars. */
+    /** Apps landed in this environment - the link set for its shared vars. */
     const appIds: string[] = [];
 
     for (const svc of chosen) {
       const isApp = svc.kind === "application" || svc.kind === "compose";
       const targetKind = isApp ? "app" : "database";
 
-      // An engine Deplo does not have is settled without importing anything —
+      // An engine Deplo does not have is settled without importing anything,
       // but under its own name, not its id (see the scan for why).
       if (!isApp && !deploEngineFor(svc.kind as DokployDbKind)) {
         const unsupportedName = await nameOfService(c, svc);
@@ -1738,7 +1738,7 @@ async function runImportDokployProject(
   }
 
   // The project-level blob is available to every app of the project, so it links
-  // to all of them — the environment ones each linked their own slice above.
+  // to all of them - the environment ones each linked their own slice above.
   const projectAppIds = await appIdsInProject(teamId, projectId);
   await importSharedVars(source.env, {
     teamId,
@@ -2021,7 +2021,7 @@ async function importAppService(
   // and importing that as a stack produces something that cannot deploy.
   let isCompose = svc.kind === "compose";
 
-  // Already here? Leave it completely alone — a second pass must not re-write
+  // Already here? Leave it completely alone - a second pass must not re-write
   // someone's configuration behind their back.
   const existing = await getDb()
     .select({ id: appsTable.id, name: appsTable.name })

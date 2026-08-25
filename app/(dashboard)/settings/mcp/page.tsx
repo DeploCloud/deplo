@@ -26,7 +26,7 @@ const TOOL_SUMMARIES = MCP_TOOLS.map((t) => ({
 
 export default async function McpSettingsPage() {
   // The page governs the whole team, so a member who reaches only part of it
-  // has no business here — same gate as API tokens, which this page is the twin
+  // has no business here - same gate as API tokens, which this page is the twin
   // of.
   if (!(await reachesWholeTeam()))
     return (

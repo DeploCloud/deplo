@@ -1,6 +1,6 @@
 /**
  * Turn a `User-Agent` string into something a person recognises as their own
- * device — "Chrome on macOS", "Safari on iPhone" — for the signed-in-devices table
+ * device ("Chrome on macOS", "Safari on iPhone") for the signed-in-devices table
  * in Settings → Security.
  */
 

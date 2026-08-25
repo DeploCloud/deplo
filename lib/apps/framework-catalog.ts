@@ -6,7 +6,7 @@
 import type { BuildMethod } from "../types";
 
 /**
- * A recognised framework. Ids are stable — they are persisted on the app row and
+ * A recognised framework. Ids are stable - they are persisted on the app row and
  * key the brand marks in `components/shared/framework-icons.tsx`, so renaming one
  * silently drops the icon for every app already carrying it.
  */
@@ -42,13 +42,13 @@ export interface FrameworkDefinition {
   /** Display name, spelled the way the project spells it. */
   name: string;
   /**
-   * `package.json` dependency names that identify it — ANY match is a hit.
+   * `package.json` dependency names that identify it - ANY match is a hit.
    * Read from `dependencies` + `devDependencies` only (a transitive dep is not a
    * statement about what the app IS).
    */
   dependencies: readonly string[];
   /**
-   * Config filenames at the build root that identify it — ANY match is a hit.
+   * Config filenames at the build root that identify it - ANY match is a hit.
    * Lowercase, and matched only at the root (a `next.config.js` buried in an
    * example dir says nothing about the app being deployed).
    */
@@ -61,7 +61,7 @@ export interface FrameworkDefinition {
 }
 
 /**
- * Every framework, in DETECTION PRIORITY ORDER — the first match wins, so the list
+ * Every framework, in DETECTION PRIORITY ORDER - the first match wins, so the list
  * runs most-specific to least. Two orderings carry real weight: - Meta-frameworks
  * before the libraries they build on. - Frontend/fullstack before backend.
  */
@@ -107,7 +107,7 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     defaultPort: 3000,
   },
   {
-    // Remix v3 shipped as React Router v7 — a different framework name, same
+    // Remix v3 shipped as React Router v7 - a different framework name, same
     // lineage, and it is what a repo scaffolded today carries.
     id: "react-router",
     name: "React Router",
@@ -228,7 +228,7 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     name: "Vite",
     dependencies: ["vite"],
     files: ["vite.config.js", "vite.config.mjs", "vite.config.ts"],
-    // `vite preview` binds 4173 and ignores PORT — one of the two frameworks
+    // `vite preview` binds 4173 and ignores PORT - one of the two frameworks
     // this whole registry exists to get right.
     defaultPort: 4173,
   },

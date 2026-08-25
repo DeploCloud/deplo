@@ -44,7 +44,7 @@ const ServerMetricsRef = builder
       diskPct: t.exposeFloat("diskPct"),
       netRx: t.exposeFloat("netRx"),
       netTx: t.exposeFloat("netTx"),
-      // load is the [1m, 5m, 15m] tuple — expose as a list of floats.
+      // load is the [1m, 5m, 15m] tuple - expose as a list of floats.
       load: t.field({
         type: ["Float"],
         description: "Load averages over [1m, 5m, 15m].",
@@ -67,7 +67,7 @@ const ContainerInstanceMetricsRef = builder
   .objectRef<ContainerInstanceMetrics>("ContainerInstanceMetrics")
   .implement({
     description:
-      "Live resource usage for ONE container of an app/database stack — the " +
+      "Live resource usage for ONE container of an app/database stack - the " +
       "Monitoring tab's per-container breakdown. net_* / block_* are cumulative " +
       "byte counters since the container started.",
     fields: (t) => ({
@@ -90,7 +90,7 @@ const ContainerMetricsSampleRef = builder
   .implement({
     description:
       "One buffered aggregate metrics sample for an app/database stack (the sum " +
-      "across its running containers) — what the Monitoring tab's charts seed " +
+      "across its running containers) - what the Monitoring tab's charts seed " +
       "from. net_* / block_* are cumulative bytes; the client derives bytes/sec " +
       "from the delta between consecutive samples.",
     fields: (t) => ({
@@ -119,7 +119,7 @@ const ContainerMetricsRef = builder
       "A fresh live metrics snapshot for one app/database stack: the aggregate " +
       "across its containers, plus the per-container breakdown and an " +
       "`unsupported` flag (the owning server's agent is too old for per-container " +
-      "metrics — the tab shows 'update the agent').",
+      "metrics - the tab shows 'update the agent').",
     fields: (t) => ({
       id: t.exposeID("id"),
       online: t.exposeBoolean("online"),
@@ -159,14 +159,14 @@ const MonitoringSettingsRef = builder
   });
 
 /* ------------------------------------------------------------------ */
-/* Queries (the polling actions — serverMetrics)                       */
+/* Queries (the polling actions - serverMetrics)                       */
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   serverMetrics: t.field({
     type: ServerMetricsRef,
     // Every call dials the owning server's agent (fresh mTLS connect + cert work) with
-    // no rate limit — an infra action, not a dashboard read.
+    // no rate limit - an infra action, not a dashboard read.
     authScopes: { capability: "view_metrics" },
     description: "A fresh live metrics snapshot for one server.",
     args: { serverId: t.arg.string({ required: true }) },
@@ -177,7 +177,7 @@ builder.queryFields((t) => ({
     authScopes: { capability: "view_metrics" },
     description:
       "The metrics history buffered on the control plane for one server (oldest " +
-      "first) — what the Monitoring charts seed from on load. Empty when saving " +
+      "first) - what the Monitoring charts seed from on load. Empty when saving " +
       "is off or the control plane restarted recently.",
     args: { serverId: t.arg.string({ required: true }) },
     resolve: (_r, { serverId }) => getServerMetricsHistory(serverId),
@@ -203,7 +203,7 @@ builder.queryFields((t) => ({
     type: [ContainerMetricsSampleRef],
     authScopes: { capability: "view_metrics" },
     description:
-      "The metrics history buffered for one app (oldest first) — what the app's " +
+      "The metrics history buffered for one app (oldest first) - what the app's " +
       "Monitoring charts seed from. Empty when the owning server's telemetry " +
       "stream has not delivered a frame for it yet.",
     args: { appId: t.arg.string({ required: true }) },

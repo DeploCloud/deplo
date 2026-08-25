@@ -19,7 +19,7 @@ import { drainMigrationSourceUninstalls } from "../data/dokploy-import";
 import { getPullRequestState } from "../github/app";
 
 /**
- * The pull request preview reaper — the loop that makes "torn down when the pull
+ * The pull request preview reaper - the loop that makes "torn down when the pull
  * request closes" true even when the close never reached us. Same singleton-on-
  * `globalThis` shape, same `ticking` re-entrancy guard, lease claimed first.
  */
@@ -61,7 +61,7 @@ const state: ReaperState = (g[STATE_KEY] ??= {
 
 /**
  * One reaper tick. Exported for tests and for an immediate first run; safe to
- * call directly and never throws — one unreachable host is contained so the rest
+ * call directly and never throws - one unreachable host is contained so the rest
  * still get swept.
  */
 export async function runPreviewReaperTick(
@@ -104,7 +104,7 @@ export async function runPreviewReaperTick(
     }
 
     // The missed-`closed`-webhook net, last because it is the only networked
-    // step. A GitHub failure reports null — "don't know" — and the preview is
+    // step. A GitHub failure reports null, "don't know", and the preview is
     // left alone; only a definite `closed` tears anything down.
     const open = await openPreviewsForStateCheck(STATE_CHECK_BATCH);
     for (const p of open) {

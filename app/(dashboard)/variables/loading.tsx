@@ -30,7 +30,7 @@ export default function Loading() {
 
       {/**
        * App tab body: the <EnvFilters> toolbar, then one collapsible Project section per
-       * project — each holding the app cards with their editable env tables.
+       * project - each holding the app cards with their editable env tables.
        */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">

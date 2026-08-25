@@ -35,7 +35,7 @@ const InstanceSettingsRef = builder
       }),
       gravatarEnabled: t.exposeBoolean("gravatarEnabled", {
         description:
-          "Whether a person with no uploaded picture falls back to their Gravatar. The panel never dials gravatar.com itself — it only computes the address, and each viewer's browser fetches it.",
+          "Whether a person with no uploaded picture falls back to their Gravatar. The panel never dials gravatar.com itself - it only computes the address, and each viewer's browser fetches it.",
       }),
       panelUrlSource: t.exposeString("panelUrlSource", {
         description:

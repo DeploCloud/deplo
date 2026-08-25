@@ -98,7 +98,7 @@ export async function getServer(id: string): Promise<Server | null> {
 }
 
 /**
- * The "primary" server — the first one added — or null when none exists yet
+ * The "primary" server, the first one added, or null when none exists yet
  * (e.g. straight after first-run setup, before the operator has added any host).
  * Callers must tolerate null and prompt the operator to add a server.
  */
@@ -205,7 +205,7 @@ export async function listBuildServerChoices(): Promise<
 }
 
 /**
- * The public address of the host ONE app runs on — the value a custom domain's A
+ * The public address of the host ONE app runs on - the value a custom domain's A
  * record has to point at.
  */
 export async function serverIpForApp(appId: string): Promise<string> {
@@ -231,7 +231,7 @@ export async function getServerTeamIds(serverId: string): Promise<string[]> {
   return rows.map((r) => r.teamId);
 }
 
-/** The teams a server is granted to, with names — for the access editor + badges. */
+/** The teams a server is granted to, with names - for the access editor + badges. */
 export async function getServerTeams(serverId: string): Promise<Team[]> {
   const rows = await getDb()
     .select({
@@ -319,7 +319,7 @@ export async function addServer(
   const { rawToken, stored } = mintBootstrap();
   const baseUrl = await instancePublicBaseUrl();
   // Best-effort: read the control plane's own TLS fingerprint to pin in the
-  // command (P3). Empty over plain HTTP — the agent then uses the HMAC path.
+  // command (P3). Empty over plain HTTP - the agent then uses the HMAC path.
   const fingerprint = await controlPlaneCertFingerprint(baseUrl);
 
   const importOnly = input.importOnly ?? false;
@@ -487,7 +487,7 @@ export async function ensureDeploHostServer(): Promise<void> {
 }
 
 /**
- * Re-mint a fresh bootstrap token + install command for a server — whether it is
+ * Re-mint a fresh bootstrap token + install command for a server - whether it is
  * still `provisioning` (the original token expired or the operator lost it) OR
  * already provisioned and online (the operator wants the install command back to
  * copy it again, e.g. to reinstall or repair the agent on the box).
@@ -508,14 +508,14 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
       bootstrapTokenHash: stored.tokenHash,
       bootstrapExpiresAt: stored.expiresAt,
       bootstrapUsedAt: stored.usedAt,
-      // A trusted server (one with a pinned agent cert) stays online/offline — a
+      // A trusted server (one with a pinned agent cert) stays online/offline - a
       // re-copy must not knock it back to "provisioning". Only a server still
       // awaiting its first call-home gets (re)marked provisioning.
       ...(server.agent ? {} : { status: "provisioning" as const }),
     })
     .where(eq(serversTable.id, id));
   const fresh = (await getServerById(id))!;
-  // Re-minting a single-use bootstrap token arms a ~1h re-pin window — and for an
+  // Re-minting a single-use bootstrap token arms a ~1h re-pin window, and for an
   // already-trusted server that window can silently replace its agent cert.
   await recordActivity(
     "member",
@@ -544,7 +544,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
 export interface ServerRemoval {
   /**
    * The paste-on-the-server command that actually uninstalls the agent. ALWAYS
-   * returned — removal never cleans the host, so the operator always needs it.
+   * returned - removal never cleans the host, so the operator always needs it.
    */
   uninstallCommand: string;
   /** A non-blocking hazard the operator must know about, or null. */
@@ -594,12 +594,12 @@ async function assertNoWorkloads(id: string): Promise<void> {
   ]);
   if (apps.length > 0)
     throw new Error(
-      `Move or delete the apps on this server first — still assigned: ` +
+      `Move or delete the apps on this server first, still assigned: ` +
         `${nameList(apps.map((a) => a.slug))}`,
     );
   if (dbs.length > 0)
     throw new Error(
-      `Move or delete the databases on this server first — still hosted here: ` +
+      `Move or delete the databases on this server first, still hosted here: ` +
         `${nameList(dbs.map((d) => d.name))}`,
     );
 }
@@ -617,14 +617,14 @@ async function assertServerRemovable(id: string): Promise<void> {
     .where(eq(destinationTable.serverId, id));
   if (destinations.length > 0)
     throw new Error(
-      `Remove the backup destinations kept on this server first — still pointing ` +
+      `Remove the backup destinations kept on this server first, still pointing ` +
         `here: ${nameList(destinations.map((d) => d.name))}. Each one belongs to a ` +
         `team, whose members remove it from Storage → Destinations.`,
     );
 }
 
 /**
- * Remove a server. (b) Revoke trust — drop the pinned agent cert — so even a box
+ * Remove a server. (b) Revoke trust, drop the pinned agent cert, so even a box
  * we can no longer reach never keeps a valid badge. Persisted before the delete,
  * so a crash in between still leaves trust dead. A sweep here would be theatre.
  */
@@ -651,15 +651,15 @@ async function removeServerRow(
   // (0) The host running Deplo itself is NOT removable, by anyone, ever.
   if (isDeploHostServer(server))
     throw new Error(
-      `${server.name} is the host running Deplo itself — it can't be removed, ` +
+      `${server.name} is the host running Deplo itself - it can't be removed, ` +
         `because doing so would cut this dashboard off from its own server.`,
     );
 
-  // (a) Block on live workloads — before any side effect.
+  // (a) Block on live workloads - before any side effect.
   await assertServerRemovable(id);
 
   // An App mid-move OFF this server is NOT a blocker (the source host may be the very
-  // thing that died, which would deadlock the removal) — but it is a data hazard we
+  // thing that died, which would deadlock the removal), but it is a data hazard we
   // must not let pass silently: its volumes still sit on this host and
   // `apps.migrate_from_server_id` is SET NULL on delete, so the marker naming this
   // host as the copy-from source is about to vanish.
@@ -681,7 +681,7 @@ async function removeServerRow(
     .set({ agentCertFingerprint: "" })
     .where(eq(serversTable.id, id));
 
-  // (c) Delete — restoring the pin if it fails, so we never leave a server that
+  // (c) Delete - restoring the pin if it fails, so we never leave a server that
   // is present in the table yet can never be dialed again.
   try {
     await getDb().delete(serversTable).where(eq(serversTable.id, id));
@@ -945,7 +945,7 @@ export async function updateServerAgent(
   assertNotMigrationSource(server);
   if (!server.agent?.certFingerprint)
     throw new Error(
-      "This server is not provisioned yet — finish provisioning before updating its agent",
+      "This server is not provisioned yet - finish provisioning before updating its agent",
     );
 
   // Lazy-import for the same reason removeServer does: keep the grpc agent-client
@@ -1007,7 +1007,7 @@ async function teamNames(
 
 /**
  * Re-assert, INSIDE a write transaction, that a server is still targetable by a
- * team — taking a SHARE lock on the server row so the check serializes against a
+ * team - taking a SHARE lock on the server row so the check serializes against a
  * concurrent {@link setServerTeams} restrict (which takes the row's UPDATE lock).
  */
 export async function assertServerAccessibleTx(
@@ -1061,7 +1061,7 @@ export async function setServerTeams(
 
   await getDb().transaction(async (tx) => {
     // Lock the server row FOR UPDATE so a concurrent create that SHARE-locks it
-    // (assertServerAccessibleTx) serializes against this restrict — the workload check
+    // (assertServerAccessibleTx) serializes against this restrict - the workload check
     // below then observes every workload committed before we won the lock, closing the
     // TOCTOU window (no team left orphaned on a server it can't see).
     const locked = await tx
@@ -1118,7 +1118,7 @@ export async function setServerTeams(
 }
 
 /**
- * Set a server's deploy concurrency — how many deployments its agent runs at once
+ * Set a server's deploy concurrency - how many deployments its agent runs at once
  * (read by lib/deploy/deploy-queue). 1 =
  * strict per-server serialization; deploys on OTHER servers still run in parallel,
  * and a same-app deploy never overlaps regardless of this value.
@@ -1237,7 +1237,7 @@ export interface BootstrapCallHome {
   /** The gRPC port the agent will listen on (default 9443). */
   agentPort?: number;
   /**
-   * The address the agent believes it is reachable at — informational only. The
+   * The address the agent believes it is reachable at - informational only. The
    * control plane dials the SERVER ROW's host/ip (operator-declared), not a
    * self-reported address, so a compromised agent can't redirect future dials.
    */
@@ -1261,7 +1261,7 @@ export async function completeBootstrap(
   // Validate against the current servers (throws a typed BootstrapError on a bad
   // / expired / used token).
   const server = findServerForToken(await listAllServers(), call.token);
-  // The cert SANs are the address WE will dial — the operator-declared host/ip
+  // The cert SANs are the address WE will dial - the operator-declared host/ip
   // on the row, plus a self-reported host only if it matches (defence in depth).
   const dialHosts = [server.ip, server.host].filter(Boolean);
   const signed = await signBootstrapCsr(call.csrPem, dialHosts);
@@ -1294,7 +1294,7 @@ export async function completeBootstrap(
 }
 
 /**
- * What a Hello actually OBSERVED about Traefik — `undefined` when it observed
+ * What a Hello actually OBSERVED about Traefik - `undefined` when it observed
  * nothing. Kept separate because that module is pure classification and must not
  * import the data layer.
  */
@@ -1307,7 +1307,7 @@ export function observedTraefik(hello: {
 
 /**
  * Mark a server seen now (P5 heartbeat cache). A best-effort write behind the
- * live-read health check — never the source of truth for status. Callers pass it
+ * live-read health check, never the source of truth for status. Callers pass it
  * through {@link observedTraefik}, never raw.
  */
 export async function markServerSeen(
@@ -1322,12 +1322,12 @@ export async function markServerSeen(
     const set: Record<string, unknown> = { lastSeenAt: nowIso() };
     // `agentVersion` only applies when an agent exists (the old code guarded with
     // `if (s.agent)`); a CASE keeps the version pinned to that condition in one
-    // atomic UPDATE — a NULL `agent_port` (unprovisioned) leaves the version NULL.
+    // atomic UPDATE - a NULL `agent_port` (unprovisioned) leaves the version NULL.
     if (agentVersion)
       set.agentVersion = sql`case when ${serversTable.agentPort} is not null then ${agentVersion} else ${serversTable.agentVersion} end`;
     if (typeof traefikRunning === "boolean")
       set.traefikEnabled = traefikRunning;
-    // The Docker engine version the agent reports on its Hello — born "" at
+    // The Docker engine version the agent reports on its Hello - born "" at
     // registration and only known live, so persist it here (guard on non-empty so a
     // missing/Docker-unreachable Hello never blanks a good value).
     if (dockerVersion) set.dockerVersion = dockerVersion;

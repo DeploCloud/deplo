@@ -53,7 +53,7 @@ const CFG: PreviewTriggerConfig = {
   requiredLabels: [],
 };
 
-/** CFG with one thing changed — the shape most of these tests want. */
+/** CFG with one thing changed - the shape most of these tests want. */
 const cfg = (
   over: Partial<PreviewTriggerConfig> = {},
 ): PreviewTriggerConfig => ({
@@ -123,7 +123,7 @@ test("opened, reopened, synchronize and ready_for_review all build", () => {
 
 test("closed tears down BEFORE any gate is consulted", () => {
   // A preview created while previews were on must still be destroyed after they
-  // are switched off, or after the app is repointed at another branch —
+  // are switched off, or after the app is repointed at another branch,
   // otherwise the switch silently strands containers on the host.
   const ev = parsePullRequestEvent(payload({}, "closed"))!;
   assert.deepEqual(previewIntent(CFG, ev), { kind: "destroy" });
@@ -176,7 +176,7 @@ test("drafts wait for ready_for_review", () => {
 
 test("converting back to a draft does NOT tear the preview down", () => {
   // Pulling a URL out from under someone because the author ticked a box is a
-  // surprise with no upside — one container is cheaper than that.
+  // surprise with no upside - one container is cheaper than that.
   const ev = parsePullRequestEvent(
     payload({ draft: true }, "converted_to_draft"),
   )!;
@@ -215,7 +215,7 @@ test("the label filter: a pull request must carry one of the app's labels", () =
   const none = parsePullRequestEvent(payload({ labels: [{ name: "bug" }] }))!;
   assert.deepEqual(previewIntent(c, none), { kind: "ignore", reason: "label" });
 
-  // One is enough — the labels are alternatives, not a checklist.
+  // One is enough - the labels are alternatives, not a checklist.
   const one = parsePullRequestEvent(
     payload({ labels: [{ name: "bug" }, { name: "deploy-me" }] }),
   )!;
@@ -242,7 +242,7 @@ test("applying the label is what builds; removing the last one tears down", () =
   )!;
   assert.deepEqual(previewIntent(c, applied), { kind: "deploy" });
 
-  // Removing the label is the explicit "that's enough, free the slot" gesture —
+  // Removing the label is the explicit "that's enough, free the slot" gesture -
   // the only teardown besides `closed`.
   const removed = parsePullRequestEvent(payload({ labels: [] }, "unlabeled"))!;
   assert.deepEqual(previewIntent(c, removed), { kind: "destroy" });
@@ -257,7 +257,7 @@ test("applying the label is what builds; removing the last one tears down", () =
     reason: "action",
   });
 
-  // With NO filter a label is chatter, not a trigger — an app that doesn't
+  // With NO filter a label is chatter, not a trigger - an app that doesn't
   // filter must not burn a build every time somebody triages a pull request.
   const chatter = parsePullRequestEvent(
     payload({ labels: [{ name: "bug" }] }, "labeled"),

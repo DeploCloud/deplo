@@ -112,7 +112,7 @@ test("changed content is written", () => {
 test("a file that isn't there yet is created even when it is empty", () => {
   // The reason this rule exists: Docker answers a missing bind source by
   // inventing an empty DIRECTORY at the mount path, so the app would boot with a
-  // folder where its config file should be — silently.
+  // folder where its config file should be - silently.
   assert.equal(
     pendingFileWrite(
       editable({ exists: false, saved: "", draft: "" }),
@@ -172,7 +172,7 @@ test("naming the file afterwards carries the typed text over", () => {
 });
 
 test("the whole write-then-name flow: nothing is saved until the entry is complete", () => {
-  // The order people actually work in, step by step — the form's own sequence
+  // The order people actually work in, step by step - the form's own sequence
   // (setDraft, then the read for the first path, then the save).
   const row: VolumeMount = {
     id: "vol_1",

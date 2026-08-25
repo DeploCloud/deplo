@@ -20,7 +20,7 @@ const DialogOverlay = React.forwardRef<
     ref={ref}
     className={cn(
       // pointer-events-auto is load-bearing: while a modal is open Radix sets
-      // `pointer-events: none` on <body>, which the overlay would otherwise INHERIT —
+      // `pointer-events: none` on <body>, which the overlay would otherwise INHERIT -
       // letting clicks fall through to background elements that opt back in with
       "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,

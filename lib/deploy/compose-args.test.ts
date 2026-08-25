@@ -37,7 +37,7 @@ test("ordinary compose flags are accepted", () => {
 });
 
 test("the flags that choose the stack are refused", () => {
-  // Each of these would aim the command at a different project, file or env —
+  // Each of these would aim the command at a different project, file or env,
   // which is how a deploy reports green while the real app never restarted.
   for (const denied of [
     "-p other",
@@ -63,7 +63,7 @@ test("a whole command, pasted in, is refused with a reason", () => {
   assert.match(problem!, /compose/);
 });
 
-test("shell syntax and quoting are refused — the command runs without a shell", () => {
+test("shell syntax and quoting are refused - the command runs without a shell", () => {
   for (const bad of [
     "--pull always; rm -rf /",
     '--label "a b"',

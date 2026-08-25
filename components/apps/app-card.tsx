@@ -55,7 +55,7 @@ import type { AppStatus, Capability } from "@/lib/types";
 
 /**
  * The menu-primitive set used to render the card's action list once and reuse it
- * for BOTH the ⋯ dropdown (left-click) and the right-click context menu — same
+ * for BOTH the ⋯ dropdown (left-click) and the right-click context menu - same
  * items, same handlers, no duplication.
  */
 type MenuKit = {
@@ -101,7 +101,7 @@ function LiveCardStatusDot({ project }: { project: AppSummary }) {
 function LiveCardDotInner({ fallback }: { fallback: AppStatus }) {
   const status = useLiveStatus(fallback);
   // Never built ⇒ "Not deployed", never "Stopped": nobody stopped it. Same fold
-  // the dot itself runs (lib/apps/display-status.ts) — the word on hover and the
+  // the dot itself runs (lib/apps/display-status.ts) - the word on hover and the
   // colour under it have to agree.
   const neverDeployed = useNeverDeployed();
   const statusLabel = neverDeployed
@@ -149,11 +149,11 @@ export function AppCard({
    * (ADR-0009).
    */
   environments?: { id: string; name: string }[];
-  /** The delete was RECORDED — the grid drops the card now and the host tears
+  /** The delete was RECORDED - the grid drops the card now and the host tears
    *  the stack down behind it. */
   onDeleted?: () => void;
   /** A move from the card's own menu: the grid hides the card straight away
-   *  (`onMoved`) and reveals it again if the server refuses (`onMoveFailed`) —
+   *  (`onMoved`) and reveals it again if the server refuses (`onMoveFailed`) -
    *  the same contract dragging it onto a folder already had. */
   onMoved?: () => void;
   onMoveFailed?: () => void;
@@ -180,7 +180,7 @@ export function AppCard({
   // Never built at all: there is no container to start, stop or reroute, so the
   // menu drops those verbs entirely and Redeploy becomes the first Deploy.
   const neverDeployed = stopped && !dep;
-  // A backup is being put back in place — Deplo owns the stack until it lands.
+  // A backup is being put back in place - Deplo owns the stack until it lands.
   const restoring = project.status === "restoring";
 
   // Clicking anywhere on the card opens the app overview. The latest commit
@@ -243,7 +243,7 @@ export function AppCard({
           ? "Routing reloaded"
           : res.data === "unchanged"
             ? "Already up to date"
-            : "Saved — applies on the next deploy",
+            : "Saved - applies on the next deploy",
       );
       router.refresh();
     });
@@ -253,7 +253,7 @@ export function AppCard({
   // The grid also supports dragging a card onto a folder; this menu is the
   // keyboard-friendly, always-available counterpart.
   function moveTo(folderId: string | null) {
-    // The card leaves the view it is in NOW — the grid hides it and puts it back
+    // The card leaves the view it is in NOW - the grid hides it and puts it back
     // if the move is refused, the same contract a drag-and-drop move gets.
     onMoved?.();
     startTransition(async () => {
@@ -355,7 +355,7 @@ export function AppCard({
       )}
       {!neverDeployed && (
         <SimpleTooltip
-          content="Re-apply domains and basic auth to the running container — no rebuild"
+          content="Re-apply domains and basic auth to the running container, no rebuild"
           side="left"
         >
           <K.Item onSelect={reload} disabled={!can("control_apps")}>
@@ -512,7 +512,7 @@ export function AppCard({
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
       {/**
-       * App status as a bare dot (green / amber / red / grey), no label — the dot's
+       * App status as a bare dot (green / amber / red / grey), no label - the dot's
        * colour is the status; hovering it shows the word.
        */}
       <LiveCardStatusDot project={project} />
@@ -560,7 +560,7 @@ export function AppCard({
         })
       }
       // The delete is RECORDED by the time this fires (the teardown runs on the host
-      // behind it), so the card goes now — and the refresh re-renders the grid in place
+      // behind it), so the card goes now, and the refresh re-renders the grid in place
       // rather than bouncing the user out of the folder they were in.
       onDeleted={() => {
         onDeleted?.();
@@ -570,7 +570,7 @@ export function AppCard({
   );
 
   // Stretched, whole-card navigation link. While a reorder drag is active it is
-  // made inert — no pointer events, not focusable — so dragging the card never
+  // made inert (no pointer events, not focusable), so dragging the card never
   // navigates and keyboard users can't fall through to it while reordering.
   const overlayLink = (
     <Link
@@ -617,7 +617,7 @@ export function AppCard({
           <div className="min-w-0 flex-1">
             <span className="block truncate font-medium">{project.name}</span>
             {/* Same subtitle slot the app's own header uses: the live URL when
-                a domain is linked, otherwise what this App *is* — "No domain
+                a domain is linked, otherwise what this App *is* - "No domain
                 yet" only restated the absence the empty slot already showed. */}
             <p className="mt-1 truncate text-xs text-muted-foreground">
               {project.productionUrl
@@ -631,7 +631,7 @@ export function AppCard({
               <span className="whitespace-nowrap">
                 {timeAgoShort(dep.createdAt)}
               </span>
-              {/* Branch only for a git deploy — compose/image/upload have none. */}
+              {/* Branch only for a git deploy - compose/image/upload have none. */}
               {project.repo && (
                 <>
                   <span className="text-muted-foreground/40">on</span>
@@ -713,7 +713,7 @@ export function AppCard({
                     {identity}
                   </>
                 ) : (
-                  // No git (compose / image / upload): no branch — show what the
+                  // No git (compose / image / upload): no branch - show what the
                   // project IS (e.g. "Compose") where the repo would be.
                   identity && (
                     <>

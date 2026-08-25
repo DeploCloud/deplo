@@ -349,7 +349,7 @@ function buildPatch(
   }
   if (input.user !== undefined) {
     const user = (input.user ?? "").trim();
-    // `user`, `uid`, `user:group`, `uid:gid` — docker's own grammar.
+    // `user`, `uid`, `user:group`, `uid:gid` - docker's own grammar.
     if (user && !/^[\w.-]+(:[\w.-]+)?$/.test(user))
       throw new Error("Run as must be a user or uid, optionally with :group");
     patch.user = user || null;

@@ -71,7 +71,7 @@ export function PreviewsTable({
   } = useOptimisticRemove(previews, (p) => p.id);
 
   // Any change to the owning app (a preview build starting, finishing, failing)
-  // arrives on the same stream the header uses — re-read the rows when one lands
+  // arrives on the same stream the header uses - re-read the rows when one lands
   // while something is in flight.
   const inFlight = rows.some(
     (p) => p.status === "queued" || p.status === "building",
@@ -106,7 +106,7 @@ export function PreviewsTable({
   }
 
   // What the cap actually counts: previews with a stack up. A closed pull
-  // request has none, and neither has an `evicted` or `blocked` one — counting
+  // request has none, and neither has an `evicted` or `blocked` one - counting
   // those would show "at its limit" while slots were free.
   const liveCount = rows.filter(
     (p) => !p.closed && p.status !== "evicted" && p.status !== "blocked",
@@ -194,7 +194,7 @@ export function PreviewsTable({
                         {p.host}
                       </a>
                     ) : p.status === "evicted" ? (
-                      // The host is still RESERVED for this pull request — the row kept it, so Redeploy
+                      // The host is still RESERVED for this pull request - the row kept it, so Redeploy
                       // brings the same link back. It just answers nothing right now, so it must not look
                       // clickable.
                       <span
@@ -323,7 +323,7 @@ export function PreviewsTable({
       {liveCount >= maxActive && (
         <p className="text-xs text-muted-foreground">
           This app is at its limit of {maxActive} live previews. The next pull
-          request still gets one — the preview nobody has touched in the longest
+          request still gets one - the preview nobody has touched in the longest
           is stopped to make room, and Redeploy brings it back on the same
           address. Raise the limit in Settings to keep more running at once.
         </p>

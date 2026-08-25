@@ -28,7 +28,7 @@ after(async () => {
 
 /**
  * Better-Auth tables (schema/auth) + the live `scheduler_lease` mutex
- * (schema/scheduler) — the non-control-plane tables that survive.
+ * (schema/scheduler) - the non-control-plane tables that survive.
  */
 const PRE_EXISTING = [
   "account",
@@ -68,7 +68,7 @@ const CONTROL_PLANE = [
   "app_environments",
   "memberships",
   "membership_capabilities",
-  // team roles — the named capability sets a member is assigned (three built-ins
+  // team roles - the named capability sets a member is assigned (three built-ins
   // per team plus the team's own); memberships.role_id points at one.
   "team_roles",
   "team_role_capabilities",
@@ -89,7 +89,7 @@ const CONTROL_PLANE = [
   // infra
   "servers",
   "server_teams",
-  // docker cleanup — instance-wide (a singleton policy + its scopes, the per-server
+  // docker cleanup - instance-wide (a singleton policy + its scopes, the per-server
   // opt-out list, and one run per server per sweep). Never team-scoped: servers are
   // the one shared cross-team resource.
   "docker_cleanup_policy",
@@ -97,13 +97,13 @@ const CONTROL_PLANE = [
   "docker_cleanup_excluded_servers",
   "docker_cleanup_runs",
   "docker_cleanup_run_items",
-  // monitoring — instance-wide singleton (the "save metrics on server" switch);
+  // monitoring - instance-wide singleton (the "save metrics on server" switch);
   // the metrics history itself is process RAM, never a table.
   "monitoring_settings",
-  // instance — singleton holding the instance-owner crown (the tier above
+  // instance - singleton holding the instance-owner crown (the tier above
   // instance admin, immutable to every other admin).
   "instance_settings",
-  // import from Dokploy — one run per import plus its report lines, team-scoped and
+  // import from Dokploy - one run per import plus its report lines, team-scoped and
   // kept: "what came over from the old platform, and what did not" has to be
   // answerable after the tab that started it is gone.
   "dokploy_imports",
@@ -126,7 +126,7 @@ const CONTROL_PLANE = [
   "app_mounts",
   "deployments",
   "deployment_logs",
-  // pull request previews — one ephemeral stack per open pull request, plus the
+  // pull request previews - one ephemeral stack per open pull request, plus the
   // advanced preview-only variable overrides.
   "app_previews",
   "app_preview_env_vars",
@@ -141,7 +141,7 @@ const CONTROL_PLANE = [
   "app_basic_auth_users",
   // data
   "databases",
-  // The engine's own config files — the sibling of `app_mounts`, carrying the
+  // The engine's own config files - the sibling of `app_mounts`, carrying the
   // container path too because a database's compose is rendered by deplo.
   "database_mounts",
   "team_database_order",
@@ -160,7 +160,7 @@ const CONTROL_PLANE = [
   "api_token_folders",
   "api_token_apps",
   "activities",
-  // One row per CONFIGURED destination — a team may have two Discord rooms.
+  // One row per CONFIGURED destination - a team may have two Discord rooms.
   "notification_channels",
   // What each of them is subscribed to (a list, so a child table), and the
   // browsers that opted into push, per user and team.

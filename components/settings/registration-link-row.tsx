@@ -18,7 +18,7 @@ const REVEAL = /* GraphQL */ `
 `;
 
 /**
- * One pending registration link: what it is, when it dies, and the link itself —
+ * One pending registration link: what it is, when it dies, and the link itself -
  * coverable, copyable, as many times as the admin needs within its 24 hours.
  */
 export function RegistrationLinkRow({
@@ -57,7 +57,7 @@ export function RegistrationLinkRow({
     setPending(false);
     if (!res.ok) {
       // The server's message says which of "used / revoked / expired / too old"
-      // it is — all four are things the admin needs to hear verbatim.
+      // it is - all four are things the admin needs to hear verbatim.
       toast.error(res.error);
       return null;
     }
@@ -177,7 +177,7 @@ export function RegistrationLinkRow({
             onToggle={canReveal ? toggle : undefined}
             pending={pending}
             placeholder={link.linkMasked}
-            // Not just inert — padlocked, with the reason. A chip that simply
+            // Not just inert - padlocked, with the reason. A chip that simply
             // doesn't open leaves the admin clicking at it.
             locked={!canReveal}
             lockedHint={
@@ -224,7 +224,7 @@ function Expiry({
     >
       <Clock className="size-3 shrink-0" aria-hidden />
       {expired ? (
-        <>Expired {timeAgo(expiresAt)} — mint a new link</>
+        <>Expired {timeAgo(expiresAt)} - mint a new link</>
       ) : (
         <>
           Expires in{" "}
@@ -238,7 +238,7 @@ function Expiry({
 
 interface TimeLeft {
   ms: number;
-  /** `23h 59m 12s` — the seconds are there so the clock visibly runs. */
+  /** `23h 59m 12s` - the seconds are there so the clock visibly runs. */
   label: string;
 }
 
@@ -273,7 +273,7 @@ function formatLeft(ms: number): string {
 }
 
 /**
- * "today, 22 Jul at 20:15" / "tomorrow, 23 Jul at 09:12" — the day in words
+ * "today, 22 Jul at 20:15" / "tomorrow, 23 Jul at 09:12" - the day in words
  * because that is how the operator thinks about it, and the date beside it because
  * that is what they will write down.
  */

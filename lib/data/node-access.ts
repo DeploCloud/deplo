@@ -42,7 +42,7 @@ import { assertNotMigrating } from "./migration-guard";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
- * Per-NODE authorization — what one person may do to one App, Folder or Project
+ * Per-NODE authorization - what one person may do to one App, Folder or Project
  * container, as opposed to what their team role lets them do everywhere
  * (`lib/membership.ts`). **A node capability set REPLACES the team role's inside
  * that node, and may exceed it** (ADR-0016).
@@ -56,7 +56,7 @@ export type NodeRef =
   | { kind: "project"; id: string };
 
 /**
- * An app as the resolver needs it — the columns that place it. `environmentId` is
+ * An app as the resolver needs it - the columns that place it. `environmentId` is
  * optional so a caller that never asks about environments keeps compiling; it only
  * ever widens the answer.
  */
@@ -69,7 +69,7 @@ export interface AppPlacement {
 
 /**
  * Every row the precedence ladder can consult for one (user, team) pair. Built
- * once, read many times — the batch and single-node paths share it, so there is
+ * once, read many times - the batch and single-node paths share it, so there is
  * exactly one implementation of the precedence rules.
  */
 interface GrantIndex {
@@ -138,7 +138,7 @@ function groupCaps<T extends { key: string; capability: string }>(
 }
 
 /**
- * Build the index. `null` when the user can't act in this team at all — not a
+ * Build the index. `null` when the user can't act in this team at all, not a
  * member and not an instance admin, which is the first and last word on access.
  */
 async function buildIndex(
@@ -280,7 +280,7 @@ async function buildIndex(
 }
 
 /**
- * Whether the PERSON holds `manage_team` in this team, straight off the junction —
+ * Whether the PERSON holds `manage_team` in this team, straight off the junction -
  * deliberately NOT through `membershipFor`, whose set is clamped to the API token
  * making the request.
  */
@@ -309,7 +309,7 @@ export async function holdsManageTeam(
 /** The team that owns a node, or null when it doesn't exist. */
 async function teamOf(node: NodeRef): Promise<string | null> {
   const db = getDb();
-  // An Environment carries no `team_id` of its own — it belongs to a Project,
+  // An Environment carries no `team_id` of its own - it belongs to a Project,
   // and the team comes through it (ADR-0009).
   if (node.kind === "environment") {
     const rows = await db
@@ -424,7 +424,7 @@ function ladder(
 }
 
 /**
- * Whether this person holds something of their own on the node or an ancestor —
+ * Whether this person holds something of their own on the node or an ancestor -
  * ownership, or a grant row.
  */
 function hasOwnGrant(
@@ -586,9 +586,9 @@ export async function nodeCapabilities(node: NodeRef): Promise<Capability[]> {
 }
 
 /**
- * ANY user's effective capabilities on a node — for hydrating someone else's
+ * ANY user's effective capabilities on a node - for hydrating someone else's
  * access in an admin view. Naming it also keeps the boundary explicit rather than
- * optional — a `null` that meant "skip the check" is how the hole would come back.
+ * optional - a `null` that meant "skip the check" is how the hole would come back.
  */
 export async function nodeCapabilitiesFor(
   userId: string,
@@ -599,7 +599,7 @@ export async function nodeCapabilitiesFor(
 }
 
 /**
- * The caller's capabilities on MANY apps of one team at once — five queries for
+ * The caller's capabilities on MANY apps of one team at once - five queries for
  * the whole set. For list pages that must drop the apps a member can't reach:
  * ask this instead of looping, or a fifty-app team becomes a fifty-fold fan-out.
  */
@@ -652,7 +652,7 @@ export async function requireAppCapability(
 ): Promise<ActiveMembership> {
   const gate = await appGate(appId);
   // An app that isn't there, isn't ours, isn't in the request's token scope, or
-  // sits in a folder the caller can't see all answer the same thing — the gate is
+  // sits in a folder the caller can't see all answer the same thing - the gate is
   // never an oracle for which ids exist.
   if (!gate || gate.caps.length === 0) throw new Error("App not found");
   // Confirmed for deletion (`apps.deleting_at`): the teardown is running behind the

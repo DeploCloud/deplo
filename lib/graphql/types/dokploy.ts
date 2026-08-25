@@ -38,7 +38,7 @@ import {
 } from "@/lib/data/dokploy-runner";
 
 /**
- * Import from Dokploy — read a Dokploy instance over its API and create the deplo
+ * Import from Dokploy - read a Dokploy instance over its API and create the deplo
  * equivalents in the ACTIVE team.
  */
 
@@ -102,7 +102,7 @@ const PlanServiceRef = builder
       }),
       domains: t.exposeStringList("domains", {
         description:
-          "The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.",
+          "The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped - Deplo mints its own.",
       }),
       logo: t.exposeString("logo", {
         nullable: true,
@@ -124,7 +124,7 @@ const PlanEnvironmentRef = builder
       name: t.exposeString("name"),
       exists: t.exposeBoolean("exists", {
         description:
-          "An environment of that name is already in the matching project — Dokploy's `production` maps onto the one every Deplo project starts with.",
+          "An environment of that name is already in the matching project - Dokploy's `production` maps onto the one every Deplo project starts with.",
       }),
       services: t.field({ type: [PlanServiceRef], resolve: (e) => e.services }),
     }),
@@ -456,7 +456,7 @@ const ConnectInputRef = builder.inputType("DokployConnectInput", {
     allowPrivate: t.boolean({
       required: false,
       description:
-        "Allow a private or loopback address — what the same-machine case needs (http://172.17.0.1:3000). Instance admin only, like a git connection's or an S3 endpoint's private-endpoint flag.",
+        "Allow a private or loopback address - what the same-machine case needs (http://172.17.0.1:3000). Instance admin only, like a git connection's or an S3 endpoint's private-endpoint flag.",
     }),
   }),
 });
@@ -470,7 +470,7 @@ builder.queryFields((t) => ({
     type: [ImportRunRef],
     authScopes: { capability: "create_projects" },
     description:
-      "This team's import history, newest first. Without the per-run report — read one run for that.",
+      "This team's import history, newest first. Without the per-run report - read one run for that.",
     resolve: () => listDokployImports(),
   }),
   dokployImport: t.field({
@@ -578,7 +578,7 @@ builder.mutationFields((t) => ({
     type: ImportProjectResultRef,
     authScopes: { capability: "create_projects" },
     description:
-      "Import ONE Dokploy project into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed — the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.",
+      "Import ONE Dokploy project into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed - the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.",
     args: {
       input: t.arg({ type: ConnectInputRef, required: true }),
       runId: t.arg.string({ required: true }),
@@ -626,7 +626,7 @@ builder.mutationFields((t) => ({
     type: [InviteRef],
     authScopes: { instanceAdmin: true },
     description:
-      "Bring the Dokploy organization's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there — the report says who was an owner or admin so it can be granted on purpose.",
+      "Bring the Dokploy organization's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there - the report says who was an owner or admin so it can be granted on purpose.",
     args: {
       input: t.arg({ type: ConnectInputRef, required: true }),
       runId: t.arg.string({ required: true }),
@@ -775,7 +775,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "create_projects" },
     description:
-      "Close the run and settle its totals. Idempotent — a finished run is left alone.",
+      "Close the run and settle its totals. Idempotent - a finished run is left alone.",
     args: { runId: t.arg.string({ required: true }) },
     resolve: async (_r, { runId }) => {
       await finishDokployImport(runId);

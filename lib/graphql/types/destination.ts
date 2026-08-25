@@ -22,7 +22,7 @@ import type {
 import type { DestinationKind, S3Provider } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
-/* Enums (local — neither is shared in enums.ts)                        */
+/* Enums (local, neither is shared in enums.ts)                        */
 /* ------------------------------------------------------------------ */
 
 // Connectivity state of a destination. Local to this module because no other
@@ -47,7 +47,7 @@ export const BackupDestinationRef = builder
     description:
       "Where a team's backup artifacts are kept: an S3-compatible bucket, or a " +
       "directory on a server in the fleet. Secrets are masked and the recovery " +
-      "key is never a field — it has its own mutation, which records who took it.",
+      "key is never a field - it has its own mutation, which records who took it.",
     fields: (t) => ({
       id: t.exposeID("id"),
       teamId: t.exposeID("teamId"),
@@ -250,7 +250,7 @@ const DestinationTestResultRef = builder
   .implement({
     description:
       "A completed connection test: the destination with its badge repainted, plus " +
-      "the verdict. Callers MUST read `report.ok` — a failed probe is a normal " +
+      "the verdict. Callers MUST read `report.ok` - a failed probe is a normal " +
       "result, not a mutation error.",
     fields: (t) => ({
       destination: t.field({
@@ -269,7 +269,7 @@ const CreateDestinationInputType = builder.inputType("CreateDestinationInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     kind: t.field({ type: DestinationKindEnum, required: true }),
-    // s3 — required when kind is s3, validated in the data layer so the message
+    // s3 - required when kind is s3, validated in the data layer so the message
     // says which field is missing rather than which arg failed.
     provider: t.field({ type: S3ProviderEnum, required: false }),
     endpoint: t.string({ required: false }),
@@ -285,7 +285,7 @@ const CreateDestinationInputType = builder.inputType("CreateDestinationInput", {
     // when they are not on its allowlist, so a flag that would change nothing is
     // never accepted quietly.
     s3ExtraArgs: t.string({ required: false }),
-    // server — `path` is instance-admin only; null means the agent's own
+    // server - `path` is instance-admin only; null means the agent's own
     // managed store, which is what almost everyone wants.
     serverId: t.string({ required: false }),
     path: t.string({ required: false }),
@@ -327,7 +327,7 @@ builder.queryFields((t) => ({
     type: S3TestReportRef,
     authScopes: { capability: "manage_backup_destinations" },
     description:
-      "The STORED result of this destination's last connection test — reading it " +
+      "The STORED result of this destination's last connection test - reading it " +
       "never re-dials. `never` is true until the first test.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => destinationTestReport(id),
@@ -365,9 +365,9 @@ builder.mutationFields((t) => ({
     type: DestinationTestResultRef,
     authScopes: { capability: "manage_backup_destinations" },
     description:
-      "Probe the destination through its agent — for a bucket, head/write/remove; " +
+      "Probe the destination through its agent - for a bucket, head/write/remove; " +
       "for a server, resolve the folder, check it is writable and report its free " +
-      "space — and return BOTH the repainted destination and the verdict. A failed " +
+      "space, and return BOTH the repainted destination and the verdict. A failed " +
       "probe resolves normally with `report.ok = false`: check it rather than " +
       "assuming success, and show `report.error` verbatim.",
     args: { id: t.arg.string({ required: true }) },
@@ -381,7 +381,7 @@ builder.mutationFields((t) => ({
       "badges repainted, newest first. For pickers that must show live " +
       "connectivity the moment they open, rather than a status that was true " +
       "hours ago. A destination whose probe fails comes back as `error` with " +
-      "`lastTestError` set — the call itself still resolves.",
+      "`lastTestError` set - the call itself still resolves.",
     resolve: () => testDestinations(),
   }),
   destinationRecoveryKey: t.field({

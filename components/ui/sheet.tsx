@@ -21,7 +21,7 @@ const SheetOverlay = React.forwardRef<
     className={cn(
       // pointer-events-auto so the overlay reliably captures clicks instead of
       // inheriting `pointer-events: none` from <body> while the sheet is open
-      // (see the note in dialog.tsx) — keeps background controls non-clickable.
+      // (see the note in dialog.tsx) - keeps background controls non-clickable.
       "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
@@ -89,7 +89,7 @@ const SheetContent = React.forwardRef<
             }
             onInteractOutside?.(event);
           }}
-          // Same surface rules as a Dialog — it is the same Radix primitive.
+          // Same surface rules as a Dialog - it is the same Radix primitive.
           onOpenAutoFocus={(event) => {
             onOpenAutoFocus?.(event);
             overlayAutoFocus(event, contentRef.current);

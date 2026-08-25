@@ -62,7 +62,7 @@ export function ConfirmAction({
    */
   optimistic?: boolean;
   /**
-   * Extra content rendered between the description and the footer — e.g. a
+   * Extra content rendered between the description and the footer - e.g. a
    * "also delete S3 artifacts" checkbox on a delete dialog. Keep it controlled
    * by the caller; this component only lays it out.
    */

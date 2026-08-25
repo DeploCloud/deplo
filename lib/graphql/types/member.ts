@@ -38,7 +38,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 // RegistrationLinkStatus is a small domain union not shared in enums.ts, so it
-// lives locally — defined, used, and not exported.
+// lives locally - defined, used, and not exported.
 const RegistrationLinkStatusEnum = builder.enumType("RegistrationLinkStatus", {
   values: ["pending", "used", "revoked"] as const,
 });
@@ -159,7 +159,7 @@ export const UserDetailRef = builder
   .objectRef<UserDetailDTO>("UserDetail")
   .implement({
     description:
-      "Full per-user detail for the admin editor — the email IS included here.",
+      "Full per-user detail for the admin editor - the email IS included here.",
     fields: (t) => ({
       userId: t.exposeID("userId"),
       username: t.exposeString("username"),
@@ -220,7 +220,7 @@ export const DeleteUserImpactRef = builder
   .objectRef<DeleteUserImpact>("DeleteUserImpact")
   .implement({
     description:
-      "Exactly what permanently deleting an account would take with it — read live so the confirmation states facts, not warnings.",
+      "Exactly what permanently deleting an account would take with it - read live so the confirmation states facts, not warnings.",
     fields: (t) => ({
       userId: t.exposeID("userId"),
       username: t.exposeString("username"),
@@ -233,13 +233,13 @@ export const DeleteUserImpactRef = builder
       soloTeams: t.field({
         type: [DeleteUserTeamImpactRef],
         description:
-          "Teams where they are the ONLY member — always deleted with the account, since nobody would be left who could ever open them.",
+          "Teams where they are the ONLY member - always deleted with the account, since nobody would be left who could ever open them.",
         resolve: (i) => i.soloTeams,
       }),
       foundedTeams: t.field({
         type: [DeleteUserTeamImpactRef],
         description:
-          "Teams they founded that still have other members — deleted only on request.",
+          "Teams they founded that still have other members - deleted only on request.",
         resolve: (i) => i.foundedTeams,
       }),
       keptTeams: t.field({
@@ -292,7 +292,7 @@ export const RegistrationLinkRef = builder
       createdAt: t.exposeString("createdAt"),
       canReveal: t.exposeBoolean("canReveal", {
         description:
-          "The link can still be read back with revealRegistrationLink — pending, unexpired, and minted after the token started being stored encrypted.",
+          "The link can still be read back with revealRegistrationLink - pending, unexpired, and minted after the token started being stored encrypted.",
       }),
       linkMasked: t.exposeString("linkMasked", {
         description:
@@ -412,7 +412,7 @@ builder.queryFields((t) => ({
     type: DeleteUserImpactRef,
     authScopes: { instanceAdmin: true },
     description:
-      "What permanently deleting this account would remove. Read-only — nothing is deleted.",
+      "What permanently deleting this account would remove. Read-only - nothing is deleted.",
     args: { userId: t.arg.string({ required: true }) },
     resolve: (_r, { userId }) => getDeleteUserImpact(userId),
   }),
@@ -499,7 +499,7 @@ builder.mutationFields((t) => ({
     type: "String",
     authScopes: { instanceAdmin: true },
     description:
-      "The full registration URL of a link that is still pending — so the admin who minted it can hand it over again instead of minting a second one. Errors, rather than returning a dead URL, when the link was used, revoked, expired, or minted before the token was stored encrypted.",
+      "The full registration URL of a link that is still pending, so the admin who minted it can hand it over again instead of minting a second one. Errors, rather than returning a dead URL, when the link was used, revoked, expired, or minted before the token was stored encrypted.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => revealRegistrationLink(id),
   }),
@@ -572,7 +572,7 @@ builder.mutationFields((t) => ({
   }),
   transferInstanceOwner: t.field({
     type: "Boolean",
-    // instanceAdmin is the FLOOR, not the gate — the data layer additionally
+    // instanceAdmin is the FLOOR, not the gate - the data layer additionally
     // requires the caller to BE the current owner, which no scope can express.
     authScopes: { instanceAdmin: true },
     description:

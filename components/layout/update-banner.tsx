@@ -57,7 +57,7 @@ export function UpdateBanner() {
         Deplo <span className="font-medium">{info.latest}</span> is available
         <span className="text-muted-foreground">
           {" "}
-          — you have v{info.current}
+          - you have v{info.current}
         </span>
       </span>
       <a

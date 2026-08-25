@@ -9,7 +9,7 @@ export async function register(): Promise<void> {
     await runMigrations();
   } catch (e) {
     console.error(
-      "[deplo] DB migration failed at boot — refusing to serve on an out-of-date schema:",
+      "[deplo] DB migration failed at boot - refusing to serve on an out-of-date schema:",
       e,
     );
     throw e;
@@ -59,13 +59,13 @@ export async function register(): Promise<void> {
   }
   // Each reconcile/start below runs in ITS OWN try/catch: these are independent
   // subsystems, and one transient failure (say, the backup reconcile losing its
-  // connection) must not silently skip every startup after it — which is exactly what
+  // connection) must not silently skip every startup after it, which is exactly what
   // a single shared block would do.
   try {
     const { reconcileInFlightDeployments } = await import("./lib/deploy/build");
     const { startDeployQueue } = await import("./lib/deploy/deploy-queue");
     // The deployment reconcile is now async (relational); it may be floated (genuinely
-    // fire-and-forget — nothing downstream at boot depends on it).
+    // fire-and-forget, nothing downstream at boot depends on it).
     void reconcileInFlightDeployments()
       .then(() => startDeployQueue())
       .catch((e) =>
@@ -77,7 +77,7 @@ export async function register(): Promise<void> {
   try {
     const { reconcileInFlightBackupRuns } = await import("./lib/data/backups");
     // AWAITED (now relational/async): the backup reconcile MUST complete before
-    // the scheduler's first tick reads a `running` run it never settled — the two
+    // the scheduler's first tick reads a `running` run it never settled - the two
     // stay ordered inside ONE block, so a failed reconcile also skips the start.
     await reconcileInFlightBackupRuns();
     // Start the backup scheduler after the reconcile so a boot tick never trips
@@ -95,7 +95,7 @@ export async function register(): Promise<void> {
     // other's candidate lists), so a run stranded by the restart that brought us here
     // would exclude its host from the schedule forever.
     await reconcileInFlightCleanupRuns();
-    // Then the cleanup loop — a sibling of the backup scheduler under its own lease.
+    // Then the cleanup loop - a sibling of the backup scheduler under its own lease.
     // Its boot tick is load-bearing: unlike backups, cleanup CATCHES UP, so a control
     // plane that was down at 04:00 sweeps on the way back up.
     const { startDockerCleanupScheduler } =
@@ -117,7 +117,7 @@ export async function register(): Promise<void> {
     console.error("[deplo] app delete reconcile failed to start:", e);
   }
   try {
-    // The pull request preview reaper — a third sibling under its own lease.
+    // The pull request preview reaper - a third sibling under its own lease.
     const { startPreviewReaper } = await import("./lib/previews/reaper");
     startPreviewReaper();
   } catch (e) {
@@ -147,7 +147,7 @@ export async function register(): Promise<void> {
     console.error("[deplo] cron scheduler startup failed:", e);
   }
   try {
-    // Finally the metrics stream supervisor — holds ONE long-lived telemetry stream per
+    // Finally the metrics stream supervisor - holds ONE long-lived telemetry stream per
     // server, which is what keeps every Monitoring chart warm whether or not anybody
     // has the page open (no reconcile to wait on: its state is process RAM, born empty
     // on every boot by design).
@@ -187,7 +187,7 @@ export async function register(): Promise<void> {
     }
   }
   // Teardown, registered OUTSIDE the fragile blocks above so a failed start can never
-  // skip it. An unref()'d interval could be left to leak; these cannot — and dev HMR
+  // skip it. An unref()'d interval could be left to leak; these cannot, and dev HMR
   // re-runs register() on every edit.
   for (const sig of ["SIGTERM", "SIGINT"] as const) {
     process.once(sig, () => {

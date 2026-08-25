@@ -97,7 +97,7 @@ export function TemplateStore({
     router.replace(href(q, next), { scroll: false });
   }
 
-  // Categories the catalogue actually uses, most populated first — derived from
+  // Categories the catalogue actually uses, most populated first - derived from
   // the entries rather than fetched, so a chip can never offer an empty filter.
   const categories = React.useMemo<Category[]>(() => {
     const seen = new Map<string, Category>();

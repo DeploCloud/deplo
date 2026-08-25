@@ -1,6 +1,6 @@
 -- A ROLE can reach part of the team instead of all of it.
 --
--- Until now a role answered exactly one question — what may its holders DO —
+-- Until now a role answered exactly one question, what may its holders DO,
 -- and the answer applied to every app in the team. The only way to say "this
 -- person works on Prod and nothing else" was a per-folder grant (ADR-0016),
 -- which is a per-PERSON act: a team that wanted the same boundary for five
@@ -16,7 +16,7 @@
 -- `scoped` is the INTENT, and it is a stored boolean rather than a derived
 -- "are there any rows" for the reason `api_tokens.scoped` gives: the junctions
 -- below CASCADE, so deleting the last project a role was limited to would empty
--- the scope, and an emptied scope with no flag reads as "no scope at all" —
+-- the scope, and an emptied scope with no flag reads as "no scope at all" -
 -- silently widening the role to the whole team at the exact moment somebody
 -- deleted something. Scoped with zero rows means "reaches nothing".
 --

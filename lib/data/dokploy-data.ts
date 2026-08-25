@@ -484,7 +484,7 @@ async function landedFor(
  * writing, so "which resource is this service's" has to be a fact the run recorded,
  * never a name that happens to match something in the team.
  *
- * A service with nothing to pair is still listed, carrying the notes that say why —
+ * A service with nothing to pair is still listed, carrying the notes that say why -
  * a volume that cannot be paired is the single most useful line in the whole report,
  * and dropping it silently is how a migration finishes "clean" with data left behind.
  *
@@ -670,7 +670,7 @@ async function runMoveDokployServiceData(
 
   // The target's own gate. A database has no node dimension, so it stays team-wide
   // and answers NOT FOUND to a narrowed principal rather than confirming the id
-  // exists — the rule `requireBackupCapability` states for the same reason.
+  // exists - the rule `requireBackupCapability` states for the same reason.
   if (landed.targetKind === "app") {
     await requireAppCapability(landed.targetId, "restore_backups");
   } else {

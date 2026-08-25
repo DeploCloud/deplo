@@ -13,14 +13,14 @@ export interface ChartSeriesDef {
   key: string;
   /** Legend / tooltip label. */
   label: string;
-  /** CSS color for the line (a `--chart-*` token). Marks only — never text. */
+  /** CSS color for the line (a `--chart-*` token). Marks only, never text. */
   color: string;
   /** Render a soft ~10% wash under the line (single-series charts). */
   fill?: boolean;
 }
 
 export interface ChartPoint {
-  /** Sample timestamp (ms epoch) — the x position. */
+  /** Sample timestamp (ms epoch) - the x position. */
   ts: number;
   values: Record<string, number>;
 }
@@ -61,10 +61,10 @@ function linearTicks(max: number, target: number): number[] {
 }
 
 function yTicksFor(unit: ChartUnit, dataMax: number): number[] {
-  // Percent axes are pinned to 0–100: utilization only reads honestly against
+  // Percent axes are pinned to 0-100: utilization only reads honestly against
   // its full range (a 3% wiggle must not fill the panel).
   if (unit === "percent") return [0, 25, 50, 75, 100];
-  // Idle network still gets a real axis (1 kB/s) instead of a degenerate 0–0.
+  // Idle network still gets a real axis (1 kB/s) instead of a degenerate 0-0.
   if (unit === "bytesPerSec") return linearTicks(Math.max(dataMax, 1000), 4);
   return linearTicks(Math.max(dataMax, 1), 4);
 }
@@ -83,7 +83,7 @@ function fmtValue(v: number, unit: ChartUnit): string {
   return v.toFixed(2);
 }
 
-/** Time-tick ladder (seconds) — steps that land on clean wall-clock times. */
+/** Time-tick ladder (seconds) - steps that land on clean wall-clock times. */
 const TIME_STEPS_S = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
 
 function timeTicks(
@@ -172,7 +172,7 @@ function areaPath(seg: XY[], baseY: number): string {
 /**
  * Grafana-style live time-series panel: documented axes (unit-formatted y ticks,
  * wall-clock x ticks), recessive hairline grid, gap-aware 2px lines, a crosshair +
- * all-series tooltip (pointer AND arrow keys), and — for two or more series — a
+ * all-series tooltip (pointer AND arrow keys), and, for two or more series, a
  */
 export function TimeSeriesChart({
   series,
@@ -259,7 +259,7 @@ export function TimeSeriesChart({
 
   const xt = timeTicks(t0, t1, Math.max(3, Math.floor(plotW / 90)));
 
-  // Snap the stored hover time to the nearest visible sample — storing a time
+  // Snap the stored hover time to the nearest visible sample - storing a time
   // (not an index) keeps the crosshair still while new samples stream in.
   let hoverPoint: ChartPoint | null = null;
   if (hoverTs != null && hoverPoints.length) {
@@ -301,7 +301,7 @@ export function TimeSeriesChart({
       if (next.has(key)) next.delete(key);
       else {
         next.add(key);
-        // Never hide the last visible series — an all-empty plot helps nobody.
+        // Never hide the last visible series - an all-empty plot helps nobody.
         if (next.size >= series.length) return prev;
       }
       return next;
@@ -336,7 +336,7 @@ export function TimeSeriesChart({
             <clipPath id={clipId}>
               <rect x={mLeft} y={M_TOP} width={plotW} height={plotH} />
             </clipPath>
-            {/* Diagonal hatch for "No data" spans — recessive in both themes. */}
+            {/* Diagonal hatch for "No data" spans - recessive in both themes. */}
             <pattern
               id={hatchId}
               patternUnits="userSpaceOnUse"
@@ -510,7 +510,7 @@ export function TimeSeriesChart({
             })}
 
           {/* Hovering inside a no-data span: a dashed crosshair at the real
-              pointer time, no snapping and no dots — there is nothing to read. */}
+              pointer time, no snapping and no dots - there is nothing to read. */}
           {hoverInGap && hoverTs != null && (
             <line
               x1={xOf(hoverTs)}
@@ -624,7 +624,7 @@ export function TimeSeriesChart({
         </div>
       )}
 
-      {/* Legend with live values — only for 2+ series; click toggles a series */}
+      {/* Legend with live values - only for 2+ series; click toggles a series */}
       {series.length > 1 && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2">
           {series.map((s) => {

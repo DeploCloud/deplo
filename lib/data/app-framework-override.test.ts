@@ -23,7 +23,7 @@ import { effectiveFramework } from "../apps/framework-catalog";
 
 /**
  * Correcting the framework Deplo detected. The whole point of the feature is
- * that the correction OUTLIVES detection — a deploy re-reads the source on every
+ * that the correction OUTLIVES detection - a deploy re-reads the source on every
  * push, and that write must not take the user's answer with it.
  */
 
@@ -75,7 +75,7 @@ test("the correction wins, and a later deploy's detection does not undo it", asy
 
   const corrected = (await loadAppGraph("prj_1"))!;
   assert.equal(effectiveFramework(corrected), "vite");
-  // Detection's own answer is still on the row — that is what lets the UI say
+  // Detection's own answer is still on the row - that is what lets the UI say
   // "we detected Next.js" beside the user's Vite.
   assert.equal(corrected.framework, "nextjs");
 

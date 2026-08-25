@@ -36,7 +36,7 @@ export function generateDockerfile(
   if (installOverride) {
     // Custom install: it may reference source files, so keep the whole tree
     // available (copy-everything-first, as before). No cache-splitting and no
-    // dev-dep forcing — the user owns this command verbatim.
+    // dev-dep forcing - the user owns this command verbatim.
     lines.push(`COPY . .`, `RUN ${installOverride}`);
     if (buildCmd) lines.push(`RUN ${buildCmd}`);
   } else {

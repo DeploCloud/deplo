@@ -1,13 +1,13 @@
--- Instance owner — a SINGLETON row (PK fixed at 'default'), the shape of
+-- Instance owner - a SINGLETON row (PK fixed at 'default'), the shape of
 -- monitoring_settings / docker_cleanup_policy, carrying the one thing that was
 -- missing from this schema: who owns the instance.
 --
 -- WHY. `users.is_instance_admin` is a flat boolean, and updateUserAdmin lets any
 -- instance admin write it on any OTHER user. The only guard was "at least one
--- ACTIVE admin must remain" — an invariant the actor satisfies by being that
+-- ACTIVE admin must remain" - an invariant the actor satisfies by being that
 -- admin. So a single admin you promoted could, in one call per peer, demote every
 -- other admin (the very first account included, which had no protection of any
--- kind), suspend them so login fails, and reset their password hash — taking the
+-- kind), suspend them so login fails, and reset their password hash - taking the
 -- account outright. There is no user-deletion path and no self-service password
 -- reset in the product, so the victim's only way back was hand-written SQL against
 -- Postgres: exactly the "you must know the shell" failure the core mission exists
@@ -16,8 +16,8 @@
 -- The fix mirrors a decision this schema already made one level down. A team has
 -- an absolute owner in `teams.founder_user_id` (the "crown", migration 0011) who
 -- cannot be demoted or removed by anyone, instance admins included. This is that,
--- for the instance: the owner is immutable to every hand but their own — no other
--- admin may demote, suspend or password-reset them — and they cannot clear their
+-- for the instance: the owner is immutable to every hand but their own, no other
+-- admin may demote, suspend or password-reset them, and they cannot clear their
 -- own admin flag either, matching the founder rule. The crown is not a dead end:
 -- it TRANSFERS, but only by the person wearing it.
 --
@@ -34,7 +34,7 @@
 -- a silent return to the unowned state this row exists to end.
 --
 -- BACKFILL: the oldest instance admin, which on every real instance is the account
--- created by first-run setup — the same shape as 0011 backfilling each team's
+-- created by first-run setup - the same shape as 0011 backfilling each team's
 -- founder to its earliest owner membership. `LIMIT 1` because the row is a
 -- singleton; `WHERE EXISTS` so an instance with no admin at all (impossible via
 -- the app, reachable via hand-edited SQL) gets no row instead of a NULL-owner one.

@@ -139,7 +139,7 @@ function logsFailure(reason: string): string {
     case "unreachable":
       return "The server running this app is unreachable, so its logs can't be read right now.";
     case "no-instance":
-      return "This app has no container yet — deploy it first.";
+      return "This app has no container yet - deploy it first.";
     default:
       return `Logs are unavailable (${reason}).`;
   }

@@ -423,7 +423,7 @@ export function CronJobsList({
       ) : (
         <Card>
           <CardContent className="space-y-2 pt-6">
-            {/* A deleted job leaves the list on the click — the rows ask to be
+            {/* A deleted job leaves the list on the click - the rows ask to be
                 hidden themselves (see `OptimisticList`). */}
             <OptimisticList>
               {jobs.map((job, i) => (

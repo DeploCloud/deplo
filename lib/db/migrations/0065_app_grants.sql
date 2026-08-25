@@ -3,8 +3,8 @@
 --
 -- `app_grants` is the level that was missing: `folder_grants` has been live since
 -- folders got owners, `project_grants` has been in the schema (unused) since the
--- Project container landed, and an App — the thing people actually want to hand
--- someone one of — had nothing. It is the direct clone of both: one row per
+-- Project container landed, and an App - the thing people actually want to hand
+-- someone one of - had nothing. It is the direct clone of both: one row per
 -- (app, user, capability), both FKs CASCADE, so dropping the app or the account
 -- drops the grant. That cascade IS the cleanup story, and it is why these stay
 -- three tables rather than one polymorphic `(node_kind, node_id)` one.

@@ -116,7 +116,7 @@ export async function detectConnectionFavicon(
 }
 
 // The extracted tree is fully attacker-controlled (an uploaded archive), so the
-// walk is hard-bounded on every axis a crafted tree could blow up — never unbounded
+// walk is hard-bounded on every axis a crafted tree could blow up, never unbounded
 // work regardless of how many dirs/files the archive packs: - MAX_DIRS_WALKED
 const MAX_DIRS_WALKED = 4000;
 const MAX_PENDING_DIRS = 8000;
@@ -157,7 +157,7 @@ async function collectTreeCandidates(root: string): Promise<FaviconFile[]> {
       const childRel = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
         // Prune dependency/build/VCS dirs (never a project's own icon) so the
-        // bounded dir budget is spent on real source, not node_modules — and cap
+        // bounded dir budget is spent on real source, not node_modules, and cap
         // the pending stack so a fan-out of a million subdirs can't grow it.
         if (!isExcludedDirName(e.name) && stack.length < MAX_PENDING_DIRS) {
           stack.push(childRel);
@@ -179,7 +179,7 @@ async function collectTreeCandidates(root: string): Promise<FaviconFile[]> {
 /**
  * Detect an icon inside an already-extracted source tree on local disk.
  * `rootDirectory` (the build sub-path) biases the pick toward the sub-app the
- * app actually builds from — same disambiguation the GitHub arm applies.
+ * app actually builds from - same disambiguation the GitHub arm applies.
  */
 export async function detectTreeFavicon(
   root: string,
@@ -187,7 +187,7 @@ export async function detectTreeFavicon(
 ): Promise<string | null> {
   const candidates = await collectTreeCandidates(root);
   // Candidates carry their real size (stat'd above), so pickBestFavicon already
-  // dropped any over the logo cap — we only ever read a within-cap file here.
+  // dropped any over the logo cap - we only ever read a within-cap file here.
   const best = pickBestFavicon(candidates, {
     rootRel: normalizeRootRel(rootDirectory),
   });
@@ -218,7 +218,7 @@ export async function detectUploadFavicon(
 }
 
 /**
- * Detect an icon in an app's files dir on its OWNING SERVER — the compose-stack
+ * Detect an icon in an app's files dir on its OWNING SERVER - the compose-stack
  * arm, where "the app's own files" is the `<stacks>/files/<slug>` tree its `./x`
  * bind mounts resolve into.
  */
@@ -287,7 +287,7 @@ export function appIconProbeTarget(
 }
 
 /**
- * Detect a logo from whichever files an app actually owns — the on-demand entry
+ * Detect a logo from whichever files an app actually owns - the on-demand entry
  * point behind the settings "Detect from source" action (the deploy hooks call the
  * arm their source already resolved). gate and this dispatch can never disagree.
  */
@@ -306,7 +306,7 @@ export async function detectAppFavicon(
         appIconProbeTarget(project, routes, primaryHost),
       );
     // A repo source is keyed on the repo itself (provider/URL), NOT the `source`
-    // string — a GitHub App import is `source: "github"`, a bare git URL is
+    // string - a GitHub App import is `source: "github"`, a bare git URL is
     // `source: "git"`, and both carry a repo.
     case "github":
       return project.repo

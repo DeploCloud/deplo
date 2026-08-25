@@ -27,8 +27,8 @@ export async function generateMetadata(
   const name = truncate(db.name, DB_TITLE_MAX);
   return {
     title: {
-      template: `${name} – %s – Deplo`,
-      default: `${name} – Overview – Deplo`,
+      template: `${name} - %s - Deplo`,
+      default: `${name} - Overview - Deplo`,
     },
   };
 }
@@ -75,7 +75,7 @@ export default async function DatabaseLayout(
                 </div>
                 {/* Same slot the App header uses for its URL: a database has no
                   domain, so it always says what it is (engine display name, not
-                  the raw id — "PostgreSQL", never "postgres"). */}
+                  the raw id - "PostgreSQL", never "postgres"). */}
                 <p className="text-sm text-muted-foreground">
                   {DB_NAMES[db.type] ?? titleCase(db.type)} database · v
                   {db.version}

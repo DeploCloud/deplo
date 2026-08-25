@@ -10,7 +10,7 @@ import {
  * Image-hinting proxy for the Compose / Docker-image inputs.
  */
 export async function GET(request: NextRequest) {
-  // Any logged-in user may query — the image inputs this feeds are visible to every
+  // Any logged-in user may query - the image inputs this feeds are visible to every
   // member with `view`, so a capability gate here would break the UI.
   const user = await getCurrentUser();
   if (!user) {
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     return Response.json({ error: "Unknown action" }, { status: 400 });
   } catch {
-    // Registry outages / timeouts must not surface as input errors — degrade
+    // Registry outages / timeouts must not surface as input errors - degrade
     // gracefully to "no hints" rather than a 500.
     return Response.json({ error: "Registry lookup failed" }, { status: 502 });
   }

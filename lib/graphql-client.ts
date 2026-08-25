@@ -39,7 +39,7 @@ function unreachable(): ServerUnreachableError {
 }
 
 /**
- * Read a response that MUST be JSON — `/api/graphql` never answers anything else.
+ * Read a response that MUST be JSON - `/api/graphql` never answers anything else.
  */
 async function readJsonBody<T>(res: Response): Promise<T> {
   let text: string;
@@ -57,7 +57,7 @@ async function readJsonBody<T>(res: Response): Promise<T> {
 }
 
 /**
- * Run a GraphQL operation and box the outcome as an `ActionResult` — the shape the
+ * Run a GraphQL operation and box the outcome as an `ActionResult` - the shape the
  * UI's call sites already branch on (`if (res.ok) … else res.error`).
  */
 export async function gqlAction<TData = unknown, TPick = TData>(
@@ -100,7 +100,7 @@ export async function gql<TData = unknown>(
     });
   } catch (e) {
     // An abort is the caller's; anything else at the network level means the
-    // panel's web server may be gone — let the connection guard verify and
+    // panel's web server may be gone - let the connection guard verify and
     // raise the notification.
     if (isAbort(e)) throw e;
     throw unreachable();
@@ -152,7 +152,7 @@ export function gqlSubscribe<TData = unknown>(
     }
 
     if (!res.ok || !res.body) {
-      // A gateway status or an HTML body means we never reached the app — the
+      // A gateway status or an HTML body means we never reached the app - the
       // proxy answered for a server that isn't there. Report it as an outage
       // rather than as a subscription that failed on its own merits.
       const html = (res.headers.get("content-type") ?? "").includes(
@@ -190,7 +190,7 @@ export function gqlSubscribe<TData = unknown>(
         if (event !== "next" || dataLines.length === 0) continue;
 
         // Our own frames are always JSON. One that isn't means the stream got
-        // cut and something else's bytes landed in it — drop the frame rather
+        // cut and something else's bytes landed in it - drop the frame rather
         // than letting a raw SyntaxError reach `onError` (and a toast).
         let json: { data?: TData; errors?: { message: string }[] };
         try {
@@ -217,7 +217,7 @@ export function gqlSubscribe<TData = unknown>(
       if (isServerDisconnected()) return;
       try {
         await connect();
-        // Clean `complete` or EOF — for a status stream that should not happen
+        // Clean `complete` or EOF - for a status stream that should not happen
         // unless the project was deleted; stop trying in that case.
         if (!closed) return;
       } catch (e) {

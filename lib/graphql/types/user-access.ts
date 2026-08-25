@@ -92,7 +92,7 @@ const SetUserTeamAccessInputType = builder.inputType("SetUserTeamAccessInput", {
     teamId: t.string({ required: true }),
     roleId: t.string({ required: true }),
     granular: t.boolean({ required: true }),
-    // Ignored unless `granular` is true — the mode is the admin's choice, and a
+    // Ignored unless `granular` is true - the mode is the admin's choice, and a
     // stale grant list must not quietly apply to someone switched back to Role.
     grants: t.field({ type: [NodeGrantInputType], required: false }),
   }),

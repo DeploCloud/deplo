@@ -8,8 +8,8 @@
 export type GapSpan = [startTs: number, endTs: number];
 
 /**
- * The spacing above which a hole is a FAILURE rather than ordinary cadence jitter
- * — the single threshold the charts, the line segmenter and the bands all share.
+ * The spacing above which a hole is a FAILURE rather than ordinary cadence jitter -
+ * the single threshold the charts, the line segmenter and the bands all share.
  */
 export const GAP_MS = 22_500;
 

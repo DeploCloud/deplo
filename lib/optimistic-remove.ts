@@ -3,7 +3,7 @@
  * hiding, and what a list looks like without them.
  */
 
-/** "Nothing is hidden" — one shared reference, so it compares equal to itself. */
+/** "Nothing is hidden" - one shared reference, so it compares equal to itself. */
 export const NOTHING_REMOVED: ReadonlySet<string> = new Set<string>();
 
 /**
@@ -35,7 +35,7 @@ export function childKey(child: { key?: string | null }): string {
 }
 
 /**
- * The list without the hidden keys — and the list ITSELF when nothing is hidden,
+ * The list without the hidden keys, and the list ITSELF when nothing is hidden,
  * so the steady state never hands the memos downstream (facets, filter counts) a
  * freshly allocated copy of an unchanged list.
  */

@@ -116,7 +116,7 @@ const DIAGNOSTICS: McpToolDef[] = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Apps — read
+ * Apps - read
  * ------------------------------------------------------------------ */
 
 const APP_FIELDS = /* GraphQL */ `
@@ -313,7 +313,7 @@ const APPS_READ: McpToolDef[] = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Apps — operate
+ * Apps - operate
  * ------------------------------------------------------------------ */
 
 const APPS_OPS: McpToolDef[] = [
@@ -349,7 +349,7 @@ const APPS_OPS: McpToolDef[] = [
     name: "rollback_deployment",
     title: "Roll back to a deployment",
     description:
-      "Put the app back on a previous deployment's image. No rebuild — it re-runs what already shipped.",
+      "Put the app back on a previous deployment's image. No rebuild - it re-runs what already shipped.",
     group: "Apps",
     requires: "rollback_apps",
     destructive: true,
@@ -478,7 +478,7 @@ const APPS_OPS: McpToolDef[] = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Apps — configure & delete
+ * Apps - configure & delete
  * ------------------------------------------------------------------ */
 
 const APPS_CONFIG: McpToolDef[] = [
@@ -686,7 +686,7 @@ const APPS_CONFIG: McpToolDef[] = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Environment variables — masked reads only
+ * Environment variables - masked reads only
  * ------------------------------------------------------------------ */
 
 const ENV: McpToolDef[] = [
@@ -694,7 +694,7 @@ const ENV: McpToolDef[] = [
     name: "list_env",
     title: "List environment variables",
     description:
-      "An app's variables. Secret values are masked and there is no way to reveal them over MCP — read the key names, not the values.",
+      "An app's variables. Secret values are masked and there is no way to reveal them over MCP - read the key names, not the values.",
     group: "Environment",
     // `manage_env`, not `view`: `listEnv` answers an empty list to anyone without it
     // rather than throwing, so listing this tool for a `view`-only token would hand the
@@ -1045,7 +1045,7 @@ const DATABASES: McpToolDef[] = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Logs — not GraphQL: see lib/data/logs-snapshot.ts
+ * Logs, not GraphQL: see lib/data/logs-snapshot.ts
  * ------------------------------------------------------------------ */
 
 const LOGS: McpToolDef[] = [
@@ -1625,7 +1625,7 @@ const ORGANIZATION: McpToolDef[] = [
     title: "Move an app into a folder",
     description:
       "Move an app into a folder, or to the top level with no folderId. Within " +
-      "one team — to move it to a DIFFERENT team use transfer_app_to_team.",
+      "one team - to move it to a DIFFERENT team use transfer_app_to_team.",
     group: "Organization",
     requires: "move_apps",
     idempotent: true,
@@ -1642,7 +1642,7 @@ const ORGANIZATION: McpToolDef[] = [
     description:
       "Move an app, with everything it owns, to another team this connection " +
       "was granted. Needs to manage apps AND environment variables on both " +
-      "sides — the app carries its encrypted variables across, so anyone moving " +
+      "sides - the app carries its encrypted variables across, so anyone moving " +
       "it has to be allowed to read them where it lands. Use `team` to say which " +
       "team the app is in now, and teamId for where it goes.",
     group: "Organization",
@@ -1718,7 +1718,7 @@ const TEAM: McpToolDef[] = [
     description:
       "Teams this connection may work in. Pass `team` on any tool to work in one " +
       "of them; without it, tools use the first. A team that is not on this list " +
-      "was not granted and is refused — it is granted when the connection is " +
+      "was not granted and is refused - it is granted when the connection is " +
       "approved, not from a setting anywhere.",
     group: "Team",
     requires: null,
@@ -1809,7 +1809,7 @@ const FILES: McpToolDef[] = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Servers — read for everyone, writes for instance admins
+ * Servers - read for everyone, writes for instance admins
  * ------------------------------------------------------------------ */
 
 const SERVER_FIELDS = /* GraphQL */ `
@@ -1987,7 +1987,7 @@ const SERVERS: McpToolDef[] = [
 
 /**
  * Every tool, in the order the settings page groups them. The env layers have no
- * reveal left to withhold — a secret variable has no read-back path at all.
+ * reveal left to withhold - a secret variable has no read-back path at all.
  */
 export const MCP_TOOLS: McpToolDef[] = [
   ...DIAGNOSTICS,

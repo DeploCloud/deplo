@@ -2,7 +2,7 @@
 -- shared variable owned by a team, reaching apps through three sharing MODES
 -- (team-wide / environment[] / project[] whitelist) plus a per-app link. This
 -- replaces the shared-env GROUP model, environment-scoped vars, and team-global
--- vars — all three are exploded/converted into shared vars below so no app loses a
+-- vars - all three are exploded/converted into shared vars below so no app loses a
 -- variable and resolved values stay identical (see lib/deploy/env-resolve.ts).
 --
 -- This migration CREATES the new tables and backfills; the legacy tables are
@@ -61,7 +61,7 @@ CREATE INDEX "shared_env_var_apps_app_idx" ON "shared_env_var_apps" USING btree 
 -- Backfill / conversion of the three legacy shared systems. Deterministic,
 -- source-tagged ids (svar_<md5(tag:source-key)>) so the junction INSERTs recompute
 -- the same id and join back without a random-id round-trip. tags: tg=team-global,
--- ee=environment var, sg=shared-group var-key — distinct tags prevent collisions.
+-- ee=environment var, sg=shared-group var-key - distinct tags prevent collisions.
 -- ============================================================================
 
 -- (a) team-global env var -> team-wide shared var (+ copy its targets)

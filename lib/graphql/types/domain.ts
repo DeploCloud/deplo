@@ -117,14 +117,14 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
 
-// The routing knobs a user sets when adding a domain — mirrors DomainConfig in
+// The routing knobs a user sets when adding a domain - mirrors DomainConfig in
 // the data layer. All optional; an omitted certProvider means NO certificate
-// (plain HTTP) — a cert is only registered when explicitly requested.
+// (plain HTTP) - a cert is only registered when explicitly requested.
 const DomainConfigInput = builder.inputType("DomainConfigInput", {
   description:
     "Per-domain routing config; an omitted certProvider means no certificate " +
     "(plain HTTP), unless the add-time DNS check finds the host proxied through " +
-    "Cloudflare — then it is stored as `cloudflare`.",
+    "Cloudflare, then it is stored as `cloudflare`.",
   fields: (t) => ({
     port: t.int({ required: false }),
     entrypoint: t.field({ type: DomainEntrypointEnum, required: false }),
@@ -137,7 +137,7 @@ const DomainConfigInput = builder.inputType("DomainConfigInput", {
   }),
 });
 
-// A full-domain edit — every field the Edit dialog can change. Mirrors the
+// A full-domain edit - every field the Edit dialog can change. Mirrors the
 // DomainPatch interface; each field optional so the mutation sends only what
 // changed. `port`/`entrypoint` accept null to clear an override (revert to auto).
 const DomainPatchInput = builder.inputType("DomainPatchInput", {
@@ -253,7 +253,7 @@ builder.mutationFields((t) => ({
       "domain onto the `cloudflare` provider.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      // Verifying is what flips a host to `valid` — i.e. what makes it routable
+      // Verifying is what flips a host to `valid` - i.e. what makes it routable
       // in the first place. Without the reroute the domain reports "verified"
       // while the container still carries labels that never mentioned it.
       const domain = await verifyDomain(id);

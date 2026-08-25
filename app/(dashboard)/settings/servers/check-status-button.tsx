@@ -7,7 +7,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { useServerHealth } from "./server-health-provider";
 
 /**
- * "Check status" — re-probe ONE server's agent on demand. It forces past the
+ * "Check status" - re-probe ONE server's agent on demand. It forces past the
  * ambient 15s window (a short server-side floor still applies, so a mashed button
  * can't fan out dials). behind a menu would be the wrong default.
  */
@@ -38,7 +38,7 @@ export function CheckStatusButton({
 }
 
 /**
- * "Check all" — force a fresh probe of every server (the header action, alongside
+ * "Check all" - force a fresh probe of every server (the header action, alongside
  * "Check for updates"). Distinct from the page's automatic on-load sweep, which is
  * throttled; this one the operator asked for explicitly.
  */

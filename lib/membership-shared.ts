@@ -40,7 +40,7 @@ export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
 
 /**
  * Build a preset from the coarse names it used to be, through the MIGRATION's
- * mapping — so a team that never touched its Member or Viewer role comes out of
+ * mapping, so a team that never touched its Member or Viewer role comes out of
  * the split matching its preset exactly, and reads as unmodified.
  */
 function presetOf(...legacy: string[]): Capability[] {
@@ -128,7 +128,7 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
 ];
 
 /**
- * The capabilities that may be handed out ON A SINGLE NODE — an App, a Folder or a
+ * The capabilities that may be handed out ON A SINGLE NODE - an App, a Folder or a
  * Project container (ADR-0016).
  */
 export const NODE_GRANTABLE_CAPABILITIES: Capability[] =
@@ -144,22 +144,22 @@ export const NODE_GRANTABLE_CAPABILITIES: Capability[] =
  * How one member's access compares with the role they hold: `null` when they are
  * exactly their role, which is almost everybody.
  *
- * It is the sentence the member roster and the member page both need — "why does
- * this person differ from everyone else with the same role" — and it is one
+ * It is the sentence the member roster and the member page both need - "why does
+ * this person differ from everyone else with the same role", and it is one
  * function so the tile, the header chip and the live preview while an admin
  * edits can never disagree.
  *
  * Narrower wins over wider when both are true: someone who lost `delete_apps`
  * and gained a folder is more usefully flagged by what was taken away.
  *
- * ponytail: compares TICKED node ids, not their subtrees — ticking a folder
+ * ponytail: compares TICKED node ids, not their subtrees - ticking a folder
  * inside a project the role names reads as narrower (which it is) rather than as
  * both. Compare expanded reach if that ever needs to be exact.
  */
 export function accessDelta(input: {
   /** The member's effective capability set. */
   capabilities: Capability[];
-  /** The role's effective set — what they would hold by following it. */
+  /** The role's effective set - what they would hold by following it. */
   roleCapabilities: Capability[];
   /** Their reach is the nodes they name, not the role's. */
   granular: boolean;
@@ -180,7 +180,7 @@ export function accessDelta(input: {
   const roleNodes = input.roleNodeIds;
   const wider =
     [...caps].some((c) => !roleCaps.has(c)) ||
-    // A node their role doesn't name — an admin ticked it here, or somebody
+    // A node their role doesn't name - an admin ticked it here, or somebody
     // shared it with them. An unrestricted role names everything, so nothing can
     // be beyond it.
     (roleNodes !== null && input.nodeIds.some((id) => !roleNodes.includes(id)));

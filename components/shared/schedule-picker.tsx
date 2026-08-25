@@ -36,7 +36,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const GROUPS = [...new Set(SCHEDULE_OPTIONS.map((o) => o.group))];
 
 const DEFAULT_INFO =
-  "How often this runs. Pick a frequency — the details it needs appear next to it. " +
+  "How often this runs. Pick a frequency - the details it needs appear next to it. " +
   "Writing a cron expression by hand is the last option in the list.";
 
 /* The "have we hydrated yet?" store: nothing to subscribe to, the snapshot just
@@ -47,7 +47,7 @@ const onServer = () => false;
 
 /**
  * Pick a schedule without writing cron. Writing cron by hand survives as the last
- * item in the list, under "Advanced" — reachable for the expert, never the first
+ * item in the list, under "Advanced" - reachable for the expert, never the first
  * thing a newcomer sees.
  */
 export function SchedulePicker({
@@ -65,7 +65,7 @@ export function SchedulePicker({
   value: string;
   onChange: (cron: string) => void;
   /**
-   * One more field to lay out on the SAME axis as the time of day — retention,
+   * One more field to lay out on the SAME axis as the time of day - retention,
    * in every current call site. The picker owns that row's grid, so a caller
    * can't line its own field up with the time from outside.
    */
@@ -73,7 +73,7 @@ export function SchedulePicker({
   disabled?: boolean;
   /** Prefix for the generated control ids, so labels bind in a page with two pickers. */
   id?: string;
-  /** The frequency field's own label — the picker renders it, to stay aligned with `trailing`. */
+  /** The frequency field's own label - the picker renders it, to stay aligned with `trailing`. */
   label?: React.ReactNode;
   info?: React.ReactNode;
   docs?: DocsTopic;
@@ -119,7 +119,7 @@ export function SchedulePicker({
 
   function pickMode(next: string) {
     if (next === "custom") {
-      // Keep the current expression as the starting point — switching to
+      // Keep the current expression as the starting point - switching to
       // Advanced hands the user the cron their preset produced, to tweak.
       setCustom(true);
       return;
@@ -132,7 +132,7 @@ export function SchedulePicker({
     const [h, m] = time.split(":");
     const hour = Number(h);
     const minute = Number(m);
-    // A cleared `type="time"` input reports "" — ignore it rather than emit NaN.
+    // A cleared `type="time"` input reports "" - ignore it rather than emit NaN.
     if (!Number.isInteger(hour) || !Number.isInteger(minute)) return;
     apply({ ...parts, hour, minute });
   }
@@ -172,7 +172,7 @@ export function SchedulePicker({
       <div className="space-y-2">
         <FieldLabel
           htmlFor={`${id}-day`}
-          info={`Which day of the month it runs on. Stops at ${MAX_MONTH_DAY} on purpose — a later day would silently skip the months that don't have it.`}
+          info={`Which day of the month it runs on. Stops at ${MAX_MONTH_DAY} on purpose - a later day would silently skip the months that don't have it.`}
         >
           Day of month
         </FieldLabel>
@@ -199,7 +199,7 @@ export function SchedulePicker({
     // One rhythm, matching the dialogs this sits in: gap-4 between field rows,
     // space-y-2 between a label, its control and the note that explains it.
     <div className="grid gap-4">
-      {/* Row 1 — how often, plus the day that frequency has to pin down. */}
+      {/* Row 1 - how often, plus the day that frequency has to pin down. */}
       <div className={dayField ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
         <div className="space-y-2">
           <FieldLabel htmlFor={id} info={info} docs={docs}>
@@ -229,8 +229,8 @@ export function SchedulePicker({
               </SelectGroup>
             </SelectContent>
           </Select>
-          {/* The raw expression belongs to the frequency field — it IS the
-              frequency, spelled out — so it sits in that cell, not on its own row. */}
+          {/* The raw expression belongs to the frequency field - it IS the
+              frequency, spelled out, so it sits in that cell, not on its own row. */}
           {custom && (
             <Input
               aria-label="Cron expression"
@@ -248,7 +248,7 @@ export function SchedulePicker({
       </div>
 
       {/**
-       * Row 2 — the time of day, on the same axis as whatever the caller pairs with it
+       * Row 2 - the time of day, on the same axis as whatever the caller pairs with it
        * (retention, in every current call site).
        */}
       <div className="space-y-2">
@@ -293,7 +293,7 @@ export function SchedulePicker({
           )
         ) : (
           <p className="text-xs text-destructive">
-            Not a valid cron expression. Use 5 fields — minute hour day month
+            Not a valid cron expression. Use 5 fields - minute hour day month
             weekday.
           </p>
         )}
@@ -303,7 +303,7 @@ export function SchedulePicker({
 }
 
 /**
- * A stored schedule, read back as words — the display twin of the picker.
+ * A stored schedule, read back as words - the display twin of the picker.
  */
 export function ScheduleLabel({
   cron,
@@ -322,7 +322,7 @@ export function ScheduleLabel({
   );
 }
 
-/** The next run, in the reader's own timezone — e.g. "Sat 2 Aug, 05:00". */
+/** The next run, in the reader's own timezone - e.g. "Sat 2 Aug, 05:00". */
 function formatLocal(at: Date): string {
   return new Intl.DateTimeFormat(undefined, {
     weekday: "short",

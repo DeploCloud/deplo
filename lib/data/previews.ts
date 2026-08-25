@@ -42,7 +42,7 @@ import { requireAppCapability } from "./node-access";
 import { secretImmutable } from "../types";
 
 /**
- * The gated surface for **pull request previews** — the security boundary the UI
+ * The gated surface for **pull request previews** - the security boundary the UI
  * and GraphQL go through.
  */
 
@@ -85,7 +85,7 @@ export interface AppPreviewDTO {
 /**
  * Why the Pull requests page cannot show previews, if it cannot. Resolved
  * server-side into ONE value so the page is a switch rather than a pile of
- * client-side guesses — and so a user is never left wondering why nothing builds.
+ * client-side guesses, and so a user is never left wondering why nothing builds.
  */
 export type PreviewsUnavailable =
   "not-github" | "no-installation" | "app-needs-update" | "disabled";
@@ -133,7 +133,7 @@ function toDTO(r: typeof appPreviewsTable.$inferSelect): AppPreviewDTO {
     headRepo: r.headRepo,
     isFork: r.isFork,
     // Approval is per COMMIT for a fork (see `approvePreview`), so "approved"
-    // has to mean "this head was approved" and not "something once was" — a
+    // has to mean "this head was approved" and not "something once was" - a
     // stale true is a button the UI hides on the exact push that needs it.
     approved: r.isFork
       ? Boolean(r.approvedSha) && r.approvedSha === r.headSha
@@ -150,7 +150,7 @@ function toDTO(r: typeof appPreviewsTable.$inferSelect): AppPreviewDTO {
 }
 
 /** The app, confirmed to belong to the active team. Throws like every other
- *  data-layer probe — an id from another team reads as "not found". */
+ *  data-layer probe - an id from another team reads as "not found". */
 async function ownedApp(appId: string) {
   const teamId = await requireActiveTeamId();
   const app = await loadAppGraph(appId);
@@ -336,7 +336,7 @@ export async function approvePreview(
       approvedAt: now,
       approvedSha: p.headSha,
       // Deliberately NOT `status: "queued"`. Leaving the row `blocked` is what lets
-      // `deployPreviewRow` see that it holds no slot and claim one — moving it here would
+      // `deployPreviewRow` see that it holds no slot and claim one - moving it here would
       // seat the fork without evicting anything and put the app over its own limit.
       updatedAt: now,
     })
@@ -414,7 +414,7 @@ export async function setAppPreviewSettings(
     patch.previewBaseDomain = clean || null;
   }
   if (input.maxActive !== undefined) {
-    // A cap, not a quota — bounded generously, and never clamped silently.
+    // A cap, not a quota - bounded generously, and never clamped silently.
     if (
       input.maxActive != null &&
       (input.maxActive < 1 || input.maxActive > 50)
@@ -474,7 +474,7 @@ export async function setAppPreviewSettings(
     ) {
       throw new Error("Enter a port between 1 and 65535");
     }
-    // 0 and null both mean "back to the app's build port" — a cleared number
+    // 0 and null both mean "back to the app's build port" - a cleared number
     // input sends one or the other depending on the browser.
     patch.previewPort = input.port ? input.port : null;
   }
@@ -554,7 +554,7 @@ export async function setPreviewEnvVar(
   const clean = key.trim();
   if (!ENV_KEY_RE.test(clean)) {
     throw new Error(
-      `"${clean}" is not a valid variable name — use letters, numbers and underscores, starting with a letter or underscore`,
+      `"${clean}" is not a valid variable name - use letters, numbers and underscores, starting with a letter or underscore`,
     );
   }
   // A secret override is frozen like every other secret.

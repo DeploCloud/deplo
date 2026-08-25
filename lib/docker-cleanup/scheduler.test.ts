@@ -17,7 +17,7 @@ import {
 import { runWithIdentity } from "../auth/request-context";
 
 /**
- * Scheduler-tick tests for the Docker cleanup loop — the sibling of
+ * Scheduler-tick tests for the Docker cleanup loop - the sibling of
  * `lib/backups/scheduler.test.ts`, and shaped like it: these exercise the
  * ORCHESTRATION (due selection, the exclusion list, the per-minute dedup guard,
  * the never-stack-runs check, the cross-process lease) and NOT a real `docker`
@@ -60,7 +60,7 @@ beforeEach(async () => {
 
 const NOW = new Date("2026-06-23T12:00:00Z");
 
-/** A cron that matches every minute — so "did it fire?" is about the OTHER predicates. */
+/** A cron that matches every minute, so "did it fire?" is about the OTHER predicates. */
 const EVERY_MINUTE = "* * * * *";
 /** Due at 03:00 UTC; NOW is 12:00, so `cronMatches` is false and only catch-up can fire. */
 const NOT_NOW = "0 3 * * *";
@@ -82,7 +82,7 @@ test("an enabled policy sweeps a non-excluded server", async () => {
 
   const runs = await runsFor(SERVER_1);
   assert.equal(runs.length, 1, "one cleanup run recorded for the due server");
-  // It failed (no agent on the seeded server) — but the run row is the proof that the
+  // It failed (no agent on the seeded server), but the run row is the proof that the
   // unattended executor ran end to end, with no session and no cookies.
   assert.equal(runs[0]!.status, "failed");
   assert.equal(runs[0]!.trigger, "scheduled");
@@ -135,14 +135,14 @@ test("a disabled policy never sweeps", async () => {
 test("catch-up: a server overdue by 26h sweeps even when the cron does not match", async () => {
   // The policy is due at 03:00; NOW is 12:00. Nothing here is "on time".
   await seedCleanupPolicy(db, { enabled: true, schedule: NOT_NOW });
-  // SERVER_1 was last swept 26h ago — past the 25h catch-up window, so it is OVERDUE.
+  // SERVER_1 was last swept 26h ago - past the 25h catch-up window, so it is OVERDUE.
   await seedCleanupRun(db, {
     id: "dcr_old",
     serverId: SERVER_1,
     status: "success",
     startedAt: new Date(NOW.getTime() - 26 * 60 * 60_000).toISOString(),
   });
-  // SERVER_2 was swept an hour ago — inside the window, so it is NOT overdue. This is
+  // SERVER_2 was swept an hour ago - inside the window, so it is NOT overdue. This is
   // the control: without it, "it fired" would prove nothing, since a host with no runs
   // at all is overdue by construction.
   await seedCleanupRun(db, {

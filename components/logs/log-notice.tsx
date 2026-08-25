@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 export interface LogNotice {
   tone: "error" | "warn" | "muted";
   icon: typeof CircleAlert;
-  /** Spinner, pulse — whatever the banner used to animate. Optional. */
+  /** Spinner, pulse - whatever the banner used to animate. Optional. */
   iconClass?: string;
   /** The chip's own words. Short: it sits in a toolbar. */
   short: string;

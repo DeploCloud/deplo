@@ -38,7 +38,7 @@ import type { EnvTarget, SharedVar, VarAuthor } from "../types";
 import type { SharedVarEntry } from "../deploy/env-resolve";
 
 /**
- * Unified SHARED variables (ADR-0010, opt-in per ADR-0012) — one individual
+ * Unified SHARED variables (ADR-0010, opt-in per ADR-0012) - one individual
  * variable owned by a team, the replacement for shared-env groups,
  * environment-scoped vars, and team-global vars.
  */
@@ -48,7 +48,7 @@ const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 /**
  * An AVAILABILITY scope of a shared var, as seen from one app: the layer through
- * which the var is offered to it (never the layer it injects through — injection
+ * which the var is offered to it (never the layer it injects through - injection
  * is always the per-app link, ADR-0012).
  */
 export type SharedVarScope = "teamWide" | "environment" | "project";
@@ -59,7 +59,7 @@ function authorIds(vars: SharedVar[]): (string | null)[] {
 }
 
 /**
- * The most SPECIFIC availability scope covering one app — what the app UI shows
+ * The most SPECIFIC availability scope covering one app - what the app UI shows
  * as the reason a var is suggested there. `null` when no scope covers the app
  * (the var is still linkable; scopes are suggestions, not gates).
  */
@@ -75,7 +75,7 @@ function scopeFor(m: {
 }
 
 /* ------------------------------------------------------------------ */
-/* Internal loader (no auth gate) — stitch a team's vars + junctions.  */
+/* Internal loader (no auth gate) - stitch a team's vars + junctions.  */
 /* ------------------------------------------------------------------ */
 
 /** Every shared var of one team, stitched with its four junction sets. */
@@ -142,7 +142,7 @@ async function loadSharedVarsForTeam(teamId: string): Promise<SharedVar[]> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Reads — gated `manage_env`, scoped to the active team.              */
+/* Reads - gated `manage_env`, scoped to the active team.              */
 /* ------------------------------------------------------------------ */
 
 export interface SharedVarDTO {
@@ -238,7 +238,7 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
       apps: v.appIds
         .map((id) => lookups.apps.get(id))
         .filter((a): a is NonNullable<typeof a> => Boolean(a)),
-      // Authorship is metadata, not value — safe alongside a masked `value`.
+      // Authorship is metadata, not value - safe alongside a masked `value`.
       createdBy: authorOf(v.createdByUserId, authors),
       updatedBy: authorOf(v.updatedByUserId, authors),
       createdAt: v.createdAt,
@@ -247,7 +247,7 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
 }
 
 /**
- * A shared var as seen from ONE app: whether the app has opted into it (`linked` —
+ * A shared var as seen from ONE app: whether the app has opted into it (`linked` -
  * the ONLY thing that makes it inject, ADR-0012), and whether an availability
  * scope offers it here (`inScope` + `scope`, the "suggested" signal the
  * Add-variable modal shows).
@@ -255,12 +255,12 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
 export interface AppSharedVarDTO {
   id: string;
   key: string;
-  /** Masked for secrets — a secret still has no reveal path here. */
+  /** Masked for secrets - a secret still has no reveal path here. */
   value: string;
   masked: boolean;
   type: "plain" | "secret";
   targets: EnvTarget[];
-  /** The app has explicitly opted in — the var injects on its next deploy. */
+  /** The app has explicitly opted in - the var injects on its next deploy. */
   linked: boolean;
   /** An availability scope (team-wide / environment / project) covers this app. */
   inScope: boolean;
@@ -326,7 +326,7 @@ export async function listSharedVarsForApp(
       const byOwnEnv =
         environmentId != null && v.environmentIds.includes(environmentId);
       const linked = v.appIds.includes(appId);
-      // A covering scope only SUGGESTS the var here — injection is the link.
+      // A covering scope only SUGGESTS the var here - injection is the link.
       const inScope = v.teamWide || byProject || byOwnEnv;
       return {
         id: v.id,
@@ -361,8 +361,8 @@ export interface AppliedSharedVarDTO {
 }
 
 /**
- * Every (app, shared var) pair that currently injects — i.e. every per-app LINK
- * (ADR-0012: only an explicit opt-in injects) — across the team: the read-only
+ * Every (app, shared var) pair that currently injects - i.e. every per-app LINK
+ * (ADR-0012: only an explicit opt-in injects) - across the team: the read-only
  * "shared" rows on the aggregate App tab.
  */
 export async function listAppliedSharedVarsByApp(): Promise<
@@ -426,11 +426,11 @@ export async function listAppliedSharedVarsByApp(): Promise<
 }
 
 /* ------------------------------------------------------------------ */
-/* Mutations — gated `manage_env`, scoped to the active team.          */
+/* Mutations - gated `manage_env`, scoped to the active team.          */
 /* ------------------------------------------------------------------ */
 
 /**
- * Whole-set replace of the targets junction — but ONLY when the caller sent a
+ * Whole-set replace of the targets junction, but ONLY when the caller sent a
  * set. `null` leaves the stored targets untouched (see `saveSharedVar`).
  */
 async function replaceTargets(
@@ -466,7 +466,7 @@ async function insertScopeChildren(
 }
 
 /**
- * Whole-set replace of the per-app links — but ONLY when the caller sent a set.
+ * Whole-set replace of the per-app links, but ONLY when the caller sent a set.
  * `undefined` leaves the junction untouched (see `saveSharedVar`'s `appIds`).
  */
 async function replaceAppLinks(
@@ -505,7 +505,7 @@ export async function saveSharedVar(input: {
   type: "plain" | "secret";
   /**
    * Omitted (the UI no longer asks): a NEW var gets every runtime; an EDIT keeps
-   * whatever targets the var already has — an edit must never widen them.
+   * whatever targets the var already has - an edit must never widen them.
    */
   targets?: EnvTarget[];
   teamWide: boolean;
@@ -525,7 +525,7 @@ export async function saveSharedVar(input: {
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
   // An omitted target set defaults to every runtime on INSERT, but on UPDATE it means
-  // "leave the stored targets alone" (null below) — the dialogs no longer ask, and
+  // "leave the stored targets alone" (null below) - the dialogs no longer ask, and
   // silently widening a legacy production-only secret would leak it into runtimes it
   // was never meant to reach.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
@@ -568,7 +568,7 @@ export async function saveSharedVar(input: {
     throw new Error("Share with at least one app, project, or the whole team");
 
   // The editor sends the MASK back unchanged when only the SCOPE changed on a
-  // secret — keep the stored value rather than encrypting the mask string. That
+  // secret - keep the stored value rather than encrypting the mask string. That
   // round-trip is the only write a secret still accepts (see the refusal below).
   const keepValue = input.value === MASK;
   let savedId = input.id ?? "";
@@ -702,7 +702,7 @@ export async function setSharedVarAppLink(
       .delete(appJunction)
       .where(and(eq(appJunction.varId, varId), eq(appJunction.appId, appId)));
   }
-  // Linking is a scope change, so it IS a modification: stamp the author too —
+  // Linking is a scope change, so it IS a modification: stamp the author too -
   // "Last modified" must never show a timestamp with nobody behind it.
   await getDb()
     .update(varsTable)
@@ -790,12 +790,12 @@ async function filterTeamApps(
 }
 
 /* ------------------------------------------------------------------ */
-/* Deploy-time loader — NO auth gate (the deploy is already authorized). */
+/* Deploy-time loader, NO auth gate (the deploy is already authorized). */
 /* ------------------------------------------------------------------ */
 
 /**
  * The shared-var entries that inject into one app for the deploy-time merge: ONLY
- * the vars the app is explicitly linked to (ADR-0012 — availability scopes never
+ * the vars the app is explicitly linked to (ADR-0012 - availability scopes never
  * inject).
  */
 export async function loadSharedVarsForApp(

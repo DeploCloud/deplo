@@ -4,7 +4,7 @@ import { listTags } from "@/lib/registry/client";
 import type { DatabaseType } from "@/lib/types";
 
 /**
- * Real, current engine versions for the database "Version" autocomplete — synced
+ * Real, current engine versions for the database "Version" autocomplete - synced
  * live from Docker Hub so the list tracks new releases (e.g. Postgres 18)
  * automatically, instead of a hardcoded list that goes stale.
  */
@@ -21,7 +21,7 @@ const HUB_REPO: Record<DatabaseType, string> = {
   clickhouse: "clickhouse/clickhouse-server",
 };
 
-// Recent, real majors per engine — the offline fallback AND a floor merged into
+// Recent, real majors per engine - the offline fallback AND a floor merged into
 // the live list so common versions are always present even when Hub returns a
 // thin batch. Keep these current; the live fetch is the real source of truth.
 const FALLBACK: Record<DatabaseType, string[]> = {
@@ -33,7 +33,7 @@ const FALLBACK: Record<DatabaseType, string[]> = {
   clickhouse: ["25.8", "25.3", "24"],
 };
 
-const TTL_MS = 6 * 60 * 60 * 1000; // 6h — engine majors change slowly.
+const TTL_MS = 6 * 60 * 60 * 1000; // 6h - engine majors change slowly.
 const cache = new Map<DatabaseType, { at: number; versions: string[] }>();
 
 function isEngine(v: string | null): v is DatabaseType {

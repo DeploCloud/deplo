@@ -37,13 +37,13 @@ export async function POST(request: Request) {
   const signature = request.headers.get("x-hub-signature-256") ?? "";
   if (!secret || !verifySignature(raw, secret, signature)) {
     // The realistic cause is DEPLO_SECRET rotating after the App was created,
-    // so the stored webhook secret can no longer be decrypted (empty) — every
+    // so the stored webhook secret can no longer be decrypted (empty) - every
     // delivery then 401s. Name it so it isn't mistaken for a GitHub problem.
     console.warn(
       `[github-webhook] 401 invalid signature for app=${app.slug}` +
         (secret
           ? ""
-          : " (stored webhook secret is empty — DEPLO_SECRET changed?)"),
+          : " (stored webhook secret is empty - DEPLO_SECRET changed?)"),
     );
     return new Response("invalid signature", { status: 401 });
   }

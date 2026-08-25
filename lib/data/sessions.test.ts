@@ -105,7 +105,7 @@ test("only the caller's own sessions are listed", async () => {
   );
 });
 
-test("expired sessions are left out — a revoke button for them would be theatre", async () => {
+test("expired sessions are left out - a revoke button for them would be theatre", async () => {
   await seedSession({ id: "live", userId: USER_1 });
   await seedSession({ id: "dead", userId: USER_1, expiresInMs: -HOUR });
   const rows = await asUser(USER_1, listMySessions);
@@ -265,8 +265,8 @@ test("the client address survives a Cloudflare-in-front-of-Traefik chain", async
 
 test("a multi-hop chain with no single-valued header degrades to no address", async () => {
   // Documented limitation rather than a bug to chase: Better Auth will not guess
-  // which hop of an untrusted chain is the client. The row is still useful — it
-  // names the device — it just cannot name the network.
+  // which hop of an untrusted chain is the client. The row is still useful - it
+  // names the device - it just cannot name the network.
   const row = await signInWith(
     authRequestHeaders(
       new Headers({

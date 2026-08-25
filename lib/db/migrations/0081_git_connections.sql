@@ -41,7 +41,7 @@ CREATE INDEX "git_connections_team_idx" ON "git_connections" ("team_id");
 --> statement-breakpoint
 -- Which connection authenticates an app's clone. NULL for a GitHub App repo
 -- (repo_installation_id carries that) and for a public repo cloned anonymously,
--- which is every pre-existing source='git' app — hence no backfill: they keep
+-- which is every pre-existing source='git' app - hence no backfill: they keep
 -- behaving exactly as before.
 --
 -- Deliberately NOT a foreign key, mirroring repo_installation_id: deleting a

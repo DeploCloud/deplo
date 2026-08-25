@@ -4,7 +4,7 @@ import { useFullBleedRoute } from "@/components/layout/shell-frame";
 
 /**
  * The body of an app's or a database's section pages. `sidecars` is whatever must
- * render either way and draws nothing — the nav publisher that puts the app's
+ * render either way and draws nothing - the nav publisher that puts the app's
  * sub-menu in the sidebar, the live-status seed.
  */
 export function DetailFrame({

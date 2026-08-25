@@ -14,7 +14,7 @@ import type { AlertMessage } from "./channels";
 
 /**
  * Browser push (BETA). The VAPID keypair identifies THIS Deplo to every browser
- * push service, so it is instance-wide — one identity per panel — and it is minted
+ * push service, so it is instance-wide, one identity per panel, and it is minted
  * lazily the first time somebody opens the notification settings.
  */
 
@@ -36,7 +36,7 @@ export interface PushSubscriptionInput {
 
 /**
  * The instance's VAPID public key, minting the pair if this is the first time.
- * Public by definition — it ships to every browser that subscribes.
+ * Public by definition - it ships to every browser that subscribes.
  */
 export async function ensureVapidKeys(): Promise<string> {
   const db = getDb();
@@ -50,7 +50,7 @@ export async function ensureVapidKeys(): Promise<string> {
   const webpush = await import("web-push");
   const keys = webpush.generateVAPIDKeys();
   const now = nowIso();
-  // Guarded by `IS NULL` so two boots that race settle on one keypair — the
+  // Guarded by `IS NULL` so two boots that race settle on one keypair - the
   // loser's read below picks up the winner's.
   await db
     .insert(instanceSettings)
@@ -215,7 +215,7 @@ export async function sendWebPushTo(
         ),
       );
 
-  // A test send with a single subscription should say that it failed — but only that.
+  // A test send with a single subscription should say that it failed, but only that.
   const firstError = results.find((r) => r.status === "rejected");
   if (subs.length === 1 && firstError && firstError.status === "rejected") {
     console.error("[deplo] web push failed:", firstError.reason);

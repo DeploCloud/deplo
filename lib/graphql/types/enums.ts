@@ -14,7 +14,7 @@ export const RoleEnum = builder.enumType("Role", {
 });
 
 /**
- * Every capability, plus the eight coarse names they replaced — kept as DEPRECATED
+ * Every capability, plus the eight coarse names they replaced - kept as DEPRECATED
  * input aliases so a script written against the old API keeps working: each still
  * expands to exactly the permissions it used to imply (`cleanCapabilities` /
  * `sanitizeCapabilities` do the expanding).
@@ -96,18 +96,18 @@ export const DomainStatusEnum = builder.enumType("DomainStatus", {
     cloudflare: {
       value: "cloudflare",
       description:
-        "Proxied through Cloudflare's orange-cloud. UNVERIFIED — treat as an " +
+        "Proxied through Cloudflare's orange-cloud. UNVERIFIED - treat as an " +
         "open question, not a success. The host resolves to Cloudflare's " +
         "anycast IPs, which are shared by every proxied domain on the internet " +
         "and mask the origin, so public DNS can show only that the domain is " +
-        "proxied — never whether Cloudflare forwards it to this app's server " +
+        "proxied, never whether Cloudflare forwards it to this app's server " +
         "or to somebody else's. The domain is routed regardless (it must be, " +
         "or a correct setup could never work), but nothing has been confirmed.",
     },
     pending: {
       value: "pending",
       description:
-        "No A record resolves yet — the normal state of a record just created. Re-checked automatically.",
+        "No A record resolves yet - the normal state of a record just created. Re-checked automatically.",
     },
     misconfigured: {
       value: "misconfigured",

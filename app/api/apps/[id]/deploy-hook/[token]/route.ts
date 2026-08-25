@@ -7,7 +7,7 @@ import { owningTeamId } from "@/lib/data/deploy-hook";
 
 /**
  * The deploy hook: `POST /api/apps/<id>/deploy-hook/<token>` deploys the app. REST
- * rather than GraphQL because a webhook sender — GitLab, a CI runner, a registry —
+ * rather than GraphQL because a webhook sender (GitLab, a CI runner, a registry)
  * posts to a URL it is given and cannot compose a query.
  */
 
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Opening the hook URL in a browser is the first thing anyone does with it, and a
- * bare 405 renders as the browser's own "this page isn't working" — which reads as
+ * bare 405 renders as the browser's own "this page isn't working", which reads as
  * "Deplo is broken", not "you used the wrong verb".
  */
 export async function GET() {
@@ -63,7 +63,7 @@ export async function POST(
       {
         error:
           refusal ||
-          "Missing or invalid API token. Send an `Authorization: Bearer deplo_…` header — create the token in Settings → API tokens.",
+          "Missing or invalid API token. Send an `Authorization: Bearer deplo_…` header - create the token in Settings → API tokens.",
       },
       { status: 401 },
     );
@@ -99,7 +99,7 @@ export async function POST(
 
   try {
     // Back onto the normal path: inside runWithIdentity the whole data layer
-    // resolves this API token's grant, so `redeploy` applies every gate — no
+    // resolves this API token's grant, so `redeploy` applies every gate - no
     // capability check is duplicated here, and none can be skipped.
     const deployment = await runWithIdentity(principal, () => redeploy(appId));
     return Response.json({
@@ -109,7 +109,7 @@ export async function POST(
       url: deployment.url || null,
     });
   } catch (e) {
-    // `redeploy` throws for a real reason the caller can act on — no
+    // `redeploy` throws for a real reason the caller can act on, no
     // `deploy_apps`, no access to the app's folder, two-factor required.
     return Response.json({ error: (e as Error).message }, { status: 403 });
   }

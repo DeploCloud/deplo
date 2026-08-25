@@ -13,7 +13,7 @@ import {
  * the save-time check run.
  */
 
-/** The stored discriminant. NEVER renamed — see the module note. */
+/** The stored discriminant. NEVER renamed - see the module note. */
 export type VolumeKind = NonNullable<VolumeMount["type"]>;
 
 /** UI order: safest and most common first, the privileged one last. */
@@ -26,12 +26,12 @@ export interface VolumeKindMeta {
   /** One line, in consequences rather than Docker nouns. Shown in the picker. */
   summary: string;
   /**
-   * "Good for …" — the recognition line. Picking a kind is otherwise a question
+   * "Good for …" - the recognition line. Picking a kind is otherwise a question
    * a non-expert cannot answer ("do I want a volume or a bind?"); naming the
    * situations turns it into one they can ("I have uploads to keep").
    */
   examples: string;
-  /** The tooltip on the kind control — the "when would I pick this" answer. */
+  /** The tooltip on the kind control - the "when would I pick this" answer. */
   tooltip: string;
   /** Label of the single source field this kind needs. */
   sourceLabel: string;
@@ -70,7 +70,7 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
     summary: "A file you write here, put inside the app",
     examples: "Good for a config file, like config.toml or nginx.conf.",
     tooltip:
-      "Write the file's contents here and deplo keeps it in this app's Files, then puts it inside the app. Edit it any time — the app picks it up on the next deploy. Best for config files.",
+      "Write the file's contents here and deplo keeps it in this app's Files, then puts it inside the app. Edit it any time - the app picks it up on the next deploy. Best for config files.",
     sourceLabel: "Path in Files",
     sourcePlaceholder: "config.toml",
     sourceTooltip:
@@ -198,7 +198,7 @@ export function normalizeFilesPath(path: string | null | undefined): string {
     .replace(/\/+$/, "");
 }
 
-/** The last segment of a path — `/srv/media` → `media`. Empty for `/`, `.`, `..`. */
+/** The last segment of a path - `/srv/media` → `media`. Empty for `/`, `.`, `..`. */
 function lastSegment(path: string): string {
   const segments = (path ?? "").trim().replace(/\/+$/, "").split("/");
   const last = segments[segments.length - 1] ?? "";
@@ -206,14 +206,14 @@ function lastSegment(path: string): string {
 }
 
 /**
- * The file name a mount path ends in — `/etc/nginx/nginx.conf` → `nginx.conf`.
+ * The file name a mount path ends in - `/etc/nginx/nginx.conf` → `nginx.conf`.
  */
 export function filesPathFromMountPath(mountPath: string): string {
   return lastSegment(mountPath);
 }
 
 /**
- * Where a row lands inside the container when the user does not say — the reason
+ * Where a row lands inside the container when the user does not say - the reason
  * "Path inside the app" is not a field you must fill.
  */
 export function derivedMountPath(
@@ -228,7 +228,7 @@ export function derivedMountPath(
       : kind === "host"
         ? lastSegment((v.hostPath ?? "").trim())
         : // As typed, NOT case-folded: a path inside a Linux container is
-          // case-sensitive, so a Volume named `Uploads` has to land on `/app/Uploads` — the
+          // case-sensitive, so a Volume named `Uploads` has to land on `/app/Uploads` - the
           // folder the code writes to.
           (v.name ?? "").trim();
   if (!rel) return "";
@@ -317,7 +317,7 @@ export function volumeProblem(
     if (p.split("/").includes(".."))
       return { field: "source", message: 'The path cannot contain ".."' };
   } else {
-    // Volume: a blank name is fine on its own — the server derives one from the
+    // Volume: a blank name is fine on its own - the server derives one from the
     // path (and the path may in turn be derived from the name, which is why the
     // "one of the two" rule lives below rather than here).
     const name = (v.name ?? "").trim().toLowerCase();
@@ -337,7 +337,7 @@ export function volumeProblem(
   const mountPath = effectiveMountPath(v, workdir);
   if (!mountPath) {
     // A Volume is the one kind whose source may be left blank, so this is where
-    // its "name it or place it" requirement lands — and with a working directory
+    // its "name it or place it" requirement lands, and with a working directory
     // to derive from, naming it is the shorter of the two.
     if (kind === "named" && workdir)
       return {
@@ -422,7 +422,7 @@ export function namedVolumeTarget(
 }
 
 /**
- * One sentence stating what this row will DO at deploy — the honest readout that
+ * One sentence stating what this row will DO at deploy - the honest readout that
  * replaces guessing from three half-filled inputs. `slug` is the app's, for the
  * on-host volume name.
  */
@@ -432,7 +432,7 @@ export function volumeReadout(
   workdir?: string | null,
 ): string {
   const kind = kindOf(v);
-  // The path it will really use — a derived one reads exactly like a typed one,
+  // The path it will really use - a derived one reads exactly like a typed one,
   // because at deploy there is no difference between them.
   const at = effectiveMountPath(v, workdir);
   const ro = v.readOnly ? " The app can read it but not change it." : "";

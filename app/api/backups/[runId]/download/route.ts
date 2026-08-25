@@ -30,7 +30,7 @@ export async function GET(
     artifact = await downloadBackupArtifact(runId);
   } catch (e) {
     // The data layer's message is the useful one ("not found", "no permission", "this
-    // backup is in an S3 bucket") — surface it verbatim, under a status that means what
+    // backup is in an S3 bucket") - surface it verbatim, under a status that means what
     // it says.
     const message = e instanceof Error ? e.message : String(e);
     return Response.json(
@@ -69,7 +69,7 @@ export async function GET(
       "Content-Type": "application/gzip",
       "Content-Disposition": `attachment; filename="${artifact.filename}"`,
       // A short stream now FAILS the download instead of saving a truncated
-      // archive that looks complete — which is the right outcome for a backup.
+      // archive that looks complete, which is the right outcome for a backup.
       ...(artifact.sizeBytes !== null
         ? { "Content-Length": String(artifact.sizeBytes) }
         : {}),

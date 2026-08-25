@@ -18,7 +18,7 @@ export interface XtermApi {
   focus: () => void;
   fit: () => { cols: number; rows: number };
   getSize: () => { cols: number; rows: number };
-  /** Everything on screen and in scrollback, as plain text — what the toolbar's
+  /** Everything on screen and in scrollback, as plain text - what the toolbar's
    *  Copy and Download hand out. Read at click time, never at render: the buffer
    *  changes on every keystroke and a snapshot prop would always be one behind. */
   getText: () => string;
@@ -59,7 +59,7 @@ export function XtermView({
 }: {
   /** Raw keystroke bytes from the terminal (control sequences included). */
   onData?: (data: string) => void;
-  /** New size after any fit — mount, container resize, font change. */
+  /** New size after any fit - mount, container resize, font change. */
   onResize?: (cols: number, rows: number) => void;
   /** Fired once, right after the terminal is open and first-fitted. */
   onReady?: (api: XtermApi) => void;
@@ -68,7 +68,7 @@ export function XtermView({
   className?: string;
 }) {
   const hostRef = React.useRef<HTMLDivElement>(null);
-  // Latest callbacks behind refs so the mount effect runs exactly once — a new
+  // Latest callbacks behind refs so the mount effect runs exactly once - a new
   // `onData` closure each render must not tear down and rebuild the terminal.
   const onDataRef = React.useRef(onData);
   const onResizeRef = React.useRef(onResize);
@@ -101,7 +101,7 @@ export function XtermView({
       try {
         fit.fit();
       } catch {
-        /* zero-sized host (not laid out yet) — the ResizeObserver refits later */
+        /* zero-sized host (not laid out yet) - the ResizeObserver refits later */
       }
       return { cols: term.cols, rows: term.rows };
     };

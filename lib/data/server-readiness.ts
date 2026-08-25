@@ -92,7 +92,7 @@ const NOT_DIALED: DialedProbe = {
 
 /**
  * Run the readiness check for ONE server and return the report. The gate lives
- * HERE, in the data layer — the GraphQL `authScopes` is the introspectable
+ * HERE, in the data layer - the GraphQL `authScopes` is the introspectable
  * contract, this is the boundary.
  */
 export async function checkServerReadiness(
@@ -149,14 +149,14 @@ export async function checkServerReadiness(
 
 /**
  * ONE dial, closed in a `finally`. The Hello is the gate: if it fails, the channel
- * is dead or untrusted and we do not keep talking to it — that single failure IS
+ * is dead or untrusted and we do not keep talking to it - that single failure IS
  * the report.
  */
 async function probeAgent(server: Server): Promise<DialedProbe> {
   let conn: AgentConnection;
   try {
     // connectAgent itself rejects for an unknown/unprovisioned/trust-revoked server. The
-    // fence above covers those, so a rejection here is a genuine dial failure — which is a
+    // fence above covers those, so a rejection here is a genuine dial failure, which is a
     // REPORT ("the agent did not answer"), never an exception thrown at the client.
     conn = await connectAgent(server.id);
   } catch (e) {
@@ -175,7 +175,7 @@ async function probeAgent(server: Server): Promise<DialedProbe> {
     try {
       hello = await conn.hello(HEALTH_HELLO_TIMEOUT_MS);
     } catch (e) {
-      // The raw error carries the PINNED FINGERPRINT and the dial address. Console only —
+      // The raw error carries the PINNED FINGERPRINT and the dial address. Console only -
       // the classifier turns the outcome into one of its curated, closed-set strings.
       console.error(`[deplo] readiness check for ${server.name}: ${String(e)}`);
       return {
@@ -202,7 +202,7 @@ async function probeAgent(server: Server): Promise<DialedProbe> {
         console.error(
           `[deplo] readiness check for ${server.name}: port/metrics phase timed out`,
         );
-        // The Hello SUCCEEDED — keep it, and every row it feeds. Only the rows this phase
+        // The Hello SUCCEEDED - keep it, and every row it feeds. Only the rows this phase
         // would have produced are unknown, and unknown is a skip.
         return null;
       }
@@ -251,7 +251,7 @@ async function probePort(
 }
 
 /**
- * Host metrics. NOT capability-preflighted — Metrics predates the feature list and `metricsFor`
+ * Host metrics. NOT capability-preflighted - Metrics predates the feature list and `metricsFor`
  * doesn't gate it either; an agent old enough to lack the flag may still answer. A failure is
  * simply "we don't know", which the classifier reports as a skipped disk row.
  */

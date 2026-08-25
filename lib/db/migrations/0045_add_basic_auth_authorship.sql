@@ -1,4 +1,4 @@
--- Authorship on HTTP Basic Auth credentials — "who set this login up, and who
+-- Authorship on HTTP Basic Auth credentials - "who set this login up, and who
 -- last rotated it". The Access page reads these to answer the one question a
 -- shared credential always raises: who put it there, and when was it last touched.
 --
@@ -8,7 +8,7 @@
 --  * Nullable. The migrator runs at boot against live self-hosted DBs whose
 --    `app_basic_auth_users` is non-empty, so a NOT NULL add would fail.
 --  * `ON DELETE SET NULL` FKs. The table is small, so the constraint's validating
---    scan is free, and deleting a user must not delete the logins they created —
+--    scan is free, and deleting a user must not delete the logins they created -
 --    that would silently drop a live basic-auth middleware.
 --  * NO BACKFILL. Naming a user as the author of a credential they may never have
 --    touched is a fabricated audit claim. Pre-existing rows keep NULL and the UI

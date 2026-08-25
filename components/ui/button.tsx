@@ -51,7 +51,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         // Read by the dialog, which repaints a secondary button so it lifts off
         // the modal's black slab.
         data-variant={variant ?? "default"}
-        // A bare <button> inside a <form> defaults to type="submit" — which would turn
+        // A bare <button> inside a <form> defaults to type="submit", which would turn
         // every Cancel/secondary button in a dialog form into an accidental submit.
         {...(asChild ? (type ? { type } : {}) : { type: type ?? "button" })}
         {...props}

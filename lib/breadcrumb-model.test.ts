@@ -162,7 +162,7 @@ test("nested folder app: Overview → folder → folder → app", () => {
 test("folder crumbs mark the next node current and list children", () => {
   const segs = svc("/apps/web")!;
   const alpha = segs[1];
-  // Alpha offers subfolder Beta (current — the next crumb) + its own app Root.
+  // Alpha offers subfolder Beta (current - the next crumb) + its own app Root.
   assert.deepEqual(
     alpha.items.map((i) => [i.kind, i.label, i.current]),
     [
@@ -225,7 +225,7 @@ test("app entries carry the app's logo, wherever they are listed", () => {
   );
   const root = overview(null, null, "grid", g)![0];
   assert.equal(root.items.find((i) => i.label === "Loose")!.logo, null);
-  // Folders and projects have no logo of their own — the field stays absent.
+  // Folders and projects have no logo of their own - the field stays absent.
   assert.equal(root.items.find((i) => i.kind === "folder")!.logo, undefined);
   assert.equal(root.items.find((i) => i.kind === "project")!.logo, undefined);
 });

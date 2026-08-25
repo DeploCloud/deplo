@@ -3,9 +3,9 @@
 -- (data loss). Tables, project_id columns, indexes, and the backups XOR CHECK
 -- body + its stored 'project' target-kind values all migrate. IDs (prj_...) are
 -- opaque and stay on the Service rows (no value rewrite). The agent wire
--- (deplo.project=<id> label, deplo-<slug> stack naming) is deliberately UNCHANGED
--- — it carries the Service id. FK/PK constraint names are left as-is (functional;
--- reconciled with the drizzle snapshot in a follow-up) — nothing reads them.
+-- (deplo.project=<id> label, deplo-<slug> stack naming) is deliberately UNCHANGED -
+-- it carries the Service id. FK/PK constraint names are left as-is (functional;
+-- reconciled with the drizzle snapshot in a follow-up), nothing reads them.
 
 -- Tables -----------------------------------------------------------------
 ALTER TABLE "projects" RENAME TO "services";--> statement-breakpoint

@@ -17,7 +17,7 @@ import {
 import type { GithubPullRequestSummary } from "@/lib/github/app";
 
 /* ------------------------------------------------------------------ */
-/* Object types — pull request previews (ADR-0014)                     */
+/* Object types - pull request previews (ADR-0014)                     */
 /* ------------------------------------------------------------------ */
 
 export const AppPreviewRef = builder
@@ -245,7 +245,7 @@ builder.mutationFields((t) => ({
     authScopes: deployScope,
     description:
       "Build a preview for a specific open pull request. Also approves it when " +
-      "it comes from a fork — clicking this IS the approval.",
+      "it comes from a fork - clicking this IS the approval.",
     args: {
       appId: t.arg.id({ required: true }),
       prNumber: t.arg.int({ required: true }),

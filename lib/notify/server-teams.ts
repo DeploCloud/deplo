@@ -40,7 +40,7 @@ async function teamsWithWorkloads(serverId: string): Promise<string[]> {
 /**
  * The teams an alert about `serverId` should reach.
  *
- * Whoever runs something on the host, and — when nobody does yet — whoever was
+ * Whoever runs something on the host, and, when nobody does yet, whoever was
  * explicitly granted it. A server added five minutes ago that falls over
  * mid-setup is exactly when a new user needs telling, so an empty answer falls
  * back to the first team, the same last resort the activity log takes.
@@ -69,7 +69,7 @@ export async function allTeamIds(): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-/** The oldest team — the last resort when an event belongs to nobody in particular. */
+/** The oldest team - the last resort when an event belongs to nobody in particular. */
 async function firstTeamId(): Promise<string[]> {
   const rows = await getDb()
     .select({ id: teamsTable.id })

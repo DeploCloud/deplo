@@ -22,7 +22,7 @@ import type {
 } from "../types";
 
 /**
- * INSTANCE-global environment variables — variables injected into every app of
+ * INSTANCE-global environment variables - variables injected into every app of
  * every team, managed by an instance admin (gated instance admin).
  */
 
@@ -77,7 +77,7 @@ function toDTO(
     masked: isSecret,
     targets: e.targets,
     type: e.type,
-    // Authorship is metadata, not value — safe alongside a masked `value`.
+    // Authorship is metadata, not value - safe alongside a masked `value`.
     createdBy: authorOf(e.createdByUserId, authors),
     updatedBy: authorOf(e.updatedByUserId, authors),
     createdAt: e.createdAt,
@@ -86,7 +86,7 @@ function toDTO(
 }
 
 /* ------------------------------------------------------------------ */
-/* Internal loaders (no auth gate) — reads for display + deploy.       */
+/* Internal loaders (no auth gate) - reads for display + deploy.       */
 /* ------------------------------------------------------------------ */
 
 async function loadInstanceVars(): Promise<GlobalEnvVar[]> {
@@ -105,7 +105,7 @@ async function loadInstanceVars(): Promise<GlobalEnvVar[]> {
   return assemble(vars, targets);
 }
 
-/** Still-encrypted entry the deploy merge consumes (no appId — applies to all). */
+/** Still-encrypted entry the deploy merge consumes (no appId - applies to all). */
 export interface GlobalEnvEntry {
   key: string;
   valueEnc: string;
@@ -118,7 +118,7 @@ export interface GlobalEnvEntry {
 
 /**
  * The instance-global entries that apply to every app, for the deploy-time merge.
- * NO auth gate — it runs inside the deploy engine, which has already authorized
+ * NO auth gate - it runs inside the deploy engine, which has already authorized
  * the deploy.
  */
 export async function loadInstanceEnv(): Promise<GlobalEnvEntry[]> {
@@ -132,7 +132,7 @@ export async function loadInstanceEnv(): Promise<GlobalEnvEntry[]> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Instance-global CRUD — gated instance admin (affects every team).  */
+/* Instance-global CRUD - gated instance admin (affects every team).  */
 /* ------------------------------------------------------------------ */
 
 export async function listInstanceEnv(): Promise<GlobalEnvVarDTO[]> {
@@ -150,7 +150,7 @@ export async function upsertInstanceEnv(input: {
   value: string;
   /**
    * Omitted (the UI no longer asks): a NEW var gets every runtime; an EDIT keeps
-   * whatever targets the var already has — an edit must never widen them.
+   * whatever targets the var already has - an edit must never widen them.
    */
   targets?: EnvTarget[];
   type: "plain" | "secret";
@@ -184,7 +184,7 @@ export async function upsertInstanceEnv(input: {
           updatedAt: nowIso(),
         })
         .where(eq(instVars.id, id));
-      // Whole-set replace of the targets junction — only when the caller sent one.
+      // Whole-set replace of the targets junction - only when the caller sent one.
       if (targets) {
         await tx.delete(instTargets).where(eq(instTargets.envVarId, id));
         await tx

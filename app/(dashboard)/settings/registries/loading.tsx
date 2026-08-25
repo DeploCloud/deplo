@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Mirrors `RegistriesPanel`: the header with its Add button, then the card grid —
+ * Mirrors `RegistriesPanel`: the header with its Add button, then the card grid -
  * the same fallback the Git settings page uses, because it is now the same page
  * shape.
  */

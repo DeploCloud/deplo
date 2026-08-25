@@ -18,7 +18,7 @@ import { clearNodeGrants } from "./user-access";
 import { stepUpCode, stepUpPassword } from "./two-factor";
 
 /**
- * Handing a TEAM to somebody else — the team-level twin of {@link
+ * Handing a TEAM to somebody else - the team-level twin of {@link
  * transferInstanceOwner} (lib/data/instance-owner.ts), and the only thing that
  * ever writes `teams.founder_user_id` after the team is created.
  */

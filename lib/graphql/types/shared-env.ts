@@ -99,7 +99,7 @@ const AppSharedVarRef = builder
   .implement({
     description:
       "A shared variable as seen from one app. `linked` is the explicit opt-in " +
-      "(the only thing that injects — ADR-0012); `inScope`/`scope` say whether an " +
+      "(the only thing that injects - ADR-0012); `inScope`/`scope` say whether an " +
       "availability scope suggests it here.",
     fields: (t) => ({
       id: t.exposeID("id"),
@@ -111,7 +111,7 @@ const AppSharedVarRef = builder
       type: t.field({ type: EnvVarTypeEnum, resolve: (v) => v.type }),
       targets: t.field({ type: [EnvTargetEnum], resolve: (v) => v.targets }),
       linked: t.exposeBoolean("linked", {
-        description: "The app opted in — the var injects on its next deploy.",
+        description: "The app opted in - the var injects on its next deploy.",
       }),
       inScope: t.exposeBoolean("inScope", {
         description:
@@ -155,7 +155,7 @@ const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
       required: false,
       description:
         "The per-app links, as a whole set. OMIT to leave the existing links " +
-        "untouched — that is what preserves setSharedVarAppLink's app-side toggle.",
+        "untouched - that is what preserves setSharedVarAppLink's app-side toggle.",
     }),
   }),
 });
@@ -204,7 +204,7 @@ builder.mutationFields((t) => ({
         projectIds: input.projectIds,
         appIds: input.appIds ?? undefined,
       });
-      // Reload by the id the data fn minted — matching by key would be ambiguous
+      // Reload by the id the data fn minted - matching by key would be ambiguous
       // (keys are deliberately NOT unique per team; a key repeats across scopes).
       const saved = (await listSharedVars()).find((v) => v.id === id);
       if (!saved) throw new Error("Shared variable not found");

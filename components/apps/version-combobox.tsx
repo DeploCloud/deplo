@@ -40,7 +40,7 @@ export function VersionCombobox({
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const loadedRef = React.useRef(false);
 
-  // Fetch the suggestion list once, on first focus (lazy — no call until opened).
+  // Fetch the suggestion list once, on first focus (lazy - no call until opened).
   const runLoad = React.useCallback(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;

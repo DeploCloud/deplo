@@ -124,7 +124,7 @@ test("an app with nothing buffered yet reads offline, never a fabricated zero-sa
   assert.equal(
     m.online,
     false,
-    "no frame has arrived — that is an honest 'no data'",
+    "no frame has arrived - that is an honest 'no data'",
   );
   assert.deepEqual(m.instances, []);
 });
@@ -137,7 +137,7 @@ test("getDatabaseMetrics serves the buffer the same way", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Team scoping — the only boundary left on an unscoped RAM buffer     */
+/* Team scoping - the only boundary left on an unscoped RAM buffer     */
 /* ------------------------------------------------------------------ */
 
 test("getAppMetrics is team-scoped: a cross-team id gets NOTHING, buffer or not", async () => {

@@ -25,11 +25,11 @@ export function AppControls({
   const router = useRouter();
   const [, startTransition] = React.useTransition();
   // Live status (subscription) takes precedence over the server-rendered value so the
-  // button reflects start/stop/deploy in real time — and the "Stopping" label is
+  // button reflects start/stop/deploy in real time, and the "Stopping" label is
   // driven by the persisted "stopping" status, so it survives reload and every viewer
   const status = useLiveStatus(serverStatus);
   // Nothing has ever been built for this app, so there is no container to start, stop
-  // or reroute — every control here would dial the host for a stack that is not
+  // or reroute - every control here would dial the host for a stack that is not
   // there.
   const neverDeployed = useNeverDeployed();
   // Start / Stop / Reload are all one permission. Without it every button here
@@ -82,7 +82,7 @@ export function AppControls({
             ? "Routing reloaded"
             : status === "unchanged"
               ? "Already up to date"
-              : "Saved — applies on the next deploy",
+              : "Saved - applies on the next deploy",
         );
         router.refresh();
       } finally {
@@ -165,7 +165,7 @@ export function AppControls({
           </Button>
         </SimpleTooltip>
       )}
-      <SimpleTooltip content="Re-apply domains and basic auth to the running container — no rebuild">
+      <SimpleTooltip content="Re-apply domains and basic auth to the running container, no rebuild">
         <Button
           variant="outline"
           size="sm"

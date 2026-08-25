@@ -58,7 +58,7 @@ builder.queryFields((t) => ({
     type: [GlobalEnvVarRef],
     authScopes: { instanceAdmin: true },
     description:
-      "Instance-wide env vars — injected into every app of every team. Instance admin only.",
+      "Instance-wide env vars - injected into every app of every team. Instance admin only.",
     resolve: () => listInstanceEnv(),
   }),
 }));

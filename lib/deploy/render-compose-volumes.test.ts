@@ -47,7 +47,7 @@ test("PORT is injected for a built source (default) but NOT for a prebuilt image
   const built = renderCompose(base);
   assert.match(built, /PORT: "3000"/, "built source gets PORT injected");
 
-  // A prebuilt docker image is deployed as-is — it owns its own listen address,
+  // A prebuilt docker image is deployed as-is - it owns its own listen address,
   // so Deplo must not inject PORT (which would silently override e.g. an :8080
   // image onto :3000). The rest of the env is untouched.
   const image = renderCompose({ ...base, injectPort: false });
@@ -171,7 +171,7 @@ test("host bind propagation renders as an option, alongside :ro", () => {
   });
   assert.match(follows, /- \/srv\/neon:\/srv\/neon:rslave\n/);
 
-  // Read-only first, then propagation — one comma-separated option list.
+  // Read-only first, then propagation - one comma-separated option list.
   const both = renderCompose({
     ...base,
     volumes: [

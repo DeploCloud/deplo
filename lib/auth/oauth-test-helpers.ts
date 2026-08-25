@@ -16,7 +16,7 @@ function base(): string {
 
 /**
  * Every POST carries `Origin`, because Better Auth refuses a cookie-carrying POST
- * without one (`MISSING_OR_NULL_ORIGIN`) — the browser-side CSRF defence.
+ * without one (`MISSING_OR_NULL_ORIGIN`) - the browser-side CSRF defence.
  */
 function call(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
@@ -43,7 +43,7 @@ export interface RegisteredClient {
  */
 export const REGISTRATION_CREATED = 201;
 
-/** RFC 7591 dynamic registration, unauthenticated — the claude.ai path. */
+/** RFC 7591 dynamic registration, unauthenticated - the claude.ai path. */
 export async function registerClient(
   overrides: Record<string, unknown> = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {

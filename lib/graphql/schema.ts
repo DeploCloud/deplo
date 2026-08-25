@@ -3,7 +3,7 @@ import "server-only";
 import { builder } from "./builder";
 
 // Import every domain module for its side effect of registering types,
-// queries and mutations on the shared builder. Order is irrelevant — Pothos
+// queries and mutations on the shared builder. Order is irrelevant - Pothos
 // resolves refs lazily at build time. Keep this list alphabetical.
 import "./types/account";
 import "./types/activity";

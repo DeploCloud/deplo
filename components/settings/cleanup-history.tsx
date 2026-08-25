@@ -25,7 +25,7 @@ const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
 };
 
 /**
- * The last sweeps, newest first — at most 3 per server (the retention cap; the
+ * The last sweeps, newest first - at most 3 per server (the retention cap; the
  * data layer prunes anything older after every sweep, so this is the WHOLE
  * history, not a page of it).
  */
@@ -112,7 +112,7 @@ export function CleanupHistory({
                       {timeAgo(run.startedAt)}
                     </TableCell>
                     {/**
-                     * The failure verbatim — it is the agent's own message, and it is what tells an
+                     * The failure verbatim - it is the agent's own message, and it is what tells an
                      * operator whether to update the agent, provision the host, or free some disk.
                      */}
                     <TableCell className="max-w-xs">
@@ -157,7 +157,7 @@ function Elapsed({ startedAt }: { startedAt: string }) {
   );
 }
 
-/** "12 objects across 3 scopes" — the shape of a successful sweep, without the ids
+/** "12 objects across 3 scopes" - the shape of a successful sweep, without the ids
  *  (the history keeps counts, not object names). */
 function summarize(run: CleanupRunDTO): string {
   // A run in flight has no items yet, and "Nothing to reclaim" would be a lie told

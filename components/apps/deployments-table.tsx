@@ -54,10 +54,10 @@ const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID, $environment: String, $
 const CANCEL_ONE = `mutation ($id: String!) { cancelDeployment(id: $id) }`;
 
 /** In-progress deployments (queued/building) are still owned by the queue and the
- *  build job, so they can only be CANCELED — never selected for deletion. */
+ *  build job, so they can only be CANCELED, never selected for deletion. */
 const IN_PROGRESS = new Set<DeploymentStatus>(["queued", "building"]);
 
-/** Sentinel for the "no filter" option — shadcn `SelectItem` can't hold "". */
+/** Sentinel for the "no filter" option - shadcn `SelectItem` can't hold "". */
 const ALL = "__all__";
 
 /**
@@ -70,7 +70,7 @@ const ROW_NAV_EXEMPT =
   'a, button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-no-row-nav]';
 
 /** Rows rendered up front, and how many more each time the sentinel at the end of
- *  the table scrolls into view. The whole (filtered) set is already in memory —
+ *  the table scrolls into view. The whole (filtered) set is already in memory -
  *  this only bounds how much of it the DOM holds. */
 const PAGE_SIZE = 25;
 
@@ -128,7 +128,7 @@ export function searchHaystack(d: DeploymentRow): string {
  *  oldest-first is the exact reverse of the fully-ordered set. */
 type SortDir = "newest" | "oldest";
 
-/** Canonical dropdown order + labels for the Status filter — a fixed lifecycle
+/** Canonical dropdown order + labels for the Status filter - a fixed lifecycle
  *  order (not row/insertion order) so the menu reads the same on every page. */
 const STATUS_ORDER: DeploymentStatus[] = [
   "queued",
@@ -153,7 +153,7 @@ const ENV_LABELS: Record<DeploymentEnvironment, string> = {
 };
 
 /** Live status feed. Reuses the app-keyed `appStatus` stream (the one the app
- *  header/tabs already ride) — its `latestDeployment` carries the in-flight
+ *  header/tabs already ride) - its `latestDeployment` carries the in-flight
  *  build's current status. */
 const DEPLOYMENT_STATUS_SUB = /* GraphQL */ `
   subscription DeploymentRowStatus($slug: String!) {
@@ -191,7 +191,7 @@ function useLiveDeploymentStatuses(
     [overlay],
   );
 
-  // Distinct app slugs with an in-progress row, by EFFECTIVE status — the only apps
+  // Distinct app slugs with an in-progress row, by EFFECTIVE status - the only apps
   // whose deployment status can still change.
   const slugKey = React.useMemo(() => {
     const s = new Set<string>();
@@ -215,7 +215,7 @@ function useLiveDeploymentStatuses(
             next.set(dep.id, dep.status);
             return next;
           });
-          // A settled build flips its actions/selectability too — pull fresh
+          // A settled build flips its actions/selectability too - pull fresh
           // server data. Bounded: fires once, on the in-progress→terminal edge.
           if (!IN_PROGRESS.has(dep.status)) router.refresh();
         },
@@ -237,9 +237,9 @@ export interface DeploymentRow {
   /** The app's logo, shown beside its name in the App column. Only the global
    *  page passes it, since that is the only place the column exists. */
   appLogo?: string | null;
-  /** Owning server id — present on the global page (for the Server filter). */
+  /** Owning server id - present on the global page (for the Server filter). */
   serverId?: string | null;
-  /** Owning server name — present on the global page (for the Server column). */
+  /** Owning server name - present on the global page (for the Server column). */
   serverName?: string | null;
   /** The server this deploy BUILT on, when that was not the owning one. Null for
    *  the ordinary "built where it runs", which is what almost every row is. */
@@ -249,7 +249,7 @@ export interface DeploymentRow {
   commitUrl: string | null;
   /** The pull request this preview build came from, or null for production. */
   pullRequestUrl?: string | null;
-  /** Denormalized pull request number — shown next to the Preview badge. */
+  /** Denormalized pull request number - shown next to the Preview badge. */
   prNumber?: number | null;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
@@ -257,7 +257,7 @@ export interface DeploymentRow {
   createdAt: string;
   creator: string;
   /** The account behind `creator`, when there is one. Null for a webhook push
-   *  (a GitHub login, not a deplo user) — that row keeps the bare name. */
+   *  (a GitHub login, not a deplo user) - that row keeps the bare name. */
   creatorUser?: {
     name: string;
     username: string;
@@ -274,7 +274,7 @@ export interface DeploymentRow {
 }
 
 /**
- * The deployments table with multi-select DELETION. Sorting is pure ordering — it
+ * The deployments table with multi-select DELETION. Sorting is pure ordering - it
  * never changes the swept set. Only FINISHED deployments (ready/error/canceled)
  * are selectable; an in-progress one must be canceled first.
  */
@@ -290,10 +290,10 @@ export function DeploymentsTable({
 }: {
   deployments: DeploymentRow[];
   /** Title/subtitle block rendered on the left of the header row, opposite the
-   *  bulk-action buttons. Plain markup — passed straight through from the RSC page. */
+   *  bulk-action buttons. Plain markup - passed straight through from the RSC page. */
   header?: React.ReactNode;
   /** Rendered first in the header row's right-hand cluster, before the bulk
-   *  actions — an app's page puts its settings shortcut there. */
+   *  actions - an app's page puts its settings shortcut there. */
   actions?: React.ReactNode;
   /** Show the owning-app column (the global page). Off on an app's page. */
   showApp?: boolean;
@@ -301,7 +301,7 @@ export function DeploymentsTable({
   showServer?: boolean;
   /** Scope the bulk sweeps to this app; omit to scope across the whole team. */
   scopeAppId?: string;
-  /** Whether to show the delete affordances (cosmetic — server re-checks). */
+  /** Whether to show the delete affordances (cosmetic - server re-checks). */
   canManage: boolean;
   /** Whether the viewer holds `rollback_apps`. Its own permission, so it is its
    *  own prop: the Rollback item greys out rather than vanishing, and the data
@@ -310,7 +310,7 @@ export function DeploymentsTable({
 }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
-  // Deleted deployments leave the table on the click — one row, the selection, or a
+  // Deleted deployments leave the table on the click - one row, the selection, or a
   // whole filtered sweep.
   const {
     visible: remaining,
@@ -342,7 +342,7 @@ export function DeploymentsTable({
   // badge tracks queued → building → ready/error without a reload (both pages).
   const liveStatusOf = useLiveDeploymentStatuses(deployments);
 
-  // Distinct servers / apps present in the current rows — the filter options.
+  // Distinct servers / apps present in the current rows - the filter options.
   // Derived from ALL rows (not the filtered view) so each dropdown stays stable
   // while the other filter narrows the table.
   const serverOptions = React.useMemo(() => {
@@ -373,7 +373,7 @@ export function DeploymentsTable({
     const present = new Set(deployments.map((d) => d.environment));
     return ENV_ORDER.filter((e) => present.has(e));
   }, [deployments]);
-  // Which Created windows actually hold rows — same "auto-hide until it offers a
+  // Which Created windows actually hold rows - same "auto-hide until it offers a
   // real choice" rule as the other narrowers. Options and matching share the one
   // `now`, so the edges can't drift between the menu and the rows it filters.
   const { dateOptions, dateMatches } = React.useMemo(() => {
@@ -386,7 +386,7 @@ export function DeploymentsTable({
     return { dateOptions: options, dateMatches: matches };
   }, [deployments, now]);
 
-  // One lowercased haystack per row, rebuilt only when the rows do — so typing
+  // One lowercased haystack per row, rebuilt only when the rows do, so typing
   // re-runs a substring test, not a re-serialization of the whole history.
   const haystacks = React.useMemo(() => {
     const m = new Map<string, string>();
@@ -401,7 +401,7 @@ export function DeploymentsTable({
   );
 
   // Reconcile the chosen filters against what's still present (a refresh may have
-  // dropped the last row on a server/app). Done in render — no effect — so a
+  // dropped the last row on a server/app). Done in render, no effect, so a
   // now-empty filter simply behaves as "All" without a stale, un-clearable value.
   const effectiveServerFilter =
     serverFilter && serverOptions.some((s) => s.id === serverFilter)
@@ -428,7 +428,7 @@ export function DeploymentsTable({
     effectiveEnvFilter != null ||
     hasClientNarrower;
 
-  // The rows matching the filters — everything downstream (selection, counts, bulk
+  // The rows matching the filters - everything downstream (selection, counts, bulk
   // scope) keys off this so the buttons act on exactly what's in scope.
   const visible = React.useMemo(
     () =>
@@ -471,7 +471,7 @@ export function DeploymentsTable({
     const el = sentinelRef.current;
     if (!el || !hasMore) return;
     // rootMargin so the next batch is already in the DOM by the time the last row
-    // reaches the fold — the scroll never actually stops at the bottom.
+    // reaches the fold - the scroll never actually stops at the bottom.
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) setShown((n) => n + PAGE_SIZE);
@@ -489,7 +489,7 @@ export function DeploymentsTable({
     () => visible.filter((d) => !IN_PROGRESS.has(d.status)).map((d) => d.id),
     [visible],
   );
-  // In-progress (queued/building) deployments in the visible scope — the "Stop all
+  // In-progress (queued/building) deployments in the visible scope - the "Stop all
   // builds" targets. A live count off the current rows; the server re-derives the
   // real set (and honors folder caps) when the mutation runs.
   const inProgressCount = React.useMemo(
@@ -503,7 +503,7 @@ export function DeploymentsTable({
 
   // Keep the selection honest across refreshes and filter changes: drop ids that are
   // gone, filtered out, or no longer selectable (e.g. a row that started building).
-  // Render-time via the previous-value pattern — never cascades a re-render.
+  // Render-time via the previous-value pattern, never cascades a re-render.
   const effectiveSelected = React.useMemo(
     () => [...selected].filter((id) => selectableSet.has(id)),
     [selected, selectableSet],
@@ -552,7 +552,7 @@ export function DeploymentsTable({
       ? `${scopeWho} (${scopeQualifiers.join(", ")})`
       : scopeWho;
 
-  // Every filter change collapses the endless scroll back to one batch — otherwise
+  // Every filter change collapses the endless scroll back to one batch, otherwise
   // a narrowed list would keep rendering however deep the previous scroll had got.
   function applyServerFilter(v: string) {
     setServerFilter(v === ALL ? null : v);
@@ -596,7 +596,7 @@ export function DeploymentsTable({
   }
 
   // Whole-row navigation: clicking a row anywhere that isn't a dedicated control
-  // opens that deployment (its build logs & details) — the same destination as the
+  // opens that deployment (its build logs & details) - the same destination as the
   // row's ScrollText button and its commit-message link.
   function openDeployment(
     d: DeploymentRow,
@@ -651,7 +651,7 @@ export function DeploymentsTable({
     swept.forEach(remove);
     setSelected(new Set());
     // Search and Created narrow the view but have no sweep argument, so with
-    // either active the button deletes the ids in view instead — "Delete all"
+    // either active the button deletes the ids in view instead - "Delete all"
     // must never reach a row the filters are hiding.
     const res = hasClientNarrower
       ? await gqlAction<{ deleteDeployments: number }, number>(
@@ -727,7 +727,7 @@ export function DeploymentsTable({
   const colSpan =
     6 + (showApp ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
   // Server/App narrowers only exist on the global page (showServer); Status,
-  // Environment and Sort surface wherever the rows warrant them — the app's own
+  // Environment and Sort surface wherever the rows warrant them - the app's own
   // history included.
   const showServerFilter = showServer && serverOptions.length >= 1;
   const showAppFilter = showServer && appOptions.length >= 2;
@@ -897,7 +897,7 @@ export function DeploymentsTable({
                 className="w-[205px]"
                 aria-label="Filter by created date"
               >
-                {/* Same `flex!` trick as the sort trigger below — see the note
+                {/* Same `flex!` trick as the sort trigger below - see the note
                     there for why the plain class loses to `line-clamp-1`. */}
                 <span className="flex! items-center gap-2">
                   <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
@@ -1011,7 +1011,7 @@ export function DeploymentsTable({
                     }}
                   >
                     {canManage && (
-                      /* The checkbox cell opts out of row navigation entirely —
+                      /* The checkbox cell opts out of row navigation entirely -
                          its padding is aimed at while selecting, and a near-miss
                          must not navigate away from the selection. */
                       <TableCell data-no-row-nav>
@@ -1037,7 +1037,7 @@ export function DeploymentsTable({
                     )}
 
                     <TableCell className="max-w-[280px]">
-                      {/* The commit message is a real link to the deployment —
+                      {/* The commit message is a real link to the deployment -
                           the keyboard/screen-reader path to what the whole row
                           does on click (a <tr> can't be a link itself). */}
                       <Link
@@ -1072,7 +1072,7 @@ export function DeploymentsTable({
                     {showApp && (
                       <TableCell>
                         {/* On the global page the App name opens THIS row's build
-                            logs (its deployment detail), not the app overview —
+                            logs (its deployment detail), not the app overview -
                             the fastest path from "which build is this?" to its logs. */}
                         <SimpleTooltip content="Open this deployment's build logs">
                           <Link
@@ -1206,7 +1206,7 @@ export function DeploymentsTable({
       )}
 
       {/**
-       * Multi-select action bar — floats at the bottom-center of the viewport whenever
+       * Multi-select action bar - floats at the bottom-center of the viewport whenever
        * one or more finished deployments are checked.
        */}
       {selectedCount > 0 && (

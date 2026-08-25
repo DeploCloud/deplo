@@ -51,14 +51,14 @@ export function Breadcrumbs({
   fallback: string;
 }) {
   // The Overview drill-in lives in the query string (?folder=/?project=/?view=),
-  // which layouts don't receive — so the topbar reads it client-side.
+  // which layouts don't receive, so the topbar reads it client-side.
   const params = useSearchParams();
   const searching = Boolean(params.get("q"));
   const openFolderId = searching ? null : params.get("folder");
   const openProjectId = searching ? null : params.get("project");
   const view = params.get("view") === "list" ? "list" : "grid";
 
-  // Live per-app facts (Console/Files visibility) — null until the app
+  // Live per-app facts (Console/Files visibility) - null until the app
   // layout publishes them, so the section menus fill in after first paint. The
   // sibling/folder menus need none of this and are complete from SSR.
   const service = useAppNav();
@@ -127,7 +127,7 @@ function collapseFolders(segments: BreadcrumbSegment[]): BreadcrumbSegment[] {
     .filter((i) => i >= 0);
   if (folderIdx.length <= MAX_FOLDER_CRUMBS) return segments;
   // Folder crumbs are contiguous (root → leaf); keep the first + last, fold the
-  // rest — everything before the run (the Overview crumb) and after it is kept.
+  // rest - everything before the run (the Overview crumb) and after it is kept.
   const first = folderIdx[0];
   const last = folderIdx[folderIdx.length - 1];
   const middle = segments.slice(first + 1, last);
@@ -153,7 +153,7 @@ function Crumb({
   isCurrent,
 }: {
   segment: BreadcrumbSegment;
-  /** The last crumb — the page you're on (gets aria-current + foreground text). */
+  /** The last crumb - the page you're on (gets aria-current + foreground text). */
   isCurrent?: boolean;
 }) {
   const hasChoices = segment.items.some((i) => !i.current);
@@ -184,7 +184,7 @@ function Crumb({
   );
 }
 
-/** The collapsed "…" crumb — the whole thing is the menu trigger (no link). */
+/** The collapsed "…" crumb - the whole thing is the menu trigger (no link). */
 function EllipsisCrumb({ segment }: { segment: BreadcrumbSegment }) {
   return (
     <span className="flex items-center">
@@ -267,7 +267,7 @@ function KindIcon({
   if (kind === "database") {
     return (
       <DatabaseLogo
-        // The model keeps the engine as a plain string on purpose — a breadcrumb has no
+        // The model keeps the engine as a plain string on purpose - a breadcrumb has no
         // business owning the engine union.
         type={(dbType ?? "postgres") as DatabaseType}
         logo={logo ?? null}

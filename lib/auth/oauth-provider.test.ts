@@ -27,7 +27,7 @@ import {
 
 /**
  * deplo as an OAuth 2.1 authorization server. Everything here is driven over HTTP
- * through Better Auth's own handler, the way `lib/data/two-factor.test.ts` does —
+ * through Better Auth's own handler, the way `lib/data/two-factor.test.ts` does,
  * because the risk this file covers is a REMOTE one.
  */
 
@@ -118,7 +118,7 @@ test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly
 
   assert.ok(
     thrown,
-    "an in-process consent SUCCEEDED — re-read this test's note",
+    "an in-process consent SUCCEEDED - re-read this test's note",
   );
   assert.equal(
     thrown!.body?.error_description,
@@ -176,8 +176,8 @@ test("the signed authorization query survives Next's searchParams round trip", a
 });
 
 test("dropping the repeated keys is what broke it", async () => {
-  // The control for the test above: rebuild the way the first version did —
-  // string values only — and the consent must be REFUSED. Without this, a
+  // The control for the test above: rebuild the way the first version did -
+  // string values only, and the consent must be REFUSED. Without this, a
   // rebuild that silently stopped round-tripping would still look green.
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
@@ -508,7 +508,7 @@ test("a code redeemed against a different redirect_uri is refused", async () => 
 /* Redirects                                                           */
 /* ------------------------------------------------------------------ */
 
-test("redirect_uri must match exactly — a prefix or a sibling host is not a match", async () => {
+test("redirect_uri must match exactly - a prefix or a sibling host is not a match", async () => {
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);

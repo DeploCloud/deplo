@@ -12,7 +12,7 @@ import { publishDatabaseChanged } from "../graphql/pubsub";
 import { databaseStatusStream } from "../graphql/types/database";
 
 /**
- * SSE generator test for the databaseStatus subscription — the database twin of
+ * SSE generator test for the databaseStatus subscription - the database twin of
  * app-sse.test.ts (same contract): the generator must paint the initial snapshot
  * AND forward >1 change ping WITHOUT ever calling a cookie-reading helper
  */
@@ -44,7 +44,7 @@ test("databaseStatusStream yields the initial snapshot + multiple change pings (
 
   const gen = databaseStatusStream("db_1", TEAM_A, USER_1);
 
-  // Initial snapshot — masked DTO, no secret projected.
+  // Initial snapshot - masked DTO, no secret projected.
   const first = await gen.next();
   assert.equal(first.done, false);
   assert.equal(first.value.id, "db_1");

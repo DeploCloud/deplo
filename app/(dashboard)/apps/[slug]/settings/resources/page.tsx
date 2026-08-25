@@ -11,7 +11,7 @@ export const metadata = { title: "Resources" };
 /**
  * Resources settings: per-app caps on RAM / CPU / processes / disk. Baked into
  * the rendered compose at deploy time, so a runaway app can't starve its
- * neighbours on a shared host — no Docker knowledge required.
+ * neighbours on a shared host, no Docker knowledge required.
  */
 export default async function AppResourcesSettingsPage(
   props: PageProps<"/apps/[slug]/settings/resources">,
@@ -20,7 +20,7 @@ export default async function AppResourcesSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // A compose stack still gets limits, but per service — the form notes it.
+  // A compose stack still gets limits, but per service - the form notes it.
   const isComposeStack = usesComposeStack({
     source: project.source,
     compose: project.compose,

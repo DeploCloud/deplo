@@ -55,8 +55,8 @@ test("isInGap is strict-interior: endpoints (real samples) are not in the gap", 
 /* ------------------------------------------------------------------ */
 
 test("GAP_MS is derived from the stream cadence + the supervisor's backoff cap, and cannot drift from it", () => {
-  // Under the telemetry stream there is exactly ONE producer per host — the agent's
-  // own ticker — which removes the poll era's multi-writer arithmetic entirely.
+  // Under the telemetry stream there is exactly ONE producer per host - the agent's
+  // own ticker, which removes the poll era's multi-writer arithmetic entirely.
   const CADENCE_MS = 5_000; // STREAM_INTERVAL_MS, the cadence we ask the agent for
   const worstHealthySpacing = CADENCE_MS + RECONNECT_BACKOFF_CAP_MS;
   assert.ok(
@@ -69,7 +69,7 @@ test("GAP_MS is derived from the stream cadence + the supervisor's backoff cap, 
 });
 
 /* ------------------------------------------------------------------ */
-/* visibleGapSpans — what the chart actually bands                     */
+/* visibleGapSpans - what the chart actually bands                     */
 /* ------------------------------------------------------------------ */
 
 test("a hole fully inside the window is banded with its own endpoints", () => {
@@ -95,7 +95,7 @@ test("a hole running past the window end IS clamped to the visible part", () => 
   ]);
 });
 
-test("an off-window straggler does NOT band the plot — history just doesn't reach", () => {
+test("an off-window straggler does NOT band the plot - history just doesn't reach", () => {
   // The regression that made "No data" look random: the chart draws one sample from
   // before the window so the line can enter from the left edge.
   const t1 = 1_000_000;
@@ -129,7 +129,7 @@ test("real interior holes still band once the window reaches back to them", () =
   const t1 = 1_000_000;
   const ts = [t1 - 300_000, t1 - 295_000, t1 - 60_000, t1 - 55_000, t1];
   // The 1m window opens exactly on a sample, so the 235s hole before it is
-  // pre-history and dropped — but the 55s hole inside the window is banded.
+  // pre-history and dropped, but the 55s hole inside the window is banded.
   assert.deepEqual(visibleGapSpans(ts, GAP, t1 - 60_000, t1), [
     [t1 - 55_000, t1],
   ]);

@@ -124,7 +124,7 @@ test("upsertEnv still PROMOTES a plain var to secret", async () => {
   );
 });
 
-test("renameEnv refuses on a secret — a frozen row is frozen in its key too", async () => {
+test("renameEnv refuses on a secret - a frozen row is frozen in its key too", async () => {
   await seedSecret();
   const [row] = await as1(() => listEnv(APP));
   await assert.rejects(
@@ -167,7 +167,7 @@ test("setAppEnv leaves a secret alone whatever value arrives", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Shared variables — frozen value, but re-sharable                    */
+/* Shared variables - frozen value, but re-sharable                    */
 /* ------------------------------------------------------------------ */
 
 const sharedSecret = () =>
@@ -214,7 +214,7 @@ test("saveSharedVar refuses a value, key or type change on a secret", async () =
   assert.notEqual(v!.value, "sk_live");
 });
 
-test("but a secret can still be RE-SHARED — that never exposes it", async () => {
+test("but a secret can still be RE-SHARED - that never exposes it", async () => {
   // Changing who receives a secret neither reads it back nor could ever expose
   // it, and forbidding it would mean deleting and retyping a credential every
   // time a new app needs one.
@@ -261,7 +261,7 @@ test("upsertInstanceEnv refuses to edit a secret", async () => {
 test("setPreviewEnvVar refuses to overwrite a secret override", async () => {
   await as1(() => setPreviewEnvVar(APP, "PREVIEW_KEY", "p", "secret"));
   // The upsert here was blind and its `type` defaults to plain, so re-adding the
-  // key downgraded the row — which also strips the filter that keeps a secret out
+  // key downgraded the row, which also strips the filter that keeps a secret out
   // of a FORK's preview container.
   await assert.rejects(
     () => as1(() => setPreviewEnvVar(APP, "PREVIEW_KEY", "leaked")),

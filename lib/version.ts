@@ -64,7 +64,7 @@ export function reportedAgentVersion(server: {
 }
 
 /**
- * Resolve the agent version every server should be running — the latest agent
+ * Resolve the agent version every server should be running - the latest agent
  * GitHub release (DeploCloud/deplo-agent), cached.
  */
 export async function resolveExpectedAgentVersion(): Promise<string> {

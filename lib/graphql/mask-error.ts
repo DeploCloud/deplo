@@ -8,10 +8,10 @@ import { GraphQLError } from "graphql";
 
 /**
  * An INFRASTRUCTURE error whose message must never reach a client: a Drizzle
- * wrapper (its message embeds the raw SQL + bound params — which can include
+ * wrapper (its message embeds the raw SQL + bound params, which can include
  * secret values), a Postgres error (SQLSTATE `.code` + table/column identifiers),
  * or a Node/gRPC transport error (a string `.code` like `ECONNREFUSED` or a
- * numeric gRPC status — dial addresses, cert fingerprints).
+ * numeric gRPC status - dial addresses, cert fingerprints).
  */
 function isInternalError(e: unknown): boolean {
   if (!(e instanceof Error)) return true; // a non-Error throw is never user copy

@@ -352,7 +352,7 @@ async function snapshot(): Promise<string> {
   );
 }
 
-/** The same snapshot with one table left out — see the carve-out below. */
+/** The same snapshot with one table left out - see the carve-out below. */
 async function snapshotWithout(
   excluded: (typeof WATCHED)[number],
 ): Promise<string> {
@@ -365,7 +365,7 @@ async function snapshotWithout(
 
 /**
  * Mutations a member with NO capability may still write through, and why. Only a
- * write to the actor's OWN preferences belongs here — never anything another
+ * write to the actor's OWN preferences belongs here, never anything another
  * member, another team, or an authorization check can read.
  */
 const OWN_PREFERENCES_ONLY = ["reorderMyTeams"];

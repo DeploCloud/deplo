@@ -9,14 +9,14 @@ import { usePathname } from "next/navigation";
 
 const DEPTH_KEY = "__deploNavDepth";
 
-// Module-level singleton — survives the back links mounting/unmounting between
+// Module-level singleton - survives the back links mounting/unmounting between
 // menus and is shared by the desktop and mobile sidebars.
 let depth = 0;
 let known = false;
 let lastPath: string | null = null;
 let stack: (string | null)[] = [];
 // True while a history.go() jump is in flight, so a rapid second click can't
-// fire another jump — and walk out of the app — before the first one lands.
+// fire another jump, and walk out of the app, before the first one lands.
 let navigating = false;
 
 function readStamp(): number | undefined {
@@ -30,7 +30,7 @@ function stamp(value: number): void {
   try {
     window.history.replaceState({ ...state, [DEPTH_KEY]: value }, "");
   } catch {
-    /* replaceState can throw in rare sandboxed contexts — degrade gracefully */
+    /* replaceState can throw in rare sandboxed contexts - degrade gracefully */
   }
 }
 
@@ -52,7 +52,7 @@ function record(pathname: string): void {
   let pushed = false;
   if (stamped === undefined) {
     // No stamp: the entry point (depth 0), or a pushed entry that didn't inherit
-    // one — either way, one level deeper than where we were.
+    // one - either way, one level deeper than where we were.
     if (first) {
       next = 0;
     } else {
@@ -62,7 +62,7 @@ function record(pathname: string): void {
     stamp(next);
   } else if (first) {
     // First record onto an already-stamped entry: a reload restored this entry's
-    // depth. Earlier depths are unknown — memory was wiped.
+    // depth. Earlier depths are unknown - memory was wiped.
     next = stamped;
   } else if (stamped === prev) {
     // A pushed entry inherited the previous entry's stamp → one deeper.
@@ -91,7 +91,7 @@ function isUnder(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(prefix + "/");
 }
 
-// The app-creation funnel — pages a back link must never land on, because by then
+// The app-creation funnel - pages a back link must never land on, because by then
 // the app they exist to create already exists.
 const TRANSIENT_PREFIXES = ["/new", "/templates"];
 

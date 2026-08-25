@@ -45,8 +45,8 @@ const UA = {
 };
 
 test("headless Chrome is named, not filed under Safari", () => {
-  // `\bChrome\/` does not match "HeadlessChrome/" — no word boundary after
-  // "Headless" — so without its own entry this fell through to the Safari rule
+  // `\bChrome\/` does not match "HeadlessChrome/", no word boundary after
+  // "Headless", so without its own entry this fell through to the Safari rule
   // and a scripted client appeared as a browser nobody had opened.
   assert.equal(
     describeUserAgent(UA.headless).label,
@@ -97,7 +97,7 @@ test("ChromeOS is not reported as Linux either", () => {
 
 test("device kind separates phones from tablets from desktops", () => {
   assert.equal(describeUserAgent(UA.chromeAndroidPhone).device, "mobile");
-  // Android tablets are Android WITHOUT the "Mobile" token — the only signal.
+  // Android tablets are Android WITHOUT the "Mobile" token - the only signal.
   assert.equal(describeUserAgent(UA.chromeAndroidTablet).device, "tablet");
   assert.equal(describeUserAgent(UA.safariIpad).device, "tablet");
   assert.equal(describeUserAgent(UA.safariIphone).device, "mobile");

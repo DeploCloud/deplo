@@ -69,7 +69,7 @@ const IMPACT_QUERY = /* GraphQL */ `
 `;
 
 /**
- * Permanently delete a user account — the one irreversible action in Settings →
+ * Permanently delete a user account - the one irreversible action in Settings →
  * Users, so it opens by ASKING THE SERVER what it would actually destroy and shows
  * that instead of a generic warning.
  */
@@ -141,7 +141,7 @@ export function DeleteUserDialog({
       description={
         blocked
           ? blocked
-          : `This removes @${username}'s account for good. It can't be undone, and the person can't be restored — a suspension is the reversible option.`
+          : `This removes @${username}'s account for good. It can't be undone, and the person can't be restored - a suspension is the reversible option.`
       }
       confirmLabel="Delete account"
       // The typed username is the last gate: everything below is a checkbox, and
@@ -166,7 +166,7 @@ export function DeleteUserDialog({
           )}
           {impact && !blocked && (
             <>
-              {/* Not optional, so not a checkbox — a statement of fact, with the
+              {/* Not optional, so not a checkbox - a statement of fact, with the
                   numbers that make it concrete. */}
               {impact.soloTeams.length > 0 && (
                 <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
@@ -192,7 +192,7 @@ export function DeleteUserDialog({
                       </>
                     ) : (
                       <>
-                        Everything inside goes too —{" "}
+                        Everything inside goes too:{" "}
                         <span className="font-medium text-foreground">
                           {contentsLabel(soloApps, soloDatabases)}
                         </span>
@@ -217,7 +217,7 @@ export function DeleteUserDialog({
                 </div>
               )}
 
-              {/* The opt-ins. Each is hidden when there is nothing to act on —
+              {/* The opt-ins. Each is hidden when there is nothing to act on -
                   an empty checkbox is a question the operator can't answer. */}
               {impact.createdAppCount > 0 && (
                 <Option
@@ -311,7 +311,7 @@ export function DeleteUserDialog({
                   {impact.tokenCount > 0 && (
                     <li className="flex items-start gap-1.5">
                       <KeyRound className="mt-0.5 size-3 shrink-0" />
-                      {countLabel(impact.tokenCount, "API token")} they minted —
+                      {countLabel(impact.tokenCount, "API token")} they minted -
                       revoked immediately.
                     </li>
                   )}
@@ -374,7 +374,7 @@ export function DeleteUserDialog({
           (d) => d.deleteUser,
         );
         if (res.ok && res.data) {
-          // Report what actually went, not a generic "deleted" — the counts are
+          // Report what actually went, not a generic "deleted" - the counts are
           // the operator's only receipt for an irreversible action.
           const removed = [
             [res.data.teamsDeleted, "team"] as const,
@@ -442,14 +442,14 @@ function sum<T>(rows: T[], pick: (row: T) => number): number {
   return rows.reduce((n, r) => n + pick(r), 0);
 }
 
-/** "1 app" / "3 apps" — the count always leads, so nothing reads as "some". */
+/** "1 app" / "3 apps" - the count always leads, so nothing reads as "some". */
 function countLabel(n: number, singular: string, plural?: string): string {
   return `${n} ${n === 1 ? singular : (plural ?? `${singular}s`)}`;
 }
 
 /**
  * "2 apps and 1 database", dropping whichever side is zero and returning "" when
- * both are — "1 app and 0 databases" reads like a form, not like a warning.
+ * both are - "1 app and 0 databases" reads like a form, not like a warning.
  */
 function contentsLabel(apps: number, databases: number): string {
   const parts: string[] = [];

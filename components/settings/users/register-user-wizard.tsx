@@ -146,7 +146,7 @@ export function RegisterUserWizard({
 
   const selectedCount = Object.keys(assign).length;
   const teamFilter = teamQuery.trim().toLowerCase();
-  // Filtering only hides rows — a ticked team the query hides stays ticked, which
+  // Filtering only hides rows - a ticked team the query hides stays ticked, which
   // is why the step's subtitle carries the running count.
   const shownTeams = teamFilter
     ? teams.filter((tm) => tm.name.toLowerCase().includes(teamFilter))
@@ -203,7 +203,7 @@ export function RegisterUserWizard({
       if (res.ok && res.data) {
         setLink(res.data.link);
         // The server stamps the TTL from the same instant it answered, so a
-        // clock started here is right to the second — and it saves a round trip
+        // clock started here is right to the second, and it saves a round trip
         // just to read back the row we minted.
         setExpiresAt(new Date(Date.now() + 24 * 3_600_000).toISOString());
         setStep("link");
@@ -432,7 +432,7 @@ export function RegisterUserWizard({
                     </h2>
                     <p className="text-sm text-balance text-muted-foreground">
                       It works once and expires in 24 hours
-                      {expiresAt ? ` — ${atClock(expiresAt)}` : ""}. You can
+                      {expiresAt ? ` - ${atClock(expiresAt)}` : ""}. You can
                       copy it again from Settings &rarr; Users until then.
                     </p>
                   </div>
@@ -485,7 +485,7 @@ export function RegisterUserWizard({
                   disabled={pending || loadingTeams || !valid[step]}
                   aria-busy={pending}
                 >
-                  {/* Spinner over the label rather than a changed label — the
+                  {/* Spinner over the label rather than a changed label - the
                       button keeps its width and the footer doesn't jump. */}
                   <span className="grid place-items-center">
                     <span

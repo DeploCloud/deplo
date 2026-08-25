@@ -174,12 +174,12 @@ test("the dashboard cannot be published without a domain, a username AND a passw
       `${name} must be refused`,
     );
   }
-  // Every refusal lands before the host is contacted — an unreachable agent would
+  // Every refusal lands before the host is contacted - an unreachable agent would
   // have produced a different error, and nothing was stored.
   assert.equal((await dashboardRow()).domain, null);
 });
 
-test("a username with a colon is refused — it would split the htpasswd line", async () => {
+test("a username with a colon is refused - it would split the htpasswd line", async () => {
   await assert.rejects(
     () =>
       asAdmin(() =>
@@ -290,7 +290,7 @@ test("an alias reaches the host as its canonical name", async () => {
 });
 
 test("a real IANA zone passes validation and goes on to the host", async () => {
-  // Rejected by the unreachable agent, NOT by the validator — which is what says
+  // Rejected by the unreachable agent, NOT by the validator, which is what says
   // the name was accepted. "Europe/Rome" is the case in the UI's own copy.
   for (const good of [
     "Europe/Rome",
@@ -377,7 +377,7 @@ test("restarting workloads skips the stopped ones and never touches another serv
     !names.includes("prj_other"),
     "another server's workloads must not be touched",
   );
-  // Both kinds are covered, not just Apps — a database is a stack on this host too.
+  // Both kinds are covered, not just Apps - a database is a stack on this host too.
   assert.deepEqual(report.failures.map((f) => f.kind).sort(), [
     "app",
     "database",

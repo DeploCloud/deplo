@@ -49,7 +49,7 @@ import {
 } from "../types";
 
 /**
- * Team roles — the named capability sets a member is assigned. They can be renamed
+ * Team roles - the named capability sets a member is assigned. They can be renamed
  * and re-scoped and then reset to their shipped default; they can never be
  * deleted.
  */
@@ -70,12 +70,12 @@ export interface TeamRoleDTO {
   requireTwoFactor: boolean;
   /** How many members of the team currently hold this role. */
   memberCount: number;
-  /** A default role that no longer matches its shipped preset — offer "Reset". */
+  /** A default role that no longer matches its shipped preset - offer "Reset". */
   modified: boolean;
   /** Full access, not editable: the Owner default (see the module comment). */
   locked: boolean;
   /**
-   * What the role REACHES, or null when it reaches the whole team — which is
+   * What the role REACHES, or null when it reaches the whole team, which is
    * every role until someone limits one. Distinct from `capabilities`: that is
    * what its holders may DO, this is where.
    */
@@ -153,8 +153,8 @@ export async function ensureTeamRoles(
 
 /**
  * Point role-less memberships at the built-in of their rank when they already
- * grant exactly what it grants TODAY (the team's live role, not the shipped preset
- * — a team that re-scoped its Member role must not have strangers adopted into
+ * grant exactly what it grants TODAY (the team's live role, not the shipped preset -
+ * a team that re-scoped its Member role must not have strangers adopted into
  * it).
  */
 async function adoptMatchingMemberships(
@@ -334,7 +334,7 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
   });
 
   // Defaults in their canonical order (Owner, Member, Viewer), then the team's
-  // own roles oldest-first — the order the Roles page reads top to bottom.
+  // own roles oldest-first - the order the Roles page reads top to bottom.
   const rank = (d: TeamRoleDTO) =>
     d.builtinKey
       ? BUILTIN_ROLE_KEYS.indexOf(d.builtinKey)
@@ -344,7 +344,7 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
 
 /**
  * One role of the active team, or null when the id belongs to another team (or to
- * nothing) — the role editor page's loader.
+ * nothing) - the role editor page's loader.
  */
 export async function getRole(id: string): Promise<TeamRoleDTO | null> {
   return (await listRoles()).find((r) => r.id === id) ?? null;
@@ -367,7 +367,7 @@ export interface RoleAssignment {
 /**
  * Resolve a role id INSIDE the caller's transaction: its rank and the exact
  * capability set to write onto the membership. Throws if the id belongs to
- * another team — the cross-team id check every row-targeting write needs.
+ * another team - the cross-team id check every row-targeting write needs.
  */
 export async function roleAssignment(
   db: Db,
@@ -394,7 +394,7 @@ export async function roleAssignment(
 }
 
 /**
- * What a role's capabilities MEAN once its reach is taken into account — the set
+ * What a role's capabilities MEAN once its reach is taken into account - the set
  * that lands in `membership_capabilities`, which is what every authorization check
  * reads.
  */
@@ -507,7 +507,7 @@ async function assertTeamAdminCoverage(
   }
 }
 
-/** A role that reaches nothing left — every node it named was deleted. */
+/** A role that reaches nothing left - every node it named was deleted. */
 const EMPTY_SCOPE: ResolvedScope = {
   projectIds: [],
   environmentIds: [],
@@ -516,7 +516,7 @@ const EMPTY_SCOPE: ResolvedScope = {
 };
 
 /**
- * The scope junctions of several roles at once — three queries for a page, never
+ * The scope junctions of several roles at once - three queries for a page, never
  * one per role. Only the SCOPED ones need asking, which is none of them on a
  * team that has limited nothing.
  */
@@ -726,7 +726,7 @@ async function writeRoleScope(
 }
 
 /**
- * Re-write the effective capabilities of every member holding this role — bar the
+ * Re-write the effective capabilities of every member holding this role - bar the
  * ones whose set is their OWN (`memberships.custom_capabilities`, written by the
  * member page when an admin gave one person more or less than the role).
  */
@@ -831,7 +831,7 @@ function sanitizeCapabilities(caps: Capability[] | undefined): Capability[] {
 
 /**
  * A caller can only put capabilities they hold THEMSELVES into a role (or an API
- * token) — without it, a plain `manage_members` holder could author an
+ * token) - without it, a plain `manage_members` holder could author an
  * all-powerful role and hand it out, and a `manage_tokens` holder could mint a
  * token more powerful than themselves.
  */
@@ -973,7 +973,7 @@ export async function createRole(input: {
 
 /**
  * Rename and/or re-scope a role. Every member holding it gets the new capability
- * set in the SAME transaction — a role is what its members can do, not a preset
+ * set in the SAME transaction - a role is what its members can do, not a preset
  * that drifts away from them the moment it is edited.
  */
 export async function updateRole(input: {
@@ -1063,7 +1063,7 @@ export async function updateRole(input: {
 export async function resetRole(id: string): Promise<void> {
   const { teamId, userId, membership } =
     await requireCapability("manage_roles");
-  // A reset restores the shipped default, and no shipped default is limited — so it
+  // A reset restores the shipped default, and no shipped default is limited, so it
   // CLEARS the scope, which makes it a widening.
   if (await memberScopeFor(userId, teamId))
     throw new Error(
@@ -1075,7 +1075,7 @@ export async function resetRole(id: string): Promise<void> {
     const key = role.builtinKey as Role | null;
     if (!key)
       throw new Error(
-        "Only a default role can be reset — a custom role has no default to go back to.",
+        "Only a default role can be reset - a custom role has no default to go back to.",
       );
     const defaults = ROLE_DEFAULTS[key];
     name = defaults.name;
@@ -1118,7 +1118,7 @@ export async function resetRole(id: string): Promise<void> {
 }
 
 /**
- * Delete a custom role. Refuses while anyone still holds it — reassigning those
+ * Delete a custom role. Refuses while anyone still holds it - reassigning those
  * members is a decision, not something a delete should make silently (and the FK
  * is RESTRICT, so the database refuses too).
  */

@@ -50,7 +50,7 @@ test("resolves env, domains and mounts from a template's config", () => {
   assert.equal(env.APP_URL, "https://demo.example.com");
   assert.match(env.DB_PASSWORD, /^.{24}$/);
 
-  // Every publicly routed service, first one first — that is what `expose` is.
+  // Every publicly routed service, first one first - that is what `expose` is.
   assert.deepEqual(bp.exposes, [
     { service: "web", port: 8080, host: "demo.example.com" },
     { service: "api", port: 9000, host: "api.demo.example.com" },
@@ -102,7 +102,7 @@ test("an explicitly marked primary wins over document order", () => {
 
   // The marked entry is hoisted, the rest keep document order, and every host
   // travels with its own entry. `primary = false` marks nothing, and a SECOND
-  // marker does not take it off the first — an app has one main domain.
+  // marker does not take it off the first - an app has one main domain.
   assert.deepEqual(bp.exposes, [
     { service: "garage-webui", port: 3909, host: "web-ui.demo.example.com" },
     { service: "garage", port: 3900, host: "demo.example.com" },

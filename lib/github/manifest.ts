@@ -101,7 +101,7 @@ export async function exchangeManifestCode(
 /**
  * The signed `state` that rides both hops of the connect flow: the manifest POST
  * (GitHub echoes it to `/api/github/callback`) and the install link
- * (`installations/new?state=…`, which GitHub echoes to `/api/github/setup` —
+ * (`installations/new?state=…`, which GitHub echoes to `/api/github/setup` -
  * documented as the way to "return people back to that state after they install").
  */
 export function signConnectState(

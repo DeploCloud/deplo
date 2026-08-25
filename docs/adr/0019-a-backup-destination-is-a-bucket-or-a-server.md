@@ -4,7 +4,7 @@
 
 Until now a backup could go to exactly one kind of place: an S3-compatible
 bucket. Every open-source competitor makes the same demand, and it has the same
-consequence — someone who just wants "keep a copy of my app" has to go sign up
+consequence - someone who just wants "keep a copy of my app" has to go sign up
 for a bucket, or stand up MinIO, before the most basic safety feature works at
 all. That is infrastructure they may not have, demanded as a precondition, on a
 platform whose stated job is to use what the user already pays for
@@ -25,14 +25,14 @@ Three facts about the platform then shape every decision below:
   dump is produced, compressed and written by the agent.
 - **Agents are a star** (ADR-0006): an agent can neither dial nor trust a peer.
 - **The agent takes no host path off the wire.** `agent.proto` states it
-  ("no generic 'run this command' RPC — each verb is closed and named") and
+  ("no generic 'run this command' RPC - each verb is closed and named") and
   `internal/server/files.go` repeats it ("the root is derived agent-side from the
   slug; a root path is never taken off the wire").
 
 ## Decision
 
 **A backup destination has a `kind`: `s3` (a bucket) or `server` (a directory on
-a server in the fleet).** `s3_destination` became `backup_destination` — a
+a server in the fleet).** `s3_destination` became `backup_destination` - a
 rename, so the foreign keys from `backups` and `backup_runs` carry across and no
 data moves. `manage_s3` became `manage_backup_destinations`, with the old name
 kept as a legacy alias so an API token minted before the rename still works.
@@ -41,13 +41,13 @@ kept as a legacy alias so an API token minted before the rename still works.
 
 A team with no destinations gets one pointing at a server it can reach, lazily,
 the way `ensureTeamRoles` works. First run is where the price difference has to
-land, not a settings audit — and a backup you have to go shopping for is a
+land, not a settings audit, and a backup you have to go shopping for is a
 backup that does not exist.
 
 ### Every artifact is encrypted, and the wrap lives in the source pipeline
 
 `filippo.io/age`, one X25519 keypair per destination, encryption applied next to
-gzip in the producing agent — **not** in the store layer. That placement is the
+gzip in the producing agent, **not** in the store layer. That placement is the
 whole reason the cross-host path is safe:
 
 - The artifact is ciphertext before it leaves the host, so the control plane
@@ -65,7 +65,7 @@ already exists as an offline recovery tool on any machine.
 the `server` kind, on the reading that a bucket is the operator's own storage
 with its own at-rest encryption. That was wrong, and the reason is what an app
 archive contains: the restore has to write the real `.env` back, so the archive
-carries the app's **entire decrypted environment** — every API key, every
+carries the app's **entire decrypted environment** - every API key, every
 database password. Deplo's own model is that a secret is write-only with no
 reveal path, and the oldest destination shape was quietly exporting all of them
 to somebody else's storage in the clear. So an `s3` destination gets a keypair
@@ -75,14 +75,14 @@ Destinations created before that keep `age_recipient` NULL and keep writing
 plaintext: their existing objects already are, and the extension on each run's
 own key is what says which of the two any given artifact is. The agent gates the
 new behaviour behind a `backup-encrypt-s3` capability and the control plane
-REFUSES to run an encrypted destination against an agent without it — an agent
+REFUSES to run an encrypted destination against an agent without it - an agent
 that ignores the recipient would write plaintext under a `.age` key, and a backup
 that is quietly not encrypted is worse than one that did not run.
 
 ### An artifact is not trusted input
 
 age proves confidentiality. It does not prove authorship, and the recipient is a
-**public** key the storage host is handed on every single backup — so that host
+**public** key the storage host is handed on every single backup, so that host
 can forge an artifact that decrypts perfectly. An S3 object is weaker still:
 anyone with write access to the bucket can replace it.
 
@@ -96,20 +96,20 @@ bind mount of `/` was root on the restored host. Two changes close it:
   live config the two are identical.
 - **Every artifact carries a sha256**, recorded on the run when it is written and
   re-checked before a restore acts on it. A store artifact is a local file, so it
-  is verified UP FRONT — before the stack is stopped or a volume wiped. An S3
+  is verified UP FRONT - before the stack is stopped or a volume wiped. An S3
   object or a relayed stream can only be hashed as it goes past, so the verdict
   lands at the end, which for a project is still before anything is executed.
   `NULL` means a run older than this, and the restore surfaces that rather than
   silently skipping the check.
 
 The relay already computed this digest on both halves and threw it away,
-comparing byte counts instead — the check the protocol was designed for and the
+comparing byte counts instead - the check the protocol was designed for and the
 one that was never written.
 
 ### The recovery key is downloadable, on purpose
 
 This is the second sanctioned exception to "never add a show-secret affordance"
-(the first being the basic-auth password), and it is not a concession — it is
+(the first being the basic-auth password), and it is not a concession - it is
 what makes encryption safe to ship. If `DEPLO_SECRET` is rotated, or the control
 plane is lost in the very disaster the backups exist for, artifacts encrypted to
 a key that lives only inside Deplo are unreadable forever. So the age identity is
@@ -124,7 +124,7 @@ a key nobody has.
 The per-target folder looked like a natural delete prefix, and the sweep believed
 itself scoped to one destination. It was not: the key carries no destination
 segment, and two `server` destinations on one host with no custom path resolve to
-the **same** managed folder — so deleting one target's artifacts "in destination
+the **same** managed folder, so deleting one target's artifacts "in destination
 A" also deleted destination B's, then dropped only A's run records. That is
 precisely the orphaned-file-plus-dangling-restore-point pair the scoping existed
 to prevent, and it is not an exotic setup: the team's seeded default lives in the
@@ -139,7 +139,7 @@ it, no screen listed it, and on a server destination it was disk nobody could
 reclaim without SSH. `target_id` is written at insert and survives the delete, so
 those runs stay findable; a daily sweep on the scheduler's lease removes them
 after 30 days. Keeping the backups of a deleted app is still the default and
-still the right one — it just has an end.
+still the right one - it just has an end.
 
 ### Cross-host relays through the control plane; cross-host restore is bidi
 
@@ -156,7 +156,7 @@ stranded temp file looks like a real artifact.
 
 Which agent handles a destination is a single seam, `destinationServerId`: the
 destination's own server for a store, the workload's for S3. Getting it wrong is
-silent — retention and delete-with-artifacts would dial the app's host for an
+silent - retention and delete-with-artifacts would dial the app's host for an
 artifact living elsewhere, get "no such file", and either leak the artifact or
 block the delete forever.
 
@@ -164,7 +164,7 @@ block the delete forever.
 
 Creating the store root was gated on a "test the destination" probe, which made
 the platform's own auto-seeded default fail its first backup with _"test the
-destination first"_ — and the only thing that ran a probe required
+destination first"_, and the only thing that ran a probe required
 `manage_backup_destinations`, so a member holding `manage_backups` alone could
 not get out of it. The managed root is derived agent-side from `--stack-dir`,
 so there is nothing about it to vet: every path creates it on demand. A custom
@@ -179,7 +179,7 @@ an empty directory. Without that rule, a wire-supplied root plus a
 prefix-delete verb is a remotely-driven `rm -rf` running as root, and a typo'd
 `/var/lib/docker` would be discovered the first night retention pruned.
 
-The alternative — putting the custom path in a systemd flag — was rejected: it
+The alternative, putting the custom path in a systemd flag, was rejected: it
 would mean SSH, which the core mission forbids.
 
 ### Writes are atomic
@@ -196,7 +196,7 @@ So it reuses `resolveInside` / `normalizeRel` rather than re-deriving path
 containment. The obvious re-derivation is wrong in a way that costs everything:
 `safepath.Inside` returns the BASE on every failure path, so
 `os.RemoveAll(safepath.Inside(root, missingPrefix))` resolves to the root and
-deletes every backup on the server — and "the prefix does not exist" is the
+deletes every backup on the server, and "the prefix does not exist" is the
 ordinary case retention hits any night a target has nothing left to prune. There
 is a test named for it.
 
@@ -204,7 +204,7 @@ is a test named for it.
 
 A VPS bought purely to hold backups: agent installed, no Docker. Without explicit
 support the host would sit permanently red (the Docker readiness check is
-`fail`-severity, health returns `warning` forever) — the product would ship a
+`fail`-severity, health returns `warning` forever) - the product would ship a
 screen accusing the user's storage box of being broken for doing exactly what it
 was bought for. So `servers.storage_only` skips those two checks, drops the
 server from every deploy-target picker, and the installer skips Docker, the
@@ -222,7 +222,7 @@ address pools, Traefik and the `docker` supplementary group.
   server folders is the kind of lie someone pays for at 3am.
 - `size_bytes` for a relayed backup is the **destination's** count, cross-checked
   against the source's. A filesystem has no ETag, so what the receiving agent
-  fsynced is the only durable proof — and a backup that is quietly short is worse
+  fsynced is the only durable proof, and a backup that is quietly short is worse
   than one that failed.
 - Downloading an artifact is gated on `restore_backups`, not `manage_backups`:
   handing someone the dump gives them every byte the target holds, which is the
@@ -232,7 +232,7 @@ address pools, Traefik and the `docker` supplementary group.
   already fetch with their own credentials.
 - `manage_backup_destinations` is marked **sensitive**. It is not a settings
   chore: it hands over the recovery key, which decrypts every artifact at a
-  destination — including backups of apps the holder has no grant on. That is
+  destination, including backups of apps the holder has no grant on. That is
   strictly more reach than `restore_backups`, which was already marked.
 - Wiping a **database's** artifacts needs `delete_databases`, mirroring the
   target's own delete gate. It was `manage_backups`, a capability whose whole
@@ -249,7 +249,7 @@ address pools, Traefik and the `docker` supplementary group.
   `Accept-Ranges: none` rather than letting a download manager assume resume
   works and produce a corrupt file.
 - The relay needed read-side backpressure in `streamEvents`, which
-  `exportVolume`/`exportFiles` had silently been missing — an unbounded queue put
+  `exportVolume`/`exportFiles` had silently been missing - an unbounded queue put
   the whole transfer in the control plane's heap. Fixed once, for all three.
 
 ## Status

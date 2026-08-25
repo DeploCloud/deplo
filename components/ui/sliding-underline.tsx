@@ -87,7 +87,7 @@ export function useSlidingRect(
   return rect;
 }
 
-/** The sliding underline — absolutely positioned at the bottom of a `relative`
+/** The sliding underline - absolutely positioned at the bottom of a `relative`
  *  tab bar. Animates its x-offset and width between tabs. */
 export function SlidingUnderline({
   rect,
@@ -109,7 +109,7 @@ export function SlidingUnderline({
   );
 }
 
-/** A sliding background "pill" — sits behind the active item in a `relative
+/** A sliding background "pill" - sits behind the active item in a `relative
  *  isolate` list and translates/resizes to it. Used for the sidebar nav so the
  *  selected item's background glides between entries on navigation. */
 export function SlidingBackground({

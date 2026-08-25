@@ -23,7 +23,7 @@ export interface TargetedEnvEntry {
 
 /**
  * A GLOBAL entry (instance-wide, admin-managed). It carries no `appId` because it
- * applies to every app of every team — only its `targets` gate which runtime sees
+ * applies to every app of every team - only its `targets` gate which runtime sees
  * it.
  */
 export interface GlobalEnvEntryLike {
@@ -34,7 +34,7 @@ export interface GlobalEnvEntryLike {
 }
 
 /**
- * A shared var the app has explicitly opted into (a per-app link — ADR-0012).
+ * A shared var the app has explicitly opted into (a per-app link - ADR-0012).
  * Availability scopes (team-wide / environment / project) never inject by
  * themselves, so the loader only ever hands this module linked entries.
  */

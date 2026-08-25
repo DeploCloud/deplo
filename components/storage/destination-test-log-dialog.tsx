@@ -151,7 +151,7 @@ export function DestinationTestLogDialog({
               </Section>
               <Section
                 title="Reproduce this check"
-                hint="deplo runs it inside the server's agent — these are the same calls for a shell"
+                hint="deplo runs it inside the server's agent - these are the same calls for a shell"
               >
                 <CodeBlock code={report.command} />
               </Section>

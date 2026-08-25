@@ -42,19 +42,19 @@ import {
 } from "./container-history";
 
 /**
- * The metrics STREAM SUPERVISOR — what replaced the polling collector. Its cost
+ * The metrics STREAM SUPERVISOR - what replaced the polling collector. Its cost
  * scaled with hosts x containers x VIEWERS, which is the one axis a monitoring
  * system must not scale on: watching a thing made watching it more expensive.
  */
 
 /**
- * The reconnect backoff ceiling. Move this and you must move GAP_MS with it —
+ * The reconnect backoff ceiling. Move this and you must move GAP_MS with it -
  * `chart-gaps.test.ts` asserts the relationship so the two cannot drift apart
  * silently.
  */
 export const RECONNECT_BACKOFF_CAP_MS = 10_000;
 
-/** The cadence we ASK the agent for. It clamps to [1s, 60s] regardless — a
+/** The cadence we ASK the agent for. It clamps to [1s, 60s] regardless - a
  *  cadence is a hint, never a way for the control plane to pin a host. */
 export const STREAM_INTERVAL_MS = 5_000;
 
@@ -71,13 +71,13 @@ export const HEALTH_WRITE_MS = 8_000;
 
 /**
  * How often a healthy stream re-checks its Apps' STORED status against what the
- * host is actually reporting — the consumer for the per-container `state` the
+ * host is actually reporting - the consumer for the per-container `state` the
  * frame has been carrying unread.
  */
 export const APP_STATUS_RECONCILE_MS = 30_000;
 
 /** How often to pick up newly-registered / removed servers. Unrelated to
- *  {@link APP_STATUS_RECONCILE_MS} despite the shared value — this one paces the
+ *  {@link APP_STATUS_RECONCILE_MS} despite the shared value - this one paces the
  *  SERVER-list reconcile (`reconcileMetricsStreams`), not any per-App write. */
 const RECONCILE_MS = 30_000;
 
@@ -192,7 +192,7 @@ async function ingestFrame(
   const host = hostSampleFrom(serverId, frame, facts);
   // ABOVE the save-metrics gate, deliberately: that switch means "keep 16 minutes
   // of chart history in RAM", and turning charts off must never turn ALERTING
-  // off. Free in the steady state — a Map lookup per metric, no query.
+  // off. Free in the steady state - a Map lookup per metric, no query.
   if (host)
     checkResourceThresholds(serverId, facts.serverName || serverId, host);
   if (host && (await isMetricsSavingEnabled())) recordMetricsSample(host);
@@ -209,7 +209,7 @@ async function ingestFrame(
   for (const [projectId, stats] of byProject) {
     const agg = aggregateContainerStats(projectId, stats, ts);
     // The breakdown replaces its cell; the aggregate appends to the window. Two
-    // different lifetimes on purpose — see recordContainerInstances.
+    // different lifetimes on purpose - see recordContainerInstances.
     recordContainerInstances(projectId, agg.instances);
     recordContainerSample(toContainerSample(agg));
   }
@@ -263,7 +263,7 @@ async function runStreamLoop(
     let conn: AgentConnection | null = null;
     // Stamped once the dial succeeds; null means the failure was AT connect.
     // Stream LIFETIME against MIN_STREAM_MS is the classifier for every end
-    // path below — status codes alone cannot tell a rotation from an outage.
+    // path below - status codes alone cannot tell a rotation from an outage.
     let openedAt: number | null = null;
     // `streamMetrics` takes no AbortSignal (the RPC deadline is the agent contract's
     // only cancel), so the abort is wired to the CHANNEL instead: closing it ends the
@@ -308,14 +308,14 @@ async function runStreamLoop(
         includeContainers: true,
       })) {
         if (signal.aborted || state.stopping) break;
-        // A received frame is the proof the stream is genuinely up — only now
+        // A received frame is the proof the stream is genuinely up - only now
         // does the reconnect backoff reset. Resetting at connect let a stream
         // that dies straight after the dial zero it and re-dial hot forever.
         attempt = 0;
 
         const byProject = await ingestFrame(serverId, frame, facts);
 
-        // Health heartbeat, throttled — see HEALTH_WRITE_MS. A received frame IS
+        // Health heartbeat, throttled - see HEALTH_WRITE_MS. A received frame IS
         // proof of reachability, so this replaces a dial rather than adding one.
         const now = Date.now();
         if (now - lastHealthWriteAt >= HEALTH_WRITE_MS) {
@@ -327,7 +327,7 @@ async function runStreamLoop(
           );
         }
 
-        // Status reconcile, on its own much slower clock — see APP_STATUS_RECONCILE_MS.
+        // Status reconcile, on its own much slower clock - see APP_STATUS_RECONCILE_MS.
         if (now - lastStatusReconcileAt >= APP_STATUS_RECONCILE_MS) {
           lastStatusReconcileAt = now;
           await reconcileAppStatusFromTelemetry(serverId, byProject);
@@ -335,7 +335,7 @@ async function runStreamLoop(
       }
 
       // A clean end at full lifetime is the deadline rotation (or a shutdown). Reconnect
-      // at once: no backoff, no health write, ~100ms of gap — two orders of magnitude
+      // at once: no backoff, no health write, ~100ms of gap - two orders of magnitude
       // under GAP_MS, so it never draws a band.
       if (
         !signal.aborted &&
@@ -348,11 +348,11 @@ async function runStreamLoop(
       }
     } catch (e) {
       // Aborted mid-flight (the server was removed, or shutdown): the channel we
-      // closed surfaces as a transport error — a teardown, not a health event.
+      // closed surfaces as a transport error - a teardown, not a health event.
       if (signal.aborted || state.stopping) return;
 
       if (e instanceof AgentMetricsStreamUnsupportedError) {
-        // Not a failure — this one server's agent predates the stream. Demote it
+        // Not a failure - this one server's agent predates the stream. Demote it
         // alone and keep the rest of the fleet streaming.
         conn?.close();
         await runPollLoop(serverId, signal);
@@ -369,7 +369,7 @@ async function runStreamLoop(
 
       if (!rotation) {
         // A real failure. Record it once, then back off. Deliberately do NOT
-        // record health on every retry — a host down for an hour would otherwise
+        // record health on every retry - a host down for an hour would otherwise
         // write once per backoff step forever.
         if (attempt === 0) {
           await recordServerHealth(
@@ -423,7 +423,7 @@ async function runPollLoop(
 /* ------------------------------------------------------------------ */
 
 /** Start a loop for every provisioned server, stop loops for servers that went
- *  away. Idempotent — safe to call on a timer. */
+ *  away. Idempotent - safe to call on a timer. */
 export async function reconcileMetricsStreams(): Promise<void> {
   if (state.stopping) return;
   let servers: Awaited<ReturnType<typeof listAllServers>>;
@@ -466,7 +466,7 @@ export async function reconcileMetricsStreams(): Promise<void> {
   }
 
   // The PRUNE half of the RAM buffers' lifecycle, on the same 30s tick: only DELETION
-  // forgets a resource's window (absence from a frame never does — see
+  // forgets a resource's window (absence from a frame never does - see
   // container-history.ts), and this is where deletion becomes visible.
   pruneMetricsHistoryTo(new Set(servers.map((s) => s.id)));
   try {
@@ -490,7 +490,7 @@ export function startMetricsStreams(): void {
 
   if (forcePollMode()) {
     console.warn(
-      "[deplo] DEPLO_MONITORING_FORCE_POLL=1 — telemetry streams disabled, polling every server",
+      "[deplo] DEPLO_MONITORING_FORCE_POLL=1 - telemetry streams disabled, polling every server",
     );
   }
 

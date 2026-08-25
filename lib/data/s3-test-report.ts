@@ -2,13 +2,13 @@ import type { DestinationKind, LogLevel, S3Provider } from "../types";
 
 /**
  * The "Test connection" report for a backup destination: what deplo probed, in
- * order, and what came back — the debug output behind the badge.
+ * order, and what came back - the debug output behind the badge.
  */
 
 /**
  * One step of the fixed probe sequence the agent performs. `client` / `bucket`
  * belong to the S3 probe, `root` to the folder probe; `agent`, `write` and
- * `cleanup` are shared (with different wording — see LABEL/DETAIL below).
+ * `cleanup` are shared (with different wording - see LABEL/DETAIL below).
  */
 export type S3TestStepKey =
   "agent" | "client" | "bucket" | "root" | "write" | "cleanup";
@@ -66,13 +66,13 @@ export interface S3TestTarget {
   name: string;
   kind: DestinationKind;
   provider: S3Provider;
-  /** As stored — may or may not carry a scheme. */
+  /** As stored - may or may not carry a scheme. */
   endpoint: string;
   region: string;
   bucket: string;
   /**
    * `server` kind: the folder on that host, resolved by the last check or as
-   * configured. Empty until the first check on a managed root — the agent picks
+   * configured. Empty until the first check on a managed root - the agent picks
    * that path, so deplo genuinely does not know it yet and must not invent one.
    */
   path: string;
@@ -160,7 +160,7 @@ export function buildS3TestReport(opts: {
   startedAt: string;
   durationMs: number;
   serverName: string;
-  /** `<server> — <why it was skipped>`, in the order they were tried. */
+  /** `<server> - <why it was skipped>`, in the order they were tried. */
   agentAttempts?: string[];
 }): S3TestReport {
   const { target, ok, error, startedAt, durationMs, serverName } = opts;
@@ -212,11 +212,11 @@ export function buildS3TestReport(opts: {
       ? `${target.path} (created and marked for deplo if missing)`
       : "deplo's own backup folder on that server (created on the first test)",
     write: isServer
-      ? `${probeFile} (2 bytes) — a read-only disk fails here`
+      ? `${probeFile} (2 bytes) - a read-only disk fails here`
       : `PutObject ${target.bucket}/${PROBE_KEY} (0 bytes)`,
     cleanup: isServer
       ? `${probeFile}, then sweep any leftover .partial artifacts`
-      : `RemoveObject ${target.bucket}/${PROBE_KEY} (best effort — a failure here is ignored)`,
+      : `RemoveObject ${target.bucket}/${PROBE_KEY} (best effort - a failure here is ignored)`,
   };
   const step = (key: S3TestStepKey, status: S3TestStepStatus): S3TestStep => ({
     key,
@@ -242,15 +242,15 @@ export function buildS3TestReport(opts: {
   lines.push({
     level: "info",
     text: isServer
-      ? `Testing "${target.name}" — ${folder}${servedBy ? ` on ${servedBy}` : ""}`
-      : `Testing "${target.name}" — bucket ${target.bucket} at ${endpointUrl(target.endpoint)}`,
+      ? `Testing "${target.name}" - ${folder}${servedBy ? ` on ${servedBy}` : ""}`
+      : `Testing "${target.name}" - bucket ${target.bucket} at ${endpointUrl(target.endpoint)}`,
   });
   for (const a of attempts) lines.push({ level: "warn", text: `skipped ${a}` });
   for (const step of steps) {
     if (step.status === "skipped") {
       lines.push({
         level: "debug",
-        text: `${step.label} — not reached (${step.detail})`,
+        text: `${step.label}, not reached (${step.detail})`,
       });
       continue;
     }
@@ -259,8 +259,8 @@ export function buildS3TestReport(opts: {
       level: step.status === "passed" ? "success" : "error",
       text:
         step.status === "passed"
-          ? `${step.label} — ok`
-          : `${step.label} — failed`,
+          ? `${step.label} - ok`
+          : `${step.label} - failed`,
     });
   }
   if (!ok && error) lines.push({ level: "error", text: error });
@@ -325,7 +325,7 @@ export function reproduceCommand(target: S3TestTarget): string {
     ? `\n# ${target.provider} needs path-style addressing (deplo sets it for you):\naws configure set default.s3.addressing_style path`
     : "";
   return [
-    `# deplo runs this check inside the server's agent (Go, minio-go) — no CLI needed.`,
+    `# deplo runs this check inside the server's agent (Go, minio-go) - no CLI needed.`,
     `# These are the same three calls, to reproduce the provider's answer by hand.`,
     ``,
     `export AWS_ACCESS_KEY_ID='<access key>'      # deplo never reveals a stored secret`,
@@ -347,12 +347,12 @@ export function reproduceCommand(target: S3TestTarget): string {
 function reproduceStoreCommand(target: S3TestTarget): string {
   const known = target.path !== "";
   return [
-    `# deplo runs this check inside the server's agent (Go) — nothing runs on a shell.`,
+    `# deplo runs this check inside the server's agent (Go) - nothing runs on a shell.`,
     `# These are the same operations, to see the disk's answer for yourself.`,
     ``,
     known
       ? `FOLDER=${shellQuote(target.path)}`
-      : `FOLDER=            # run the test once — deplo then shows the folder on the card`,
+      : `FOLDER=            # run the test once - deplo then shows the folder on the card`,
     ``,
     `# 1. the folder is there, and deplo has marked it as its own`,
     `ls -la "$FOLDER" "$FOLDER/.deplo-backups"`,

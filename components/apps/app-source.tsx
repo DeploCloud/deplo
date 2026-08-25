@@ -14,14 +14,14 @@ export type AppSourceLike = {
 };
 
 export interface AppSourceDescriptor {
-  /** Icon component (lucide or a brand glyph) — render as `<Icon className=… />`. */
+  /** Icon component (lucide or a brand glyph) - render as `<Icon className=… />`. */
   Icon: React.ComponentType<{ className?: string }>;
   /** Short human label for what backs the app (repo, "Compose", image, …). */
   label: string;
   /**
    * True ONLY for a git-backed source (github / plain git), where a branch and
    * commit are meaningful. A compose stack, a docker image or an uploaded archive
-   * has no git — so the UI must not invent a branch for it.
+   * has no git, so the UI must not invent a branch for it.
    */
   isGit: boolean;
 }

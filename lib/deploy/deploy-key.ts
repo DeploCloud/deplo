@@ -71,7 +71,7 @@ export function deployImageRef(
 }
 
 /**
- * The owning app's slug for any deploy key — structural, not a query. A slug is
+ * The owning app's slug for any deploy key - structural, not a query. A slug is
  * `[a-z0-9-]`, so everything before the FIRST `__` is the slug and nothing else
  * can be.
  */

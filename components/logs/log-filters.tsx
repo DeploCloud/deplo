@@ -29,8 +29,8 @@ export interface LogFilterState {
 
 export const EMPTY_LOG_FILTERS: LogFilterState = { q: "", levels: [] };
 
-/** Levels a runtime container log can be given. `command` is producer-only —
- *  nothing infers it — so it is not offered where nothing can carry it. */
+/** Levels a runtime container log can be given. `command` is producer-only,
+ *  nothing infers it, so it is not offered where nothing can carry it. */
 export const RUNTIME_LEVELS: LogLevel[] = [
   "error",
   "warn",
@@ -121,7 +121,7 @@ export function useLogFilters<T extends FilterableLogLine>(
     counts,
     /** True when the pane is showing a subset, so an empty result can say why. */
     filtering: needle !== "" || picked.length > 0,
-    /** The needle, for `LogRow`'s `highlight` — trimmed, but not lowercased. */
+    /** The needle, for `LogRow`'s `highlight` - trimmed, but not lowercased. */
     highlight: state.q.trim(),
   };
 }

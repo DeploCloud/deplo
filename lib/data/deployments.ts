@@ -56,14 +56,14 @@ export async function listDeployments(filter?: {
      * belongs to without a second query. Null ⇒ the caller draws its own glyph. */
     appLogo: string | null;
     /** GitHub commit URL for this deployment's SHA, or null for a non-GitHub
-     * source — lets a list decorate the SHA with a link without loading the
+     * source - lets a list decorate the SHA with a link without loading the
      * project graph. */
     commitUrl: string | null;
     /** GitHub URL of the pull request this preview build came from, or null for
      *  a production build. Derived from the denormalized `prNumber`, so it keeps
      *  working after the preview row itself is reaped. */
     pullRequestUrl: string | null;
-    /** Owning server of the deployment — the host it ran on (`deployments.server_id`,
+    /** Owning server of the deployment - the host it ran on (`deployments.server_id`,
      *  denormalized) falling back to the app's current server. null only when
      *  neither is set (a legacy row on an app with no resolvable server). */
     serverId: string | null;
@@ -170,7 +170,7 @@ export async function listDeployments(filter?: {
     }
   }
 
-  // Who asked for each of these, in one query for the page — the same batch the
+  // Who asked for each of these, in one query for the page - the same batch the
   // env authors and the activity trail use.
   const creators = await loadUserIdentities(rows.map((r) => r.creatorUserId));
 
@@ -299,7 +299,7 @@ export async function getQueuePosition(
   deploymentId: string,
 ): Promise<number | null> {
   // Establish the active team (and its 2FA gate); the reach check below is
-  // per-app — folder and role scope included — not the token-only clamp
+  // per-app, folder and role scope included, not the token-only clamp
   // `appInTeam` gives, so a scoped-role member can't probe a deployment id.
   await requireActiveTeamId();
   const [target] = await getDb()
@@ -319,7 +319,7 @@ export async function getQueuePosition(
   if (!(await hasAppCapability(target.appId, "view_logs"))) return null;
   if (target.status !== "queued" || !target.serverId) return null;
 
-  // The queued backlog for this server, oldest-first — the SAME rows and order
+  // The queued backlog for this server, oldest-first - the SAME rows and order
   // `pickNext` scans. This deployment's 1-based slot in it is its queue position.
   const queued = await getDb()
     .select({ id: deploymentsTable.id })
@@ -337,7 +337,7 @@ export async function getQueuePosition(
 }
 
 /**
- * Re-apply a project's routing to its already-running stack — no rebuild, no
+ * Re-apply a project's routing to its already-running stack - no rebuild, no
  * redeploy.
  */
 export async function reloadApp(
@@ -556,7 +556,7 @@ export async function cancelDeployment(id: string): Promise<boolean> {
     .returning({ id: deploymentsTable.id });
   if (stopped.length === 0) return false;
   // Settle the app off "building" NOW (before the publish), then push the
-  // change so the badge flips to "Stopped" at once — without waiting for the build
+  // change so the badge flips to "Stopped" at once - without waiting for the build
   // job to notice and settle it minutes later.
   await settleAppAfterCancel(dep.appId);
   publishAppChanged(dep.appId);
@@ -570,7 +570,7 @@ export async function cancelDeployment(id: string): Promise<boolean> {
 }
 
 /**
- * A deployment is "in progress" while it sits in the queue or is being built — its
+ * A deployment is "in progress" while it sits in the queue or is being built - its
  * row is still referenced by the deploy queue and the fire-and-forget build job,
  * so it must be CANCELED (see `cancelDeployment`), not deleted.
  */
@@ -646,7 +646,7 @@ async function terminalDeploymentRows(
   if (filter.environment)
     conds.push(eq(deploymentsTable.environment, filter.environment));
   // A terminal-status narrower simply AND's with `notInArray(IN_PROGRESS)`, so an
-  // in-progress value (queued/building) yields 0 rows — which is exactly right:
+  // in-progress value (queued/building) yields 0 rows, which is exactly right:
   // the "Delete all" button hides when the status filter shows only in-progress.
   if (filter.status) conds.push(eq(deploymentsTable.status, filter.status));
   if (filter.ids) conds.push(inArray(deploymentsTable.id, filter.ids));
@@ -718,7 +718,7 @@ export async function deleteDeployments(ids: string[]): Promise<number> {
 }
 
 /**
- * Keep only rows whose app's folder the caller holds `cap` on — the
+ * Keep only rows whose app's folder the caller holds `cap` on - the
  * team-wide-sweep guard shared by delete-all (`delete_apps`) and cancel-all
  * (`deploy_apps`), each passing the capability its entry gate already required.
  */
@@ -737,7 +737,7 @@ async function folderPermittedRows(
 }
 
 /**
- * Delete EVERY finished deployment — for one app (`appId` given, the app page's
+ * Delete EVERY finished deployment - for one app (`appId` given, the app page's
  * "Delete all") or across the whole active team (`appId` null/absent, the global
  * page's "Delete all").
  */
@@ -791,7 +791,7 @@ async function inProgressDeploymentRows(
   if (filter.environment)
     conds.push(eq(deploymentsTable.environment, filter.environment));
   // Narrows WITHIN the in-progress set, so a terminal-status value (ready/error/
-  // canceled) yields 0 rows — matching the hidden "Stop all builds" button when the
+  // canceled) yields 0 rows - matching the hidden "Stop all builds" button when the
   // status filter shows only finished deployments.
   if (filter.status) conds.push(eq(deploymentsTable.status, filter.status));
   return getDb()
@@ -803,7 +803,7 @@ async function inProgressDeploymentRows(
 
 /**
  * Settle an app off the in-progress states the instant its build is canceled. No
- * publish here — the caller emits one snapshot after settling so subscribers paint
+ * publish here - the caller emits one snapshot after settling so subscribers paint
  * the settled status.
  */
 async function settleAppAfterCancel(appId: string): Promise<void> {
@@ -870,7 +870,7 @@ async function cancelDeploymentRows(
 }
 
 /**
- * Cancel EVERY in-progress deployment — for one app (`appId` given, the app page's
+ * Cancel EVERY in-progress deployment - for one app (`appId` given, the app page's
  * "Stop all builds") or across the whole active team (`appId` null/absent, the
  * global page's "Stop all builds").
  */

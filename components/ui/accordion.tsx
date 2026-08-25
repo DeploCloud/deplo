@@ -48,7 +48,7 @@ const AccordionContent = React.forwardRef<
     ref,
   ) => {
     // `overflow: hidden` is what turns the open/close height animation into a slide
-    // instead of a spill — but it clips ANYTHING a child paints outside its own box,
+    // instead of a spill, but it clips ANYTHING a child paints outside its own box,
     // and a focus ring is exactly that.
     const [animating, setAnimating] = React.useState(false);
     return (

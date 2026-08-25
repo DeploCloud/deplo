@@ -12,7 +12,7 @@ import {
 } from "./favicon-http";
 
 /**
- * The icon a RUNNING app declares about itself — the compose-stack arm, where the
+ * The icon a RUNNING app declares about itself - the compose-stack arm, where the
  * favicon is inside a prebuilt image and is only ever served.
  */
 
@@ -49,7 +49,7 @@ test("parseIconLinks: takes icon and apple-touch-icon links, ignores everything 
     links.map((l) => l.href),
     ["/favicon-32.png", "/favicon.ico", "/apple.png"],
   );
-  // A mask-icon is a monochrome silhouette — a black blob anywhere but Safari's
+  // A mask-icon is a monochrome silhouette - a black blob anywhere but Safari's
   // pinned tab, so it is never the app's real icon.
   assert.ok(!links.some((l) => l.href === "/mask.svg"));
   // Nothing after </head> is scanned.
@@ -181,7 +181,7 @@ test("sniffImageMime: recognises the formats a favicon actually comes in", () =>
 });
 
 test("imageMimeFor: the BYTES decide, not the header", () => {
-  // An SPA answering /favicon.ico with index.html — a 200, even a plausible
+  // An SPA answering /favicon.ico with index.html - a 200, even a plausible
   // content type. Storing that would render a broken image on every page.
   assert.equal(imageMimeFor(HTML, "image/x-icon", "/favicon.ico"), null);
   assert.equal(

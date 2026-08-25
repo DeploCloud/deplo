@@ -5,7 +5,7 @@
  */
 import { FRAMEWORKS, type FrameworkId } from "./framework-catalog";
 
-/** The `package.json` fields recognition reads. Everything is optional — the
+/** The `package.json` fields recognition reads. Everything is optional - the
  * file is arbitrary user JSON, not a contract. */
 export interface PackageManifest {
   dependencies?: Record<string, string>;
@@ -15,7 +15,7 @@ export interface PackageManifest {
 /**
  * Parse a `package.json` payload, or null when it is not a JSON object. Note
  * `JSON.parse("null")` and `JSON.parse("[]")` both succeed, so the shape is
- * checked rather than assumed — a repo can ship anything under that name.
+ * checked rather than assumed - a repo can ship anything under that name.
  */
 export function parsePackageManifest(text: string): PackageManifest | null {
   let parsed: unknown;
@@ -31,7 +31,7 @@ export function parsePackageManifest(text: string): PackageManifest | null {
 }
 
 /**
- * The DIRECT dependency names declared by a manifest — `dependencies` plus
+ * The DIRECT dependency names declared by a manifest - `dependencies` plus
  * `devDependencies`, which is where a framework always sits (Vite, Astro and
  * SvelteKit live in devDependencies; Next and Express in dependencies).
  */
@@ -74,7 +74,7 @@ export function rootFileNames(
 
 /**
  * Name the framework backing a build root, or null when nothing in the registry
- * matches (not a JavaScript app, or a repo with no manifest at all — a Go or
+ * matches (not a JavaScript app, or a repo with no manifest at all - a Go or
  * Python service builds perfectly well through the same builders, it just has no
  * JS framework to name).
  */

@@ -87,7 +87,7 @@ before(async () => {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
   // RAW SQL, not the drizzle `seedServer` helper: the schema is frozen at 0026 here,
-  // but drizzle names EVERY column the live `servers` object knows in its INSERT — so
+  // but drizzle names EVERY column the live `servers` object knows in its INSERT, so
   // the helper reaches for columns a later migration adds (0030's status_checked_at /
   // status_message) and the insert fails on a table that doesn't have them yet.
   await pg.exec(`
@@ -112,7 +112,7 @@ before(async () => {
       ('env_dev',  'prc_1', 'Development', 'development', 'development', '', true,  0, '${T0}', '${T0}'),
       ('env_prod', 'prc_1', 'Production',  'production',  'production',  '', false, 1, '${T0}', '${T0}');`);
   // app_p lives in the project's Development env; app_top is top-level. Only the apps
-  // rows (the FK anchors env_vars need) are seeded — the loaders the assertions drive
+  // rows (the FK anchors env_vars need) are seeded - the loaders the assertions drive
   // read env/shared vars, never the app_build child.
   await pg.exec(`
     insert into apps (
@@ -136,7 +136,7 @@ before(async () => {
     { envVarId: "ev_dup", target: "production" },
   ]);
 
-  // Legacy tables (dropped in 0028; not in the drizzle schema) — seed via raw SQL.
+  // Legacy tables (dropped in 0028; not in the drizzle schema) - seed via raw SQL.
   await pg.exec(`
     insert into team_global_env_vars (id, team_id, key, value_enc, type, created_at, updated_at)
       values ('tg1', 'team_a', 'TG', 'enc:tg', 'plain', '${T0}', '${T0}');
@@ -160,7 +160,7 @@ before(async () => {
       values ('g2', 'UNUSED', 'enc:unused', 'plain');
   `);
 
-  // Now run 0027 — it CREATES the new tables and backfills from the seeds above —
+  // Now run 0027, it CREATES the new tables and backfills from the seeds above,
   // and every migration after it, to bring the DB up to the live drizzle schema.
   for (const f of from27) await applyFile(f);
 
@@ -209,7 +209,7 @@ test("backfill produced one shared var per legacy source", async () => {
 });
 
 test("the only mode-less/link-less var is the one whose group reached no app", async () => {
-  // Spec §4's "no shared var left without a valid sharing mode" — the ONE legitimate
+  // Spec §4's "no shared var left without a valid sharing mode" - the ONE legitimate
   // exception is a var exploded from a group that was attached to nothing: it
   // injected nowhere before and injects nowhere after, so parity holds and the row is
   // kept rather than destroying the user's authored value.
@@ -244,7 +244,7 @@ test("app_p production: linked (old group) vars inject, link overrides app-own; 
     DUP: "enc:sgdup", // shared group (now a link) overrides the app's own DUP
     SG: "enc:sg", // shared group var (linked → still injects)
     // NOT here (ADR-0012): TG (team-wide scope) and EE (environment scope) are
-    // now opt-in — available on the app's Environment tab, injected only once
+    // now opt-in - available on the app's Environment tab, injected only once
     // the app links them.
   });
 });
@@ -256,7 +256,7 @@ test("app_top production: nothing injects (the team-wide global became opt-in)",
 });
 
 test("scope-derived vars remain AVAILABLE: linking one injects it again", async () => {
-  // The migration didn't lose the old team-global — it is one opt-in away.
+  // The migration didn't lose the old team-global - it is one opt-in away.
   const tg = await pg.query<{ id: string }>(
     `select id from shared_env_vars where key = 'TG'`,
   );

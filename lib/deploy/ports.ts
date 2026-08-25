@@ -2,7 +2,7 @@
  * The port accessors (ADR-0001, amended).
  */
 
-/** Just the fields this module reads from a project — so callers in the data
+/** Just the fields this module reads from a project, so callers in the data
  * layer can resolve a port without dragging in the full `App` (and the
  * `server-only` graph behind it). A `App` satisfies this structurally. */
 export interface PortBearingApp {

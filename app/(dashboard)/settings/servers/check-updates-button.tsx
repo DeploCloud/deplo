@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * "Check for updates" — force the control plane to re-resolve the latest agent
+ * "Check for updates" - force the control plane to re-resolve the latest agent
  * release from GitHub right now, bypassing the in-process cache, then refresh the
  * page so "Update agent" offers the fresh version.
  */

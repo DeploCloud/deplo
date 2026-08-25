@@ -29,7 +29,7 @@ const MAX_RETAINED = 2_000;
 
 /**
  * The bounds on what ONE deployment may persist, because the build's output is the
- * tenant's to write and `deployment_logs` lives in the CONTROL PLANE's database —
+ * tenant's to write and `deployment_logs` lives in the CONTROL PLANE's database -
  * shared by every team, the rate limiter and every session.
  */
 let MAX_LINE_CHARS = 4_000;
@@ -62,7 +62,7 @@ interface DeploymentBuffer {
 interface LogState {
   buffers: Map<string, DeploymentBuffer>;
   /**
-   * Lines ENQUEUED per deployment since its last clear — the budget the
+   * Lines ENQUEUED per deployment since its last clear - the budget the
    * per-deployment ceiling spends. A counter living there would reset on every
    * such read and the ceiling would be bypassable at will.
    */
@@ -87,14 +87,14 @@ function bufferFor(depId: string): DeploymentBuffer {
 
 /**
  * Enqueue one log line for a deployment (SYNCHRONOUS, fire-and-forget). Never
- * throws into the caller — a flush failure is swallowed (logs are best-effort; the
+ * throws into the caller - a flush failure is swallowed (logs are best-effort; the
  * deploy must not fail because a log line couldn't persist).
  */
 export function appendLog(depId: string, line: LogLine): void {
   const b = bufferFor(depId);
   // Bound what one deployment may persist into the SHARED control-plane database
   // (see MAX_LINE_CHARS / MAX_LINES_PER_DEPLOYMENT). Silent by design past the
-  // ceiling: one marker line, then nothing — a log line must never fail a deploy.
+  // ceiling: one marker line, then nothing - a log line must never fail a deploy.
   const s = state();
   if (s.enqueued.size > MAX_TRACKED_BUDGETS && !s.enqueued.has(depId)) {
     // Drop the oldest fifth in one pass, so this runs rarely rather than per line.
@@ -111,7 +111,7 @@ export function appendLog(depId: string, line: LogLine): void {
     b.lines.push({
       ts: line.ts,
       level: "info",
-      text: `[deplo] log truncated at ${MAX_LINES_PER_DEPLOYMENT} lines — the rest of this build's output is not stored`,
+      text: `[deplo] log truncated at ${MAX_LINES_PER_DEPLOYMENT} lines - the rest of this build's output is not stored`,
     });
   } else {
     b.lines.push(
@@ -178,7 +178,7 @@ function scheduleFlush(depId: string, immediate: boolean): Promise<void> {
 }
 
 /**
- * Drop a deployment's buffer entry once it holds nothing — the missing half of the
+ * Drop a deployment's buffer entry once it holds nothing - the missing half of the
  * Map's lifecycle (the same deletion-forgets shape as container-history's prune;
  * activity re-creates).
  */
@@ -189,7 +189,7 @@ function evictIfIdle(depId: string): void {
 }
 
 /**
- * Flush any buffered lines for a deployment and AWAIT the write — the guaranteed
+ * Flush any buffered lines for a deployment and AWAIT the write - the guaranteed
  * final flush on deploy end/error. After it resolves the buffer is empty and its
  * chain settled, so a reader sees every enqueued line.
  */
@@ -202,7 +202,7 @@ export async function finalizeDeploymentLogs(depId: string): Promise<void> {
 /**
  * Drain-then-DELETE a deployment's logs (the `logs[depId] = []` clear that
  * starts a fresh build's stream). Bumps the epoch so any in-flight flush carrying
- * the old epoch is discarded — a late flush can't resurrect the cleared lines.
+ * the old epoch is discarded - a late flush can't resurrect the cleared lines.
  */
 export async function clearDeploymentLogs(depId: string): Promise<void> {
   const b = bufferFor(depId);
@@ -224,7 +224,7 @@ export async function clearDeploymentLogs(depId: string): Promise<void> {
 }
 
 /**
- * `info` on a build line means "nobody said" — so read it, exactly like a runtime
+ * `info` on a build line means "nobody said", so read it, exactly like a runtime
  * line. A level the producer did state is never second-guessed, and a line the
  * detector can't place stays `info`.
  */

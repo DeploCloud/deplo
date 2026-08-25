@@ -59,7 +59,7 @@ export default async function AppBackupsPage(
     hasCapability("manage_backup_destinations"),
   ]);
 
-  // Only this app's schedules — listBackups returns the whole team's.
+  // Only this app's schedules - listBackups returns the whole team's.
   const schedules = allBackups.filter(
     (b) => b.targetKind === "app" && b.appId === project.id,
   );

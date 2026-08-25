@@ -510,7 +510,7 @@ test("an instance admin's token administers the instance only when it was grante
 /**
  * The same question for the SUBSCRIPTIONS, which {@link EXECUTABLE} leaves out. A
  * subscription's whole body is a generator, so it never reaches the data layer's
- * `requireInstanceAdmin` — the field scope is the only gate it has.
+ * `requireInstanceAdmin` - the field scope is the only gate it has.
  */
 const ADMIN_SUBSCRIPTIONS = ENDPOINTS.filter(
   (e) => e.kind === "subscription" && e.gate.kind === "instanceAdmin",
@@ -555,7 +555,7 @@ test(`an instance admin's token can't open the ${ADMIN_SUBSCRIPTIONS.length} adm
     `a token that was never given instance administration opened: ${leaks.join(", ")}`,
   );
 
-  // The control: with the switch ON, the very same stream opens — the gate is
+  // The control: with the switch ON, the very same stream opens - the gate is
   // the token's grant, not a subscription nobody can ever reach.
   const admin = await asToken(
     await mintToken(ALL_CAPABILITIES, USER_1, { instanceAdmin: true }),

@@ -7,7 +7,7 @@ import type { NextConfig } from "next";
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
-  // The panel is private — keep every response (pages, API, static assets) out
+  // The panel is private - keep every response (pages, API, static assets) out
   // of every search index, even for bots that ignore robots.txt / the meta tag.
   { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -52,7 +52,7 @@ const nextConfig: NextConfig = {
     // built-in external list (next/dist/lib/server-external-packages.jsonc).
   ],
   // sharp (lib/templates/logo-color.ts) resolves its own `.node` from a literal
-  // require the tracer can follow — but that binary then dlopens libvips from a
+  // require the tracer can follow, but that binary then dlopens libvips from a
   // SIBLING package, and a dlopen is invisible to file tracing.
   outputFileTracingIncludes: {
     "/templates": [

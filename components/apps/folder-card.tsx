@@ -58,7 +58,7 @@ export interface FolderCardData {
    *  action gating: rename/colour/move/delete show only when this includes
    *  `deploy` (the owner always has it). Absent ⇒ treated as no caps. */
   capabilities?: string[];
-  /** True when the caller owns this folder or is a folder super-user — the only
+  /** True when the caller owns this folder or is a folder super-user - the only
    *  ones who may share it (open the Share dialog). */
   isOwner?: boolean;
   /** The folder's owner (creator), for reference; not needed for gating. */
@@ -108,7 +108,7 @@ export function FolderCard({
   folder: FolderCardData;
   view?: "grid" | "list";
   /** A super-user (manage_team / instance admin) may manage AND share every
-   *  folder, even ones they don't own — bypasses the per-folder cap checks. */
+   *  folder, even ones they don't own - bypasses the per-folder cap checks. */
   isAdminOverride?: boolean;
   dragHandle?: React.ReactNode;
   dragActive?: boolean;
@@ -156,7 +156,7 @@ export function FolderCard({
   const href = folderHref(folder.id, view);
   const count = folder.appCount;
   const subCount = folder.subfolderCount ?? 0;
-  // "3 apps · 2 folders" — the subfolder part only shows when nested.
+  // "3 apps · 2 folders" - the subfolder part only shows when nested.
   const countLabel =
     `${count} ${count === 1 ? "app" : "apps"}` +
     (subCount > 0
@@ -334,7 +334,7 @@ export function FolderCard({
             )}
           <K.Separator />
           <SimpleTooltip
-            content="Delete the folder — its apps move back to the top level"
+            content="Delete the folder - its apps move back to the top level"
             side="left"
           >
             <K.Item variant="destructive" onSelect={() => setDeleteOpen(true)}>
@@ -488,7 +488,7 @@ export function FolderCard({
               description={
                 deleteApps
                   ? `${folder.name} and every app in it are deleted, containers and volumes included. This cannot be undone.`
-                  : `${folder.name} is removed, but its apps are kept — they move back to the top level. This cannot be undone.`
+                  : `${folder.name} is removed, but its apps are kept - they move back to the top level. This cannot be undone.`
               }
               confirmLabel="Delete folder"
               successMessage="Folder deleted"

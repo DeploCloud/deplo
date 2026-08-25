@@ -87,7 +87,7 @@ import type { AppEnvGroup } from "@/lib/data/env";
 import type { AppliedSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
-/** The app a row belongs to — what the Project / Environment filters read. */
+/** The app a row belongs to - what the Project / Environment filters read. */
 type RowApp = AppEnvGroup["app"];
 
 /** The same team-wide Project order the Overview grid drags (`reorderProjects`). */
@@ -95,7 +95,7 @@ const REORDER_PROJECTS = `mutation($ids: [ID!]!) { reorderProjects(projectIds: $
 
 /**
  * An applied shared var carries no `type` (the DTO never decrypts a value), but
- * the filters key off one — and at the source `masked` IS `type === "secret"`.
+ * the filters key off one, and at the source `masked` IS `type === "secret"`.
  */
 type SharedVar = AppliedSharedVarDTO & { type: "plain" | "secret" };
 
@@ -108,7 +108,7 @@ type EnvRow =
   | ({ kind: "shared"; app: RowApp; projectName: string } & SharedVar);
 
 /**
- * A row's identity across the whole page — what an optimistic removal is tracked
+ * A row's identity across the whole page - what an optimistic removal is tracked
  * by. A standalone variable's id is unique on its own; a SHARED one repeats,
  * once under every app it reaches, so there its app belongs in the key.
  */
@@ -174,7 +174,7 @@ function useCollapsed(storageKey: string) {
 
 /**
  * A card's second line: the environment the app sits in, then how it's reached.
- * The PROJECT is not repeated here — the section header the card sits under is
+ * The PROJECT is not repeated here - the section header the card sits under is
  * the project.
  */
 function appSubtitle(
@@ -208,13 +208,13 @@ export function AllAppsEnvManager({
   sharedByApp: Record<string, AppliedSharedVarDTO[]>;
   /** Full shared-var DTOs, so a shared row's Edit can open the shared dialog. */
   sharedVars: SharedVarDTO[];
-  /** Every app in the active team — the wizard's "specific apps" scope. */
+  /** Every app in the active team - the wizard's "specific apps" scope. */
   apps: AppRef[];
-  /** Projects in the team's own order — the order the sections come out in. */
+  /** Projects in the team's own order - the order the sections come out in. */
   projects: ProjectRef[];
   environments: TeamEnvironment[];
   /** The viewer may change the TEAM-WIDE project order (manage_team / instance
-   *  admin) — gates the section drag handles. */
+   *  admin) - gates the section drag handles. */
   canReorderProjects: boolean;
 }) {
   const [dialog, setDialog] = React.useState<{
@@ -234,7 +234,7 @@ export function AllAppsEnvManager({
   const router = useRouter();
   const [, startTransition] = React.useTransition();
 
-  // The local, optimistic project order — the sole source of the sections'
+  // The local, optimistic project order - the sole source of the sections'
   // arrangement, so a drag lands instantly and the write settles behind it.
   const [order, setOrder] = React.useState<string[]>(() =>
     projects.map((p) => p.id),
@@ -252,7 +252,7 @@ export function AllAppsEnvManager({
     setOrder(projects.map((p) => p.id));
   }
   // Projects in the local order. Anything the order hasn't seen yet keeps its
-  // server position at the end — the re-seed above normally beats this to it.
+  // server position at the end - the re-seed above normally beats this to it.
   const orderedProjects = React.useMemo(() => {
     const byId = new Map(projects.map((p) => [p.id, p] as const));
     const ranked = order
@@ -318,8 +318,8 @@ export function AllAppsEnvManager({
     [groups, sharedByApp, projectName],
   );
 
-  // A deleted variable leaves its card on the click, rather than sitting there —
-  // still clickable, still good for a "Not found" — for the length of the mutation
+  // A deleted variable leaves its card on the click, rather than sitting there -
+  // still clickable, still good for a "Not found" - for the length of the mutation
   // and then the `router.refresh()` that reloads every app's variables.
   const {
     visible: rows,
@@ -385,7 +385,7 @@ export function AllAppsEnvManager({
   }, [rows, projects, environments]);
 
   // The app AND its project join the search haystack, so "storefront" surfaces
-  // that app's variables rather than only the keys that spell it — and "acme"
+  // that app's variables rather than only the keys that spell it, and "acme"
   // surfaces every app of the Acme project.
   const {
     state: filters,
@@ -399,7 +399,7 @@ export function AllAppsEnvManager({
     (row) => `${row.app.name} ${row.projectName}`,
   );
 
-  // Back into sections — in the team's project order (the one the handles drag),
+  // Back into sections - in the team's project order (the one the handles drag),
   // Standalone last. Sorting BY KEY is about the keys, not the apps: there the
   // app cards stay in name order instead of reshuffling behind the table.
   const sections = React.useMemo<ProjectBucket<EnvRow>[]>(
@@ -427,7 +427,7 @@ export function AllAppsEnvManager({
   /**
    * Drop: move the dragged project to the target's slot IN THE FULL ORDER, so the
    * projects a filter is currently hiding keep their places (the mutation takes a
-   * total order and appends whatever it isn't given — a subset would scramble
+   * total order and appends whatever it isn't given - a subset would scramble
    * them).
    */
   function onDragEnd(event: DragEndEvent) {
@@ -539,7 +539,7 @@ export function AllAppsEnvManager({
       )}
 
       {/* One node per section, rendered the same whether or not it can be
-          dragged — the sortable wrapper only adds the handle and the transform. */}
+          dragged - the sortable wrapper only adds the handle and the transform. */}
       {(() => {
         const nodes = sections.map((section) => {
           const open = !projectCollapse.collapsed.has(section.id);
@@ -588,7 +588,7 @@ export function AllAppsEnvManager({
           ) : (
             <section key={section.id} className="group space-y-3">
               {/* Standalone can't be dragged (it is not a project), but it still
-                  holds the handle's slot open — otherwise its header would sit a
+                  holds the handle's slot open, otherwise its header would sit a
                   grip's width left of every other one. */}
               {body(
                 reorderable ? (
@@ -740,7 +740,7 @@ function SortableSection({
 
 /**
  * One Project's collapsible header. The drag handle (when the viewer may reorder)
- * sits BESIDE the toggle rather than inside it — a button never nests in a button.
+ * sits BESIDE the toggle rather than inside it - a button never nests in a button.
  */
 function ProjectSectionHeader({
   section,
@@ -868,7 +868,7 @@ function AppVarsCard({
             <span className="block truncate text-base leading-none font-semibold tracking-tight lg:text-lg">
               {app.name}
             </span>
-            {/* Where the app is reached, and — once the table is folded away —
+            {/* Where the app is reached, and, once the table is folded away,
                 how much it is hiding. */}
             <span className="mt-1 block truncate text-xs text-muted-foreground">
               {[subtitle, open ? null : plural(rows.length, "variable")]

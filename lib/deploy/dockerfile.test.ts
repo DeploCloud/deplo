@@ -63,7 +63,7 @@ test("dockerfileEnvKeys drops non-identifier names, dedupes and sorts", () => {
 /**
  * Layer-cache discipline: on the default path the dependency manifests are copied
  * and installed BEFORE the source (`COPY . .`), so a code-only push reuses the
- * cached install layer instead of reinstalling from scratch — the fix for builds
+ * cached install layer instead of reinstalling from scratch - the fix for builds
  */
 test("default path installs from manifests BEFORE copying the source", () => {
   const df = generateDockerfile(build({ installCommand: "" }));

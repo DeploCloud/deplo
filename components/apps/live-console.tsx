@@ -55,7 +55,7 @@ export function LiveConsole({
 }) {
   const running = useLiveRunning(initialRunning);
   // Console info for the *current* running session. Display is gated on `running`, so
-  // we never null this on stop — it is simply ignored, which keeps all state writes
+  // we never null this on stop - it is simply ignored, which keeps all state writes
   // inside async callbacks (no synchronous effect churn).
   const [info, setInfo] = React.useState<ConsoleInfo | null>(
     initialRunning ? initialInfo : null,

@@ -8,11 +8,11 @@
 -- already carries EVERY Deplo-managed container's stats, and the control plane
 -- demuxes it into the ring buffers. There is no per-resource sampling cost left
 -- to ration, so the toggle's only remaining effect would be declining to keep a
--- few KB of RAM the frame delivered anyway — while its tooltip promised it was
+-- few KB of RAM the frame delivered anyway, while its tooltip promised it was
 -- saving work. A switch that no longer does what it says is worse than no switch.
 --
 -- The instance-wide monitoring_settings.save_metrics singleton (migration 0035)
--- STAYS — that is the master switch, applied on the RECORD side, and it is
+-- STAYS - that is the master switch, applied on the RECORD side, and it is
 -- deliberately untouched here.
 --
 -- No data is lost: the samples themselves never lived in Postgres (a per-cadence

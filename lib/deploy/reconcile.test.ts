@@ -9,7 +9,7 @@ import { asc, eq } from "drizzle-orm";
 
 // DEPLO_DATA_DIR points build staging at a throwaway dir, set BEFORE the store +
 // build modules load. The relational backend is pglite (the in-memory store mode
-// is gone for the project graph — cut-set (c) reads/writes Postgres).
+// is gone for the project graph - cut-set (c) reads/writes Postgres).
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-reconcile-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -67,7 +67,7 @@ test("isInFlightStatus identifies non-terminal deploy states", () => {
 
 test("reconcile errors orphaned building deploys but leaves queued durable", async () => {
   // prj_1 is mid-BUILD (its latest deploy dpl_a was building); prj_2 only has a
-  // QUEUED deploy dpl_b (never started) — that one must survive the restart.
+  // QUEUED deploy dpl_b (never started) - that one must survive the restart.
   await seedApp(db, { id: "prj_1", status: "building" });
   await seedApp(db, { id: "prj_2", status: "queued" });
   await seedDeployment(db, { id: "dpl_a", appId: "prj_1", status: "building" });
@@ -90,7 +90,7 @@ test("reconcile errors orphaned building deploys but leaves queued durable", asy
   assert.equal(
     byId.get("dpl_b")!.status,
     "queued",
-    "queued is durable — left for re-drain",
+    "queued is durable - left for re-drain",
   );
   assert.equal(byId.get("dpl_c")!.status, "ready", "ready is untouched");
 
@@ -131,7 +131,7 @@ test("reconcile errors orphaned building deploys but leaves queued durable", asy
   );
 });
 
-test("reconcile is idempotent — a second run finds nothing", async () => {
+test("reconcile is idempotent - a second run finds nothing", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await seedDeployment(db, { id: "dpl_x", appId: "prj_1", status: "ready" });
   assert.equal(await reconcileInFlightDeployments(), 0);

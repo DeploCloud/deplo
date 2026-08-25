@@ -4,11 +4,11 @@
 --
 -- Nullable + `ON DELETE SET NULL`, like every other authorship column here (0029,
 -- 0045): the migrator runs at boot against live self-hosted DBs whose `apps` is
--- non-empty, and — more importantly — deleting a user must NEVER, on its own,
+-- non-empty, and, more importantly, deleting a user must NEVER, on its own,
 -- delete an app the team still runs. Destroying a live stack is the operator's
 -- explicit choice, not a cascade's.
 --
--- BACKFILLED, unlike 0045 — and it is not a fabricated claim. It reads the
+-- BACKFILLED, unlike 0045, and it is not a fabricated claim. It reads the
 -- recorded creation EVENT: the `activities` row that `createApp` writes for this
 -- exact app id. `activities.actor_user_id` is only ever set when the actor string
 -- matched the user making the request (see resolveActorUserId), so a non-null

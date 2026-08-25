@@ -210,7 +210,7 @@ async function assertInstallationInActiveTeam(
   installationId: string,
 ): Promise<void> {
   // A NARROWED API token (scoped to specific projects/apps) must not enumerate the
-  // whole team's git inventory through the installation token — this is a team-level
+  // whole team's git inventory through the installation token - this is a team-level
   // browse, and a token creating an app passes its repo URL directly.
   await requireTeamWide("the team's git repositories");
   const teamId = await requireActiveTeamId();
@@ -417,7 +417,7 @@ export async function installationCloneUrl(
 /* ------------------------------------------------------------------ */
 
 /**
- * What a connected GitHub App can actually do — read live from GitHub, never
+ * What a connected GitHub App can actually do - read live from GitHub, never
  * stored, because the operator fixes it on github.com and a cached answer would go
  * stale the moment they did.
  */
@@ -428,7 +428,7 @@ export interface GithubAppCapabilities {
   hasPullRequestEvent: boolean;
   /** Deplo may post/update the preview comment. */
   canWritePullRequests: boolean;
-  /** Both of the above — the gate the Pull requests page reads. */
+  /** Both of the above - the gate the Pull requests page reads. */
   previewReady: boolean;
   /** Deep link to THIS App's permissions page (not its public page). */
   settingsUrl: string;
@@ -478,7 +478,7 @@ export async function readAppCapabilities(
     const permissions = json.permissions ?? {};
     const ownerLogin = json.owner?.login ?? "";
     const slug = json.slug ?? app.slug;
-    // The App's PUBLIC page (`/apps/<slug>`) has no permissions UI — the owner's
+    // The App's PUBLIC page (`/apps/<slug>`) has no permissions UI - the owner's
     // settings page is the only place these can be changed.
     const settingsUrl =
       json.owner?.type === "Organization" && ownerLogin
@@ -513,7 +513,7 @@ export interface GithubPullRequestSummary {
   headSha: string;
   /** `owner/name` of the head repo; null when the fork was deleted. */
   headRepo: string | null;
-  /** The head repo's clone URL — a fork's ref does not exist on the base repo. */
+  /** The head repo's clone URL - a fork's ref does not exist on the base repo. */
   headCloneUrl: string | null;
   fromFork: boolean;
   draft: boolean;
@@ -522,7 +522,7 @@ export interface GithubPullRequestSummary {
   updatedAt: string;
 }
 
-/** Shape one pull request payload — shared by the list and the single fetch. */
+/** Shape one pull request payload - shared by the list and the single fetch. */
 function toPullRequestSummary(
   p: RawPullRequest,
   baseRepo: string,
@@ -584,7 +584,7 @@ export async function listOpenPullRequests(
   return json.map((p) => toPullRequestSummary(p, fullName));
 }
 
-/** One pull request's current state — the reaper's missed-`closed` safety net.
+/** One pull request's current state - the reaper's missed-`closed` safety net.
  *  Non-throwing: an unreachable GitHub means "don't know", never "closed". */
 export async function getPullRequestState(
   installationId: string,
@@ -597,7 +597,7 @@ export async function getPullRequestState(
     const res = await githubFetch(`/repos/${fullName}/pulls/${number}`, {
       token,
     });
-    if (res.status === 404) return "closed"; // deleted repo/PR — nothing to keep alive
+    if (res.status === 404) return "closed"; // deleted repo/PR, nothing to keep alive
     if (!res.ok) return null;
     const json = (await res.json()) as RawPullRequest;
     return json.state === "closed" ? "closed" : "open";
@@ -633,7 +633,7 @@ export async function upsertPullRequestComment(opts: {
         },
       );
       if (res.ok) return opts.commentId;
-      // Anything other than "it's gone" is transient — keep the id and retry on
+      // Anything other than "it's gone" is transient - keep the id and retry on
       // the next transition rather than posting a duplicate.
       if (res.status !== 404 && res.status !== 410) return opts.commentId;
     }

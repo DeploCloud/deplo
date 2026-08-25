@@ -109,7 +109,7 @@ export function serverToRow(s: Server): ServerInsert {
     bootstrapExpiresAt: s.bootstrap?.expiresAt ?? null,
     bootstrapUsedAt: s.bootstrap?.usedAt ?? null,
     lastSeenAt: s.lastSeenAt ?? null,
-    // The health OBSERVATION behind `status`. Absent means "never probed" — a
+    // The health OBSERVATION behind `status`. Absent means "never probed" - a
     // distinct, honest state the UI renders as "Unknown", so neither is defaulted.
     statusCheckedAt: s.statusCheckedAt ?? null,
     statusMessage: s.statusMessage ?? null,
@@ -170,7 +170,7 @@ export function assembleServer(row: ServerRow): Server {
     };
   }
   // The domain is what makes the dashboard "on"; the username rides along for the
-  // form. The encrypted password is NEVER projected — it stays in the data layer.
+  // form. The encrypted password is NEVER projected - it stays in the data layer.
   if (row.traefikDashboardDomain) {
     server.traefikDashboard = {
       domain: row.traefikDashboardDomain,
@@ -264,7 +264,7 @@ export function assembleGithubInstallation(
 /* ------------------------------------------------------------------ */
 
 /**
- * Explode an {@link Activity} into its `activities` row. NEVER writes `seq` — it
+ * Explode an {@link Activity} into its `activities` row. NEVER writes `seq` - it
  * is a `bigint identity` the DB assigns in insertion order (PLAN §5), so a copy /
  * insert in source-array order reproduces the history's order.
  */
@@ -287,7 +287,7 @@ export function activityToRow(a: Activity): ActivityInsert {
 
 /**
  * Reassemble an `activities` row into an {@link Activity}. Drops `seq` (the domain
- * object never carries it — list ordering reads it via the SQL `ORDER BY`, not the
+ * object never carries it - list ordering reads it via the SQL `ORDER BY`, not the
  * returned object).
  */
 export function assembleActivity(row: ActivityRow): Activity {

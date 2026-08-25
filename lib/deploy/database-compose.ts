@@ -20,7 +20,7 @@ export const DB_IMAGES: Record<DatabaseType, (v: string) => string> = {
 };
 
 /**
- * The repository each engine's OFFICIAL image lives at — the same repos
+ * The repository each engine's OFFICIAL image lives at - the same repos
  * {@link DB_IMAGES} derives from, split out so a `customImage` can be recognised
  * as "still the official image, just pinned differently".
  */
@@ -155,7 +155,7 @@ export function generateDatabaseCompose(input: {
   customImage?: string | null;
   /**
    * Expert command override; REPLACES the default command verbatim. For redis
-   * the default carries `--requirepass <password>` — omitting it from a custom
+   * the default carries `--requirepass <password>` - omitting it from a custom
    * command drops auth (the UI warns; not blocked, it's the escape hatch).
    */
   customCommand?: string | null;
@@ -235,7 +235,7 @@ export function generateDatabaseCompose(input: {
   const labels = deploLabels(databaseId, name)
     .map((l) => `      - ${l}`)
     .join("\n");
-  // Same fragment renderer as the single-image app path — empty limits render
+  // Same fragment renderer as the single-image app path - empty limits render
   // nothing, so a database that never set a limit keeps its historical bytes.
   const resources = renderResourceLimitsYaml(input.resources, 4);
   // The engine probe assumes the engine's official image; under a FOREIGN customImage
@@ -298,13 +298,13 @@ export function buildConnectionString(a: {
   const auth = `${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
   switch (type) {
     case "redis":
-      // Redis has no logical DB — no path segment (a numeric SELECT db, not a
+      // Redis has no logical DB, no path segment (a numeric SELECT db, not a
       // named one, and Deplo doesn't set it). The user is `default`.
       return `redis://${auth}`;
     case "mongodb":
       // The root user (MONGO_INITDB_ROOT_USERNAME) is always created in the
       // `admin` database, so the client MUST authenticate there regardless of the
-      // default DB in the path — hence ?authSource=admin.
+      // default DB in the path - hence ?authSource=admin.
       return `mongodb://${auth}/${dbName}?authSource=admin`;
     case "mariadb":
       // The mariadb wire protocol is mysql's; clients/drivers use the mysql://

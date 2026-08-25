@@ -81,7 +81,7 @@ export default async function ServerDetailPage(
   // A working hostname for the Traefik panel that needs no DNS at all, the same
   // zero-config nip.io host an App's domains are offered. Null on a loopback-only
   // host, where such a name would resolve for nobody.
-  // ponytail: suggested without knowing the host's ACME challenge — a proxy the
+  // ponytail: suggested without knowing the host's ACME challenge - a proxy the
   // operator switched to DNS-01 only cannot validate a nip.io name and would serve a
   // self-signed cert for it.
   const serverIp = resolveServerIp(hydrated);
@@ -101,7 +101,7 @@ export default async function ServerDetailPage(
 
   return (
     <ServerHealthProvider seed={seed}>
-      {/* A settings detail page is forms and readouts, not a grid — it stays at a
+      {/* A settings detail page is forms and readouts, not a grid - it stays at a
           readable width like the App pages do, rather than the wide list shell. */}
       <div className="mx-auto w-full max-w-5xl space-y-6">
         <div className="space-y-3">

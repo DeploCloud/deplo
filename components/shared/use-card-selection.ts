@@ -44,7 +44,7 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
 
   // Keep the latest ordered ids + selection readable from the stable imperative
   // handlers below without rebinding them. Synced in an effect (not during render) so
-  // the handlers — which only fire after commit — always see current values.
+  // the handlers, which only fire after commit, always see current values.
   const idsRef = React.useRef(orderedIds);
   const selectedRef = React.useRef(selected);
   React.useEffect(() => {
@@ -109,7 +109,7 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
     // band the grid underneath it (see lib/portal-event-scope.ts).
     if (!e.currentTarget.contains(target)) return;
     // Presses on a card or any interactive control belong to dnd-kit / the link
-    // / the menu — never start a marquee there.
+    // / the menu, never start a marquee there.
     if (
       target.closest("[data-card-id]") ||
       target.closest("[data-card-actions]") ||
@@ -128,7 +128,7 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
 
     // Snapshot the canvas + every card rect ONCE at press: they don't change during a
     // marquee (no scroll/resize/reflow happens mid-gesture), so the per-move work is
-    // just arithmetic — no querySelectorAll and no getBoundingClientRect-per-card
+    // just arithmetic, no querySelectorAll and no getBoundingClientRect-per-card
     const crect = canvas.getBoundingClientRect();
     const cardRects: { id: string; r: DOMRect }[] = [];
     canvas.querySelectorAll<HTMLElement>("[data-card-id]").forEach((el) => {
@@ -137,7 +137,7 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
     });
 
     // The 4px threshold gates only the START (so a plain click stays a click).
-    // Once a drag has begun, every move recomputes — even back under 4px — so
+    // Once a drag has begun, every move recomputes, even back under 4px, so
     // the box and selection collapse correctly if the user drags back to origin.
     let started = false;
     const onMove = (ev: PointerEvent) => {
@@ -147,7 +147,7 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
       const y2 = Math.max(startY, ev.clientY);
       if (!started && x2 - x1 < 4 && y2 - y1 < 4) return;
       started = true;
-      // Position the box imperatively — no setState, so the grid and its N cards
+      // Position the box imperatively - no setState, so the grid and its N cards
       // are NOT re-rendered on every pointermove.
       const box = marqueeRef.current;
       if (box) {
@@ -164,7 +164,7 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
         }
       }
       // Skip the re-render (and the cascade to every card) when the hit set is
-      // unchanged from the last move — common while dragging within one cell.
+      // unchanged from the last move - common while dragging within one cell.
       setSelected((prev) => (sameMembers(prev, hit) ? prev : hit));
     };
     const onUp = () => {

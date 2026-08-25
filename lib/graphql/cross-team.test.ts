@@ -77,7 +77,7 @@ const TRUNCATE_ALL = `DO $$ DECLARE r record; BEGIN
   END LOOP; END $$;`;
 
 /**
- * Team B's resources — everything an argument could name.
+ * Team B's resources - everything an argument could name.
  */
 const B = {
   app: "prj_teamb_app",
@@ -482,7 +482,7 @@ async function asOwnerOfA(): Promise<{
   return { ctx, identity };
 }
 
-/** A fingerprint of everything team B owns — any change is a cross-team write. */
+/** A fingerprint of everything team B owns - any change is a cross-team write. */
 async function snapshotB(): Promise<string> {
   const cp = await import("../db/schema/control-plane");
   const counts = await Promise.all([
@@ -623,7 +623,7 @@ test("no query hands back another team's data", async () => {
     );
     if (invalid.length > 0) {
       leaks.push(
-        `${q.name}: INVALID DOC — ${invalid.map((x) => x.message).join("; ")}`,
+        `${q.name}: INVALID DOC - ${invalid.map((x) => x.message).join("; ")}`,
       );
       continue;
     }
@@ -632,7 +632,7 @@ test("no query hands back another team's data", async () => {
     if (hit.length > 0) leaks.push(`${q.name} → ${hit.join(", ")}`);
   }
   // THE CONTROL: the same documents, run by team B's own owner, must surface
-  // those sentinels — otherwise the sweep above proves nothing about leaks, only
+  // those sentinels, otherwise the sweep above proves nothing about leaks, only
   // that the queries returned nothing at all.
   const owner: RequestIdentity = { userId: B.user, teamId: TEAM_B };
   const ownerCtx = await runWithIdentity(
@@ -663,7 +663,7 @@ test("no query hands back another team's data", async () => {
   }
   assert.ok(
     seen.size >= SENTINELS.length - 2,
-    `the sweep can't prove anything: team B's own owner only surfaced ${seen.size} of ${SENTINELS.length} sentinels (${[...seen].join(", ")}) — the generated queries are not reading enough`,
+    `the sweep can't prove anything: team B's own owner only surfaced ${seen.size} of ${SENTINELS.length} sentinels (${[...seen].join(", ")}) - the generated queries are not reading enough`,
   );
   assert.deepEqual(
     leaks,

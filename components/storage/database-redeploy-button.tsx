@@ -9,7 +9,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Re-render the database's compose from its current settings and reroute it — the
+ * Re-render the database's compose from its current settings and reroute it - the
  * "apply my pending edits" verb, and the migration path that stamps the deplo.
  */
 export function DatabaseRedeployButton({
@@ -38,7 +38,7 @@ export function DatabaseRedeployButton({
   }
 
   return (
-    <SimpleTooltip content="Re-apply settings by recreating the container — brief downtime, data volume preserved">
+    <SimpleTooltip content="Re-apply settings by recreating the container - brief downtime, data volume preserved">
       <Button
         variant={variant}
         size={size}

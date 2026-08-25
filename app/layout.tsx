@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: {
     default: "Overview - Deplo",
-    template: "%s – Deplo",
+    template: "%s - Deplo",
   },
   description:
     "Deplo is a self-hosted platform to deploy apps, databases and services with Docker and Traefik. Push, and it is live, on your own servers.",

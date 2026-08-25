@@ -71,7 +71,7 @@ async function setActiveTeamCookie(teamId: string) {
   });
 }
 
-/** Columns projected for a {@link PublicUser} — never a credential. */
+/** Columns projected for a {@link PublicUser}, never a credential. */
 const PUBLIC_USER_COLS = {
   id: usersTable.id,
   email: usersTable.email,
@@ -189,7 +189,7 @@ async function insertUserCore(
 /**
  * Create a brand-new account AND its own team in one transaction, returning the
  * new user + team. Shared by first-run setup and the register link (public signup
- * was removed — accounts after the first require an invite).
+ * was removed - accounts after the first require an invite).
  */
 export async function createAccountWithTeam(
   input: {
@@ -309,7 +309,7 @@ export async function createAccountWithTeam(
     return { user, team };
   });
   // Team ordering (project/folder) is now the `team_app_order` / `team_folder_order`
-  // junctions (cut-set c) — a brand-new team simply has no order rows yet and
+  // junctions (cut-set c) - a brand-new team simply has no order rows yet and
   // `listApps`/`listFolders` fall back to newest-first.
   return result;
 }
@@ -498,7 +498,7 @@ export async function assertUser(): Promise<PublicUser> {
 }
 
 /**
- * Verify a user's OWN password — the re-auth step in front of every sensitive
+ * Verify a user's OWN password - the re-auth step in front of every sensitive
  * account action (change email / change password / transfer ownership / enable or
  * disable 2FA).
  */
@@ -552,7 +552,7 @@ export async function setUserPassword(
 }
 
 /**
- * Delete every Better Auth session row for a user — the replacement for the old
+ * Delete every Better Auth session row for a user - the replacement for the old
  * `token_version` bump.
  */
 export async function revokeAllSessions(userId: string): Promise<void> {
@@ -588,7 +588,7 @@ export async function login(
     // either the session cookie or the challenge cookie, and on the IP
     // address both need declassifying for the browser to keep them.
     await keepAuthCookiesUsableOverHttp();
-    // Suspension is enforced only NOW, after the password verified — so "this account
+    // Suspension is enforced only NOW, after the password verified, so "this account
     // has been suspended" is revealed only to someone who proved the credential, never
     // as a pre-auth existence oracle.
     const account = (
@@ -841,7 +841,7 @@ export async function completeSetup(input: {
 }
 
 /**
- * Sign a freshly created account in and make a team active — the tail of setup and
+ * Sign a freshly created account in and make a team active - the tail of setup and
  * of the registration-link flow. A brand-new account can never have 2FA, so there
  * is no challenge branch to handle here.
  */
@@ -875,7 +875,7 @@ export async function setActiveTeamForCurrentUser(
 /**
  * Sign out: delete the session ROW (so the token is dead everywhere, not merely
  * forgotten by this browser) and clear both cookies. Best-effort on the Better
- * Auth side — a failed revoke must still let the browser drop its cookies.
+ * Auth side - a failed revoke must still let the browser drop its cookies.
  */
 export async function logout() {
   const auth = getAuth();

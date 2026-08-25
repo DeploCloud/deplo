@@ -6,7 +6,7 @@ import { yoga } from "@/lib/graphql/yoga";
  * and cookies(), so this must run on the Node.js runtime, not the edge.
  */
 export const runtime = "nodejs";
-// The schema reads cookies / the bearer header per request — never prerender.
+// The schema reads cookies / the bearer header per request, never prerender.
 export const dynamic = "force-dynamic";
 
 function handler(request: Request): Response | Promise<Response> {

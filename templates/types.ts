@@ -27,7 +27,7 @@ export function defaultVariant(template: {
 
 /**
  * A catalog entry as the UI gets it: the whole thing, with the asset paths
- * resolved to absolute URLs. Nothing is trimmed — the catalog carries the
+ * resolved to absolute URLs. Nothing is trimmed - the catalog carries the
  * author, the links, the screenshots and the dates so the UI can show them.
  */
 export type CatalogTemplateVariant = Omit<

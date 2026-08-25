@@ -79,7 +79,7 @@ const tokenOf = (url: string) => url.slice(url.lastIndexOf("/") + 1);
 test("no app carries a live hook token until someone opens it", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
 
-  // Nothing minted yet, so no URL can be valid for this app — not even an empty
+  // Nothing minted yet, so no URL can be valid for this app, not even an empty
   // one, which is what a naive compare against a missing token would accept.
   assert.deepEqual(await verifyDeployHookToken("prj_1", ""), {
     ok: false,
@@ -101,7 +101,7 @@ test("no app carries a live hook token until someone opens it", async () => {
   });
 });
 
-test("revealing twice returns the SAME url — reading a link never changes it", async () => {
+test("revealing twice returns the SAME url - reading a link never changes it", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   const first = await asUser1(() => revealDeployHook("prj_1"));
   const second = await asUser1(() => revealDeployHook("prj_1"));
@@ -197,7 +197,7 @@ test("a member without configure_apps can't open the hook", async () => {
  *
  * `verifyDeployHookToken` answers 403 "the hook is turned off" and 404 "not
  * found" for two different reasons, so the reachability check has to run BEFORE
- * it — otherwise the 403 tells a caller that an app it may not see exists, and
+ * it, otherwise the 403 tells a caller that an app it may not see exists, and
  * whether its hook is switched on.
  */
 test("an app outside the token's project scope answers the same 404 as an unknown app", async () => {
@@ -255,7 +255,7 @@ test("an app outside the token's project scope answers the same 404 as an unknow
   assert.deepEqual(await outOfScope.json(), await unknown.json());
 
   // And the test has teeth: an app the token CAN see, with its hook off, still
-  // gets the honest 403 — so the 404 above is the scope talking, not a blanket.
+  // gets the honest 403, so the 404 above is the scope talking, not a blanket.
   await seedApp(db, { id: "prj_in", slug: "in-app", projectId: "prc_in" });
   const inUrl = await asUser1(async () => {
     await setDeployHookEnabled("prj_in", false);

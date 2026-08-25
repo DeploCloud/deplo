@@ -51,7 +51,7 @@ function isPrivateIPv4(addr: string): boolean {
 /** Loopback / link-local / ULA IPv6, plus IPv4-mapped forms of the above. */
 function isPrivateIPv6(addr: string): boolean {
   const a = addr.toLowerCase();
-  // Dotted IPv4 tail ("::ffff:10.0.0.1") — judge the embedded IPv4.
+  // Dotted IPv4 tail ("::ffff:10.0.0.1") - judge the embedded IPv4.
   const dotted = a.match(/(\d+\.\d+\.\d+\.\d+)$/);
   if (dotted) return isPrivateIPv4(dotted[1]);
   // Expand "::" so the prefix checks see real hextets.
@@ -66,7 +66,7 @@ function isPrivateIPv6(addr: string): boolean {
           ...tail,
         ]
       : head;
-  if (groups.length !== 8) return true; // malformed — refuse rather than guess
+  if (groups.length !== 8) return true; // malformed - refuse rather than guess
   const n = groups.map((g) => parseInt(g || "0", 16));
   if (n.slice(0, 7).every((v) => v === 0)) return n[7] <= 1; // "::" and "::1"
   if (n.slice(0, 5).every((v) => v === 0) && n[5] === 0xffff) {
@@ -84,7 +84,7 @@ function isPrivateAddress(addr: string): boolean {
   const family = isIP(addr);
   if (family === 4) return isPrivateIPv4(addr);
   if (family === 6) return isPrivateIPv6(addr);
-  return true; // not an IP literal — hostnames are resolved by the caller
+  return true; // not an IP literal - hostnames are resolved by the caller
 }
 
 /**
@@ -108,7 +108,7 @@ async function isPublicHttpsUrl(url: string): Promise<boolean> {
     const addrs = await lookup(host, { all: true });
     return addrs.length > 0 && addrs.every((a) => !isPrivateAddress(a.address));
   } catch {
-    return false; // unresolvable — the fetch could not have succeeded anyway
+    return false; // unresolvable - the fetch could not have succeeded anyway
   }
 }
 
@@ -122,7 +122,7 @@ async function fetchJson<T>(
   init?: RequestInit & { timeoutMs?: number },
 ): Promise<{ status: number; body: T | null }> {
   // Every fetchJson target derives from user input or a probed host's own
-  // response — refuse anything that is not public https (SSRF guard).
+  // response - refuse anything that is not public https (SSRF guard).
   if (!(await isPublicHttpsUrl(url))) return { status: 0, body: null };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), init?.timeoutMs ?? DEFAULT_TIMEOUT);
@@ -133,7 +133,7 @@ async function fetchJson<T>(
       headers: { "User-Agent": UA, ...(init?.headers ?? {}) },
       cache: "no-store",
       // A 302 out of a checked URL would land the follow-up on a private/
-      // metadata target the SSRF guard never saw — refuse it, don't follow.
+      // metadata target the SSRF guard never saw - refuse it, don't follow.
       redirect: "manual",
     });
     if (res.status >= 300 && res.status < 400) return { status: 0, body: null };
@@ -257,7 +257,7 @@ async function ociToken(
   repository: string,
 ): Promise<string | null | "none"> {
   const probeUrl = `https://${registry}/v2/`;
-  // `registry` is user input — never probe a non-public target.
+  // `registry` is user input, never probe a non-public target.
   if (!(await isPublicHttpsUrl(probeUrl))) return null;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
@@ -279,7 +279,7 @@ async function ociToken(
     clearTimeout(t);
   }
   if (!challenge) return null;
-  // The realm URL is dictated by the probed host's response — follow it only
+  // The realm URL is dictated by the probed host's response - follow it only
   // to a public https endpoint, never an arbitrary scheme/host.
   if (!(await isPublicHttpsUrl(challenge.realm))) return null;
   const params = new URLSearchParams();
@@ -303,7 +303,7 @@ interface OciTagsResponse {
 /**
  * Generic OCI `tags/list`. The spec has no server-side name filter, so it
  * returns the whole list (we request a generous page) and we filter for the
- * fragment client-side — which is fine because the full list is returned at once.
+ * fragment client-side, which is fine because the full list is returned at once.
  */
 async function ociTags(
   registry: string,
@@ -375,7 +375,7 @@ export async function checkImageExists(
   const manifestUrl = `https://${registryHost}/v2/${encodeRepoPath(
     parsed.repository,
   )}/manifests/${encodeURIComponent(reference)}`;
-  // `registryHost` is user input — never HEAD a non-public target.
+  // `registryHost` is user input, never HEAD a non-public target.
   if (!(await isPublicHttpsUrl(manifestUrl))) return { status: "unknown" };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);

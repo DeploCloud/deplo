@@ -32,7 +32,7 @@ export default async function AppStorageSettingsPage(
   const composeServices = isComposeStack
     ? composeServiceNames(project.compose)
     : [];
-  // A Bind stays selectable without the grant — the editor says plainly that
+  // A Bind stays selectable without the grant - the editor says plainly that
   // saving one needs it, which beats hiding the option and the reason with it.
   const mayBind = await canMountHostVolumes();
   // A File entry's content IS this app's files tree, so writing one is the

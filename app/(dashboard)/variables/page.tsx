@@ -91,7 +91,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     environmentCount: p.environmentCount,
   }));
   // The shared-var wizard's "specific apps" scope needs every app in the active
-  // team, not just the ones that hold variables — and listAllAppEnv already
+  // team, not just the ones that hold variables, and listAllAppEnv already
   // returns a group per app (name-sorted), so there is nothing more to fetch.
   const apps = allAppGroups.map((g) => g.app);
 
@@ -123,7 +123,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
           the old panel and the click would appear to do nothing. */}
       <Tabs key={defaultTab} defaultValue={defaultTab}>
         <UnderlineTabsList>
-          {/* The value stays `app` — it is what every ?tab= deep link carries. */}
+          {/* The value stays `app` - it is what every ?tab= deep link carries. */}
           <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
           {admin && (

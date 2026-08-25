@@ -1,6 +1,6 @@
 /**
  * Pure logic for reading an app's icon out of what the app SERVES, rather than out
- * of files it ships — the arm a **compose stack** needs.
+ * of files it ships - the arm a **compose stack** needs.
  */
 
 import { faviconFormatScore, mimeForFaviconPath } from "./favicon-shared";
@@ -12,7 +12,7 @@ const MAX_HTML_SCAN = 256 * 1024;
 
 /**
  * How many icon URLs we are willing to fetch before giving up. Six because a page
- * that lists four apple-touch variants which all 404 (a real shape — the
+ * that lists four apple-touch variants which all 404 (a real shape - the
  * declarations outlive the files) must still reach the icon further down.
  */
 export const MAX_ICON_FETCHES = 6;
@@ -45,7 +45,7 @@ export type IconCandidate =
  * `<link …>` tags, and the attributes inside one.
  */
 const LINK_TAG_RE = /<link\b[^>]*>/gi;
-// An unquoted value runs to the next space or `>` — including any `=` inside it,
+// An unquoted value runs to the next space or `>` - including any `=` inside it,
 // which is how browsers tokenize `href=/i.png?v=1&t=2` and therefore what a page
 // author gets away with writing.
 const ATTR_RE =
@@ -82,7 +82,7 @@ export function parseIconLinks(html: string): IconLink[] {
 }
 
 /** The handful of entities that actually turn up inside an href (`&amp;` in a
- * query string, mostly). Not a general HTML decoder — an unknown entity is left
+ * query string, mostly). Not a general HTML decoder - an unknown entity is left
  * alone rather than half-decoded into something else. */
 function decodeEntities(s: string): string {
   return s.replace(/&(amp|lt|gt|quot|#39|apos);/g, (_, e) =>
@@ -157,7 +157,7 @@ export function rankIconLinks(links: readonly IconLink[]): IconLink[] {
 
 /**
  * A request path the agent will accept: absolute, no spaces, no control characters
- * (it refuses those outright — they are request smuggling, not a typo).
+ * (it refuses those outright - they are request smuggling, not a typo).
  */
 function cleanPath(path: string): string | null {
   const encoded = path.replace(/ /g, "%20");
@@ -204,7 +204,7 @@ export function resolveIconHref(
 }
 
 /** An icon the page inlined (`data:image/svg+xml;base64,…` or percent-encoded).
- * Nothing to fetch — the bytes are already here. */
+ * Nothing to fetch - the bytes are already here. */
 function parseDataUri(uri: string): IconCandidate | null {
   const comma = uri.indexOf(",");
   if (comma < 0) return null;
@@ -291,7 +291,7 @@ function startsWith(
 }
 
 /**
- * The image format the BYTES actually are, from their magic number — null when
+ * The image format the BYTES actually are, from their magic number - null when
  * they aren't a recognised image.
  */
 export function sniffImageMime(bytes: Uint8Array): string | null {
@@ -339,7 +339,7 @@ export function imageMimeFor(
   const declared = normalizeImageMime(contentType.split(";")[0]);
   const byExtension = mimeForFaviconPath(path.split(/[?#]/)[0]);
   // SVG is text, so it can only be recognised by reading it. Accept it when
-  // either the server or the URL says SVG *and* the bytes really are one — an
+  // either the server or the URL says SVG *and* the bytes really are one - an
   // HTML error page served as `image/svg+xml` fails the second half.
   if (declared === "image/svg+xml" || byExtension === "image/svg+xml") {
     const text = new TextDecoder("utf-8", { fatal: false }).decode(

@@ -18,7 +18,7 @@ import {
 import { runWithIdentity } from "../auth/request-context";
 
 /**
- * Scheduler-tick tests (PLAN Step 5 cut-set (d) — the scheduler-test rewrite off
+ * Scheduler-tick tests (PLAN Step 5 cut-set (d) - the scheduler-test rewrite off
  * the deleted `store.read/mutate` onto the Drizzle test harness).
  */
 
@@ -167,7 +167,7 @@ test("a malformed cron in a schedule never fires and never throws", async () => 
 
 test("a schedule fires on its own timezone's clock", async () => {
   // "Nightly at 03:00" used to mean 03:00 UTC whatever the team's clock said,
-  // which in Rome is 04:00 for half the year and 05:00 for the other half —
+  // which in Rome is 04:00 for half the year and 05:00 for the other half -
   // with nothing above the field admitting it.
   await seedDue("rome", { schedule: "0 3 * * *", timezone: "Europe/Rome" });
 
@@ -186,7 +186,7 @@ test("a schedule fires on its own timezone's clock", async () => {
 
 test("a schedule with an unusable timezone is skipped, not fatal", async () => {
   // A row that got past validation must not take the instance's other backups
-  // down with it — the same containment the cron runner has.
+  // down with it - the same containment the cron runner has.
   await seedDue("broken", { timezone: "Mars/Olympus" });
   await seedDue("fine");
 
@@ -203,7 +203,7 @@ test("a daily schedule fires ONCE across a repeated wall-clock hour", async () =
   await seedDue("nightly", { schedule: "30 2 * * *", timezone: "Europe/Rome" });
 
   await tick(new Date("2026-10-25T00:30:00Z")); // 02:30 CEST
-  await tick(new Date("2026-10-25T01:30:00Z")); // 02:30 CET — the same wall clock
+  await tick(new Date("2026-10-25T01:30:00Z")); // 02:30 CET - the same wall clock
 
   assert.equal(
     (await runsFor("nightly")).length,

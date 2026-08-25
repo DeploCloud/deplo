@@ -9,7 +9,7 @@ import {
 } from "./timestamp-parser";
 
 /**
- * PostgreSQL connection pool. There is no file-based fallback — the app fails fast
+ * PostgreSQL connection pool. There is no file-based fallback - the app fails fast
  * at startup if no connection string is set (see the module-load guard below).
  */
 

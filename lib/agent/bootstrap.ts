@@ -22,9 +22,9 @@ const BOOTSTRAP_TTL_MS = 60 * 60_000; // ~1 hour
 
 /** A freshly minted bootstrap secret: the raw token (shown once) + what to store. */
 export interface MintedBootstrap {
-  /** The raw one-time token — embedded in the install command, never stored. */
+  /** The raw one-time token - embedded in the install command, never stored. */
   rawToken: string;
-  /** sha256 of the token + its expiry — the only things persisted on the Server row. */
+  /** sha256 of the token + its expiry - the only things persisted on the Server row. */
   stored: { tokenHash: string; expiresAt: string; usedAt: null };
 }
 
@@ -84,7 +84,7 @@ export function installCommand(opts: {
   // as literals (the token is base64url, the url/fingerprint are constrained).
   const fp = fingerprint ? ` '${fingerprint}'` : "";
   // `sudo` does not forward the caller's environment, so the variable is set
-  // INSIDE the elevated shell — `DEPLO_STORAGE_ONLY=1 sudo bash` would silently
+  // INSIDE the elevated shell - `DEPLO_STORAGE_ONLY=1 sudo bash` would silently
   // install a normal agent.
   const env = importOnly
     ? "DEPLO_IMPORT_ONLY=1 "
@@ -97,7 +97,7 @@ export function installCommand(opts: {
 }
 
 /**
- * Build the paste-on-the-server UNINSTALL command — the counterpart to {@link
+ * Build the paste-on-the-server UNINSTALL command - the counterpart to {@link
  * installCommand}, handed to the operator when they remove a server.
  */
 export function uninstallCommand(opts: { baseUrl: string }): string {
@@ -150,7 +150,7 @@ export async function controlPlaneCertFingerprint(
   });
 }
 
-/** Why a bootstrap attempt was rejected — surfaced to the agent + the log. */
+/** Why a bootstrap attempt was rejected - surfaced to the agent + the log. */
 export type BootstrapRejection =
   "unknown-token" | "expired-token" | "already-used" | "bad-csr";
 
@@ -165,7 +165,7 @@ export class BootstrapError extends Error {
 
 /**
  * Find the provisioning server a raw bootstrap token belongs to. Validates the
- * token is known, unexpired, and unused — throwing a typed {@link BootstrapError}
+ * token is known, unexpired, and unused - throwing a typed {@link BootstrapError}
  * otherwise.
  */
 export function findServerForToken(
@@ -221,7 +221,7 @@ export async function signBootstrapCsr(
 /**
  * HMAC-sign a bootstrap response body with the raw token (the HTTP trust path).
  * Keyed by the RAW token (a high-entropy secret), so a plain HMAC-SHA256 is
- * sufficient — no KDF needed.
+ * sufficient, no KDF needed.
  */
 export function signResponse(rawToken: string, body: string): string {
   return createHmac("sha256", rawToken).update(body).digest("hex");

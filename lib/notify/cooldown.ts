@@ -3,7 +3,7 @@ import type { AlertKey } from "../types";
 /**
  * One state machine for every repeated condition.
  *
- * Emitters call this UNCONDITIONALLY — they report what they observed, good or
+ * Emitters call this UNCONDITIONALLY - they report what they observed, good or
  * bad, and this decides whether it is worth telling anybody. That is what makes
  * the recovery alert free: "server back online" is just a state change away from
  * "server offline", with no separate bookkeeping at the call site.
@@ -91,7 +91,7 @@ if (typeof setInterval === "function" && process.env.NEXT_RUNTIME !== "edge") {
   (t as unknown as { unref?: () => void }).unref?.();
 }
 
-/** Test hook — the map outlives a single test file otherwise. */
+/** Test hook - the map outlives a single test file otherwise. */
 export function __resetCooldowns(): void {
   store.clear();
 }

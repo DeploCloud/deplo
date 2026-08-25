@@ -21,7 +21,7 @@ import type { BasicAuthUser, VarAuthor } from "../types";
  * a time, behind the same `manage_basic_auth` gate as every write here.
  */
 
-/** A masked DTO for the UI — the password is never sent to the client. */
+/** A masked DTO for the UI - the password is never sent to the client. */
 export interface BasicAuthUserDTO {
   id: string;
   /** The owning app. Not exposed over GraphQL (the client already knows which
@@ -30,8 +30,8 @@ export interface BasicAuthUserDTO {
   appId: string;
   username: string;
   /**
-   * Who added the credential, and who last changed its password. Identity metadata
-   * — safe to project while the password itself never is.
+   * Who added the credential, and who last changed its password. Identity metadata -
+   * safe to project while the password itself never is.
    */
   createdBy: VarAuthor | null;
   updatedBy: VarAuthor | null;
@@ -95,7 +95,7 @@ async function withAuthors(u: BasicAuthUser): Promise<BasicAuthUserDTO> {
 
 /**
  * The basic-auth users of a project, alphabetical by username. Requires
- * `manage_basic_auth` — an out-of-team project yields none (matches a hidden tab).
+ * `manage_basic_auth` - an out-of-team project yields none (matches a hidden tab).
  */
 export async function listBasicAuthUsers(
   appId: string,
@@ -120,7 +120,7 @@ export async function listBasicAuthUsers(
 /**
  * The plaintext password of ONE credential, for the person who may change it.
  * Empty passwords are rejected at write time, so `""` here always means a decrypt
- * failure — the same reasoning as {@link basicAuthUsersValue}.
+ * failure - the same reasoning as {@link basicAuthUsersValue}.
  */
 export async function revealBasicAuthPassword(id: string): Promise<string> {
   const [row] = await getDb()
@@ -210,7 +210,7 @@ export async function addBasicAuthUser(
   return withAuthors(assemble(row));
 }
 
-/** Change a basic-auth user's password (the username is immutable — it is the
+/** Change a basic-auth user's password (the username is immutable - it is the
  * stable identity; deleting + re-adding is how you rename one). */
 export async function updateBasicAuthUserPassword(
   id: string,
@@ -283,7 +283,7 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
 }
 
 /**
- * The Traefik `basicauth.users` value for a project — a comma-separated list of
+ * The Traefik `basicauth.users` value for a project - a comma-separated list of
  * `user:bcrypt-hash` htpasswd lines, freshly hashed from the stored (decrypted)
  * passwords on every call.
  */

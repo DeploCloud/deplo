@@ -12,7 +12,7 @@ import { seedIdentity, TEAM_A, TEAM_B } from "../data/identity-test-helpers";
 import { ALL_CHANNELS } from "../types";
 
 /**
- * The data carry-over of migration 0075 — twelve fixed channel slots becoming N
+ * The data carry-over of migration 0075 - twelve fixed channel slots becoming N
  * configured instances.
  */
 
@@ -44,7 +44,7 @@ before(async () => {
     .sort();
   // 0085 rides along: it adds one column to `teams`, which the live-drizzle
   // seed below names in its INSERT. Any later additive column on a seeded table
-  // needs the same treatment — 0098 (the two MCP switches) is the next one.
+  // needs the same treatment - 0098 (the two MCP switches) is the next one.
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 75 ||
     f.startsWith("0085_") ||

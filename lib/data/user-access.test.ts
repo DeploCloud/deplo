@@ -88,7 +88,7 @@ beforeEach(async () => {
         isInstanceAdmin: false,
         capabilities: ["view", "deploy_apps"],
       },
-      // The acting admin belongs to a DIFFERENT team — the whole reason this
+      // The acting admin belongs to a DIFFERENT team - the whole reason this
       // surface exists.
       { id: ADMIN, teamId: TEAM_B, role: "owner", isInstanceAdmin: true },
     ],
@@ -165,7 +165,7 @@ test("granular mode keeps the role as the base and writes the node rows", async 
   ]);
   assert.ok(teamA.nodes[0].capabilities.includes("manage_env"));
 
-  // Switching back to Role mode clears every node row — no silent leftovers.
+  // Switching back to Role mode clears every node row, no silent leftovers.
   const back = await as(ADMIN, () =>
     setUserTeamAccess({
       userId: DEV,
@@ -213,7 +213,7 @@ test("a node from another team is refused", async () => {
           teamId: TEAM_A,
           roleId: viewer.id,
           granular: true,
-          // The folder belongs to TEAM_B — ticking it here would be a grant
+          // The folder belongs to TEAM_B - ticking it here would be a grant
           // reaching across a team boundary.
           grants: [{ folderIds: [FLD_OTHER], capabilities: ["manage_env"] }],
         }),
@@ -301,7 +301,7 @@ test("only an instance admin may use this surface", async () => {
         TEAM_A,
       ),
     /instance admin/i,
-    "owning the team is not enough — this is instance administration",
+    "owning the team is not enough - this is instance administration",
   );
 });
 
@@ -377,7 +377,7 @@ test("the change lands in the affected team's Activity", async () => {
 
 test("the team's OWN door logs it too, in the team it happened in", async () => {
   // Settings → Users is one door into a membership; the team's Members tab is the
-  // other, and it used to write nothing at all — no Activity row, no alert.
+  // other, and it used to write nothing at all - no Activity row, no alert.
   const roles = await rolesOfTeamA();
   const viewer = roles.find((r) => r.builtinKey === "viewer")!;
   await as(
@@ -452,7 +452,7 @@ test("an admin can't hand out what they don't hold on the node themselves", asyn
   const viewer = roles.find((r) => r.builtinKey === "viewer")!;
 
   // A second member of TEAM_A who may manage members but owns no folder and
-  // holds no grant on FLD — which the founder owns.
+  // holds no grant on FLD, which the founder owns.
   await db.insert((await import("../db/schema/control-plane")).users).values({
     id: "u_hr",
     email: "hr@example.io",
@@ -564,7 +564,7 @@ test("manage_members alone cannot mint an owner, nor edit one", async () => {
       ].map((capability) => ({ membershipId: "mem_hr2", capability })),
     );
 
-  // The Owner role grants everything, which is more than they hold — refused on
+  // The Owner role grants everything, which is more than they hold - refused on
   // the capability bound before the rank one is even reached.
   await assert.rejects(
     () =>

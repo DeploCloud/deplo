@@ -1,4 +1,4 @@
--- ADR-0008 Phase 2: the Project CONTAINER — a top-level, team-scoped, folder-like
+-- ADR-0008 Phase 2: the Project CONTAINER - a top-level, team-scoped, folder-like
 -- grouping that will own Environments (Phase 3). Purely additive: folders and
 -- services gain a NULLABLE project_id, so existing top-level items are untouched.
 -- Table/junction names (projects, team_project_order) were freed by 0015.

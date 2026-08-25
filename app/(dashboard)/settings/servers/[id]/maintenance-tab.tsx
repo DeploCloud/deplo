@@ -88,7 +88,7 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
         { id: server.id },
       );
       if (!res.ok) {
-        // Includes "Deplo did not install Traefik on this host" — the host's own
+        // Includes "Deplo did not install Traefik on this host" - the host's own
         // answer, which is more useful than anything we could word for it.
         toast.error(res.error);
         return;
@@ -112,7 +112,7 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
       // Not "restarted": the mutation returns once the restart is SCHEDULED,
       // because the restart ends the process that would have reported it done.
       toast.success(
-        "Deplo is restarting — this page will be briefly unavailable",
+        "Deplo is restarting - this page will be briefly unavailable",
       );
     });
   }
@@ -248,7 +248,7 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
             <DialogTitle>Restart Deplo?</DialogTitle>
             <DialogDescription>
               This dashboard goes away for a few seconds and comes back on its
-              own. Your deployed apps and databases are not affected — they keep
+              own. Your deployed apps and databases are not affected - they keep
               serving traffic throughout.
             </DialogDescription>
           </DialogHeader>

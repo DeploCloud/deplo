@@ -5,7 +5,7 @@ import { assertSafeOutboundHost } from "../outbound-url";
 /**
  * The two ways a team's alerts can leave as email: its own SMTP server, or a
  * Resend API key. Skipping it would have made SMTP the one channel that can dial
- * the control plane's own network — see `assertSafeOutboundHost`.
+ * the control plane's own network - see `assertSafeOutboundHost`.
  */
 
 /** What one SMTP dial gets before it is considered dead. */
@@ -29,7 +29,7 @@ export interface EmailMessage {
 }
 
 /**
- * Implicit TLS is port 465 and nothing else — that is nodemailer's own rule
+ * Implicit TLS is port 465 and nothing else - that is nodemailer's own rule
  * (`secure: true` means "TLS from the first byte"), and every other port either
  * upgrades with STARTTLS or is plaintext, which nodemailer negotiates itself.
  */
@@ -99,7 +99,7 @@ async function resendError(res: Response): Promise<string> {
     const body = (await res.json()) as { message?: string; name?: string };
     if (body.message) return body.message;
   } catch {
-    // Not JSON — fall through to the status.
+    // Not JSON - fall through to the status.
   }
   return `Resend returned ${res.status}`;
 }

@@ -35,7 +35,7 @@ export interface McpPrincipal {
 /**
  * The team a call works in, when the connection was granted more than one.
  *
- * Optional on purpose: a connection granted one team — the common case — never
+ * Optional on purpose: a connection granted one team, the common case, never
  * needs it, and a model that omits it gets the team the connection belongs to.
  */
 const TEAM_ARG = z

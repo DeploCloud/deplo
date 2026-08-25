@@ -37,18 +37,18 @@ export interface SeedCleanupPolicyOpts {
   schedule?: string;
   minAgeHours?: number;
   keepImagesPerApp?: number;
-  /** Defaults to the three conservative scopes — a deliberate fixture, NOT the
+  /** Defaults to the three conservative scopes - a deliberate fixture, NOT the
    *  instance defaults (those are all four): tests that care about `unused_app_images`
    *  say so explicitly. */
   scopes?: CleanupScopeId[];
-  /** Servers the SCHEDULED sweep skips. Seed the servers first — this FKs to them. */
+  /** Servers the SCHEDULED sweep skips. Seed the servers first - this FKs to them. */
   excludedServerIds?: string[];
   updatedAt?: string;
 }
 
 /**
  * Seed the singleton policy + its scopes junction (+ any exclusions). Omit it entirely
- * to test the missing-row path — a never-configured instance reads as the defaults.
+ * to test the missing-row path - a never-configured instance reads as the defaults.
  */
 export async function seedCleanupPolicy(
   db: TestDb,
@@ -104,7 +104,7 @@ export interface SeedCleanupRunOpts {
   error?: string | null;
   reclaimedBytes?: number;
   startedAt?: string;
-  /** Null while `running` — that is exactly the shape the boot reconcile settles. */
+  /** Null while `running` - that is exactly the shape the boot reconcile settles. */
   finishedAt?: string | null;
   /** The per-scope breakdown. `(run_id, scope)` is the PK, so no scope twice. */
   items?: CleanupRunItem[];

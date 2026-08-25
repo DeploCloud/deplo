@@ -2,7 +2,7 @@
 --
 -- Vercel-style recognition: on every deploy that runs one of the auto-detecting
 -- builders (Nixpacks / Railpack), Deplo reads the app's own package.json + root
--- config files and names what it found — "nextjs", "astro", "nestjs", … (the ids
+-- config files and names what it found - "nextjs", "astro", "nestjs", … (the ids
 -- in lib/apps/framework-catalog.ts). The UI shows that name with the project's
 -- real brand mark, and the app's container port defaults to the port that
 -- framework's production server actually binds instead of a hardcoded 3000.
@@ -11,7 +11,7 @@
 -- no "framework preset" the user picks: each deploy re-detects and overwrites, so
 -- a repo that switches frameworks corrects itself on its next deploy, and an app
 -- whose build method moves off Nixpacks/Railpack goes back to NULL. That is also
--- why nothing is backfilled — every existing row is NULL until its next deploy,
+-- why nothing is backfilled - every existing row is NULL until its next deploy,
 -- which is the correct value in the meantime.
 --
 -- Plain text with no CHECK constraint, matching how `apps.build_method` is

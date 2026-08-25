@@ -22,8 +22,8 @@ import {
 import type { BuildConfig, GitRepo } from "../types";
 
 /**
- * Reading an app's own source to name its framework — the server-only I/O around
- * the pure rules in {@link file://. Recognition is a label plus a port default —
+ * Reading an app's own source to name its framework - the server-only I/O around
+ * the pure rules in {@link file://. Recognition is a label plus a port default,
  * never a reason to fail a deploy.
  */
 
@@ -125,8 +125,8 @@ const MAX_ROOT_ENTRIES = 5_000;
 
 /**
  * Name the framework in an already-extracted source tree on local disk (the
- * upload arm). Only the build root's own entries are listed — one directory
- * read, never a descent — plus its `package.json` if present.
+ * upload arm). Only the build root's own entries are listed - one directory
+ * read, never a descent - plus its `package.json` if present.
  */
 export async function detectTreeFramework(
   root: string,
@@ -178,7 +178,7 @@ export interface FrameworkDetectApp {
 }
 
 /**
- * Name the framework backing an app from whichever source it actually has — the
+ * Name the framework backing an app from whichever source it actually has - the
  * entry point the API uses.
  */
 export async function detectAppFramework(

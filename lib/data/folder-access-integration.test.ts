@@ -25,7 +25,7 @@ import {
 import { listFolders } from "./folders";
 
 /**
- * End-to-end authorization tests for the per-folder access model against pglite —
+ * End-to-end authorization tests for the per-folder access model against pglite -
  * the DB-backed twin of the pure-math unit tests in folder-access.test.ts.
  */
 
@@ -232,7 +232,7 @@ test("a grantee with a folder grant can act; without it they can't", async () =>
 test("a grant EXCEEDS the grantee's team caps and holds (ADR-0016)", async () => {
   // GRANTEE has no team `manage_backups`. Granting it on the folder is exactly how
   // you hand someone one corner of the fleet without widening their role, so it must
-  // survive — that is the invariant ADR-0016 reversed.
+  // survive - that is the invariant ADR-0016 reversed.
   await as(OWNER, () =>
     setFolderGrant(FLD, GRANTEE, ["deploy_apps", "manage_backups"]),
   );
@@ -357,7 +357,7 @@ test("createApp files the new app IN the folder it was created from", async () =
     FLD,
     "an app created inside a folder must stay in it",
   );
-  assert.equal(row.projectId, null, "one home only — no project link");
+  assert.equal(row.projectId, null, "one home only - no project link");
   assert.equal(row.environmentId, null);
   // …and the DTO the wizard redirects on agrees with the row.
   assert.equal(app.folderId, FLD);
@@ -380,7 +380,7 @@ test("creating into a folder needs `create_apps` ON THAT FOLDER, not just at tea
       "team-level create_apps alone must not create an app inside someone else's folder",
     );
   });
-  // The whole create was refused — no orphan app row left behind.
+  // The whole create was refused, no orphan app row left behind.
   const rows = await db
     .select()
     .from(appsTable)
@@ -411,7 +411,7 @@ test("createApp rejects an unknown folder id instead of silently creating top le
   assert.equal(
     (await db.select().from(appsTable)).length,
     2,
-    "only the two seeded apps exist — nothing was created",
+    "only the two seeded apps exist - nothing was created",
   );
 });
 

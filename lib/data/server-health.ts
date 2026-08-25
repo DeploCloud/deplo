@@ -48,7 +48,7 @@ const FORCE_FLOOR_MS = 5_000;
 /**
  * Belt-and-braces bound around the WHOLE probe. The RPC has its own 3s deadline, but
  * that clock only starts once `connectAgent` has done a DB read and issued a client
- * cert — work that happens before gRPC is involved and is therefore outside it.
+ * cert - work that happens before gRPC is involved and is therefore outside it.
  */
 const PROBE_DEADLINE_MS = 3_500;
 /** Wait this long before the one confirming retry (see {@link probeServer}). */
@@ -90,7 +90,7 @@ const HAS_LIVE_AGENT = and(
 );
 
 /**
- * CLAIM the right to probe a server, atomically, by advancing `status_probed_at` —
+ * CLAIM the right to probe a server, atomically, by advancing `status_probed_at` -
  * the throttle LEASE, deliberately NOT `status_checked_at`. The lease lives in its
  * own column so "we tried" and "we observed" never get conflated.
  */
@@ -106,7 +106,7 @@ export async function claimProbe(id: string, force: boolean): Promise<boolean> {
       and(
         eq(serversTable.id, id),
         HAS_LIVE_AGENT,
-        // No recent dial AND no recent observation — either one being fresh means a
+        // No recent dial AND no recent observation - either one being fresh means a
         // re-dial would learn nothing new.
         stale(serversTable.statusProbedAt),
         stale(serversTable.statusCheckedAt),
@@ -185,7 +185,7 @@ function alertServerHealth(
   name: string,
   health: ServerHealth,
 ): void {
-  // `provisioning` is a server mid-setup, not an observed verdict — nothing to
+  // `provisioning` is a server mid-setup, not an observed verdict - nothing to
   // report until it has actually answered once.
   if (health.status === "provisioning") return;
   const dedupe = { id: `server:${id}`, state: health.status };
@@ -268,8 +268,8 @@ async function probeServer(
     storageOnly: server.storageOnly,
   });
   if (error) {
-    // The curated message goes in the column; the raw one — which carries the pinned
-    // fingerprint, the dial address and the gRPC detail — goes here and nowhere else.
+    // The curated message goes in the column; the raw one, which carries the pinned
+    // fingerprint, the dial address and the gRPC detail - goes here and nowhere else.
     console.error(`[deplo] health probe for ${server.name}: ${String(error)}`);
   }
 
@@ -286,7 +286,7 @@ async function probeServer(
 
   await recordServerHealth(server.id, health, observedAt);
   // This Hello carries `traefikRunning` too, and the prober is the ONLY thing that
-  // dials a server on a schedule — so before this, the Traefik badge could only ever
+  // dials a server on a schedule, so before this, the Traefik badge could only ever
   // be refreshed by a deploy pre-flight or the monitoring stream, and a host nobody
   if (hello)
     await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
@@ -295,7 +295,7 @@ async function probeServer(
 
 /**
  * Probe a server, coalescing concurrent callers onto one dial. Returns the stored row
- * unchanged when the probe was throttled or inconclusive — never null-as-in-unknown, so
+ * unchanged when the probe was throttled or inconclusive, never null-as-in-unknown, so
  * a caller always has something to render.
  */
 async function probeCoalesced(server: Server, force: boolean): Promise<Server> {
@@ -314,14 +314,14 @@ async function probeCoalesced(server: Server, force: boolean): Promise<Server> {
   }
 }
 
-/** A server with no agent yet is never dialed — there is nothing on the other end. */
+/** A server with no agent yet is never dialed - there is nothing on the other end. */
 function isProbeable(server: Server): boolean {
   return Boolean(server.agent?.certFingerprint);
 }
 
 /**
  * Re-check ONE server's health (the per-card button). The gate lives HERE, in the
- * data layer — the GraphQL `authScopes` is the introspectable contract, this is
+ * data layer - the GraphQL `authScopes` is the introspectable contract, this is
  * the boundary.
  */
 export async function checkServerHealth(

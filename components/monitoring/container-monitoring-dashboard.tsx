@@ -38,7 +38,7 @@ function fmtCores(cores: number): string {
 }
 
 /** A configured memory cap, in the SAME "MB (1024 = 1 GB)" convention as
- *  Settings → Resources — so the label matches what the operator typed
+ *  Settings → Resources, so the label matches what the operator typed
  *  ("512 MB", "2 GB"), not pretty-bytes' decimal rendering ("537 MB"). */
 function fmtMemMb(mb: number): string {
   return mb >= 1024 ? `${Number((mb / 1024).toFixed(2))} GB` : `${mb} MB`;
@@ -103,7 +103,7 @@ export function ContainerMonitoringDashboard({
   /** The buffered window, to render a full chart on the very first paint. */
   initialHistory: ContainerSample[];
   /** The stack's configured resource limits, so the % gauges read against the
-   *  cap (not the whole host) — null when uncapped. */
+   *  cap (not the whole host) - null when uncapped. */
   resources: ResourceLimits | null;
 }) {
   const noun = kind === "app" ? "app" : "database";
@@ -131,7 +131,7 @@ export function ContainerMonitoringDashboard({
 
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
   // The live-vs-history split is kept, but both halves now come from the same buffer:
-  // `samples` is the SERIES the charts draw, `last` is the latest-value CELL — the
+  // `samples` is the SERIES the charts draw, `last` is the latest-value CELL - the
   // per-container breakdown and the `unsupported` flag, which are a live table rather
   const [samples, setSamples] = React.useState<ContainerSample[]>(() =>
     initialHistory.filter((s) => s.online),
@@ -176,7 +176,7 @@ export function ContainerMonitoringDashboard({
         const fresh = res.data.history.filter((s) => s.online);
         setSamples((prev) => {
           const byTs = new Map<number, ContainerSample>();
-          // Buffer samples second so they win a timestamp collision — same
+          // Buffer samples second so they win a timestamp collision - same
           // data, authoritative provenance.
           for (const s of [...prev, ...fresh]) byTs.set(s.ts, s);
           const merged = [...byTs.values()]
@@ -199,7 +199,7 @@ export function ContainerMonitoringDashboard({
     void read();
     const iv = setInterval(read, POLL_MS);
     // Read on wake as well as on the timer. A soft-nav back or a bfcache restore may
-    // not remount this component, so a mount-only read would never re-run — `pageshow`
+    // not remount this component, so a mount-only read would never re-run - `pageshow`
     // covers the bfcache case.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void read();
@@ -313,7 +313,7 @@ export function ContainerMonitoringDashboard({
         <EmptyCard
           icon={ServerOff}
           title="No metrics yet"
-          text={`Nothing has arrived for this ${noun}. Metrics appear as soon as its server starts reporting — check that server on the Servers page if this persists.`}
+          text={`Nothing has arrived for this ${noun}. Metrics appear as soon as its server starts reporting - check that server on the Servers page if this persists.`}
         />
       );
     } else if (last && last.running === 0) {
@@ -344,7 +344,7 @@ export function ContainerMonitoringDashboard({
               <span className="font-medium text-foreground">
                 Resource limits apply
               </span>{" "}
-              — the percentages below are relative to this {noun}&apos;s limits,
+              - the percentages below are relative to this {noun}&apos;s limits,
               not the whole host&apos;s capacity.{" "}
               {multiContainer
                 ? `Each of its ${runningCount} running containers is capped at ${limitParts.join(

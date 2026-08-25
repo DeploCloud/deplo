@@ -1,4 +1,4 @@
--- Pull request previews are withdrawn — the schema goes with the feature.
+-- Pull request previews are withdrawn - the schema goes with the feature.
 --
 -- An earlier 0053 ("add_app_previews") created a per-pull-request preview stack:
 -- `app_previews`, the preview-only variable overrides in `app_preview_env_vars`,
@@ -8,8 +8,8 @@
 --
 -- This one exists for the instances that DID apply it before the feature was
 -- removed: without it they keep an orphan `deployments.deploy_key` that is NOT
--- NULL with no default, and the very next deploy insert — which no longer writes
--- that column — fails. Hence it is IF EXISTS throughout: a real cleanup where the
+-- NULL with no default, and the very next deploy insert, which no longer writes
+-- that column - fails. Hence it is IF EXISTS throughout: a real cleanup where the
 -- old 0053 ran, a no-op everywhere else.
 
 DROP TABLE IF EXISTS "app_preview_env_vars";

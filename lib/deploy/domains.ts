@@ -11,7 +11,7 @@ import type { CertProvider, DomainEntrypoint } from "../types";
 import { publicBaseUrl } from "../public-url";
 
 /**
- * Default domains via nip.io — a public wildcard DNS where a hostname whose final
+ * Default domains via nip.io - a public wildcard DNS where a hostname whose final
  * label before `.nip.io` is the server's IPv4 in 8-char HEXADECIMAL (`1.2.3.4` →
  * `01020304`) resolves to that IP with zero configuration.
  */
@@ -90,10 +90,10 @@ export function instanceHost(): string {
       const host = new URL(pub).hostname;
       if (isIpv4(host)) return host;
       // A hostname-valued DEPLO_PUBLIC_URL (e.g. https://deplo.example.com)
-      // cannot be encoded as the trailing hex label of a nip.io host — fall
+      // cannot be encoded as the trailing hex label of a nip.io host - fall
       // through to NIC detection rather than generating a host with no A record.
     } catch {
-      /* not a URL — fall through */
+      /* not a URL - fall through */
     }
   }
 
@@ -110,7 +110,7 @@ export function instanceHost(): string {
 }
 
 /**
- * The addresses that identify the CONTROL-PLANE HOST — the single server in the
+ * The addresses that identify the CONTROL-PLANE HOST - the single server in the
  * fleet that also runs Deplo itself ("agent 0"; CONTEXT.md: "the host running
  * Deplo is an agent too"). , never "may this caller do X".
  */
@@ -137,7 +137,7 @@ export function deploHostSelfAddresses(): Set<string> {
 }
 
 /**
- * Whether `server` is the host running Deplo — i.e. one of its operator-declared
+ * Whether `server` is the host running Deplo - i.e. one of its operator-declared
  * addresses matches this instance's own {@link deploHostSelfAddresses}.
  */
 export function isDeploHostServer(
@@ -191,7 +191,7 @@ export function cloudflareCertResolver(): string {
 }
 
 /**
- * The router TLS triplet for a domain's certificate-provider choice — the one
+ * The router TLS triplet for a domain's certificate-provider choice - the one
  * place that maps the user-facing {@link CertProvider} enum onto the concrete
  * Traefik resolver/entrypoint a router needs.
  */
@@ -220,7 +220,7 @@ export function domainTlsConfig(domain: {
 }
 
 /**
- * URL scheme a domain is served on — `http` for the `none` certificate provider
+ * URL scheme a domain is served on - `http` for the `none` certificate provider
  * (its router terminates no TLS, riding the `web` entrypoint), `https` for every
  * real provider.
  */

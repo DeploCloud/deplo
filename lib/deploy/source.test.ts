@@ -73,7 +73,7 @@ test("normalizeRootRel: backslashes → slashes, leading ./ and / stripped", () 
   assert.equal(normalizeRootRel("apps\\web"), "apps/web");
   assert.equal(normalizeRootRel("./apps/web"), "apps/web");
   assert.equal(normalizeRootRel("/apps/web"), "apps/web");
-  // "", ".", null, undefined all collapse to "" — the leading-dot strip turns
+  // "", ".", null, undefined all collapse to "" - the leading-dot strip turns
   // the "." fallback into "". (Faithful to the original inline normalisation.)
   assert.equal(normalizeRootRel(""), "");
   assert.equal(normalizeRootRel(null), "");

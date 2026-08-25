@@ -502,7 +502,7 @@ export function DomainConfigFields({
             htmlFor={`${idPrefix}-entrypoint`}
             info={
               <>
-                The proxy entrypoint this domain binds to —{" "}
+                The proxy entrypoint this domain binds to:{" "}
                 <code className="font-mono">websecure</code> (:443) serves
                 HTTPS, <code className="font-mono">web</code> (:80) serves plain
                 HTTP. Leave it Automatic and deplo follows the certificate. Pick{" "}

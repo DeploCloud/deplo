@@ -120,7 +120,7 @@ export async function sendToChannel(
       return;
 
     // No signal: `web-push` takes none. It bounds itself with its own socket
-    // timeout instead — see `PUSH_TIMEOUT_MS`.
+    // timeout instead - see `PUSH_TIMEOUT_MS`.
     case "push":
       await sendWebPushTo(channel.teamId, channel.userId ?? null, msg);
       return;
@@ -216,7 +216,7 @@ export async function sendToChannel(
 
     default: {
       // This switch is `async`, so falling off the end is legal TypeScript and a channel
-      // with no case would be a silent no-op — a switch that promises an alert and
+      // with no case would be a silent no-op - a switch that promises an alert and
       // delivers silence, which is the exact bug this feature exists to close.
       const unreachable: never = channel;
       throw new Error(`No sender for channel ${JSON.stringify(unreachable)}`);
@@ -317,7 +317,7 @@ async function telegramError(res: Response): Promise<string> {
     const body = (await res.json()) as { description?: string };
     if (body.description) return body.description;
   } catch {
-    // Not JSON — fall through to the status.
+    // Not JSON - fall through to the status.
   }
   return `Telegram returned ${res.status}`;
 }

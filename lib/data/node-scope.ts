@@ -47,7 +47,7 @@ export interface NodeScope {
 
 /**
  * Every folder a scope actually reaches: the ticked ones, everything nested under
- * them, and everything filed under a ticked project — plus the projects those
+ * them, and everything filed under a ticked project, plus the projects those
  * folders sit in, so the containers stay navigable.
  */
 export async function expandFolders(
@@ -105,7 +105,7 @@ export async function expandFolders(
 }
 
 /**
- * The reach of this PERSON in this team, or `null` for the whole of it — which is
+ * The reach of this PERSON in this team, or `null` for the whole of it, which is
  * every member until someone limits one, and so the answer for most of them. Two
  * sources, in this order: 1. **their role's scope** otherwise.
  */
@@ -273,8 +273,8 @@ export async function loadRoleScope(
 /* ------------------------------------------------------------------ */
 
 /**
- * An app lives in exactly ONE place — a folder, a project, or the team top level
- * (filing it into a folder clears its project link) — so the three clauses are
+ * An app lives in exactly ONE place - a folder, a project, or the team top level
+ * (filing it into a folder clears its project link), so the three clauses are
  * alternatives.
  */
 export function appInScope(

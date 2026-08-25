@@ -16,7 +16,7 @@ import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * The app's DEPLOY HOOK: one URL that deploys it, for everything that can't click
- * the dashboard — a GitLab or Bitbucket webhook, a CI job that just pushed a new
+ * the dashboard - a GitLab or Bitbucket webhook, a CI job that just pushed a new
  * image, a cron on someone's laptop.
  */
 export function DeployHookPanel({
@@ -26,7 +26,7 @@ export function DeployHookPanel({
 }: {
   appId: string;
   enabled: boolean;
-  /** The hook URL with its secret segment dotted out — what the covered chip
+  /** The hook URL with its secret segment dotted out - what the covered chip
    * shows, so the shape of the link is legible without revealing it. */
   maskedUrl: string;
 }) {
@@ -89,7 +89,7 @@ export function DeployHookPanel({
             <InfoTip
               content={
                 <>
-                  A URL that deploys this app when something POSTs to it — a
+                  A URL that deploys this app when something POSTs to it - a
                   webhook from your git provider, a CI job, a script. The call
                   also has to carry an API token, so the URL on its own
                   can&apos;t deploy anything.
@@ -135,7 +135,7 @@ export function DeployHookPanel({
         <CopyResolved resolve={resolve} />
         <ConfirmAction
           title="Rotate the deploy hook URL?"
-          description="The current URL stops working immediately. Anything already using it — a webhook in your git provider, a CI job — has to be updated with the new one."
+          description="The current URL stops working immediately. Anything already using it (a webhook in your git provider, a CI job) has to be updated with the new one."
           confirmLabel="Rotate URL"
           successMessage="Deploy hook rotated"
           onConfirm={rotate}
@@ -153,7 +153,7 @@ export function DeployHookPanel({
         />
       </div>
 
-      {/* The whole call, ready to paste — only once the URL is on screen, so a
+      {/* The whole call, ready to paste - only once the URL is on screen, so a
           "copy" never hands over a command with dots where the token goes. */}
       {revealed && url && (
         <CommandLine
@@ -176,7 +176,7 @@ export function DeployHookPanel({
           >
             API tokens
           </Link>{" "}
-          — the <strong>Deploy hook &amp; CI</strong> template is exactly this.
+          - the <strong>Deploy hook &amp; CI</strong> template is exactly this.
           Revoking it stops every hook call made with it.
         </span>
       </p>
@@ -184,7 +184,7 @@ export function DeployHookPanel({
   );
 }
 
-/** Copy the URL, fetching it first when it hasn't been revealed — so it can go
+/** Copy the URL, fetching it first when it hasn't been revealed, so it can go
  * to the clipboard without ever going on screen. */
 function CopyResolved({ resolve }: { resolve: () => Promise<string | null> }) {
   const [copied, setCopied] = React.useState(false);

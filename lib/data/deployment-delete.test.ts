@@ -101,7 +101,7 @@ test("deleteDeployments removes finished ones and leaves in-progress builds", as
   assert.deepEqual(
     await remaining(),
     ["dep_building", "dep_queued"],
-    "queued/building survive — they must be canceled first",
+    "queued/building survive - they must be canceled first",
   );
 });
 

@@ -28,7 +28,7 @@ test("isCloudflareIp: true for addresses inside published IPv4 ranges", () => {
 test("isCloudflareIp: false for non-Cloudflare IPv4 (incl. the CF DNS resolver)", () => {
   for (const ip of [
     "8.8.8.8", // Google DNS
-    "1.1.1.1", // Cloudflare's public DNS — NOT a proxy range, must be false
+    "1.1.1.1", // Cloudflare's public DNS, NOT a proxy range, must be false
     "5.6.7.8", // an ordinary origin server
     "104.15.255.255", // one below 104.16.0.0/13
     "104.28.0.1", // above the 104.24.0.0/14 block, below 104.24? (not covered)
@@ -44,11 +44,11 @@ test("isCloudflareIp: false for non-Cloudflare IPv4 (incl. the CF DNS resolver)"
 });
 
 test("isCloudflareIp: /13 and /14 boundaries are exact", () => {
-  // 104.16.0.0/13 spans 104.16.0.0 – 104.23.255.255
+  // 104.16.0.0/13 spans 104.16.0.0 - 104.23.255.255
   assert.equal(isCloudflareIp("104.16.0.0"), true);
   assert.equal(isCloudflareIp("104.23.255.255"), true);
   assert.equal(isCloudflareIp("104.15.255.255"), false);
-  // 104.24.0.0/14 spans 104.24.0.0 – 104.27.255.255 (the /13 does NOT cover it)
+  // 104.24.0.0/14 spans 104.24.0.0 - 104.27.255.255 (the /13 does NOT cover it)
   assert.equal(isCloudflareIp("104.24.0.0"), true);
   assert.equal(isCloudflareIp("104.27.255.255"), true);
   assert.equal(isCloudflareIp("104.28.0.0"), false);
@@ -142,7 +142,7 @@ test("certProviderForDns: every other status leaves a cert-less domain alone", (
 
 test("certProviderForDns: an explicit provider is never overruled", () => {
   // letsencrypt is a deliberate "give the ORIGIN its own certificate", which
-  // stays legitimate behind a proxy — the rule only ever fills in a blank.
+  // stays legitimate behind a proxy - the rule only ever fills in a blank.
   assert.equal(certProviderForDns("cloudflare", "letsencrypt"), "letsencrypt");
   // Already there ⇒ idempotent (the domains page re-checks on an interval).
   assert.equal(certProviderForDns("cloudflare", "cloudflare"), "cloudflare");

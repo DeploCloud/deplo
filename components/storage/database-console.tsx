@@ -11,7 +11,7 @@ import type { ConsoleInstance } from "@/lib/data/console";
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
- * A database's console — the same {@link ConsolePane} an App gets, pointed at the
+ * A database's console - the same {@link ConsolePane} an App gets, pointed at the
  * database endpoints.
  */
 export function DatabaseConsole({
@@ -28,7 +28,7 @@ export function DatabaseConsole({
   const status = useLiveDatabaseStatus(serverStatus);
   const running = status === "running";
 
-  // Stable identities — the pane re-probes / re-binds when these change.
+  // Stable identities - the pane re-probes / re-binds when these change.
   const exec = React.useCallback(
     (command: string) =>
       gqlAction(

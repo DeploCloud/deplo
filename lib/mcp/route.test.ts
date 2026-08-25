@@ -72,7 +72,7 @@ beforeEach(async () => {
   await seedIdentity(db);
   // USER_1 owns BOTH teams. That is the case that actually breaks: without a
   // second membership, "the header cannot move the connection" would pass for
-  // the wrong reason — the team simply being out of reach.
+  // the wrong reason - the team simply being out of reach.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
      values ('mem_user_1_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,
@@ -215,7 +215,7 @@ test("register → sign in → authorize → mint → consent → exchange → a
     "authorize must land on deplo's own consent page",
   );
 
-  // What the consent page's browser fetch does FIRST — it verifies the
+  // What the consent page's browser fetch does FIRST - it verifies the
   // provider's signature and records the approval.
   const approved = await consent(cookie, {
     accept: true,
@@ -223,7 +223,7 @@ test("register → sign in → authorize → mint → consent → exchange → a
   });
   assert.equal(approved.status, 200, `consent refused (${approved.status})`);
 
-  // And only then what the GraphQL resolver does, behind every gate — which now
+  // And only then what the GraphQL resolver does, behind every gate, which now
   // requires that recorded approval to exist.
   await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     mintMcpConnection({ clientId, capabilities: ["view"] }),
@@ -269,7 +269,7 @@ test("a refreshed access token keeps working, and the spent refresh token dies",
   ).rows as { id: string }[];
   assert.equal(rows.length, 1);
 
-  // The REFRESH token rotates and the spent one is dead — that is the property that
+  // The REFRESH token rotates and the spent one is dead - that is the property that
   // matters, and the one a stolen refresh token would otherwise defeat.
   assert.notEqual(again.body.refresh_token, conn.refreshToken);
   const replayed = await refresh(conn.refreshToken!, conn.clientId, RESOURCE);
@@ -288,7 +288,7 @@ test("revoking the connection also kills its refresh token", async () => {
 
 test("an access token with no user behind it authenticates nothing", async () => {
   // The shape a machine-to-machine grant would have. It can only ever resolve
-  // through a connection, and a connection belongs to a person — so the join
+  // through a connection, and a connection belongs to a person, so the join
   // finds nothing rather than falling back to anything.
   const conn = await connect(["view"]);
   await pg.query(
@@ -303,7 +303,7 @@ test("an access token with no user behind it authenticates nothing", async () =>
 
 test("the same connection authenticates on the GraphQL API, with the same clamp", async () => {
   // Deliberate: an OAuth grant IS an API token, so it reaches /api/graphql too.
-  // That is the widest surface it touches, and nothing tested it — a divergence
+  // That is the widest surface it touches, and nothing tested it - a divergence
   // here would mean two principals after all.
   const conn = await connect(["view"]);
   const ctx = await buildContext(
@@ -342,7 +342,7 @@ test("an unauthenticated authorize sends the signed query to the login page", as
 });
 
 /* ------------------------------------------------------------------ */
-/* 1. Baseline — the pre-OAuth path is unchanged                       */
+/* 1. Baseline - the pre-OAuth path is unchanged                       */
 /* ------------------------------------------------------------------ */
 
 test("a deplo_ token still reaches its tools and resolves as its creator", async () => {
@@ -645,7 +645,7 @@ test("X-Deplo-Team cannot move an OAuth connection to a team it was not granted"
 
 test("a connection whose scope names two teams still resolves in the one it was approved for", async () => {
   // The repair for grants minted before the mint was fixed. Without a hint the
-  // fallback is `reachable[0]` — the OLDEST team the approver belongs to — so a
+  // fallback is `reachable[0]`, the OLDEST team the approver belongs to, so a
   // connection approved in TEAM_A would act in whichever team happens to sort first.
   const conn = await connect(["view"]);
   await pg.query(`update teams set created_at = $1 where id = $2`, [
@@ -704,7 +704,7 @@ test("a deplo_ token still honours X-Deplo-Team", async () => {
 test("a tool that runs outside GraphQL resolves the same identity", async () => {
   // `app_logs` and `database_logs` are the only tools that are not a GraphQL
   // document, so they are the only two that do not get `runGraphql`'s
-  // `runWithIdentity` for free — and the SDK handler runs OUTSIDE the scope this
+  // `runWithIdentity` for free, and the SDK handler runs OUTSIDE the scope this
   const conn = await connect(["view", "view_logs"]);
   const res = await mcp(conn.accessToken, {
     tool: "app_logs",

@@ -51,8 +51,8 @@ export interface PreviewOverride {
 }
 
 /**
- * Preview-only variable overrides (advanced). It stays a disclosure — an app that
- * never opens it should not have to read past an empty box — but everything inside
+ * Preview-only variable overrides (advanced). It stays a disclosure - an app that
+ * never opens it should not have to read past an empty box, but everything inside
  * the disclosure is the neighbour's furniture.
  */
 export function PreviewOverrides({

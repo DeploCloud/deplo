@@ -69,7 +69,7 @@ const STATUS_LABELS: Record<DatabaseStatus, string> = {
 };
 
 /**
- * The Storage databases grid — the databases analogue of the Overview apps grid:
+ * The Storage databases grid - the databases analogue of the Overview apps grid:
  * search, engine + status filters, a grid/list view toggle, and drag-to-reorder
  * (persisted team-wide via reorderDatabases).
  */
@@ -84,11 +84,11 @@ export function DatabasesGrid({
   databases: DatabaseDTO[];
   serverNames: Record<string, string>;
   canReorder: boolean;
-  /** The viewer holds `manage_infra` — the capability `revealConnection` needs. */
+  /** The viewer holds `manage_infra` - the capability `revealConnection` needs. */
   canReveal: boolean;
-  /** `control_databases` — gates the bulk Start / Stop / Restart. */
+  /** `control_databases` - gates the bulk Start / Stop / Restart. */
   canControl: boolean;
-  /** `delete_databases` — gates the bulk Delete. */
+  /** `delete_databases` - gates the bulk Delete. */
   canDelete: boolean;
 }) {
   const router = useRouter();
@@ -147,7 +147,7 @@ export function DatabasesGrid({
   const selectedIds = visibleIds.filter((id) => selected.has(id));
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
 
-  // One mutation per selected database — there is no bulk endpoint, and each
+  // One mutation per selected database - there is no bulk endpoint, and each
   // one is its own teardown/lifecycle on its own host. The first refusal is
   // surfaced verbatim and the selection SURVIVES it, so re-confirming retries.
   async function bulkRun(mutation: string, success: string) {
@@ -165,7 +165,7 @@ export function DatabasesGrid({
     return failed ?? { ok: true as const, data: undefined };
   }
 
-  // "1 database" / "3 databases" — every bulk toast and the confirm name what
+  // "1 database" / "3 databases" - every bulk toast and the confirm name what
   // is actually selected, so nothing reads "Databases deleted" for one.
   const selectionNoun = `${selectedIds.length} database${selectedIds.length === 1 ? "" : "s"}`;
 
@@ -444,8 +444,8 @@ function SelectionActionBar({
 
 /**
  * The card wrapper used when reorder is off (filtering, or no capability): the
- * same selection surface {@link SortableCard} provides — the marquee's
- * `data-card-id` target, the highlight, and modifier-click instead of navigation —
+ * same selection surface {@link SortableCard} provides - the marquee's
+ * `data-card-id` target, the highlight, and modifier-click instead of navigation -
  * without dnd-kit.
  */
 function SelectableCard({
@@ -654,7 +654,7 @@ function SortableCard({
 
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
     // A menu/modal this card opened is portalled out of the card's DOM but not
-    // out of its React tree, and capture runs before the surface ever sees it — drop
+    // out of its React tree, and capture runs before the surface ever sees it - drop
     // anything that isn't physically inside this card (see lib/portal-event-scope.ts).
     if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(

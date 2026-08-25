@@ -37,7 +37,7 @@ export function MembersManager({
   const [userOpen, setUserOpen] = React.useState(false);
   // The viewer's own rank in this team. Owners (the founder OR an assigned
   // owner) may grant the owner role and act on other owners; everyone else is
-  // capped at member/viewer. Derived from the member list — no extra query.
+  // capped at member/viewer. Derived from the member list, no extra query.
   const viewerIsOwner = members.some(
     (m) => m.userId === currentUserId && m.role === "owner",
   );
@@ -122,7 +122,7 @@ function MemberCard({
 }: {
   member: MemberDTO;
   isSelf: boolean;
-  /** `manage_members` — the same gate the member page itself keeps. */
+  /** `manage_members` - the same gate the member page itself keeps. */
   canManage: boolean;
 }) {
   const isFounder = member.isPrimaryOwner;
@@ -142,9 +142,9 @@ function MemberCard({
           <p className="flex items-center gap-1 text-sm font-medium">
             <span className="truncate">@{member.username}</span>
             {/* Discord-style crown next to the nickname for the absolute owner,
-                and a shield for an instance admin — both can show at once. */}
+                and a shield for an instance admin - both can show at once. */}
             {isFounder && (
-              <SimpleTooltip content="Primary owner — created this team; can't be removed or demoted">
+              <SimpleTooltip content="Primary owner - created this team; can't be removed or demoted">
                 <span className="shrink-0 leading-none">
                   <Crown
                     className="size-3.5 text-amber-500"
@@ -154,7 +154,7 @@ function MemberCard({
               </SimpleTooltip>
             )}
             {member.isInstanceAdmin && (
-              <SimpleTooltip content="Instance admin — platform-wide administrator">
+              <SimpleTooltip content="Instance admin - platform-wide administrator">
                 <span className="shrink-0 leading-none">
                   <ShieldCheck
                     className="size-3.5 text-sky-500"
@@ -221,7 +221,7 @@ function MemberCard({
     </div>
   );
 
-  // Without `manage_members` there is no page to open — the roster stays
+  // Without `manage_members` there is no page to open - the roster stays
   // readable, the tiles just aren't links. Your own tile IS one: the page shows
   // you what you hold and says who can change it.
   if (!canManage) return inner;

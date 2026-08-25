@@ -51,7 +51,7 @@ function Mark({
   src: string | null | undefined;
   initials: string;
   /** Hex fill for the monogram. Undefined only for somebody with no stored
-   *  colour — a person being imported who has no deplo account yet. */
+   *  colour - a person being imported who has no deplo account yet. */
   background?: string;
   size: AvatarSize;
   className?: string;

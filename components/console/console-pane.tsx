@@ -38,7 +38,7 @@ import type { ActionResult } from "@/lib/result";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { cn } from "@/lib/utils";
 
-/** How each entered line is executed. "auto" is a raw exec — the first word is
+/** How each entered line is executed. "auto" is a raw exec - the first word is
  *  the binary. "sh"/"bash" wrap the line so pipes, redirects and builtins work. */
 type Shell = "auto" | "sh" | "bash";
 
@@ -49,7 +49,7 @@ const SHELLS: { value: Shell; label: string }[] = [
 ];
 
 const DISTROLESS_NOTE =
-  "! No shell in this container. Commands run as raw exec: the first word is the binary, the rest are literal arguments — no pipes, globbing, redirects or builtins.";
+  "! No shell in this container. Commands run as raw exec: the first word is the binary, the rest are literal arguments - no pipes, globbing, redirects or builtins.";
 
 /**
  * `exit`, `logout` and `clear` never reach the container - the data layer
@@ -83,14 +83,14 @@ export function ConsolePane({
   exec,
   probeShell,
 }: {
-  /** App id or database id — whatever the exec/attach endpoints key on. */
+  /** App id or database id - whatever the exec/attach endpoints key on. */
   id: string;
   /** What this console belongs to, and the way back to it. */
   title: PaneTitle;
   /** Containers that can be reached. One for a database, one per compose
    *  service for an App (the App's own first). */
   instances: ConsoleInstance[];
-  /** Which one opens first — the container the server picked. */
+  /** Which one opens first - the container the server picked. */
   initialName: string;
   /** Attach endpoint override; defaults to the App route for `id`. */
   attachBase?: string;
@@ -100,7 +100,7 @@ export function ConsolePane({
     command: string,
     containerName: string,
   ) => Promise<ActionResult<{ output: string; detach?: boolean }>>;
-  /** Resolve a container's shell label — only ever feeds the distroless note.
+  /** Resolve a container's shell label - only ever feeds the distroless note.
    *  Stable, for the same reason as `exec`. */
   probeShell: (containerName: string) => Promise<string | null>;
 }) {
@@ -114,7 +114,7 @@ export function ConsolePane({
   // Handed up by whichever terminal is mounted; drives Clear/Copy/Download.
   const [controls, setControls] = React.useState<ConsoleControls | null>(null);
 
-  // The shell label of the ACTIVE container, re-probed on every switch — the note
+  // The shell label of the ACTIVE container, re-probed on every switch - the note
   // used to reflect the container the page opened on and then lie about every other
   // one in the stack.
   const [probed, setProbed] = React.useState<{
@@ -151,7 +151,7 @@ export function ConsolePane({
     setControls(null);
   }
 
-  // Each line is a separate exec, so a `cd` never sticks — showing a live cwd
+  // Each line is a separate exec, so a `cd` never sticks - showing a live cwd
   // would imply a session that does not exist. user@service is verifiable.
   const prompt = `${active.user}@${active.service}$`;
 
@@ -261,7 +261,7 @@ export function ConsolePane({
         />
 
         {mode === "exec" ? (
-          <SimpleTooltip content="Run each line through a shell so pipes, redirects and builtins work. 'auto' runs it raw — the first word is the binary.">
+          <SimpleTooltip content="Run each line through a shell so pipes, redirects and builtins work. 'auto' runs it raw - the first word is the binary.">
             <Select value={shell} onValueChange={(v) => setShell(v as Shell)}>
               <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
                 <SelectValue />
@@ -281,7 +281,7 @@ export function ConsolePane({
           </SimpleTooltip>
         ) : null}
 
-        {/* Two modes, both labels readable at all times — this was one button
+        {/* Two modes, both labels readable at all times - this was one button
             that swapped its own label, so it never said where you were. */}
         <TabsList className="h-9 gap-0 rounded-lg border border-border bg-background/60 p-1">
           <TabsTrigger
@@ -379,7 +379,7 @@ export function ConsolePane({
 }
 
 /**
- * The pane when there is no container to open — stopped, or still starting. It
+ * The pane when there is no container to open - stopped, or still starting. It
  * keeps the toolbar's first row, because on a full-bleed route that link is the
  * only thing on screen saying which App this is and the only way back to it.
  */
@@ -445,7 +445,7 @@ function ConsoleStatus({
  */
 function ConsoleWarningStrip() {
   const acknowledged = useConsoleAck();
-  // null = undecided (server render / hydration) — say nothing rather than
+  // null = undecided (server render / hydration) - say nothing rather than
   // flashing a warning at someone who dismissed it months ago.
   if (acknowledged !== false) return null;
 
@@ -453,10 +453,10 @@ function ConsoleWarningStrip() {
     <div className="flex items-center gap-2 border-b border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2">
       <TriangleAlert className="size-4 shrink-0 text-[var(--warning)]" />
       <p className="text-xs">
-        This is a live terminal inside the running container — commands take
+        This is a live terminal inside the running container - commands take
         effect for real.
       </p>
-      <SimpleTooltip content="Dismiss — you won't see this again">
+      <SimpleTooltip content="Dismiss - you won't see this again">
         <Button
           variant="ghost"
           size="icon-sm"

@@ -202,7 +202,7 @@ export async function upsertInstallation(input: {
   const user = (await getCurrentUser())!;
   const db = getDb();
   // The App this installation attaches to must belong to the caller's active
-  // team — otherwise a member of team B could refresh/repoint an installation
+  // team, otherwise a member of team B could refresh/repoint an installation
   // of team A's GitHub App (cross-tenant write).
   const app = await db
     .select({ id: githubAppsTable.id })
@@ -287,7 +287,7 @@ export async function removeGithubApp(id: string): Promise<void> {
     .limit(1);
   if (app.length === 0) throw new Error("GitHub App not found");
   // Deleting the app cascades its installations (github_installation.app_id FK is
-  // ON DELETE CASCADE) — one DELETE replaces the old two-collection JSONB filter.
+  // ON DELETE CASCADE) - one DELETE replaces the old two-collection JSONB filter.
   await db.delete(githubAppsTable).where(eq(githubAppsTable.id, id));
   await recordActivity(
     "member",

@@ -2,7 +2,7 @@ import type { BackupRun, BackupTargetKind, DatabaseType } from "../types";
 
 /**
  * A {@link BackupRun} plus its DB-generated `seq` (the `bigint identity` on
- * `backup_runs`, PLAN §5) — the shape retention ranks.
+ * `backup_runs`, PLAN §5) - the shape retention ranks.
  */
 export type RunForRetention = BackupRun & { seq?: number };
 
@@ -19,7 +19,7 @@ export function artifactExt(
   kind: BackupTargetKind,
   dbType?: DatabaseType | null,
   /**
-   * Whether this artifact is age-encrypted — which is now every `server`
+   * Whether this artifact is age-encrypted, which is now every `server`
    * destination and every `s3` one created since bucket artifacts started being
    * encrypted.
    */
@@ -62,7 +62,7 @@ export function objectStamp(date: Date): string {
     .replace(/\.\d+Z$/, "Z");
 }
 
-/** The per-target folder. NOT a delete prefix — see the module doc. */
+/** The per-target folder. NOT a delete prefix - see the module doc. */
 export function targetPrefix(
   teamId: string,
   kind: BackupTargetKind,
@@ -89,7 +89,7 @@ export function buildObjectKey(input: {
 }
 
 /**
- * Choose which of one target's runs to prune — the PURE retention policy,
+ * Choose which of one target's runs to prune - the PURE retention policy,
  * separated from the S3/store I/O so it unit-tests in isolation. The DB-generated
  * `seq` (`bigint identity`) breaks that tie by insertion order.
  */

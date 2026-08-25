@@ -46,7 +46,7 @@ const DockerCleanupPolicyRef = builder
   .objectRef<CleanupPolicy>("DockerCleanupPolicy")
   .implement({
     description:
-      "The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults — ENABLED, daily at 04:00 UTC, every scope — so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.",
+      "The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults (ENABLED, daily at 04:00 UTC, every scope), so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.",
     fields: (t) => ({
       enabled: t.exposeBoolean("enabled"),
       schedule: t.exposeString("schedule", {
@@ -71,7 +71,7 @@ const DockerCleanupPolicyRef = builder
       }),
       excludedServerIds: t.exposeStringList("excludedServerIds", {
         description:
-          "Servers the SCHEDULED sweep skips. A manual runDockerCleanupNow ignores this list — the operator standing in front of the button has already made that decision.",
+          "Servers the SCHEDULED sweep skips. A manual runDockerCleanupNow ignores this list - the operator standing in front of the button has already made that decision.",
       }),
       updatedAt: t.exposeString("updatedAt", {
         nullable: true,
@@ -84,7 +84,7 @@ const DockerCleanupRunItemRef = builder
   .objectRef<CleanupRunItem>("DockerCleanupRunItem")
   .implement({
     description:
-      "One scope's outcome in an executed run. Counts only — the history keeps how much was reclaimed, not which objects.",
+      "One scope's outcome in an executed run. Counts only - the history keeps how much was reclaimed, not which objects.",
     fields: (t) => ({
       scope: t.field({ type: DockerCleanupScopeEnum, resolve: (i) => i.scope }),
       reclaimedBytes: t.exposeFloat("reclaimedBytes"),
@@ -98,13 +98,13 @@ const DockerCleanupRunRef = builder
   .objectRef<CleanupRunDTO>("DockerCleanupRun")
   .implement({
     description:
-      "One executed sweep on one server. A run that could not even start — an unprovisioned host, an agent offline or too old — is still recorded, as `failed`: the history never lies about an attempt.",
+      "One executed sweep on one server. A run that could not even start (an unprovisioned host, an agent offline or too old) is still recorded, as `failed`: the history never lies about an attempt.",
     fields: (t) => ({
       id: t.exposeID("id"),
       serverId: t.exposeID("serverId", {
         nullable: true,
         description:
-          "Null once the server is removed — `serverName` is what keeps the row readable.",
+          "Null once the server is removed - `serverName` is what keeps the row readable.",
       }),
       serverName: t.exposeString("serverName"),
       trigger: t.field({
@@ -155,7 +155,7 @@ const UpdateDockerCleanupPolicyInputType = builder.inputType(
 );
 
 /* ------------------------------------------------------------------ */
-/* Queries (the DB reads — no agent is dialed)                         */
+/* Queries (the DB reads, no agent is dialed)                         */
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
@@ -163,7 +163,7 @@ builder.queryFields((t) => ({
     type: DockerCleanupPolicyRef,
     authScopes: { instanceAdmin: true },
     description:
-      "The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults — enabled, daily, every scope.",
+      "The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults - enabled, daily, every scope.",
     resolve: () => getCleanupPolicy(),
   }),
   dockerCleanupRuns: t.field({
@@ -179,7 +179,7 @@ builder.queryFields((t) => ({
       limit: t.arg.int({
         required: false,
         description:
-          "Clamped to [1, 100]. Defaults to the retention cap — 3 × the number of servers — which is also all the store keeps (older runs are pruned after every sweep).",
+          "Clamped to [1, 100]. Defaults to the retention cap, 3 × the number of servers, which is also all the store keeps (older runs are pruned after every sweep).",
       }),
     },
     resolve: (_r, { serverId, limit }) =>
@@ -199,7 +199,7 @@ builder.mutationFields((t) => ({
     type: DockerCleanupPolicyRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse — an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.",
+      "Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse - an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.",
     args: {
       input: t.arg({
         type: UpdateDockerCleanupPolicyInputType,
@@ -234,7 +234,7 @@ builder.mutationFields((t) => ({
     type: DockerCleanupRunRef,
     authScopes: { instanceAdmin: true },
     description:
-      "START a sweep of this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at — unreachable, unprovisioned, an agent too old — lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.",
+      "START a sweep of this server now, with the policy's scopes - whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at (unreachable, unprovisioned, an agent too old) lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.",
     args: { serverId: t.arg.string({ required: true }) },
     resolve: (_r, { serverId }) => runCleanupNow(serverId),
   }),
@@ -245,8 +245,8 @@ builder.mutationFields((t) => ({
 /* ------------------------------------------------------------------ */
 
 /**
- * The live history. Sweeps are background jobs — a manual one returns before the
- * host has done anything, and the nightly one has no client at all — so the run
+ * The live history. Sweeps are background jobs - a manual one returns before the
+ * host has done anything, and the nightly one has no client at all, so the run
  * rows are the progress indicator, and they have to move on their own.
  */
 builder.subscriptionFields((t) => ({
@@ -254,7 +254,7 @@ builder.subscriptionFields((t) => ({
     type: [DockerCleanupRunRef],
     authScopes: { instanceAdmin: true },
     description:
-      "Emits the whole cleanup history whenever it changes — a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.",
+      "Emits the whole cleanup history whenever it changes - a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.",
     subscribe: () => cleanupRunsStream(),
     resolve: (runs) => runs,
   }),
@@ -262,7 +262,7 @@ builder.subscriptionFields((t) => ({
 
 /** Exported for the SSE test: it must stay cookie-free across iteration ticks. */
 export async function* cleanupRunsStream(): AsyncGenerator<CleanupRunDTO[]> {
-  // Initial snapshot — a fresh subscriber paints the current history immediately,
+  // Initial snapshot - a fresh subscriber paints the current history immediately,
   // which also re-syncs a client whose SSE connection just self-healed.
   yield await listCleanupRunsForSubscriber();
   // The payload carries nothing beyond "something changed" (the channel's key is a

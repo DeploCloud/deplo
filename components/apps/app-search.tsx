@@ -27,7 +27,7 @@ export function AppSearch({
   initialEnv?: string;
   /**
    * The project drill-in's environment dropdown (ADR-0009), rendered inline in
-   * this toolbar — at the end, just before the grid/list toggle. Omitted for the
+   * this toolbar - at the end, just before the grid/list toggle. Omitted for the
    * top-level and folder views, which have no environment to pick.
    */
   environmentSwitcher?: React.ReactNode;

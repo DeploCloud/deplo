@@ -8,7 +8,7 @@ import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
- * Interactive `docker attach` to a DATABASE's running container, over plain HTTP —
+ * Interactive `docker attach` to a DATABASE's running container, over plain HTTP -
  * the database sibling of `/api/apps/[id]/attach` (same SSE framing, same session
  * plumbing).
  */
@@ -124,7 +124,7 @@ export async function GET(
       };
 
       // A signal that aborted DURING the pre-start awaits never fires "abort"
-      // again — check it explicitly so an already-gone client is cleaned up
+      // again - check it explicitly so an already-gone client is cleaned up
       // immediately (the idle reaper then kills the backing).
       if (request.signal.aborted) {
         closeStream();
@@ -169,7 +169,7 @@ export async function POST(
     return Response.json({ error: "No such session" }, { status: 404 });
 
   // The GET authorised this session for one principal holding `manage_infra`.
-  // Re-check both on every write — same user, still holding the capability — so a
+  // Re-check both on every write (same user, still holding the capability), so a
   // demoted member (or anyone else with the id) can't keep typing into the engine.
   if (!(await stillAuthorized(session, user.id)))
     return Response.json({ error: "Forbidden" }, { status: 403 });

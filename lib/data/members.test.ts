@@ -67,7 +67,7 @@ const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
 test("mintRegistrationLink refuses an owner role for an existing-teams assignment", async () => {
   await seedIdentity(db); // USER_1 is an instance admin (owner of TEAM_A)
   // The server must mirror the UI's member/viewer-only restriction even when the
-  // role arrives from a hand-crafted request — an injected owner would be
+  // role arrives from a hand-crafted request - an injected owner would be
   // immutable/unremovable. The guard throws before any DB write.
   await assert.rejects(
     () =>
@@ -87,7 +87,7 @@ const HOUR_MS = 3_600_000;
 
 /**
  * pglite's transaction handle differs from the production node-postgres `DbTx`
- * only in the driver HKT — the query surface is identical (see `DbTx`'s doc
+ * only in the driver HKT - the query surface is identical (see `DbTx`'s doc
  * comment), the same widening `__setTestDb` already relies on.
  */
 const asDbTx = (tx: unknown): DbTx => tx as DbTx;
@@ -168,7 +168,7 @@ test("revealRegistrationLink refuses a link that can no longer be used", async (
 
   await asOwner(async () => {
     // Each check runs BEFORE the token is decrypted, so the message says which
-    // dead end this is — and none of them leaks a URL.
+    // dead end this is, and none of them leaks a URL.
     await assert.rejects(
       () => revealRegistrationLink("reg_used"),
       /already used by @bob/,
@@ -222,7 +222,7 @@ test("registration-link expiry is enforced on read and at consume", async () => 
   assert.equal((await getRegistrationLinkInfo(fresh)).valid, true);
   assert.equal((await getRegistrationLinkInfo(stale)).valid, false);
 
-  // An expired row keeps status='pending' — nothing sweeps it — so the
+  // An expired row keeps status='pending', nothing sweeps it, so the
   // conditional consume UPDATE is the thing that actually refuses it.
   await assert.rejects(
     () =>
@@ -295,10 +295,10 @@ test("updateMember edits caps but assertAdminCoverage blocks dropping the last m
   });
 });
 
-test("two concurrent demotions of manage_members holders — coverage invariant holds", async () => {
+test("two concurrent demotions of manage_members holders - coverage invariant holds", async () => {
   // Owner is immutable (always covers). Add TWO non-owner managers; concurrently
   // strip manage_members from BOTH. With the owner present, coverage never drops
-  // to zero, so both can succeed — assert ≥1 holder remains regardless.
+  // to zero, so both can succeed - assert ≥1 holder remains regardless.
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -393,7 +393,7 @@ test("listMembers marks the founder as the primary owner; assigned owners are no
   });
 });
 
-test("the founder (primary owner) can't be removed or demoted — even by another owner", async () => {
+test("the founder (primary owner) can't be removed or demoted - even by another owner", async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
@@ -442,7 +442,7 @@ test("assigned owners can remove each other; the founder stays protected", async
     ],
   });
   await asUser("co1", async () => {
-    await removeMember("co2"); // one assigned owner removes another — allowed
+    await removeMember("co2"); // one assigned owner removes another - allowed
     const members = await listMembers();
     assert.deepEqual(
       members.map((m) => m.userId).sort(),
@@ -518,7 +518,7 @@ test("an owner can add another (assigned) owner; they are not the founder", asyn
   });
 });
 
-test("two concurrent active-admin demotions — at least one active admin always survives", async () => {
+test("two concurrent active-admin demotions - at least one active admin always survives", async () => {
   // Two instance admins, each acting to demote the OTHER. Exactly one demotion
   // can succeed; the second must re-evaluate post-commit and be refused, leaving
   // ≥1 active admin (the lockout guard).
@@ -609,7 +609,7 @@ test("updateUserAdmin can promote a non-admin even when they aren't yet in the a
 /**
  * `manage_members` is a TEAM capability, so the people it offers have to be
  * bounded by the actor's own reach. It used to return EVERY account on the
- * instance that was not already in the team — on a shared install, one team
+ * instance that was not already in the team - on a shared install, one team
  * admin reading every other customer's staff list, which is exactly the
  * "operator == end user" assumption a managed deplo cannot make.
  *
@@ -625,7 +625,7 @@ test("searchUsers offers colleagues, and a stranger only by exact username", asy
     ],
     users: [
       // The actor: owner of A, and also in B. NOT an instance admin, which is
-      // the whole point — an admin keeps the full roster on purpose.
+      // the whole point - an admin keeps the full roster on purpose.
       { id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
       {
         id: "u_colleague",

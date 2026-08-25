@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * The TOTP setup key, covered until asked for — the same bargain as an environment
+ * The TOTP setup key, covered until asked for - the same bargain as an environment
  * variable's value. Covering it matters more here than the usual "secret" reflex
  * suggests.
  */

@@ -192,7 +192,7 @@ test("at the cap a new preview EVICTS the least recently active one", async () =
   await seedPreviewApp("prj_1", { slug: "blog", maxActive: 2 });
   await openOrSyncPreview("prj_1", { ...PR, number: 1 }, { actor: "o" });
   await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
-  // #1 is now the stalest. Touching #2 is not needed — insertion order already
+  // #1 is now the stalest. Touching #2 is not needed - insertion order already
   // ordered `last_activity_at`, and that is precisely what must decide.
   const c = await openOrSyncPreview(
     "prj_1",
@@ -204,7 +204,7 @@ test("at the cap a new preview EVICTS the least recently active one", async () =
   assert.equal(c.refusal, undefined);
 
   // Evicted by ACTIVITY, not by pull request age: the row survives so the same
-  // URL can come back, and #2 — more recently active — is untouched.
+  // URL can come back, and #2, more recently active, is untouched.
   assert.equal((await previewOf(1)).status, "evicted");
   assert.equal(
     (await previewOf(1)).state,
@@ -223,7 +223,7 @@ test("a push does NOT revive an evicted preview, but Redeploy does", async () =>
   const evictedKey = (await previewOf(1)).deployKey;
 
   // A webhook push onto the evicted pull request refreshes its facts and stops.
-  // Reviving here would evict #2, whose next push would evict #1 again — two
+  // Reviving here would evict #2, whose next push would evict #1 again - two
   // pull requests trading full builds forever.
   const push = await openOrSyncPreview(
     "prj_1",
@@ -240,7 +240,7 @@ test("a push does NOT revive an evicted preview, but Redeploy does", async () =>
   assert.equal((await previewOf(1)).status, "evicted");
   assert.notEqual((await previewOf(2)).status, "evicted");
 
-  // A person clicking Redeploy is the only thing that brings it back — and it
+  // A person clicking Redeploy is the only thing that brings it back, and it
   // reclaims a slot the same way a new preview does, so the cap still holds.
   const back = await openOrSyncPreview(
     "prj_1",
@@ -261,7 +261,7 @@ test("a push does NOT revive an evicted preview, but Redeploy does", async () =>
   );
 });
 
-test("a blocked fork evicts NOTHING — a stranger cannot knock a preview over", async () => {
+test("a blocked fork evicts NOTHING - a stranger cannot knock a preview over", async () => {
   await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
   await openOrSyncPreview("prj_1", { ...PR, number: 1 }, { actor: "o" });
   assert.equal((await previewOf(1)).status, "queued");
@@ -281,7 +281,7 @@ test("a blocked fork evicts NOTHING — a stranger cannot knock a preview over",
     "the team's own preview must still be running",
   );
 
-  // Approving it is what claims a slot — and then the cap does apply.
+  // Approving it is what claims a slot, and then the cap does apply.
   await openOrSyncPreview(
     "prj_1",
     { ...PR, number: 2, isFork: true, headRepo: "stranger/blog" },
@@ -330,7 +330,7 @@ test("approving a fork through the gated API still respects the cap", async () =
 
 test("a blocked fork holds no slot: it has no stack to evict", async () => {
   await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
-  // A fork lands blocked under the default `approve` policy — nothing cloned,
+  // A fork lands blocked under the default `approve` policy - nothing cloned,
   // nothing built. Counting it would let an unapproved stranger's pull request
   // starve the previews of the team's own work.
   const fork = await openOrSyncPreview(
@@ -431,7 +431,7 @@ test("previews off means no row and no build", async () => {
 test("a close that could not reach the host stays queued for the reaper", async () => {
   await seedPreviewApp("prj_1", { slug: "blog" });
   const res = await openOrSyncPreview("prj_1", PR, { actor: "o" });
-  // No agent exists in this harness, so the teardown genuinely fails — which is
+  // No agent exists in this harness, so the teardown genuinely fails, which is
   // exactly the case the retry predicate is for.
   const gone = await closePreview(res.previewId!, "pull request closed");
   assert.equal(gone, false);

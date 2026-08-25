@@ -4,7 +4,7 @@
  */
 
 /**
- * The Overview drill-in an action was started from — an open folder, or a
+ * The Overview drill-in an action was started from - an open folder, or a
  * project's selected environment (ADR-0009: never both).
  */
 export interface OverviewPlacement {
@@ -32,7 +32,7 @@ export function projectHref(
   return `/?${params.toString()}`;
 }
 
-/** The Overview URL a placement came from — where "back" should land. */
+/** The Overview URL a placement came from, where "back" should land. */
 export function placementHref(
   p: OverviewPlacement | null | undefined,
   view: "grid" | "list" = "grid",

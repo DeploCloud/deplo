@@ -48,7 +48,7 @@ export function TemplateSearchLink({
   const router = useRouter();
   const [q, setQ] = React.useState("");
 
-  // Nothing happens until the box is actually typed in — a bare mount must not
+  // Nothing happens until the box is actually typed in - a bare mount must not
   // navigate away from the page that just rendered.
   const typed = React.useRef(false);
   React.useEffect(() => {

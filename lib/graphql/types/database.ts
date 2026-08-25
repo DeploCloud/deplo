@@ -33,7 +33,7 @@ import type { ResourceLimitsInput } from "@/lib/data/apps";
 /* Local enums (not in the shared enums.ts)                            */
 /* ------------------------------------------------------------------ */
 
-// DatabaseStatus is local to this domain — define it here rather than in the
+// DatabaseStatus is local to this domain - define it here rather than in the
 // shared enums file. No hyphens, so the plain value list is fine.
 export const DatabaseStatusEnum = builder.enumType("DatabaseStatus", {
   values: ["running", "stopped", "provisioning", "error"] as const,
@@ -55,7 +55,7 @@ export const DatabaseRef = builder
       name: t.exposeString("name", {
         description:
           "Display name, editable with renameDatabase. Not the container's " +
-          "identity — `host` is, and it is fixed at creation.",
+          "identity - `host` is, and it is fixed at creation.",
       }),
       logo: t.exposeString("logo", {
         nullable: true,
@@ -70,7 +70,7 @@ export const DatabaseRef = builder
       type: t.field({ type: DatabaseTypeEnum, resolve: (d) => d.type }),
       version: t.exposeString("version"),
       // The engine login + logical DB, shown read-only in the edit dialog (both
-      // are create-only). The password is NEVER a field — reveal it only via the
+      // are create-only). The password is NEVER a field - reveal it only via the
       // revealConnection mutation.
       username: t.exposeString("username"),
       dbName: t.exposeString("dbName"),
@@ -100,7 +100,7 @@ export const DatabaseRef = builder
         nullable: true,
         description:
           "Expert override: replaces the container command verbatim (redis's " +
-          "default command carries --requirepass — omit it and auth is off).",
+          "default command carries --requirepass - omit it and auth is off).",
       }),
       mounts: t.field({
         type: [DatabaseMountRef],
@@ -153,7 +153,7 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     type: t.field({ type: DatabaseTypeEnum, required: true }),
     version: t.string({ required: true }),
     // The server to provision the database on. Optional: omitted defaults to the
-    // sole server when there is exactly one (Step 0 — DB-on-agent).
+    // sole server when there is exactly one (Step 0 - DB-on-agent).
     serverId: t.id({ required: false }),
     // Optional custom credentials, applied ONLY at first init against an empty volume
     // (the images honor POSTGRES_USER/DB, MYSQL_DATABASE, etc. only on first boot), so
@@ -179,7 +179,7 @@ const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {
 
 // Expert overrides (Settings → Advanced). Absent field = leave unchanged;
 // explicit null = clear back to the derived/default value. Applied on the next
-// redeploy or settings-driven reroute — the row is truth, the container follows.
+// redeploy or settings-driven reroute - the row is truth, the container follows.
 const UpdateDatabaseImageInputType = builder.inputType(
   "UpdateDatabaseImageInput",
   {
@@ -309,7 +309,7 @@ builder.mutationFields((t) => ({
     type: DatabaseRef,
     authScopes: { capability: "configure_databases" },
     description:
-      "Rename a database — its DISPLAY name only. The container's identity " +
+      "Rename a database - its DISPLAY name only. The container's identity " +
       "(compose project, data volume, DNS name and therefore the connection " +
       "string) is fixed at creation and is untouched, so nothing restarts. The " +
       "name must be unique within the team.",
@@ -406,7 +406,7 @@ builder.mutationFields((t) => ({
     description:
       "DESTRUCTIVE factory reset: tear down the database container AND its " +
       "data volume, then re-provision a fresh, empty stack from the current " +
-      "settings — same engine, version and credentials, so the connection " +
+      "settings - same engine, version and credentials, so the connection " +
       "string is unchanged. ALL DATA IS ERASED. Use redeployDatabase for the " +
       "data-preserving recreate.",
     args: { id: t.arg.string({ required: true }) },
@@ -479,7 +479,7 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "configure_databases" },
     description:
       "Rotate the database's engine password (auto-generated when none is " +
-      "given) and return the NEW connection string — shown once, like " +
+      "given) and return the NEW connection string - shown once, like " +
       "revealConnection. Engines that persist users in the data volume are " +
       "told first via an exec in the running container; the compose is then " +
       "re-rendered so env/command/healthcheck agree. Requires the database to " +
@@ -497,8 +497,8 @@ builder.mutationFields((t) => ({
     description:
       "Stop and destroy the database's container + data volume on its server, " +
       "then delete it (dependent backup schedules cascade). The teardown must " +
-      "verifiably succeed: if the server can't be reached — or something of the " +
-      "stack survives it — nothing is deleted and the mutation errors, so a live " +
+      "verifiably succeed: if the server can't be reached, or something of the " +
+      "stack survives it, nothing is deleted and the mutation errors, so a live " +
       "database is never silently forgotten. `force` deletes the record anyway " +
       "(for a host that is never coming back) and queues the teardown, which " +
       "Deplo retries until the host confirms it. Returns true.",
@@ -562,7 +562,7 @@ builder.subscriptionFields((t) => ({
 }));
 
 // Exported for the SSE test (same contract as appStatusStream): it must stay
-// cookie-free across iteration ticks — a subscription's async iterator runs AFTER
+// cookie-free across iteration ticks - a subscription's async iterator runs AFTER
 // the HTTP handler returned the streaming Response, so `cookies()` is no longer
 export async function* databaseStatusStream(
   id: string,
@@ -577,7 +577,7 @@ export async function* databaseStatusStream(
   const first = await getDatabaseForTeam(id, teamId);
   if (!first) throw new Error("Database not found");
 
-  // Initial snapshot — a fresh subscriber paints current state immediately.
+  // Initial snapshot - a fresh subscriber paints current state immediately.
   yield first;
 
   // Forward each change ping as a freshly-reloaded snapshot. A deleted database

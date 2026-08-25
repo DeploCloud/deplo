@@ -36,13 +36,13 @@ export function FolderColorPicker({
   const isCustom = value != null && !selectedSwatch;
   const invalid = hex.trim() !== "" && !isHexColor(hex);
 
-  /** Choose a swatch / the default — sets both the field text and the value. */
+  /** Choose a swatch / the default - sets both the field text and the value. */
   function pick(next: string | null) {
     setHex(next ?? "");
     onChange(next);
   }
 
-  /** Free-form HEX typing — keep the raw text, lift up only once it parses. */
+  /** Free-form HEX typing - keep the raw text, lift up only once it parses. */
   function commitHex(next: string) {
     setHex(next);
     const trimmed = next.trim();
@@ -120,7 +120,7 @@ export function FolderColorPicker({
             spellCheck={false}
             aria-invalid={invalid}
           />
-          {/* Live contrast preview — the icon colour is auto-derived. */}
+          {/* Live contrast preview - the icon colour is auto-derived. */}
           <div
             className="flex size-9 shrink-0 items-center justify-center rounded-md border border-black/10"
             style={

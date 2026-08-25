@@ -247,7 +247,7 @@ test("deleteProject re-parents its apps (and legacy folders) to the top level (n
     const f = await createFolder("Docs");
     await seedApp(db, { id: "prj_svc1", teamId: TEAM_A });
     // A LEGACY folder-in-project row (pre-ADR-0009; the UI can no longer write
-    // this) — deleteProject must still clear it.
+    // this) - deleteProject must still clear it.
     await db
       .update(foldersTable)
       .set({ projectId: p.id })
@@ -328,7 +328,7 @@ test("reorderProjects persists a team-wide order and is self-healing", async () 
     const a = await createProject("A");
     const b = await createProject("B");
     const c = await createProject("C");
-    // Request only b,a — c must be appended, unknown ids dropped.
+    // Request only b,a - c must be appended, unknown ids dropped.
     await reorderProjects([b.id, a.id, "prc_ghost"]);
     const order = (await listProjects()).map((p) => p.id);
     assert.deepEqual(order, [b.id, a.id, c.id]);
@@ -373,7 +373,7 @@ test("createApp lands in the environment it was created from", async () => {
     assert.equal(row.environmentId, dev.id);
     assert.equal(row.folderId, null, "one home only");
     // It shows up in the project's live count, i.e. in the drill-in the user
-    // was standing in — the whole point of placing at birth.
+    // was standing in - the whole point of placing at birth.
     assert.equal((await listProjects())[0].appCount, 1);
   });
 });

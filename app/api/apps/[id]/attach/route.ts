@@ -57,7 +57,7 @@ export async function GET(
   const params = request.nextUrl.searchParams;
   const target = params.get("container") ?? undefined;
   // The client's terminal knows its own size before it opens the stream, so it
-  // seeds the pty here — no more hardcoded 80×24 that wraps every TUI wrong.
+  // seeds the pty here, no more hardcoded 80×24 that wraps every TUI wrong.
   const cols = clampDim(params.get("cols"), 80, 500);
   const rows = clampDim(params.get("rows"), 24, 300);
 
@@ -128,11 +128,11 @@ export async function GET(
 
       // NOT named "open": EventSource has a reserved built-in `open` event
       // (connection established, data undefined) that a custom `open` listener
-      // would also catch — JSON.parse(undefined) then throws on the client.
+      // would also catch - JSON.parse(undefined) then throws on the client.
       send("session", session.id);
 
       // A streaming decoder so a UTF-8 character split across two docker chunks
-      // (or the garage logs' multi-byte glyphs) isn't mangled into � — partial
+      // (or the garage logs' multi-byte glyphs) isn't mangled into � - partial
       // bytes are buffered until the rest arrives.
       const decoder = new StringDecoder("utf8");
       unsubscribe = attach.subscribe(session, (chunk) => {
@@ -154,7 +154,7 @@ export async function GET(
       };
 
       // Browser navigated away / closed the tab: drop our subscription. A signal that
-      // aborted DURING the pre-start awaits never fires "abort" again — check it
+      // aborted DURING the pre-start awaits never fires "abort" again - check it
       // explicitly so an already-gone client is cleaned up immediately.
       if (request.signal.aborted) {
         closeStream();
@@ -199,7 +199,7 @@ export async function POST(
     return Response.json({ error: "No such session" }, { status: 404 });
 
   // The GET authorised this session for one principal holding `deploy`. Re-check
-  // both on every write — same user, still holding the capability — so a demoted
+  // both on every write (same user, still holding the capability), so a demoted
   // member (or anyone else who got hold of the id) can't keep typing into PID 1.
   if (!(await stillAuthorized(appId, session, user.id)))
     return Response.json({ error: "Forbidden" }, { status: 403 });

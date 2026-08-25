@@ -11,7 +11,7 @@ Issues and PRDs for this repo live as GitHub issues in `DeploCloud/deplo` (the `
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+Infer the repo from `git remote -v` - `gh` does this automatically when run inside a clone.
 
 ## When a skill says "publish to the issue tracker"
 
@@ -27,13 +27,13 @@ The `/wayfinder` skill needs four things this tracker expresses **natively**: a 
 blocking edges, and a frontier query. GitHub's sub-issue and issue-dependency APIs cover all four,
 so the frontier renders in GitHub's own UI without any body conventions.
 
-Both APIs take an issue's **database id**, not its number — resolve it first:
+Both APIs take an issue's **database id**, not its number - resolve it first:
 
 ```sh
 ID=$(gh api repos/DeploCloud/deplo/issues/<number> --jq '.id')
 ```
 
-- **The map** — an issue labelled `wayfinder:map`. Tickets carry `wayfinder:{research,prototype,grilling,task}`.
+- **The map**: an issue labelled `wayfinder:map`. Tickets carry `wayfinder:{research,prototype,grilling,task}`.
 - **Child tickets** (ticket → map):
 
   ```sh
@@ -48,7 +48,7 @@ ID=$(gh api repos/DeploCloud/deplo/issues/<number> --jq '.id')
   gh api repos/DeploCloud/deplo/issues/<n>/dependencies/blocked_by --jq '.[] | "\(.number)\t\(.state)"'
   ```
 
-- **The frontier** — open children with no _open_ blockers and no assignee:
+- **The frontier**: open children with no _open_ blockers and no assignee:
 
   ```sh
   for n in $(gh api repos/DeploCloud/deplo/issues/<map>/sub_issues --jq '.[] | select(.state=="open") | .number'); do

@@ -242,7 +242,7 @@ function describe(
 /* ------------------------------------------------------------------ */
 
 /**
- * The containers of a service and the volumes they mount — the discovery half of
+ * The containers of a service and the volumes they mount - the discovery half of
  * a data cutover, run without moving anything.
  */
 async function describeVolumes(

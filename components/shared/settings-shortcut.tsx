@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
 /**
- * The gear that opens the settings page for the section on screen — the way from
+ * The gear that opens the settings page for the section on screen - the way from
  * what you are reading to what configures it.
  */
 export function SettingsShortcut({

@@ -1,6 +1,6 @@
 # ADR-0014: Better Auth becomes the live login path; 2FA is a team/role policy, not a capability
 
-- **Status**: Accepted — 2026-08-02.
+- **Status**: Accepted - 2026-08-02.
 - **Replaces**: the hand-rolled stateless HMAC session (`deplo_session`) that `lib/auth.ts` owned
   since the first commit. The cookie, `SessionPayload`, `signSession`/`verifySession` and the
   `users.token_version` revocation scheme are all retired by this decision.
@@ -12,7 +12,7 @@
 deplo had **no second factor anywhere**. A stolen password was total account compromise: apps,
 databases, secrets, servers. For a platform whose whole promise is that a non-expert can run
 production infrastructure without a shell, "your password is the only lock" is not a defensible
-posture — and a team lead who wants to _mandate_ 2FA for their team had nothing to mandate.
+posture, and a team lead who wants to _mandate_ 2FA for their team had nothing to mandate.
 
 Better Auth (`better-auth`) had been in `package.json` and configured in `lib/auth/better-auth.ts`
 since the beginning, with a `drizzleAdapter`, its four tables in migration `0000`, and a route at
@@ -23,7 +23,7 @@ control-plane `users` table, revoked by bumping an integer.
 
 That left exactly two ways to get TOTP:
 
-1. **Hand-roll it too** — a `two_factor` table, a TOTP verify, backup-code hashing, a challenge
+1. **Hand-roll it too**: a `two_factor` table, a TOTP verify, backup-code hashing, a challenge
    token between the password step and the code step, and a lockout counter. Perhaps 400 lines of
    security-critical code we would own forever, sitting next to a maintained library that already
    does it.
@@ -62,7 +62,7 @@ user is signed out once when this lands. And `DEPLO_SECRET` now also seals the s
 (via `deriveKey("better-auth")`), widening what rotating it destroys.
 
 **What stays deplo's:** teams, memberships, capabilities, the `deplo_team` active-team cookie, and
-the `deplo_*` bearer tokens. Better Auth's `organization` plugin is **not** adopted — the
+the `deplo_*` bearer tokens. Better Auth's `organization` plugin is **not** adopted - the
 authorization model is the product, and handing it to a library would be the tail wagging the dog.
 
 ### 2. A 2FA mandate is a POLICY, not a ninth capability.
@@ -78,15 +78,15 @@ The Owner role keeps its edit lock and takes no per-role flag; the team-wide swi
 cover owners. "2FA for owners but not members" is a narrow enough policy that it does not justify
 unpicking the lock that keeps a team from editing its way out of administering itself.
 
-### 3. Unmet means nothing works — UI and API alike.
+### 3. Unmet means nothing works - UI and API alike.
 
 The gate lives in exactly **two** functions in `lib/membership.ts`, which between them cover every
 path:
 
-- **`membershipFor(userId, teamId)`** — behind `requireMembership`, `requireCapability`,
+- **`membershipFor(userId, teamId)`**: behind `requireMembership`, `requireCapability`,
   `hasCapability`, `currentCapabilities`, **and `authenticateToken`**. One guard, every mutation
   and every bearer request.
-- **`requireActiveTeamId()`** — every _read_ in `lib/data/*` scopes itself here and never touches
+- **`requireActiveTeamId()`**: every _read_ in `lib/data/*` scopes itself here and never touches
   `membershipFor`. Without this second call a blocked member could still list apps, logs and
   variables: refused a write, but not a look. Closing only one of the two is the exact bug this
   feature could have shipped with, and `lib/two-factor.test.ts` asserts all three paths separately.
@@ -97,13 +97,13 @@ A bearer token acts as its creator, so it dies with its creator's mandate. That 
 ### 4. Blocked is recoverable, never a lockout.
 
 `TwoFactorRequiredError` names the team and the reason. The dashboard layout catches it and returns
-a full-page lock screen **instead of** rendering its children — a redirect would race the children's
+a full-page lock screen **instead of** rendering its children - a redirect would race the children's
 own data loads and surface as an error boundary rather than an explanation. The lock screen carries
 the enrolment wizard inline, plus a team switcher and a sign-out.
 
 Enrolment itself is never team-scoped: `/settings/security` is in `NON_TEAM_SETTINGS_PREFIXES`,
 and the `/api/auth/*` endpoints are session-authenticated only. Turning the mandate on is refused
-while the actor has no second factor of their own — survivable in the dashboard, but a dead end
+while the actor has no second factor of their own - survivable in the dashboard, but a dead end
 over the API, where the token making the change is the token the change kills.
 
 ### 5. Enrolment is a wizard, and the third step is not ceremony.

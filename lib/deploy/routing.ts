@@ -1,7 +1,7 @@
 // https://deplo.build/docs/guides/networking/domains-and-https
 
 /**
- * Traefik routing labels — the one module that knows the label grammar.
+ * Traefik routing labels - the one module that knows the label grammar.
  */
 
 /**
@@ -33,7 +33,7 @@ export interface RouterRoute {
   stripPrefix?: boolean;
   /**
    * Absolute base URL this host permanently redirects to, e.g.
-   * `https://example.com` — the canonical half of a `www`/non-`www` pair.
+   * `https://example.com` - the canonical half of a `www`/non-`www` pair.
    */
   redirectTo?: string;
 }
@@ -77,7 +77,7 @@ const PATH_PRIORITY_BASE = 1_000_000;
  */
 export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
   // No routes ⇒ the container is deployed but NOT routed (e.g. a project whose
-  // domains were all deleted — Deplo does not resurrect an auto domain).
+  // domains were all deleted - Deplo does not resurrect an auto domain).
   if (opts.routes.length === 0) return ["traefik.enable=false"];
 
   const labels: string[] = ["traefik.enable=true"];
@@ -133,7 +133,7 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
     redirectTo: "",
   });
   // Default group first; the rest by ascending port (NUMERIC, so :80 sorts
-  // before :100 — a string sort of the id would not), then by id for a stable
+  // before :100 - a string sort of the id would not), then by id for a stable
   // tiebreak when two signatures share a port (e.g. HTTP vs a custom resolver).
   const ordered = [...groups.entries()].sort(([a, ga], [b, gb]) => {
     if (a === defaultId) return -1;
@@ -142,7 +142,7 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
     return a < b ? -1 : a > b ? 1 : 0;
   });
   // A single router auto-binds its same-named service, so the explicit
-  // `.service` label is omitted unless forced — keeping the single-router output
+  // `.service` label is omitted unless forced - keeping the single-router output
   // byte-identical to its long-standing form (no spurious reroute restart).
   const withApp = opts.alwaysService || ordered.length > 1;
   for (const [id, g] of ordered) {
@@ -190,7 +190,7 @@ function resolveTls(route: RouterRoute, opts: RouterLabelOptions): RouterSig {
     .map((m) => m.trim())
     .filter(Boolean);
   const pathPrefix = normalizeRulePath(route.pathPrefix);
-  // Strip is meaningless without a path, so collapse it to false there — that
+  // Strip is meaningless without a path, so collapse it to false there - that
   // keeps a strip-without-path route in the same (default) signature as a bare
   // route and emits no stripprefix label (byte-identical to today).
   const stripPrefix = pathPrefix !== "" && (route.stripPrefix ?? false);
@@ -233,7 +233,7 @@ function normalizeRedirectTarget(input?: string): string {
 /**
  * Normalise a router path prefix: trim, drop a trailing slash, force a single
  * leading slash, and strip backticks (the value is interpolated into a Traefik
- * backtick literal — a stray backtick would break the rule grammar).
+ * backtick literal - a stray backtick would break the rule grammar).
  */
 function normalizeRulePath(input?: string): string {
   let p = (input ?? "").trim().replace(/`/g, "");
@@ -243,7 +243,7 @@ function normalizeRulePath(input?: string): string {
   return p === "" ? "" : p;
 }
 
-/** Stable grouping id for a signature — two routes group iff this matches. The
+/** Stable grouping id for a signature - two routes group iff this matches. The
  * middleware chain is part of the id (order included) so hosts with different
  * chains never share a router. */
 function sigId(sig: RouterSig): string {
@@ -297,7 +297,7 @@ function safe(s: string): string {
 }
 
 /**
- * A short, stable, slug-safe hash of an arbitrary string — the injective
+ * A short, stable, slug-safe hash of an arbitrary string - the injective
  * discriminator in a router-key suffix where `safe()` alone would collapse
  * distinct inputs to the same segment.
  */

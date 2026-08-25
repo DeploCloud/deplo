@@ -4,7 +4,7 @@
  */
 
 /** Image MIME types accepted for an uploaded logo. `.ico` is included so a
- * detected `favicon.ico` (and a user-picked one) validates and renders — every
+ * detected `favicon.ico` (and a user-picked one) validates and renders - every
  * browser draws an ICO in an `<img>`. */
 export const LOGO_IMAGE_TYPES = [
   "image/png",

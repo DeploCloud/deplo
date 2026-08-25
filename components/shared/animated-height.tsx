@@ -14,7 +14,7 @@ export function AnimatedHeight({
   className,
 }: {
   children: React.ReactNode;
-  /** Layout of the measured inner box — the content's own spacing. */
+  /** Layout of the measured inner box - the content's own spacing. */
   className?: string;
 }) {
   const [el, setEl] = React.useState<HTMLDivElement | null>(null);
@@ -25,8 +25,8 @@ export function AnimatedHeight({
 
   React.useLayoutEffect(() => {
     if (!el) return;
-    // An observer, not a one-shot read: the body also grows WITHIN a branch — a
-    // warning appearing, an Advanced section opening, a validation line — and
+    // An observer, not a one-shot read: the body also grows WITHIN a branch - a
+    // warning appearing, an Advanced section opening, a validation line, and
     // those deserve the same easing.
     const ro = new ResizeObserver(() => {
       const h = el.getBoundingClientRect().height;

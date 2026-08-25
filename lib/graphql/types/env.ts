@@ -34,7 +34,7 @@ export const VarAuthorRef = builder
   .objectRef<VarAuthor>("VarAuthor")
   .implement({
     description:
-      "The user who created or last modified a variable. Identity only — never an email.",
+      "The user who created or last modified a variable. Identity only, never an email.",
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
@@ -63,7 +63,7 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
     }),
     type: t.field({ type: EnvVarTypeEnum, resolve: (e) => e.type }),
     // Null for rows written before authorship tracking, or once the author's
-    // user is deleted (the FK is ON DELETE SET NULL) — the UI renders "—".
+    // user is deleted (the FK is ON DELETE SET NULL) - the UI renders "—".
     createdBy: t.field({
       type: VarAuthorRef,
       nullable: true,
