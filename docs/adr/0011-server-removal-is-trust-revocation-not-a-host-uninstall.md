@@ -1,5 +1,12 @@
 # Removing a server is trust revocation, not a host uninstall
 
+- **Amended - 2026-08-25.** The decision stands unchanged; the script moved. There is one
+  host-side uninstaller now, [`uninstall.sh`](../../uninstall.sh), which also removes the
+  control plane in `/opt/deplo` - something no RPC could ever do either, since the panel
+  cannot delete itself. Clause 4's script is that one run with `--agent-only`, which is
+  what `uninstallCommand` now hands out; the old `/uninstall-agent.sh` URL keeps serving
+  it that way so a command copied before the merge still means what it meant.
+
 ## Context
 
 `removeServer()` ([`lib/data/servers.ts`](../../lib/data/servers.ts)) told the operator, in the
@@ -42,11 +49,13 @@ so.**
    still in the table yet can never be dialed again is the worst of both states.
 3. **No teardown RPC. No sweep.** Not "not yet" — not ever, under this shape. A function that
    sweeps a provably-empty set is the same lie in a subtler form.
-4. **Ship the cleanup the operator actually needs.** [`uninstall-agent.sh`](../../uninstall-agent.sh)
+4. **Ship the cleanup the operator actually needs.** [`uninstall.sh`](../../uninstall.sh)
    is served from the control plane exactly like `install-agent.sh` is, and `removeServer` returns
    its one-liner in the mutation payload — so the UI hands it over the moment the server is gone.
    The script is a **dry run** unless given `--yes`, and it never deletes a volume, an image or
-   `/data` without a second explicit `--purge-data`. It never uninstalls Docker.
+   `/data` without a second explicit `--purge-data`. It never uninstalls Docker. The one-liner
+   carries `--agent-only`: it is handed out for a SERVER, and pasting it on the panel's own host
+   must not take the panel with it.
 5. **An App mid-move OFF the server warns, it does not block.** `apps.migrate_from_server_id` is
    `SET NULL` on delete, so removing the source host silently drops the marker naming it as the
    copy-from source, and the next deploy would start from empty volumes. Blocking would deadlock

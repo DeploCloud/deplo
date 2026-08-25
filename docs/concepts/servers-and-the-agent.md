@@ -110,4 +110,5 @@ raises an alert, so an orphaned container is never silently left behind.
 - [Add a server](../guides/add-a-server.md) - the procedure
 - [Server settings](../guides/server-settings.md) - access, cleanup, maintenance
 - [Server roles](../advanced/server-roles.md)
+- [Remove a server or uninstall](../operations/remove-a-server-or-uninstall.md) - the host-side script
 - [Servers and agents troubleshooting](../troubleshooting/servers-and-agents.md)

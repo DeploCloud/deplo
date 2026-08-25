@@ -183,7 +183,7 @@ test("a clean removal deletes the row and returns the host-side uninstall comman
   // Removal never touches the host, so the command is the whole point of it.
   assert.equal(
     result.uninstallCommand,
-    "curl -fsSL 'https://deplo.test/uninstall-agent.sh' | sudo bash -s -- --yes",
+    "curl -fsSL 'https://deplo.test/uninstall.sh' | sudo bash -s -- --yes --agent-only",
   );
 });
 
@@ -356,7 +356,7 @@ test("uninstalling a migration source removes the agent, then the row", async ()
     const res = await asAdmin(() => uninstallServerAgent(id));
     assert.equal(res.removed, true);
     assert.equal(res.error, null);
-    assert.match(res.uninstallCommand, /uninstall-agent\.sh/);
+    assert.match(res.uninstallCommand, /uninstall\.sh'.*--yes --agent-only$/);
     assert.equal(
       calls.uninstall,
       1,
@@ -380,7 +380,7 @@ test("an agent that cannot uninstall itself KEEPS the row, and hands over the co
     const res = await asAdmin(() => uninstallServerAgent(id));
     assert.equal(res.removed, false);
     assert.match(res.error ?? "", /too old/i);
-    assert.match(res.uninstallCommand, /uninstall-agent\.sh --yes|--yes/);
+    assert.match(res.uninstallCommand, /uninstall\.sh'.*--yes --agent-only$/);
     assert.equal(calls.uninstall, 0, "an unsupported agent must not be called");
     assert.ok(
       await getServerById(id),
@@ -410,7 +410,7 @@ test("a migration source Deplo cannot reach can still be forgotten", async () =>
     assert.ok(await getServerById(id));
 
     const gone = await asAdmin(() => removeServer(id));
-    assert.match(gone.uninstallCommand, /uninstall-agent\.sh/);
+    assert.match(gone.uninstallCommand, /uninstall\.sh'.*--yes --agent-only$/);
     assert.equal(await getServerById(id), null, "the row is gone");
     assert.equal(calls.uninstall, 0, "and nothing was dialed to get there");
   } finally {

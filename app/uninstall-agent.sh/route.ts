@@ -1,19 +1,18 @@
 import { renderUninstallScript } from "@/lib/agent/uninstall-script";
 
 /**
- * Serve the agent uninstaller. Public + unauthenticated for the same reason the
- * installer is: it is fetched by `curl | bash` on the target server, which has no
- * session. It grants no authority — it only removes Deplo's own footprint from
- * the host it runs on, and it already takes root to do that. It is a DRY RUN
- * unless the operator passes `--yes`, and it never deletes data without a second
- * explicit `--purge-data`.
+ * The LEGACY uninstaller URL, kept because the one-liner it serves is pasted into
+ * runbooks and printed by every older panel: `curl -fsSL <panel>/uninstall-agent.sh
+ * | sudo bash -s -- --yes`. There is one script now - /uninstall.sh, which removes the
+ * control plane too - so this route serves it with `AGENT_ONLY` already flipped.
+ * A command copied when it meant "take the agent off this host" keeps meaning
+ * exactly that, instead of quietly growing the power to delete somebody's panel.
  *
- * Note the route must also be excluded from the auth proxy's matcher (proxy.ts),
- * or the cookie-less curl gets a 307 to /login and the operator pipes HTML into
- * bash.
+ * Public + unauthenticated, and excluded from the auth proxy's matcher, for the
+ * same reasons as /uninstall.sh.
  */
 export async function GET() {
-  const script = await renderUninstallScript();
+  const script = await renderUninstallScript({ agentOnly: true });
   return new Response(script, {
     status: 200,
     headers: {

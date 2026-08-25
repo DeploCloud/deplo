@@ -701,8 +701,9 @@ async function publicBaseUrl(): Promise<string> {
 /**
  * The paste-on-the-host command that takes Deplo's agent back off a machine.
  *
- * Instance-wide, not per server: it is `<panel>/uninstall-agent.sh` and nothing
- * else, so a caller showing it next to five stuck migration sources asks once.
+ * Instance-wide, not per server: it is `<panel>/uninstall.sh --agent-only` and
+ * nothing else, so a caller showing it next to five stuck migration sources asks
+ * once.
  * It carries no secret - the installer it points at is served unauthenticated by
  * design - which is why it is readable by whoever is looking at a source they
  * cannot get rid of, rather than by instance admins only.

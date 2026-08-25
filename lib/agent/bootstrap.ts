@@ -144,12 +144,14 @@ export function installCommand(opts: {
  *
  * `--yes` because the script is a dry run without it; `--purge-data` (which
  * deletes volumes and images) is deliberately NOT in the copy-and-run command —
- * the operator must reach for it consciously. `baseUrl` MUST come from
- * resolvePublicBaseUrl (never a raw request header) — it is interpolated into a
- * copy-and-run shell string.
+ * the operator must reach for it consciously. `--agent-only` because uninstall.sh
+ * removes the CONTROL PLANE as well by default: this string is handed out for a
+ * server, and pasting it on the panel's own host must never take the panel with
+ * it. `baseUrl` MUST come from resolvePublicBaseUrl (never a raw request header)
+ * — it is interpolated into a copy-and-run shell string.
  */
 export function uninstallCommand(opts: { baseUrl: string }): string {
-  return `curl -fsSL '${opts.baseUrl}/uninstall-agent.sh' | sudo bash -s -- --yes`;
+  return `curl -fsSL '${opts.baseUrl}/uninstall.sh' | sudo bash -s -- --yes --agent-only`;
 }
 
 /**

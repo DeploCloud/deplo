@@ -2692,7 +2692,7 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
  * Docker itself) has no RPC behind it in the V1 contract. Removal also revokes the
  * pinned cert, which is exactly the moment we lose the right to dial that agent.
  *
- * The host cleanup is therefore host-side: `uninstall-agent.sh`, whose one-liner
+ * The host cleanup is therefore host-side: `uninstall.sh --agent-only`, whose one-liner
  * removeServer returns (see lib/agent/bootstrap.ts `uninstallCommand`). If a
  * future agent ever grows a real host-teardown RPC, gate it on a Hello capability
  * the way SELF_UPDATE_CAPABILITY / BACKUP_CAPABILITY are gated below — do not

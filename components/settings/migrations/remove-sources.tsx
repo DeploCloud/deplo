@@ -236,8 +236,8 @@ export function RemoveMigrationSources() {
             </li>
           ))}
         </ul>
-        {/* One command for every host: it is `<panel>/uninstall-agent.sh` and
-            nothing else, so asking once is honest and asking per row would be
+        {/* One command for every host: it is `<panel>/uninstall.sh --agent-only`
+            and nothing else, so asking once is honest and asking per row would be
             noise. Shown up front rather than behind a press, because running it
             by hand is a legitimate first move - and it is the only move that
             actually takes the agent off a machine Deplo cannot reach. */}

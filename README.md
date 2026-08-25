@@ -100,6 +100,24 @@ docker compose up -d
 > It is the container here reachable from the internet, and that mount is root on the box
 > for whoever reaches it. Everything host-coupled goes over mTLS to the server agent.
 
+### Uninstall
+
+One command, and it is a **dry run** until you add `--yes`: it prints every command it
+would run and changes nothing.
+
+```bash
+curl -fsSL https://<your-deplo>/uninstall.sh | sudo bash            # see what would happen
+curl -fsSL https://<your-deplo>/uninstall.sh | sudo bash -s -- --yes
+```
+
+That takes the control plane, the agent, Traefik and every container deplo deployed off
+the machine, and leaves your data alone: volumes, built images and `/opt/deplo` survive
+unless you add `--purge-data`, and backups need `--purge-backups` on top of that. Docker
+Engine is never touched. Use `--agent-only` on a server you are taking out of the fleet -
+that is the command the dashboard prints for you.
+
+See [Remove a server or uninstall](docs/operations/remove-a-server-or-uninstall.md).
+
 ### Run it locally
 
 ```bash

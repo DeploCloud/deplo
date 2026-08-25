@@ -50,7 +50,7 @@ and tells you in the dashboard, so staying current is the supported path.
 - Compose and Traefik rendering, including any way a team member can reach the host or
   another team's data through authored compose.
 - Secret handling: encryption at rest, the deploy edge, backup artifacts.
-- `install.sh` and `install-agent.sh`.
+- `install.sh`, `install-agent.sh` and `uninstall.sh`.
 
 **Out of scope**
 

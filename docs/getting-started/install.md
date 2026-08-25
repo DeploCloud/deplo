@@ -147,3 +147,4 @@ Going this way, you enroll the host as a server yourself from
 - [Environment variables reference](../reference/environment-variables.md) - every variable the installer and the container read
 - [Ports, networks and files](../reference/ports-networks-and-files.md)
 - [Installers reference](../reference/installers.md) - every flag of all three scripts
+- [Remove a server or uninstall](../operations/remove-a-server-or-uninstall.md) - undoing everything on this page

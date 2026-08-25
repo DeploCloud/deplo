@@ -71,6 +71,7 @@ a historical archive and no longer describes the running system.
 | Call Deplo from a script or CI                         | [API tokens](advanced/api-tokens-and-oauth.md), [API reference](reference/api.md) |
 | Update Deplo to a new version                          | [Upgrade](operations/upgrade.md)                                                  |
 | Survive losing the server                              | [Disaster recovery](operations/disaster-recovery.md)                              |
+| Take a server off the fleet, or remove Deplo entirely  | [Remove a server or uninstall](operations/remove-a-server-or-uninstall.md)        |
 
 ## Conventions in these pages
 

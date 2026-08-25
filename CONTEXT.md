@@ -690,7 +690,7 @@ every deploy picker AND every build picker (it HAS Docker - it is the other plat
   the way out.
   It is also the ONLY server with a real agent-side uninstall: `SelfUninstall` removes the unit,
   the binary and the agent state dir (never Docker, never a container), and the control plane
-  then forgets the row - the host-side `uninstall-agent.sh` stays the answer for an unreachable
+  then forgets the row - the host-side `uninstall.sh --agent-only` stays the answer for an unreachable
   or already-de-trusted host ([ADR-0011](../docs/adr/0011-server-removal-is-trust-revocation-not-a-host-uninstall.md),
   which anticipated exactly this shape). Listed apart from the fleet on Settings → Servers, with
   one action: **Uninstall agent**.

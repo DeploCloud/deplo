@@ -389,7 +389,7 @@ ok "Traefik running"
 # THIS host's proxy is manageable from the panel like every other host's, instead
 # of the agent installing a second Traefik that cannot have :80/:443.
 #
-# A symlink rather than a move: uninstall-agent.sh does `rm -rf $AGENT_DATA`,
+# A symlink rather than a move: uninstall.sh does `rm -rf $AGENT_DATA`,
 # which takes the link and leaves the control plane's Traefik (and its acme.json,
 # i.e. every certificate already issued) exactly where it is. Never overwrite a
 # real directory there - that would be an agent that installed its own proxy

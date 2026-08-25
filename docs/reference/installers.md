@@ -78,24 +78,38 @@ this up.**
 
 Logs: `journalctl -u deplo-agent -f`.
 
-## `uninstall-agent.sh` - remove an agent
+## `uninstall.sh` - remove Deplo
 
 ```bash
-curl -fsSL https://<deplo>/uninstall-agent.sh | sudo bash            # dry run
-curl -fsSL https://<deplo>/uninstall-agent.sh | sudo bash -s -- --yes
-curl -fsSL https://<deplo>/uninstall-agent.sh | sudo bash -s -- --yes --purge-data
+curl -fsSL https://<deplo>/uninstall.sh | sudo bash                  # dry run
+curl -fsSL https://<deplo>/uninstall.sh | sudo bash -s -- --yes
+curl -fsSL https://<deplo>/uninstall.sh | sudo bash -s -- --yes --agent-only
+curl -fsSL https://<deplo>/uninstall.sh | sudo bash -s -- --yes --purge-data
 ```
 
-| Flag           | Effect                                                                                    |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| none           | **Dry run.** Prints every command it would run, changes nothing                           |
-| `--yes`        | Actually do it                                                                            |
-| `--purge-data` | Also delete Deplo volumes, images Deplo built, and the stacks directory. **Irreversible** |
+| Flag              | Effect                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| none              | **Dry run.** Prints every command it would run, changes nothing                                                                |
+| `--yes`           | Actually do it                                                                                                                 |
+| `--agent-only`    | Leave the control plane in `/opt/deplo` alone. This is the flag in the command the dashboard prints for a server               |
+| `--purge-data`    | Also delete Deplo volumes, images Deplo built, the stacks directory and `/opt/deplo` itself, `.env` included. **Irreversible** |
+| `--purge-backups` | Also delete `/data/backups`. Separate from `--purge-data` because everything else can be rebuilt from these. **Irreversible**  |
 
-Removes the systemd unit, the binary, Deplo's named containers, every container
-labelled as Deplo-managed, the `deplo` network and `/var/lib/deplo-agent`. Never
-touches Docker Engine, and never touches a container it did not label. Safe on a
-machine that was never a Deplo host, and safe to run twice.
+One script, three jobs. By default it removes the control plane in `/opt/deplo`
+(the panel, its Postgres, its Traefik), the agent, Deplo's named containers,
+every container labelled as Deplo-managed, the `deplo` network and
+`/var/lib/deplo-agent`. `--agent-only` stops at the agent. It never touches
+Docker Engine, never rewrites `/etc/docker/daemon.json` (the installer's backup
+stays as `daemon.json.deplo-bak`), and never touches a container it did not
+label. Safe on a machine that was never a Deplo host, and safe to run twice.
+
+> **`--purge-data` deletes `/opt/deplo/.env`, and that holds `DEPLO_SECRET`.**
+> Every backup artifact this instance wrote is encrypted with a key derived from
+> it. Copy the file first if you may ever want to restore one.
+
+The older `/uninstall-agent.sh` URL still works and always will: it serves this
+same script with `--agent-only` already applied, so a command copied into a
+runbook before `uninstall.sh` existed still means what it meant then.
 
 ## Verifying before you pipe to a shell
 
