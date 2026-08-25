@@ -449,6 +449,7 @@ function BackUpNow({
             <FieldLabel
               htmlFor="backup-now-destination"
               info="Where this backup is written. Each one shows whether Deplo could reach it."
+              docs="backups.destinations"
             >
               Destination
             </FieldLabel>
@@ -766,6 +767,7 @@ function NameField({
       <FieldLabel
         htmlFor="backup-name"
         info="What this schedule is called in the list. Follows the frequency until you change it."
+        docs="backups.schedule"
       >
         Name
       </FieldLabel>
@@ -799,6 +801,7 @@ function DestinationField({
       <FieldLabel
         htmlFor="backup-destination"
         info="Where scheduled backups are written. Each one shows whether Deplo could reach it."
+        docs="backups.destinations"
       >
         Destination
       </FieldLabel>

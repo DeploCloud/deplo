@@ -89,7 +89,10 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1.5">
-          <FieldLabel info="Docker Hub tags load as you type. Downgrading across major versions can leave a data volume the new engine can't read.">
+          <FieldLabel
+            info="Docker Hub tags load as you type. Downgrading across major versions can leave a data volume the new engine can't read."
+            docs="databases.settings"
+          >
             Version
           </FieldLabel>
           {customImage.trim() !== "" ? (
@@ -109,7 +112,10 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
         </div>
 
         <div className="space-y-1.5">
-          <FieldLabel info="Runs instead of the derived engine image, e.g. timescale/timescaledb:2.15-pg16. Leave empty for the standard image.">
+          <FieldLabel
+            info="Runs instead of the derived engine image, e.g. timescale/timescaledb:2.15-pg16. Leave empty for the standard image."
+            docs="databases.settings"
+          >
             Custom image
           </FieldLabel>
           <Input
@@ -121,7 +127,10 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
         </div>
 
         <div className="space-y-1.5">
-          <FieldLabel info="Replaces the container's start command verbatim. Leave empty to use the image default.">
+          <FieldLabel
+            info="Replaces the container's start command verbatim. Leave empty to use the image default."
+            docs="databases.settings"
+          >
             Custom command
           </FieldLabel>
           <Input

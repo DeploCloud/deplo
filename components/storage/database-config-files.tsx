@@ -169,6 +169,7 @@ export function DatabaseConfigFiles({
                   <FieldLabel
                     className="text-xs"
                     info="The file's name in this database's files directory on the server."
+                    docs="databases.settings"
                   >
                     File name
                   </FieldLabel>
@@ -185,6 +186,7 @@ export function DatabaseConfigFiles({
                   <FieldLabel
                     className="text-xs"
                     info={`Where the engine reads it inside the container. Anything under ${dataDir} is refused - that is the data itself.`}
+                    docs="databases.settings"
                   >
                     Path in the container
                   </FieldLabel>
@@ -203,6 +205,7 @@ export function DatabaseConfigFiles({
                 <FieldLabel
                   className="text-xs"
                   info="What deplo writes into the file."
+                  docs="databases.settings"
                 >
                   What&apos;s in the file
                 </FieldLabel>

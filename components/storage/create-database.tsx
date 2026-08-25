@@ -272,7 +272,10 @@ export function CreateDatabase({
                 </Select>
               </div>
               <div className="space-y-2">
-                <FieldLabel info="Any published Docker Hub tag works — suggestions load as you type. Pick the version your app targets.">
+                <FieldLabel
+                  info="Any published Docker Hub tag works — suggestions load as you type. Pick the version your app targets."
+                  docs="databases.engine"
+                >
                   Version
                 </FieldLabel>
                 <DbVersionInput
@@ -406,6 +409,7 @@ export function CreateDatabase({
                   <FieldLabel
                     htmlFor="db-port"
                     info="The port on the server clients connect to. Use an unprivileged port (1024–65535) that is free on the host, or click Generate."
+                    docs="databases.hostPort"
                   >
                     Host port
                   </FieldLabel>

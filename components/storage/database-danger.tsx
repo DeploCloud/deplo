@@ -15,6 +15,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * The database's Danger Zone — two destructive actions, each behind a typed
@@ -34,7 +35,7 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
         </CardTitle>
         <CardDescription>
           These actions erase data and cannot be undone. Each asks you to type
-          the database name first.
+          the database name first. <DocsLink topic="databases.lifecycle" />
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

@@ -57,11 +57,13 @@ export function BackupScheduleFields({
         timezone={timezone}
         summary={false}
         info="How often this backup runs. Pick a frequency - the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
+        docs="backups.schedule"
         trailing={
           <div className="space-y-2">
             <FieldLabel
               htmlFor={`${idPrefix}-timezone`}
               info="The clock this schedule is read on. Defaults to yours, so 03:00 means 03:00 where you are."
+              docs="backups.schedule"
             >
               Timezone
             </FieldLabel>
@@ -79,6 +81,7 @@ export function BackupScheduleFields({
         <FieldLabel
           htmlFor={`${idPrefix}-retention`}
           info="How many backups to keep here. After each successful run the older ones are removed, and the newest one is never removed."
+          docs="backups.retention"
         >
           Keep
         </FieldLabel>

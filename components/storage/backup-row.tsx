@@ -380,6 +380,7 @@ function EditBackupDialog({
               <FieldLabel
                 htmlFor="edit-backup-destination"
                 info="Where the backups are kept. Each one shows whether Deplo could reach it."
+                docs="backups.destinations"
               >
                 Destination
               </FieldLabel>

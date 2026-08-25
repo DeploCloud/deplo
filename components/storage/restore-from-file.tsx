@@ -154,6 +154,7 @@ export function RestoreFromFile({
             <FieldLabel
               htmlFor={fileId}
               info="The file a backup produced: the one Deplo downloads, or the .age artifact kept at the destination."
+              docs="backups.restore"
             >
               Backup file
             </FieldLabel>
@@ -176,6 +177,7 @@ export function RestoreFromFile({
               <FieldLabel
                 htmlFor={keyId}
                 info="The recovery key of the destination this file came from. Take it from Storage → Destinations, or from the key file you saved."
+                docs="backups.recoveryKey"
               >
                 Recovery key
               </FieldLabel>

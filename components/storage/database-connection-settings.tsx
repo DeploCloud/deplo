@@ -141,7 +141,10 @@ function ExposureCard({
         {canPickServer && (
           <div className="space-y-3 rounded-lg border border-border p-3">
             <div className="space-y-2">
-              <FieldLabel info="The host this database runs on.">
+              <FieldLabel
+                info="The host this database runs on."
+                docs="databases.move"
+              >
                 Server
               </FieldLabel>
               <Select value={serverId} onValueChange={setServerId}>
@@ -214,6 +217,7 @@ function ExposureCard({
                       " On a move it must be free on the new server too."}
                   </>
                 }
+                docs="databases.hostPort"
               >
                 Host port
               </FieldLabel>
@@ -296,7 +300,10 @@ function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-1.5">
-          <FieldLabel info="Leave empty to auto-generate a strong password. No quotes, spaces, or URL characters.">
+          <FieldLabel
+            info="Leave empty to auto-generate a strong password. No quotes, spaces, or URL characters."
+            docs="databases.password"
+          >
             New password (optional)
           </FieldLabel>
           <Input

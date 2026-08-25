@@ -352,6 +352,7 @@ export function CreateBackup({
                 <FieldLabel
                   htmlFor="new-backup-destination"
                   info="Where backup archives are written and kept. Each one shows whether Deplo could reach it."
+                  docs="backups.destinations"
                 >
                   Destination
                 </FieldLabel>
@@ -373,6 +374,7 @@ export function CreateBackup({
                   <FieldLabel
                     htmlFor="new-backup-name"
                     info="What this schedule is called in the list. Follows the frequency until you change it."
+                    docs="backups.schedule"
                   >
                     Name
                   </FieldLabel>

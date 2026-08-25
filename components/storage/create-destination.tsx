@@ -359,7 +359,10 @@ export function CreateDestination({
             ) : (
               <>
                 <div className="space-y-2">
-                  <FieldLabel info="Picks the S3-compatible service. Choosing one pre-fills the matching endpoint format below.">
+                  <FieldLabel
+                    info="Picks the S3-compatible service. Choosing one pre-fills the matching endpoint format below."
+                    docs="backups.destinations"
+                  >
                     Provider
                   </FieldLabel>
                   <Select
@@ -379,7 +382,10 @@ export function CreateDestination({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <FieldLabel info="The S3 API URL for your bucket. Leave blank to use the default endpoint for the selected provider.">
+                  <FieldLabel
+                    info="The S3 API URL for your bucket. Leave blank to use the default endpoint for the selected provider."
+                    docs="backups.destinations"
+                  >
                     Endpoint
                   </FieldLabel>
                   <Input
@@ -400,6 +406,7 @@ export function CreateDestination({
                           region.
                         </>
                       }
+                      docs="backups.destinations"
                     >
                       Region
                     </FieldLabel>
@@ -460,7 +467,10 @@ export function CreateDestination({
                   <AccordionContent className="space-y-4 pt-2">
                     {kind === "server" ? (
                       <div className="space-y-2">
-                        <FieldLabel info="An absolute path that ALREADY EXISTS on that server, for example a mounted storage volume, and is empty the first time it is used. Leave blank to let Deplo create and manage the folder.">
+                        <FieldLabel
+                          info="An absolute path that ALREADY EXISTS on that server, for example a mounted storage volume, and is empty the first time it is used. Leave blank to let Deplo create and manage the folder."
+                          docs="backups.destinations"
+                        >
                           Folder
                         </FieldLabel>
                         <Input
@@ -508,6 +518,7 @@ export function CreateDestination({
                                 so nothing here can be set and quietly ignored.
                               </>
                             }
+                            docs="backups.destinations"
                           >
                             Additional flags
                             <Badge
@@ -585,7 +596,10 @@ function ServerFields({
   }
   return (
     <div className="space-y-2">
-      <FieldLabel info="The server whose disk holds the backup files. Backups of apps on other servers are copied here.">
+      <FieldLabel
+        info="The server whose disk holds the backup files. Backups of apps on other servers are copied here."
+        docs="backups.destinations"
+      >
         Server
       </FieldLabel>
       <Select value={serverId} onValueChange={onServerChange}>
