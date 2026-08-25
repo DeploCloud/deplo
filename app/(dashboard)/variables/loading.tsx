@@ -13,7 +13,7 @@ export default function Loading() {
       {/* PageHeader: "Environment Variables" + long description */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <Skeleton className="h-8 w-56" />
+          <Skeleton className="h-7 w-56" />
           <Skeleton className="h-4 w-[30rem]" />
         </div>
       </div>

@@ -32,6 +32,7 @@ import {
   repoCredentialMissing,
   timeAgoShort,
 } from "@/lib/utils";
+import { titleClass } from "@/components/shared/page-header";
 
 export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
   const { slug } = await props.params;
@@ -214,7 +215,7 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
       {/* Deployments */}
       <div id="deployments" className="space-y-3">
         <div className="flex flex-row items-center justify-between">
-          <h2 className="text-lg font-semibold tracking-tight">Deployments</h2>
+          <h2 className={titleClass.section}>Deployments</h2>
           {deployments.length > 4 && (
             <Button
               variant="ghost"

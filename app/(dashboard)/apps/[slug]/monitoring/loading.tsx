@@ -10,7 +10,7 @@ export default function Loading() {
     >
       {/* PageHeader */}
       <div className="space-y-1">
-        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-6 w-32 lg:h-7" />
         <Skeleton className="h-4 w-96" />
       </div>
       {/* Status line + window selector + switch */}

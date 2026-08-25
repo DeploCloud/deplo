@@ -21,6 +21,7 @@ export default async function DatabaseMonitoringPage(
   return (
     <div className="space-y-5">
       <PageHeader
+        level="section"
         docs="monitoring.overview"
         title="Monitoring"
         description="Real-time CPU, memory, network and disk I/O for this database's container."

@@ -19,6 +19,7 @@ import {
 } from "@/components/templates/collections";
 import { templatesHref, type OverviewPlacement } from "@/lib/overview-links";
 import type { LogoAccent } from "@/lib/templates/logo-color";
+import { titleClass } from "@/components/shared/page-header";
 
 /** A row needs enough cards to be worth scrolling. */
 const MIN_RAIL_SIZE = 4;
@@ -119,7 +120,7 @@ export function TemplateStore({
       {/* The band: one control, the one every store opens with. */}
       <div className="deplo-grid-bg rounded-xl border border-border px-4 py-6 sm:px-6 sm:py-8">
         <div className="mx-auto max-w-2xl text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Templates</h1>
+          <h1 className={titleClass.page}>Templates</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {templates.length} apps, databases and services, ready to run on
             your own servers. <DocsLink topic="deploy.fromTemplate" />

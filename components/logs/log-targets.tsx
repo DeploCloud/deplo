@@ -25,6 +25,8 @@ import {
   type LogTarget,
   type LogTreeRow,
 } from "@/components/logs/log-target";
+import { titleClass } from "@/components/shared/page-header";
+import { cn } from "@/lib/utils";
 
 /** The mark for a target: an App's own logo, or a database's engine brand when
  *  it has none of its own. */
@@ -167,7 +169,7 @@ export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
         <div className="w-full max-w-md">
           <div className="flex flex-col items-center text-center">
             <LogsGraphic />
-            <h1 className="mt-5 text-xl font-semibold tracking-tight">
+            <h1 className={cn("mt-5", titleClass.page)}>
               Which logs do you want to see?
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">

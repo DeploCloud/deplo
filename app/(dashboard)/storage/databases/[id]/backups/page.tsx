@@ -59,6 +59,7 @@ export default async function DatabaseBackupsPage(
   return (
     <div className="space-y-5">
       <PageHeader
+        level="section"
         docs="backups.overview"
         title="Backups"
         description="Scheduled backups of this database to a backup destination, and restore."

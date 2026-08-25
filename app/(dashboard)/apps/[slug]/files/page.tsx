@@ -21,6 +21,7 @@ export default async function AppFilesPage(
   return (
     <div className="space-y-5">
       <PageHeader
+        level="section"
         docs="files.browse"
         title="Files"
         description="Browse and edit this app's files directory."

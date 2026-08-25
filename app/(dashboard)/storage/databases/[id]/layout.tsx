@@ -14,6 +14,7 @@ import { DatabaseControls } from "@/components/storage/database-controls";
 import { DatabaseRedeployButton } from "@/components/storage/database-redeploy-button";
 import { DbNavSync } from "@/components/storage/db-nav-store";
 import { DetailFrame } from "@/components/layout/detail-frame";
+import { titleClass } from "@/components/shared/page-header";
 
 const DB_TITLE_MAX = 24;
 
@@ -69,9 +70,7 @@ export default async function DatabaseLayout(
               </LogoEditLink>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-semibold tracking-tight">
-                    {db.name}
-                  </h1>
+                  <h1 className={titleClass.page}>{db.name}</h1>
                   <DatabaseStatusBadge id={db.id} status={db.status} />
                 </div>
                 {/* Same slot the App header uses for its URL: a database has no

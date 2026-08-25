@@ -39,6 +39,7 @@ export default async function DatabaseCronJobsPage(
   return (
     <div className="space-y-5">
       <PageHeader
+        level="section"
         docs="cron.overview"
         title="Cron jobs"
         description="Commands run inside this database's container on a schedule."

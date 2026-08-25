@@ -13,7 +13,7 @@ import {
   DownloadCloud,
 } from "lucide-react";
 
-import { PageHeader } from "@/components/shared/page-header";
+import { PageHeader, titleClass } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploMark } from "@/components/logo";
 import { AddServer } from "@/components/servers/add-server";
@@ -467,9 +467,7 @@ export default async function ServersPage(
 
         {migrationSources.length > 0 && (
           <div>
-            <h2 className="text-lg font-semibold tracking-tight">
-              Migration sources
-            </h2>
+            <h2 className={titleClass.section}>Migration sources</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Only used to import from another platform.
             </p>

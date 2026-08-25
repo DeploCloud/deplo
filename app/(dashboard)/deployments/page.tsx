@@ -3,6 +3,7 @@ import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { DeploymentsTable } from "@/components/apps/deployments-table";
+import { titleClass } from "@/components/shared/page-header";
 
 export const metadata = { title: "Deployments" };
 
@@ -19,7 +20,7 @@ export default async function DeploymentsPage() {
   // justify-between row; reused above the empty state.
   const header = (
     <div className="space-y-1">
-      <h1 className="text-2xl font-semibold tracking-tight">Deployments</h1>
+      <h1 className={titleClass.page}>Deployments</h1>
       <p className="text-sm text-muted-foreground">
         Every deployment across all of your apps and servers, newest first.
       </p>

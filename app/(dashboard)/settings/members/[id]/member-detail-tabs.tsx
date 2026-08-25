@@ -52,6 +52,7 @@ import type { MemberDTO } from "@/lib/data/members";
 import type { TeamRoleDTO } from "@/lib/data/roles";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
 import type { UserTeamAccessDTO } from "@/lib/data/user-access";
+import { titleClass } from "@/components/shared/page-header";
 
 /**
  * Everything about one member OF THIS TEAM, in one place: their role, where they
@@ -279,9 +280,7 @@ export function MemberDetailTabs({
           />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                @{member.username}
-              </h1>
+              <h1 className={titleClass.page}>@{member.username}</h1>
               {member.roleName && (
                 <Badge variant="outline">{member.roleName}</Badge>
               )}

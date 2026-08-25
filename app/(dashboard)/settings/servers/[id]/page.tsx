@@ -36,6 +36,7 @@ import {
 import { ServerHealthChip } from "../server-health-chip";
 import { CheckStatusButton } from "../check-status-button";
 import { ServerDetailTabs } from "./server-detail-tabs";
+import { titleClass } from "@/components/shared/page-header";
 
 export async function generateMetadata(
   props: PageProps<"/settings/servers/[id]">,
@@ -116,9 +117,7 @@ export default async function ServerDetailPage(
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {serverLabel(hydrated)}
-            </h1>
+            <h1 className={titleClass.page}>{serverLabel(hydrated)}</h1>
             {isDeploHost ? (
               <Badge className="shrink-0 gap-1">
                 <DeploMark size={12} className="text-current" />

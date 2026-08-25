@@ -15,7 +15,7 @@ export default function Loading() {
        */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-7 w-24" />
           <Skeleton className="h-4 w-80" />
         </div>
         <div className="flex items-center gap-2">

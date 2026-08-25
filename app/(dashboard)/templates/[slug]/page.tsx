@@ -40,6 +40,7 @@ import {
   templateAssetUrl,
 } from "@/templates/catalog";
 import { defaultVariant } from "@/templates/types";
+import { titleClass } from "@/components/shared/page-header";
 
 /** How many siblings the Related rail carries. */
 const RELATED = 12;
@@ -136,9 +137,7 @@ export default async function TemplatePage(
             />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">
-              {template.name}
-            </h1>
+            <h1 className={cn("truncate", titleClass.page)}>{template.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {variant.shortDescription}
             </p>

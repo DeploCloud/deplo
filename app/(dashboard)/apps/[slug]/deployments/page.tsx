@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { DeploymentsTable } from "@/components/apps/deployments-table";
+import { titleClass } from "@/components/shared/page-header";
 
 export const metadata = { title: "Deployments" };
 
@@ -35,9 +36,7 @@ export default async function AppDeploymentsPage(
   // justify-between row; reused above the empty state.
   const header = (
     <div className="space-y-1">
-      <h2 className="text-lg font-semibold tracking-tight">
-        Deployment history
-      </h2>
+      <h2 className={titleClass.section}>Deployment history</h2>
       <p className="text-sm text-muted-foreground">
         {deployments.length} total
         {inProgress > 0 && (

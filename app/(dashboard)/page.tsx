@@ -38,6 +38,7 @@ import {
   type OverviewPlacement,
 } from "@/lib/overview-links";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
+import { PageHeader } from "@/components/shared/page-header";
 import { timeAgo } from "@/lib/utils";
 
 export default async function OverviewPage(props: PageProps<"/">) {
@@ -289,27 +290,29 @@ export default async function OverviewPage(props: PageProps<"/">) {
 
       {/* Overview: projects, folders and apps */}
       <div className="order-1 space-y-5 lg:order-1">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-          <AddNewMenu
-            canCreateApp={canDeploy}
-            canCreateDatabase={canCreateDatabase}
-            canManageMembers={canManageMembers}
-            canCreateFolder={canCreateFolder}
-            canCreateProject={canCreateProject}
-            isAdmin={isAdmin}
-            // Drill-in context so "New folder" nests under the folder currently open (ADR-0009:
-            // folders nest via parentId). Null inside a project — folders never live in a
-            // project — so a folder made there stays at the top level.
-            parentFolder={
-              openFolder ? { id: openFolder.id, name: openFolder.name } : null
-            }
-            // …and so a NEW APP created from here is created IN the open folder
-            // (or the selected environment of the open project) instead of
-            // landing at the team top level.
-            placement={placement}
-          />
-        </div>
+        <PageHeader
+          title="Overview"
+          actions={
+            <AddNewMenu
+              canCreateApp={canDeploy}
+              canCreateDatabase={canCreateDatabase}
+              canManageMembers={canManageMembers}
+              canCreateFolder={canCreateFolder}
+              canCreateProject={canCreateProject}
+              isAdmin={isAdmin}
+              // Drill-in context so "New folder" nests under the folder currently open (ADR-0009:
+              // folders nest via parentId). Null inside a project — folders never live in a
+              // project — so a folder made there stays at the top level.
+              parentFolder={
+                openFolder ? { id: openFolder.id, name: openFolder.name } : null
+              }
+              // …and so a NEW APP created from here is created IN the open folder
+              // (or the selected environment of the open project) instead of
+              // landing at the team top level.
+              placement={placement}
+            />
+          }
+        />
 
         {/**
          * The project drill-in's environment dropdown (ADR-0009) sits inline in the
