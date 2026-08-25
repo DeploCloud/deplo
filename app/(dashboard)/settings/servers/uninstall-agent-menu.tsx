@@ -126,9 +126,18 @@ export function UninstallAgentMenu({
     if (!rm.ok) return rm;
     if (rm.data?.warning) toast.warning(rm.data.warning);
     toast.success(`Deplo stopped tracking ${serverName}`);
-    router.refresh();
+    // NOT `router.refresh()` here. The row is gone, so refreshing takes this
+    // card - and the dialog below, which lives inside it - off the page half a
+    // second after it opened: the one thing that can still remove that agent
+    // flashed up and vanished. The refresh is the DISMISS's job instead.
     setLeftover({ detail: why, command: rm.data!.uninstallCommand });
     return rm;
+  }
+
+  /** Acknowledged: now the page may lose the row this card was. */
+  function dismissLeftover() {
+    setLeftover(null);
+    router.refresh();
   }
 
   return (
@@ -174,11 +183,19 @@ export function UninstallAgentMenu({
       {/* The row is gone; the agent is not. The command is the rest of the job,
           and it is the only thing that can take the agent off a host Deplo could
           not reach. */}
-      <Dialog open={leftover !== null} onOpenChange={() => setLeftover(null)}>
+      <Dialog
+        open={leftover !== null}
+        onOpenChange={(o) => !o && dismissLeftover()}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{serverName} still has the agent</DialogTitle>
-            <DialogDescription>{leftover?.detail}</DialogDescription>
+            {/* The host's own sentence, and it can be one unbroken line of
+                address and cert detail - break it rather than push the dialog
+                wider than the screen. */}
+            <DialogDescription className="break-words">
+              {leftover?.detail}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {leftover ? <CommandLine command={leftover.command} /> : null}
@@ -188,7 +205,7 @@ export function UninstallAgentMenu({
             </p>
           </div>
           <DialogFooter>
-            <Button onClick={() => setLeftover(null)}>Done</Button>
+            <Button onClick={dismissLeftover}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

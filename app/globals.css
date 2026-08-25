@@ -256,13 +256,17 @@
    outline at a 2px offset, and a field's ring reaches just as far — while a
    scroll container clips everything at its padding edge. A full-width row in a
    zero-padding scroll box therefore comes out with its focus ring sliced down
-   both sides. This reserves exactly that much room inline and hands it straight
-   back to the layout with a matching negative margin, so nothing moves; the
-   scroll-padding does the same for keyboard navigation, landing a row tabbed
-   into view just inside the box instead of flush against its edge. */
+   both sides - and the first and last rows lose theirs along the top and the
+   bottom, which in a dialog is every footer button there is. This reserves
+   exactly that much room on both axes and hands it straight back to the layout
+   with a matching negative margin, so nothing moves; the scroll-padding does the
+   same for keyboard navigation, landing a row tabbed into view just inside the
+   box instead of flush against its edge. */
 @utility focus-safe-scroll {
   padding-inline: 0.25rem;
   margin-inline: -0.25rem;
+  padding-block: 0.25rem;
+  margin-block: -0.25rem;
   scroll-padding-block: 0.25rem;
 }
 
