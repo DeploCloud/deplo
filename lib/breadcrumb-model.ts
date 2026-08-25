@@ -269,8 +269,7 @@ export function buildBreadcrumb(
     return null;
   }
 
-  // Section preservation for sibling app links (Vercel-style: switch app, keep your
-  // tab).
+  // Section preservation for sibling app links: switch app, keep your tab.
   const UNSAFE_SECTIONS = new Set(["console", "files"]);
   const siblingSuffix =
     rest.length > 0 && !UNSAFE_SECTIONS.has(rest[0])

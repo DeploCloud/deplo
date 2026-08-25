@@ -1119,7 +1119,7 @@ export async function setServerTeams(
 
 /**
  * Set a server's deploy concurrency — how many deployments its agent runs at once
- * (the Coolify `concurrent_builds` analogue, read by lib/deploy/deploy-queue). 1 =
+ * (read by lib/deploy/deploy-queue). 1 =
  * strict per-server serialization; deploys on OTHER servers still run in parallel,
  * and a same-app deploy never overlaps regardless of this value.
  */

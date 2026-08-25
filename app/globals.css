@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Deplo design system  Vercel-style black & white (shadcn tokens).
+  Deplo design system - black & white (shadcn tokens).
   Light + dark. App defaults to dark (see <html class="dark">).
 */
 :root {
@@ -224,7 +224,7 @@
        where they are set. */
     overflow-wrap: break-word;
   }
-  /* Vercel-like thin scrollbars */
+  /* Thin scrollbars */
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;

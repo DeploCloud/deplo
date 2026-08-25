@@ -11,8 +11,7 @@ import {
 import { runDeploymentGuarded } from "./build";
 
 /**
- * The per-server deployment queue (the Coolify `concurrent_builds` model, adapted
- * to deplo's single-process, no-Redis architecture).
+ * The per-server deployment queue, in-process and without Redis.
  */
 
 /** In-flight accounting for one owning server. Memory-only; the durable truth is
@@ -122,8 +121,7 @@ function startOne(serverId: string, depId: string, key: string): void {
       const lane = laneFor(serverId);
       lane.running.delete(depId);
       busyKeys.delete(key);
-      // A slot freed - try to start whatever is next (Coolify's queue_next_deployment,
-      // called from transitionToStatus on every finish).
+      // A slot freed - start whatever is next.
       scheduleServer(serverId);
       for (const other of [...lanes.keys()]) {
         if (other !== serverId) scheduleServer(other);

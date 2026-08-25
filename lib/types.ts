@@ -1835,8 +1835,7 @@ export interface NotificationChannelInput extends Omit<
 
 /**
  * A GitHub App connected to this Deplo instance, created through GitHub's App
- * Manifest flow (one click no manual copy/paste of ids and keys, the way
- * Dokploy/Coolify do it).
+ * Manifest flow - one click, no hand-copied ids and keys.
  */
 export interface GithubApp {
   id: ID;

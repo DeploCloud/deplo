@@ -847,9 +847,8 @@ export const apps = pgTable(
     // attacker-authored code that would run on the operator's host, so by default it
     // lands in the list as blocked and waits for a member with `deploy`.
     previewForkPolicy: text("preview_fork_policy"),
-    // Where previews run. The override exists because deplo is multi-server and the
-    // competitors are not — pointing pull request builds at a scrap machine keeps them
-    // off the box serving production.
+    // Where previews run: pointing pull request builds at a scrap machine keeps
+    // them off the box serving production.
     previewServerId: text("preview_server_id").references(() => servers.id, {
       onDelete: "set null",
     }),

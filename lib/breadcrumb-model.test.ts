@@ -344,7 +344,7 @@ test("flag-gated sections hidden until the store confirms; current always shown"
 
 /* ---- Section preservation on sibling links --------------------------- */
 
-test("sibling links preserve the current section (Vercel-style tab keep)", () => {
+test("sibling links preserve the current section (tab is kept)", () => {
   const segs = svc("/apps/web/deployments")!;
   const service = segs.find((s) => s.kind === "app")!;
   assert.equal(
