@@ -26,20 +26,28 @@ export interface LogTimeline {
 
 const MINUTES_PER_DAY = 60 * 24;
 
-export const DEFAULT_TIMELINE: LogTimeline = {
-  sinceMinutes: 30,
-  timestamps: true,
-  format: "absolute",
-};
+const WEEK_MINUTES = 7 * MINUTES_PER_DAY;
 
 const BASE_RANGES = [
   { minutes: 30, label: "Last 30 minutes" },
   { minutes: 60, label: "Last hour" },
   { minutes: MINUTES_PER_DAY, label: "Last day" },
+  { minutes: WEEK_MINUTES, label: "Last 7 days" },
 ];
 
+/** A log pane opens on a week of history, or on the widest range the instance
+ *  ceiling still allows. */
+export function defaultTimeline(maxDays: number): LogTimeline {
+  const ranges = rangesFor(maxDays).filter((r) => r.minutes <= WEEK_MINUTES);
+  return {
+    sinceMinutes: ranges[ranges.length - 1]!.minutes,
+    timestamps: true,
+    format: "absolute",
+  };
+}
+
 /** The offered ranges for a given ceiling. The ceiling's own row is appended
- *  only when it says something the three fixed rows do not. */
+ *  only when it says something the fixed rows do not. */
 export function rangesFor(
   maxDays: number,
 ): { minutes: number; label: string }[] {
@@ -47,11 +55,9 @@ export function rangesFor(
     (r) => r.minutes <= maxDays * MINUTES_PER_DAY,
   );
   const ranges = capped.length > 0 ? capped : [BASE_RANGES[0]!];
-  if (maxDays > 1) {
-    ranges.push({
-      minutes: maxDays * MINUTES_PER_DAY,
-      label: `Last ${maxDays} days`,
-    });
+  const ceiling = maxDays * MINUTES_PER_DAY;
+  if (maxDays > 1 && !ranges.some((r) => r.minutes === ceiling)) {
+    ranges.push({ minutes: ceiling, label: `Last ${maxDays} days` });
   }
   return ranges;
 }

@@ -33,7 +33,7 @@ import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
 import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import {
   TimelineMenu,
-  DEFAULT_TIMELINE,
+  defaultTimeline,
   formatLogClock,
   type LogTimeline,
 } from "@/components/logs/timeline-menu";
@@ -156,7 +156,9 @@ export function ContainerLogs({
     () => instances[0],
   );
   const [status, setStatus] = React.useState<Status>("connecting");
-  const [timeline, setTimeline] = React.useState<LogTimeline>(DEFAULT_TIMELINE);
+  const [timeline, setTimeline] = React.useState<LogTimeline>(() =>
+    defaultTimeline(logMaxDays),
+  );
   const [failure, setFailure] = React.useState<string | null>(null);
   const [output, setOutput] = React.useState("");
   // Parsed, levelled lines for render — updated incrementally by

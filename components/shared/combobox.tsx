@@ -167,10 +167,13 @@ export function Combobox<T>({
     return () => window.removeEventListener("keydown", onEscape, true);
   }, [open]);
 
-  // Close on outside click — the menu lives inside a dialog, so it must not
-  // swallow the click that lands on another field.
+  // Close on outside press — the menu lives inside a dialog, so it must not
+  // swallow the click that lands on another field. POINTERdown, captured: a
+  // Radix menu opening elsewhere sets `pointer-events: none` on the body, so
+  // the mousedown that followed never reached this listener and two dropdowns
+  // stayed open at once.
   React.useEffect(() => {
-    function onPointerDown(e: MouseEvent) {
+    function onPointerDown(e: PointerEvent) {
       const target = e.target as Node;
       // The menu is portaled, so it is NOT a descendant of the container — a
       // press on an option would otherwise read as a press outside the field.
@@ -180,8 +183,9 @@ export function Combobox<T>({
         setQuery("");
       }
     }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
   }, []);
 
   const q = query.trim().toLowerCase();
