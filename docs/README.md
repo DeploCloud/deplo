@@ -42,6 +42,7 @@ a historical archive and no longer describes the running system.
 | Deploy from GitHub, GitLab, Bitbucket or Gitea         | [Deploy from Git](guides/deploy-from-git.md)                                      |
 | Deploy a ready-made image from a registry              | [Deploy a Docker image](guides/deploy-a-docker-image.md)                          |
 | Deploy WordPress, n8n, Ghost or another ready stack    | [Deploy from a template](guides/deploy-from-a-template.md)                        |
+| Deploy a project that is not in Git                    | [Upload your code](guides/upload-your-code.md)                                    |
 | Change the build command, the port, the root directory | [Build settings](guides/build-settings.md)                                        |
 | Deploy automatically on every push                     | [Automatic deployments](guides/automatic-deployments.md)                          |
 | Go back to the version that worked                     | [Rollbacks](guides/rollbacks.md)                                                  |

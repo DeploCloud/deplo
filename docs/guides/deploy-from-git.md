@@ -104,3 +104,4 @@ surfaces before it breaks a deploy.
 - [Build settings](build-settings.md)
 - [Automatic deployments](automatic-deployments.md)
 - [Pull request previews](pull-request-previews.md)
+- [Upload your code](upload-your-code.md) - the same build, without a repository

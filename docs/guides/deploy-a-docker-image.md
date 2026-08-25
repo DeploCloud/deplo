@@ -81,3 +81,4 @@ The password is encrypted and never returned. See
 - [Deploy from a template](deploy-from-a-template.md) - the same idea, preconfigured
 - [Compose apps](../advanced/compose-apps.md) - more than one container
 - [Persistent storage](persistent-storage.md)
+- [Upload your code](upload-your-code.md) - when you have source but no repository
