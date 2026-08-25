@@ -47,7 +47,7 @@ bunx next typegen && bunx tsc --noEmit
 **`bun run test` needs `DEPLO_DATABASE_URL` to be UNSET.** The suite runs in-process
 against pglite, and with a real database URL exported the lease and scheduler tests bind
 to it and fail. If your shell exports it, run `env -u DEPLO_DATABASE_URL bun run test`.
-The full suite takes around 15 minutes.
+The full suite takes roughly 12 minutes.
 
 **`bunx next typegen` before `tsc` is not optional.** `PageProps`, `LayoutProps` and
 `RouteContext` are generated globals under `.next/types`. On a fresh checkout a bare
@@ -69,8 +69,11 @@ deplo has strong opinions and they are written down. Before changing anything st
   them apart.
 - **[CONTEXT.md](CONTEXT.md)** - the vocabulary. An App is not a service, a Project is not
   a folder, a Capability is not a permission. Use the words in there.
-- **[docs/adr/](docs/adr/)** - 24 numbered decisions. If your change contradicts one, say
-  so in the pull request instead of quietly overriding it.
+- **[docs/adr/](docs/adr/)** - 25 numbered decisions, indexed in
+  [docs/adr/README.md](docs/adr/README.md). If your change contradicts one, say so in the
+  pull request instead of quietly overriding it.
+- **[docs/](docs/)** - the user manual. A change that alters what a user sees updates the
+  page that documents it, in the same pull request.
 
 The one rule worth repeating here: **the control plane never touches a Docker socket or a
 host directly.** Every per-host action goes through the server agent over gRPC and mTLS.

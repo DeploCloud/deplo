@@ -82,8 +82,8 @@ twice.
 - **Reinstalling an agent re-bootstraps from scratch.** The installer deletes
   the existing certificate files, so it genuinely re-enrolls against the new
   pin rather than half-trusting the old one.
-- **A migration source has one action**, **Uninstall agent**, and Deplo does the
-  work.
+- **A migration source is removed with `Remove from Deplo`**, and Deplo uninstalls
+  its own agent from that machine as part of it.
 
 ## If it does not work
 

@@ -52,7 +52,7 @@ and build picker, never a backup destination, never swept by cleanup, absent
 from monitoring and from the fleet count, and granted to one team only.
 
 It is also **the only server Deplo uninstalls itself from**. On the servers page
-it is listed apart, with one action: **Uninstall agent**.
+it is listed apart, with a single action to take it back out again.
 
 ## Change a role later
 

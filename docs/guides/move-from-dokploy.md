@@ -53,8 +53,8 @@ Two clean-up actions, and they are different:
 - **Remove what came over** deletes what the migration created here, if you want
   to start again.
 - **Remove from Deplo** takes the migration source out of the fleet. Deplo
-  uninstalls its own agent from that machine first, and warns you if the agent
-  is still installed.
+  uninstalls its own agent from that machine first, and warns you with **Agent
+  still installed** if it could not.
 
 The **History** tab keeps every past run with its report, and **Use this
 address** re-fills the connection details for another pass.

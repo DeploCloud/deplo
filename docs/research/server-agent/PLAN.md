@@ -1,5 +1,13 @@
 # Plan: Server Agent — deploy projects to remote servers via a per-server Go agent
 
+> **Historical, and fully shipped.** This plan was written before the server
+> agent existed, so its Context describes a world that no longer applies ("there
+> is no agent, no SSH install, no remote exec path"). What it proposed is now
+> the architecture, recorded in
+> [ADR-0006](../../adr/0006-server-agent-is-a-per-host-go-binary.md). For how it
+> actually works, read
+> [Servers and the agent](../../concepts/servers-and-the-agent.md).
+
 ## Context
 
 Deplo already **models** multiple servers — a project carries a `serverId`, the dashboard

@@ -11,7 +11,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/DeploCloud/deplo)](https://github.com/DeploCloud/deplo/commits)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-[Features](#-features) · [Quick start](#-quick-start) · [How it works](#-how-it-works) · [Configuration](#%EF%B8%8F-configuration) · [Security](#-security) · [Contributing](CONTRIBUTING.md)
+[Features](#-features) · [Quick start](#-quick-start) · [Documentation](docs/) · [How it works](#-how-it-works) · [Configuration](#%EF%B8%8F-configuration) · [Security](#-security) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -76,12 +76,16 @@ re-running updates in place and never rotates them.
 
 > [!TIP]
 > You do not need a domain to start. Every deployment gets a working
-> `<app>.<server-ip>.sslip.io` URL with a real certificate until you point one at it.
+> `<app>-<two-words>-<hex-ip>.nip.io` URL, over plain HTTP, until you point one
+> at it. A shared wildcard domain cannot hold a certificate, so HTTPS is one A
+> record away, not zero.
 
 ### Run it with Compose
 
 [`docker-compose.yml`](docker-compose.yml) in this repository runs the control plane and
-its Postgres behind Traefik. It is what `install.sh` writes out, kept readable on purpose:
+its Postgres behind Traefik. It is a readable starting point, not a copy of what the
+installer writes: `install.sh` routes the panel through Traefik's **file provider** rather
+than container labels, precisely so the panel's own route stays changeable from the panel.
 
 ```bash
 docker network create deplo
@@ -150,6 +154,9 @@ The machine Deplo itself runs on is just another server in the fleet, agent and 
 is no privileged local shortcut, which means the path you use every day is the same one a
 remote host uses, and it is tested by everything.
 
+**The manual is [`docs/`](docs/)**: install it, ship your first app, then one page per
+feature, plus reference tables and troubleshooting by symptom.
+
 Decisions behind this live in [`docs/adr/`](docs/adr/), the vocabulary in
 [`CONTEXT.md`](CONTEXT.md), and the architecture rules in [`AGENTS.md`](AGENTS.md).
 
@@ -170,6 +177,19 @@ Copy [`.env.example`](.env.example) to `.env`. Only two are required:
 | `DEPLO_CERT_RESOLVER`        | Name of the Traefik ACME resolver baked into every router. Defaults to `letsencrypt`.                                                                       |
 | `DEPLO_DATABASE_POOL_MAX`    | Cap on the Postgres connection pool. Defaults to 10.                                                                                                        |
 | `DEPLO_DATA_DIR`             | Host-visible directory for build and upload staging. Not a data store.                                                                                      |
+
+The installer takes four more, passed in front of the command and written once into
+`/opt/deplo/.env`:
+
+| Variable            | Purpose                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `DEPLO_DOMAIN`      | Domain the panel is served on. Unset means `http://<ip>:3000` only.                                           |
+| `ACME_EMAIL`        | Let's Encrypt registration email for that host's Traefik. The container's own variable is `DEPLO_ACME_EMAIL`. |
+| `DEPLO_DB_PASSWORD` | Postgres password. Generated if unset.                                                                        |
+| `DEPLO_VERSION`     | Image tag to pull. Defaults to `latest`.                                                                      |
+
+Full tables, including the agent installer, in
+[`docs/reference/environment-variables.md`](docs/reference/environment-variables.md).
 
 ## 🔐 Security
 
@@ -226,6 +246,7 @@ lib/db              Postgres pool, Drizzle schema and migrations
 lib/mcp             the MCP server, one row per tool
 components          UI, with shadcn primitives under components/ui
 install.sh          the installer, served from this repository
+docs                the user manual (getting started, guides, reference)
 docs/adr            numbered architecture decisions
 ```
 

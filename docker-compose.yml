@@ -2,7 +2,7 @@
 # On the server:
 #   1. docker network create deplo            (once; shared with Traefik)
 #   2. export DEPLO_DOMAIN=deplo.example.com
-#      export DEPLO_SECRET=$(openssl rand -base64 32)
+#      export DEPLO_SECRET=$(openssl rand -base64 48)
 #      export DEPLO_DB_PASSWORD=$(openssl rand -base64 24)
 #   3. docker compose up -d --build
 services:

@@ -38,12 +38,13 @@ rather that window did not exist at all.
 The metric stream is also what raises these, delivered through
 [notifications](notifications-and-alerts.md):
 
-| Alert                                  | Fires when                                 |
-| -------------------------------------- | ------------------------------------------ |
-| **Server resources high**              | Sustained CPU or memory pressure on a host |
-| **Server disk low**                    | The root filesystem is running out         |
-| **Server offline** / **Server online** | The agent stopped or started answering     |
-| **App keeps restarting**               | A container is in a crash loop             |
+| Alert                                         | Fires when                                        |
+| --------------------------------------------- | ------------------------------------------------- |
+| **Server running hot**                        | Sustained CPU or memory pressure on a host        |
+| **Server disk almost full**                   | The root filesystem is running out                |
+| **Server offline** and **Server back online** | The agent stopped or started answering            |
+| **Server cannot run apps**                    | The agent is up but Docker is not answering there |
+| **App keeps restarting**                      | A container is in a crash loop                    |
 
 ## Limits and gotchas
 

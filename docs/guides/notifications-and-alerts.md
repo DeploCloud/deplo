@@ -42,17 +42,17 @@ Open the channel's alert picker. It is the same search box and category browse
 as the role editor, so it should feel familiar. The 35 alerts group into nine
 categories:
 
-| Category                | Examples                                                                                                              |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| **Deployments**         | Deployment failed, deployment succeeded, deployment interrupted, git connection failing                               |
-| **Apps**                | App keeps restarting                                                                                                  |
-| **Cron jobs**           | Cron job failed, cron job finished                                                                                    |
-| **Databases**           | Database ready, database setup failed, database rebuilt, database deleted                                             |
-| **Backups & restore**   | Backup failed, backup finished, restore succeeded, restore failed                                                     |
-| **Servers**             | Server offline, server online, disk low, resources high, agent certificate failed, cleanup failed, teardown abandoned |
-| **This Deplo instance** | A new Deplo version is available                                                                                      |
-| **Security & team**     | API token created, API token revoked, and the rest of the account surface                                             |
-| **Domains & TLS**       | Certificate expiring                                                                                                  |
+| Category                | Examples                                                                                                                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Deployments**         | Deployment failed, Deployment succeeded, Deployment interrupted, Git connection stopped working                                                                                                             |
+| **Apps**                | App keeps restarting                                                                                                                                                                                        |
+| **Cron jobs**           | Cron job failed, Cron job finished                                                                                                                                                                          |
+| **Databases**           | Database ready, Database setup failed, Database rebuilt, Database deleted                                                                                                                                   |
+| **Backups & restore**   | Backup failed, Backup finished, Restore finished, Restore failed                                                                                                                                            |
+| **Servers**             | Server offline, Server back online, Server running hot, Server disk almost full, Server cannot run apps, Server identity changed, Server agent certificate not renewed, Cleanup failed, Leftover containers |
+| **This Deplo instance** | A new Deplo version is available                                                                                                                                                                            |
+| **Security & team**     | API token created, API token revoked, Member joined, Member removed, Member access changed, Team owner changed, Two-factor requirement changed, Repeated failed sign-ins                                    |
+| **Domains & TLS**       | Certificate expiring, Domain points elsewhere                                                                                                                                                               |
 
 **Unselect all** and **Reset to defaults** are both there, spelled the way you
 expect.
