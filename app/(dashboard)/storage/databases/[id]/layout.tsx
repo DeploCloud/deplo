@@ -48,7 +48,12 @@ export default async function DatabaseLayout(
     <DatabaseLiveStatusProvider key={db.id} initial={initialLive}>
       {/* Publishes this database's nav facts to the sidebar, which lives outside
           this layout and so cannot read a context. Renders nothing. */}
-      <DbNavSync id={db.id} cronsEnabled={db.cronEnabled} />
+      <DbNavSync
+        id={db.id}
+        cronsEnabled={db.cronEnabled}
+        logo={db.logo}
+        type={db.type}
+      />
       {/* Same readable width as the App pages, and the same exception: on a
           full-bleed route DetailFrame drops both the measure and the header. */}
       <DetailFrame

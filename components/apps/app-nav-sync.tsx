@@ -14,6 +14,7 @@ import { setAppNav } from "./app-nav-store";
  */
 export function AppNavSync({
   slug,
+  logo,
   running: serverRunning,
   showFiles,
   isGithubApp,
@@ -22,6 +23,8 @@ export function AppNavSync({
   capabilities,
 }: {
   slug: string;
+  /** The app's own logo — the mark on its Overview entry. */
+  logo: string | null;
   /** Server-rendered running state; the live subscription takes over after mount. */
   running: boolean;
   showFiles: boolean;
@@ -39,6 +42,7 @@ export function AppNavSync({
   React.useEffect(() => {
     setAppNav({
       slug,
+      logo,
       running,
       showFiles,
       capabilities: caps ? caps.split(",") : [],
@@ -48,6 +52,7 @@ export function AppNavSync({
     });
   }, [
     slug,
+    logo,
     running,
     showFiles,
     caps,

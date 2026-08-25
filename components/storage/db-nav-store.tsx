@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import type { DatabaseType } from "@/lib/types";
+
 /**
  * The per-database facts the global sidebar cannot work out on its own.
  *
@@ -19,6 +21,10 @@ export type DbNavState = {
   id: string;
   /** Cron jobs are switched on for this database. */
   cronsEnabled: boolean;
+  /** Its own logo, and the engine behind it — the mark on the Overview entry,
+   *  the same picture Storage lists the database under. */
+  logo: string | null;
+  type: DatabaseType;
 };
 
 // Client-only module state: each browser tab owns its own instance, and it is
@@ -55,13 +61,17 @@ export function useDbNav(): DbNavState | null {
 export function DbNavSync({
   id,
   cronsEnabled,
+  logo,
+  type,
 }: {
   id: string;
   cronsEnabled: boolean;
+  logo: string | null;
+  type: DatabaseType;
 }) {
   React.useEffect(() => {
-    setDbNav({ id, cronsEnabled });
-  }, [id, cronsEnabled]);
+    setDbNav({ id, cronsEnabled, logo, type });
+  }, [id, cronsEnabled, logo, type]);
 
   React.useEffect(() => () => setDbNav(null), []);
 

@@ -21,6 +21,8 @@ import { useActiveDeployments } from "./deploy-activity";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
+import { AppLogo } from "@/components/shared/project-logo";
+import { DatabaseLogo } from "@/components/storage/database-logo";
 import {
   Tooltip,
   TooltipContent,
@@ -129,12 +131,17 @@ export function SidebarNav({
   if (dbId && inDbSettings) {
     sections = databaseSettingsNav(dbId);
   } else if (dbId) {
+    // Only trusted while the store matches the id in the URL, so a stale flag
+    // from the database you just left cannot leak into the next one.
+    const matches = dbNav?.id === dbId;
     sections = databaseNav(dbId, {
       pathname,
       consoleAcknowledged,
-      // Only trusted while the store matches the id in the URL, so a stale flag
-      // from the database you just left cannot leak into the next one.
-      cronsEnabled: dbNav?.id === dbId ? dbNav.cronsEnabled : false,
+      cronsEnabled: matches ? dbNav!.cronsEnabled : false,
+      // Left undefined until it matches: the generic glyph stands in rather
+      // than the last database's brand mark.
+      logo: matches ? dbNav!.logo : undefined,
+      type: matches ? dbNav!.type : undefined,
     });
   } else if (appSlug && inAppSettings) {
     // Until the store matches the slug in the URL (SSR, first paint) assume the
@@ -157,6 +164,7 @@ export function SidebarNav({
       isGithubApp: matches ? service!.isGithubApp : false,
       previewsEnabled: matches ? service!.previewsEnabled : false,
       cronsEnabled: matches ? service!.cronsEnabled : false,
+      logo: matches ? service!.logo : undefined,
       consoleAcknowledged,
     });
   } else if (inSettings) {
@@ -322,16 +330,19 @@ export function SidebarNav({
                         : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5",
                     )}
                   >
-                    {showIcon && (
-                      <Icon
-                        className={cn(
-                          "size-4 shrink-0",
-                          active
-                            ? "text-foreground"
-                            : "text-muted-foreground group-hover:text-foreground",
-                        )}
-                      />
-                    )}
+                    {showIcon &&
+                      (item.mark ? (
+                        <NavMark mark={item.mark} />
+                      ) : (
+                        <Icon
+                          className={cn(
+                            "size-4 shrink-0",
+                            active
+                              ? "text-foreground"
+                              : "text-muted-foreground group-hover:text-foreground",
+                          )}
+                        />
+                      ))}
                     {!collapsed && item.label}
                     {deployingTip &&
                       (collapsed ? (
@@ -361,5 +372,26 @@ export function SidebarNav({
         </div>
       ))}
     </nav>
+  );
+}
+
+/**
+ * The picture on an app's or database's Overview entry, in the place the icon
+ * would take.
+ *
+ * Sized to the 16px lucide glyphs beside it and drawn at the same footprint, so
+ * the column of entries keeps one left edge. It is the SAME mark the Overview
+ * grid, the breadcrumb and the log picker use for that thing, which is the whole
+ * point: the first row of the sub-menu should look like what you are inside.
+ */
+function NavMark({ mark }: { mark: NonNullable<NavItem["mark"]> }) {
+  return (
+    <span className="flex size-4 shrink-0 items-center justify-center">
+      {mark.kind === "database" ? (
+        <DatabaseLogo type={mark.type} logo={mark.logo} size={16} />
+      ) : (
+        <AppLogo logo={mark.logo} size={16} />
+      )}
+    </span>
   );
 }

@@ -35,6 +35,7 @@ import {
   Cable,
   type LucideIcon,
 } from "lucide-react";
+import type { DatabaseType } from "@/lib/types";
 
 export interface NavItem {
   label: string;
@@ -43,6 +44,16 @@ export interface NavItem {
   tooltip: string;
   /** exact match for active state (default: startsWith) */
   exact?: boolean;
+  /**
+   * A picture that stands in for {@link icon}: the app's or database's own logo
+   * on its Overview entry, so the sub-menu opens with the thing you are inside
+   * rather than a generic dashboard glyph. Data, not an element — this module
+   * is plain TS and the sidebar does the drawing. Absent until the layout has
+   * published it (SSR, first paint), where the icon stands in.
+   */
+  mark?:
+    | { kind: "app"; logo: string | null }
+    | { kind: "database"; logo: string | null; type: DatabaseType };
   /**
    * A "back" escape hatch (top of a sub-menu). The sidebar routes a plain click
    * through the browser's back so you return to wherever you came from; `href`
@@ -348,6 +359,14 @@ export interface AppNavFlags {
   previewsEnabled: boolean;
   /** Cron jobs are switched on for this app. */
   cronsEnabled: boolean;
+  /**
+   * The app's own logo, for the Overview entry's mark. `undefined` while the
+   * layout has not published it yet (SSR, first paint, or the store still
+   * holding the app you just left), where the generic glyph stands in; `null`
+   * is an app that HAS no logo, which draws its default mark like everywhere
+   * else in the UI.
+   */
+  logo?: string | null;
   /** The console is an advanced surface: its chip appears only once the user has
    *  confirmed the one-time "I understand" warning (persisted in localStorage). */
   consoleAcknowledged: boolean;
@@ -372,6 +391,11 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       label: "Overview",
       href: base,
       icon: LayoutDashboard,
+      // The app's own logo when the layout has published it: inside an app, the
+      // first entry should look like that app.
+      ...(f.logo !== undefined
+        ? { mark: { kind: "app" as const, logo: f.logo } }
+        : {}),
       tooltip: "App overview",
       // Every app route starts with `base`, so Overview must match exactly
       // or it would light up on every sub-page.
@@ -636,7 +660,15 @@ export function appSettingsNav(
  */
 export function databaseNav(
   id: string,
-  f: { pathname: string; consoleAcknowledged: boolean; cronsEnabled: boolean },
+  f: {
+    pathname: string;
+    consoleAcknowledged: boolean;
+    cronsEnabled: boolean;
+    /** The database's own logo, and its engine — the Overview entry's mark. Both
+     *  absent until the layout has published them (see {@link AppNavFlags.logo}). */
+    logo?: string | null;
+    type?: DatabaseType;
+  },
 ): NavSection[] {
   const base = `/storage/databases/${id}`;
   const on = (seg: string) =>
@@ -661,6 +693,17 @@ export function databaseNav(
           label: "Overview",
           href: base,
           icon: LayoutDashboard,
+          // The database's own logo, or its engine's brand mark — the same
+          // picture Storage lists it under.
+          ...(f.type
+            ? {
+                mark: {
+                  kind: "database" as const,
+                  logo: f.logo ?? null,
+                  type: f.type,
+                },
+              }
+            : {}),
           tooltip: "Database overview",
           // Every DB route starts with `base`, so Overview must match exactly.
           exact: true,

@@ -16,6 +16,8 @@ import * as React from "react";
  */
 export type AppNavState = {
   slug: string;
+  /** The app's own logo, so its Overview entry is marked with the app itself. */
+  logo: string | null;
   running: boolean;
   showFiles: boolean;
   /** The viewer's effective capabilities on this app. */

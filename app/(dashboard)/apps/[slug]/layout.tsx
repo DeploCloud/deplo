@@ -147,6 +147,7 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
            lose the section menu along with the title. */
             <AppNavSync
               slug={slug}
+              logo={project.logo}
               running={project.status === "active"}
               showFiles={showFiles}
               capabilities={capabilities}
