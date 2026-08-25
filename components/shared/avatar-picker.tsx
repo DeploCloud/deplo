@@ -9,66 +9,28 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   AVATAR_ACCEPT_ATTR,
-  AVATAR_EDGE_PX,
   AVATAR_IMAGE_TYPES,
   MAX_AVATAR_STRING_LEN,
 } from "@/lib/apps/avatar-shared";
+import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 
 /**
  * Change a profile picture by clicking the picture.
  *
  * There is no "Upload" button and no file field: the avatar IS the control, and
- * dropping a file on it works too. Saving happens on PICK, not behind a Save
- * button — the change is one value with no other state to reconcile, so a second
- * step would only be a step. Optimistic, with the previous picture put back if
- * the server refuses.
+ * dropping a file on it works too. Picking opens the crop dialog, and confirming
+ * there saves - there is no Save button after it, because the change is one
+ * value with no other state to reconcile. Optimistic, with the previous picture
+ * put back if the server refuses.
+ *
+ * The crop used to be a blind centre crop, on the grounds that a face is in the
+ * middle of a photo often enough. It is not, and when it was not the only fix
+ * was to crop the file in another program and upload it again.
  *
  * Nothing here knows about Gravatar. `preview` is whatever the server already
  * resolved, and clearing simply hands back null and lets the read path decide
  * what shows next.
  */
-
-/**
- * Downscale to a square and re-encode, in the browser.
- *
- * A centre crop rather than a crop dialog: a profile picture is a face in the
- * middle of a photo often enough that the dialog would be ceremony, and the
- * cheap version is one `drawImage`.
- *
- * WebP at 0.85 puts a 256px square at roughly 20-40 KB. A browser that cannot
- * encode WebP silently answers with a PNG data-URI, which the validator accepts
- * just as happily — so there is no fallback branch to write.
- *
- * This is a CONVENIENCE, never a guarantee: the server re-checks the grammar and
- * the size, because a hostile client simply will not run any of it.
- */
-async function toAvatarDataUri(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file, {
-    imageOrientation: "from-image",
-  });
-  try {
-    const side = Math.min(bitmap.width, bitmap.height);
-    const canvas = document.createElement("canvas");
-    canvas.width = AVATAR_EDGE_PX;
-    canvas.height = AVATAR_EDGE_PX;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("no 2d context");
-    ctx.drawImage(
-      bitmap,
-      (bitmap.width - side) / 2,
-      (bitmap.height - side) / 2,
-      side,
-      side,
-      0,
-      0,
-      AVATAR_EDGE_PX,
-      AVATAR_EDGE_PX,
-    );
-    return canvas.toDataURL("image/webp", 0.85);
-  } finally {
-    bitmap.close();
-  }
-}
 
 export function AvatarPicker({
   preview,
@@ -90,6 +52,7 @@ export function AvatarPicker({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [pending, startTransition] = React.useTransition();
   const [dragging, setDragging] = React.useState(false);
+  const [picked, setPicked] = React.useState<File | null>(null);
   const busy = pending || disabled;
 
   function commit(image: string | null) {
@@ -104,7 +67,7 @@ export function AvatarPicker({
     });
   }
 
-  async function pick(file: File | null | undefined) {
+  function pick(file: File | null | undefined) {
     if (!file || busy) return;
     if (
       !AVATAR_IMAGE_TYPES.includes(
@@ -114,21 +77,7 @@ export function AvatarPicker({
       toast.error("Unsupported image - use PNG, JPEG or WebP");
       return;
     }
-    let dataUri: string;
-    try {
-      dataUri = await toAvatarDataUri(file);
-    } catch {
-      toast.error("Could not read that image");
-      return;
-    }
-    // The downscale normally lands two orders of magnitude inside the cap, so
-    // this only fires on something pathological - and it is worth saying here
-    // rather than letting the server answer for it.
-    if (dataUri.length > MAX_AVATAR_STRING_LEN) {
-      toast.error("That image is too large");
-      return;
-    }
-    commit(dataUri);
+    setPicked(file);
   }
 
   return (
@@ -145,7 +94,7 @@ export function AvatarPicker({
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          void pick(e.dataTransfer.files?.[0]);
+          pick(e.dataTransfer.files?.[0]);
         }}
         aria-label={label}
         className={cn(
@@ -178,13 +127,29 @@ export function AvatarPicker({
           Remove
         </Button>
       )}
+      <ImageCropDialog
+        file={picked}
+        variant="avatar"
+        onClose={() => setPicked(null)}
+        onCropped={(dataUri) => {
+          setPicked(null);
+          // A 256px WebP lands two orders of magnitude inside the cap, so this
+          // only fires on something pathological - and it is worth saying here
+          // rather than letting the server answer for it.
+          if (dataUri.length > MAX_AVATAR_STRING_LEN) {
+            toast.error("That image is too large");
+            return;
+          }
+          commit(dataUri);
+        }}
+      />
       <input
         ref={inputRef}
         type="file"
         accept={AVATAR_ACCEPT_ATTR}
         className="hidden"
         onChange={(e) => {
-          void pick(e.target.files?.[0]);
+          pick(e.target.files?.[0]);
           // Reset so re-picking the same file fires change again.
           e.target.value = "";
         }}

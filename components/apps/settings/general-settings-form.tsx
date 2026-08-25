@@ -14,7 +14,12 @@ import {
   LOGO_ACCEPT_ATTR,
   LOGO_IMAGE_TYPES,
   MAX_LOGO_BYTES,
+  MAX_LOGO_STRING_LEN,
 } from "@/lib/apps/logo-shared";
+import {
+  ImageCropDialog,
+  isCroppableLogo,
+} from "@/components/shared/image-crop-dialog";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { formatBytes } from "@/lib/utils";
@@ -22,8 +27,8 @@ import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * General settings: an app's name and logo — its identity, so they share one
- * card. The logo saves as soon as a file is picked; the name saves with its
- * button (and arms the leave guard while dirty).
+ * card. A picked photo goes through the crop dialog and saves on confirm; the
+ * name saves with its button (and arms the leave guard while dirty).
  */
 export function GeneralSettingsForm({
   appId,
@@ -44,6 +49,7 @@ export function GeneralSettingsForm({
   // /templates path). `null` ⇒ no logo (generic icon). The picker reads a file
   // and converts it to a data-URI before saving, so nothing is fetched remotely.
   const [logo, setLogo] = React.useState<string | null>(initialLogo);
+  const [picked, setPicked] = React.useState<File | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
   const [pending, startTransition] = React.useTransition();
 
@@ -70,10 +76,28 @@ export function GeneralSettingsForm({
     });
   }
 
-  // Read a picked image into a base64 data-URI and persist it as the logo. The
-  // image is validated (type + size) before reading so we never inline an
-  // oversized blob into the app document.
-  function pickLogo(file: File) {
+  // Persist a logo value (a data-URI, or null to clear it). Optimistic, with
+  // the previous logo put back if the server refuses.
+  function saveLogo(next: string | null) {
+    const previous = logo;
+    setLogo(next);
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation($id: String!, $logo: String) { updateAppLogo(id: $id, logo: $logo) { id } }`,
+        { id: appId, logo: next },
+      );
+      if (res.ok) toast.success(next ? "Logo updated" : "Logo cleared");
+      else {
+        setLogo(previous);
+        toast.error(res.error);
+      }
+      router.refresh();
+    });
+  }
+
+  // Validate a picked image (type + size) and either open the crop dialog or,
+  // for the formats a canvas cannot handle, store the file exactly as uploaded.
+  async function pickLogo(file: File) {
     if (
       !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
     ) {
@@ -84,6 +108,10 @@ export function GeneralSettingsForm({
       toast.error(`Image too large (max ${formatBytes(MAX_LOGO_BYTES)})`);
       return;
     }
+    if (await isCroppableLogo(file)) {
+      setPicked(file);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const dataUri = typeof reader.result === "string" ? reader.result : "";
@@ -91,40 +119,10 @@ export function GeneralSettingsForm({
         toast.error("Could not read image");
         return;
       }
-      const previous = logo;
-      setLogo(dataUri);
-      startTransition(async () => {
-        const res = await gqlAction(
-          `mutation($id: String!, $logo: String) { updateAppLogo(id: $id, logo: $logo) { id } }`,
-          { id: appId, logo: dataUri },
-        );
-        if (res.ok) toast.success("Logo updated");
-        else {
-          setLogo(previous);
-          toast.error(res.error);
-        }
-        router.refresh();
-      });
+      saveLogo(dataUri);
     };
     reader.onerror = () => toast.error("Could not read image");
     reader.readAsDataURL(file);
-  }
-
-  function clearLogo() {
-    const previous = logo;
-    setLogo(null);
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: String!, $logo: String) { updateAppLogo(id: $id, logo: $logo) { id } }`,
-        { id: appId, logo: null },
-      );
-      if (res.ok) toast.success("Logo cleared");
-      else {
-        setLogo(previous);
-        toast.error(res.error);
-      }
-      router.refresh();
-    });
   }
 
   // Ask the server to find this app's own favicon and set it as the logo: in a
@@ -183,7 +181,7 @@ export function GeneralSettingsForm({
                     variant="ghost"
                     size="sm"
                     className="text-muted-foreground"
-                    onClick={clearLogo}
+                    onClick={() => saveLogo(null)}
                     disabled={pending}
                   >
                     Remove
@@ -193,11 +191,22 @@ export function GeneralSettingsForm({
             </div>
             <p className="text-xs text-muted-foreground">
               PNG, JPEG, WebP, GIF, SVG or ICO · up to{" "}
-              {formatBytes(MAX_LOGO_BYTES)}.
-              {detectable
-                ? " Saved as soon as you pick a file, or detect this app's own favicon."
-                : " Saved as soon as you pick a file."}
+              {formatBytes(MAX_LOGO_BYTES)}
+              {detectable ? ", or detect this app's own favicon" : ""}.
             </p>
+            <ImageCropDialog
+              file={picked}
+              variant="logo"
+              onClose={() => setPicked(null)}
+              onCropped={(dataUri) => {
+                setPicked(null);
+                if (dataUri.length > MAX_LOGO_STRING_LEN) {
+                  toast.error("That image is too large");
+                  return;
+                }
+                saveLogo(dataUri);
+              }}
+            />
             <input
               ref={logoInputRef}
               type="file"
@@ -205,7 +214,7 @@ export function GeneralSettingsForm({
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) pickLogo(file);
+                if (file) void pickLogo(file);
                 e.target.value = "";
               }}
             />

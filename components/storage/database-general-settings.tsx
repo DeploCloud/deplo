@@ -15,7 +15,12 @@ import {
   LOGO_ACCEPT_ATTR,
   LOGO_IMAGE_TYPES,
   MAX_LOGO_BYTES,
+  MAX_LOGO_STRING_LEN,
 } from "@/lib/apps/logo-shared";
+import {
+  ImageCropDialog,
+  isCroppableLogo,
+} from "@/components/shared/image-crop-dialog";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { formatBytes } from "@/lib/utils";
@@ -24,9 +29,9 @@ import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
  * General settings for a database: its name and logo — its identity, so they
- * share one card, exactly like an App's General. The logo saves as soon as a
- * file is picked; the name saves with its button (and arms the leave guard while
- * dirty).
+ * share one card, exactly like an App's General. A picked photo goes through
+ * the crop dialog and saves on confirm; the name saves with its button (and
+ * arms the leave guard while dirty).
  *
  * Renaming here is a pure label change. The container's identity — the compose
  * project, its data volume, its DNS name and therefore the connection string —
@@ -39,6 +44,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   const [name, setName] = React.useState(db.name);
   // Null ⇒ no uploaded logo, so the UI shows the ENGINE's real brand mark.
   const [logo, setLogo] = React.useState<string | null>(db.logo);
+  const [picked, setPicked] = React.useState<File | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
   const [pending, startTransition] = React.useTransition();
 
@@ -82,9 +88,9 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
     });
   }
 
-  // Read a picked image into a base64 data-URI and persist it. Validated (type +
-  // size) before reading, so an oversized blob is never inlined into the row.
-  function pickLogo(file: File) {
+  // Validate a picked image (type + size) and either open the crop dialog or,
+  // for the formats a canvas cannot handle, store the file exactly as uploaded.
+  async function pickLogo(file: File) {
     if (
       !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
     ) {
@@ -93,6 +99,10 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
     }
     if (file.size > MAX_LOGO_BYTES) {
       toast.error(`Image too large (max ${formatBytes(MAX_LOGO_BYTES)})`);
+      return;
+    }
+    if (await isCroppableLogo(file)) {
+      setPicked(file);
       return;
     }
     const reader = new FileReader();
@@ -148,9 +158,22 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
             </div>
             <p className="text-xs text-muted-foreground">
               PNG, JPEG, WebP, GIF, SVG or ICO · up to{" "}
-              {formatBytes(MAX_LOGO_BYTES)}. Saved as soon as you pick a file;
-              remove it to go back to the {engine} logo.
+              {formatBytes(MAX_LOGO_BYTES)}. Remove it to go back to the{" "}
+              {engine} logo.
             </p>
+            <ImageCropDialog
+              file={picked}
+              variant="logo"
+              onClose={() => setPicked(null)}
+              onCropped={(dataUri) => {
+                setPicked(null);
+                if (dataUri.length > MAX_LOGO_STRING_LEN) {
+                  toast.error("That image is too large");
+                  return;
+                }
+                saveLogo(dataUri);
+              }}
+            />
             <input
               ref={logoInputRef}
               type="file"
@@ -158,7 +181,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) pickLogo(file);
+                if (file) void pickLogo(file);
                 e.target.value = "";
               }}
             />

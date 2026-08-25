@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidLogoValue, MAX_LOGO_STRING_LEN } from "./logo-shared";
+import {
+  isAnimatedWebp,
+  isValidLogoValue,
+  MAX_LOGO_STRING_LEN,
+} from "./logo-shared";
 
 test("isValidLogoValue: accepts a png image data-URI", () => {
   assert.equal(isValidLogoValue("data:image/png;base64,iVBORw0KGgo="), true);
@@ -57,4 +61,23 @@ test("isValidLogoValue: rejects a data-URI longer than the cap", () => {
 test("isValidLogoValue: rejects an empty or malformed data-URI", () => {
   assert.equal(isValidLogoValue("data:image/png;base64,"), false);
   assert.equal(isValidLogoValue("data:image/png,notbase64"), false);
+});
+
+test("isAnimatedWebp: spots the ANIM flag in an extended WebP header", () => {
+  const head = (fourcc: string, flags: number) => {
+    const bytes = new Uint8Array(21);
+    const write = (at: number, s: string) => {
+      for (let i = 0; i < s.length; i++) bytes[at + i] = s.charCodeAt(i);
+    };
+    write(0, "RIFF");
+    write(8, "WEBP");
+    write(12, fourcc);
+    bytes[20] = flags;
+    return bytes;
+  };
+  assert.equal(isAnimatedWebp(head("VP8X", 0x02)), true);
+  assert.equal(isAnimatedWebp(head("VP8X", 0x12)), true); // ANIM + ALPHA
+  assert.equal(isAnimatedWebp(head("VP8X", 0x10)), false); // extended, still
+  assert.equal(isAnimatedWebp(head("VP8 ", 0x02)), false); // plain lossy WebP
+  assert.equal(isAnimatedWebp(new Uint8Array(4)), false); // truncated
 });

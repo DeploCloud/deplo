@@ -70,3 +70,44 @@ export function isValidLogoValue(value: string): boolean {
   if (TEMPLATE_PATH_RE.test(value)) return true;
   return false;
 }
+
+/**
+ * The square the crop dialog exports a logo at, in CSS pixels. Twice
+ * `AVATAR_EDGE_PX` because a logo is drawn on the Overview card at 36-48px but
+ * also as the app's own mark in wider places, and because a cropped logo is the
+ * only one that gets re-encoded at all - everything else still travels at its
+ * original size, up to {@link MAX_LOGO_BYTES}.
+ */
+export const LOGO_EDGE_PX = 512;
+
+/**
+ * The logo types the crop dialog can handle.
+ *
+ * Narrower than {@link LOGO_IMAGE_TYPES} because a canvas is raster-only: an
+ * SVG is a document that would come out rasterised, an ICO is several pictures
+ * of which it would keep one, and the whole point of a GIF is that it moves.
+ * Those three keep the plain read-and-store path and land exactly as uploaded.
+ */
+export const CROPPABLE_LOGO_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+] as const;
+
+/**
+ * Whether these leading bytes are an ANIMATED WebP.
+ *
+ * WebP is the one croppable type that can also be a moving picture, and
+ * `createImageBitmap` would silently keep frame one - so an animated logo that
+ * used to be stored intact would come back still. The flag lives in the
+ * extended header: `RIFF....WEBPVP8X`, then a 4-byte chunk size, then a flags
+ * byte whose bit 1 is ANIM.
+ */
+export function isAnimatedWebp(head: Uint8Array): boolean {
+  if (head.length < 21) return false;
+  const tag = (at: number) =>
+    String.fromCharCode(head[at], head[at + 1], head[at + 2], head[at + 3]);
+  if (tag(0) !== "RIFF" || tag(8) !== "WEBP" || tag(12) !== "VP8X")
+    return false;
+  return (head[20] & 0x02) !== 0;
+}
