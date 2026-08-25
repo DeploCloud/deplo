@@ -8,6 +8,7 @@ import {
   type DataMoveVolume,
 } from "@/lib/data/dokploy-data";
 import {
+  abandonDokployImport,
   activeDokployImportForTeam,
   beginDokployImport,
   type DokployInvite,
@@ -224,6 +225,11 @@ const ImportItemRef = builder
       targetKind: t.exposeString("targetKind", { nullable: true }),
       targetId: t.exposeString("targetId", { nullable: true }),
       message: t.exposeString("message", { nullable: true }),
+      at: t.exposeString("at", {
+        nullable: true,
+        description:
+          "When this line happened. Null on rows written before the report became something you can watch. A report read afterwards is a list; read while it runs it is a log, and a log with no times is not one.",
+      }),
     }),
   });
 
@@ -749,6 +755,13 @@ builder.mutationFields((t) => ({
       "Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and Dokploy is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.",
     args: { runId: t.arg.string({ required: true }) },
     resolve: (_r, { runId }) => revertDokployImport(runId),
+  }),
+  abandonDokployImport: t.field({
+    type: "Int",
+    authScopes: { capability: "create_projects" },
+    description:
+      "Leaving the wizard behind: take Deplo's agent back off the machines it registered to read, exactly the way finishing does. No-op while a run is in flight (it owns those agents) and after one whose volume copy failed (the bytes are still over there). Returns how many sources it is removing.",
+    resolve: () => abandonDokployImport(),
   }),
   finishDokployImport: t.field({
     type: "Boolean",

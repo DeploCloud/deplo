@@ -53,6 +53,7 @@ import {
 } from "../dokploy/client";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 import {
+  abandonDokployImport,
   appendRunItem,
   beginDokployImport,
   dokployMachines,
@@ -1338,6 +1339,62 @@ test("the sweep finishes what a dead process started, with nobody signed in", as
     await asOwner(() => getServerById(id)),
     null,
     "the sweep must be able to finish the job on its own",
+  );
+});
+
+test("leaving the wizard takes Deplo's agent off the source it registered", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.76");
+
+  assert.equal(await asOwner(() => abandonDokployImport()), 1);
+
+  assert.equal(
+    await asOwner(() => getServerById(id)),
+    null,
+    "walking away left an agent running on somebody else's machine",
+  );
+});
+
+test("leaving does not touch the sources a run in flight is reading", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.77");
+  // A second tab on the same team, closed while the run is mid-flight: the run
+  // copies volumes THROUGH these agents, and it removes them itself when it ends.
+  await asOwner(() => beginDokployImport({ url: URL_BASE }));
+
+  assert.equal(await asOwner(() => abandonDokployImport()), 0);
+
+  assert.ok(await asOwner(() => getServerById(id)));
+});
+
+test("leaving keeps the source that still holds data nothing could copy", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.78");
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await appendRunItem(runId, {
+    path: "Blink / production / api",
+    sourceKind: "volume",
+    sourceName: "api-data",
+    outcome: "failed",
+    message: "the copy failed",
+  });
+  await asOwner(() => finishDokployImport(runId));
+
+  assert.equal(await asOwner(() => abandonDokployImport()), 0);
+
+  assert.ok(
+    await asOwner(() => getServerById(id)),
+    "the only way back to the bytes was uninstalled",
+  );
+});
+
+test("leaving keeps the sources a stopped run is resumed through", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.79");
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await asOwner(() => stopDokployImport(runId));
+
+  assert.equal(await asOwner(() => abandonDokployImport()), 0);
+
+  assert.ok(
+    await asOwner(() => getServerById(id)),
+    "re-running is how a stopped migration is resumed, and it needs the agent",
   );
 });
 

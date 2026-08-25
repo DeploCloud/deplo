@@ -279,6 +279,8 @@ export interface ImportItemDTO {
   targetKind: string | null;
   targetId: string | null;
   message: string | null;
+  /** When it happened. Null on rows written before the report became a log. */
+  at: string | null;
 }
 
 export interface ImportRunDTO {
@@ -1190,18 +1192,7 @@ async function removeMigrationSources(
   );
   if (sources.length === 0) return;
 
-  const stranded = await getDb()
-    .select({ id: itemsTable.id })
-    .from(itemsTable)
-    .where(
-      and(
-        eq(itemsTable.runId, runId),
-        eq(itemsTable.sourceKind, "volume"),
-        eq(itemsTable.outcome, "failed"),
-      ),
-    )
-    .limit(1);
-  if (stranded.length > 0) {
+  if (await hasStrandedVolume(runId)) {
     for (const s of sources)
       await appendRunItem(runId, {
         path: s.name,
@@ -1220,8 +1211,42 @@ async function removeMigrationSources(
     .from(runsTable)
     .where(eq(runsTable.id, runId))
     .limit(1);
-  const actor = run?.actor ?? "the migration";
+  await scheduleSourceUninstalls(
+    sources,
+    runId,
+    teamId,
+    run?.actor ?? "the migration",
+  );
+}
 
+/**
+ * A volume this run could not copy. Its bytes are still on the source host and
+ * the agent is the only way to fetch them, so nothing may take that agent off
+ * until a person says so.
+ */
+async function hasStrandedVolume(runId: string): Promise<boolean> {
+  const stranded = await getDb()
+    .select({ id: itemsTable.id })
+    .from(itemsTable)
+    .where(
+      and(
+        eq(itemsTable.runId, runId),
+        eq(itemsTable.sourceKind, "volume"),
+        eq(itemsTable.outcome, "failed"),
+      ),
+    )
+    .limit(1);
+  return stranded.length > 0;
+}
+
+/** Put every one of these sources on the uninstall ladder and take the first
+ *  rung now. `runId` is null when nobody's report is waiting on the answer. */
+async function scheduleSourceUninstalls(
+  sources: { id: string; name: string }[],
+  runId: string | null,
+  teamId: string,
+  actor: string,
+): Promise<void> {
   for (const s of sources) {
     // The intent FIRST, so a process that dies on the next line still leaves a
     // row the sweep will pick up. `attempts: 0` because the try below is the
@@ -1243,6 +1268,62 @@ async function removeMigrationSources(
       UNINSTALL_INLINE_DEADLINE_MS,
     );
   }
+}
+
+/**
+ * The wizard was walked away from, and the machines it was reading are somebody
+ * else's.
+ *
+ * Registering a source is not a free act: Deplo puts its own agent on another
+ * platform's host to read the disks. Finishing an import takes that agent back
+ * off by itself ({@link removeMigrationSources}); LEAVING the page used to take
+ * nothing off at all, so the row outlived the plan it was made for - an agent
+ * running on a machine nobody meant to hand over for good, and a "Migration
+ * source" in Settings -> Servers with no migration behind it.
+ *
+ * So leaving ends the same way finishing does, on the same durable ladder: one
+ * attempt now, the sweep behind it, a person asked only once Deplo has given up.
+ * The wizard calls it on the way out; the identity is the person leaving, and
+ * the capability is the one that registered the sources in the first place.
+ *
+ * Two things it refuses to touch, both because the bytes still matter:
+ *
+ *  - a run IN FLIGHT owns those agents (it reads volumes through them) and
+ *    removes them itself when it ends - a second tab that never started it must
+ *    not end them from under it - and a STOPPED one is resumed by re-running,
+ *    which needs the same agents;
+ *  - a run that ended with a volume copy FAILED is the one case where the agent
+ *    is deliberately left behind, and this is the same refusal
+ *    {@link removeMigrationSources} makes.
+ *
+ * Returns how many sources it is taking off, which is 0 far more often than not
+ * (a Dokploy whose machines were all ours already registers nothing).
+ */
+export async function abandonDokployImport(): Promise<number> {
+  const { teamId } = await requireCapability("create_projects");
+  const actor = (await getCurrentUser())?.name ?? "the migration";
+
+  const [latest] = await getDb()
+    .select({ id: runsTable.id, status: runsTable.status })
+    .from(runsTable)
+    .where(eq(runsTable.teamId, teamId))
+    .orderBy(desc(runsTable.seq))
+    .limit(1);
+  // `stopped` is a pause, not an ending: re-running is how a stopped migration is
+  // resumed (see `stopDokployImport`), and it can only be resumed through the
+  // agents that are still on those machines.
+  if (latest?.status === "running" || latest?.status === "stopped") return 0;
+  if (latest && (await hasStrandedVolume(latest.id))) return 0;
+
+  const sources = (await listServersForTeam(teamId)).filter(
+    // Already on the ladder, or already given up on: both are somebody else's
+    // decision to leave alone. `uninstallError` is what puts the machine in
+    // front of a person, and re-arming it would hide it again.
+    (s) => s.importOnly && !s.uninstallPending && !s.uninstallError,
+  );
+  if (sources.length === 0) return 0;
+  await scheduleSourceUninstalls(sources, null, teamId, actor);
+  return sources.length;
 }
 
 /**
@@ -1488,6 +1569,9 @@ class Report {
       targetKind: entry.targetKind ?? null,
       targetId: entry.targetId ?? null,
       message: entry.message ?? null,
+      // Stamped here, once, so the in-memory copy the caller reads and the row
+      // the log reads agree on when it happened.
+      at: nowIso(),
     };
     this.items.push(row);
     if (!this.runId) return;
@@ -3609,6 +3693,7 @@ export async function getDokployImport(
         targetKind: i.targetKind,
         targetId: i.targetId,
         message: i.message,
+        at: i.at,
       })),
   };
 }

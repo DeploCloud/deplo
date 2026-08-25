@@ -1588,6 +1588,10 @@ type DokployImport {
 }
 
 type DokployImportItem {
+  """
+  When this line happened. Null on rows written before the report became something you can watch. A report read afterwards is a list; read while it runs it is a log, and a log with no times is not one.
+  """
+  at: String
   message: String
   outcome: DokployImportOutcome
 
@@ -2441,6 +2445,11 @@ enum MountPropagation {
 }
 
 type Mutation {
+  """
+  Leaving the wizard behind: take Deplo's agent back off the machines it registered to read, exactly the way finishing does. No-op while a run is in flight (it owns those agents) and after one whose volume copy failed (the bytes are still over there). Returns how many sources it is removing.
+  """
+  abandonDokployImport: Int
+
   """
   Add a basic-auth user to an app. The login is required on every one of its domains within seconds — the routing is re-applied to the running container, no redeploy needed.
   """
