@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { gqlSubscribe } from "@/lib/graphql-client";
+import { MIGRATION_HEARTBEAT_STALE_MS } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
 import {
@@ -44,7 +45,32 @@ export type ActiveMigration = {
   doneSteps: number;
   totalSteps: number;
   stepLabel: string | null;
+  /**
+   * When the control plane driving this run last said it was alive - null while
+   * nothing has picked it up.
+   *
+   * Read against {@link MIGRATION_HEARTBEAT_STALE_MS} on the CLIENT's clock, on
+   * purpose: a boolean computed server-side would be a snapshot, and the case
+   * that matters is exactly the one where no further frame arrives to correct
+   * it. A run whose runner died stops beating; the reader notices by the number
+   * ageing, not by being told.
+   */
+  heartbeatAt: string | null;
 };
+
+/** Is anybody actually driving this run?
+ *
+ *  `now` is a parameter so a caller that already ticks a clock (the wizard's
+ *  panel) measures against the same instant it renders everything else with,
+ *  instead of reading the wall clock a second time per render. */
+export function isDriven(
+  run: { heartbeatAt: string | null },
+  now: number = Date.now(),
+): boolean {
+  if (!run.heartbeatAt) return false;
+  const at = Date.parse(run.heartbeatAt);
+  return !Number.isNaN(at) && now - at < MIGRATION_HEARTBEAT_STALE_MS;
+}
 
 const ACTIVE_MIGRATION_SUBSCRIPTION = /* GraphQL */ `
   subscription ActiveMigration {
@@ -63,6 +89,7 @@ const ACTIVE_MIGRATION_SUBSCRIPTION = /* GraphQL */ `
       doneSteps
       totalSteps
       stepLabel
+      heartbeatAt
     }
   }
 `;
@@ -122,9 +149,14 @@ export function MigrationChip({ canOpen }: { canOpen: boolean }) {
       ? Math.min(100, Math.round((run.doneSteps / run.totalSteps) * 100))
       : 0;
   const counted = run.totalSteps > 0;
-  const label = counted
-    ? `Migration ${Math.min(run.doneSteps + 1, run.totalSteps)}/${run.totalSteps}`
-    : "Migration in progress";
+  // "Waiting" is not a smaller version of "in progress", it is a different
+  // thing: nothing is happening, and the chip is the only place most of the team
+  // will ever see that.
+  const label = !isDriven(run)
+    ? "Migration waiting"
+    : counted
+      ? `Migration ${Math.min(run.doneSteps + 1, run.totalSteps)}/${run.totalSteps}`
+      : "Migration in progress";
   const body = (
     <>
       {/* Behind the text, not around it: a bar under a chip in a header is a
@@ -168,9 +200,11 @@ export function MigrationChip({ canOpen }: { canOpen: boolean }) {
         {/* What it is DOING, not a warning to stand still: the run finishes on
             the server now, so there is nothing to stay out of the way of except
             the apps it is still writing, and those refuse for themselves. */}
-        {run.stepLabel
-          ? `${run.phase === "data" ? "Copying data" : "Importing"}: ${run.stepLabel}`
-          : `${run.actor} is bringing a platform into this team.`}
+        {!isDriven(run)
+          ? "No control plane has picked this migration up yet. It starts on its own within a minute or two."
+          : run.stepLabel
+            ? `${run.phase === "data" ? "Copying data" : "Importing"}: ${run.stepLabel}`
+            : `${run.actor} is bringing a platform into this team.`}
       </TooltipContent>
     </Tooltip>
   );

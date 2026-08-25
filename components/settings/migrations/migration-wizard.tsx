@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   CircleStop,
   Loader2,
@@ -26,6 +27,7 @@ import {
 } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import {
+  isDriven,
   useActiveMigration,
   type ActiveMigration,
 } from "@/components/layout/migration-activity";
@@ -259,6 +261,7 @@ function asActive(run: ImportRun): ActiveMigration {
     doneSteps: run.doneSteps ?? 0,
     totalSteps: run.totalSteps ?? 0,
     stepLabel: run.stepLabel ?? null,
+    heartbeatAt: run.heartbeatAt ?? null,
   };
 }
 
@@ -962,6 +965,7 @@ export function MigrationWizard({
                       : NO_PROGRESS
                   }
                   startedAt={feed ? Date.parse(feed.startedAt) : null}
+                  heartbeatAt={feed?.heartbeatAt ?? null}
                   failure={failure}
                   running={resumed}
                   undoing={undoing}
@@ -1005,6 +1009,9 @@ export function MigrationWizard({
                   <MovingPanel
                     progress={NO_PROGRESS}
                     startedAt={null}
+                    // The start call is in flight in THIS tab: there is no run
+                    // yet, so there is no heartbeat to be missing.
+                    heartbeatAt={new Date().toISOString()}
                     failure={failure}
                     running={running}
                     undoing={false}
@@ -1216,6 +1223,7 @@ function ConnectStep({
 function MovingPanel({
   progress,
   startedAt,
+  heartbeatAt,
   failure,
   running,
   undoing,
@@ -1226,6 +1234,8 @@ function MovingPanel({
   progress: MigrationProgress;
   /** Epoch ms the run started, or null when there is no run to time yet. */
   startedAt: number | null;
+  /** The run's last heartbeat, or null while nothing has picked it up. */
+  heartbeatAt: string | null;
   failure: string | null;
   running: boolean;
   /** A Stop is in flight: the server is taking the migration back out. */
@@ -1237,6 +1247,12 @@ function MovingPanel({
   onBack: () => void;
 }) {
   const pct = progress.total === 0 ? 0 : (progress.done / progress.total) * 100;
+  // Ticks here rather than inside the elapsed line, because a heartbeat goes
+  // cold with the clock and nothing else: no frame arrives to say so - that IS
+  // the situation - so the whole panel has to be able to change its mind on its
+  // own, title included.
+  const now = useNow(startedAt != null || heartbeatAt != null);
+  const driven = isDriven({ heartbeatAt }, now);
 
   // The start call itself failed, so there is no run: nothing was created, and
   // there is nothing to undo or report on. Back to the plan.
@@ -1256,11 +1272,19 @@ function MovingPanel({
 
   return (
     <StepShell
-      title={undoing ? "Undoing the migration" : "Migration in progress"}
+      title={
+        undoing
+          ? "Undoing the migration"
+          : driven
+            ? "Migration in progress"
+            : "Waiting to start"
+      }
       lead={
         undoing
           ? "Deplo is removing everything this migration created and taking its agent back off the machines it was reading. Nothing is left half moved."
-          : "Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
+          : driven
+            ? "Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
+            : "No control plane has picked this migration up yet, so nothing is moving. One takes it over on its next pass, within a minute or two. Stop it if you would rather start again."
       }
     >
       <div className="space-y-2">
@@ -1268,21 +1292,31 @@ function MovingPanel({
             movement, and it reads as hung. The sweep and the spinner are the
             two things on screen still saying the work is going. */}
         <div className="flex items-center gap-3">
-          <Progress value={pct} className="deplo-progress-working" />
-          <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+          {/* The sweep and the spinner are the two things on screen still saying
+              the work is going - so a run nobody has picked up gets neither.
+              An animation over a stalled run is the whole lie in one graphic. */}
+          <Progress
+            value={pct}
+            className={cn(driven && "deplo-progress-working")}
+          />
+          {driven && (
+            <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+          )}
         </div>
         <p className="text-sm text-muted-foreground">
           {undoing
             ? "Removing what came over"
-            : [
-                progress.total > 0 &&
-                  `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`,
-                progress.current,
-              ]
-                .filter(Boolean)
-                .join(" \u00b7 ")}
+            : !driven
+              ? "Nothing is driving it yet"
+              : [
+                  progress.total > 0 &&
+                    `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`,
+                  progress.current,
+                ]
+                  .filter(Boolean)
+                  .join(" \u00b7 ")}
         </p>
-        <ElapsedLine startedAt={startedAt} progress={progress} />
+        <ElapsedLine startedAt={startedAt} progress={progress} now={now} />
       </div>
 
       {/* Both at the end of the row, Stop first: it is the one somebody is
@@ -1330,6 +1364,27 @@ function MovingPanel({
 }
 
 /**
+ * The clock the panel reads, ticking once a second while there is a run.
+ *
+ * Its own hook because two things depend on it and one of them is not a number
+ * on screen: a heartbeat goes cold with the CLOCK and nothing else - no frame
+ * arrives to announce it, that is the situation - so the panel needs a reason to
+ * re-render before it can notice.
+ *
+ * Lazily initialised, so it reads once per mount rather than on every render.
+ * This never runs on the server: it exists only while a run is on screen.
+ */
+function useNow(active: boolean): number {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [active]);
+  return now;
+}
+
+/**
  * How long it has been going, and roughly how much is left.
  *
  * The estimate divides the time spent evenly across the steps done, which is
@@ -1339,27 +1394,17 @@ function MovingPanel({
  * roughly right beats the thing it replaced, which was nothing at all: a bar
  * that has not moved in four minutes reads as hung, and the only cure is a
  * second that keeps ticking.
- *
- * Its own component so the per-second tick re-renders two lines of text rather
- * than the whole panel, log dialog and all.
  */
 function ElapsedLine({
   startedAt,
   progress,
+  now,
 }: {
   startedAt: number | null;
   progress: MigrationProgress;
+  /** The panel's clock - see {@link useNow}. */
+  now: number;
 }) {
-  // Lazily, so the clock reads once per mount rather than on every render. This
-  // never renders on the server: it exists only while a loop this tab started is
-  // running, which is client state set by a click.
-  const [now, setNow] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    if (startedAt == null) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [startedAt]);
-
   if (startedAt == null) return null;
   const elapsed = Math.max(0, now - startedAt);
   const left =
@@ -1370,7 +1415,7 @@ function ElapsedLine({
   return (
     <p className="text-xs text-muted-foreground">
       Running for {formatBuildDuration(elapsed)}
-      {left != null && ` · about ${formatBuildDuration(left)} left`}
+      {left != null && ` \u00b7 about ${formatBuildDuration(left)} left`}
     </p>
   );
 }

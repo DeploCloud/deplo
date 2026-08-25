@@ -1933,6 +1933,15 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
   const started = await pending;
   assert.equal(started.value?.id, runId);
   assert.equal(started.value?.orgName, "Acme Inc");
+  // A run nobody has picked up yet says so, and that is the whole point of the
+  // field: the row says `running` from the moment it is opened, whether or not
+  // any control plane is driving it, and the panel used to report "Migration in
+  // progress" over exactly that for as long as it lasted.
+  assert.equal(
+    started.value?.heartbeatAt,
+    null,
+    "a run no runner has claimed must not look like one in flight",
+  );
 
   // Another team's chip never lights up for it.
   assert.equal((await activeMigrationStream(TEAM_B).next()).value, null);

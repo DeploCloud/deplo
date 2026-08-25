@@ -322,6 +322,17 @@ export interface ImportRunDTO {
   stepLabel: string | null;
   /** Somebody asked it to stop; it notices between steps. */
   stopRequested: boolean;
+  /**
+   * When the process driving this run last said it was alive, or null while
+   * nothing has picked it up.
+   *
+   * The one honest answer to "is this actually doing something". A run is a row
+   * saying `running`, which it keeps saying whether or not any control plane is
+   * driving it - so the panel used to report "Migration in progress" over a run
+   * nobody had claimed, with no log, for as long as it took somebody to ask.
+   * Compared against `MIGRATION_HEARTBEAT_STALE_MS` by whoever reads it.
+   */
+  heartbeatAt: string | null;
   /** When its report was closed by the person who started it. Null while the
    *  wizard should still open on this run - see the column's own doc. */
   reportSeenAt: string | null;
@@ -3909,6 +3920,7 @@ function toRunDTO(r: typeof runsTable.$inferSelect): ImportRunDTO {
     stepLabel: r.stepLabel,
     stopRequested: r.stopRequested,
     reportSeenAt: r.reportSeenAt,
+    heartbeatAt: r.heartbeatAt,
     lastPath: null,
   };
 }

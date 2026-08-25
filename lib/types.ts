@@ -679,6 +679,18 @@ export type DeploySource =
   "github" | "git" | "docker-image" | "upload" | "compose";
 
 /**
+ * How old a migration run's heartbeat may be before nobody is driving it.
+ *
+ * Shared, not duplicated: the runner writes the heartbeat on this window
+ * (`STALE_MS` in lib/data/dokploy-runner.ts, which imports this) and takes a run
+ * over once it is exceeded, and the wizard reads it to decide whether to say
+ * "in progress" at all. Two numbers would let the panel claim a run was moving
+ * for the whole time the runner already considered it abandoned - which is the
+ * exact lie it exists to stop telling.
+ */
+export const MIGRATION_HEARTBEAT_STALE_MS = 90_000;
+
+/**
  * The internal `DeploySource` strings are lowercase and hyphenated
  * ("docker-image"), but the GraphQL `DeploySource` enum exposes uppercase,
  * underscored value *names* (GITHUB, DOCKER_IMAGE …) — GraphQL enum names can't

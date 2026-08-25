@@ -1554,6 +1554,11 @@ type DokployImport {
   error: String
   failed: Int
   finishedAt: String
+
+  """
+  When the control plane driving this run last said it was alive, or null while nothing has picked it up. A run is a row that says `running` whether or not anybody is driving it, so this is the only honest answer to "is it actually doing something": older than 90 seconds (or null) means no runner has it, and the next tick anywhere on the instance will take it over.
+  """
+  heartbeatAt: String
   id: String
 
   """The report. Only loaded by the single-run query."""

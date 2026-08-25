@@ -266,6 +266,11 @@ const ImportRunRef = builder
         description:
           "Somebody asked it to stop. The runner notices between steps - never mid-call, because a call already sent finishes on the far side whatever this row says.",
       }),
+      heartbeatAt: t.exposeString("heartbeatAt", {
+        nullable: true,
+        description:
+          'When the control plane driving this run last said it was alive, or null while nothing has picked it up. A run is a row that says `running` whether or not anybody is driving it, so this is the only honest answer to "is it actually doing something": older than 90 seconds (or null) means no runner has it, and the next tick anywhere on the instance will take it over.',
+      }),
       lastPath: t.exposeString("lastPath", {
         nullable: true,
         description:
@@ -542,6 +547,10 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
     a.doneSteps === b.doneSteps &&
     a.totalSteps === b.totalSteps &&
     a.stepLabel === b.stepLabel &&
+    // A beat is a CHANGE: it is what tells a watching panel that somebody is
+    // still driving this, and a feed that swallowed it would leave every tab
+    // holding the last heartbeat before a silent phase.
+    a.heartbeatAt === b.heartbeatAt &&
     a.created === b.created &&
     a.skipped === b.skipped &&
     a.failed === b.failed &&

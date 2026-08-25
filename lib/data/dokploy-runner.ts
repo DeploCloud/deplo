@@ -9,6 +9,7 @@ import {
   dokployRunTargets as targetsTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
+import { MIGRATION_HEARTBEAT_STALE_MS } from "../types";
 import { formatBytes } from "../utils";
 import { encryptSecret, decryptSecretOrThrow } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
@@ -81,7 +82,7 @@ export const leaseFor = (runId: string) => `dokploy-migration:${runId}`;
  *  lease is now renewed on every beat - the idle tick's and the one that runs
  *  THROUGH a long step (see {@link advance}), which is what a 900 MB volume copy
  *  used to look abandoned for. */
-const STALE_MS = 90_000;
+const STALE_MS = MIGRATION_HEARTBEAT_STALE_MS;
 /** How often the tick runs when nothing is going on. */
 const IDLE_TICK_MS = 15_000;
 /** How often a copy in flight refreshes its byte count on the progress line. */
@@ -319,6 +320,12 @@ async function beat(runId: string): Promise<void> {
     .update(runsTable)
     .set({ runnerOwner: owner, heartbeatAt: nowIso() })
     .where(eq(runsTable.id, runId));
+  // And it is PUBLISHED, because the panel's only proof that somebody is driving
+  // this run is a heartbeat it can see. The config phase can spend minutes
+  // inside one project without writing any progress, and a feed that only wakes
+  // on progress would leave every watcher holding a heartbeat from before the
+  // silence - unable to tell a runner that is working from one that is gone.
+  publishMigrationChanged();
 }
 
 async function setProgress(

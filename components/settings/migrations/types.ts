@@ -113,6 +113,8 @@ export interface ImportRun {
   totalSteps?: number;
   stepLabel?: string | null;
   lastPath?: string | null;
+  /** When whatever is driving it last said so - null while nothing has. */
+  heartbeatAt?: string | null;
 }
 
 /** What a revert took back out of Deplo, and what it could not. */
