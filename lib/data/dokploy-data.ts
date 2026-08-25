@@ -772,8 +772,36 @@ async function runMoveDokployServiceData(
     }
   }
 
-  // The point of no return, and what makes the copy trustworthy.
-  await stopService(c, input.sourceKind, input.sourceId);
+  // The point of no return, and what makes the copy trustworthy - EXCEPT for a
+  // service Dokploy will not stop because it was never deployed, which answers 500
+  // to its own `compose.stop`. Nothing is running, so nothing is moving under the
+  // copy; the run has no business ending over it.
+  try {
+    await stopService(c, input.sourceKind, input.sourceId);
+  } catch (e) {
+    const why = e instanceof Error ? e.message : "Dokploy refused";
+    if (state.running) {
+      await appendRunItem(input.runId, {
+        path,
+        sourceKind: input.sourceKind,
+        sourceName: svc.name,
+        sourceId: svc.id,
+        outcome: "failed",
+        targetKind: landed.targetKind,
+        targetId: landed.targetId,
+        message: `${svc.name} is still running on Dokploy and would not stop (${why}), so its data was not copied - copying a volume being written to would arrive corrupted. Stop it there and run the copy again.`,
+      });
+      await markDataCopyFailed(
+        { kind: landed.targetKind, id: landed.targetId },
+        `${svc.name} would not stop on Dokploy, so its data was never copied`,
+      );
+      await refreshCounts(input.runId, teamId);
+      return { moved: 0, failed: 1, notes, sourceGone: false };
+    }
+    notes.push(
+      `Dokploy would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was copied as it is.`,
+    );
+  }
 
   // Stop the destination too: untarring into a volume a container is writing to is
   // the same mistake in the other direction.
@@ -787,6 +815,9 @@ async function runMoveDokployServiceData(
   let moved = 0;
   let failed = 0;
   let empty = 0;
+  // Of `empty`, the ones that do not EXIST over there - a service created and
+  // never started. See VolumeCopyResult.missing.
+  let missing = 0;
   // Set by either loop below. See DataMoveResult.sourceGone: it is the difference
   // between "this volume did not come across" and "stop the whole migration".
   let sourceGone = false;
@@ -814,6 +845,7 @@ async function runMoveDokployServiceData(
         // An empty source is not a copy and must never read as one.
         if (copied.empty) {
           empty++;
+          if (copied.missing) missing++;
           await appendRunItem(input.runId, {
             path,
             sourceKind: "volume",
@@ -821,7 +853,9 @@ async function runMoveDokployServiceData(
             outcome: "skipped",
             targetKind: landed.targetKind,
             targetId: landed.targetId,
-            message: `${pair.sourceVolume} holds nothing on Dokploy, so ${pair.targetVolume} (${pair.mountPath}) was left as it is.`,
+            message: copied.missing
+              ? `${pair.sourceVolume} is not on Dokploy: ${svc.name} was never started there, so it has no data yet.`
+              : `${pair.sourceVolume} holds nothing on Dokploy, so ${pair.targetVolume} (${pair.mountPath}) was left as it is.`,
           });
           continue;
         }
@@ -899,6 +933,7 @@ async function runMoveDokployServiceData(
         );
         if (copied.empty) {
           empty++;
+          if (copied.missing) missing++;
           await appendRunItem(input.runId, {
             path,
             sourceKind: "volume",
@@ -906,7 +941,9 @@ async function runMoveDokployServiceData(
             outcome: "skipped",
             targetKind: landed.targetKind,
             targetId: landed.targetId,
-            message: `${bind.sourcePath} is empty on Dokploy, so ${bind.targetPath} was left as it is.`,
+            message: copied.missing
+              ? `${bind.sourcePath} is not on Dokploy: ${svc.name} was never started there, so it has no data yet.`
+              : `${bind.sourcePath} is empty on Dokploy, so ${bind.targetPath} was left as it is.`,
           });
           continue;
         }
@@ -978,7 +1015,9 @@ async function runMoveDokployServiceData(
     );
   if (empty > 0 && moved === 0)
     notes.push(
-      `Nothing was copied for ${landed.targetName}: every volume it has on Dokploy is empty.`,
+      missing === empty
+        ? `Nothing was copied for ${landed.targetName}: it was never started on Dokploy, so it has no data there yet. Press Deploy and it starts fresh.`
+        : `Nothing was copied for ${landed.targetName}: every volume it has on Dokploy is empty.`,
     );
 
   for (const message of notes)

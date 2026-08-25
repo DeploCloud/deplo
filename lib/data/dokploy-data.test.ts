@@ -187,9 +187,20 @@ function fakeDokploy() {
     }
     if (procedure === "docker.getContainersByAppLabel")
       return json(CONTAINERS[url.searchParams.get("appName") ?? ""] ?? []);
-    if (procedure === "docker.getConfig")
-      return json(INSPECT[url.searchParams.get("containerId") ?? ""] ?? {});
-    if (procedure.endsWith(".stop")) return json({ ok: true });
+    if (procedure === "docker.getConfig") {
+      const row = INSPECT[url.searchParams.get("containerId") ?? ""];
+      return json(
+        row ? { ...(row as object), State: { Running: sourceRunning } } : {},
+      );
+    }
+    if (procedure.endsWith(".stop")) {
+      if (stopRefusal)
+        return new Response(JSON.stringify({ message: stopRefusal }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        });
+      return json({ ok: true });
+    }
     return new Response("not found", { status: 404 });
   };
 }
@@ -213,6 +224,16 @@ const EMPTY_ARCHIVE = Buffer.alloc(45, 0);
  *  of disk, a relay that died mid-stream. Reset between tests. */
 let importRefusal = "";
 
+/** Volumes the source host does not HAVE - what a service created and never
+ *  started declares. The agent answers NOT_FOUND, not an empty archive. */
+let notFoundVolumes = new Set<string>();
+
+/** When false, the source's containers exist but nothing is running in them. */
+let sourceRunning = true;
+
+/** Dokploy's own answer to `.stop` for a stack it never deployed: its 500. */
+let stopRefusal = "";
+
 function fakeAgent(serverId: string) {
   const say = (verb: string, arg: string) =>
     agentCalls.push(`${serverId}:${verb}:${arg}`);
@@ -233,6 +254,11 @@ function fakeAgent(serverId: string) {
     },
     async *exportVolume(name: string) {
       say("export", name);
+      if (notFoundVolumes.has(name))
+        throw Object.assign(
+          new Error(`5 NOT_FOUND: docker: no such volume: ${name}`),
+          { code: 5 },
+        );
       if (hostDiesMidCopy.has(serverId)) {
         // What a connection reset looks like by the time it reaches this code:
         // the gRPC status, not the socket error underneath it.
@@ -414,6 +440,9 @@ beforeEach(async () => {
   unreachableAgents.clear();
   hostDiesMidCopy.clear();
   importRefusal = "";
+  notFoundVolumes = new Set();
+  sourceRunning = true;
+  stopRefusal = "";
   hostPaths = { srv_dokploy_host: { "/etc/dokploy/x": Buffer.alloc(2048, 5) } };
   // The Dokploy host holds both source volumes, with real content in them.
   volumes = {
@@ -718,6 +747,79 @@ test("a source volume that is not on that host wipes nothing and is not a copy",
   );
   assert.equal(rows.rows[0].outcome, "skipped");
   assert.match(String(rows.rows[0].message), /holds nothing on Dokploy/);
+});
+
+test("a volume a never-started service has not created yet is not a loss", async () => {
+  await seedDokployHostServer();
+  // The measured shape: created from a template, never deployed, so the volume it
+  // declares does not exist on that host at all.
+  notFoundVolumes.add("blink-web-abc_uploads");
+  const runId = await openRun();
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(res.failed, 0, "nothing was lost, so nothing failed");
+
+  const rows = await db.execute(
+    `select outcome, message from dokploy_import_items where run_id = '${runId}' and source_kind = 'volume' and source_name = 'blink-web-abc_uploads'`,
+  );
+  assert.equal(rows.rows[0].outcome, "skipped");
+  assert.match(String(rows.rows[0].message), /was never started there/);
+
+  // And the app is NOT held back from its first deploy, which is the only way it
+  // would ever get that volume.
+  const app = await db.execute(
+    "select data_copy_error from apps where id = 'prj_web'",
+  );
+  assert.equal(app.rows[0].data_copy_error, "");
+});
+
+test("a stop Dokploy refuses does not end the run when nothing is running", async () => {
+  await seedDokployHostServer();
+  stopRefusal = "Command execution failed: spawn /bin/sh ENOENT";
+  sourceRunning = false;
+
+  const runId = await openRun();
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(res.moved, 2, "the copy still ran");
+  assert.equal(res.failed, 0);
+  assert.match(res.notes.join(" "), /would not stop/);
+});
+
+test("a stop Dokploy refuses on a RUNNING service copies nothing", async () => {
+  await seedDokployHostServer();
+  stopRefusal = "Command execution failed";
+  const before = volumes[SERVER_1]["deplo-blink-web-uploads"];
+
+  const runId = await openRun();
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(res.moved, 0);
+  assert.equal(res.failed, 1);
+  assert.deepEqual(
+    volumes[SERVER_1]["deplo-blink-web-uploads"],
+    before,
+    "a volume being written to must never be read out from under the writer",
+  );
 });
 
 test("a copy that fails marks the app, and the marker holds the deploy", async () => {

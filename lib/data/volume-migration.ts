@@ -69,17 +69,10 @@ export async function destroyStackOn(
  * the import (destination) can reject; an UNIMPLEMENTED (agent too old) is mapped
  * to a clear "update the agent on the <side> server" error.
  */
-function attributeCopyError(e: unknown, what?: string): Error {
+function attributeCopyError(e: unknown): Error {
   const asSource = mapVolumeCopyUnsupported(e, "source");
   if (asSource.constructor.name === "AgentVolumeCopyUnsupportedError")
     return asSource;
-  // A source that is not there is the agent doing its job (it refuses rather than
-  // creating an empty volume and calling it a copy) — but it reached the report as `5
-  // NOT_FOUND: … docker: Error response from daemon`, which reads like a broken
-  if (what && isNotFound(e))
-    return new Error(
-      `${what} is not on that machine, so nothing was copied. A service that has never run has no data volume yet.`,
-    );
   return mapVolumeCopyUnsupported(e, "destination");
 }
 
@@ -106,6 +99,12 @@ export interface VolumeCopyResult {
   sha256: string;
   /** The source archive held no files; nothing was written or wiped. */
   empty: boolean;
+  /**
+   * The source volume or directory does not EXIST over there - which is the
+   * normal state of a service that was created and never started, not data that
+   * failed to arrive.
+   */
+  missing?: boolean;
 }
 
 /**
@@ -179,7 +178,12 @@ export async function copyVolumeBetween(
     if (!(await sourceHasData(source, volumeName)))
       return { bytes: 0, sha256: "", empty: true };
   } catch (e) {
-    throw attributeCopyError(e, `The volume "${volumeName}"`);
+    // Nothing there to copy is not a copy that failed: a service that has never
+    // run has no data volume yet, and calling that a loss blocks the deploy that
+    // would create it.
+    if (isNotFound(e))
+      return { bytes: 0, sha256: "", empty: true, missing: true };
+    throw attributeCopyError(e);
   }
 
   // Count and hash what actually crosses. The digest is the same cross-check the
@@ -265,7 +269,9 @@ export async function copyHostPathBetween(
       if (seen > EMPTY_ARCHIVE_CEILING) break;
     }
   } catch (e) {
-    throw attributeCopyError(e, `The directory "${sourcePath}"`);
+    if (isNotFound(e))
+      return { bytes: 0, sha256: "", empty: true, missing: true };
+    throw attributeCopyError(e);
   }
   if (seen <= EMPTY_ARCHIVE_CEILING)
     return { bytes: 0, sha256: "", empty: true };
