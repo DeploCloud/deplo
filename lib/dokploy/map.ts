@@ -1,3 +1,5 @@
+// https://deplo.build/docs/guides/move-from-dokploy
+
 /**
  * Dokploy row → deplo input. The convention for anything that cannot be
  * represented: return the value that IS representable and add a line to `notes`.

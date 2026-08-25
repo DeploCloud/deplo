@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/advanced/custom-certificates
+
 import { X509Certificate, createPrivateKey } from "node:crypto";
 
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";

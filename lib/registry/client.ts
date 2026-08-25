@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/container-registries
+
 /**
  * Server-side container-registry client: image-name search, tag listing, and
  * existence checks across Docker Hub, GHCR, GitLab, Quay and any generic OCI

@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/advanced/build-servers
+
 import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";

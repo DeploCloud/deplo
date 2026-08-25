@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/operations/remove-a-server-or-uninstall
+
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 

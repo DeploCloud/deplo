@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/logs
+
 import { asc, eq } from "drizzle-orm";
 
 import { stripAnsi } from "../ansi";

@@ -1,3 +1,5 @@
+// https://deplo.build/docs/reference/capabilities
+
 import type { Capability } from "./types";
 import { ALL_CAPABILITIES } from "./types";
 

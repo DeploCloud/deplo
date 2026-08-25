@@ -1,3 +1,5 @@
+// https://deplo.build/docs/reference/installers
+
 /**
  * The Deplo installer is a static, version-controlled shell script at the repo
  * root (`install.sh`), served straight from GitHub so users can run: curl -fsSL

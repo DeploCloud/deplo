@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/build-settings
+
 import type { BuildConfig } from "../types";
 
 /**

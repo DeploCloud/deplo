@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/deploy-from-a-template
+
 import { z } from "zod";
 import { MAX_LOGO_BYTES } from "@/lib/apps/logo-shared";
 import { templatesApiBase } from "./api-base";

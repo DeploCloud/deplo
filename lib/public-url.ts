@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/operations/panel-address-and-certificates
+
 import { headers } from "next/headers";
 
 /**

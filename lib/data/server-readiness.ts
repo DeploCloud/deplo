@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/advanced/server-roles
+
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import {

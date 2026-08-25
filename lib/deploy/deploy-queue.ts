@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/concepts/what-happens-on-a-deploy
+
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";

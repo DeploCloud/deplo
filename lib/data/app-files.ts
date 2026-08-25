@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/console-and-files
+
 import { realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { status as GrpcStatus } from "@grpc/grpc-js";

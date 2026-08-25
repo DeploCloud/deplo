@@ -1,3 +1,5 @@
+// https://deplo.build/docs/advanced/resource-limits
+
 import yaml from "js-yaml";
 
 import type { ResourceLimits } from "../types";

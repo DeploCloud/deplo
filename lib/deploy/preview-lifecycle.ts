@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/pull-request-previews
+
 import { and, asc, eq, isNull, ne, notInArray, sql } from "drizzle-orm";
 
 import { recordActivity } from "../data/activity";

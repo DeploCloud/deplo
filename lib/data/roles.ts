@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/roles-and-permissions
+
 import { and, asc, count, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { getDb, type DbTx } from "../db/client";

@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/roles-and-permissions
+
 import { cache } from "react";
 import { and, eq } from "drizzle-orm";
 

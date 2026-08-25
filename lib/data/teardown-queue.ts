@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/operations/remove-a-server-or-uninstall
+
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";

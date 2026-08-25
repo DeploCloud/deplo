@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/console-and-files
+
 import { getServerById } from "./servers";
 import { requireActiveTeamId } from "../membership";
 import { hasAppCapability, requireAppCapability } from "./node-access";

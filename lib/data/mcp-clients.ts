@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/advanced/mcp-server
+
 import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {

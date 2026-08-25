@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/advanced/compose-apps
+
 import yaml from "js-yaml";
 
 import type { MountPropagation, ResourceLimits, VolumeMount } from "../types";

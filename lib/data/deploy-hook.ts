@@ -1,5 +1,7 @@
 import "server-only";
 
+// https://deplo.build/docs/guides/automatic-deployments
+
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
