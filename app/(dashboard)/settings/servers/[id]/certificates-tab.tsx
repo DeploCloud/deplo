@@ -449,7 +449,7 @@ function RemoveCertificateDialog({
             have no certificate until you install another one.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter>
+        <DialogFooter className="sm:justify-between">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}

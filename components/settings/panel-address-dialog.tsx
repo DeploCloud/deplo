@@ -291,7 +291,7 @@ export function PanelAddressDialog({
               </p>
             )}
 
-            <DialogFooter>
+            <DialogFooter className="sm:justify-between">
               <Button
                 variant="outline"
                 onClick={() => onOpenChange(false)}

@@ -165,7 +165,7 @@ export function ConfirmAction({
               />
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="sm:justify-between">
             <Button
               variant="outline"
               onClick={() => setOpen(false)}

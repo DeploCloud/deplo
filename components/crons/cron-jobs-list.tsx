@@ -29,6 +29,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
+import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { CronGraphic } from "@/components/crons/cron-graphic";
 import {
   OptimisticList,
@@ -299,7 +300,7 @@ function CronJobRow({
               Its run history goes with it. A run in flight is left to finish.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="sm:justify-between">
             <Button variant="outline" onClick={() => setConfirmDelete(false)}>
               Cancel
             </Button>
@@ -404,7 +405,10 @@ export function CronJobsList({
             and in its own timezone.
           </p>
         </div>
-        {newJobButton}
+        <div className="flex shrink-0 items-center gap-2">
+          <SettingsShortcut href={settingsHref} label="Cron job settings" />
+          {newJobButton}
+        </div>
       </div>
 
       {jobs.length === 0 ? (

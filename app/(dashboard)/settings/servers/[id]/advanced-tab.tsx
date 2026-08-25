@@ -1170,7 +1170,7 @@ function DangerZone({ server }: { server: ServerSummary }) {
               those first.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="sm:justify-between">
             <Button
               variant="outline"
               onClick={() => setConfirm(false)}

@@ -480,7 +480,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
               Open pull requests stop getting one.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="sm:justify-between">
             <Button variant="outline" onClick={() => setConfirmOff(false)}>
               Cancel
             </Button>
