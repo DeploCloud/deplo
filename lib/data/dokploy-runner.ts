@@ -251,19 +251,29 @@ export async function runMigrationTick(): Promise<void> {
   }
 }
 
-/** Take one run, if nobody else has it, and see it through. */
+/** Take one run, if nobody else has it, and see it through.
+ *
+ *  The claim is marked BEFORE the first `await`, and that ordering is the whole
+ *  guard. Ticks overlap now - the timer fires every 15 seconds whether or not
+ *  the last pass is still driving something - so two of them can select the same
+ *  fresh row, and the lease cannot tell them apart: they are the same process,
+ *  so they are the same owner, and a lease renews for its owner by definition.
+ *  The old instance-wide `ticking` flag used to make this impossible by making
+ *  everything impossible. */
 async function drive(row: RunRow): Promise<void> {
-  if (!(await acquireLease(leaseFor(row.id), owner, new Date(), STALE_MS)))
-    return;
+  if (inflight.has(row.id)) return;
   inflight.add(row.id);
+  let held = false;
   try {
+    held = await acquireLease(leaseFor(row.id), owner, new Date(), STALE_MS);
+    if (!held) return;
     await advance(row);
   } catch (e) {
     console.error("[migration] run", row.id, "failed:", e);
     await failRun(row, e instanceof Error ? e.message : String(e));
   } finally {
     inflight.delete(row.id);
-    await releaseLease(leaseFor(row.id), owner).catch(() => {});
+    if (held) await releaseLease(leaseFor(row.id), owner).catch(() => {});
   }
 }
 

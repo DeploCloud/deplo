@@ -124,3 +124,25 @@ test("a runner that died is taken over in 90s, not in the schedulers' two hours"
     "the point of the shorter window is that it is shorter than the default",
   );
 });
+
+test("overlapping ticks settle a run once and leave no lease behind", async () => {
+  // The timer fires every 15s whether or not the last pass is still going, so
+  // overlapping ticks are the normal case - and the lease cannot separate two of
+  // them: same process, same owner, and a lease renews for its owner by
+  // definition. What keeps a run from being driven twice is `drive` marking it
+  // claimed before its first `await`; this is the end-to-end shape of that.
+  const id = await seedRun("dimp_race");
+
+  await Promise.all([
+    runMigrationTick(),
+    runMigrationTick(),
+    runMigrationTick(),
+  ]);
+
+  assert.notEqual(await statusOf(id), "running", "it has to have been driven");
+  assert.equal(
+    await acquireLease(leaseFor(id), "another-instance"),
+    true,
+    "and every claim on it handed back, however many passes touched it",
+  );
+});
