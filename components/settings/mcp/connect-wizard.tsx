@@ -246,8 +246,6 @@ function WizardRun({
     connect: web || minted,
     done: false,
   };
-  const index = Math.max(0, steps.indexOf(step));
-
   function pick(id: AgentId) {
     const next = AGENTS.find((a) => a.id === id)!;
     setAgentId(id);
@@ -258,6 +256,12 @@ function WizardRun({
         ? next.label
         : current,
     );
+    // And straight on: picking the agent IS this step's answer, so a Continue
+    // button beside it would ask the same question twice. Read off `next`, never
+    // off `steps` — that array is DERIVED from the agent, so this render's copy
+    // still describes the run without one (no permissions step yet). The stepper
+    // above walks back if the click was a misfire.
+    setStep(next.kind === "web" ? "connect" : "permissions");
   }
 
   async function turnOn() {
@@ -382,7 +386,13 @@ function WizardRun({
         {connected && <ConfettiBurst className="top-28" />}
       </div>
 
-      <div className="min-w-0 space-y-6">
+      {/* One measure for every step, and a NARROW one: the column is a rail, a
+          two-card grid, a short form and a code block in turn, and letting it
+          take the whole 1fr track made each of those grow with the window until
+          the agent cards were 374px of mostly empty space. Capped, it reads at
+          the same line length on a laptop and on a 27-inch screen, and the width
+          the window adds goes where it is worth something - the illustration. */}
+      <div className="max-w-xl min-w-0 space-y-6">
         <WizardStepper
           steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
           current={step}
@@ -436,13 +446,6 @@ function WizardRun({
                   />
                 ))}
               </div>
-              <Button
-                onClick={() => setStep(steps[index + 1])}
-                disabled={!agent}
-              >
-                Continue
-                <ArrowRight className="size-4" />
-              </Button>
             </StepShell>
           )}
 
