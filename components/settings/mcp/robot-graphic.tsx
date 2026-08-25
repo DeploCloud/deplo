@@ -2,45 +2,8 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 
-/**
- * The connect wizard's illustration: a robot, a cable, and deplo.
- *
- * One drawing in four poses rather than four drawings, because the pose IS the
- * progress bar. A stepper says "2 of 4"; a robot holding a key says what step
- * two is for. The four are the four questions the wizard asks in order — may an
- * agent in here, which agent, what may it do, and is it actually talking to us —
- * so a reader who glances at the picture instead of the heading still knows
- * where they are.
- *
- * - `idle`     — looking around, arm empty. Nothing chosen yet.
- * - `key`      — holding a credential. The permissions step.
- * - `reaching` — the cable stretches toward deplo and falls short, over and
- *                over. The config has been copied and nothing has called yet.
- * - `connected`— cable landed, port lit, eyes green. A real request arrived.
- *
- * Pure SVG plus keyframes in `globals.css`, like the other eighteen graphics
- * here: no library, no JS, correct in both themes because every colour is a
- * token, and a server component because there is nothing to hydrate. Under
- * `prefers-reduced-motion` each pose holds its finished frame instead of
- * vanishing — the reaching cable rests fully drawn, which is the frame that
- * still says "this cable goes there".
- *
- * The `aria-label` changes with the pose. It is the entire drawing for anyone
- * who cannot see it, so it describes the state and not the artwork.
- */
+/** The connect wizard's illustration: a robot, a cable, and deplo. */
 
-/**
- * The same robot, shrunk to a glyph.
- *
- * For the one line that counts the connected agents: at 16px the illustration
- * above is a smudge, so this is just the head — the part that carries the
- * character — drawn on lucide's 24 grid so it sits level with every other icon
- * in the app.
- *
- * It blips only while its row is hovered or focused (`.group` on the parent),
- * because a permanently animating glyph in a header is a distraction, and one
- * that answers the pointer is an invitation.
- */
 export function RobotMark({ className }: { className?: string }) {
   return (
     <svg
@@ -95,19 +58,10 @@ export function RobotGraphic({
   className,
 }: {
   state?: RobotState;
-  /**
-   * The chosen agent's colour, so the robot is drawn in it — the same hue its
-   * card wears when selected. A brand with no hue of its own (the near-black
-   * marks: ChatGPT, Cursor, Codex, Windsurf) passes `tone` or nothing and the
-   * robot keeps the theme's own ink, which is white on the dark theme.
-   */
   accent?: LogoAccent;
   className?: string;
 }) {
   const live = state === "connected";
-  // Lightness and chroma live in `globals.css`, per theme: a stroke needs to be
-  // brighter on a dark background than on a light one, and that is a theme
-  // decision rather than a per-agent one. Only the hue comes from here.
   const ink =
     accent?.hue !== undefined
       ? ({

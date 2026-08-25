@@ -1,22 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/**
- * The All (per-app) variables empty-state illustration: three app cards, each
- * taking delivery of its OWN variable, one after another.
- *
- * The tab's whole idea is that variables belong to an app, not to the page:
- * three cards filling one at a time say that before the heading does, and it is
- * what separates this drawing from the Shared one next door, where a single
- * definition fans OUT to many apps.
- *
- * `--info`, the same accent `EnvGraphic` spends, because it is the same thing
- * being drawn - a variable. The key is full strength and the masked value sits
- * at 0.65, so the row reads as "name, then something hidden" at a glance.
- *
- * Pure SVG + CSS keyframes (see globals.css), no JS and no library, so it costs
- * one paint and renders in a server component. Under `prefers-reduced-motion` it
- * holds the filled frame: every card with its variable.
- */
+/** The All (per-app) variables empty-state illustration: three app cards, each taking delivery of its OWN variable, one after another. */
 export function AppVarsGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -26,8 +10,6 @@ export function AppVarsGraphic({ className }: { className?: string }) {
       aria-label="Three app cards, each receiving its own environment variable"
       className={cn("size-32", className)}
     >
-      {/* The cards: already there before anything is set, so they are recessive
-          structure and never move. The short bar is the app's name. */}
       <g strokeWidth="2" className="stroke-ring">
         <rect x="6" y="22" width="32" height="46" rx="5" />
         <rect x="44" y="22" width="32" height="46" rx="5" />
@@ -39,9 +21,6 @@ export function AppVarsGraphic({ className }: { className?: string }) {
         <line x1="89" y1="32" x2="101" y2="32" />
       </g>
 
-      {/* The variables, dropping in card by card - `nth-child`, so document
-          order is the order they land. Key lengths differ because real names do;
-          three identical bars read as a loading skeleton. */}
       <g>
         <g className="deplo-avars-row">
           <line

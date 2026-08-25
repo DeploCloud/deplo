@@ -1,21 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/**
- * The "no templates match" illustration: a lens sweeping a row of templates,
- * each one going out as it passes, until the row is empty and the sweep starts
- * again.
- *
- * A crossed-out magnifier says "error"; a lens that keeps looking says "nothing
- * here yet, try another word", which is the only thing this state is about. The
- * dots are the catalogue's own colours (the chart series, the repo's one
- * categorical set) so the drawing reads as templates rather than as decoration.
- *
- * Same grammar as `CronGraphic` and `PullRequestGraphic`: recessive muted
- * structure, the subject in primary, pure SVG + CSS keyframes (see globals.css)
- * so it costs one paint, needs no JS and renders in a server component. Under
- * `prefers-reduced-motion` it holds the frame where the row has already gone
- * out — the state the drawing exists to show.
- */
+/** The "no templates match" illustration: a lens sweeping a row of templates, each one going out as it passes, until the row is empty and the sweep starts again. */
 export function NoResultsGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -25,8 +10,6 @@ export function NoResultsGraphic({ className }: { className?: string }) {
       aria-label="A magnifying glass sweeping across a row of templates, finding none"
       className={cn("size-32", className)}
     >
-      {/* The shelf the templates sat on. Never animated, so the eye follows the
-          lens and not the furniture. */}
       <line
         x1="16"
         y1="82"
@@ -37,9 +20,6 @@ export function NoResultsGraphic({ className }: { className?: string }) {
         strokeLinecap="round"
       />
 
-      {/* The catalogue: five templates, in the five chart colours. Each goes out
-          as the lens reaches it — the delay IS the lens's position, which is why
-          one keyframe set serves all five. */}
       <g className="deplo-find-row">
         {[
           { x: 26, color: "var(--chart-1)" },

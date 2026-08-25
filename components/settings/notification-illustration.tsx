@@ -4,21 +4,8 @@ import {
 } from "@/components/settings/channel-brand";
 import type { NotificationChannel } from "@/lib/types";
 
-/**
- * A phone catching alerts as they land — the one picture that says what this
- * page is for before anybody reads a switch.
- *
- * Pure CSS on a single shared loop (`.animate-notif-card`, staggered by
- * `--notif-delay`), so there is nothing to script, nothing to tear down, and no
- * dependency. Decoration only: the whole figure is `aria-hidden`, and reduced
- * motion freezes it into a still phone with its cards visible rather than an
- * empty one.
- *
- * The cards wear the real channel colours from the grid beside them, so the
- * illustration reads as "these channels, on that phone" instead of as clip art.
- */
+/** A phone catching alerts as they land — the one picture that says what this page is for before anybody reads a switch. */
 
-/** What lands on the phone: a real channel, a real alert, in the repo's voice. */
 const INBOX: {
   channel: NotificationChannel;
   title: string;
@@ -46,8 +33,6 @@ const INBOX: {
 ];
 
 export function NotificationIllustration({
-  /** The caption under the phone. Off inside the empty state, which says it
-      already in its own description. */
   caption = true,
 }: {
   caption?: boolean;
@@ -55,11 +40,9 @@ export function NotificationIllustration({
   return (
     <div aria-hidden className="pointer-events-none select-none">
       <div className="relative mx-auto w-full max-w-[260px]">
-        {/* The halo, breathing on the same clock as the cards. */}
         <div className="animate-notif-halo absolute inset-x-4 top-10 -z-10 h-56 rounded-full bg-[var(--violet)]/25 blur-3xl" />
 
         <div className="relative overflow-hidden rounded-[2rem] border-[6px] border-border bg-sidebar shadow-xl ring-1 ring-border">
-          {/* Notch */}
           <div className="flex justify-center pt-2">
             <div className="h-1.5 w-16 rounded-full bg-border" />
           </div>
@@ -92,7 +75,6 @@ export function NotificationIllustration({
             ))}
           </div>
 
-          {/* Home indicator */}
           <div className="flex justify-center pb-2">
             <div className="h-1 w-20 rounded-full bg-border" />
           </div>
