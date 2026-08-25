@@ -265,9 +265,15 @@ export async function hostPortsInUse(
   const server = await resolveTeamServer(teamId, serverId);
 
   // One RPC per port, so the list is deduped and bounded. 50 is far above any
-  // real import (Dokploy publishes a port on a handful of databases, not fifty)
+  // real import (a source publishes a port on a handful of databases, not fifty)
   // and well under anything that would hold the review open.
-  const wanted = [...new Set(ports)].filter(isValidExposePort).slice(0, 50);
+  //
+  // ANY real TCP port, not only the ones a user may ask for: 80 and 443 belong to
+  // the proxy, so an imported reverse proxy is exactly what this has to catch, and
+  // `isValidExposePort` (which gates what may be WRITTEN) filtered both out.
+  const wanted = [...new Set(ports)]
+    .filter((p) => Number.isInteger(p) && p >= 1 && p <= MAX_PORT)
+    .slice(0, 50);
   const inUse: number[] = [];
   for (const port of wanted) {
     if (await portClaimedByAnotherDatabase(server.id, port)) {
