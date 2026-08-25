@@ -18,7 +18,6 @@ import {
   Route,
   Signpost,
   TriangleAlert,
-  Cloud,
 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +42,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CopyButton } from "@/components/shared/copy-button";
+import { CloudflareIcon } from "@/components/shared/brand-icons";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import {
   DomainConfigFields,
@@ -283,7 +283,7 @@ export function DomainRow({
               variant="outline"
               className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
             >
-              <Cloud className="size-3" />
+              <CloudflareIcon className="size-3" />
               Cloudflare
             </Badge>
           ) : effectiveProvider === "none" ? (
@@ -333,7 +333,7 @@ export function DomainRow({
               variant="outline"
               className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
             >
-              <Cloud className="size-3" />
+              <CloudflareIcon className="size-3" />
               Cloudflare DNS
             </Badge>
           )}
