@@ -23,12 +23,10 @@ export const metadata: Metadata = {
     template: "%s – Deplo",
   },
   description:
-    "Deplo is a self-hosted platform to deploy apps, databases and services with Docker and Traefik. The developer experience of Vercel, on your own servers.",
+    "Deplo is a self-hosted platform to deploy apps, databases and services with Docker and Traefik. Push, and it is live, on your own servers.",
   icons: { icon: "/favicon.ico" },
-  // Private operations panel: no page should ever be indexed. This renders
-  // <meta name="robots" content="noindex, nofollow, ..."> on every route and
-  // cascades to child pages. Reinforced by app/robots.ts and the
-  // X-Robots-Tag response header (next.config.ts + proxy.ts).
+  // Private operations panel: no page is ever indexed. Reinforced by
+  // app/robots.ts and the X-Robots-Tag header (next.config.ts + proxy.ts).
   robots: {
     index: false,
     follow: false,

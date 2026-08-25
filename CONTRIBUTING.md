@@ -81,14 +81,20 @@ A pull request that reaches around that will be asked to change.
 
 ## Commits
 
-[Conventional Commits](https://www.conventionalcommits.org/) with a scope, imperative
-summary:
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with a scope:
+`type(scope): imperative lowercase summary`. Keep the title to 50 characters or fewer, with no
+trailing period. A body is optional - two or three lines, and only when the _why_ does not fit in
+the title.
 
 ```
-feat(apps): a stack can be redeployed from the app page
-fix(auth): a suspended account cannot refresh its session
-docs(readme): the install command names the right image
+feat(apps): redeploy a stack from the app page
+fix(auth): refuse a suspended account's refresh
+docs(readme): name the right image in install
 ```
+
+Comments in the code follow the same discipline: few and short, about three lines per block at
+most. If the explanation needs more room it belongs in a docs page or an ADR, and the comment
+becomes a link to it.
 
 ## Licensing your contribution
 

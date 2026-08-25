@@ -78,28 +78,12 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 # 1b. Docker address pools ---------------------------------------------------
-# Docker's DEFAULT pools — 172.17.0.0/12 carved into /16s (15 subnets) plus
-# 192.168.0.0/16 carved into /20s (16) — allow ~31 networks on a host, and Deplo
-# burns ONE PER APP (every stack gets its own `<app>_default` bridge). An
-# untouched host therefore dies on its 32nd deploy with "all predefined address
-# pools have been fully subnetted", and no amount of cleanup saves it: the
-# networks of RUNNING apps are not garbage. Widening the pool is the only fix.
-#
-# It happens HERE, before the `deplo` network below or any app has taken a
-# subnet, because the change needs a FULL daemon restart (a reload does not load
-# pools) — and on a host with nothing running yet, that restart is free. Note the
-# restart also re-homes docker0 itself (it is allocated from the pools when `bip`
-# is unset), which is harmless on a host where nothing is on the default bridge
-# yet, and is a second reason not to do this later.
-#
-# Two rules, both learned from Coolify shipping this same fix badly (their #3529
-# then #9537):
-#   1. NEVER hardcode 10.0.0.0/8. It swallows the host's own LAN / VPN / WireGuard
-#      and then dockerd refuses to start — the very error we came to prevent.
-#      Pick a /13 that overlaps NO route already on the box.
-#   2. NEVER clobber the operator's daemon.json. An existing default-address-pools
-#      always wins; a file we cannot merge safely is left alone with a warning.
-# KEEP IN SYNC with the identical block in install-agent.sh.
+# Docker's default pools allow ~31 networks and Deplo burns one PER APP, so an
+# untouched host dies on its 32nd deploy. Must run before any network exists:
+# only a full daemon restart loads new pools. KEEP IN SYNC with install-agent.sh.
+#   1. NEVER hardcode 10.0.0.0/8 - it swallows the host's own LAN/VPN and dockerd
+#      then refuses to start. Pick a /13 overlapping NO route already on the box.
+#   2. NEVER clobber the operator's daemon.json: an existing pool setting wins.
 
 # Is the /13 at 10.<$1>.0.0 (second octets $1..$1+7) clear of every 10.x route on
 # this host? Pure awk — no python, jq or ipcalc required on the target.

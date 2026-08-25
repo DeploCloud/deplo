@@ -728,8 +728,7 @@ restore point.
 A command run **inside a container** of one **App** or one **Database**, on a cron schedule,
 in that job's **own IANA timezone** (unlike a **Backup**, whose schedule is UTC). Stored
 metadata only; running it produces a **cron run**. The name is the one every platform
-already uses - Railway, Vercel and the open-source competitors all say "Cron jobs" - so it
-is the only spelling.
+already uses, so it is the only spelling.
 Opt-in per target (`cron_enabled`, off by default): the switch is both the opt-in and the
 per-target pause button, and while it is off the tab does not appear. Gated by
 **`manage_crons`**, which is seeded from console access and not from deploy access, because
@@ -800,7 +799,7 @@ app's own var < linked shared var. Managed on the Variables page's **Shared** ta
 (create / edit / assign the scopes). Stored in `shared_env_vars` (+ target / environment
 / project / app junctions). id prefix `svar_`.
 _Avoid_: shared env group (the old model), sharing mode (pre-0012 auto-apply language),
-shared variables as Coolify's whole-set concept.
+shared variables as a single whole-set concept.
 
 **Domain**:
 A hostname routed to an app — one row per `(hostname, path)`, and the **sole** routing

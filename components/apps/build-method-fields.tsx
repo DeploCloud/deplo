@@ -49,7 +49,7 @@ export const BUILD_METHODS: MethodMeta[] = [
     id: "railpack",
     name: "Railpack",
     icon: Layers,
-    blurb: "Railway's BuildKit-based builder. Auto-detects your stack.",
+    blurb: "BuildKit-based builder. Auto-detects your stack.",
   },
   {
     id: "dockerfile",

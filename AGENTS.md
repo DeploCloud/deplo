@@ -14,11 +14,11 @@ the deeper docs it links (this file points; it does not restate them).
 
 ## Core mission — the north star every feature answers to
 
-**deplo exists to make self-hosting exhaustively simple, Vercel-style.** The experience to match is
-the one the big cloud platforms give (Vercel, Railway, Render): push, and it is live, with the
-platform doing the operations. The user must **never be required to know Docker or SSH** to get
-full value out of deplo — that non-requirement is the whole differentiator from the open-source
-competitors, which assume the operator lives in a shell.
+**deplo exists to make self-hosting exhaustively simple.** The experience to match is the one the
+big cloud platforms give: push, and it is live, with the platform doing the operations. The user
+must **never be required to know Docker or SSH** to get full value out of deplo — that
+non-requirement is the whole differentiator from the other self-hosted platforms, which assume the
+operator lives in a shell.
 
 The audience is everyone who wants that experience on their own infrastructure: people leaving a
 cloud over the bill, teams that never self-hosted at all, and people already running a competing
@@ -50,7 +50,7 @@ Consequences that bind every design and review decision:
 - **Don't build what nobody will realistically use.** Losing focus on deplo's principles looks
   exactly like a stream of individually-defensible features that, long-term, almost no one turns
   on. Breadth is not the goal — being _far simpler than every competing self-hosted platform_ is.
-  "a competitor has that setting too" is an argument _against_ shipping it, not for.
+  "another platform has that setting too" is an argument _against_ shipping it, not for.
 
 When weighing a design, ask: _would a competent developer who has never touched Docker or SSH
 succeed on the happy path, with the platform doing the operational heavy lifting?_ If not,
@@ -58,15 +58,15 @@ reconsider.
 
 ### First run should sell the price tag, not a settings audit
 
-Someone moving off Vercel/Railway to self-hosting must, on first launch, be struck by **the pricing
-difference** — not by having to inspect and configure a mountain of options, with advanced settings
+Someone moving off a cloud platform to self-hosting must, on first launch, be struck by **the
+pricing difference** — not by having to inspect and configure a mountain of options, with advanced settings
 staring at them by default. Ship opinionated defaults, keep the default surface as small as it can
 be while still useful, and put everything else behind advanced mode. Every knob visible at first
 run is a tax on the one thing that makes the switch worth it.
 
 ### Teams and companies are first-class, not an afterthought
 
-The open-source competitors are shaped around one operator on one box, with sharing bolted on
+The other self-hosted platforms are shaped around one operator on one box, with sharing bolted on
 afterwards; the clouds deplo measures itself against are not. deplo aims at the collaboration case
 from the start: a team, up to a whole company, working in the same instance under least privilege.
 Concretely:
@@ -566,8 +566,20 @@ language — reconsider, or note the gap.
 - **Issues & PRDs = GitHub Issues in `DeploCloud/deplo` via the `gh` CLI** (`docs/agents/issue-tracker.md`);
   triage with the five canonical labels (`docs/agents/triage-labels.md`).
 - Check `docs/adr/` before working an area; flag contradictions explicitly rather than overriding.
-- **Commits = Conventional Commits with a scope**, imperative summary (`feat(apps): …`,
-  `fix(auth): …`). Branch off `main` before committing.
+- **Commits = Conventional Commits with a scope**: `type(scope): imperative lowercase summary`
+  (`feat(apps): redeploy a stack from the app page`). **Title 50 characters or fewer, no trailing
+  period.** Body only when the why does not fit the title, 2-3 lines at most. Commit straight to
+  `main`; never create a branch.
+- **Comments are few and short - hard cap about 3 lines per block.** No file-header essays, no
+  design narratives, no numbered rationale lists, no art direction above an illustration. Where a
+  feature has a docs page, one link replaces the explanation
+  (`// https://deplo.build/docs/guides/backups-and-restore`). Cite an ADR in one line when it is
+  the reason; pragmas, `@ts-expect-error`, `eslint-disable` and its paired `eslint-enable`,
+  `/* GraphQL */` and `ponytail:` markers are code and stay untouched.
+- **Never name a competitor in source.** Not in a comment, not in a string, not in UI copy: deplo
+  does not say who it learned from. The only names that stay are functional - a build tool
+  (`nixpacks`, `railpack`), an image ref, and the source system of the migration importer, which
+  the user has to recognise to use it.
 - **Never bump the version on your own initiative.** A finished task is a commit, not a release:
   no `chore(release):` commit and no tag unless the owner explicitly asks for one. deplo is in
   beta, so a release is `0.x.y` — **minor** when the user notices (feature, changed behaviour, DB

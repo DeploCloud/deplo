@@ -7,8 +7,8 @@ You give it a repository, a Docker image or a Compose file. It builds the code,
 starts the containers, points a hostname at them, gets the TLS certificate,
 keeps the logs, takes the backups and restarts what dies.
 
-The comparison is Vercel, Railway or Render, except the machine is yours and
-the bill is your hosting bill.
+It is the experience the big cloud platforms give you, except the machine is
+yours and the bill is your hosting bill.
 
 ## What you get on the first day
 

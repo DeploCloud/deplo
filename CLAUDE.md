@@ -2,11 +2,11 @@
 
 ## Core mission (north star)
 
-**deplo makes self-hosting exhaustively simple, Vercel-style. The user must NEVER be required to
-know Docker or SSH** — that non-requirement is the whole differentiator vs. the open-source
-competitors. The experience to match is the big clouds (Vercel, Railway, Render) on the user's own
-infrastructure, and the audience is everyone who wants it — people leaving a cloud over the bill,
-teams that never self-hosted, and competitors' users too, but never _only_ that last group.
+**deplo makes self-hosting exhaustively simple. The user must NEVER be required to know Docker or
+SSH** — that non-requirement is the whole differentiator vs. the other self-hosted platforms. The
+experience to match is the one the big clouds give, on the user's own infrastructure, and the
+audience is everyone who wants it — people leaving a cloud over the bill, teams that never
+self-hosted, and other platforms' users too, but never _only_ that last group.
 Every feature is tested exhaustively and judged on UX/DX for a non-expert: if the happy path only
 works from a shell or by hand-editing YAML, the feature is unfinished. Favor
 derived/live/automatic over manual, and use infrastructure the user already has rather than
@@ -24,7 +24,7 @@ Also binding:
   expert; the single-user path must not get heavier for it.
 - **Don't build what almost nobody will realistically use long-term.** The goal is being far
   simpler than competing self-hosted platforms, not matching their feature list. First launch must
-  sell the **pricing difference vs. Vercel/Railway**, not force a tour of tons of settings with
+  sell the **pricing difference vs. the clouds**, not force a tour of tons of settings with
   advanced options exposed by default.
 - **Build everything so it could become a managed service.** deplo plans its own proprietary cloud
   later (idea still rough): keep things multi-tenant-safe and free of "operator == end user"

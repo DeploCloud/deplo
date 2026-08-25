@@ -171,28 +171,11 @@ function guardMatches(url: string): boolean {
   return /__AGENT_URL.*AMD64__/.test(url);
 }
 
-/* ------------------------------------------------------------------ */
-/* The Docker address-pool step                                        */
-/* ------------------------------------------------------------------ */
-
 /**
- * Docker's default pools cap a host at ~31 networks and Deplo takes one PER APP,
- * so both installers widen the pool. Three invariants, and every one of them
- * fails SILENTLY if broken — hence the tests.
- *
- *  - ORDER. The step must run before ANYTHING allocates a subnet. Move it below
- *    `docker network create deplo` and it still runs, still prints [ok], and
- *    still leaves the host capped: the daemon only reads pools at restart, and by
- *    then Traefik has already taken a subnet from the OLD ones.
- *  - NO 10.0.0.0/8. Coolify hardcoded exactly that and it swallowed hosts' own
- *    LAN/VPN, so dockerd refused to start — their #9537, the error the fix was
- *    meant to prevent. The base must be CHOSEN against the host's routes.
- *  - PARITY. The block is duplicated into install.sh and install-agent.sh: two
- *    standalone curl|bash scripts that cannot source a shared file. A "KEEP IN
- *    SYNC" comment is not a mechanism. This is.
+ * The address-pool step. All three invariants fail SILENTLY if broken: the step
+ * must run before anything allocates a subnet, the base must be chosen against
+ * the host's routes (never 10.0.0.0/8), and both installers must carry it alike.
  */
-
-/** The address-pool block, comments and indentation stripped, for comparison. */
 /**
  * Where the installer INVOKES the pool step. Matched by regex rather than by the
  * literal "\nconfigure_docker_address_pools\n": install-agent.sh wraps the call in
