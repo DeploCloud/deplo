@@ -24,23 +24,6 @@ import { parseRequiredLabels } from "../deploy/preview-lifecycle";
 /**
  * The `pull_request` arm of the GitHub webhook — the twin of the `push` arm in
  * [the route](../../app/api/github/webhook/route.ts), and shaped the same way.
- *
- * RUNS WITH NO SESSION. Every function it calls must be session-free: a
- * `requireCapability` in this path would throw on every delivery and drop it
- * silently. That is why the lifecycle module is deliberately ungated and the
- * gated surface (`lib/data/previews.ts`) is a separate layer.
- *
- * Always answers 200. A delivery Deplo cannot act on is acknowledged, and the
- * reason is logged — that log line is the only debugging surface an operator
- * gets when previews "just don't happen".
- *
- * `appId` is the `github_apps` row whose webhook secret VERIFIED this body, and
- * it bounds which installation the delivery may act on. See the same clause in
- * the push arm: the signature names an App, the installation id is a field in
- * the signed body, and resolving the second without the first let a delivery
- * signed by one team's App open, rebuild and tear down previews on another
- * team's app - with the pull request's own `head.repo.clone_url` deciding what
- * gets cloned.
  */
 export async function handlePullRequestDelivery(
   raw: string,
@@ -81,11 +64,7 @@ export async function handlePullRequestDelivery(
     return new Response("ok", { status: 200 });
   }
 
-  // Same cut as the push arm: github-source apps of this installation. NOT
-  // filtered on `auto_deploy` — a user who turned off deploy-on-push did it to
-  // control production releases, and coupling previews to that switch
-  // manufactures exactly the "why don't previews work" confusion this feature
-  // must not have. Previews have their own switch.
+  // Same cut as the push arm: github-source apps of this installation.
   const candidates = (
     await getDb()
       .select()

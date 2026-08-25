@@ -346,11 +346,8 @@ builder.mutationFields((t) => ({
   deleteBackupArtifacts: t.field({
     type: "Int",
     // The precise capability VARIES by target kind — `delete_apps` for a project,
-    // `delete_databases` for a database, each mirroring that target's OWN delete
-    // gate — which one static authScope cannot express. So the outer gate is the
-    // view floor and `deleteAllBackupArtifacts` enforces the exact per-kind
-    // capability in the data layer (the builder's documented defence in depth).
-    // Whoever may destroy the thing may destroy its backups; nobody else.
+    // `delete_databases` for a database, each mirroring that target's OWN delete gate —
+    // which one static authScope cannot express.
     authScopes: { loggedIn: true },
     description:
       "Delete ALL of a target's backup artifacts (across every destination it " +

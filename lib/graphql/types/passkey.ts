@@ -9,22 +9,9 @@ import {
 } from "@/lib/data/passkeys";
 
 /**
- * The CURRENT account's passkeys.
- *
- * `loggedIn` rather than capability-gated, like sessions and two-factor: a
- * credential belongs to a person, not to a team, and the data layer resolves the
- * owner itself. Nothing here names another user - an instance admin clearing a
- * lost device uses `resetUserPasskeys` on the members path.
- *
- * These fields are the ONLY way in: `/api/auth/passkey/*` is closed to the
- * network (`passkeyGate` in lib/auth/better-auth.ts), because the plugin's own
- * endpoints register a permanent credential on a session alone.
- *
- * Registration is TWO round trips because WebAuthn is: the browser needs a
- * challenge before it can talk to the authenticator, and the authenticator's
- * answer means nothing without the challenge it replies to. The options and the
- * response both cross as opaque `JSON` - deplo never reads either, it hands them
- * to the verifier, which is the only thing that can judge them.
+ * The CURRENT account's passkeys. Registration is TWO round trips because WebAuthn
+ * is: the browser needs a challenge before it can talk to the authenticator, and
+ * the authenticator's answer means nothing without the challenge it replies to.
  */
 
 const PasskeyRef = builder.objectRef<PasskeyDTO>("Passkey").implement({

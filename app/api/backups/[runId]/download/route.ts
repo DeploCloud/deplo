@@ -6,35 +6,9 @@ import { downloadBackupArtifact } from "@/lib/data/backups";
 import { statusForBackupError } from "@/lib/backups/http-status";
 
 /**
- * Download one backup artifact.
- *
- *   GET /api/backups/<runId>/download → the decrypted .tar.gz / .dump.gz
- *
- * A Route Handler rather than a GraphQL field for the same reason
- * `/api/apps/[id]/upload` is one: an artifact is arbitrarily large, so it has to
- * stream rather than be a field in a JSON response. Cookie auth like every other
- * REST exception, then straight back into the normal gates —
- * `downloadBackupArtifact` resolves the run team-scoped and requires
- * `restore_backups` on its own target, because handing someone a dump gives them
- * every byte the target holds.
- *
- * Server destinations only: an S3 artifact would mean pulling it out of the
- * bucket and back through here to hand over a file the operator can already
- * fetch with their own credentials.
- *
- * NO RANGE SUPPORT, deliberately. The agent decrypts the age stream on the way
- * out, and an age stream is not seekable — so a byte range would mean decrypting
- * from zero and discarding the prefix. `Accept-Ranges: none` says so rather than
- * letting a download manager assume resume works and produce a corrupt file.
- *
- * `Content-Length` IS sent, whenever the run recorded one. Without it a browser
- * has no total to compare against: no size, no percentage, no time remaining —
- * a download that reads as if it will never end, on a file that can genuinely
- * take a quarter of an hour. It comes from the run's `decryptedSizeBytes` and
- * never from `sizeBytes`, which is the artifact as stored, age layer and all.
- * A run taken before the agent reported it has none, and then this behaves as it
- * always did rather than advertising a length that would be a few hundred KB
- * too long — which the browser would sit and wait for forever.
+ * Download one backup artifact. Server destinations only: an S3 artifact would
+ * mean pulling it out of the bucket and back through here to hand over a file the
+ * operator can already fetch with their own credentials.
  */
 
 // Long-lived streamed response; must run at request time on the Node runtime.
@@ -55,11 +29,9 @@ export async function GET(
   try {
     artifact = await downloadBackupArtifact(runId);
   } catch (e) {
-    // The data layer's message is the useful one ("not found", "no permission",
-    // "this backup is in an S3 bucket") — surface it verbatim, under a status
-    // that means what it says. Everything used to be a 400, so a browser, a
-    // proxy log and a script all read "you sent a bad request" for a run that
-    // exists and a permission the caller does not have.
+    // The data layer's message is the useful one ("not found", "no permission", "this
+    // backup is in an S3 bucket") — surface it verbatim, under a status that means what
+    // it says.
     const message = e instanceof Error ? e.message : String(e);
     return Response.json(
       { error: message },

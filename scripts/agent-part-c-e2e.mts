@@ -1,15 +1,5 @@
 /**
  * End-to-end smoke test for the server agent PART C (observability + files).
- * Drives the REAL agent over mTLS against real Docker: deploys a labelled
- * container, then exercises every Part C RPC the way the control plane will —
- * ListInstances, Exec (zero/non-zero/label-denied), ShellLabel, FollowLogs,
- * Attach, Metrics, and the full file CRUD incl. sandbox-escape rejection.
- *
- * The "remote" path is simulated by the LOCAL agent over loopback mTLS (the
- * sandbox has no second host); the wire contract + authz + sandbox are identical
- * to a real remote. Run with: npx tsx scripts/agent-part-c-e2e.mts
- *
- * Not part of `npm test` (needs Docker + the built binary).
  */
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -342,10 +332,7 @@ networks:
 }
 
 /**
- * Kill the local agent the supervisor spawned. ensureLocalAgent pins the child
- * on globalThis; without this the agent outlives the script (stdio inherited),
- * orphaning the process and holding any piped stdout open. Belt-and-braces: also
- * SIGKILL by the e2e listen address.
+ * Kill the local agent the supervisor spawned.
  */
 function killLocalAgent(): void {
   try {

@@ -8,39 +8,21 @@ import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
- * Interactive `docker attach` to an app's running container, over plain HTTP.
- *
- *   GET    ?container=<name>[&cols=&rows=]
- *                                → SSE stream of the container's live PID 1 output.
- *                                The first event is `session` with the session id.
- *                                cols/rows seed the pty size (tty containers).
- *   POST   { sessionId, data }            → forward a keystroke chunk to stdin.
- *   POST   { sessionId, resize:{cols,rows} } → resize the pty (tty containers).
- *   DELETE ?sessionId=<id>     → detach (kills our local attach client only).
- *
- * Output and input are separate requests against one server-side session (see
- * lib/attach/session.ts): full-duplex without a WebSocket layer. `--sig-proxy`
- * is off in the spawn, so disconnecting never signals the container.
+ * Interactive `docker attach` to an app's running container, over plain HTTP. The
+ * first event is `session` with the session id. `--sig-proxy` is off in the spawn,
+ * so disconnecting never signals the container.
  */
 
 // Long-lived stream; must run at request time on the Node runtime (spawns docker).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Queued-chunk ceiling before a stalled SSE client is cut off. The controller's
-// default queuing strategy counts chunks, so desiredSize goes one more negative
-// per undelivered enqueue; past this backlog we drop the connection instead of
-// buffering the container's output in memory without bound.
+// Queued-chunk ceiling before a stalled SSE client is cut off.
 const MAX_QUEUED_CHUNKS = 1024;
 
 /**
  * Belt-and-braces CSRF check: refuse a request whose `Origin` points at another
- * site. Same-origin EventSource either omits `Origin` or sends one matching the
- * request host; a cross-site one carries a foreign origin. `SameSite=Lax` on the
- * session cookie already blocks this — this mirrors the GraphQL route's explicit
- * assertion so a shared cookie can't open a stream cross-origin. Absent `Origin`
- * is allowed (Lax covers it); present-and-mismatched is refused. The POST/stdin
- * side needs no separate check: it only reaches a session this handshake created.
+ * site.
  */
 function isCrossSite(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
@@ -171,10 +153,9 @@ export async function GET(
         }
       };
 
-      // Browser navigated away / closed the tab: drop our subscription. The
-      // session's idle reaper then kills the docker attach child. A signal that
-      // aborted DURING the pre-start awaits never fires "abort" again — check
-      // it explicitly so an already-gone client is cleaned up immediately.
+      // Browser navigated away / closed the tab: drop our subscription. A signal that
+      // aborted DURING the pre-start awaits never fires "abort" again — check it
+      // explicitly so an already-gone client is cleaned up immediately.
       if (request.signal.aborted) {
         closeStream();
         return;
@@ -237,11 +218,7 @@ export async function POST(
 
 /**
  * Re-authorise an in-flight attach session against the CALLER, not just the
- * session id. A session is bound to the user + active team that opened it (with
- * `deploy`); this re-runs that exact gate — same principal, still a member of the
- * owning team, still holding `deploy` on the app AND its folder — so a demoted or
- * swapped-out member can't keep driving PID 1 for the session's remaining TTL.
- * DB-only checks (no per-keystroke agent round trip); any throw ⇒ not authorised.
+ * session id.
  */
 async function stillAuthorized(
   appId: string,

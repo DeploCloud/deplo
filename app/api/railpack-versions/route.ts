@@ -2,12 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 
 /**
  * Railpack builder versions, synced from the railpack GitHub releases, for the
- * autocomplete in build settings. GitHub's API allows CORS but is rate-limited
- * per-IP (60/hr unauthenticated), and every dashboard client would hit it — so
- * we proxy server-side and hold a short-lived, process-wide cache so all clients
- * share one upstream call per TTL. Auth-gated to logged-in users.
- *
- *   GET /api/railpack-versions → { versions: ["latest", "v0.9.0", …] }
+ * autocomplete in build settings.
  */
 const RELEASES_URL =
   "https://api.github.com/repos/railwayapp/railpack/releases?per_page=30";

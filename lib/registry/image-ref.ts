@@ -1,20 +1,6 @@
 /**
  * Parse a Docker / OCI image reference into its registry, repository, and
- * tag/digest, applying Docker's canonical defaulting rules. Shared by the image
- * autocomplete route and any UI that needs to reason about an image string.
- *
- * Docker's rules for splitting "<maybe-host>/<rest>":
- *  - The first slash-separated component is the registry host ONLY if it looks
- *    like a host: it contains a "." or a ":", or it is exactly "localhost".
- *    Otherwise it is part of the repository path on Docker Hub.
- *  - On Docker Hub, a single-component repo (e.g. "nginx") is the official
- *    image "library/nginx". A two-component repo ("user/app") is used as-is.
- *  - The default registry is "docker.io" (whose real API host is
- *    registry-1.docker.io); the default tag is "latest".
- *  - A reference may pin a digest with "@sha256:..."; a tag and digest can both
- *    be present ("repo:tag@sha256:..."), in which case the digest wins.
- *
- * This is intentionally dependency-free and safe to run on client or server.
+ * tag/digest, applying Docker's canonical defaulting rules.
  */
 
 export const DOCKER_HUB_REGISTRY = "docker.io";
@@ -117,8 +103,7 @@ export function parseImageRef(input: string): ParsedImageRef | null {
 /**
  * Split a partial image string into the "repository fragment the user is still
  * typing" and "the tag fragment after a colon", for driving name vs tag
- * completion. Unlike parseImageRef this does no defaulting — it reflects the
- * literal text so the UI can decide which kind of suggestion to show.
+ * completion.
  */
 export function splitForCompletion(input: string): {
   /** Everything before the tag colon (may include a registry + namespace). */

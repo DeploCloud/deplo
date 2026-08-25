@@ -16,11 +16,8 @@ import {
 /* Enums                                                               */
 /* ------------------------------------------------------------------ */
 
-// The scope allow-list, mirroring `CLEANUP_SCOPES` (lib/data/docker-cleanup.ts) and,
-// through it, the agent's proto enum. Local to this domain (the BackupStatus precedent)
-// rather than the shared enums.ts. It is CLOSED on purpose: `system`/`container`/
-// `volume`/`network` prune are absent because on a Deplo host a stopped app is a live
-// app and a dangling volume may hold user data — do not add a value here.
+// The scope allow-list, mirroring `CLEANUP_SCOPES` (lib/data/docker-cleanup.ts)
+// and, through it, the agent's proto enum.
 const DockerCleanupScopeEnum = builder.enumType("DockerCleanupScope", {
   description:
     "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible). Deplo pushes to no registry, so a removed image comes back only by a rebuild - the newest image per app always survives. leftover_app_files = the config files of Apps and databases that were DELETED, judged against the stacks this instance still knows about; the only scope that removes something no rebuild recreates, so it is skipped outright on an agent too old to have the list. All five are on by default.",
@@ -248,20 +245,9 @@ builder.mutationFields((t) => ({
 /* ------------------------------------------------------------------ */
 
 /**
- * The live history. Sweeps are background jobs — a manual one returns before the host
- * has done anything, and the nightly one has no client at all — so the run rows are
- * the progress indicator, and they have to move on their own.
- *
- * IMPORTANT — no cookies in the stream, same as `appStatus` (lib/graphql/types/app.ts):
- * the async iterator runs AFTER the streaming Response is returned, so every read in
- * the generator goes through the session-free `listCleanupRunsForSubscriber`. The gate
- * is the field's `instanceAdmin` scope, which the scope-auth layer evaluates in request
- * scope from the context snapshot (a synchronous `!!ctx.viewer?.isInstanceAdmin`) —
- * exactly the same authority `dockerCleanupRuns`-the-query checks.
- *
- * The whole list is emitted, not a diff: it is a handful of rows (retention caps it at
- * 3 × servers) and a full snapshot is what lets the client render without reconciling
- * anything — the same reason the app stream re-reads its snapshot per ping.
+ * The live history. Sweeps are background jobs — a manual one returns before the
+ * host has done anything, and the nightly one has no client at all — so the run
+ * rows are the progress indicator, and they have to move on their own.
  */
 builder.subscriptionFields((t) => ({
   dockerCleanupRuns: t.field({

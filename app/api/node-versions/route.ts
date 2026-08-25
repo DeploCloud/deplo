@@ -2,18 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 
 /**
  * Node.js major versions, synced from the official nodejs.org release index, for
- * the "Node.js version" autocomplete in build settings. nodejs.org/dist is CORS-
- * open but every dashboard client hitting it directly would be wasteful and
- * rate-sensitive, so — exactly like `/api/railpack-versions` — we proxy it
- * server-side behind a short-lived, process-wide cache so all clients share one
- * upstream call per TTL. Auth-gated to logged-in users.
- *
- * The stored value is a bare MAJOR ("22", "20") — that's what the builders pin
- * (Nixpacks' `NIXPACKS_NODE_VERSION`, Railpack's `RAILPACK_NODE_VERSION`, the
- * generated Dockerfile's `node:<major>-alpine`). The label carries the LTS
- * codename so the picker reads like the real release train.
- *
- *   GET /api/node-versions → { versions: [{ value: "22", label: "22 · LTS (Jod)" }, …] }
+ * the "Node.js version" autocomplete in build settings.
  */
 const INDEX_URL = "https://nodejs.org/dist/index.json";
 const TTL_MS = 6 * 60 * 60 * 1000; // 6h — Node majors change very slowly.
@@ -59,10 +48,8 @@ async function fetchVersions(): Promise<NodeVersion[]> {
     majors.push({ value: major, lts, newest: majors.length === 0 });
   }
 
-  // Curate for a deployment platform: the newest release plus the LTS train.
-  // The odd-numbered "Current" lines in between are short-lived (many already
-  // EOL) and rarely what you pin in production — and the field still accepts
-  // free text for anyone who wants one. Kept newest-first, capped.
+  // Curate for a deployment platform: the newest release plus the LTS train. Kept
+  // newest-first, capped.
   return majors
     .filter((mj) => mj.newest || mj.lts)
     .slice(0, MAX_MAJORS)

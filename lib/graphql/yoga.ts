@@ -14,10 +14,8 @@ import {
 
 /**
  * Wrap the operation's execution in the bearer-token identity (when present) so
- * every data-layer call inside the resolvers resolves the token's principal
- * rather than cookies. `buildContext` only establishes identity for the brief
- * context-build; the resolvers run later, in a fresh async context, so the ALS
- * override must be re-applied around execution itself.
+ * every data-layer call inside the resolvers resolves the token's principal rather
+ * than cookies.
  */
 const identityPlugin: Plugin<GraphQLContext> = {
   onExecute({ args, setExecuteFn, executeFn }) {
@@ -50,14 +48,6 @@ function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
 /**
  * Re-apply the identity around every TICK of a subscription, not just around the
  * iterator's creation.
- *
- * An async generator body does NOT inherit the async context of whoever created
- * it — it runs in the context of whoever calls `next()`, which for a
- * long-lived SSE response is the server's event loop, long after
- * `runWithIdentity` returned. Measured, not assumed: without this the store is
- * `undefined` on every tick including the first, so a project-scoped token would
- * stream an app it cannot otherwise see. Wrapping each `next()` restores it on
- * every tick and across every await inside the body.
  */
 function withIdentityPerTick<T>(
   source: AsyncIterable<T>,
@@ -79,21 +69,8 @@ function withIdentityPerTick<T>(
 }
 
 /**
- * A POST must be JSON. Nothing else is a legitimate way to reach this endpoint,
- * and the alternatives Yoga's body parsers accept are exactly the content types
- * a browser can send CROSS-ORIGIN with no preflight: `application/x-www-form-
- * urlencoded`, `multipart/form-data`, `text/plain`. A form on any site could
- * therefore POST a mutation and the session cookie would ride along.
- *
- * `SameSite=Lax` on the session cookie is what stops that today, but it is a
- * default of the auth library rather than something this endpoint asserts, and
- * a CSRF defence that lives in somebody else's config is one nobody notices
- * losing. Refusing the content type costs one comparison and removes the class:
- * `application/json` is not CORS-simple, so it cannot be sent cross-origin
- * without a preflight that `cors: false` never answers.
- *
- * GET is untouched — GraphiQL's HTML and query-over-GET both still work, and a
- * mutation over GET is refused by the GraphQL-over-HTTP spec anyway.
+ * A POST must be JSON. A form on any site could therefore POST a mutation and the
+ * session cookie would ride along.
  */
 const requireJsonPost: Plugin = {
   onRequest({ request, endResponse, fetchAPI }) {

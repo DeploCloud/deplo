@@ -9,10 +9,10 @@ export default function Loading() {
       aria-busy
       aria-label="Loading servers"
     >
-      {/* PageHeader — "Servers" + description + Check-status / Check-for-updates / Add-server
-          actions. The old "Add a server" card is gone (Add is a header action now), so no
-          skeleton stands in for it — a placeholder for a card that never arrives is a layout
-          shift on every load. */}
+      {/**
+       * PageHeader — "Servers" + description + Check-status / Check-for-updates /
+       * Add-server actions.
+       */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <Skeleton className="h-8 w-24" />

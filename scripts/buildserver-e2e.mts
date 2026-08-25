@@ -1,22 +1,7 @@
 /**
- * End-to-end proof of the BUILD SERVER path against two REAL fleet hosts.
- *
- *   node --env-file=.env --require ./lib/test/server-only-shim.cjs \
- *        --import tsx scripts/buildserver-e2e.mts
- *
- * REAL NODE, NEVER BUN (bun's TLS SAN handling rejects the agent cert, so every
- * mTLS dial fails) - the same rule scripts/fleet-update.mts states.
- *
- * Build on one host, relay the image to another, confirm it landed there and was
- * reclaimed on the builder. Nothing is started anywhere: build_only writes no
- * stack file and runs no container, so the only footprint is one image, under a
- * slug that cannot collide with anything real - which matters, because a hardcoded
- * slug in an agent test has taken down production twice.
- *
- * Not part of `bun run test`: it needs two provisioned servers on an agent that
- * advertises `deploy.build-only` + `image-copy`. It is the manual proof the unit
- * tests cannot give, and it is what caught that the FIRST version of its own
- * existence check was wrong (see hasImage).
+ * End-to-end proof of the BUILD SERVER path against two REAL fleet hosts. It is
+ * the manual proof the unit tests cannot give, and it is what caught that the
+ * FIRST version of its own existence check was wrong (see hasImage).
  */
 // Relative, like every other script here: an absolute path off this box
 // resolves nowhere else, and `tsc` on a checkout that is not /root/projects
@@ -131,10 +116,6 @@ console.log("\n== 3. VERIFICA ==");
 
 /**
  * Esiste quel tag su quell'host?
- *
- * NON si conta il numero di chunk: il writer gzip emette il proprio header appena
- * viene creato, quindi anche un `docker save` che fallisce produce qualche byte di
- * framing. L'unico segnale valido e' l'errore terminale dello stream.
  */
 async function hasImage(serverId: string, tag: string): Promise<boolean> {
   const c = await connectAgent(serverId);

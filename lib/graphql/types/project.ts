@@ -84,10 +84,8 @@ const reorderScope = {
   $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
-// One scope per action — creating a project, renaming it, deleting it and
-// moving an app into it are four different permissions. The data layer
-// re-verifies team scope behind each. Per-container owner+grants (cloning
-// folder-access) is a follow-up.
+// One scope per action — creating a project, renaming it, deleting it and moving an
+// app into it are four different permissions.
 const createScope = { capability: "create_projects" } as const;
 const organizeScope = { capability: "organize_projects" } as const;
 const deleteScope = { capability: "delete_projects" } as const;

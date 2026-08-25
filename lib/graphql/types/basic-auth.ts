@@ -130,37 +130,14 @@ builder.mutationFields((t) => ({
 
 /**
  * Push an app's current basic-auth credentials to its RUNNING container.
- *
- * The `basicauth` middleware is a Traefik LABEL, rendered from these rows at
- * deploy/reroute time and baked into the container — so every mutation above is
- * DB-only until the stack is re-rendered. Without this, adding a credential left
- * the app wide open (and deleting one left it locked) until someone happened to
- * redeploy or hit Reload: the UI listed a credential that was not actually
- * guarding anything. A security control that is only "saved" is not a control,
- * so the write and its application ship together.
- *
- * `rerouteApp` is the lightweight, label-only path (no build, no git, no env
- * regeneration): it recreates just the routed service in place, and Traefik picks
- * the new labels up a second or two later. It reports "unchanged" when the
- * rendered labels already match and "deferred" when the app isn't running — in
- * which case the credential still lands in the stack file, so it is in force the
- * moment the app next comes up (and nothing is being served in the meantime).
- *
- * Authorization is already settled: every mutation above gates on
- * `requireCapability("manage_domains")` + the app's team + its folder before
- * writing. Like `lib/graphql/types/domain.ts`, this deliberately calls the
- * deploy-engine primitive rather than `reloadApp`, whose own gate is `deploy` — a
- * member who may manage domains but not deploy must still be able to apply the
- * credential they just set.
  */
 async function applyRouting(appId: string): Promise<void> {
   try {
     await rerouteApp(appId);
   } catch (e) {
-    // The row is already committed, so a failed reroute is NOT "the save failed":
-    // say exactly what happened and how to retry, or the user is left believing a
-    // credential is guarding an app that is still open (or that a deleted one is
-    // gone while the login still works).
+    // The row is already committed, so a failed reroute is NOT "the save failed": say
+    // exactly what happened and how to retry, or the user is left believing a
+    // credential is guarding an app that is still open (or that a deleted one is gone
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(
       `Saved, but applying it to the running app failed: ${msg}. ` +

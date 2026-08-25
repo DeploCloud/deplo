@@ -1,10 +1,8 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Mirrors the page: header, the tab bar, then the one card the Connect tab
- * opens on. Deliberately ONE card and not a stack — the page no longer is one,
- * and a skeleton that draws more than arrives makes the load feel like a stall
- * at the moment the real thing appears.
+ * Mirrors the page: header, the tab bar, then the one card the Connect tab opens
+ * on.
  */
 export default function Loading() {
   return (

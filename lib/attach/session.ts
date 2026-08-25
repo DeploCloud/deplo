@@ -5,24 +5,6 @@ import { type AttachHandle } from "../infra/docker";
 
 /**
  * In-process registry of live `docker attach` sessions.
- *
- * Interactive attach is full-duplex, but the dashboard has no WebSocket layer —
- * so the two directions ride separate HTTP requests against one shared child:
- *   - GET  streams the child's stdout/stderr (PID 1 output) to the browser
- *   - POST writes a keystroke chunk to the same child's stdin
- * A session id ties them together. The child is owned here, not by either
- * request, so a POST can reach the stdin of the process the GET is draining.
- *
- * The backing handle is BUILT BY THE CALLER and passed in (PLAN Part C): it is
- * the owning agent's bidi `Attach` stream adapted to the AttachHandle shape (the
- * pty lives Go-side now), for every project including the host running Deplo. An
- * optional `cleanup` (closing the agent's gRPC client) is bound atomically into
- * the exit path here.
- *
- * This map is module-level singleton state: it survives across requests within
- * one server process. It is NOT shared across a multi-process/clustered
- * deployment — Deplo runs as a single Node server against one Docker socket, so
- * a request for a session always lands on the process that owns it.
  */
 
 export interface AttachSession {
@@ -64,11 +46,9 @@ function armIdleReaper(s: AttachSession) {
   }, IDLE_MS);
 }
 
-// Hard ceilings on live sessions. The idle reaper only fires at zero
-// subscribers, so a client that holds its EventSource open forever is never
-// reclaimed by it — without a cap each open() pins a backing (and its gRPC
-// client) for good. Oldest-first eviction (the Map preserves insertion order);
-// firing onExit first lets the evicted GET stream close instead of hanging.
+// Hard ceilings on live sessions. The idle reaper only fires at zero subscribers,
+// so a client that holds its EventSource open forever is never reclaimed by it —
+// without a cap each open() pins a backing (and its gRPC client) for good.
 const MAX_SESSIONS = 64;
 const MAX_SESSIONS_PER_APP = 8;
 
@@ -87,17 +67,9 @@ function enforceSessionCaps(appId: string) {
 }
 
 /**
- * Open a new attach session over a pre-built backing handle. The caller MUST
- * have already verified the container belongs to `appId`, chosen the tty
- * backing, and built the handle against the project's OWNING server (local
- * docker for localhost, the agent's bidi Attach for remote). `cleanup` runs once
+ * Open a new attach session over a pre-built backing handle. `cleanup` runs once
  * when the backing exits/closes (e.g. `conn.close()` for a remote gRPC client) —
- * bound here so it can never leak. Returns the session id; the browser passes it
- * back on the GET (to stream) and POST (to send input).
- *
- * `teamId` + `userId` bind the session to the principal the caller authorised at
- * open time. The write/detach routes re-check them (and the live capability) so
- * the session id alone is never authority for later stdin.
+ * bound here so it can never leak.
  */
 export function open(
   appId: string,

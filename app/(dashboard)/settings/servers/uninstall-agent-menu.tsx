@@ -25,31 +25,8 @@ import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The ONE action a migration source has: get rid of it.
- *
- * It has no management page - it is not a server anyone operates, it is another
- * platform's machine Deplo is reading volumes from - so this menu is the whole
- * surface, and one item is the right number. Uninstalling the agent and forgetting
- * the row were briefly two, and that was a choice nobody has the information to
- * make: both are "I am done with this machine", and which one is possible depends
- * on whether the host answers, which is not the reader's problem to solve.
- *
- * So it is one verb that always finishes:
- *
- *  1. ask the agent to uninstall itself, and forget the row - the clean ending;
- *  2. if the host does not answer, forget the row ANYWAY and hand over the
- *     host-side command.
- *
- * Step 2 exists because without it the row was immortal. Uninstalling needs the
- * agent to ANSWER, and the rows that need it most are the ones where it does not;
- * running the command by hand then makes it worse, because there is even less
- * answering than before. "Remove from Deplo" that leaves the row behind is not a
- * removal, so the confirm says both endings up front and the press delivers one
- * of them.
- *
- * What it never does is bypass a genuine blocker: both halves go through
- * `assertServerRemovable`, so a host something still depends on refuses twice and
- * the refusal is what the reader sees.
+ * The ONE action a migration source has: get rid of it. Step 2 exists because
+ * without it the row was immortal.
  */
 const UNINSTALL = /* GraphQL */ `
   mutation UninstallServerAgent($id: String!) {
@@ -126,10 +103,9 @@ export function UninstallAgentMenu({
     if (!rm.ok) return rm;
     if (rm.data?.warning) toast.warning(rm.data.warning);
     toast.success(`Deplo stopped tracking ${serverName}`);
-    // NOT `router.refresh()` here. The row is gone, so refreshing takes this
-    // card - and the dialog below, which lives inside it - off the page half a
-    // second after it opened: the one thing that can still remove that agent
-    // flashed up and vanished. The refresh is the DISMISS's job instead.
+    // NOT `router.refresh()` here. The row is gone, so refreshing takes this card - and
+    // the dialog below, which lives inside it - off the page half a second after it
+    // opened: the one thing that can still remove that agent flashed up and vanished.
     setLeftover({ detail: why, command: rm.data!.uninstallCommand });
     return rm;
   }

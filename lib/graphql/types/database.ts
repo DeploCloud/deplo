@@ -155,13 +155,9 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     // The server to provision the database on. Optional: omitted defaults to the
     // sole server when there is exactly one (Step 0 — DB-on-agent).
     serverId: t.id({ required: false }),
-    // Optional custom credentials, applied ONLY at first init against an empty
-    // volume (the images honor POSTGRES_USER/DB, MYSQL_DATABASE, etc. only on
-    // first boot), so they are create-only / display-only thereafter. Omitted =>
-    // the auto-generated defaults (user "app"/"default", db = service name,
-    // random password). `password` is INPUT-ONLY: it rides into the encrypted
-    // connection string and is never echoed on any field (reveal it via
-    // revealConnection).
+    // Optional custom credentials, applied ONLY at first init against an empty volume
+    // (the images honor POSTGRES_USER/DB, MYSQL_DATABASE, etc. only on first boot), so
+    // they are create-only / display-only thereafter.
     username: t.string({ required: false }),
     dbName: t.string({ required: false }),
     password: t.string({ required: false }),
@@ -172,14 +168,7 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
   }),
 });
 
-// Exposure + server location are editable post-create. engine/version/username/
-// dbName/password are create-only (the images apply those env vars only on first
-// init against an empty volume — changing them is a silent no-op or data loss), so
-// they are NOT in this input. Turning exposure ON requires exposedPort (the data
-// layer validates + agent-checks it, exactly like createDatabase). serverId moves
-// the database to another server — the container is recreated on the new host and
-// its data volume is COPIED there host-to-host (relayed through the control plane,
-// not via S3), so the data follows the move; omitted keeps it in place.
+// Exposure + server location are editable post-create.
 const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {
   fields: (t) => ({
     exposedPublicly: t.boolean({ required: true }),
@@ -573,22 +562,16 @@ builder.subscriptionFields((t) => ({
 }));
 
 // Exported for the SSE test (same contract as appStatusStream): it must stay
-// cookie-free across iteration ticks — a subscription's async iterator runs
-// AFTER the HTTP handler returned the streaming Response, so `cookies()` is no
-// longer callable. Team identity rides in from the GraphQL context.
+// cookie-free across iteration ticks — a subscription's async iterator runs AFTER
+// the HTTP handler returned the streaming Response, so `cookies()` is no longer
 export async function* databaseStatusStream(
   id: string,
   teamId: string | null,
   userId: string | null,
 ): AsyncGenerator<DatabaseDTO> {
   if (!teamId || !userId) throw new Error("Database not found");
-  // The REACH check, resolved from the principal the context carries rather than
-  // from the request. A generator's ticks run after the HTTP handler returned
-  // the streaming Response, so nothing here can read cookies — and the gate this
-  // used to lean on (`reachesWholeTeam` inside `loadDatabase`) answers TRUE when
-  // it cannot resolve a user, which made this the one path where a limited
-  // member was handed a database. A database belongs to no project, so anyone
-  // whose role reaches only part of the team reaches none of them.
+  // The REACH check, resolved from the principal the context carries rather than from
+  // the request.
   if (await memberScopeFor(userId, teamId))
     throw new Error("Database not found");
   const first = await getDatabaseForTeam(id, teamId);

@@ -1,15 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Mirrors the notifications page, INCLUDING its second column. The old fallback
- * had one column, so the page jumped sideways the moment it arrived; the 260px
- * aside is reserved here even though the illustration inside it is decoration.
- *
- * It draws the CONFIGURED state, not the empty one: a fallback has to pick a
- * shape, and guessing "empty" would flash a dashed box at everyone whose page is
- * actually a list. The action sits in the page header, which is where the real
- * one is; the channels are their own cards in a two-column grid, with no wrapper
- * card behind them.
+ * Mirrors the notifications page, INCLUDING its second column.
  */
 export default function Loading() {
   return (

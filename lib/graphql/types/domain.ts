@@ -20,8 +20,7 @@ import type { Domain } from "@/lib/types";
 
 // These two unions are domain-local (CertProvider / DomainEntrypoint live in
 // lib/types.ts but are not in the shared enums module), so they are defined here
-// and exported to nothing. Plain alphanumeric values ⇒ the wire names match the
-// runtime strings 1:1, no object-form mapping needed.
+// and exported to nothing.
 const CertProviderEnum = builder.enumType("CertProvider", {
   values: ["letsencrypt", "cloudflare", "none", "custom"] as const,
 });
@@ -33,8 +32,6 @@ const DomainEntrypointEnum = builder.enumType("DomainEntrypoint", {
 // The `www` ⇄ non-`www` pairing, expressed relative to the domain being written:
 // `toThis` makes the counterpart hostname 301 here, `toCounterpart` makes THIS
 // hostname 301 to its counterpart (which serves the app and inherits `primary`),
-// `none` breaks the pair. The current value is derived from the rows, never
-// stored separately — the only stored fact is a domain's `redirectTo`.
 const DomainWwwRedirectEnum = builder.enumType("DomainWwwRedirect", {
   description:
     "Which half of a www / non-www pair serves the app, relative to this domain. " +
@@ -260,12 +257,8 @@ builder.mutationFields((t) => ({
       // in the first place. Without the reroute the domain reports "verified"
       // while the container still carries labels that never mentioned it.
       const domain = await verifyDomain(id);
-      // Re-apply routing when the check changed anything, or whenever the host
-      // is routable (so a manual Verify can still heal drifted labels). The one
-      // case skipped — an unroutable status re-confirming itself — is exactly
-      // what the domains page's automatic interval checks produce while the
-      // user is still setting DNS up; skipping it keeps that polling free of
-      // per-check agent round-trips.
+      // Re-apply routing when the check changed anything, or whenever the host is
+      // routable (so a manual Verify can still heal drifted labels).
       const routable =
         domain.status === "valid" || domain.status === "cloudflare";
       if (domain.statusChanged || routable) await applyRouting(domain.appId);
@@ -297,29 +290,6 @@ builder.mutationFields((t) => ({
 
 /**
  * Push an app's current routing to its RUNNING container.
- *
- * A router's rule, path, strip middleware and target port are baked into the
- * container's Traefik labels at deploy time, so every domain write here is
- * DB-only until the stack is re-rendered. Each `lib/data/domains` mutation
- * returns the affected appId precisely "so the caller can re-apply routing" —
- * and nobody did, which is why editing a domain's path or strip flag appeared to
- * do nothing at all: the row changed, the labels didn't.
- *
- * `rerouteApp` is the lightweight, label-only path (no build, no git, no env
- * regeneration) and it is a no-op when there is nothing to do: it reports
- * "unchanged" when the rendered labels already match (so a routing-neutral edit
- * never restarts a container) and "deferred" when the app isn't running (the
- * stack file is still rewritten, so the right labels are in place when it next
- * comes up). It throws only on a real docker failure for an ACTIVE app, which is
- * exactly the case the user must hear about — the domain is saved either way, but
- * the routing they asked for is not live, so we surface it rather than swallow it.
- *
- * Authorization is already settled when we get here: `appId` is whatever the
- * lib/data domain mutation just returned, and every one of them gates on
- * `requireCapability("manage_domains")` + the app's team + its folder before
- * writing. So this deliberately calls the deploy-engine primitive rather than
- * `reloadApp`, whose own gate is `deploy` — a member who may manage domains but
- * not deploy must still be able to route the domain they just changed.
  */
 async function applyRouting(appId: string): Promise<void> {
   await rerouteApp(appId);

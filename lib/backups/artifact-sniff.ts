@@ -4,38 +4,13 @@ import { looksEncrypted, looksGzip } from "./artifact-format";
 import type { BackupTargetKind } from "../types";
 
 /**
- * Everything the control plane can learn about an UPLOADED artifact before it
- * lets a restore start - from its first bytes alone.
- *
- * This exists because of what the agent does the moment a restore begins: it
- * stops the stack, then WIPES the target's volumes and untars into them, and it
- * only restores the `volumes/<name>/` entries whose name matches the target it
- * was given. So a file that is not what the operator thinks it is does not fail
- * harmlessly - the wrong artifact empties every volume and puts nothing back.
- * Every check that can be made here is one the agent never has to reach.
- *
- * Three questions, in order, all answered from the head of the stream:
- *
- *  1. Is it an artifact at all? age header or gzip magic, or it is refused.
- *  2. Does this recovery key open it? age parses its header (and tries every
- *     identity against it) before handing back a stream, so this costs the ~200
- *     bytes of the header rather than the artifact - and a wrong key is refused
- *     while the target is still untouched.
- *  3. Is it the right SHAPE for this target? An app's artifact is a tar; a
- *     database dump is not. That one bit separates the two mix-ups that would
- *     otherwise be silent and destructive.
- *
- * Pure apart from `zlib` and a lazily-imported age: no I/O, no database, no
- * agent - which is what makes it testable on hand-built buffers.
+ * Everything the control plane can learn about an UPLOADED artifact before it lets
+ * a restore start - from its first bytes alone. Every check that can be made here
+ * is one the agent never has to reach.
  */
 
 /**
  * How much of the upload is buffered for the checks above.
- *
- * age encrypts in 64 KiB chunks and only authenticates a chunk once it is whole,
- * so a prefix shorter than one chunk decrypts to nothing. 128 KiB guarantees a
- * full chunk for any artifact bigger than that, and IS the whole artifact for
- * anything smaller.
  */
 export const SNIFF_HEAD_BYTES = 128 * 1024;
 
@@ -109,10 +84,6 @@ function looksTar(unpacked: Buffer): boolean {
 
 /**
  * Decrypt as much of the head as the key and the truncation allow.
- *
- * The two failures here are the ones an operator actually hits - a key that is
- * not a key, and a key from the wrong destination - and both are answered
- * before anything on any host is touched.
  */
 async function decryptHead(head: Buffer, recoveryKey: string): Promise<Buffer> {
   const key = recoveryKey.trim();

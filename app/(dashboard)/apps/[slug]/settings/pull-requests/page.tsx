@@ -16,17 +16,6 @@ export const metadata = { title: "Pull requests" };
 
 /**
  * Everything that shapes a pull request preview, on a page of its own.
- *
- * It used to be one card at the bottom of Settings → Deployments, under a
- * 982-line deploy-source form — far enough down that the person who asked for
- * these settings looked, and concluded they did not exist. A feature with a
- * dozen knobs needs a door of its own.
- *
- * For an app that does not deploy from GitHub the page still renders, greyed and
- * inert, saying why. Hiding it would leave someone hunting for a feature they
- * had been told about; the operational Pull requests page under the app menu IS
- * hidden, because a list that can never have rows is a dead end rather than a
- * lesson.
  */
 export default async function AppPullRequestsSettingsPage(
   props: PageProps<"/apps/[slug]/settings/pull-requests">,

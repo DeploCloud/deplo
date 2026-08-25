@@ -13,17 +13,9 @@ import { nowIso } from "../ids";
 import type { AlertMessage } from "./channels";
 
 /**
- * Browser push (BETA).
- *
- * The VAPID keypair identifies THIS Deplo to every browser push service, so it
- * is instance-wide — one identity per panel — and it is minted lazily the first
- * time somebody opens the notification settings. An instance that never uses
- * push never holds a key.
- *
- * A subscription belongs to a device, so it is stored per user AND per team: the
- * same person in two teams gets the alerts of both, and a browser that goes away
- * is pruned on the first 404/410 the push service answers with. That is the
- * normal end of every subscription, not an error worth surfacing.
+ * Browser push (BETA). The VAPID keypair identifies THIS Deplo to every browser
+ * push service, so it is instance-wide — one identity per panel — and it is minted
+ * lazily the first time somebody opens the notification settings.
  */
 
 const SETTINGS_ID = "default";
@@ -180,10 +172,8 @@ export async function sendWebPushTo(
     throw new Error("Browser push is not set up on this instance");
 
   const webpush = await import("web-push");
-  // mailto: is what the push services want as a contact; the panel URL is not a
-  // valid VAPID subject. The domain has to be a REAL one: Apple answers 403
-  // BadJwtToken for a reserved TLD (`.local`, `localhost`), where Chrome and
-  // Firefox accept anything mailto:-shaped.
+  // mailto: is what the push services want as a contact; the panel URL is not a valid
+  // VAPID subject.
   webpush.setVapidDetails("mailto:alerts@deplo.build", publicKey, privateKey);
 
   const payload = JSON.stringify({
@@ -225,11 +215,7 @@ export async function sendWebPushTo(
         ),
       );
 
-  // A test send with a single subscription should say that it failed — but only
-  // that. The push endpoint is a URL the SUBSCRIBER chose, so returning the
-  // remote's body or its `connect ECONNREFUSED 10.0.0.5:8443` would hand the
-  // caller a read primitive against whatever they pointed it at. The status code
-  // is enough to tell a dead browser from a rejected key; the rest is logged.
+  // A test send with a single subscription should say that it failed — but only that.
   const firstError = results.find((r) => r.status === "rejected");
   if (subs.length === 1 && firstError && firstError.status === "rejected") {
     console.error("[deplo] web push failed:", firstError.reason);

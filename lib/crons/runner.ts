@@ -24,29 +24,13 @@ import { cronMatchesInZone, dedupeKeyFor } from "./cron-tz";
 
 /**
  * The mechanics of running a cron job - deliberately SESSION-FREE, exactly like
- * `lib/deploy/preview-lifecycle.ts` is for previews.
- *
- * The scheduler has no request identity: nobody is logged in at 03:00. So every
- * capability, team and folder check lives one layer up in `lib/data/crons.ts`,
- * and this module takes rows it is given and talks to agents. Nothing here calls
- * `requireCapability`, and nothing here may be reachable from a resolver without
- * going through that file first.
- *
- * Two entry points, and the ORDER between them is load-bearing:
- *
- *   1. {@link reapInFlightRuns} - poll what is already going, settle what ended.
- *   2. {@link fireDueJobs} - start what this minute calls for.
- *
- * Reap must precede fire, because the overlap rule reads the `running` rows. A
- * fire phase that ran first would see a run the agent finished ten seconds ago as
- * still in flight and skip a legitimate execution.
+ * `lib/deploy/preview-lifecycle.ts` is for previews. Reap must precede fire,
+ * because the overlap rule reads the `running` rows.
  */
 
 /**
- * Retained output per stream, per run. Mirrors `cronOutputTailBytes` in the
- * agent's job.go, where the primary trim happens; this is the defensive second
- * one, because the ceiling is a contract an agent could regress on and these rows
- * render in a page. Declared in agent.proto so the two cannot drift silently.
+ * Retained output per stream, per run. Declared in agent.proto so the two cannot
+ * drift silently.
  */
 export const CRON_OUTPUT_TAIL_BYTES = 16 * 1024;
 
@@ -70,13 +54,8 @@ export const REAP_GRACE_MS = 120_000;
 export const STALE_CLAIM_MS = 120_000;
 
 /**
- * How the runner reaches an agent. Overridable because every interesting path
- * here - a poll that says `found: false`, a retry ladder, a run outliving its
- * deadline - is a conversation with an agent, and there is no way to have that
- * conversation in a test against pglite otherwise.
- *
- * Same shape as the agent's own `traefikApply` override: production never touches
- * it, and the default is the real thing.
+ * How the runner reaches an agent. Same shape as the agent's own `traefikApply`
+ * override: production never touches it, and the default is the real thing.
  */
 let connectFn: (serverId: string) => Promise<AgentConnection> =
   connectCronAgent;
@@ -210,11 +189,7 @@ export async function listSchedulableJobs(): Promise<SchedulableJob[]> {
   const rows = await getDb()
     .select(targetColumns)
     .from(cronJobsTable)
-    // Defense in depth: a cron_job only resolves a target in the SAME team as the
-    // job. If a job's team_id ever falls out of sync with its app/db's (a
-    // transfer/move that forgot to clear it), the team-matched join yields NULL →
-    // cronEnabled is null → the row is excluded, so a dangling job can never
-    // execute in another tenant's container.
+    // Defense in depth: a cron_job only resolves a target in the SAME team as the job.
     .leftJoin(
       appsTable,
       and(
@@ -288,10 +263,6 @@ interface SettleFields {
 
 /**
  * Write a run's terminal status, prune the job's history, and raise the alert.
- *
- * The `WHERE status = 'running'` plus the row count is what makes a double alert
- * impossible: two control-plane instances can both decide a run ended, but only
- * one UPDATE changes a row.
  */
 export async function settle(
   r: InFlightRun,
@@ -384,10 +355,6 @@ function raiseAlert(
  * Settle, unless there is another attempt left - in which case the row stays
  * `running` with its agent handle cleared and a time to relaunch, and the next
  * reap picks it up.
- *
- * A retry therefore never writes a terminal status, so one scheduled fire is
- * always exactly one row in the history. The cost, stated rather than hidden: the
- * stored output is overwritten by each attempt, so only the last one's survives.
  */
 export async function settleOrRetry(
   r: InFlightRun,
@@ -466,9 +433,6 @@ async function jobEnv(
  * The container this attempt should run in, resolved LIVE. Never read back from
  * the run row: a redeploy between two attempts mints new container names, and a
  * retry must land in the new one.
- *
- * Null means there is nothing to exec into - the stack is down, or the named
- * service is not up. The caller records a `skipped` run, not a failure.
  */
 async function resolveContainer(
   conn: AgentConnection,
@@ -487,12 +451,8 @@ async function resolveContainer(
 
 /**
  * Launch one attempt of a run: resolve the container, ask the agent to start the
- * command, and record the handle. Settles the run itself on every failure, so the
- * caller never has to - and on success too when the command finishes inside the
- * quick-finish ladder, which is why the caller must re-read the row rather than
- * assume the run it passed in is still going.
- *
- * `conn` is passed in because the reaper already has one open for that server.
+ * command, and record the handle. `conn` is passed in because the reaper already
+ * has one open for that server.
  */
 export async function startAttempt(
   conn: AgentConnection,
@@ -590,9 +550,7 @@ function agentMessage(e: unknown): string {
 
 /**
  * Poll every in-flight run and settle what has ended, one agent connection per
- * server. `heartbeat` is called between servers so the caller can renew its
- * scheduler lease mid-drain; returning false stops the drain (the lease was
- * stolen, and racing the new owner is worse than stopping).
+ * server.
  */
 export async function reapInFlightRuns(
   now: Date,
@@ -613,10 +571,9 @@ export async function reapInFlightRuns(
     try {
       conn = await connectFn(serverId);
     } catch (e) {
-      // Unreachable or too old. Do NOT settle anything that still has time on
-      // the clock: the command is almost certainly still running over there, and
-      // a `lost` we invent now is a lie we would have to take back. Only a run
-      // that has outlived its own timeout is genuinely unaccounted for.
+      // Unreachable or too old. Do NOT settle anything that still has time on the clock:
+      // the command is almost certainly still running over there, and a `lost` we invent
+      // now is a lie we would have to take back.
       for (const r of group) {
         if (now.getTime() > deadlineOf(r.run)) {
           await settle(
@@ -650,11 +607,6 @@ export async function reapInFlightRuns(
 
 /**
  * Poll one in-flight run and settle it if it ended.
- *
- * Answers whether the run is STILL in flight and polling it again could tell us
- * more - which is what lets {@link startAttempt} wait out a quick command on the
- * connection it already holds. A relaunch answers false: whatever it started is
- * the next tick's business, not this poll's.
  */
 async function reapOne(
   conn: AgentConnection,
@@ -778,11 +730,6 @@ export interface ClaimOptions {
 
 /**
  * Insert the run row for one fire, or null when this fire already has one.
- *
- * This INSERT is the serialization point for the whole feature. `UNIQUE(job_id,
- * dedupe_key)` means two control-plane instances racing on a stolen lease produce
- * exactly one row, and it is why the overlap check happens AFTER the insert:
- * decided before, both instances would read "nothing running" and both would fire.
  */
 export async function claimRun(
   { job, target }: SchedulableJob,
@@ -819,15 +766,8 @@ export async function claimRun(
 }
 
 /**
- * Start every job due in this window.
- *
- * `minutes` is the replay window: the tick's own minute plus any the previous
- * drain stepped over. A job matching several of them fires ONCE, on the last -
- * late rather than not at all, and never N times for one overrun.
- *
- * There is deliberately no catch-up for a Deplo that was DOWN. A job that missed
- * 04:00 because the panel was off should not run at 09:00: the user picked a
- * wall-clock time, and half of them picked it because of what else happens then.
+ * Start every job due in this window. A job matching several of them fires ONCE,
+ * on the last - late rather than not at all, and never N times for one overrun.
  */
 export async function fireDueJobs(
   minutes: Date[],
@@ -899,11 +839,7 @@ export async function loadSchedulableJob(
   const rows = await getDb()
     .select(targetColumns)
     .from(cronJobsTable)
-    // Defense in depth: a cron_job only resolves a target in the SAME team as the
-    // job. If a job's team_id ever falls out of sync with its app/db's (a
-    // transfer/move that forgot to clear it), the team-matched join yields NULL →
-    // cronEnabled is null → the row is excluded, so a dangling job can never
-    // execute in another tenant's container.
+    // Defense in depth: a cron_job only resolves a target in the SAME team as the job.
     .leftJoin(
       appsTable,
       and(
@@ -927,15 +863,9 @@ export async function loadSchedulableJob(
 }
 
 /**
- * Run a job now, outside its schedule.
- *
- * Honours `overlap` exactly as a scheduled fire does. "Skip this run" is a
- * statement about the COMMAND - that two copies of it must not run at once -
- * not about the scheduler, so a button press cannot be the one caller allowed
- * to start the second copy. It is recorded as a `skipped` run rather than
- * refused outright, which is what puts the reason on the page: "the previous
- * run was still in progress". Stopping that run, or choosing "Run it anyway",
- * is what makes this start.
+ * Run a job now, outside its schedule. "Skip this run" is a statement about the
+ * COMMAND - that two copies of it must not run at once - not about the scheduler,
+ * so a button press cannot be the one caller allowed to start the second copy.
  */
 export async function runJobNow(
   schedulable: SchedulableJob,
@@ -966,10 +896,9 @@ export async function runJobNow(
   try {
     conn = await connectFn(schedulable.target.serverId);
   } catch (e) {
-    // Settle before rethrowing. A `running` row nobody is running is the worst
-    // of both worlds: it starves every later fire under overlap=skip, and the
-    // next reap would LAUNCH the command - minutes after a button press that
-    // answered with an error. No retry ladder either: the person is right there.
+    // Settle before rethrowing. A `running` row nobody is running is the worst of both
+    // worlds: it starves every later fire under overlap=skip, and the next reap would
+    // LAUNCH the command - minutes after a button press that answered with an error.
     await settle(r, "failed", { error: agentMessage(e) }, at);
     throw new Error(agentMessage(e));
   }

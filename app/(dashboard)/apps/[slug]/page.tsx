@@ -42,17 +42,15 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
   // Only for the banner's "Deploy anyway": the mutation gates itself, this
   // decides whether the affordance is worth showing.
   const canDeploy = await hasAppCapability(project.id, "deploy_apps");
-  // Prefer the row out of `deployments` (loaded two lines up) over the app
-  // graph's copy of it: only the list resolves `creatorUser`, and the graph's
-  // copy would show "by <name>" with no face beside it. Falls back to the graph
-  // for a latest deployment the list did not return.
+  // Prefer the row out of `deployments` (loaded two lines up) over the app graph's
+  // copy of it: only the list resolves `creatorUser`, and the graph's copy would show
+  // "by <name>" with no face beside it.
   const prod =
     deployments.find((d) => d.id === project.latestDeployment?.id) ??
     project.latestDeployment;
-  // What backs this app — a git repo (real branch/commit) or a compose
-  // stack / docker image / upload (no git, so no branch). Same source of truth
-  // as the Overview card, so the page never invents a "main" branch for a
-  // compose project. See components/apps/app-source.tsx.
+  // What backs this app — a git repo (real branch/commit) or a compose stack / docker
+  // image / upload (no git, so no branch). Same source of truth as the Overview card,
+  // so the page never invents a "main" branch for a compose project.
   const src = describeAppSource(project);
 
   return (
@@ -152,11 +150,10 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
                     </p>
                   )}
                 </div>
-                {/* What Deplo recognised in the app's own source (or what the
-                    user corrected it to — effectiveFramework settles that).
-                    Only under the auto-detecting builders, the same gate the
-                    feature uses everywhere else, so a build method that moved
-                    on stops claiming a framework. */}
+                {/**
+                 * What Deplo recognised in the app's own source (or what the user corrected it to —
+                 * effectiveFramework settles that).
+                 */}
                 {effectiveFramework(project) &&
                   supportsFrameworkDetection(project.build.buildMethod) && (
                     <div>

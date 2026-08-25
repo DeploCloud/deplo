@@ -19,15 +19,7 @@ export const metadata = { title: "Settings · Migrations" };
 
 /**
  * Migrations - bringing another platform's projects over to Deplo.
- *
- * Team-scoped, not instance-admin: a team owner brings their own projects over.
- * The two instance-admin extras are handed down as flags rather than hidden
- * behind a second page - reaching a private address (what the same-machine case
- * needs) and inviting the other platform's members.
- *
  * `create_projects` is the entry gate, mirrored server-side in every mutation.
- * `reachesWholeTeam` too: a migration writes across the whole team, so a
- * narrowed token or a project-scoped role has no business starting one.
  */
 export default async function SettingsMigrationsPage() {
   if (!(await reachesWholeTeam()) || !(await hasCapability("create_projects")))
@@ -47,11 +39,8 @@ export default async function SettingsMigrationsPage() {
       // exactly why it belongs in the other column.
       listBuildServerChoices(),
       listDokployImports(),
-      // The run to open on, if any: the team's one in flight, or one this person
-      // has not closed the report of. The wizard opens on it rather than on an
-      // empty form, so leaving the page and coming back gives back the screen they
-      // left - and walking in on a teammate's run gives that same screen. Null is
-      // the normal case.
+      // The run to open on, if any: the team's one in flight, or one this person has not
+      // closed the report of.
       resumableDokployImport(),
       isInstanceAdmin(),
       // A migrated database keeps the host port it had over there, and that is a

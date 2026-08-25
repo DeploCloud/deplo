@@ -29,12 +29,6 @@ import type { ServerSummary } from "./server-detail-tabs";
 /**
  * The Certificates tab: certificates the operator bought or generated elsewhere,
  * installed on this host's proxy.
- *
- * Deplo issues Let's Encrypt certificates by itself, so this is the escape hatch,
- * not the happy path: a wildcard from the company CA, a certificate an employer
- * mandates, a domain whose DNS cannot answer an HTTP challenge. They live on the
- * host and are read back from it, so the list is what is actually being served,
- * fetched when the tab opens, never during the page render.
  */
 
 type Certificate = {
@@ -88,13 +82,6 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
 
   /**
    * What the host has, after a write said it failed.
-   *
-   * Installing recreates the proxy — and on the server running Deplo, this panel
-   * is behind that same proxy, so the reply to the write can die with the old
-   * container while the write itself succeeded. A failure is therefore a question,
-   * not an answer: ask the host what it is holding, and treat a list that changed
-   * as the write having landed. Returns null when nothing changed, i.e. when the
-   * failure was real.
    */
   const settled = React.useCallback(
     async (before: Certificate[]): Promise<Certificate[] | null> => {

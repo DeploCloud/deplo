@@ -1,24 +1,7 @@
 /**
  * Roll a LOCALLY BUILT agent binary onto the remote fleet, for the window where
- * the fix exists but the GitHub release does not yet.
- *
- *   node --env-file=.env --require ./lib/test/server-only-shim.cjs \
- *        --import tsx scripts/fleet-update-manual.mts <version> <base-url> [--dry-run]
- *
- * REAL NODE, NEVER BUN (bun's TLS SAN handling rejects the agent certificate).
- *
- * <base-url> must serve `deplo-agent-linux-amd64` and `deplo-agent-linux-arm64`
- * plus a `checksums.txt` in `sha256  name` form; the agent picks the asset for
- * its OWN arch and refuses any byte that does not match the digest.
- *
- * Ordering is the same as scripts/fleet-update.mts: remotes first (canary, then
- * the rest), agent 0 never — the control-plane host is updated by hand here, so a
- * bad binary can't take out the observer with the observed. A server with a deploy
- * in flight is skipped, because the agent re-execs to apply the update.
- *
- * Rollback: call the same RPC with the published v1.12.1 release assets. The RPC
- * itself is not forward-only (only the control plane's "Update" button is), so a
- * bad roll is recoverable without shell access.
+ * the fix exists but the GitHub release does not yet. A server with a deploy in
+ * flight is skipped, because the agent re-execs to apply the update.
  */
 import { inArray } from "drizzle-orm";
 

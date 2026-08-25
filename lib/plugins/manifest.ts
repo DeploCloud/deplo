@@ -1,22 +1,6 @@
 /**
- * Plugin catalog + manifest contract — PURE.
- *
- * **DORMANT (ADR-0013).** The Plugins feature is deferred, so nothing fetches or
- * installs a manifest today: this module is the wire contract kept ready for the
- * feature's return, and it is the one piece of it with no host coupling at all.
- * The catalog CLIENT that used to fetch these documents is gone on purpose — it
- * defaulted to a private host, and where a catalog is served from is an open
- * question ADR-0013 leaves to the revival.
- *
- * The shapes a plugin repository serves (`catalog.json` and each
- * `plugins/<id>/manifest.json`), their zod validators, and the install-time
- * placeholder resolver. No `server-only`, no docker, no fetch — types in,
- * validated values out, so this is its own test surface. The runtime
- * (`./runtime`) builds on top of it.
- *
- * A manifest's `image` and `env` values are treated as OPAQUE — never eval'd.
- * The only thing Deplo interprets is the `${…}` placeholder grammar in env
- * values, resolved here against a small, closed set of known substitutions.
+ * Plugin catalog + manifest contract — PURE. A manifest's `image` and `env` values
+ * are treated as OPAQUE — never eval'd.
  */
 
 import { randomBytes } from "node:crypto";
@@ -110,9 +94,8 @@ export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
 /**
  * The closed set of context values a manifest env placeholder may reference.
- * Exactly one today (`deplo_graphql_url`) — a plugin that needs to call back into
- * Deplo's own API. Anything not listed here is a hard error: a manifest can never
- * reach into arbitrary Deplo state.
+ * Anything not listed here is a hard error: a manifest can never reach into
+ * arbitrary Deplo state.
  */
 export interface PlaceholderContext {
   /** `${deplo_graphql_url}` → Deplo's own `…/api/graphql` endpoint. */
@@ -124,20 +107,8 @@ export class PlaceholderError extends Error {}
 
 /**
  * Resolve every `${…}` placeholder in a manifest's env into concrete values.
- *
- * Supported grammar (everything else is rejected):
- *   - `${deplo_graphql_url}`  → `ctx.deploGraphqlUrl` (injected by Deplo)
- *   - `${secret:N}`           → a fresh random token of N bytes. 1 ≤ N ≤ 256.
- *                               NOTE (ADR-0013): this mints a NEW value on every
- *                               resolve and `installed_plugins` persists no env,
- *                               so a reinstall silently rotates it — fine for a
- *                               stateless plugin, destructive for a stateful one.
- *                               Settle that before the feature ships.
- *
- * A value with no placeholder passes through verbatim. The image and other
- * manifest fields are never touched here — only env values are interpolated.
- * Throws `PlaceholderError` on an unknown or malformed placeholder so install
- * fails loudly rather than shipping a literal `${…}` into the container.
+ * Settle that before the feature ships. The image and other manifest fields are
+ * never touched here — only env values are interpolated.
  */
 export function resolvePluginEnv(
   env: PluginEnvVar[],

@@ -28,23 +28,18 @@ export default async function AppLogsPage(
     );
   }
 
-  // Reuse the console's instance discovery: the same containers, the app's own
-  // one first, so the logs picker matches the console's. Logs doesn't use the
-  // shell label, so skip that probe (getLogsInfo, not getAttachInfo) to keep this
-  // render path off the ≤4 extra docker exec calls.
+  // Reuse the console's instance discovery: the same containers, the app's own one
+  // first, so the logs picker matches the console's.
   const info = await getLogsInfo(project.id);
 
   // No title, no description, no padding: this route is full-bleed (see
-  // components/layout/shell-frame.tsx) and the pane fills the frame. Everything
-  // the header used to say is either obvious from the sidebar (which app, which
-  // section) or now lives on the notice chip in the toolbar (why there is no
-  // container, why it keeps restarting).
+  // components/layout/shell-frame.tsx) and the pane fills the frame.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Seeded with whatever containers the host has, running or not:
-          `docker logs` outlives the process, so a dead or restarting container
-          still streams. An app with NO container gets an empty state pointing at
-          its latest build, which is where build output is read. */}
+      {/**
+       * Seeded with whatever containers the host has, running or not: `docker logs`
+       * outlives the process, so a dead or restarting container still streams.
+       */}
       <LiveLogs
         appId={project.id}
         title={{ label: project.name, href: `/apps/${project.slug}` }}

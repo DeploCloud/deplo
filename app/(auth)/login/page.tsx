@@ -59,13 +59,9 @@ const VERIFY_2FA = /* GraphQL */ `
 `;
 
 /**
- * Only allow returning to a safe, in-app path (no open redirect).
- *
- * A fixed allowlist, not a same-origin check: two destinations legitimately send
- * someone here before they have a session, and everything else goes to the
- * dashboard. `/oauth/consent` is on it because losing that page's query strands
- * a person mid-flow inside a third-party product with no way back except
- * starting over there.
+ * Only allow returning to a safe, in-app path (no open redirect). A fixed
+ * allowlist, not a same-origin check: two destinations legitimately send someone
+ * here before they have a session, and everything else goes to the dashboard.
  */
 function safeNext(raw: string | null): string {
   if (!raw) return "/";
@@ -88,9 +84,8 @@ export default function LoginPage() {
 
   function done() {
     // Signing in mid-OAuth: the provider redirects here with the WHOLE signed
-    // authorization query, not a `next` param, so re-run authorize now that a
-    // session exists. A full-page assign because that is an API route answering
-    // with a 302, which the client router cannot follow.
+    // authorization query, not a `next` param, so re-run authorize now that a session
+    // exists.
     const sp = new URLSearchParams(window.location.search);
     if (sp.has("client_id") && sp.has("sig")) {
       // Otherwise the provider sends us straight back here, forever.
@@ -131,11 +126,6 @@ export default function LoginPage() {
 
   /**
    * The whole passkey sign-in: challenge, ceremony, verify.
-   *
-   * Never fired on mount. A `navigator.credentials.get` with no user gesture
-   * behind it is the main source of spurious "cancelled" errors - some browsers
-   * refuse it outright, others show a prompt nobody asked for - and one click is
-   * cheaper than a login that fails for a reason the person cannot see.
    */
   function signInWithPasskey() {
     if (pending) return;
@@ -144,10 +134,9 @@ export default function LoginPage() {
       try {
         if (!passkeysSupported())
           throw new Error("This browser can't use passkeys.");
-        // The server refuses the challenge outright on an instance that cannot
-        // have passkeys (no address, or plain http), with a message saying so -
-        // which is why the button is always offered rather than hidden behind a
-        // capability this page has no way to know.
+        // The server refuses the challenge outright on an instance that cannot have
+        // passkeys (no address, or plain http), with a message saying so - which is why the
+        // button is always offered rather than hidden behind a capability this page has no
         const { passkeyChallenge } = await gql<{ passkeyChallenge: unknown }>(
           PASSKEY_CHALLENGE,
         );
@@ -220,10 +209,9 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form
-            // POST, even though JS always intercepts this: if the page has not
-            // hydrated yet (or its bundle failed to load) the browser submits
-            // natively, and a GET would put the code in the URL, the history
-            // and the proxy access logs. See the sign-in form below.
+            // POST, even though JS always intercepts this: if the page has not hydrated yet (or
+            // its bundle failed to load) the browser submits natively, and a GET would put the
+            // code in the URL, the history and the proxy access logs.
             method="post"
             onSubmit={(e) => {
               e.preventDefault();
@@ -294,19 +282,9 @@ export default function LoginPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {/*
-          `method="post"` is load-bearing SECURITY, not a formality. `onSubmit`
-          only runs once React has hydrated. A click before that (slow bundle, a
-          chunk 404 after a redeploy, JS blocked, the server restarting
-          mid-load) falls through to a NATIVE browser submit, and a form with no
-          method defaults to GET: every field is appended to the URL as
-          `/login?email=x&password=<plaintext>`, which then lands in the address
-          bar, browser history, the Referer of every subsequent same-origin
-          request, and every reverse-proxy access log in front of us. POST puts
-          them in a body nobody logs. Next has no POST handler for this route so
-          it just re-renders the page: the failure mode is an unhelpful reload
-          instead of a leaked password.
-        */}
+        {/**
+         * `method="post"` is load-bearing SECURITY, not a formality.
+         */}
         <form method="post" onSubmit={onSubmit} className="space-y-4">
           {banner}
           <div className="space-y-2">

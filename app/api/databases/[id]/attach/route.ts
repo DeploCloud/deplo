@@ -8,26 +8,16 @@ import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
- * Interactive `docker attach` to a DATABASE's running container, over plain
- * HTTP — the database sibling of `/api/apps/[id]/attach` (same SSE framing,
- * same session plumbing). The resolve seam gates on `manage_infra`: stdin into
- * the live engine is an infra-class operation.
- *
- *   GET    ?container=<name>[&cols=&rows=]
- *                                → SSE stream of the container's live PID 1 output.
- *   POST   { sessionId, data }            → forward a keystroke chunk to stdin.
- *   POST   { sessionId, resize:{cols,rows} } → resize the pty (tty containers).
- *   DELETE ?sessionId=<id>     → detach (kills our local attach client only).
+ * Interactive `docker attach` to a DATABASE's running container, over plain HTTP —
+ * the database sibling of `/api/apps/[id]/attach` (same SSE framing, same session
+ * plumbing).
  */
 
 // Long-lived stream; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Queued-chunk ceiling before a stalled SSE client is cut off. The controller's
-// default queuing strategy counts chunks, so desiredSize goes one more negative
-// per undelivered enqueue; past this backlog we drop the connection instead of
-// buffering the container's output in memory without bound.
+// Queued-chunk ceiling before a stalled SSE client is cut off.
 const MAX_QUEUED_CHUNKS = 1024;
 
 export async function GET(
@@ -196,11 +186,7 @@ export async function POST(
 
 /**
  * Re-authorise an in-flight database attach session against the CALLER, not just
- * the session id. The session is bound to the user + active team that opened it
- * (with `manage_infra`); this re-runs that gate on every write/detach — same
- * principal, still a member of the owning team, still holding `manage_infra` — so
- * possession of the id alone can't keep a demoted member driving the live engine.
- * DB-only checks (no per-keystroke agent round trip); any throw ⇒ not authorised.
+ * the session id.
  */
 async function stillAuthorized(
   session: attach.AttachSession,

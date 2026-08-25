@@ -9,16 +9,8 @@ import { createGithubApp } from "@/lib/data/github";
 import { resolvePublicBaseUrl } from "@/lib/public-url";
 
 /**
- * GitHub App manifest callback. GitHub redirects here after the user creates
- * the App, with a one-time `code` and the `state` we issued. We verify the
- * state (CSRF), exchange the code for the App's credentials, persist them, and
- * send the user on to install the App on their account.
- *
- * The state also carries where the browser came from, and that has to survive
- * one more hop: the install happens on github.com and comes back to
- * `/api/github/setup`, not here. GitHub echoes a `state` on the installation
- * URL, so it is re-signed onto it — a fresh 10 minutes for however long the
- * user spends picking repositories.
+ * GitHub App manifest callback. GitHub redirects here after the user creates the
+ * App, with a one-time `code` and the `state` we issued.
  */
 export async function GET(request: NextRequest) {
   // Public base URL, not request.nextUrl.origin: behind a reverse proxy the

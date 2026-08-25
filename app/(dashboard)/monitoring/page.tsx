@@ -10,13 +10,8 @@ import { MonitoringDashboard } from "./monitoring-dashboard";
 export const metadata = { title: "Monitoring" };
 
 export default async function MonitoringPage() {
-  // Cheap last-known metrics so the page renders instantly. MonitoringDashboard
-  // replaces these on its first read of the control plane's ring buffer — which
-  // the telemetry-stream supervisor keeps filled whether or not anyone is here,
-  // so the charts usually arrive already full rather than drawing themselves in.
-  // The fleet is team-level and has no per-project meaning, so a member limited
-  // to part of the team reaches none of it — and this page IS the fleet. Saying
-  // so beats handing them the error boundary the team-wide read would throw.
+  // Cheap last-known metrics so the page renders instantly. Saying so beats handing
+  // them the error boundary the team-wide read would throw.
   if (!(await reachesWholeTeam()))
     return (
       <div className="space-y-6">

@@ -47,13 +47,6 @@ export async function generateMetadata(
 
 /**
  * One server's management page.
- *
- * It deliberately does NOT dial the agent while rendering. The list page avoids
- * it for the same reason and says so: this is the page an operator opens
- * BECAUSE a host is misbehaving, and a render that waits on that host would make
- * it as slow as the thing it is meant to diagnose. Everything read here comes
- * from the database; the live answers — health, readiness, what the hardware is —
- * are fetched client-side, per tab, once the page is already on screen.
  */
 export default async function ServerDetailPage(
   props: PageProps<"/settings/servers/[id]">,
@@ -65,10 +58,7 @@ export default async function ServerDetailPage(
   const { id } = await props.params;
   const server = await getServerById(id);
   if (!server) notFound();
-  // A migration source has no management page. Every tab here operates a host -
-  // its proxy, its disk, its certificates, its role - and that host belongs to the
-  // platform being migrated from. Its one action (uninstall the agent) lives on
-  // its card in the list instead.
+  // A migration source has no management page.
   if (server.importOnly) notFound();
 
   const [expectedAgentVersion, teamIds, teamsRaw, policy, runs] =
@@ -88,15 +78,11 @@ export default async function ServerDetailPage(
   const agentVersion = reportedAgentVersion(hydrated);
 
   // A working hostname for the Traefik panel that needs no DNS at all, the same
-  // zero-config nip.io host an App's domains are offered. Fresh words on every
-  // render, like the Add domain dialog's suggestion — it is a suggestion until
-  // something is published with it. Null on a loopback-only host, where such a
-  // name would resolve for nobody.
+  // zero-config nip.io host an App's domains are offered. Null on a loopback-only
+  // host, where such a name would resolve for nobody.
   // ponytail: suggested without knowing the host's ACME challenge — a proxy the
-  // operator switched to DNS-01 only cannot validate a nip.io name and would serve
-  // a self-signed cert for it. Reading the challenge type means dialing the agent,
-  // which this page deliberately does not do; wire it through HostInfo if a
-  // DNS-01-only host ever turns up in practice.
+  // operator switched to DNS-01 only cannot validate a nip.io name and would serve a
+  // self-signed cert for it.
   const serverIp = resolveServerIp(hydrated);
   const suggestedTraefikDomain = isLoopbackIp(serverIp)
     ? null

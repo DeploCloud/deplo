@@ -31,37 +31,20 @@ export const metadata = { title: "Logs" };
 
 /**
  * The general Logs page: pick a thing, then watch its logs full screen.
- *
- * Two states on one route, both full-bleed (see `components/layout/shell-frame.tsx`).
- * With no target it is the chooser — one question in the middle of the screen,
- * answered by typing into the tree picker; with one it is the same pane an App's
- * own Logs tab renders, plus that same picker in the toolbar where the title
- * would be.
- *
- * The readable-target list is loaded either way, because state B's picker needs
- * it as much as state A's does — which is also what makes validating the
- * remembered target free: membership in this list IS the check. A deleted App,
- * a revoked `view_logs`, a target belonging to the team the viewer just left
- * and a mangled cookie all come back as "not in the list", and the chooser
- * renders. Nothing has to clean the cookie up.
  */
 export default async function LogsPage(props: PageProps<"/logs">) {
   const params = await props.searchParams;
 
   const apps = await listApps();
-  // `view_logs` is held PER APP (ADR-0016). `listApps` already resolves each
-  // app's capabilities in one batched pass and hands them back on the summary,
-  // so this is the same answer `hasAppCapability` would give, without a call
-  // per row. The real gates still sit behind it: `getLogsInfo` answers null,
-  // the SSE route answers 403.
+  // `view_logs` is held PER APP (ADR-0016). `listApps` already resolves each app's
+  // capabilities in one batched pass and hands them back on the summary, so this is
+  // the same answer `hasAppCapability` would give, without a call per row.
   const readableApps = apps.filter((a) =>
     a.capabilities?.includes("view_logs"),
   );
 
   // A database belongs to the team and to no project, so its logs are gated
-  // team-wide. `listDatabases` opens with `requireTeamWide`, which THROWS for a
-  // member who only reaches part of the team, so ask first rather than hand
-  // them the error boundary — the same guard the Storage page uses.
+  // team-wide.
   const canReadDatabases =
     (await hasCapability("view_logs")) && (await reachesWholeTeam());
   const databases = canReadDatabases ? await listDatabases() : [];
@@ -107,11 +90,7 @@ export default async function LogsPage(props: PageProps<"/logs">) {
   if (!target && !pick && targets.length === 1)
     redirect(logTargetHref(targets[0]!.key));
 
-  // The shape of the Overview, for the picker to file the targets into. All
-  // three read at the `view` floor and apply the caller's own scope (the same
-  // three the Overview itself loads), so a member with per-folder grants gets a
-  // smaller tree rather than an error — which is why `listTeamScopeTree`, whose
-  // first line is `requireTeamWide`, is not what this uses.
+  // The shape of the Overview, for the picker to file the targets into.
   const [projects, environments, folders] = await Promise.all([
     listProjects(),
     listAllEnvironmentsForTeam(),
@@ -133,10 +112,9 @@ export default async function LogsPage(props: PageProps<"/logs">) {
     const db = databases.find((d) => d.id === target.key.slice("db:".length))!;
     const info = await getDatabaseLogsInfo(db.id);
     return (
-      // Keyed per target: Next reuses this route segment when only the search
-      // params change, so without it the SSE buffer and the container picker
-      // would survive a switch and show one database's output under another's
-      // name.
+      // Keyed per target: Next reuses this route segment when only the search params
+      // change, so without it the SSE buffer and the container picker would survive a
+      // switch and show one database's output under another's name.
       <DatabaseLiveStatusProvider
         key={target.key}
         initial={{ id: db.id, name: db.name, status: db.status }}

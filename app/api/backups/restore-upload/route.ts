@@ -6,28 +6,9 @@ import { prepareUploadRestore } from "@/lib/data/backups";
 import { statusForBackupError } from "@/lib/backups/http-status";
 
 /**
- * Restore an app or a database from an artifact the operator uploads.
- *
- *   POST /api/backups/restore-upload?app=<id>        body = the artifact's bytes
- *   POST /api/backups/restore-upload?database=<id>   X-Recovery-Key: <key>
- *
- * A Route Handler rather than a GraphQL mutation for the same reason
- * `/api/apps/[id]/upload` and `/api/backups/[runId]/download` are ones: an
- * artifact is arbitrarily large, so it has to stream. Cookie auth like every
- * other REST exception, then straight back into the normal gates -
- * `prepareUploadRestore` requires `restore_backups` on the target itself.
- *
- * THE RESPONSE IS THE PROGRESS. It streams NDJSON, one line per event the agent
- * emits ({"level","text"}), ending with the verdict ({"ok","error"}). Two things
- * need that: the restore keeps running for minutes after the last byte is
- * uploaded, and a response that goes quiet for that long is cut by any proxy in
- * front of Deplo (Cloudflare gives up at 100s) - a request the client believes
- * failed while the restore is in fact still going is the worst answer available.
- * The operator also gets to watch a destructive operation happen.
- *
- * The recovery key travels as a header so the body stays the raw artifact. It is
- * used for this request and nothing else: never stored, never logged, never
- * written to the Activity trail.
+ * Restore an app or a database from an artifact the operator uploads. It is used
+ * for this request and nothing else: never stored, never logged, never written to
+ * the Activity trail.
  */
 
 // Long-lived streamed response; must run at request time on the Node runtime.
@@ -60,10 +41,8 @@ export async function POST(request: NextRequest) {
       body: request.body,
     });
   } catch (e) {
-    // Everything that can refuse has refused by here - the capability, another
-    // restore already running, the file itself, the key. Nothing on any host has
-    // been touched, so this is still an ordinary JSON error with a status that
-    // means what it says.
+    // Everything that can refuse has refused by here - the capability, another restore
+    // already running, the file itself, the key.
     const message = e instanceof Error ? e.message : String(e);
     return Response.json(
       { error: message },
@@ -110,11 +89,9 @@ export async function POST(request: NextRequest) {
       // runs its cleanup: the agent connection closes, the target comes off
       // "restoring", and the interruption is recorded rather than left hanging.
       void events.return(undefined);
-      // ...unless nothing ever pulled from it, in which case there is no
-      // `finally` to return into - a generator abandoned before its first
-      // `next()` runs none of its body. That is reachable here: this cancel
-      // fires for a request already aborted when the response was built. Same
-      // cleanup, and idempotent, so the ordinary case settles once.
+      // .unless nothing ever pulled from it, in which case there is no `finally` to
+      // return into - a generator abandoned before its first `next()` runs none of its
+      // body.
       void restore.abandon();
     },
   });

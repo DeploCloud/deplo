@@ -1,10 +1,9 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Mirrors `RegistriesPanel`: the header with its Add button, then the card
- * grid — the same fallback the Git settings page uses, because it is now the
- * same page shape. Two cards stand in rather than an empty state: a fallback
- * that draws "nothing is coming" is a lie half the time.
+ * Mirrors `RegistriesPanel`: the header with its Add button, then the card grid —
+ * the same fallback the Git settings page uses, because it is now the same page
+ * shape.
  */
 export default function Loading() {
   return (

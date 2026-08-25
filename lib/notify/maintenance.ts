@@ -25,22 +25,6 @@ import type { GitProviderId } from "../types";
 
 /**
  * The things nobody polls.
- *
- * Three conditions that are real, checkable and — until now — only ever noticed
- * by somebody who happened to open the right page:
- *  - a new Deplo release (`getUpdateInfo` is a `revalidate: 3600` fetch, so on an
- *    instance nobody visits the check never runs at all),
- *  - a custom certificate about to lapse with nothing set to renew it,
- *  - a domain whose DNS was repointed after it was added.
- *
- * An agent BEHIND THE LATEST RELEASE is deliberately not one of them: a version
- * number is not a fault, and a fleet-wide alert every time a release lands is
- * the kind of notification people turn off wholesale.
- *
- * Rides the existing twice-daily certificate-renewal interval rather than adding
- * a scheduler: none of these is urgent to the minute, a new tick would cost a
- * lease name, a module and a teardown handler to run three queries a day, and the
- * cooldown state is per-process either way, so a lease would buy nothing.
  */
 
 /** Warn this far ahead of a certificate expiring. */
@@ -60,17 +44,9 @@ export async function runMaintenanceSweep(): Promise<void> {
 }
 
 /**
- * Drop `verification` rows whose deadline has passed.
- *
- * Better Auth consumes a challenge on first use and never comes back for the
- * ones nobody finishes, and it ships no pruning of its own. That was harmless
- * while every writer was authenticated; `passkeyChallenge` is not - it is the
- * START of a sign-in, so anyone who can reach the panel can write rows here.
- *
- * Exactly the argument {@link sweepAbandonedOauthClients} makes one function
- * up: the rate limiter bounds the RATE, and this bounds the TOTAL. An expired
- * challenge is already refused by `consumeVerificationValue`, so deleting one
- * takes nothing away from anybody.
+ * Drop `verification` rows whose deadline has passed. Better Auth consumes a
+ * challenge on first use and never comes back for the ones nobody finishes, and it
+ * ships no pruning of its own.
  */
 async function sweepExpiredVerifications(): Promise<void> {
   await getDb()
@@ -79,14 +55,9 @@ async function sweepExpiredVerifications(): Promise<void> {
 }
 
 /**
- * Drop OAuth clients that registered and then never got approved.
- *
- * RFC 7591 registration has to be open — claude.ai and ChatGPT cannot
- * pre-register — so anyone who can reach the instance can create rows here. The
- * rate limit in `app/api/auth/[...all]/route.ts` bounds the RATE; this bounds
- * the total. A client with a consent is somebody's live connection and is never
- * touched; one with none has no token, no team and no access, so deleting it
- * takes nothing away.
+ * Drop OAuth clients that registered and then never got approved. RFC 7591
+ * registration has to be open — claude.ai and ChatGPT cannot pre-register — so
+ * anyone who can reach the instance can create rows here.
  */
 async function sweepAbandonedOauthClients(): Promise<void> {
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -180,13 +151,9 @@ async function checkCustomCertificates(): Promise<void> {
 }
 
 /**
- * Git connection tokens. A revoked or expired token is the one failure mode a
- * user cannot see coming: nothing changes in Deplo, and the first symptom is a
- * deploy failing on `git clone` at the worst possible moment. Asking the
- * provider twice a day turns that into a notice with the provider's own reason.
- *
- * GitHub is deliberately absent: its App mints a fresh token per deploy, so
- * there is no stored credential to go stale.
+ * Git connection tokens. A revoked or expired token is the one failure mode a user
+ * cannot see coming: nothing changes in Deplo, and the first symptom is a deploy
+ * failing on `git clone` at the worst possible moment.
  */
 async function checkGitConnections(): Promise<void> {
   const rows = await getDb().select().from(gitConnectionsTable);

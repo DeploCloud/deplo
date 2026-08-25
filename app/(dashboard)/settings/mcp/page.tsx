@@ -14,11 +14,6 @@ export const metadata = { title: "Settings · MCP Server" };
 
 /**
  * The tool table, flattened for the browser.
- *
- * `lib/mcp/tools.ts` is 55 KB of GraphQL documents and zod schemas. The dialog
- * renders six fields per tool, so those six fields are what crosses to the
- * client — importing the module into a client component would ship every tool's
- * query text to every reader of this page.
  */
 const TOOL_SUMMARIES = MCP_TOOLS.map((t) => ({
   name: t.name,
@@ -47,11 +42,9 @@ export default async function McpSettingsPage() {
     publicUrl,
     teamId,
     canManageMcp,
-    // Two capabilities open two different halves of this page: `manage_mcp` is
-    // the team's switch and approving a web connector, `manage_tokens` is
-    // minting the credential a terminal agent connects with and revoking any of
-    // them. The nav lets either one in, and the wizard disables the branch the
-    // viewer cannot finish rather than failing at the last click.
+    // Two capabilities open two different halves of this page: `manage_mcp` is the
+    // team's switch and approving a web connector, `manage_tokens` is minting the
+    // credential a terminal agent connects with and revoking any of them.
     canManageTokens,
     connections,
     tree,

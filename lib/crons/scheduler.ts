@@ -12,43 +12,9 @@ import {
 import { fireDueJobs, reapInFlightRuns } from "./runner";
 
 /**
- * The cron scheduler - the fourth lease-based tick loop, alongside backups,
- * docker cleanup and the preview reaper. Started once per boot from
- * `instrumentation-node.ts`. Every tick it:
- *
- *  1. claims the cross-process {@link CRON_SCHEDULER_LEASE}, so a
- *     horizontally-scaled deploy runs each job once rather than N times,
- *  2. REAPS: polls every in-flight run and settles what ended,
- *  3. FIRES: starts every job this minute calls for - at most once per minute,
- *     whichever tick lands in it first.
- *
- * The order of 2 and 3 is load-bearing. The overlap rule reads the `running`
- * rows, so a fire phase that went first would treat a run the agent finished ten
- * seconds ago as still in flight and skip a legitimate execution - once a minute,
- * for every job whose runtime is close to its interval.
- *
- * The two phases run at DIFFERENT cadences, and that is the whole point of
- * {@link TICK_MS}. Firing is minute-grained because a cron expression has no
- * finer resolution. Reaping is not: a run stays `running` in the store until
- * somebody polls the agent, so a command that ended in 200ms read as "Running"
- * for up to a minute - long enough for the next fire to skip under overlap=skip,
- * for a hand-started run to look queued behind it, and for a page showing it to
- * look frozen.
- *
- * Two things the backup scheduler needs and this one does not:
- *
- *  - **An in-RAM `lastFired` map.** `UNIQUE(cron_runs.job_id, dedupe_key)` does
- *    the same job in the database, which is strictly less code and also survives
- *    a restart, two instances racing on a stolen lease, and a backwards clock
- *    step.
- *  - **A boot reconcile.** `reconcileInFlightBackupRuns` exists because a backup
- *    dies with the control plane, so an orphaned `running` row can only be
- *    guessed at. A cron job runs inside the AGENT, so the reap phase can simply
- *    ASK - and the immediate first tick below reaps before it fires, which IS the
- *    reconcile.
- *
- * Singleton on `globalThis` via `Symbol.for(...)`: Next compiles separate module
- * graphs, so a module-level flag could start two intervals.
+ * The cron scheduler - the fourth lease-based tick loop, alongside backups, docker
+ * cleanup and the preview reaper. FIRES: starts every job this minute calls for -
+ * at most once per minute, whichever tick lands in it first.
  */
 
 /** How often the reaper asks the agents what has ended. One agent connection
@@ -63,12 +29,9 @@ const FIRE_EVERY_MS = 60_000;
 const minuteOf = (d: Date): number => Math.floor(d.getTime() / FIRE_EVERY_MS);
 
 /**
- * Does this tick own its minute's fire? Pure, and exported for the test that
- * pins the cadence: everything else here needs a lease and an agent.
- *
- * At most one fire per wall-clock minute, on whichever tick lands in it first.
- * The unique index would make an extra fire harmless anyway - this keeps the
- * other 11 ticks from asking the question at all.
+ * Does this tick own its minute's fire? At most one fire per wall-clock minute, on
+ * whichever tick lands in it first. The unique index would make an extra fire
+ * harmless anyway - this keeps the other 11 ticks from asking the question at all.
  */
 export function shouldFire(now: Date, lastFireAt: Date | null): boolean {
   return lastFireAt === null || minuteOf(now) !== minuteOf(lastFireAt);
@@ -103,11 +66,6 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
 /**
  * The minutes this tick is answering for: its own, plus every whole minute since
  * the last tick that fired.
- *
- * Reaping a fleet can outrun a minute, and `state.ticking` skips the interval
- * ticks underneath, which would step straight past a schedule whose exact minute
- * fell inside the drain. Bounded by the staleness window, past which another
- * instance may legitimately have been driving.
  */
 function replayWindow(now: Date): Date[] {
   const minutes: Date[] = [];
@@ -137,9 +95,8 @@ export async function runCronSchedulerTick(
   try {
     if (!(await acquireLease(CRON_SCHEDULER_LEASE, state.owner, now))) return;
     // Renewing per server / per job is the heartbeat: a cron job can outlive
-    // LEASE_STALE_MS, and a lease whose heartbeat only advanced at tick start
-    // would go stale mid-drain and be stolen. A lost renewal means it WAS
-    // stolen, so stop rather than race the new owner.
+    // LEASE_STALE_MS, and a lease whose heartbeat only advanced at tick start would go
+    // stale mid-drain and be stolen.
     const heartbeat = () => acquireLease(CRON_SCHEDULER_LEASE, state.owner);
     await reapInFlightRuns(now, heartbeat);
     if (fire) await fireDueJobs(replayWindow(now), heartbeat);

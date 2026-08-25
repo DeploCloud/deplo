@@ -1,22 +1,5 @@
 /**
  * Fleet rollout of deplo-agent v1.12.0 (the docker-cleanup retention fix).
- *
- * Follows docs/agents/fleet-rollout.md to the letter:
- *  - order: canary (neon-s1, fewest Apps) → neon-s2 → eu-main-1 (agent 0) LAST;
- *  - skip any server with an in-flight deploy (queued/building, via
- *    coalesce(deployments.server_id, apps.server_id) — never the bare column);
- *  - `selfUpdateServerAgent` is the infra seam and does NOT persist the version:
- *    call `markServerSeen` after, or the badge lags;
- *  - verify per server before moving on: Hello reports the target version, the
- *    capabilities we rely on are intact, and a DRY-RUN DockerCleanup answers —
- *    the live smoke test of the changed RPC.
- *
- * Run from /root/projects/deplo under REAL Node (never bun — its TLS SAN
- * handling breaks every mTLS dial):
- *
- *   /root/.nvm/versions/node/v24.18.0/bin/node --env-file=.env \
- *     --require ./lib/test/server-only-shim.cjs --import tsx \
- *     scripts/rollout-agent-1.12.mts
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
 

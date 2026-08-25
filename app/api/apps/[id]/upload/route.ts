@@ -15,18 +15,6 @@ import {
 
 /**
  * Upload a code archive for an "upload"-source project.
- *
- *   POST  body = raw archive bytes, `X-Upload-Filename: <name>` header
- *         → streams the archive to disk and points the app at it.
- *
- * Storing the archive does NOT deploy it: the caller (the app settings
- * "Save & Deploy" button, or the create-app wizard) triggers the production
- * build separately, so the user can pick/change the target server before the
- * first deploy runs instead of it firing the instant the file lands.
- *
- * A Route Handler rather than a Server Action because archives blow past the
- * Server Action body-size cap; the raw body streams straight to disk so memory
- * stays flat regardless of archive size. Node runtime: writes to the host FS.
  */
 
 export const runtime = "nodejs";
@@ -34,12 +22,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Belt-and-braces CSRF check: refuse a state-changing request whose `Origin`
- * points at another site. Same-origin browser requests either omit `Origin`
- * (GET/EventSource) or send one matching the request host; a genuine cross-site
- * form/fetch carries a foreign one. `SameSite=Lax` on the session cookie already
- * blocks this, but the GraphQL route asserts it explicitly too — this mirrors
- * that so a shared cookie can't be replayed cross-origin against these routes.
- * Absent `Origin` is allowed (Lax covers it); present-and-mismatched is refused.
+ * points at another site.
  */
 function isCrossSite(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
@@ -58,13 +41,9 @@ function isCrossSite(request: NextRequest): boolean {
 }
 
 /**
- * App ids with an upload streaming right now. The deployment-based 409
- * guard below can't catch a *concurrent upload* — the deployment isn't created
- * until after the (potentially minute-long) stream finishes, so two uploads
- * would both pass it and then race pruneUploads, leaving the app pointing
- * at a deleted archive. This sentinel serialises uploads per project. Sufficient
- * because the app runs as a single Node process (see next.config standalone);
- * a multi-process deploy would need to move this into the store.
+ * App ids with an upload streaming right now. Sufficient because the app runs as a
+ * single Node process (see next.config standalone); a multi-process deploy would
+ * need to move this into the store.
  */
 const uploadsInFlight = new Set<string>();
 
@@ -162,11 +141,9 @@ export async function POST(
       return Response.json({ error: "Empty archive" }, { status: 400 });
     }
 
-    // Commit the new pointer FIRST, then prune older upload dirs — the app
-    // never points at a deleted archive, and a rejected upload above leaves the
-    // previous one intact (its subdir was pruned only on success here). If the
-    // commit itself fails, drop the just-written archive (keeping the previous,
-    // still-pointed-at one) so it can't orphan on disk.
+    // Commit the new pointer FIRST, then prune older upload dirs — the app never points
+    // at a deleted archive, and a rejected upload above leaves the previous one intact
+    // (its subdir was pruned only on success here).
     try {
       await setAppUpload(appId, upload);
     } catch {
@@ -175,11 +152,9 @@ export async function POST(
     }
     await pruneUploads(appId, upload.id).catch(() => {});
 
-    // No deploy here — the archive is stored and the app points at it. The
-    // caller deploys on demand (Save & Deploy), which is what lets the server be
-    // chosen before the first build runs. A logo is auto-detected from the
-    // archive during that deploy (the engine reuses the tree it extracts to
-    // build), not here — so no second extraction of an attacker-controlled zip.
+    // No deploy here — the archive is stored and the app points at it. The caller
+    // deploys on demand (Save & Deploy), which is what lets the server be chosen before
+    // the first build runs.
     return Response.json({
       ok: true,
       upload: {

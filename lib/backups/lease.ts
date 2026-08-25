@@ -3,22 +3,9 @@ import "server-only";
 import { getPool, isPostgresEnabled } from "../db/pg";
 
 /**
- * Cross-process lease for the backup scheduler (Step 6).
- *
- * Why a lease at all: a due backup must fire AT MOST ONCE. The scheduler ticks
- * once a minute in every control-plane instance, and a horizontally-scaled
- * deploy runs several. Without a shared mutex each instance would dump the same
- * database to S3 simultaneously. The JSONB document store can't provide a real
- * cross-process lock (a whole-document write races), so this is the ONE
- * relational addition (Step 1): a `scheduler_lease` row claimed by an atomic CAS.
- *
- * Crash recovery: the owner heartbeats while it holds the lease; a lease whose
- * heartbeat is older than the staleness window is considered crashed and may be
- * STOLEN by another instance — so a dead owner never blocks the schedule forever.
- *
- * Test-only in-memory mode (no Postgres): the lock degrades to an in-process
- * `globalThis` singleton — a real mutex within the one process. This path is
- * exercised by the scheduler/lease tests; every real run is Postgres-backed.
+ * Cross-process lease for the backup scheduler (Step 6). Why a lease at all: a due
+ * backup must fire AT MOST ONCE. Without a shared mutex each instance would dump
+ * the same database to S3 simultaneously.
  */
 
 /** A lease is reclaimable once its heartbeat is older than this. */
@@ -28,10 +15,7 @@ export const LEASE_STALE_MS = 2 * 60 * 60 * 1000; // 2h — see PLAN "stale > 2h
 export const BACKUP_SCHEDULER_LEASE = "backup-scheduler";
 
 /**
- * The Docker-cleanup scheduler's lease name. `scheduler_lease.name` is the PK, so a
- * second scheduler is simply a second ROW — no migration, and no coupling: the two
- * loops claim different names, so a long nightly dump can never block the cleanup
- * tick (or the reverse), and a crashed cleanup owner only stalls cleanup.
+ * The Docker-cleanup scheduler's lease name.
  */
 export const DOCKER_CLEANUP_LEASE = "docker-cleanup-scheduler";
 
@@ -43,10 +27,7 @@ export const DOCKER_CLEANUP_LEASE = "docker-cleanup-scheduler";
 export const PREVIEW_REAPER_LEASE = "preview-reaper";
 
 /**
- * The cron scheduler's lease name - a fourth row, same reasoning again. It
- * matters most here: a cron job can legitimately run for hours, and sharing a
- * lease with the backup scheduler would mean one long job silently stopping every
- * nightly dump on the instance.
+ * The cron scheduler's lease name - a fourth row, same reasoning again.
  */
 export const CRON_SCHEDULER_LEASE = "cron-scheduler";
 
@@ -61,14 +42,8 @@ export interface LeaseRow {
 }
 
 /**
- * Pure CAS decision: given the existing lease row (or null), can `me` take/keep
- * it as of `now`? Mirrors the SQL the Postgres path runs, so the rule is tested
- * once here and the DB path just executes it atomically.
- *
- * - No row → claim (a fresh lease).
- * - We already own it → renew (keep + heartbeat).
- * - Someone else owns it but their heartbeat is stale → steal.
- * - Someone else owns it and is alive → deny.
+ * Pure CAS decision: given the existing lease row (or null), can `me` take/keep it
+ * as of `now`?
  */
 export function canAcquire(
   existing: LeaseRow | null,
@@ -99,10 +74,9 @@ function acquireLocal(
   staleMs: number,
 ): boolean {
   const existing = localLeases.get(name) ?? null;
-  // The window comes from the CALLER, exactly as it does in the SQL above: a
-  // holder that wants a tighter one (the migration runner does) must get the
-  // same answer from both paths, or the fallback tests a rule production is not
-  // running.
+  // The window comes from the CALLER, exactly as it does in the SQL above: a holder
+  // that wants a tighter one (the migration runner does) must get the same answer
+  // from both paths, or the fallback tests a rule production is not running.
   if (!canAcquire(existing, owner, now, staleMs)) return false;
   localLeases.set(name, { owner, heartbeatAt: now });
   return true;
@@ -117,17 +91,7 @@ function releaseLocal(name: string, owner: string): void {
 /* ------------------------------------------------------------------ */
 
 /**
- * Atomically claim or renew the lease in Postgres. The single `INSERT … ON
- * CONFLICT DO UPDATE … WHERE` does the whole CAS server-side, so two instances
- * racing the same tick can never both win: the conflicting update only fires when
- * the existing row is ours OR stale, and `RETURNING` tells us whether our row
- * stands. `acquired_at` advances only on a true (re-)acquisition, not a renew.
- *
- * Table creation is owned by the Drizzle migrations (`scheduler_lease` is declared
- * in `schema/scheduler.ts` as `timestamptz`). The old on-demand `CREATE TABLE IF
- * NOT EXISTS` was removed in relational-store Step 0 so a single regime owns the
- * schema (PLAN §8). The staleness comparison is server-side against `now()`, so
- * the column tz is correctness-neutral for the CAS itself.
+ * Atomically claim or renew the lease in Postgres.
  */
 async function acquirePostgres(
   name: string,
@@ -169,10 +133,6 @@ async function releasePostgres(name: string, owner: string): Promise<void> {
 
 /**
  * Claim or renew `name` for `owner`. Returns true if we hold it after the call.
- * Idempotent for the current holder (acts as the heartbeat). Postgres-backed
- * when configured, else the in-process fallback. A Postgres error is treated as
- * "not acquired" (logged) so a transient DB blip skips the tick rather than
- * letting an unguarded backup fire.
  */
 export async function acquireLease(
   name: string,

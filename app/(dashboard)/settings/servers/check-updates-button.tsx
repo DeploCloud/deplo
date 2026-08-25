@@ -12,10 +12,6 @@ import { gqlAction } from "@/lib/graphql-client";
  * "Check for updates" — force the control plane to re-resolve the latest agent
  * release from GitHub right now, bypassing the in-process cache, then refresh the
  * page so "Update agent" offers the fresh version.
- *
- * Without this, a newly published agent release isn't reflected until the release
- * memo's TTL elapses (lib/agent/release.ts). The button is the operator's
- * immediate bust; gated server-side to instance admins.
  */
 export function CheckUpdatesButton() {
   const router = useRouter();

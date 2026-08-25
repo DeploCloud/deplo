@@ -27,9 +27,6 @@ export default async function SettingsGeneralPage() {
     hasCapability("manage_team"),
   ]);
   // The settings themselves, only for a principal who reaches the whole team.
-  // Kept separate from the identity above rather than branched into one value:
-  // `null` is then the honest type for "not yours", and the sections that need
-  // it are exactly the ones that render inside its check.
   const [settings, deletion, twoFactor] = wholeTeam
     ? await Promise.all([getTeam(), canDeleteTeam(), membersWithoutTwoFactor()])
     : [null, { allowed: false, onlyTeam: false }, { without: 0, total: 0 }];

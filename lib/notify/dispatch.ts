@@ -8,19 +8,8 @@ import { teamsForServerAlerts } from "./server-teams";
 import type { AlertKey } from "../types";
 
 /**
- * The one way anything in Deplo tells a team something happened.
- *
- * `teamId` is ALWAYS a parameter and never read from the request context: most
- * alerts are raised by a deploy runner, a scheduler tick or a telemetry stream,
- * none of which has an active team or a user. Reaching for AsyncLocalStorage
- * here would return null exactly when it matters.
- *
- * Fire-and-forget by default, and that is deliberate. `recordActivity` is
- * awaited because it is a ~1ms local INSERT that must stay inside the request's
- * connection lifetime; an alert is up to six outbound HTTPS POSTs to third
- * parties. Awaiting it inside `commitOutcome` would put a stranger's latency
- * inside every deploy, and inside `recordServerHealth` it would land inside the
- * 8s heartbeat that is tuned to stay under the health throttle.
+ * The one way anything in Deplo tells a team something happened. Reaching for
+ * AsyncLocalStorage here would return null exactly when it matters.
  */
 
 export interface Alert {
@@ -86,11 +75,8 @@ export async function dispatchAlertNow(alert: Alert): Promise<void> {
 }
 
 /**
- * Raise a SERVER-level alert. Servers are the one cross-team resource, so the
- * same event reaches every team that has something running on the host.
- *
- * The dedupe is evaluated ONCE, on the server, before the team lookup: ten teams
- * get one alert each per transition, and the steady state stays a `Map.get`.
+ * Raise a SERVER-level alert. Servers are the one cross-team resource, so the same
+ * event reaches every team that has something running on the host.
  */
 export function dispatchServerAlert(
   serverId: string,

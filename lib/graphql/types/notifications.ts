@@ -14,14 +14,9 @@ import {
 /* ------------------------------------------------------------------ */
 
 /**
- * Channels are exposed as opaque `JSON`, deliberately and for the same reason
- * the settings object was: the instance shape follows the channel catalog, no
+ * Channels are exposed as opaque `JSON`, deliberately and for the same reason the
+ * settings object was: the instance shape follows the channel catalog, no
  * credential is ever in it (a stored one surfaces as a `…Set` bit with no read
- * path), and the settings UI reads and writes exactly this JSON.
- *
- * Every field is `loggedIn` with the real gate inside `lib/data/notifications.ts`
- * — the two-gate model, where the field contract is introspectable and the
- * boundary is the data layer.
  */
 builder.queryFields((t) => ({
   notificationChannels: t.field({

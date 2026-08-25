@@ -21,10 +21,6 @@ import type { ServerSummary } from "./server-detail-tabs";
 
 /**
  * The Maintenance tab: the restarts an operator used to need SSH for.
- *
- * Every one of them interrupts something, so every one of them is a confirm that
- * says what — in the plainest terms available, because "restart Traefik" reads
- * harmless and means "every site on this host is unreachable for a few seconds".
  */
 
 type ActionId = "workloads" | "traefik" | "panel" | null;

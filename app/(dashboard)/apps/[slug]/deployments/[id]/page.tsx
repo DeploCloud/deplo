@@ -33,9 +33,7 @@ export default async function DeploymentDetailPage(
   if (!deployment || deployment.appId !== project.id) notFound();
 
   // Build logs print the app's build-time variables, so they are their own
-  // permission, held per app (ADR-0016). `getLogs` answers an EMPTY list when
-  // the viewer lacks it - which renders as a blank terminal that looks broken -
-  // so ask first and say why instead, exactly as the Logs tab does.
+  // permission, held per app (ADR-0016).
   const canReadLogs = await hasAppCapability(project.id, "view_logs");
   // NOT the same question as `deployment.canRollback`, which is whether this
   // build is still a target at all. This is whether the VIEWER may take it.

@@ -13,23 +13,9 @@ import {
 } from "./server-health-provider";
 
 /**
- * Whether a Traefik proxy is running on this host — under the SAME honesty rule as the
- * health chip beside it.
- *
- * `servers.traefik_enabled` is a last-known value: it is only ever written from a live
- * Hello, and no path clears it when a host goes away. Rendered raw, it produced the
- * contradiction this component exists to kill — a card reading "Offline" and "Traefik on"
- * at the same time, asserting a fact about a machine nobody could reach. The flag is not
- * wrong, it is just *old*, and a badge that can't say how old it is can only mislead.
- *
- * So the badge asserts only what the last observation actually establishes: Traefik state
- * is painted iff that observation is FRESH and found the server `online`. `warning`
- * (Docker unreachable) is deliberately not enough — the agent forces `traefikRunning`
- * false when it has no container list to look at, so a "Traefik off" there would be a
- * verdict on a question nobody asked (see `observedTraefik` in lib/data/servers.ts).
- *
- * Everything else degrades to "Traefik —", with the last-known value moved into the
- * tooltip where it reads as history instead of as a claim about right now.
+ * Whether a Traefik proxy is running on this host — under the SAME honesty rule as
+ * the health chip beside it. The flag is not wrong, it is just *old*, and a badge
+ * that can't say how old it is can only mislead.
  */
 export function ServerTraefikBadge({
   serverId,
@@ -59,10 +45,7 @@ export function ServerTraefikBadge({
     );
   }
 
-  // We can't see the host, so we can't answer the question. Say what we last knew and
-  // when — the one useful thing an unverified badge has to offer. Dated on
-  // `lastReachedAt`, NOT on the last check: a failed probe seconds ago is not a sighting,
-  // and "last reached 4 seconds ago" under an Offline chip is its own small lie.
+  // We can't see the host, so we can't answer the question.
   const lastKnown = state.traefikEnabled ? "running" : "not running";
   const tip =
     state.status === "provisioning"

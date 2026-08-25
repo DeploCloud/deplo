@@ -33,39 +33,20 @@ export default async function AppDomainsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The ADDRESS of the host this app runs on, asked about the app — not the
-  // fleet. Listing every server to find one is a team-wide read that a member
-  // limited to part of the team is refused, and the value a DNS record must
-  // point at is part of their own app rather than the inventory.
+  // The ADDRESS of the host this app runs on, asked about the app — not the fleet.
   const [domains, serverIp] = await Promise.all([
     listDomains(project.id),
     serverIpForApp(project.id),
   ]);
-  // A zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`)
-  // the user can drop into the Domain field with one click — resolved here so the
-  // server-only IP detection never reaches the client bundle. This is a fresh
-  // suggestion for ADDING a domain (the app's own auto domain already exists),
-  // so freshly-generated words are fine.
-  // The public IPv4 a custom domain's A record must point at — the IP of the
-  // server THIS project runs on (server-specific, not a shared address). Resolved
-  // server-side and threaded to both the nip.io suggestion and the misconfigured
-  // hint on each domain row, so the server-only IP detection never reaches the
-  // client bundle.
+  // A zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`) the
+  // user can drop into the Domain field with one click — resolved here so the
+  // server-only IP detection never reaches the client bundle.
   const suggestedDomain = productionDomain(project.slug, serverIp);
   // Whether each row routes to a compose service or to the app's single
   // container — the authoritative source check, not "does the app carry compose
   // text" (an app can keep leftover YAML while deploying a repo or an image).
   const isComposeStack = usesComposeStack(project);
-  // The Container column only says something when there is a choice to say it
-  // about. A single-image app has exactly one container, and so does a one-service
-  // stack: the column would then repeat the same string on every row — the very
-  // thing that made the old "App" column useless. It is dropped in that case (the
-  // Edit dialog still names the container), and shown when the stack really has
-  // more than one service, where each domain differs by exactly this.
-  //
-  // The one exception is a row that names NO service on a stack: it routes
-  // nowhere, and that warning lives in this cell, so the column stays even on a
-  // one-service stack while such a row exists.
+  // The Container column only says something when there is a choice to say it about.
   const containerCount = isComposeStack
     ? composeServiceNames(project.compose).length
     : 1;
@@ -73,19 +54,9 @@ export default async function AppDomainsPage(
     containerCount > 1 ||
     (isComposeStack && domains.some((d) => !(d.service ?? "").trim()));
 
-  // Every domain mutation now re-applies routing to the running container itself
-  // (see `applyRouting` in lib/graphql/types/domain.ts), so a settled domain is
-  // genuinely live and needs no nagging. What is still NOT live is a host whose
-  // DNS hasn't checked out — `pending`/`misconfigured` after the add-time check,
-  // `error` after an unexpected failure. Those are filtered out of the router on
-  // purpose; while any exist, the auto-check callout below re-verifies them on
-  // an interval so they start routing on their own the moment DNS resolves.
-  //
-  // `cloudflare` is excluded despite rendering amber/unverified: it is settled
-  // as far as DNS is concerned. Re-resolving a proxied host returns Cloudflare's
-  // anycast IPs every time, so the poller could never learn anything new and the
-  // "Waiting for DNS" callout would sit there forever on a domain that is very
-  // likely working. Its caveat is carried per-row instead (DomainRow).
+  // Every domain mutation now re-applies routing to the running container itself (see
+  // `applyRouting` in lib/graphql/types/domain.ts), so a settled domain is genuinely
+  // live and needs no nagging.
   const unsettledDomains = domains
     .filter((d) => d.status !== "valid" && d.status !== "cloudflare")
     .map((d) => ({ id: d.id, name: d.name, status: d.status }));
@@ -121,17 +92,16 @@ export default async function AppDomainsPage(
           />
         </div>
 
-        {/* The addresses a migration could not keep. Above the DNS callout on
-            purpose: it explains WHY the hostnames in the table are not the ones
-            the app used to answer on, which is the first question the table
-            raises for someone who just imported. */}
+        {/**
+         * The addresses a migration could not keep. Above the DNS callout on purpose: it
+         * explains WHY the hostnames in the table are not the ones the app used to answer
+         * on, which is the first question the table raises for someone who just imported.
+         */}
         <ImportedDomainsNotice appId={project.id} domains={importedDomains} />
 
-        {/* Only a host that has NOT checked out is off the router (see
-            `unsettledDomains`). While any exist, this client component both
-            explains the wait AND re-checks their DNS automatically on an
-            interval — the moment a record resolves, the same server path a
-            manual Verify uses flips the domain routable and applies routing. */}
+        {/**
+         * Only a host that has NOT checked out is off the router (see `unsettledDomains`).
+         */}
         {unsettledDomains.length > 0 && (
           <DomainDnsAutoCheck domains={unsettledDomains} serverIp={serverIp} />
         )}
@@ -151,12 +121,10 @@ export default async function AppDomainsPage(
               <TableHeader>
                 <TableRow>
                   <TableHead>Domain</TableHead>
-                  {/* What the hostname reaches, not who owns it: the owning App
-                      is the page you are already on, so its name was the same
-                      on every row. Only rendered when the app has more than one
-                      container to route to (see `showContainer`) — otherwise
-                      every row would name the same one. Sized so a real compose
-                      service name fits on one line instead of wrapping. */}
+                  {/**
+                   * What the hostname reaches, not who owns it: the owning App is the page you are
+                   * already on, so its name was the same on every row.
+                   */}
                   {showContainer && (
                     <TableHead className="w-56">Container</TableHead>
                   )}

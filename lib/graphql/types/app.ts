@@ -1149,10 +1149,9 @@ builder.mutationFields((t) => ({
       const project = await getAppById(appId);
       if (!project) throw new Error("App not found");
       const yaml = await renderAppStack(project.id);
-      // The preview is served at the `view` floor: mask every env VALUE
-      // (single-image stacks inline the resolved plaintext) AND the basic-auth
-      // htpasswd label, which rides a Traefik label rather than `environment:`
-      // and so was readable by anyone who could open the app at all.
+      // The preview is served at the `view` floor: mask every env VALUE (single-image
+      // stacks inline the resolved plaintext) AND the basic-auth htpasswd label, which
+      // rides a Traefik label rather than `environment:` and so was readable by anyone
       return yaml === null ? null : redactComposeForDisplay(yaml);
     },
   }),
@@ -1280,22 +1279,9 @@ async function reloadApp(id: string): Promise<AppSummary> {
 /* ------------------------------------------------------------------ */
 
 /**
- * Live project status, served over SSE on the same `/api/graphql` endpoint
- * (Yoga negotiates `text/event-stream` for subscriptions — no separate
- * WebSocket server). Pushes a fresh project snapshot whenever the app's
- * power/deploy state changes, so the dashboard reflects start/stop/deploy
- * without a reload and stays in sync across every connected client.
- *
- * Lives here (not a separate module) so the only edge to `AppRef` and the
- * data layer stays within this file — a cross-module import of `AppRef`
- * created a second evaluation path to this module under Turbopack and tripped a
- * duplicate-type registration.
- *
- * IMPORTANT — no cookies in the stream. A subscription's async iterator runs
- * AFTER the HTTP handler returns the streaming Response, so Next's `cookies()`
- * is no longer callable. The caller's team is resolved from the GraphQL context
- * (`ctx.teamId`, established in request scope by buildContext); every lookup in
- * the generator uses the cookie-free `*ForTeam` data seams.
+ * Live project status, served over SSE on the same `/api/graphql` endpoint (Yoga
+ * negotiates `text/event-stream` for subscriptions — no separate WebSocket
+ * server).
  */
 builder.subscriptionType({});
 
@@ -1325,13 +1311,9 @@ builder.subscriptionFields((t) => ({
 }));
 
 /**
- * Live count of the team's in-flight builds. Cookie-free like the stream above:
- * team and principal come from the GraphQL context, and the count re-reads
- * through the explicit-argument seam on every ping.
- *
- * It listens on the instance-wide `appActivity` channel because a team-wide
- * feed has no per-resource key to filter on. Every app change wakes it; only a
- * CHANGED count is pushed, so a start/stop that moves nothing emits nothing.
+ * Live count of the team's in-flight builds. It listens on the instance-wide
+ * `appActivity` channel because a team-wide feed has no per-resource key to filter
+ * on.
  */
 export async function* activeDeploymentsStream(
   teamId: string | null,
@@ -1362,12 +1344,9 @@ export async function* appStatusStream(
   userId: string | null,
 ): AsyncGenerator<AppSummary> {
   if (!teamId || !userId) throw new Error("App not found");
-  // Cookie-free (PLAN §6): both lookups take the explicit `teamId` + `userId`
-  // and query Postgres directly — they never call a cookie-reading helper, so
-  // they remain callable across the async-iteration ticks of this long-lived SSE
-  // response. They also answer the per-app access question, so an app inside a
-  // folder this member can't see is "not found" here exactly as it is on its own
-  // page — a live status feed must not be the way around folder privacy.
+  // Cookie-free (PLAN §6): both lookups take the explicit `teamId` + `userId` and
+  // query Postgres directly — they never call a cookie-reading helper, so they remain
+  // callable across the async-iteration ticks of this long-lived SSE response.
   const project = await findAppSummaryBySlugForTeam(slug, teamId, userId);
   if (!project) throw new Error("App not found");
   const appId = project.id;
@@ -1375,10 +1354,7 @@ export async function* appStatusStream(
   // Initial snapshot — a fresh subscriber paints current state immediately.
   yield project;
 
-  // Forward each change ping as a freshly-reloaded snapshot. The payload is the
-  // changed app's id (always this app's, given the keyed channel). If the app was
-  // deleted — or moved somewhere this member can no longer reach — mid-stream,
-  // summarizeForTeam returns null → end.
+  // Forward each change ping as a freshly-reloaded snapshot.
   for await (const changedId of pubSub.subscribe("appChanged", appId)) {
     const next = await summarizeForTeam(changedId, teamId, userId);
     if (!next) return;

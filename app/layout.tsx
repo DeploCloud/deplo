@@ -42,10 +42,9 @@ export const metadata: Metadata = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // Zero-flash theming WITHOUT an inline bootstrap script (React 19.2 refuses to
-  // run scripts rendered through React and warns): the client writes the resolved
-  // theme to a `theme` cookie, and the server paints the matching <html> class
-  // here on the next load. Defaults to dark when the cookie is absent.
+  // Zero-flash theming WITHOUT an inline bootstrap script (React 19.2 refuses to run
+  // scripts rendered through React and warns): the client writes the resolved theme
+  // to a `theme` cookie, and the server paints the matching <html> class here on the
   const stored = (await cookies()).get("theme")?.value;
   const theme = stored === "light" ? "light" : "dark";
 

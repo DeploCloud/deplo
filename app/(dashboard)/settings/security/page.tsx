@@ -27,11 +27,9 @@ export default async function SettingsSecurityPage() {
     listMySessions(),
     listMyPasskeys(),
   ]);
-  // Two questions, and the card needs both (ADR-0024 §3). Owning a usable
-  // passkey is what makes turning the authenticator app OFF allowed - the server
-  // asks exactly that, so the button must agree with it. Whether the passkey is
-  // carrying THIS session is what the copy has to describe, because a password
-  // session is blocked in a mandated team however many passkeys the account owns.
+  // Two questions, and the card needs both (ADR-0024 §3). Owning a usable passkey is
+  // what makes turning the authenticator app OFF allowed - the server asks exactly
+  // that, so the button must agree with it.
   const hasPasskey = user ? await userHasPasskey(user.id) : false;
   const passkeyStanding = !hasPasskey
     ? ("none" as const)

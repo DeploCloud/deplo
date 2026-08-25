@@ -10,17 +10,9 @@ import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { providerFor } from "@/lib/git/providers";
 
 /**
- * Inbound push webhook for every git provider that is not GitHub.
- *
- * ONE route for all of them, keyed by the opaque `token` in its own URL: that
- * token identifies the connection, and the connection says which provider sent
- * the delivery and which secret verifies it. Sniffing headers to guess the
- * provider would be both fragile and a way to pick the verification rule from
- * attacker-controlled input.
- *
- * Session-free by construction, like GitHub's: a delivery is authenticated by
- * its signature, never by a user. What happens after verification is the shared
- * dispatcher, so the trigger rules are the same ones GitHub gets.
+ * Inbound push webhook for every git provider that is not GitHub. Sniffing headers
+ * to guess the provider would be both fragile and a way to pick the verification
+ * rule from attacker-controlled input.
  */
 export async function POST(
   request: Request,
@@ -44,12 +36,9 @@ export async function POST(
   if (!api) return new Response("not found", { status: 404 });
 
   const secret = decryptSecret(conn.webhookSecretEnc);
-  // An unreadable secret is NOT an unsigned delivery. `decryptSecret` fails
-  // closed to `""`, and every verifier below would then compare against
-  // something an attacker can produce themselves: an empty token for GitLab, an
-  // HMAC under an empty key for Gitea and Bitbucket. A connection is always
-  // minted WITH a secret, so empty here means the ciphertext stopped opening -
-  // refuse, exactly as the GitHub route does on the same condition.
+  // An unreadable secret is NOT an unsigned delivery. A connection is always minted
+  // WITH a secret, so empty here means the ciphertext stopped opening - refuse,
+  // exactly as the GitHub route does on the same condition.
   const verdict = secret ? api.verify(secret, request.headers, raw) : "bad";
   if (verdict === "bad") {
     // Same trap GitHub's route names: a rotated DEPLO_SECRET leaves a webhook

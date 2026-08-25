@@ -38,12 +38,9 @@ export default async function AppBackupsPage(
   // often first wants a backup: arriving at an app's Backups tab and finding a
   // destination already there is the difference between one click and a detour.
   await ensureDefaultDestination();
-  // `listDestinationOptions`, NOT `listDestinations`: the second is team-wide
-  // only, and using it here meant a member scoped to one folder saw an empty
-  // list - so every artifact read "Unknown destination", the download button
-  // vanished, and the page claimed no destination was configured while
-  // disabling the buttons that would have made one. They held `manage_backups`
-  // on this app and had no way to use it.
+  // `listDestinationOptions`, NOT `listDestinations`: the second is team-wide only,
+  // and using it here meant a member scoped to one folder saw an empty list - so
+  // every artifact read "Unknown destination", the download button vanished, and the
   const [
     allBackups,
     runs,

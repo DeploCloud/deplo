@@ -6,14 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
 /**
- * The agent version pill on a server card — a plain fact, never a verdict.
- *
- * It used to turn amber whenever the reported version was behind the latest
- * GitHub release. That fired on every healthy server the day a release landed,
- * and what actually decides whether a host can do something is the agent's
- * feature list (the readiness report's "Agent features" row), not its version
- * number. The server's actions offer "Update agent" whenever the host is not on
- * the current release (`agentUpdateAvailable`), so this pill never has to nag.
+ * The agent version pill on a server card — a plain fact, never a verdict. The
+ * server's actions offer "Update agent" whenever the host is not on the current
+ * release (`agentUpdateAvailable`), so this pill never has to nag.
  */
 export function AgentVersionBadge({ version }: { version: string | null }) {
   if (!version) {

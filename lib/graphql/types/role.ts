@@ -173,10 +173,9 @@ builder.mutationFields((t) => ({
         description: input.description ?? null,
         capabilities: (input.capabilities ?? undefined) as never,
         requireTwoFactor: input.requireTwoFactor ?? false,
-        // Three states, not two: a scope to set, an explicit clear, or absent
-        // (leave the reach alone). Absent must never mean "widen", or every
-        // client that predates this field would quietly unlimit every role it
-        // renames.
+        // Three states, not two: a scope to set, an explicit clear, or absent (leave the
+        // reach alone). Absent must never mean "widen", or every client that predates this
+        // field would quietly unlimit every role it renames.
         scope: input.clearScope
           ? null
           : input.scope

@@ -18,10 +18,7 @@ function one(value: string | string[] | undefined): string {
 export default async function TemplatesPage(props: PageProps<"/templates">) {
   const searchParams = await props.searchParams;
 
-  // The catalogue is a catalogue: anyone on the team may read it. Deploying is
-  // the gated action, and its gate lives on the template's own page (and, for
-  // real, in `createApp`) — locking the whole store only makes a member ask an
-  // admin what is inside it.
+  // The catalogue is a catalogue: anyone on the team may read it.
   const placement = await resolveOverviewPlacement(
     placementFromSearchParams(searchParams),
   );
@@ -45,10 +42,9 @@ export default async function TemplatesPage(props: PageProps<"/templates">) {
   return (
     <TemplateStore
       templates={templates.map(toStoreTemplate)}
-      // Not awaited: reading the accents fetches and decodes every logo in the
-      // catalogue, which costs a cold process seconds. The store streams the
-      // cards behind a <Suspense> and paints the band and the chips now.
-      // A catalogue having a bad day costs colour, never the page.
+      // Not awaited: reading the accents fetches and decodes every logo in the catalogue,
+      // which costs a cold process seconds. A catalogue having a bad day costs colour,
+      // never the page.
       accents={templateAccents(templates).catch(() => ({}))}
       placement={placement}
       initialQuery={one(searchParams.q)}

@@ -1,9 +1,7 @@
 /**
- * Liveness probe for the browser's connection watchdog
- * (ServerConnectionGuard). Deliberately dependency-free — no auth, no DB —
- * because it answers exactly one question: "is the web server that hosts the
- * panel reachable?". The proxy matcher already skips /api, so this responds
- * even without a session cookie.
+ * Liveness probe for the browser's connection watchdog (ServerConnectionGuard).
+ * Deliberately dependency-free — no auth, no DB — because it answers exactly one
+ * question: "is the web server that hosts the panel reachable?"
  */
 import { connection } from "next/server";
 

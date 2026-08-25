@@ -115,10 +115,7 @@ export const BackupDestinationRef = builder
 
 /**
  * A destination as a PICKER needs it: what to call it, where it points, how it
- * last answered. Its own type rather than a slice of the one above, because the
- * two answer to different gates — this one is readable by any member of the
- * team, and it carries nothing that would not already be visible to someone who
- * can take a backup.
+ * last answered.
  */
 const BackupDestinationOptionRef = builder
   .objectRef<DestinationOption>("BackupDestinationOption")
@@ -171,12 +168,6 @@ function destinationWhereField(d: DestinationDTO): string {
 
 /**
  * The recovery key for a server destination: the age identity in the clear.
- *
- * One of exactly two sanctioned exceptions to "never add a show-secret
- * affordance" (the other is the basic-auth password), and it earns it: without
- * this key, a rotated DEPLO_SECRET or a lost control plane makes every artifact
- * on that disk unreadable forever. With it, `age -d -i key.txt` reads them on
- * any machine.
  */
 const RecoveryKeyRef = builder
   .objectRef<{

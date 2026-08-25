@@ -4,26 +4,9 @@ import { templateImageBytes } from "@/templates/catalog";
 import type { CatalogTemplate } from "@/templates/types";
 
 /**
- * What the store needs to know about a template's logo, read once from its
- * pixels: the hue to wash the card in, and whether the logo needs a plate to be
- * visible at all.
- *
- * **Hue.** Only a hue crosses to the browser — lightness and chroma are fixed in
- * CSS — so a veil can never come out as two tints, and a garish logo cannot
- * produce a garish card. A logo with no usable hue gets none rather than a hue
- * nobody would call that logo's colour: a black wordmark is not "red".
- *
- * **Tone.** A logo drawn only in black vanishes on the dark theme's near-black
- * card, and one drawn only in white vanishes on the light theme's white one.
- * Those get `tone`, which does two things: the card puts them on a plate in that
- * theme only, and it washes them in the theme's own ink instead of a hue, so a
- * white wordmark is not the one flat tile in a grid of lit ones. Measured over
- * the live catalogue: 308 of 388 logos carry a hue, 38 are black-only, 35 are
- * white-only, 7 say nothing at all.
- *
- * A logo that HAS a hue never gets a plate, and that distinction is the whole
- * point: a dark navy mark reads loud on black because of its chroma, so judging
- * on lightness alone would plate logos that are perfectly visible.
+ * What the store needs to know about a template's logo, read once from its pixels:
+ * the hue to wash the card in, and whether the logo needs a plate to be visible at
+ * all.
  */
 
 /** Below this OKLCH chroma a pixel is grey, white or black — it has no colour. */
@@ -36,10 +19,9 @@ const MIN_COLOURED_PIXELS = 4;
 /** Neutral ink below this OKLab lightness is "black", above it is "white". */
 const MID_LIGHTNESS = 0.5;
 
-/** Concurrent logo fetches. The catalog answers `ratelimit-limit: 600`/min and
- *  a cold cache needs one request per template; 386 sockets opened at once on
- *  one origin leaves nothing for anyone else sharing that bucket. Measured: a
- *  whole cold catalogue resolves in well under a second at this width. */
+/**
+ * Concurrent logo fetches.
+ */
 const CONCURRENCY = 16;
 /** A cold whole-catalogue pass has this long before the page renders untinted.
  *  Measured cost is ~0.5s, so this only ever fires on a catalogue having a very
@@ -78,12 +60,8 @@ function oklab(r8: number, g8: number, b8: number) {
 }
 
 /**
- * What a card needs to draw a logo well.
- *
- * `hue` — the wash behind the card, absent when the logo has no colour.
- * `tone` — the theme the logo would vanish into, absent when it vanishes into
- * neither. `"dark"` means the logo is drawn in black and needs a plate on the
- * dark theme; `"light"` means the opposite.
+ * What a card needs to draw a logo well. `tone` — the theme the logo would vanish
+ * into, absent when it vanishes into neither.
  */
 export interface LogoAccent {
   hue?: number;
@@ -173,9 +151,6 @@ export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
 /**
  * slug → what its logo needs. A logo never changes under its slug, so this is
  * computed at most once per process.
- *
- * The value is the in-flight PROMISE, not the result: two concurrent first
- * renders would otherwise fetch and decode the same 386 logos twice.
  */
 const memo = new Map<string, Promise<LogoAccent>>();
 
@@ -206,12 +181,7 @@ export function templateAccent(
 }
 
 /**
- * Accents for a whole catalogue, keyed by slug. A logo that needs nothing is
- * simply absent, so a caller reads `accents[slug]` and gets `undefined`.
- *
- * Bounded concurrency, and a wall-clock budget: whatever is not resolved in
- * time is left out of this pass and picked up by the next one, rather than
- * holding the page open on a catalogue having a bad day.
+ * Accents for a whole catalogue, keyed by slug.
  */
 export async function templateAccents(
   templates: CatalogTemplate[],

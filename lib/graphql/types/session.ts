@@ -8,12 +8,6 @@ import {
 
 /**
  * The signed-in devices of the CURRENT user.
- *
- * Everything here is `loggedIn` rather than capability-gated: a session belongs
- * to a person, not a team, and the data layer resolves the owner itself. There
- * is deliberately no way to read or revoke anyone else's sessions through this
- * API — not even for an instance admin, who has `revokeAllSessions` on the user
- * admin path for that and does not need a second door.
  */
 
 const DeviceKindEnum = builder.enumType("DeviceKind", {

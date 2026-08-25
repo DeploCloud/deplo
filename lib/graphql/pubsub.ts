@@ -8,26 +8,8 @@ import { Client } from "pg";
 import { databaseUrl, getPool, isPostgresEnabled, isTestEnv } from "../db/pg";
 
 /**
- * In-process publish/subscribe used to push live updates to GraphQL
- * subscribers over SSE. One logical channel per project, keyed by project id:
- *
- *   pubSub.publish("appChanged", appId, appId)  // an app changed
- *   pubSub.subscribe("appChanged", appId)           // pings for that id
- *
- * The payload is just the app id — a publish means "this app changed,
- * re-read it". The subscription resolver reloads the app from the store and
- * emits the fresh snapshot, so subscribers never receive (and we never have to
- * serialize) a partial diff. The keyed form `[id, payload]` is what lets
- * `subscribe(topic, id)` filter to a single project; a payload-only channel
- * would fan every app's changes out to every subscriber.
- *
- * Why `globalThis`, same as the Drizzle client (see `lib/db/client.ts`): in `next dev` the
- * RSC layer and the route-handler layer are compiled into separate module
- * registries, so a module-level `const pubSub` would exist as TWO independent
- * emitters in ONE process — a publish from the data layer (which runs in the
- * route-handler/server-action registry) would never reach a subscriber created
- * by the GraphQL route. Pinning it on `globalThis` collapses every module
- * instance onto a single emitter.
+ * In-process publish/subscribe used to push live updates to GraphQL subscribers
+ * over SSE.
  */
 type Channels = {
   appChanged: [id: string, payload: string];
@@ -79,11 +61,7 @@ export function publishDatabaseChanged(databaseId: string): void {
 }
 
 /**
- * The one key the `cleanupRunsChanged` channel uses. Docker cleanup has no
- * per-resource stream to filter: the policy is instance-wide, the history spans
- * every host and only an instance admin may read it, so there is a single
- * logical channel rather than one per server — a keyed channel with a constant
- * key, so it still rides the same `subscribe(topic, id)` shape as the others.
+ * The one key the `cleanupRunsChanged` channel uses.
  */
 export const CLEANUP_RUNS_TOPIC = "instance";
 
@@ -99,26 +77,9 @@ export function publishCleanupRunsChanged(): void {
 /* ------------------------------------------------------------------ */
 
 /**
- * The emitter above is per PROCESS, and for a long time that was the whole
- * story: one `next start`, one emitter, every publish reaching every SSE stream
- * on the instance.
- *
- * It stops being the whole story the moment a second control plane talks to the
- * same database - a rolling restart with an overlap, a second copy someone
- * started by hand, or the horizontally-scaled deploy the scheduler lease has
- * always been written for. The work is shared correctly (the lease decides who
- * drives), but the LIVE view was not: whichever process picked up a migration,
- * a deploy or a cleanup published only to its own subscribers, so a browser
- * attached to the other one sat on the last thing it had heard. A migration that
- * finished at 10:57 was still "in progress" on screen forty minutes later - the
- * row said `done`, the page had simply never been told.
- *
- * So every publish also goes out as a Postgres `NOTIFY`, and one long-lived
- * `LISTEN` per process turns a peer's notification back into a local publish.
- * Postgres is already the one thing every control plane shares; this needs no
- * broker, no new dependency and no port. The payload stays what it always was -
- * an id, "re-read this" - so a notification is never a partial diff and the
- * 8000-byte NOTIFY limit is never in sight.
+ * The emitter above is per PROCESS, and for a long time that was the whole story:
+ * one `next start`, one emitter, every publish reaching every SSE stream on the
+ * instance.
  */
 const NOTIFY_CHANNEL = "deplo_pubsub";
 
@@ -144,9 +105,8 @@ interface RemoteMessage {
 
 /**
  * Read a peer's notification, or `null` for anything not to be republished: our
- * own echo, a channel this version does not know, or a payload that is not one
- * of ours at all (the channel name is a plain string - somebody else's `NOTIFY`
- * can land on it).
+ * own echo, a channel this version does not know, or a payload that is not one of
+ * ours at all (the channel name is a plain string - somebody else's `NOTIFY` can
  */
 export function decodeRemote(raw: string): RemoteMessage | null {
   let m: unknown;
@@ -197,10 +157,7 @@ const gb = globalThis as unknown as { [BRIDGE_KEY]?: BridgeState };
 const bridge: BridgeState = (gb[BRIDGE_KEY] ??= { client: null, retry: null });
 
 /**
- * Start listening for the other control planes. Idempotent, safe to call when
- * there is only ever one process (it costs one connection), and never fatal: a
- * bridge that cannot connect retries, and until it does the instance behaves
- * exactly as it did before this existed.
+ * Start listening for the other control planes.
  */
 export function startPubSubBridge(): void {
   if (!bridgeEnabled() || bridge.client || bridge.retry) return;

@@ -2,28 +2,8 @@ import * as z from "zod";
 import type { Capability } from "../types";
 
 /**
- * The MCP tool table.
- *
- * A tool is DATA, not code: a name, a zod input schema and a GraphQL document.
- * `lib/mcp/execute.ts` runs the document in-process against the schema
- * `/api/graphql` serves, as the token's own principal, so every capability gate,
- * folder grant, token scope clamp and 2FA check applies without being restated
- * here. Adding a tool is adding a row.
- *
- * THREE RULES FOR THIS FILE:
- *
- * 1. **No `reveal*` tool, ever, whatever the token holds.** A secret that enters
- *    a model's context window has left deplo for a third party's logs and cannot
- *    be revoked from there. Masked reads (`list_env`) are the whole story. This
- *    is the ONE place where a capability is not the only gate, and it is
- *    deliberate — see ADR-0021.
- * 2. **Never derive safety from `authScopes`.** `{ loggedIn: true }` sits on
- *    `deleteTeam` and on every folder mutation. `requires` below is a hint used
- *    for filtering `tools/list` and for the settings table; the real refusal
- *    comes from the data layer.
- * 3. **Ids come from a previous call.** Tools take the ids `list_*` returned
- *    rather than resolving names themselves — a resolution layer is one more
- *    thing to get wrong, and a model that just listed the apps already holds it.
+ * The MCP tool table. ** A secret that enters a model's context window has left
+ * deplo for a third party's logs and cannot be revoked from there.
  */
 
 export type ToolRequirement = Capability | "instanceAdmin";
@@ -50,9 +30,7 @@ export interface McpToolDef<
   /**
    * Destroys or replaces something. Its whole effect is `destructiveHint` in
    * `tools/list`, which is what makes an MCP client ask its own user before
-   * running the tool. deplo adds no confirmation of its own: the token's
-   * Capabilities decide, and the prompt belongs to the only party that can
-   * render one.
+   * running the tool.
    */
   destructive?: boolean;
   idempotent?: boolean;
@@ -69,14 +47,9 @@ export interface McpToolDef<
 }
 
 /**
- * Shorthand so every row reads as a table rather than as a type annotation, and
- * so each row's callbacks are typed by ITS OWN zod schema rather than by a
+ * Shorthand so every row reads as a table rather than as a type annotation, and so
+ * each row's callbacks are typed by ITS OWN zod schema rather than by a
  * lowest-common-denominator record.
- *
- * The widening cast is the price of keeping seventy-six differently-shaped tools
- * in one array: a callback taking `{ appId: string }` is not assignable to one
- * taking the generic arg record (parameters are contravariant), and this is the
- * single place that has to know it.
  */
 const tool = <S extends z.ZodObject<z.ZodRawShape>>(
   t: McpToolDef<S>,
@@ -721,10 +694,9 @@ const ENV: McpToolDef[] = [
     description:
       "An app's variables. Secret values are masked and there is no way to reveal them over MCP — read the key names, not the values.",
     group: "Environment",
-    // `manage_env`, not `view`: `listEnv` answers an empty list to anyone
-    // without it rather than throwing, so listing this tool for a `view`-only
-    // token would hand the model a silent lie ("this app has no variables")
-    // instead of a refusal it can report.
+    // `manage_env`, not `view`: `listEnv` answers an empty list to anyone without it
+    // rather than throwing, so listing this tool for a `view`-only token would hand the
+    // model a silent lie ("this app has no variables") instead of a refusal it can
     requires: "manage_env",
     readOnly: true,
     idempotent: true,
@@ -2012,25 +1984,8 @@ const SERVERS: McpToolDef[] = [
 ];
 
 /**
- * Every tool, in the order the settings page groups them.
- *
- * DELIBERATELY ABSENT, and each for a reason worth keeping:
- *  - every `reveal*` (revealConnection, revealBasicAuthPassword,
- *    revealAppDeployHook, revealRecoveryKey): rule 1 above. The env layers have
- *    no reveal left to withhold — a secret variable has no read-back path at all.
- *  - the account surface (updateProfile, changePassword, sessions, 2FA): an API
- *    token is a principal, not a stand-in for the person, and `lib/data` already
- *    refuses every one of these for any token (`requirePersonalSession`).
- *  - createToken / updateToken / revokeToken: an agent must not mint or widen the
- *    credentials it runs on.
- *  - addServer / removeServer: adding or removing a host is trust establishment
- *    and trust revocation, done once, from the UI, by a human.
- *  - restartDeploPanel: it restarts the process serving this very call.
- *  - deleteTeam, transferTeamOwnership, transferInstanceOwner, deleteUser:
- *    ownership is not an agent's decision.
- *  - execConsole / execDatabaseConsole: arbitrary code execution in a live
- *    container. It is what the token preset's threat model calls "RCE by another
- *    name", and a cron job with a reviewed command covers the honest use.
+ * Every tool, in the order the settings page groups them. The env layers have no
+ * reveal left to withhold — a secret variable has no read-back path at all.
  */
 export const MCP_TOOLS: McpToolDef[] = [
   ...DIAGNOSTICS,

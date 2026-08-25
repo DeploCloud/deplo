@@ -10,10 +10,8 @@ export default function DashboardError({
   retry,
 }: {
   error: Error & { digest?: string };
-  // `retry` re-fetches and re-renders the children — including the Server
-  // Components that failed. `reset`, which this used to take, only clears the
-  // boundary and replays the same broken payload, so a transient failure (a
-  // database blip, an agent that timed out) stayed broken until a full reload.
+  // `retry` re-fetches and re-renders the children — including the Server Components
+  // that failed.
   retry: () => void;
 }) {
   // A tab left open across a deplo update asks for chunk files that build

@@ -16,18 +16,8 @@ import {
 } from "./server-health-provider";
 
 /**
- * A server's health chip: the status AND how old that status is, because one without
- * the other is a lie waiting to happen.
- *
- * The rule this component exists to enforce: **a status we haven't confirmed recently
- * is not painted.** Past the provider's staleness window the chip goes grey "Unknown" no
- * matter what the row says — never a confident green for a server nobody has spoken to
- * since it called home three weeks ago. Green means "green, and we checked seconds ago".
- *
- * Reaching "Unknown" while the operator sits on the page is therefore a real signal, not
- * a UI timeout: the provider re-sweeps the fleet on an interval well inside the staleness
- * window, so a chip only goes grey when those sweeps are genuinely failing to reach the
- * server agent.
+ * A server's health chip: the status AND how old that status is, because one
+ * without the other is a lie waiting to happen.
  */
 
 const LABELS: Record<ServerStatus, string> = {
@@ -97,10 +87,9 @@ export function ServerHealthChip({
     );
   }
 
-  // `offline` means nothing answered, and by far the most common cause on a host
-  // that enrolled fine is a firewall: enrolling is the agent dialing OUT, and this
-  // is us dialing IN. Said only here, on the failure - a line about ports on the
-  // install screen is read by every operator to help the few who need it.
+  // `offline` means nothing answered, and by far the most common cause on a host that
+  // enrolled fine is a firewall: enrolling is the agent dialing OUT, and this is us
+  // dialing IN.
   const tip = [
     state.message,
     state.status === "offline" ? AGENT_PORT_NOTICE : null,

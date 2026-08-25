@@ -1,25 +1,7 @@
 /**
  * Roll the current GitHub `releases/latest` agent onto every provisioned server,
- * in the order docs/agents/fleet-rollout.md §4 requires.
- *
- *   node --env-file=.env --require ./lib/test/server-only-shim.cjs \
- *        --import tsx scripts/fleet-update.mts [--dry-run]
- *
- * REAL NODE, NEVER BUN: bun's TLS SAN handling rejects the agent certificate, so
- * every mTLS dial fails. `.mts` because a `.ts` compiles as CJS and rejects the
- * top-level await below.
- *
- * Ordering rules, and what breaks if you ignore them:
- *   - A REMOTE server goes first as the canary. If the new binary is bad, the
- *     control plane is still up to observe it and the blast radius is one host.
- *   - AGENT 0 (this host) goes LAST: it runs the control plane, so a bad agent
- *     there takes out the observer as well as the observed.
- *   - A server with an in-flight deploy is SKIPPED. The agent re-execs itself to
- *     apply the update, which drops the deploy stream mid-build.
- *
- * selfUpdateServerAgent does not persist agent_version, so markServerSeen runs
- * after each success — otherwise the "outdated" badge lags until the health
- * prober happens to re-check.
+ * in the order docs/agents/fleet-rollout.md §4 requires. `.mts` because a `.ts`
+ * compiles as CJS and rejects the top-level await below.
  */
 import { inArray, sql } from "drizzle-orm";
 
@@ -37,14 +19,9 @@ const dryRun = process.argv.includes("--dry-run");
 const localIp = process.env.DEPLO_SERVER_IP ?? "";
 
 /**
- * Servers with a deploy the agent's re-exec would kill.
- *
- * Read through `coalesce(deployments.server_id, apps.server_id)`, exactly like
- * `onServer` in lib/data/deployments.ts, and never off `deployments.server_id`
- * alone: that column is a nullable denormalized mirror of `apps.server_id`, so a
- * bare read makes a null-`server_id` deploy invisible. This check would then
- * come back all-clear and the self-update would `syscall.Exec` straight through
- * the live Deploy stream it exists to protect - a safety check that fails open.
+ * Servers with a deploy the agent's re-exec would kill. This check would then come
+ * back all-clear and the self-update would `syscall.Exec` straight through the
+ * live Deploy stream it exists to protect - a safety check that fails open.
  */
 async function busyServerIds(): Promise<Set<string>> {
   const rows = await getDb()
@@ -58,11 +35,8 @@ async function busyServerIds(): Promise<Set<string>> {
 }
 
 const all = await listAllServers();
-// A MIGRATION SOURCE is not fleet: it is somebody else's machine, registered by
-// the import wizard to be read once and then let go (ADR-0025). Rolling a release
-// onto it is meaningless at best - and it is the one host that can be BEHIND the
-// release rather than on it, which stops the roll dead on a downgrade, before it
-// ever reaches agent 0.
+// A MIGRATION SOURCE is not fleet: it is somebody else's machine, registered by the
+// import wizard to be read once and then let go (ADR-0025).
 const provisioned = all.filter(
   (s) => Boolean(s.agent?.certFingerprint) && !s.importOnly,
 );
@@ -140,10 +114,7 @@ for (const [i, s] of order.entries()) {
     break;
   }
 
-  // A host ALREADY on the release has nothing to come back as. The documented
-  // playbook is canary-one-by-hand then roll the rest, so without this the roll
-  // stops dead on the very host the canary just updated — and everything after it,
-  // including agent 0, silently never gets the release.
+  // A host ALREADY on the release has nothing to come back as.
   if (target && target === before) {
     console.log(`OK    ${label} — already on ${before}`);
     continue;

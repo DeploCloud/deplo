@@ -6,42 +6,18 @@ import { runWithIdentity } from "@/lib/auth/request-context";
 import { owningTeamId } from "@/lib/data/deploy-hook";
 
 /**
- * The deploy hook: `POST /api/apps/<id>/deploy-hook/<token>` deploys the app.
- *
- *   curl -X POST -H "Authorization: Bearer deplo_…" \
- *     https://deplo.example.com/api/apps/prj_123/deploy-hook/<token>
- *
- * TWO secrets, on purpose (see lib/data/deploy-hook.ts). The URL's last segment
- * says WHICH app — rotatable, and useless on its own. The bearer API token says
- * WHO — it resolves to a real member, and the deploy then runs through the exact
- * same gates the dashboard button does (`redeploy` re-checks the team, the folder
- * grant, `deploy_apps` and the two-factor policy), so a hook can never do more
- * than the person whose token it carries. Revoking that token stops every hook
- * call made with it everywhere, without touching a single app's settings.
- *
- * REST rather than GraphQL because a webhook sender — GitLab, a CI runner, a
- * registry — posts to a URL it is given and cannot compose a query. It is the
- * one endpoint here authenticated by bearer token INSTEAD of the session cookie;
- * every other app route under /api/apps is cookie-authenticated.
+ * The deploy hook: `POST /api/apps/<id>/deploy-hook/<token>` deploys the app. REST
+ * rather than GraphQL because a webhook sender — GitLab, a CI runner, a registry —
+ * posts to a URL it is given and cannot compose a query.
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Opening the hook URL in a browser is the first thing anyone does with it, and
- * a bare 405 renders as the browser's own "this page isn't working" — which
- * reads as "Deplo is broken", not "you used the wrong verb".
- *
- * So GET answers in JSON, saying what to do instead. It deliberately answers the
- * SAME thing for every URL under this path: it never looks at the app or the
- * token, so it can't become an oracle for guessing either. It also never
- * deploys — a deploy from a GET would fire on every link preview, prefetch and
- * security scanner that ever touched the URL.
- *
- * 405 (with the `Allow` header RFC 9110 requires) rather than 200: the request
- * genuinely was not acceptable, and a 200 here would make a "test my URL" click
- * look like a working deploy.
+ * Opening the hook URL in a browser is the first thing anyone does with it, and a
+ * bare 405 renders as the browser's own "this page isn't working" — which reads as
+ * "Deplo is broken", not "you used the wrong verb".
  */
 export async function GET() {
   return Response.json(
@@ -68,18 +44,11 @@ export async function POST(
   // exists, or whether its hook is switched off.
   const header = request.headers.get("authorization") ?? "";
   // The scheme is case-INSENSITIVE (RFC 9110 §11.1) and `lib/graphql/context.ts`
-  // already treats it that way. Matching `Bearer ` exactly here meant a sender
-  // that writes `bearer` — some CI runners and HTTP clients do — got a 401 from
-  // the hook while the same credential worked on /api/graphql.
+  // already treats it that way.
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   const { id: hookAppId } = await ctx.params;
-  // A token's scope can span teams, so say which one this call is about: the
-  // team that owns the app in the URL. An un-gated id → team_id lookup, which
-  // leaks nothing on its own — every check below still runs as the token.
-  // A token whose member is under an unmet two-factor policy makes
-  // `authenticateToken` THROW rather than answer — it is a refusal with a reason
-  // ("the X role requires two-factor authentication"), and a CI job debugging a
-  // suddenly-failing hook deserves to read it instead of a bare 500.
+  // A token's scope can span teams, so say which one this call is about: the team
+  // that owns the app in the URL.
   let principal = null;
   let refusal = "";
   try {

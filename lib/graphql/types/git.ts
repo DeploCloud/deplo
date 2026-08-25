@@ -15,9 +15,6 @@ import type { GitProviderId } from "@/lib/types";
 
 /**
  * Git providers other than GitHub (GitLab, Bitbucket, Gitea/Forgejo, plain git).
- * Resolvers stay thin: every one of them delegates straight to
- * `lib/data/git-connections.ts`, which is where the team scoping and the
- * `manage_git` gate actually live.
  */
 
 /* ------------------------------------------------------------------ */

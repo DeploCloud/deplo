@@ -13,14 +13,8 @@ import { ConsentForm } from "@/components/oauth/consent-form";
 import { ConsentRefusal } from "@/components/oauth/consent-refusal";
 
 /**
- * The OAuth consent screen — deplo's half of connecting an AI client.
- *
- * Deliberately NOT under `app/(auth)`: that layout redirects a signed-in user to
- * the dashboard, which is everyone who can reach this page.
- *
- * It is a token-minting form, because approving it mints a real API token. The
- * team, the capabilities and the scope are the same controls Settings → API
- * tokens uses, and the same data functions gate the submit.
+ * The OAuth consent screen — deplo's half of connecting an AI client. It is a
+ * token-minting form, because approving it mints a real API token.
  */
 export default async function OAuthConsentPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -35,11 +29,9 @@ export default async function OAuthConsentPage(props: {
 
   if (!clientId) redirect("/settings/mcp");
 
-  // Refusing to render without the provider's signature is not the security
-  // boundary — the consent endpoint verifies it for real (and its expiry), and
-  // the mint requires the record that endpoint writes. It is what stops this
-  // page being a lookup service for "does this client_id exist, and what is it
-  // called", usable by anyone who happens to be signed in.
+  // Refusing to render without the provider's signature is not the security boundary
+  // — the consent endpoint verifies it for real (and its expiry), and the mint
+  // requires the record that endpoint writes.
   if (typeof params.sig !== "string" || !params.sig)
     return (
       <ConsentRefusal

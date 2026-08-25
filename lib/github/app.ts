@@ -17,14 +17,8 @@ import { requireActiveTeamId, requireTeamWide } from "../membership";
 import type { GithubApp, GithubInstallation } from "../types";
 
 /**
- * GitHub App runtime: mints the JWTs and short-lived installation tokens that
- * let Deplo list and clone the repositories a user granted access to.
- *
- * Security:
- *  - The App private key (PEM) and secrets live encrypted at rest; they are
- *    decrypted only here, server-side, and never logged or returned to clients.
- *  - Installation tokens are short-lived (≈1h) and cached in memory only.
- *  - All calls target the fixed api.github.com host (no SSRF surface).
+ * GitHub App runtime: mints the JWTs and short-lived installation tokens that let
+ * Deplo list and clone the repositories a user granted access to.
  */
 
 const API = "https://api.github.com";
@@ -210,20 +204,14 @@ export interface GithubRepoSummary {
 
 /** Repositories the installation can access (paginated, capped). */
 /**
- * Refuse an installation id that is not the active team's. `githubRepos` /
- * `githubBranches` are `loggedIn`-only (they need no capability — a member picks
- * a repo when creating an app), so without this any member could pass another
- * team's random `ghi_…` id and enumerate that team's private repositories and
- * branch names through its installation token. Scoped via `github_apps.teamId`,
- * the same join `listGithubInstallations` uses.
+ * Refuse an installation id that is not the active team's.
  */
 async function assertInstallationInActiveTeam(
   installationId: string,
 ): Promise<void> {
   // A NARROWED API token (scoped to specific projects/apps) must not enumerate the
-  // whole team's git inventory through the installation token — this is a
-  // team-level browse, and a token creating an app passes its repo URL directly.
-  // Same rule the git-connection browse applies (`listGitRepos`).
+  // whole team's git inventory through the installation token — this is a team-level
+  // browse, and a token creating an app passes its repo URL directly.
   await requireTeamWide("the team's git repositories");
   const teamId = await requireActiveTeamId();
   const row = (
@@ -322,17 +310,6 @@ async function githubGet(
 /**
  * Whether a repository is visible to an installation - or, with a null id, to an
  * anonymous caller, which is exactly what a credential-less clone gets.
- *
- * Deliberately NOT team-gated, unlike {@link listRepoBranches} and
- * {@link listInstallationRepos}: it runs at the deploy edge, where there is no
- * session to resolve a team from. That is safe only because it answers a
- * yes/no about a repo the CALLER already named and returns no repository data -
- * but it means the answer is a private-repo existence oracle, so **this must
- * never be exposed through GraphQL, MCP or any route**. Its only caller is
- * `repoCloneRefusal` in lib/git/repo-access.ts.
- *
- * Throws with the status spelled into the message, which is what `isRefusal`
- * reads to tell a real refusal (401/403/404) from a bad minute at GitHub.
  */
 export async function checkRepoVisible(
   installationId: string | null,
@@ -358,13 +335,8 @@ export interface RepoTreeBlob {
 }
 
 /**
- * The recursive git tree of a GitHub repo at a ref (branch name, or "HEAD" for
- * the default branch), as a flat list of blob entries. Best-effort and
- * non-throwing: an inaccessible repo / bad ref / rate limit yields `[]` so a
- * caller (favicon auto-detection) degrades to "no icon found" rather than
- * failing. Uses the installation token for private repos and no auth for public
- * ones. GitHub caps recursive trees (~100k entries) and sets `truncated` past
- * that; we use whatever came back — a project's icon lives near the root anyway.
+ * The recursive git tree of a GitHub repo at a ref (branch name, or "HEAD" for the
+ * default branch), as a flat list of blob entries.
  */
 export async function listRepoTree(
   fullName: string,
@@ -389,10 +361,8 @@ export async function listRepoTree(
 }
 
 /**
- * Fetch a single git blob's raw bytes by SHA, or null on any failure. GitHub's
- * blobs API returns the content base64-encoded (with embedded newlines, which
- * `Buffer.from(…, "base64")` tolerates). Used to pull an auto-detected icon's
- * bytes so they can be inlined as the service logo. Best-effort; never throws.
+ * Fetch a single git blob's raw bytes by SHA, or null on any failure. Best-effort;
+ * never throws.
  */
 export async function fetchRepoBlob(
   fullName: string,
@@ -448,16 +418,8 @@ export async function installationCloneUrl(
 
 /**
  * What a connected GitHub App can actually do — read live from GitHub, never
- * stored, because the operator fixes it on github.com and a cached answer would
- * go stale the moment they did.
- *
- * The distinction that matters: `GET /app` reports what the App DECLARES. An
- * installation only receives those permissions once the installer accepts them,
- * so a freshly-declared permission can be present here and still absent in
- * practice. `pull_requests: write` covers both reading pull requests and posting
- * the preview comment (a pull request's conversation comment is an issue
- * comment, and GitHub accepts either `issues: write` or `pull_requests: write`
- * for it) — so one permission, not two.
+ * stored, because the operator fixes it on github.com and a cached answer would go
+ * stale the moment they did.
  */
 export interface GithubAppCapabilities {
   events: string[];
@@ -483,11 +445,6 @@ const CAPABILITIES_TTL_MS = 60_000;
 /**
  * The App's declared events + permissions, cached for a minute so an RSC render
  * that asks once per app doesn't spend a round-trip each time.
- *
- * Non-throwing: a rate limit, a revoked key or a deleted App yields `null`, and
- * every caller treats that as "could not check" rather than "broken". Accusing a
- * correctly-configured App of needing an update would be worse than saying
- * nothing.
  */
 export async function readAppCapabilities(
   appDbId: string,
@@ -608,13 +565,8 @@ interface RawPullRequest {
 }
 
 /**
- * Open pull requests on a repo, most recently updated first. ONE page: a picker
- * showing a hundred pull requests is already past the point of being useful, and
- * the automatic path covers the rest.
- *
- * Needs only `pull_requests: read` — which every Deplo GitHub App has always
- * requested. That is what makes the manual "Deploy a pull request" flow work
- * before anyone upgrades anything.
+ * Open pull requests on a repo, most recently updated first. That is what makes
+ * the manual "Deploy a pull request" flow work before anyone upgrades anything.
  */
 export async function listOpenPullRequests(
   installationId: string,
@@ -655,17 +607,8 @@ export async function getPullRequestState(
 }
 
 /**
- * Create or update Deplo's ONE sticky comment on a pull request.
- *
- * NEVER throws and never rejects: a GitHub failure must not fail a deploy. The
- * caller fires this and moves on. The comment is edited in place rather than
- * re-posted, so a pull request with twenty pushes still has one Deplo comment.
- *
- * A `PATCH` that 404s means somebody deleted it; post once more and stop. The
- * comment always goes to the BASE repo (where the App is installed), so a fork's
- * pull request needs no permission on the fork side.
- *
- * Returns the comment id to store, or null when nothing could be posted.
+ * Create or update Deplo's ONE sticky comment on a pull request. NEVER throws and
+ * never rejects: a GitHub failure must not fail a deploy.
  */
 export async function upsertPullRequestComment(opts: {
   installationId: string;

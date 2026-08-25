@@ -135,10 +135,9 @@ export default async function ActivityPage() {
                             <p className="text-sm text-foreground">
                               {activity.message}
                             </p>
-                            {/* The circle above says WHAT happened; the mark
-                                here says who. A non-human actor ("system" /
-                                "github") and a deleted account resolve to null
-                                and keep the bare name. */}
+                            {/**
+                             * The circle above says WHAT happened; the mark here says who.
+                             */}
                             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                               {activity.actorUser && (
                                 <UserAvatar

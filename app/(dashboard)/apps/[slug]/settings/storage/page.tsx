@@ -22,10 +22,7 @@ export default async function AppStorageSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // Volumes are settable for EVERY source. A compose stack has more than one
-  // possible target, so its service names ride along and each row picks one;
-  // empty list ⇒ single-container, one implicit service, no picker. Derived from
-  // the SAVED source (the deploy source is edited on its own page).
+  // Volumes are settable for EVERY source.
   const isComposeStack = usesComposeStack({
     source: project.source,
     compose: project.compose,
@@ -39,9 +36,7 @@ export default async function AppStorageSettingsPage(
   // saving one needs it, which beats hiding the option and the reason with it.
   const mayBind = await canMountHostVolumes();
   // A File entry's content IS this app's files tree, so writing one is the
-  // `manage_files` capability. Cosmetic here (the query and the mutation are
-  // both gated server-side); it lets the editor say why the box is closed
-  // instead of failing on save.
+  // `manage_files` capability.
   const mayEditFiles = await hasAppCapability(project.id, "write_app_files");
 
   return (

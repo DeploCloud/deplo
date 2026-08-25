@@ -29,9 +29,7 @@ export default async function AppMonitoringPage(
   }
 
   // The buffered window, so the charts render full on the first paint instead of
-  // rebuilding themselves client-side. No opt-in gates it: the telemetry stream
-  // carries every container on the host, so history exists for this app whether
-  // or not anyone asked for it.
+  // rebuilding themselves client-side.
   const initialHistory = await getAppMetricsHistory(project.id);
 
   return (

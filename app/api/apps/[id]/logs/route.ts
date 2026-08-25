@@ -9,34 +9,19 @@ import { logMaxDays } from "@/lib/data/instance-settings";
 
 /**
  * Live runtime logs (`docker logs -f`) for an app's container, over plain HTTP.
- *
- *   GET    ?container=<name>&tail=<n>&sinceMinutes=<m>&timestamps=1
- *                                    → SSE stream of the container's live output.
- *                                       The first event is `session` with the id.
- *   DELETE ?sessionId=<id>           → detach (kills our local logs client only).
- *
- * Output-only — there is no POST/stdin direction (logs are read-only). The
- * server-side session (lib/logs/session.ts) owns the `docker logs` child so the
- * idle reaper can reap it if the browser disconnects without a clean DELETE.
+ * The first event is `session` with the id.
  */
 
 // Long-lived stream; must run at request time on the Node runtime (spawns docker).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Queued-chunk ceiling before a stalled SSE client is cut off. The controller's
-// default queuing strategy counts chunks, so desiredSize goes one more negative
-// per undelivered enqueue; past this backlog we drop the connection instead of
-// buffering the log firehose in memory without bound.
+// Queued-chunk ceiling before a stalled SSE client is cut off.
 const MAX_QUEUED_CHUNKS = 1024;
 
 /**
  * Belt-and-braces CSRF check: refuse a request whose `Origin` points at another
- * site. Same-origin EventSource either omits `Origin` or sends one matching the
- * request host; a cross-site one carries a foreign origin. `SameSite=Lax` on the
- * session cookie already blocks this — this mirrors the GraphQL route's explicit
- * assertion so a shared cookie can't open a stream cross-origin. Absent `Origin`
- * is allowed (Lax covers it); present-and-mismatched is refused.
+ * site.
  */
 function isCrossSite(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
@@ -71,18 +56,13 @@ export async function GET(
   const target = request.nextUrl.searchParams.get("container") ?? undefined;
   // Default to the last 500 lines. A missing param must fall back, NOT seed 0 —
   // Number(null) is 0 (finite), which would request `--tail 0` (follow-only, no
-  // history) and leave the viewer empty on an idle container. Only parse when
-  // the param is actually present and numeric.
+  // history) and leave the viewer empty on an idle container.
   const rawTail = request.nextUrl.searchParams.get("tail");
   const parsedTail = rawTail !== null ? Number(rawTail) : NaN;
   const tail = Number.isFinite(parsedTail)
     ? Math.min(Math.max(Math.trunc(parsedTail), 0), 5000)
     : 500;
   // How far back to reach and whether to prefix each line with its write time.
-  // Both are the AGENT's job — the stream is raw bytes with no per-line clock,
-  // so this side has nothing to filter on. An agent without `logs.timerange`
-  // ignores them and streams `--tail` as before, which is why an unsupported
-  // host still gets its logs (the viewer greys the control out instead).
   const window = parseLogWindow(
     request.nextUrl.searchParams,
     await logMaxDays(),
@@ -159,14 +139,9 @@ export async function GET(
         }
       });
 
-      // A stream that FAILED (agent unreachable, container refused) is not the
-      // same as a container that simply stopped talking, and the viewer must not
-      // render both as a silent empty pane: send the curated reason first, then
-      // close. One of unreachable | not-found | denied | failed.
-      //
-      // NOT named "error" — like "open", EventSource dispatches its own transport
-      // errors under that name, so a server-sent `event: error` would arrive
-      // indistinguishable from a dropped connection.
+      // A stream that FAILED (agent unreachable, container refused) is not the same as a
+      // container that simply stopped talking, and the viewer must not render both as a
+      // silent empty pane: send the curated reason first, then close.
       session.onExit = (error) => {
         try {
           if (error) send("failure", error);
@@ -177,10 +152,9 @@ export async function GET(
         }
       };
 
-      // Browser navigated away / closed the tab: drop our subscription. The
-      // session's idle reaper then kills the `docker logs` child. A signal that
-      // aborted DURING the pre-start awaits never fires "abort" again — check
-      // it explicitly so an already-gone client is cleaned up immediately.
+      // Browser navigated away / closed the tab: drop our subscription. A signal that
+      // aborted DURING the pre-start awaits never fires "abort" again — check it
+      // explicitly so an already-gone client is cleaned up immediately.
       if (request.signal.aborted) {
         closeStream();
         return;

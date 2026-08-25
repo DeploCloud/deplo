@@ -1,14 +1,6 @@
 /**
  * Browser side of the restore-from-file route: stream the artifact up, read the
  * agent's log lines back down, resolve on the verdict.
- *
- * XHR rather than `fetch` for two reasons, both of which `fetch` cannot do: only
- * XHR reports UPLOAD progress, and a browser cannot send a streaming request
- * body over HTTP/1.1 at all. It is the same trade-off (and the same error
- * handling) as `lib/deploy/upload-client.ts`, which streams a code archive.
- *
- * Kept free of any Node-only / "server-only" import so it bundles for the
- * browser - {@link lib/backups/artifact-format} is the shared half it builds on.
  */
 
 import {
@@ -26,12 +18,9 @@ export interface RestoreUploadEvent {
 }
 
 /**
- * Stream `file` at a target and follow the restore to its end.
- *
- * Resolves when the agent reports success; rejects with the server's own message
- * on anything else, so the caller can surface it verbatim. `recoveryKey` is sent
- * only when the file is encrypted - the caller decides, having read the file's
- * first bytes.
+ * Stream `file` at a target and follow the restore to its end. `recoveryKey` is
+ * sent only when the file is encrypted - the caller decides, having read the
+ * file's first bytes.
  */
 export function uploadRestore(
   target: { kind: "app" | "database"; id: string },

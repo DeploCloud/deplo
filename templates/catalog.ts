@@ -13,14 +13,9 @@ import {
 import type { ApiTemplate, CatalogTemplate, TemplateListQuery } from "./types";
 
 /**
- * Client for the one-click template catalog (the `DeploCloud/templates`
- * service). The catalog used to be a `catalog.json` + `templates/blueprints/`
- * checked into this repo, which meant a new template needed a Deplo release.
- * It is now fetched over HTTP and cached for an hour, so the catalogue moves on
- * its own schedule.
- *
- * Every response is validated against `./schema` before it is used: this is
- * remote input, and its variant files end up in a deploy.
+ * Client for the one-click template catalog (the `DeploCloud/templates` service).
+ * Every response is validated against `./schema` before it is used: this is remote
+ * input, and its variant files end up in a deploy.
  */
 
 const cacheOptions = {
@@ -90,11 +85,7 @@ function withAssetUrls(t: ApiTemplate): CatalogTemplate {
 }
 
 /**
- * The whole catalog, every field the service serves. The browser filters a few
- * hundred entries instantly client-side, so paging the API once an hour beats a
- * round-trip per keystroke. Nothing is trimmed on the way through: the author,
- * the docs/website links, the screenshots and the long description are what the
- * catalog exists to carry, and a card that wants them would have no way back.
+ * The whole catalog, every field the service serves.
  */
 export async function listCatalog(): Promise<CatalogTemplate[]> {
   const first = await getTemplates({ page: 1, limit: 100 });
@@ -151,10 +142,7 @@ export async function getTemplateVariant(
 
 /**
  * The raw bytes of a catalog image, from the same hour-long cache every other
- * request uses. `url` is an absolute URL this module already built through
- * `templateAssetUrl`, so it is not re-validated here. `null` on any failure —
- * an image is decoration, and none of its callers has anything to say about a
- * catalog that did not answer.
+ * request uses.
  */
 export async function templateImageBytes(url: string): Promise<Buffer | null> {
   try {
@@ -169,11 +157,7 @@ export async function templateImageBytes(url: string): Promise<Buffer | null> {
 }
 
 /**
- * A template's logo inlined as a data URI. Apps store their logo inline (see
- * `isStorableLogo`), so a template's icon has to be fetched once here rather
- * than left as a catalog URL: the icon then survives the catalog being
- * unreachable, and a dashboard full of template-deployed apps never fires one
- * remote image request per row.
+ * A template's logo inlined as a data URI.
  */
 export async function templateLogoDataUri(
   path: string | null,

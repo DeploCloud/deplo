@@ -6,10 +6,7 @@ import {
 } from "@/lib/capabilities";
 
 /**
- * Enums lifted from the domain types in `lib/types.ts`. Each is exported as a
- * Pothos enum ref so domain modules reference the ref directly (type-safe across
- * modules) rather than by string name. The GraphQL schema stays a faithful,
- * single-sourced mirror of the TS unions.
+ * Enums lifted from the domain types in `lib/types.ts`.
  */
 
 export const RoleEnum = builder.enumType("Role", {
@@ -17,11 +14,9 @@ export const RoleEnum = builder.enumType("Role", {
 });
 
 /**
- * Every capability, plus the eight coarse names they replaced — kept as
- * DEPRECATED input aliases so a script written against the old API keeps working:
- * each still expands to exactly the permissions it used to imply
- * (`cleanCapabilities` / `sanitizeCapabilities` do the expanding). They are never
- * returned; every read answers in current capabilities.
+ * Every capability, plus the eight coarse names they replaced — kept as DEPRECATED
+ * input aliases so a script written against the old API keeps working: each still
+ * expands to exactly the permissions it used to imply (`cleanCapabilities` /
  */
 export const CapabilityEnum = builder.enumType("Capability", {
   values: Object.fromEntries([
@@ -50,10 +45,8 @@ export const AppStatusEnum = builder.enumType("AppStatus", {
   ] as const,
 });
 
-// GraphQL enum value names must match /[_a-zA-Z0-9]/, but some of the domain
-// unions use hyphens (e.g. "docker-image"). Map the underscored GraphQL name to
-// the hyphenated runtime value so the wire enum is valid and resolvers still
-// receive the exact string the data layer expects.
+// GraphQL enum value names must match /[_a-zA-Z0-9]/, but some of the domain unions
+// use hyphens (e.g. "docker-image").
 export const DeploySourceEnum = builder.enumType("DeploySource", {
   values: {
     GITHUB: { value: "github" },
@@ -88,11 +81,9 @@ export const DatabaseTypeEnum = builder.enumType("DatabaseType", {
   ] as const,
 });
 
-// The one enum in this module carrying per-value descriptions, because one of
-// its values means something a caller cannot guess from its name: `cloudflare`
-// reads like a success and is NOT one. Spelling that out in the introspectable
-// contract is the only way an API consumer (a CLI, a script, a dashboard of
-// their own) can render it as honestly as deplo's own UI does.
+// The one enum in this module carrying per-value descriptions, because one of its
+// values means something a caller cannot guess from its name: `cloudflare` reads
+// like a success and is NOT one.
 export const DomainStatusEnum = builder.enumType("DomainStatus", {
   description: "A custom domain's DNS verification state.",
   values: {

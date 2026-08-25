@@ -34,29 +34,8 @@ export function isRefusal(e: unknown): boolean {
 }
 
 /**
- * Why this repository will not clone, as a sentence for the deploy log - or
- * null to go ahead.
- *
- * The question {@link resolveCloneUrl} never asks. That function picks a
- * credential and hands back a URL; whether the credential can actually reach the
- * repository is discovered by git, on the agent, which reports back only
- * `git clone failed: exit status 128` with no stderr. The control plane is
- * therefore the ONLY place a usable message can come from, which is why this
- * runs here and not as a nicer rendering of the agent's error.
- *
- * Mirrors resolveCloneUrl's three branches in the same order, so the two cannot
- * disagree about which credential is in play:
- *
- *  - an installation: ask GitHub whether that App sees the repo;
- *  - a connection: ask the provider (a repo the token cannot see 404s);
- *  - neither: the clone will be ANONYMOUS, so ask as an anonymous caller. A
- *    public repo answers 200 and deploys as it always has; only a 404 is a
- *    problem, and only for a provider we can ask (a plain git server has no API).
- *
- * Needs no `requireActiveTeamId`: it is called with a `GitRepo` already loaded
- * from the app row that a team-scoped, capability-gated mutation wrote - the
- * same contract {@link readGitCredential} documents - and it returns a message
- * or null, never repository contents.
+ * Why this repository will not clone, as a sentence for the deploy log - or null
+ * to go ahead. The question {@link resolveCloneUrl} never asks.
  */
 export async function repoCloneRefusal(repo: GitRepo): Promise<string | null> {
   const full = repo.repo?.trim();

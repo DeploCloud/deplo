@@ -24,19 +24,6 @@ import type { ServerSummary } from "./server-detail-tabs";
 
 /**
  * The Cleanup tab: reclaiming Docker disk on THIS host.
- *
- * It used to be an instance-wide page of its own, which put the sweep one level
- * away from the thing it acts on: an operator looking at a full server had to
- * leave it, find the host in a fleet list, and press a button there. The policy
- * is still one row for the whole instance (there is exactly one schedule to
- * reason about, and a server added later cannot silently go un-swept), so the
- * schedule and the scopes are editable here and say plainly that they apply
- * everywhere; only the switch, the button and the history are about this host.
- *
- * A sweep is a BACKGROUND job: "Clean up now" returns as soon as the run is on
- * the record and the host keeps working detached, so the run row is the progress
- * indicator and it arrives live over the subscription (including the nightly
- * one, on a page nobody touched).
  */
 
 const RUN_FIELDS = `
@@ -52,11 +39,7 @@ const CLEANUP_RUNS_SUBSCRIPTION = /* GraphQL */ `
 `;
 
 /**
- * The four scopes, in the allow-list's order. The same list the data layer and the
- * agent's proto enum carry, and just as CLOSED. There is no entry for container,
- * volume, network or `system` prune because those do not exist: on a Deplo host a
- * stopped app is a live app (it is started again by `compose start`, so its container
- * must survive) and a dangling volume may hold a database's files.
+ * The four scopes, in the allow-list's order.
  */
 const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
   {
@@ -272,9 +255,7 @@ export function ServerCleanupTab({
   /**
    * One click, no confirmation: it reclaims exactly the SAVED policy's scopes on
    * this host now. Nothing here is destructive: the agent's allow-list never
-   * prunes a container, a data volume or a network. The click does NOT wait for
-   * the host; what is toasted is "it started", and the total arrives later on the
-   * run row, whether or not anyone is still looking at this page.
+   * prunes a container, a data volume or a network.
    */
   function runNow() {
     setStarting(true);

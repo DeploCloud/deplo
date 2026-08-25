@@ -25,10 +25,6 @@ export const metadata = { title: "Advanced" };
  * Advanced: the powerful, less-everyday controls in one place — the Advanced
  * features card (the container Console and Cron jobs), expert image/command/
  * version overrides (applied on the next Redeploy) and the Danger Zone (rebuild
- * from scratch, delete with artifacts). The exact shape of an App's Advanced,
- * including where the console is found: its sidebar chip only appears once the
- * warning here is accepted, so this card is how a database console is discovered
- * in the first place.
  */
 export default async function DatabaseAdvancedSettingsPage(
   props: PageProps<"/storage/databases/[id]/settings/advanced">,
@@ -36,10 +32,8 @@ export default async function DatabaseAdvancedSettingsPage(
   const { id } = await props.params;
   const db = await getDatabase(id);
   if (!db) notFound();
-  // A live shell into the container is infra-class — the console page itself
-  // gates on it, so don't advertise a door the viewer can't open. A cron job
-  // runs commands in that same container, so it needs BOTH: the two together are
-  // what the old settings page spelled out before this card absorbed it.
+  // A live shell into the container is infra-class — the console page itself gates on
+  // it, so don't advertise a door the viewer can't open.
   const [canConsole, canCron] = await Promise.all([
     hasCapability("open_database_console"),
     hasCapability("manage_crons"),

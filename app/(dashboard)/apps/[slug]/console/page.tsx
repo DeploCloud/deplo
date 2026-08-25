@@ -22,10 +22,7 @@ export default async function AppConsolePage(
   const info = await getConsoleInfo(project.id);
 
   // No title, no description, no padding: this route is full-bleed (see
-  // components/layout/shell-frame.tsx) and the terminal fills the frame. What
-  // the page header used to say is either obvious from the sidebar (which app,
-  // which section) or now sits in the pane's own toolbar — including the app's
-  // name, which is the link back to it.
+  // components/layout/shell-frame.tsx) and the terminal fills the frame.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <LiveConsole

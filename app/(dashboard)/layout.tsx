@@ -24,23 +24,17 @@ export default async function DashboardLayout({
   if (teams.length === 0) redirect("/welcome");
 
   // Every load below is team-scoped, so all of them refuse when the active team
-  // requires 2FA the account has not enrolled. Catching HERE and returning early
-  // is what guarantees no page under this layout renders: a redirect would race
-  // the children's own data loads, which fail the same way and would surface as
-  // an error boundary instead of an explanation.
+  // requires 2FA the account has not enrolled.
   let team, capabilities, isAdmin, breadcrumb;
   try {
-    // The IDENTITY, not the settings: this runs on every page under the
-    // layout, and `getTeam` is a team-wide read that a member limited to part
-    // of the team is refused. Reading it here would take the whole dashboard
-    // down for them, since the catch below only handles the 2FA case.
+    // The IDENTITY, not the settings: this runs on every page under the layout, and
+    // `getTeam` is a team-wide read that a member limited to part of the team is
+    // refused.
     team = await getTeamIdentity();
     [capabilities, isAdmin, breadcrumb] = await Promise.all([
-      // What they could do SOMEWHERE in the team, not only team-wide: a
-      // per-folder grant is exactly how someone holds one corner of the fleet
-      // (ADR-0016), and a nav item hidden from them would hide the only apps
-      // they have. Wider than the truth on purpose — nothing here decides
-      // anything, every page and mutation re-checks per app.
+      // What they could do SOMEWHERE in the team, not only team-wide: a per-folder grant
+      // is exactly how someone holds one corner of the fleet (ADR-0016), and a nav item
+      // hidden from them would hide the only apps they have.
       reachableCapabilities(),
       isInstanceAdmin(),
       getBreadcrumbGraph(),

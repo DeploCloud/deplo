@@ -23,10 +23,7 @@ import {
 // "– <Section> – Deplo" stays legible instead of a long name crowding it out.
 const PROJECT_TITLE_MAX = 24;
 
-// Titles nest as "<project> – <section> – Deplo". The section (%s) comes from
-// each child tab's own `title` (Deployments, Environment, Domains, …); the
-// Overview page sits in this same segment and has no title, so it inherits the
-// `default` below. `title.template` here overrides the root "%s – Deplo".
+// Titles nest as "<project> – <section> – Deplo".
 export async function generateMetadata(
   props: LayoutProps<"/apps/[slug]">,
 ): Promise<Metadata> {
@@ -47,20 +44,14 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
   const project = await getAppBySlug(slug);
   // Gone, or on its way out: a delete is irreversible from the moment it is
   // confirmed, so the app's pages stop existing then rather than when its host
-  // finishes the teardown — otherwise a reload during that window serves back
-  // every control (Deploy, Stop, Delete) for an app nothing can act on. The
-  // Overview keeps its card on screen, dimmed and pulsing, which is where the
-  // user reads that it is going. One check for the whole section: every tab
-  // below lives under this layout.
+  // finishes the teardown — otherwise a reload during that window serves back every
   if (!project || project.deletingAt) notFound();
   // The Files entry only appears when the caller can manage files AND the app
   // actually has an on-disk files dir (appFilesExist returns false for both
   // a missing capability and a missing directory, so this one call covers both).
   const showFiles = await appFilesExist(project.id);
   // What this viewer may do to THIS app - grants included, which the sidebar's
-  // team-wide union can't answer. It drives both the sub-menu (a section they
-  // can't read isn't listed) and every control below (an action they can't take
-  // is visibly disabled instead of erroring on click).
+  // team-wide union can't answer.
   const capabilities = await appCapabilities(project.id);
 
   // Seed for the live-status subscription (kept current client-side thereafter).
@@ -76,10 +67,10 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
   return (
     <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
       <AppCapabilitiesProvider capabilities={capabilities}>
-        {/* An app's pages are forms and detail views, not grids — they stay at a
-        readable width instead of the wide shell the list pages use. The one
-        exception is the full-screen log pane, where DetailFrame drops both this
-        measure and the header below it. */}
+        {/**
+         * An app's pages are forms and detail views, not grids — they stay at a readable
+         * width instead of the wide shell the list pages use.
+         */}
         <DetailFrame
           header={
             <div>
@@ -141,10 +132,10 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
             </div>
           }
           sidecars={
-            /* Publishes this app's live/per-app facts to the sidebar, which renders
-           the app sub-menu in place of the main nav. Renders nothing, and has to
-           survive the header being dropped — otherwise a full-bleed route would
-           lose the section menu along with the title. */
+            /**
+             * Publishes this app's live/per-app facts to the sidebar, which renders the app
+             * sub-menu in place of the main nav.
+             */
             <AppNavSync
               slug={slug}
               logo={project.logo}

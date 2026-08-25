@@ -4,24 +4,8 @@ import { randomBytes } from "node:crypto";
 import { type AttachHandle } from "../infra/docker";
 
 /**
- * In-process registry of live `docker logs -f` sessions.
- *
- * A logs viewer is output-only — there is no stdin direction to coordinate, so
- * unlike the attach session (lib/attach/session.ts) a session is just the GET
- * stream draining a `docker logs -f` child. The shared `AttachHandle` shape lets
- * the SSE route reuse the same subscribe/onExit plumbing; `write` is a no-op on
- * the logs backing.
- *
- * The backing handle is BUILT BY THE CALLER and passed in (PLAN Part C): it is
- * the owning agent's `FollowLogs` stream adapted to the AttachHandle shape (every
- * project, the host running Deplo included, is reached through its agent). The
- * session layer never knows which backing produced the handle. An optional
- * `cleanup` (closing the agent's gRPC client) is bound atomically into the exit
- * path here.
- *
- * This map is module-level singleton state: it survives across requests within
- * one server process, matching Deplo's single-process-against-one-socket model
- * (see lib/attach/session.ts for the same reasoning).
+ * In-process registry of live `docker logs -f` sessions. The session layer never
+ * knows which backing produced the handle.
  */
 
 export interface LogsSession {
@@ -40,19 +24,12 @@ export interface LogsSession {
   /** Subscribers draining output (normally exactly one: the GET stream). */
   readonly subscribers: Set<(chunk: Buffer) => void>;
   /**
-   * Output emitted before the first subscriber attached. `docker logs -f --tail`
-   * dumps the recent-history burst the instant it starts — which is before the
-   * route has wired up its GET stream — so without a backlog that whole tail
-   * (the "latest logs" the viewer exists to show) fans out to zero subscribers
-   * and is lost. Captured here and flushed on the first subscribe, then left
-   * null so live chunks pass straight through.
+   * Output emitted before the first subscriber attached. Captured here and flushed
+   * on the first subscribe, then left null so live chunks pass straight through.
    */
   backlog: Buffer[] | null;
   /**
    * Called when the `docker logs` child exits so the stream can close cleanly.
-   * `error` is set only when the backing FAILED (agent unreachable, container
-   * refused) — the route turns it into an SSE `error` frame so the viewer can
-   * say why it has nothing, instead of showing an empty pane.
    */
   onExit?: (error?: string) => void;
   idleTimer?: NodeJS.Timeout;
@@ -72,11 +49,9 @@ function armIdleReaper(s: LogsSession) {
   }, IDLE_MS);
 }
 
-// Hard ceilings on live sessions. The idle reaper only fires at zero
-// subscribers, so a client that holds its EventSource open forever is never
-// reclaimed by it — without a cap each open() pins a backing (and its gRPC
-// client) for good. Oldest-first eviction (the Map preserves insertion order);
-// firing onExit first lets the evicted GET stream close instead of hanging.
+// Hard ceilings on live sessions. The idle reaper only fires at zero subscribers,
+// so a client that holds its EventSource open forever is never reclaimed by it —
+// without a cap each open() pins a backing (and its gRPC client) for good.
 const MAX_SESSIONS = 64;
 const MAX_SESSIONS_PER_APP = 8;
 
@@ -95,13 +70,7 @@ function enforceSessionCaps(appId: string) {
 }
 
 /**
- * Open a new logs session over a pre-built backing handle. The caller MUST have
- * already verified the container belongs to `appId` AND built the handle
- * against the project's OWNING server (local docker for localhost, the agent's
- * FollowLogs for remote). `cleanup` runs once when the backing exits/closes (e.g.
- * `conn.close()` for a remote gRPC client) — bound here so it can never leak if
- * the stream ends before the route wires its own `onExit`. Returns the session
- * id; the browser passes it back on the DELETE to detach.
+ * Open a new logs session over a pre-built backing handle.
  */
 export function open(
   appId: string,
@@ -161,10 +130,8 @@ export function subscribe(
 ): () => void {
   s.subscribers.add(onChunk);
   clearTimeout(s.idleTimer);
-  // Flush the startup tail captured before this subscriber attached, then drop
-  // the backlog so subsequent live chunks pass straight through. Only the first
-  // subscriber drains it (it's nulled here); a late second subscriber just
-  // joins the live fan-out.
+  // Flush the startup tail captured before this subscriber attached, then drop the
+  // backlog so subsequent live chunks pass straight through.
   if (s.backlog) {
     const pending = s.backlog;
     s.backlog = null;

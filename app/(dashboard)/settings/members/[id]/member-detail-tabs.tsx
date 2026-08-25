@@ -55,30 +55,8 @@ import type { UserTeamAccessDTO } from "@/lib/data/user-access";
 
 /**
  * Everything about one member OF THIS TEAM, in one place: their role, where they
- * can work, what they can do there, and removal from the team. The roster tiles
- * link straight here — there is no menu and no modal in between, so this page is
- * the only surface that acts on a member.
- *
- * The person's instance-wide account is deliberately NOT here: it is not
- * team-scoped, so it lives on Settings → Users and the header links an instance
- * admin straight at that account's editor (`?user=<id>` opens it on arrival).
- *
- * **Both editors open filled in from the role.** Where they can work and what
- * they can do show exactly what this person already gets, so the page answers
- * "what can they do here" without an admin opening the role in another tab and
- * comparing by eye — and every edit is made by taking something away from that
- * or adding to it, which is how an admin thinks about one person. Whatever ends
- * up different from the role is what the chip in the header names, on this page
- * and on the roster tile alike.
- *
- * The role, the reach and the permissions are ONE tab and ONE Save, deliberately:
- * the role is the base the other two are carved out of, so splitting them let an
- * admin stage a role change on one tab while the other still showed an
- * inheritance that was already stale.
- *
- * Which forces one implementation rule: Radix unmounts an inactive panel, so
- * EVERY piece of editable state lives here and the panels are presentational.
- * Hold it anywhere else and switching tabs silently discards the edit.
+ * can work, what they can do there, and removal from the team. Hold it anywhere
+ * else and switching tabs silently discards the edit.
  */
 
 const TABS = ["permissions", "activity", "advanced"] as const;
@@ -132,12 +110,9 @@ export function MemberDetailTabs({
     if (next === TABS[0]) q.delete("tab");
     else q.set("tab", next);
     const s = q.toString();
-    // The native History API, NOT `router.replace`: both panels are already on
-    // the client, and a router navigation re-runs this whole page on the server
-    // (the member, the roles, the team's scope tree) to change one query
-    // parameter. Clicking between tabs faster than those renders finish left a
-    // request per click queued behind the last, and the page got slower the more
-    // you clicked. `useSearchParams` still sees this, so `active` follows.
+    // The native History API, NOT `router.replace`: both panels are already on the
+    // client, and a router navigation re-runs this whole page on the server (the
+    // member, the roles, the team's scope tree) to change one query parameter.
     window.history.replaceState(
       null,
       "",
@@ -149,10 +124,8 @@ export function MemberDetailTabs({
   const initial = React.useMemo(
     () => ({
       roleId: access.roleId,
-      // Where they REACH today: their own nodes when they have a set of their
-      // own, otherwise their role's reach plus whatever was shared with them on
-      // top. Never a blank tree, and never less than what they already hold — a
-      // node left unticked is a node this page revokes.
+      // Where they REACH today: their own nodes when they have a set of their own,
+      // otherwise their role's reach plus whatever was shared with them on top.
       selection: access.granular
         ? toSelection(access.nodes)
         : union(reachOf(savedRole, tree), toSelection(access.nodes)),
@@ -178,9 +151,8 @@ export function MemberDetailTabs({
   const roleReach = React.useMemo(() => reachOf(role, tree), [role, tree]);
   const roleCaps = React.useMemo(() => effectiveCapabilities(role), [role]);
   // A role limited to an ENVIRONMENT can't be redrawn here: a node grant has no
-  // environment rung, so the picker would show the ticks it can express and drop
-  // the rest on save. Their reach stays the role's; what they may do is still
-  // theirs to set.
+  // environment rung, so the picker would show the ticks it can express and drop the
+  // rest on save.
   const reachEditable = (role?.scope?.environmentIds.length ?? 0) === 0;
 
   /** Picking a role re-fills both editors from it — it is the new base. */
@@ -232,10 +204,7 @@ export function MemberDetailTabs({
   // transfer puts them on the Owner role itself, so there is no rank to arrange
   // first (lib/data/team-ownership.ts).
   const canTransfer = viewerIsPrimaryOwner && !isSelf && !member.isPrimaryOwner;
-  // What the ticked nodes can actually carry. A team-wide permission stays in
-  // the list (struck through) because widening their reach brings it back, but
-  // a node grant refuses it outright — so the payload is bounded here rather
-  // than by an error toast after the click.
+  // What the ticked nodes can actually carry.
   const onNodes = boundedBy(caps, NODE_GRANTABLE_CAPABILITIES);
   // They don't reach the whole team — by their role's doing or by an admin's.
   // Same question the server asks before it bounds their set, so a tick the
@@ -245,10 +214,9 @@ export function MemberDetailTabs({
   const nothingAllowed =
     (reachLimited ? onNodes : caps).filter((c) => c !== "view").length === 0;
   const blocked = readOnly || !roleId || nothingTicked || nothingAllowed;
-  // A disabled Save with no reason is the same as a broken one. All four reasons
-  // read as one warning at the top of the editor, not one line per card: an
-  // admin sees it while editing, instead of after clicking a button that does
-  // nothing.
+  // A disabled Save with no reason is the same as a broken one. All four reasons read
+  // as one warning at the top of the editor, not one line per card: an admin sees it
+  // while editing, instead of after clicking a button that does nothing.
   const blockedReason = readOnly
     ? null
     : !roleId
@@ -379,11 +347,10 @@ export function MemberDetailTabs({
                 <p className="text-sm">{lockReason}</p>
               </div>
             )}
-            {/* The role comes first: the two editors below are filled from it,
-                so picking another one re-fills them. The founder is the one
-                membership with nothing to say here — the banner above already
-                names their role and why it is fixed, so the card would be that
-                same sentence twice. */}
+            {/**
+             * The role comes first: the two editors below are filled from it, so picking
+             * another one re-fills them.
+             */}
             {!access.isFounder && (
               <Card>
                 <CardContent className="pt-6">
@@ -675,10 +642,9 @@ function reachOf(
 }
 
 /**
- * What a role actually gives its holders: its authored set once its own reach
- * has clamped it, which is what `effectiveRoleCapabilities` writes onto every
- * membership. Mirrored here so the picker opens on the set the member really
- * holds, rather than on ticks the server dropped on the way in.
+ * What a role actually gives its holders: its authored set once its own reach has
+ * clamped it, which is what `effectiveRoleCapabilities` writes onto every
+ * membership.
  */
 function effectiveCapabilities(role: TeamRoleDTO | null): Capability[] {
   if (!role) return ["view"];
@@ -774,13 +740,9 @@ export function groupNodes(nodes: UserTeamAccessDTO["nodes"]): NodeGroup[] {
 }
 
 /**
- * The payload: every node in `selection`, carrying `authored` — except nodes
- * that already had a set of their own, which keep it unless the admin edited the
+ * The payload: every node in `selection`, carrying `authored` — except nodes that
+ * already had a set of their own, which keep it unless the admin edited the
  * permission list (then one set applies everywhere, which is what editing it
- * says).
- *
- * The write is a whole-set replace, so a node left out is a node revoked: this
- * rebuilds from the CURRENT ticks rather than from the groups alone.
  */
 export function buildGrants(
   selection: ScopeSelection,

@@ -40,42 +40,15 @@ import {
 } from "./container-history";
 
 /**
- * The metrics STREAM SUPERVISOR — what replaced the polling collector.
- *
- * The old model dialled every server (and every watched app) on a timer, opening
- * and closing a fresh mTLS connection per sample. Its cost scaled with
- * hosts x containers x VIEWERS, which is the one axis a monitoring system must
- * not scale on: watching a thing made watching it more expensive. This holds ONE
- * long-lived `StreamMetrics` per host instead, sampled on the agent's own ticker,
- * and demuxes each frame into the RAM ring buffers. Cost is O(hosts).
- *
- * Kept deliberately from the collector it replaces:
- *  - NO cross-process lease. The buffers are per-process RAM, so in a
- *    horizontally-scaled deploy every instance must keep its own copy warm; a
- *    lease would leave N-1 instances answering history reads with nothing.
- *  - Singleton via `Symbol.for(...)` on globalThis, NOT a module-level flag: Next
- *    compiles separate module graphs and `register()` can import this through
- *    more than one, which would silently double every stream and every DB write.
- *  - It must never block boot and never throw into the instrumentation hook.
- *
- * New, and load-bearing: an explicit SHUTDOWN path. The collector was a pair of
- * `unref()`'d intervals, which are free to leak. Open gRPC streams are not — and
- * dev HMR re-runs `register()` on every edit, so without this a day of local work
- * would accumulate dozens of live streams against the same hosts.
- *
- * Each frame drives THREE things, on three different clocks, and the separation is
- * the point — none of them may run at the frame's own cadence except the first:
- *  - the ring buffers (every frame; they are RAM),
- *  - the server health heartbeat (HEALTH_WRITE_MS; it replaces a dial),
- *  - the App status reconcile (APP_STATUS_RECONCILE_MS; it corrects a stale row).
+ * The metrics STREAM SUPERVISOR — what replaced the polling collector. Its cost
+ * scaled with hosts x containers x VIEWERS, which is the one axis a monitoring
+ * system must not scale on: watching a thing made watching it more expensive.
  */
 
 /**
- * The reconnect backoff ceiling. THIS CONSTANT IS AN INPUT TO `GAP_MS` in
- * chart-gaps.ts: the worst spacing between two HEALTHY samples is one cadence
- * plus one full backoff step, and the chart bands "No data" above 1.5x that. Move
- * this and you must move GAP_MS with it — `chart-gaps.test.ts` asserts the
- * relationship so the two cannot drift apart silently.
+ * The reconnect backoff ceiling. Move this and you must move GAP_MS with it —
+ * `chart-gaps.test.ts` asserts the relationship so the two cannot drift apart
+ * silently.
  */
 export const RECONNECT_BACKOFF_CAP_MS = 10_000;
 
@@ -84,63 +57,20 @@ export const RECONNECT_BACKOFF_CAP_MS = 10_000;
 export const STREAM_INTERVAL_MS = 5_000;
 
 /**
- * The lifetime under which a stream did not really RUN. Every end path in
- * {@link runStreamLoop} classifies by stream lifetime against this floor: an end
- * this quick — however polite the status code — is a failure to back off from,
- * never the benign 55-min deadline rotation. Without it a fast-failing agent
- * (or a DEADLINE_EXCEEDED from a black-holed connect) re-dials with no delay,
- * a hot livelock hammering both the host and the health table. One cadence: a
- * healthy stream has always produced a frame by then, a rotation runs ~55min.
+ * The lifetime under which a stream did not really RUN.
  */
 const MIN_STREAM_MS = STREAM_INTERVAL_MS;
 
 /**
- * How often a healthy stream refreshes `status_checked_at`.
- *
- * MUST STAY UNDER `THROTTLE_MS` (15s) in lib/data/server-health.ts. That coupling
- * is invisible from either file and it is the highest-risk edge in this whole
- * change: the health prober skips its own dial while the row looks fresh, so if
- * this interval ever exceeds the prober's throttle, the prober quietly re-enables
- * its 15s fleet-wide dial fan-out — reintroducing exactly the per-host RPC churn
- * this architecture exists to remove, while the charts still look perfect and
- * nothing tells you. `supervisor.test.ts` asserts BOTH bounds.
- *
- * 8s, NOT 10s, and the difference is not cosmetic — it is an ALIASING guard, and
- * 10s was measured failing in production.
- *
- * The heartbeat can only fire when a frame arrives, so its real period is a
- * MULTIPLE of the cadence. At 10s with a 5s cadence the second frame lands on the
- * boundary, and a frame even one millisecond early (4999ms of elapsed, twice, is
- * 9998) fails `>= 10_000` and defers the write to the THIRD frame — a real period
- * of 15s, exactly THROTTLE_MS, right where the prober starts re-dialing. Observed
- * on the live fleet: writes at 14:22:49, 14:23:04, 14:23:19.
- *
- * Anything strictly between one and two cadences makes the second frame fire
- * regardless of jitter, giving a stable 10s period with 5s of headroom under the
- * throttle. Keep this INSIDE (cadence, 2 x cadence) if either constant moves.
+ * How often a healthy stream refreshes `status_checked_at`. MUST STAY UNDER
+ * `THROTTLE_MS` (15s) in lib/data/server-health.ts.
  */
 export const HEALTH_WRITE_MS = 8_000;
 
 /**
  * How often a healthy stream re-checks its Apps' STORED status against what the
  * host is actually reporting — the consumer for the per-container `state` the
- * frame has been carrying unread. See lib/data/app-status-reconcile.ts.
- *
- * Deliberately NOT per frame. The check is one guarded UPDATE that matches zero
- * rows in the steady state, but a 5s cadence times every host would put a
- * statement per host per 5s back on the database to correct something that
- * changes a handful of times a day.
- *
- * Deliberately NOT an in-RAM per-App memo either, which would be cheaper still.
- * A memo fires only on a running/not-running TRANSITION — and the commonest way
- * an App acquires a stale `error` is a deploy failing while its previous
- * container keeps running, where the observation never changes at all and a memo
- * would suppress the correction forever. Re-asking the database is what makes
- * this self-correcting rather than edge-triggered.
- *
- * The timer is seeded to 0 on every (re)connect on purpose — a host that just
- * came back is precisely the case this exists for, so the first frame after a
- * reconnect reconciles at once instead of waiting out the interval.
+ * frame has been carrying unread.
  */
 export const APP_STATUS_RECONCILE_MS = 30_000;
 
@@ -153,15 +83,9 @@ const RECONCILE_MS = 30_000;
 const POLL_FALLBACK_MS = 5_000;
 
 /**
- * EMERGENCY KILL SWITCH. Set `DEPLO_MONITORING_FORCE_POLL=1` and restart the
- * control plane to force every server onto the legacy poll path, with no agent
- * touched and nothing rolled back.
- *
- * This exists because the agent binary is FORWARD-ONLY: `resolveLatestAgentRelease`
- * is always-latest, so `updateServerAgent` structurally cannot downgrade. That
- * makes this — not a binary rollback — the real revert for the streaming path, and
- * it must therefore be in place BEFORE the first canary. The path it falls back to
- * is the code that runs in production today.
+ * EMERGENCY KILL SWITCH. This exists because the agent binary is FORWARD-ONLY:
+ * `resolveLatestAgentRelease` is always-latest, so `updateServerAgent`
+ * structurally cannot downgrade.
  */
 function forcePollMode(): boolean {
   return process.env.DEPLO_MONITORING_FORCE_POLL === "1";
@@ -170,12 +94,7 @@ function forcePollMode(): boolean {
 type StreamMode = "stream" | "poll";
 
 /**
- * How a per-server loop obtains its stream. The ONE seam this module exposes for
- * tests: everything else here (demux, backoff, the health heartbeat) is pure or
- * hits the DB, both of which a pglite test can drive directly — but the agent
- * dial cannot be exercised without a socket, and it is the input every branch
- * worth pinning hangs off. Injecting the connector keeps the supervisor's own
- * control flow under test instead of mocked away.
+ * How a per-server loop obtains its stream.
  */
 type MetricsConnector = typeof connectMetricsStreamAgent;
 
@@ -224,10 +143,11 @@ interface ConnectionFacts {
   serverName: string;
 }
 
-/** Map one wire frame's host half onto the ServerMetrics the buffer + charts use.
- *  `ts` is stamped HERE, on receipt, not from the frame's `sampledAtUnixMs`:
- *  clock skew between hosts must never move a point on a chart. The agent's own
- *  timestamp rides along in the frame purely so a sampling gap stays diagnosable. */
+/**
+ * Map one wire frame's host half onto the ServerMetrics the buffer + charts use.
+ * `ts` is stamped HERE, on receipt, not from the frame's `sampledAtUnixMs`: clock
+ * skew between hosts must never move a point on a chart.
+ */
 function hostSampleFrom(
   serverId: string,
   frame: MetricsSample,
@@ -259,17 +179,8 @@ function hostSampleFrom(
 }
 
 /**
- * Demux one frame into the ring buffers.
- *
- * Host history stays gated on the instance-wide "save metrics" switch, matching
- * what every writer did before. Container history is deliberately NOT gated, also
- * matching today — and the filter is applied HERE, on the record side, never by
- * declining to open the stream: one stream carries both halves, so gating the
- * transport would take container history down as collateral.
- *
- * Returns the demuxed buckets so the caller can run the status reconcile off the
- * same grouping (on its own, much slower clock) instead of walking the frame a
- * second time.
+ * Demux one frame into the ring buffers. Host history stays gated on the
+ * instance-wide "save metrics" switch, matching what every writer did before.
  */
 async function ingestFrame(
   serverId: string,
@@ -284,10 +195,7 @@ async function ingestFrame(
     checkResourceThresholds(serverId, facts.serverName || serverId, host);
   if (host && (await isMetricsSavingEnabled())) recordMetricsSample(host);
 
-  // Group this host's containers by the App / Database they belong to. The
-  // `deplo.project` label is the demux key and it is the ONLY identity we trust —
-  // an unlabelled container is not ours to attribute, so it is skipped rather
-  // than guessed at from its name.
+  // Group this host's containers by the App / Database they belong to.
   const byProject = new Map<string, ContainerStat[]>();
   for (const c of frame.containers) {
     if (!c.projectId) continue;
@@ -310,10 +218,10 @@ async function ingestFrame(
 /* Per-server loop                                                     */
 /* ------------------------------------------------------------------ */
 
-/** Capped exponential backoff with +/-20% jitter, so a fleet that lost its
- *  network does not reconnect in lockstep and thundering-herd the hosts.
- *  Exported for `supervisor.test.ts`, which pins the growth AND the ceiling —
- *  an uncapped step is how a host that came back stays dark for an hour. */
+/**
+ * Capped exponential backoff with +/-20% jitter, so a fleet that lost its network
+ * does not reconnect in lockstep and thundering-herd the hosts.
+ */
 export function backoffFor(attempt: number): number {
   const base = Math.min(RECONNECT_BACKOFF_CAP_MS, 1_000 * 2 ** attempt);
   const jitter = base * 0.2 * (Math.random() * 2 - 1);
@@ -335,12 +243,9 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * Hold one server's telemetry stream for as long as the supervisor runs.
- *
- * Reconnect attempts are UNBOUNDED by design: a host down for an hour must come
- * back on its own when it returns, with no operator action. Nothing is ever
- * replayed — unlike a deploy event, a metrics sample missed is a sample with no
- * remaining value, and the honest rendering of the gap is a gap.
+ * Hold one server's telemetry stream for as long as the supervisor runs. Reconnect
+ * attempts are UNBOUNDED by design: a host down for an hour must come back on its
+ * own when it returns, with no operator action.
  */
 async function runStreamLoop(
   serverId: string,
@@ -358,10 +263,9 @@ async function runStreamLoop(
     // Stream LIFETIME against MIN_STREAM_MS is the classifier for every end
     // path below — status codes alone cannot tell a rotation from an outage.
     let openedAt: number | null = null;
-    // `streamMetrics` takes no AbortSignal (the RPC deadline is the agent
-    // contract's only cancel), so the abort is wired to the CHANNEL instead:
-    // closing it ends the frame iterator promptly, rather than the loop only
-    // noticing the abort at the next frame or backoff wake-up.
+    // `streamMetrics` takes no AbortSignal (the RPC deadline is the agent contract's
+    // only cancel), so the abort is wired to the CHANNEL instead: closing it ends the
+    // frame iterator promptly, rather than the loop only noticing the abort at the next
     const onAbort = () => conn?.close();
     signal.addEventListener("abort", onAbort, { once: true });
     try {
@@ -377,17 +281,11 @@ async function runStreamLoop(
         serverName,
       };
 
-      // The honest health of this connection, computed ONCE from the Hello and
-      // reused by every heartbeat below. A host streaming with Docker down
-      // classifies as `warning`, and the heartbeat must keep saying so — a
-      // hardcoded online literal would clobber it 8s after every connect.
+      // The honest health of this connection, computed ONCE from the Hello and reused by
+      // every heartbeat below.
       const connHealth = classifyServerHealth(hello, null, { storageOnly });
 
-      // On OPEN: persist what the Hello told us, and record health. This Hello is
-      // a health observation as good as the prober's own, and — unlike the old
-      // metrics poll, which issued metrics() first — a certificate rejection here
-      // arrives WITH the `trust` flag, so an untrusted agent is recorded as the
-      // security-relevant `error` instead of a benign `offline`.
+      // On OPEN: persist what the Hello told us, and record health.
       await markServerSeen(
         serverId,
         hello.agentVersion,
@@ -397,10 +295,8 @@ async function runStreamLoop(
         hello.hostArch,
       );
       let lastHealthWriteAt = Date.now();
-      // 0, not `Date.now()`: the first frame after a (re)connect must reconcile
-      // App statuses immediately. A host that just came back is the whole reason
-      // this exists — the Apps it restarted may be wearing an `error` written
-      // while it was away.
+      // 0, not `Date.now()`: the first frame after a (re)connect must reconcile App
+      // statuses immediately.
       let lastStatusReconcileAt = 0;
       await recordServerHealth(serverId, connHealth, new Date().toISOString());
 
@@ -429,22 +325,16 @@ async function runStreamLoop(
           );
         }
 
-        // Status reconcile, on its own much slower clock — see
-        // APP_STATUS_RECONCILE_MS. The frame reports what each App's containers are
-        // ACTUALLY doing; this is the only thing that ever corrects the stored
-        // status against it. Guarded to one transition (`error` -> `active`) and
-        // to Apps this frame proves are running, inside lib/data.
+        // Status reconcile, on its own much slower clock — see APP_STATUS_RECONCILE_MS.
         if (now - lastStatusReconcileAt >= APP_STATUS_RECONCILE_MS) {
           lastStatusReconcileAt = now;
           await reconcileAppStatusFromTelemetry(serverId, byProject);
         }
       }
 
-      // A clean end at full lifetime is the deadline rotation (or a shutdown).
-      // Reconnect at once: no backoff, no health write, ~100ms of gap — two
-      // orders of magnitude under GAP_MS, so it never draws a band. But a clean
-      // end within seconds of opening is a fast-failing agent, and re-dialling
-      // it with no delay is a hot livelock — back off like the failure it is.
+      // A clean end at full lifetime is the deadline rotation (or a shutdown). Reconnect
+      // at once: no backoff, no health write, ~100ms of gap — two orders of magnitude
+      // under GAP_MS, so it never draws a band.
       if (
         !signal.aborted &&
         !state.stopping &&
@@ -467,10 +357,8 @@ async function runStreamLoop(
         return;
       }
 
-      // DEADLINE_EXCEEDED is only the benign 55-min rotation when the stream
-      // actually LIVED. The same status code from a black-holed connect (or a
-      // stream that died within seconds) is an outage — calling it a rotation
-      // would re-dial the dead host with no backoff and no health record.
+      // DEADLINE_EXCEEDED is only the benign 55-min rotation when the stream actually
+      // LIVED.
       const lifetime = openedAt === null ? 0 : Date.now() - openedAt;
       const rotation =
         e instanceof AgentUnreachableError &&
@@ -502,20 +390,7 @@ async function runStreamLoop(
 /**
  * The degradation path, kept PERMANENTLY rather than only through the rollout: a
  * fleet is updated server by server, and nothing stops someone registering a
- * server running last year's agent tomorrow.
- *
- * HOST METRICS ONLY, deliberately. The old collector also polled per-container
- * stats, but it could only do so because it had a LIST of which resources to
- * sample — the `save_metrics` columns plus a watch TTL — and that list is exactly
- * what the stream made obsolete and this change deleted. Rebuilding an
- * enumeration here purely to serve outdated agents would resurrect the cost model
- * (one RPC per resource per tick) we removed, on the hosts least able to afford
- * it, to populate a tab the user can fix by clicking "Update agent".
- *
- * So on a pre-stream agent the fleet charts keep working and the per-App tab
- * shows its existing "update the agent on this server" state — the same state it
- * already shows for an agent lacking `container-stats`. That is honest, costs
- * nothing, and points at the fix.
+ * server running last year's agent tomorrow. HOST METRICS ONLY, deliberately.
  */
 async function runPollLoop(
   serverId: string,
@@ -561,11 +436,8 @@ export async function reconcileMetricsStreams(): Promise<void> {
     // No agent enrolled yet (still provisioning, or never called home): there is
     // nothing to dial, and pretending otherwise would write a false offline.
     if (!s.agent?.certFingerprint) continue;
-    // A migration source is not part of the fleet: no telemetry stream is opened
-    // to it, because we do not operate that machine and nobody is watching a chart
-    // of it. Skipped HERE rather than by filtering `servers`, which is also what
-    // pruneMetricsHistoryTo below reads - filtering the array would prune the whole
-    // buffer every tick.
+    // A migration source is not part of the fleet: no telemetry stream is opened to it,
+    // because we do not operate that machine and nobody is watching a chart of it.
     if (s.importOnly) continue;
     live.add(s.id);
     if (state.servers.has(s.id)) continue;
@@ -591,12 +463,9 @@ export async function reconcileMetricsStreams(): Promise<void> {
     state.servers.delete(id);
   }
 
-  // The PRUNE half of the RAM buffers' lifecycle, on the same 30s tick: only
-  // DELETION forgets a resource's window (absence from a frame never does — see
-  // container-history.ts), and this is where deletion becomes visible. Server
-  // ids come from the fleet list already in hand — every existing server keeps
-  // its history, enrolled or not — and app/database ids are one cheap
-  // two-column read. Without this the maps only ever grow.
+  // The PRUNE half of the RAM buffers' lifecycle, on the same 30s tick: only DELETION
+  // forgets a resource's window (absence from a frame never does — see
+  // container-history.ts), and this is where deletion becomes visible.
   pruneMetricsHistoryTo(new Set(servers.map((s) => s.id)));
   try {
     const [appRows, dbRows] = await Promise.all([
@@ -635,10 +504,6 @@ export function startMetricsStreams(): void {
 
 /**
  * Stop every stream and wait for the loops to unwind.
- *
- * Unlike the interval-based collector this is NOT optional: each live stream
- * holds an open gRPC channel on this side and a ticker plus a `docker events`
- * child on the agent's. Leaving them dangling leaks on both ends of the wire.
  */
 export async function stopMetricsStreams(): Promise<void> {
   state.stopping = true;

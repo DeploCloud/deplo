@@ -13,13 +13,8 @@ import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
 
 /**
  * Inbound GitHub App webhook. Verifies the HMAC signature against the receiving
- * App's webhook secret, then triggers an auto-redeploy of any project wired to
- * the pushed repo + branch. Best-effort: unmatched or unverifiable deliveries
- * are acknowledged without action.
- *
- * Everything after "which apps does this repository belong to" is shared with
- * the other providers' route (`lib/deploy/git-webhook-dispatch.ts`), so the
- * trigger rules cannot drift between GitHub and the rest.
+ * App's webhook secret, then triggers an auto-redeploy of any project wired to the
+ * pushed repo + branch.
  */
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -55,9 +50,8 @@ export async function POST(request: Request) {
 
   const event = request.headers.get("x-github-event");
   // Pull request deliveries drive preview deployments; the push arm below is
-  // untouched. Everything else GitHub sends is acknowledged and dropped.
-  // `app.id` rides along for the same reason it is used below: the delivery may
-  // only act on installations of the App whose secret just verified it.
+  // untouched. `app.id` rides along for the same reason it is used below: the
+  // delivery may only act on installations of the App whose secret just verified it.
   if (event === "pull_request") return handlePullRequestDelivery(raw, app.id);
   if (event !== "push") return new Response("ok", { status: 200 });
 
@@ -83,12 +77,6 @@ export async function POST(request: Request) {
   }
 
   // The installation MUST belong to the App the signature was verified against.
-  // The signature proves one thing - which App's webhook secret signed this body
-  // - and the installation id is a field IN that body, so resolving it on its own
-  // let a delivery signed by App A act on App B's installation. Anyone holding
-  // `manage_git` can connect their own GitHub App, read its webhook secret on
-  // github.com and sign whatever they like; without this clause that was a
-  // production deploy of another team's app.
   const installRows = await getDb()
     .select()
     .from(githubInstallationTable)

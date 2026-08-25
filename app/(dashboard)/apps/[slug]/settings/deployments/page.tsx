@@ -31,20 +31,15 @@ export default async function AppDeploymentSettingsPage(
   const installations = await listGithubInstallations();
   const connections = await listGitConnections();
 
-  // Does a git provider ALREADY trigger this app's deploys? Only then is the
-  // deploy hook redundant. A bare Repository URL has no sender behind it, so
-  // hiding its hook (as this page used to, for every `git` source) left it with
-  // no automatic trigger at all and no way to make one.
+  // Does a git provider ALREADY trigger this app's deploys?
   const providerTriggers =
     project.source === "github" ||
     (Boolean(project.repo?.connectionId) &&
       providerFor(project.repo?.provider ?? "git").api != null);
 
-  // Whether the push webhook is actually registered on the provider right now,
-  // asked of the provider rather than remembered: someone deleting it on their
-  // side is exactly the case a stored flag would get wrong. Only for an app that
-  // wants push deploys through a connection - GitHub carries its own, and a
-  // repo with auto-deploy off is not waiting on a webhook.
+  // Whether the push webhook is actually registered on the provider right now, asked
+  // of the provider rather than remembered: someone deleting it on their side is
+  // exactly the case a stored flag would get wrong.
   const webhook =
     providerTriggers && project.source !== "github" && project.autoDeploy
       ? await appWebhookStatus(project.repo)
@@ -88,19 +83,15 @@ export default async function AppDeploymentSettingsPage(
           webhook={webhook}
           deployHookEnabled={project.deployHookEnabled}
           composeUpArgs={project.composeUpArgs}
-          // The link's shape, never its token: the real URL is fetched only when
-          // someone with `configure_apps` deliberately reveals it. An app a git
-          // provider already triggers gets no deploy hook in the UI at all - and
-          // null here keeps its link out of the page payload entirely, rather
-          // than merely hiding it.
+          // The link's shape, never its token: the real URL is fetched only when someone with
+          // `configure_apps` deliberately reveals it.
           deployHookUrlMasked={
             providerTriggers ? null : await deployHookUrlMasked(project.id)
           }
         />
-        {/* Only where a rollback can exist at all: the app has to be one Deplo
-            BUILDS. A compose stack has no single image to re-run, and a prebuilt
-            `docker-image` source is a registry tag with nothing pinned behind it -
-            going "back" to it would land on whatever it points at today. */}
+        {/**
+         * Only where a rollback can exist at all: the app has to be one Deplo BUILDS.
+         */}
         {canRollBack && (
           <RollbackSettingsForm
             appId={project.id}

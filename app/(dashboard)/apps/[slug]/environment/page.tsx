@@ -42,9 +42,7 @@ export default async function AppEnvPage(
       listEnv(project.id),
       listSharedVarsForApp(project.id),
       // The full records back the value edit + "Shared with" chips a shared row now
-      // exposes here; narrow to the ones this app actually receives. Team-wide, so
-      // it stays behind the TEAM capability: someone whose `manage_env` comes from
-      // this app alone sees the app's own variables, not the team's library.
+      // exposes here; narrow to the ones this app actually receives.
       teamWideEnv ? listSharedVars() : Promise.resolve([]),
       // Preview overrides only mean anything once preview deployments are on.
       project.previewEnabled ? listPreviewEnvVars(project.id) : [],

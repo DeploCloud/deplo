@@ -2,35 +2,6 @@
  * Fleet rollout of deplo-agent v1.25.0 - per-app image retention
  * (`DockerCleanupRequest.keep_per_slug`), which is what carries each App's
  * rollback depth to the host that enforces it.
- *
- * Follows docs/agents/fleet-rollout.md to the letter:
- *  - order: canary (fewest Apps) -> the other remote -> agent 0 (the control
- *    plane's own host) LAST;
- *  - skip any server with an in-flight deploy (queued/building, resolved through
- *    coalesce(deployments.server_id, apps.server_id) - never the bare column,
- *    which is nullable and would make a live deploy invisible);
- *  - `selfUpdateServerAgent` does NOT persist the version, so `markServerSeen`
- *    runs after each success or the "outdated" badge lags;
- *  - verify per server before moving on.
- *
- * The verification here is §7's side-by-side, and this release is exactly the
- * case §7 exists for: a NEW retention path replacing an old one, where both are
- * individually correct and only a comparison on real data shows they disagree.
- * Per host it dry-runs UNUSED_APP_IMAGES three ways and prints all three:
- *
- *   A  scalar-1        what the sweep removes today (the shipped default)
- *   B  per-slug        what it removes once each App's rollback depth applies
- *   C  raised scalar   the fallback the control plane sends an OLD agent
- *
- * B must be a SUBSET of A: per-app retention may only ever protect more images,
- * never delete one the old rule kept. C must be a subset of A for the same
- * reason. Nothing is removed - every probe is `dry_run`.
- *
- * Run from /root/projects/deplo under REAL Node (never bun - its TLS SAN
- * handling rejects the agent certificate and every mTLS dial fails):
- *
- *   node --require ./lib/test/server-only-shim.cjs --import tsx \
- *     scripts/rollout-agent-1.25.mts [--probe-only]
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
 

@@ -52,14 +52,7 @@ import { ServerAdvancedTab } from "./advanced-tab";
 import { ServerCertificatesTab } from "./certificates-tab";
 
 /**
- * The six tabs of a server's management page. Horizontal, using the same
- * underline nav Storage and Variables already use — the sidebar is untouched.
- *
- * The active tab rides in `?tab=`, so a link can point at the thing being talked
- * about ("your Traefik panel is under Advanced") instead of at a page plus
- * instructions. Nothing here fetches on mount: the tabs that need the host ask
- * for it when they are opened, which is what keeps this page fast on the very
- * server whose agent is wedged.
+ * The six tabs of a server's management page.
  */
 
 export type ServerSummary = {
@@ -129,11 +122,8 @@ export function ServerDetailTabs({
     if (tab === "overview") next.delete("tab");
     else next.set("tab", tab);
     const s = next.toString();
-    // replace, not push: flipping between tabs is not navigation the back button
-    // should have to walk through one step at a time. And the NATIVE History API
-    // rather than `router.replace`, which would re-render this page on the server
-    // — every read it does, DNS resolution included — for a query parameter the
-    // client already has the panels for. `useSearchParams` still sees it.
+    // replace, not push: flipping between tabs is not navigation the back button should
+    // have to walk through one step at a time.
     window.history.replaceState(
       null,
       "",
@@ -292,10 +282,9 @@ function OverviewTab({ server }: { server: ServerSummary }) {
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
           <AgentVersionBadge version={server.agentVersion} />
-          {/* Only when there is something to install. A button that is always
-              there reads as a permanent chore and makes the one day a release
-              lands look like every other day; the badge next to it already says
-              which version is running. */}
+          {/**
+           * Only when there is something to install.
+           */}
           {server.agentUpdateAvailable ? (
             <Button
               size="sm"

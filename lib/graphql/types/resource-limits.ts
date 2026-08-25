@@ -4,11 +4,6 @@ import type { ResourceLimits } from "@/lib/types";
 /**
  * The shared ResourceLimits object/input pair, used by BOTH the App and the
  * Database modules (the two carry the identical flattened resource_* columns).
- * Lives in its own leaf module — not exported from app.ts — because importing a
- * ref ACROSS type modules can double-evaluate the defining module under
- * Turbopack and re-register its types (see the AppRef note in app.ts). This
- * file defines no query/mutation fields, so it needs no schema.ts entry; it is
- * evaluated via its importers.
  */
 
 export const ResourceLimitsRef = builder

@@ -5,14 +5,7 @@ import type { GraphQLContext } from "./context";
 import type { Capability } from "@/lib/types";
 
 /**
- * The code-first schema builder. One builder, imported by every domain module
- * in `lib/graphql/types/*`, which attach their object types, queries and
- * mutations to it. `schema.ts` imports them all and calls `toSchema()`.
- *
- * Scopes mirror the capability model: `authScopes: { capability: "deploy" }`
- * on a field rejects callers lacking that capability with a clean GraphQL
- * error. The data layer's own `requireCapability` stays as defense-in-depth —
- * the scope here is for a typed, introspectable API contract.
+ * The code-first schema builder.
  */
 export const builder = new SchemaBuilder<{
   Context: GraphQLContext;
@@ -34,11 +27,8 @@ export const builder = new SchemaBuilder<{
     authScopes: (ctx) => ({
       loggedIn: !!ctx.viewer,
       capability: (cap: Capability) => ctx.capabilities.includes(cap),
-      // Instance administration is opt-in PER TOKEN, never inherited from the
-      // person (see `tokenHoldsInstanceAdmin` in lib/membership.ts). The data
-      // layer's `requireInstanceAdmin` already says so, but a field whose whole
-      // body is a generator — the cleanup-runs subscription — never reaches it,
-      // so the scope has to agree with the boundary rather than approximate it.
+      // Instance administration is opt-in PER TOKEN, never inherited from the person (see
+      // `tokenHoldsInstanceAdmin` in lib/membership.ts).
       instanceAdmin:
         !!ctx.viewer?.isInstanceAdmin &&
         (!ctx.identity?.token || ctx.identity.token.instanceAdmin),

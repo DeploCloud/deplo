@@ -1,9 +1,5 @@
 /**
  * Capture the outbound HTTP a test causes, without a network.
- *
- * Named `*-test-helpers.ts` so the `lib/**\/*.test.ts` runner glob skips it.
- * Same shape the repo already uses for stubbing `globalThis.fetch`
- * (`lib/agent/release.test.ts`): swap it, hand back a restore closure.
  */
 
 export interface CapturedCall {

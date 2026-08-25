@@ -8,15 +8,6 @@ import {
 
 /**
  * Two-factor enrolment and teardown for the CURRENT account.
- *
- * `loggedIn` rather than capability-gated, like sessions: a second factor
- * belongs to a person, not to a team, and the data layer resolves the owner
- * itself. There is no field here that names another user — an instance admin who
- * has to unstick somebody uses `resetUserTwoFactor` on the members path.
- *
- * These mutations are the ONLY way in: `/api/auth/two-factor/*` is closed to the
- * network so the password-only endpoints cannot be called around the code check
- * that lib/data/two-factor.ts performs.
  */
 
 const TwoFactorEnrolmentRef = builder

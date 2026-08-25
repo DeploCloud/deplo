@@ -29,14 +29,9 @@ import { verification } from "@/lib/db/schema/auth";
 import { users } from "@/lib/db/schema/control-plane";
 
 /**
- * Authentication mutations. These are PUBLIC (no auth scope) and run in the
- * route handler, which has cookie write access — so `login`/`completeSetup`/
- * `logout` set the session cookie exactly as the old server actions did. The
- * rate-limiting that lived in lib/actions/auth.ts is preserved here verbatim
- * (the actions' security contract must not regress when they become mutations).
- *
- * Redirects: the old actions called `redirect()`; a mutation cannot redirect, so
- * each returns a payload and the client navigates (router.push) on success.
+ * Authentication mutations. The rate-limiting that lived in lib/actions/auth.ts is
+ * preserved here verbatim (the actions' security contract must not regress when
+ * they become mutations).
  */
 
 /** Best-effort client IP — a secondary, spoofable limiter dimension only. */
@@ -51,12 +46,8 @@ async function clientKey(scope: string): Promise<string> {
 
 /**
  * A limiter bucket for the LOGIN ATTEMPT a two-factor challenge belongs to.
- *
- * Better Auth sets a `two_factor` cookie (under deplo's `cookiePrefix`) once the
- * password half succeeds, so its value names this one pending login. Hashed,
- * because a limiter key ends up in memory next to a token that is still live.
- * Empty when the cookie is absent — there is no challenge to bound, and the
- * verification is about to fail on its own.
+ * Hashed, because a limiter key ends up in memory next to a token that is still
+ * live.
  */
 async function pendingLoginKey(): Promise<
   { key: string; limit: number; windowMs: number }[]
@@ -78,13 +69,6 @@ async function pendingLoginKey(): Promise<
 
 /**
  * The address behind the two-factor challenge in flight, or null.
- *
- * The 2FA half of a login carries no address of its own, and counting the burst
- * against the CLIENT KEY instead made the alert unreachable twice over: the
- * resolver's own limiter trips one attempt below the burst threshold, and a key
- * that names nobody resolves to no team, so nothing would be told anyway. The
- * `two_factor` cookie names a `verification` row whose value is the user id
- * Better Auth is waiting on, which is the account actually under attack.
  */
 async function pendingLoginEmail(): Promise<string | null> {
   const store = await cookies();
@@ -107,11 +91,6 @@ async function pendingLoginEmail(): Promise<string | null> {
 
 /**
  * Returns an error message when any limiter trips, else null.
- *
- * Every check is counted even once one has already failed: they are separate
- * buckets (the address, the client, the pending login) and skipping the rest
- * after the first refusal would let an attacker keep one of them under its
- * limit for free.
  */
 async function checkLimits(
   checks: { key: string; limit: number; windowMs: number }[],
@@ -172,10 +151,7 @@ const registerSchema = z.object({
   password: z.string().min(8).max(200),
   // Optional: only own_team links collect a team name. existing_teams links
   // pre-assign teams, so the registrant never names one and the form sends an
-  // explicit `null` (a nullable GraphQL arg). `.nullish()` accepts that null —
-  // `.optional()` alone rejects it ("expected string, received null") and blew
-  // up existing_teams registration. The team(s) come from the link, not the
-  // client, so the value is ignored downstream regardless.
+  // explicit `null` (a nullable GraphQL arg).
   teamName: z.string().min(1).max(80).nullish(),
 });
 
@@ -233,20 +209,8 @@ builder.mutationFields((t) => ({
       // The ACCOUNT this challenge belongs to, resolved once: it is both the
       // limiter bucket below and the address the failure notice goes to.
       const who = await pendingLoginEmail();
-      // Tighter than the password limiter: a 6-digit code is guessable in a way
-      // a password is not, so cap attempts hard.
-      //
-      // THREE buckets, and only the third actually bounds the search. The
-      // address is spoofable (see clientKey). The pending LOGIN is keyed on the
-      // cookie Better Auth set when the password was accepted, so it resets the
-      // moment the attacker throws the cookie away and re-sends the password —
-      // at 8 logins per minute per email that is 40 codes a minute, ~57,600 a
-      // day against a space of a million, which is a few percent per day for
-      // anyone who already has the password. The twoFactor plugin is configured
-      // with its defaults and does NOT lock an account out, so nothing else
-      // counts. The ACCOUNT bucket is what survives a re-issued challenge: ten
-      // wrong codes an hour is far past a fat-fingered authenticator (or a clock
-      // that has drifted) and far below anything that gets anywhere.
+      // Tighter than the password limiter: a 6-digit code is guessable in a way a
+      // password is not, so cap attempts hard.
       const limited = await checkLimits([
         { key: await clientKey("2fa"), limit: 5, windowMs: 15 * 60_000 },
         ...(await pendingLoginKey()),
@@ -266,10 +230,9 @@ builder.mutationFields((t) => ({
         args.recoveryCode ? "backup" : "totp",
       );
       if (!res.ok) {
-        // Counted against the ACCOUNT the challenge belongs to, so a burst of
-        // wrong codes lands in the same bucket as a burst of wrong passwords and
-        // reaches that account's teams. A challenge whose cookie no longer
-        // resolves has nobody to warn.
+        // Counted against the ACCOUNT the challenge belongs to, so a burst of wrong codes
+        // lands in the same bucket as a burst of wrong passwords and reaches that account's
+        // teams.
         if (who) void noteFailedLogin(who);
         throw new Error(res.error ?? "That code is not valid");
       }
@@ -281,10 +244,7 @@ builder.mutationFields((t) => ({
     description:
       "Options for `navigator.credentials.get`. Public: this is the START of a sign-in, so there is no session yet.",
     resolve: async () => {
-      // One bucket, on the client. There is nothing else to key on - the whole
-      // point of a discoverable credential is that no account is named until the
-      // browser answers - and a challenge is cheap to mint, so the limit is
-      // there to stop a flood of `verification` rows, not to protect a secret.
+      // One bucket, on the client.
       const limited = await checkLimits([
         { key: await clientKey("passkey"), limit: 20, windowMs: 60_000 },
       ]);
@@ -298,12 +258,9 @@ builder.mutationFields((t) => ({
       "Finish a passkey sign-in with what the authenticator produced. Sets the session cookie.",
     args: { response: t.arg({ type: "JSON", required: true }) },
     resolve: async (_r, { response }) => {
-      // Looser than the 2FA limiter and with no per-account bucket, both on
-      // purpose: an assertion is a signature over a server-chosen challenge, not
-      // six digits, so there is nothing to guess - the limit exists to cap the
-      // verification work. And nothing names an account until the credential
-      // resolves, which is also why no failed-login notice is sent from here:
-      // there is no address to warn.
+      // Looser than the 2FA limiter and with no per-account bucket, both on purpose: an
+      // assertion is a signature over a server-chosen challenge, not six digits, so there
+      // is nothing to guess - the limit exists to cap the verification work.
       const limited = await checkLimits([
         {
           key: await clientKey("passkey-verify"),
@@ -379,10 +336,7 @@ builder.mutationFields((t) => ({
       const usernameError = validateUsername(username);
       if (usernameError) throw new Error(usernameError);
 
-      // The team handling is dictated by the link's stored mode — NEVER the
-      // client. The token is consumed INSIDE the same atomic db.transaction that
-      // creates the account (via the guard), closing the check-create-consume
-      // TOCTOU: the conditional UPDATE matches the pending link exactly once.
+      // The team handling is dictated by the link's stored mode — NEVER the client.
       const info = await getRegistrationLinkInfo(parsed.data.token);
       if (!info.valid)
         throw new Error("This registration link is no longer valid");

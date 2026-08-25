@@ -7,17 +7,6 @@ import type { GitRepo } from "../types";
 /**
  * The URL the deploy agent actually clones - the one place that decides how a
  * repository is authenticated.
- *
- * Three cases, in order:
- *  - a GitHub App installation mints a fresh ~1h token (unchanged behaviour);
- *  - a {@link GitConnection} embeds its stored token as basic auth;
- *  - anything else clones anonymously, which is what a bare "Repository URL" is.
- *
- * The credential goes in the URL's userinfo rather than the proto's `GitSource.
- * token` because the agent lifts userinfo into an `Authorization: Basic` header
- * before running git (`internal/server/git.go`), so it never reaches argv,
- * `/proc/<pid>/cmdline` or the build log. That also means adding providers took
- * no proto change and no agent release.
  */
 export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
   if (repo.installationId) {
@@ -40,16 +29,7 @@ export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     return repo.url;
   }
-  // Bind the credential to the connection's OWN host. `repo.url` and the
-  // `connectionId` are chosen independently by a member who needs neither
-  // `manage_git` nor any secret-reveal capability (`scopeRepoCredentials` checks
-  // only that the connection is in their team), so without this a repo URL
-  // pointing at an attacker's host would carry the connection's PAT there — the
-  // agent lifts userinfo into an `Authorization: Basic` header. `baseUrl` is the
-  // host repositories are served from (distinct from `apiBaseUrl`), so a clone
-  // host that isn't it is not this connection's repo. Mismatch ⇒ clone
-  // anonymously, exactly as the GitHub-App (`hostname !== "github.com"`) and fork
-  // (`head.host !== base.host`) paths already do.
+  // Bind the credential to the connection's OWN host.
   let connHost: string;
   try {
     connHost = new URL(cred.baseUrl).host.toLowerCase();
@@ -65,28 +45,9 @@ export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
 }
 
 /**
- * The URL a pull request preview clones when the head lives in a FORK.
- *
- * Two things this exists to get right, and both were wrong while
- * `app_previews.head_clone_url` was recorded and then never read:
- *
- *  1. **The fork's code is what builds.** The deploy used to clone the app's own
- *     repository at the fork's branch NAME, so a fork preview either failed
- *     outright or quietly built the BASE repo's branch of the same name. The
- *     approve button therefore promised a maintainer they had reviewed a diff
- *     that was never what ran - a security control that protected nothing.
- *  2. **No credential goes to it.** {@link resolveCloneUrl} embeds an
- *     installation token or a connection's PAT; a fork belongs to a stranger, so
- *     it is cloned ANONYMOUSLY. A private fork simply fails to clone, which is
- *     the correct outcome.
- *
- * The URL arrives inside a webhook body, so it is checked rather than trusted:
- * https only, no userinfo, and the same host as the app's own repository. Deplo
- * must not be talked into cloning `https://evil.test/x.git` by a `pull_request`
- * payload. Rebuilt from its parts so a query string or fragment cannot ride along.
- *
- * Pure, and it THROWS with the sentence the deploy log shows: a preview that
- * cannot say which code it would run must not run any.
+ * The URL a pull request preview clones when the head lives in a FORK. Two things
+ * this exists to get right, and both were wrong while
+ * `app_previews.head_clone_url` was recorded and then never read: 1.
  */
 export function forkCloneUrl(
   baseRepoUrl: string,

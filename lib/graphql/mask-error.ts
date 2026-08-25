@@ -4,21 +4,12 @@ import { GraphQLError } from "graphql";
 
 /**
  * What may be said to a client when a resolver throws.
- *
- * It lives in its own module so any execution path that runs graphql-js
- * `execute()` directly — getting none of Yoga's own handling — shares the same
- * policy: an in-dashboard sandbox once returned `e.message` verbatim and handed
- * back the raw Drizzle string — the full SQL and its bound parameters — for a
- * query the real endpoint masked to "Something went wrong". A policy that has to
- * be remembered twice is a policy that holds in one place.
  */
 
 /**
  * An INFRASTRUCTURE error whose message must never reach a client: a Drizzle
  * wrapper (its message embeds the raw SQL + bound params — which can include
  * secret values), a Postgres error (SQLSTATE `.code` + table/column identifiers),
- * or a Node/gRPC transport error (a string `.code` like `ECONNREFUSED` or a
- * numeric gRPC status — dial addresses, cert fingerprints). These are masked.
  */
 function isInternalError(e: unknown): boolean {
   if (!(e instanceof Error)) return true; // a non-Error throw is never user copy
@@ -34,10 +25,6 @@ function isInternalError(e: unknown): boolean {
  * Never leak internals, but PRESERVE the repo's "surface the server's message
  * verbatim" contract for the intentional, user-facing errors resolvers and the
  * data layer throw ("You don't have permission to deploy", "Too many attempts",
- * validation messages). Those are plain `Error`s (or `GraphQLError`s) with no
- * infrastructure `.code`, so their message is forwarded; a Drizzle/pg/transport
- * error (see {@link isInternalError}) is masked to null and logged server-side
- * only.
  */
 export function userFacingMessage(error: unknown): string | null {
   if (error instanceof GraphQLError) {

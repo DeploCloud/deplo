@@ -1,20 +1,6 @@
 /**
  * Cron evaluated in a named IANA timezone, built on the UTC evaluator in
- * [cron](../backups/cron.ts) rather than beside it.
- *
- * Backups and the docker-cleanup policy are UTC-only and get away with it: "some
- * time overnight" is the whole requirement, and an hour's drift twice a year
- * costs nobody anything. A cron job is somebody's business rule - the nightly
- * invoice run happens at 02:00 *in the company's timezone*, and it still does
- * after the clocks change - so it needs the zone, and needs it per job, because
- * one instance serves teams in different countries.
- *
- * Pure, dependency-free, and NOT `server-only`: the scheduler evaluates these
- * and the job form previews them, and the two must never disagree about when a
- * schedule fires. The only machinery is `Intl.DateTimeFormat`, which every
- * runtime deplo targets already carries with the full zone database.
- *
- * The interesting half is {@link dedupeKeyFor}. DST breaks the two kinds of
+ * [cron](../backups/cron.ts) rather than beside it. DST breaks the two kinds of
  * schedule in OPPOSITE directions, so one dedupe key cannot serve both.
  */
 
@@ -74,9 +60,7 @@ export function zoneParts(at: Date, tz: string): ZoneParts {
 
 /**
  * `at`'s wall clock in `tz`, packed into a Date whose UTC fields ARE that wall
- * clock. A "fake UTC" instant - never a real one - which is what lets the UTC
- * evaluator answer a zoned question unchanged, day-of-week included (it falls
- * out of `Date.UTC` arithmetically, so no locale weekday string is ever parsed).
+ * clock.
  */
 function fakeUtcOf(at: Date, tz: string): Date {
   const p = zoneParts(at, tz);
@@ -90,14 +74,6 @@ function offsetAt(instant: Date, tz: string): number {
 
 /**
  * The instant at which `tz`'s wall clock reads `wall` (itself a fake-UTC Date).
- *
- * Two passes: the first guess uses the offset near `wall` treated as an instant,
- * which is always within a day of correct; the second re-reads the offset AT the
- * guess, which is what fixes a candidate sitting on the far side of a DST edge.
- *
- * A wall time that does not exist (the hour spring-forward skips) has no answer;
- * callers detect that by round-tripping, which is what {@link nextCronRunInZone}
- * does.
  */
 function zonedToUtc(wall: Date, tz: string): Date {
   const first = new Date(wall.getTime() - offsetAt(wall, tz));
@@ -108,11 +84,6 @@ function zonedToUtc(wall: Date, tz: string): Date {
  * Does `expr` fire at this instant, read in `tz`? Minute precision, like the UTC
  * original - and like it, an unparseable expression never matches rather than
  * throwing, so one malformed schedule cannot kill a scheduler tick.
- *
- * An unknown zone DOES throw (`Intl`'s `RangeError`). That is deliberate: the
- * data layer validates the zone on write, so a bad one here means the row was
- * written by something that bypassed the gate, and silently never firing would
- * hide it. The scheduler contains it per job.
  */
 export function cronMatchesInZone(expr: string, at: Date, tz: string): boolean {
   return cronMatches(expr, fakeUtcOf(at, tz));
@@ -150,20 +121,8 @@ function walkWallClock(
 
 /**
  * The next instant at which `expr` fires, read in `tz`, or null if there is none
- * within `limitDays`. What the job form shows as "next run".
- *
- * Two strategies, because neither alone is both correct and affordable:
- *
- *  - **Walk wall-clock times** (the fast path). Jumps by month/day/hour like the
- *    UTC original, so a yearly schedule costs a handful of steps instead of half
- *    a million. It cannot answer near a fall-back edge, though: it steps FORWARD
- *    through wall times, and a repeated hour is the same wall time twice, so it
- *    would skip the second occurrence and report an answer an hour late.
- *  - **Scan real minutes** (only when a DST transition is inside the window).
- *    ~1560 `Intl` reads, a couple of milliseconds, and correct by construction
- *    because it asks the same question the scheduler asks.
- *
- * Detecting which is two offset reads, so the common call pays almost nothing.
+ * within `limitDays`. Two strategies, because neither alone is both correct and
+ * affordable: - **Walk wall-clock times** (the fast path).
  */
 export function nextCronRunInZone(
   expr: string,
@@ -214,22 +173,9 @@ export function pinsHour(expr: string): boolean {
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /**
- * The value that makes a scheduled fire unique, stored on the run and enforced
- * by `UNIQUE(cron_runs.job_id, dedupe_key)`.
- *
- * It branches because DST breaks the two kinds of schedule in opposite ways, and
- * either key alone is wrong for one of them:
- *
- *  - Fall back repeats a wall-clock hour, so `0 3 * * *` matches at two separate
- *    instants. Keyed on the INSTANT it would fire twice; keyed on the WALL CLOCK
- *    it fires once, which is what "every day at 03:00" means.
- *  - That same repeat means 25 real hours elapse, so an every-5-minutes schedule
- *    legitimately has 24 fires inside it. Keyed on the WALL CLOCK it would run 12
- *    times instead of 24; keyed on the INSTANT it runs all 24, which is what
- *    "every 5 minutes" means.
- *
- * Spring forward needs no branch: a wall-clock minute that does not exist is
- * never reached by either key.
+ * The value that makes a scheduled fire unique, stored on the run and enforced by
+ * `UNIQUE(cron_runs.job_id, dedupe_key)`. Spring forward needs no branch: a
+ * wall-clock minute that does not exist is never reached by either key.
  */
 export function dedupeKeyFor(expr: string, at: Date, tz: string): string {
   if (!pinsHour(expr)) return at.toISOString().slice(0, 16);
@@ -238,12 +184,9 @@ export function dedupeKeyFor(expr: string, at: Date, tz: string): string {
 }
 
 /**
- * The zone's canonical spelling, or null when it is not a zone at all.
- *
- * Validated on WRITE and never on read: `Intl` throws on an unknown zone, and a
- * throw inside the scheduler's tick would stop every other job on the instance.
- * Same idiom as `canonicalTimezone` in lib/data/server-maintenance.ts, which
- * validates the host clock's zone.
+ * The zone's canonical spelling, or null when it is not a zone at all. Validated
+ * on WRITE and never on read: `Intl` throws on an unknown zone, and a throw inside
+ * the scheduler's tick would stop every other job on the instance.
  */
 export function canonicalTimeZone(tz: string): string | null {
   const raw = tz.trim();
@@ -319,15 +262,6 @@ const wallTime = (at: Date) =>
 
 /**
  * The sentence to show under a schedule spring forward will skip, or null.
- *
- * A wall-clock minute the jump deletes never matches, so a schedule pinned inside
- * it does not run that day (Vixie cron fires it right after the jump; we don't -
- * see ADR-0018 §4). This says so, with the date and the missing hour, instead of
- * asking the reader to move a time they picked for a reason.
- *
- * Only for schedules that PIN an hour: an interval that loses 12 of its 288 daily
- * fires once a year is not news. The check is the real one - does the expression
- * match any minute inside the gap - so day-of-week and day-of-month narrow it too.
  */
 export function dstSkipWarning(
   expr: string,

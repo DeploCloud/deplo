@@ -1,15 +1,7 @@
 /**
- * Read a Dokploy instance and print what an import would see. READ ONLY: this
- * only ever issues the GETs the scan issues, never a write, and it touches no
- * Deplo database - it exercises `lib/dokploy/*` alone.
- *
- *   node --import tsx scripts/dokploy-probe.mts <url> <api-key>
- *
- * Kept because the shapes this thing prints are the whole reason the importer is
- * written the way it is: `project.all` is a PROJECTION (an application arrives as
- * {applicationId, name, applicationStatus}, a database as {postgresId} and nothing
- * else), so anything authoritative has to come from the per-service detail call.
- * When an instance behaves unexpectedly, run this first.
+ * Read a Dokploy instance and print what an import would see. READ ONLY: this only
+ * ever issues the GETs the scan issues, never a write, and it touches no Deplo
+ * database - it exercises `lib/dokploy/*` alone.
  */
 
 import {

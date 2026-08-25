@@ -11,15 +11,9 @@ import {
 } from "../db/schema/control-plane";
 
 /**
- * Who to tell about a SERVER-level or fleet-level event.
- *
- * Servers are the one cross-team resource in deplo, so "this host is offline"
- * has no single owner: it belongs to every team with something running on it.
- *
- * The queries are spelled out here rather than imported from `lib/data/servers.ts`
- * on purpose — that module records activity, which dispatches alerts, which
- * would import this one back. This file imports nothing but the schema and the
- * db handle, so it stays a leaf and the cycle never exists.
+ * Who to tell about a SERVER-level or fleet-level event. Servers are the one
+ * cross-team resource in deplo, so "this host is offline" has no single owner: it
+ * belongs to every team with something running on it.
  */
 
 /** Distinct team ids that have at least one app OR database on this server. */

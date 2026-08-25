@@ -388,8 +388,7 @@ test("a database wears its engine's own mark, not a generic glyph", () => {
 
 /**
  * A database's host port, which is the one thing on this screen that is not about
- * WHERE something goes. Quiet by default: a port nothing else wants is a fact,
- * shown next to the engine, not a question.
+ * WHERE something goes.
  */
 test("a database says what it publishes, and only asks when that port is taken", () => {
   const clean = render(["s-db"]);

@@ -4,21 +4,8 @@ import { assertSafeOutboundHost } from "../outbound-url";
 
 /**
  * The two ways a team's alerts can leave as email: its own SMTP server, or a
- * Resend API key. One function, one discriminated union, no transport state
- * kept between sends — an alert is rare enough that a fresh connection costs
- * nothing and a pooled one would just be a resource to leak.
- *
- * Both branches throw the provider's own words on failure, because that is what
- * the settings page shows the user verbatim ("The domain is not verified" beats
- * "email failed"). A nodemailer failure carries an `ECONNREFUSED`-style `.code`,
- * which `mask-error.ts` treats as infrastructure and swallows, so it is rewrapped
- * in a plain `Error` on the way out — otherwise the one channel a self-hoster is
- * most likely to misconfigure is the one that refuses to say why.
- *
- * SMTP is the only destination in this file that the user picks, and it is a bare
- * `host` + `port` rather than a URL, so it takes the outbound guard's HOST form.
- * Skipping it would have made SMTP the one channel that can dial the control
- * plane's own network — see `assertSafeOutboundHost`.
+ * Resend API key. Skipping it would have made SMTP the one channel that can dial
+ * the control plane's own network — see `assertSafeOutboundHost`.
  */
 
 /** What one SMTP dial gets before it is considered dead. */
@@ -45,7 +32,6 @@ export interface EmailMessage {
  * Implicit TLS is port 465 and nothing else — that is nodemailer's own rule
  * (`secure: true` means "TLS from the first byte"), and every other port either
  * upgrades with STARTTLS or is plaintext, which nodemailer negotiates itself.
- * One derived value instead of a checkbox nobody can answer.
  */
 export function smtpSecure(port: number): boolean {
   return port === 465;

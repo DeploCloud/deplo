@@ -28,12 +28,10 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* App tab body: the <EnvFilters> toolbar, then one collapsible Project
-          section per project — each holding the app cards with their editable env
-          tables. The toolbar placeholder mirrors the search input (flex-1) + the
-          Type and Sort selects; the Author select is skipped because it only
-          appears once the rows carry two or more authors. Sections render OPEN by
-          default, which is why the skeleton shows their contents. */}
+      {/**
+       * App tab body: the <EnvFilters> toolbar, then one collapsible Project section per
+       * project — each holding the app cards with their editable env tables.
+       */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Skeleton className="h-9 min-w-[12rem] flex-1 rounded-md" />

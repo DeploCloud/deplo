@@ -64,11 +64,9 @@ export function MonitoringDashboard({
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
   const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
   const [savingToggle, setSavingToggle] = React.useState(false);
-  // Chart history holds live MEASUREMENTS only. The SSR hint (stored status,
-  // zeroed net/load) is a placeholder, not a measurement — charting it would
-  // draw a fake dip to 0. The server-side buffer only ever admits real
-  // measurements, so an outage arrives here as widened spacing (an honest gap),
-  // never as a row of zeros.
+  // Chart history holds live MEASUREMENTS only. The SSR hint (stored status, zeroed
+  // net/load) is a placeholder, not a measurement — charting it would draw a fake dip
+  // to 0.
   const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>(
     {},
   );
@@ -78,27 +76,10 @@ export function MonitoringDashboard({
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
   // Read the buffer for anything that HAS an agent — not just a server whose last
-  // stored status was `online`. The stored status is a timestamped observation, and
-  // it can say `offline`/`warning`/`error` while the box is streaming perfectly
-  // well; gating the read on it would blank the charts for exactly the server an
-  // operator opened this page to diagnose, while the supervisor sat there holding a
-  // healthy stream from it. `provisioning` is the one real exclusion: there is no
-  // agent on the other end yet, so no stream and nothing buffered.
+  // stored status was `online`.
   const online = Boolean(selected) && selected.status !== "provisioning";
 
   // ONE read, on POLL_MS, of the control plane's ring buffer.
-  //
-  // What this replaced: a 1s `serverMetrics` poll whose every tick DIALLED this
-  // host and made it measure — the fleet's telemetry cost scaled with how many
-  // operators had the page open — plus a slower history re-merge beside it to
-  // repair the holes that append-only feed left behind. The telemetry-stream
-  // supervisor now holds one long-lived stream per host and fills the buffer at
-  // the agent's own cadence, so the MERGE is the feed: every point drawn comes
-  // from the buffer, and a failed request, a throttled tab or a stretch when
-  // nobody was watching resolves on the next read instead of scarring the
-  // window permanently.
-  //
-  // Still gated on `online`: nothing streams from a host that has no agent yet.
   React.useEffect(() => {
     if (!selectedId || !online) return;
     let active = true;
@@ -149,10 +130,8 @@ export function MonitoringDashboard({
           const merged = [...byTs.values()]
             .sort((a, b) => a.ts - b.ts)
             .slice(-MAX_POINTS);
-          // Reads run faster than the agent's cadence, so most of them return a
-          // window identical to the one already on screen. Keep the previous
-          // ARRAY in that case: a fresh identity would invalidate the points
-          // memo and redraw every chart several times per new measurement.
+          // Reads run faster than the agent's cadence, so most of them return a window
+          // identical to the one already on screen.
           if (
             merged.length === prev.length &&
             merged[merged.length - 1]?.ts === prev[prev.length - 1]?.ts
@@ -167,14 +146,9 @@ export function MonitoringDashboard({
     };
     void seed();
     const iv = setInterval(seed, POLL_MS);
-    // Read on wake as well as on the timer. A backgrounded tab has its timers
-    // clamped to roughly 1/min, which is PRECISELY the case server-side
-    // buffering exists to cover: the frames kept arriving while the tab slept,
-    // so an immediate read on return paints the whole continuous window at once
-    // instead of showing a false hole that fills in over the next minute. A
-    // soft-nav back or a bfcache/Router-Cache restore may not remount this
-    // component, so a mount-only read would never re-run; `pageshow` covers the
-    // bfcache restore.
+    // Read on wake as well as on the timer. A soft-nav back or a bfcache/Router-Cache
+    // restore may not remount this component, so a mount-only read would never re-run;
+    // `pageshow` covers the bfcache restore.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void seed();
     };
@@ -218,18 +192,14 @@ export function MonitoringDashboard({
   }
 
   const samples = history[selectedId] ?? [];
-  // Latest measurement for the tiles — while nothing is arriving they freeze on
-  // the last real values (the status line says so) instead of zeroing. Until
-  // the first read lands, the SSR hint keeps the tiles warm; the charts never
-  // see it (it's not a measurement).
+  // Latest measurement for the tiles — while nothing is arriving they freeze on the
+  // last real values (the status line says so) instead of zeroing.
   const cur =
     samples[samples.length - 1] ??
     initialMetrics.find((m) => m.serverId === selectedId && m.online) ??
     null;
   // "Live" is a claim about the FEED, not about the last request: a read that
   // succeeds and returns the same frame it returned a minute ago is not live.
-  // Judged at the same threshold the charts band "No data" at, so the header
-  // and the chart below it can never contradict each other.
   const stale = cur ? now - cur.ts > STALE_AFTER_MS : false;
 
   // One shared point list feeds every chart; each panel picks its keys.
@@ -338,10 +308,10 @@ export function MonitoringDashboard({
         <>
           {/* Live status line + chart time window (scopes every chart below) */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* The shared status line, not a local copy of it: the per-app
-                Monitoring tab shows the same claim, and two hand-maintained
-                versions of "is this feed live?" is exactly how one of them ends
-                up still promising a sampling rate nothing samples at. */}
+            {/**
+             * The shared status line, not a local copy of it: the per-app Monitoring tab shows
+             * the same claim, and two hand-maintained versions of "is this feed live?"
+             */}
             <LiveStatusLine stale={stale} asOf={cur.ts} />
             <div
               className="flex items-center gap-0.5 rounded-lg border p-0.5"

@@ -1,12 +1,5 @@
 /**
- * End-to-end smoke test for the server agent (PLAN Part A). Drives the REAL
- * path against real Docker: the supervisor mints certs from the derived CA and
- * launches the agent binary over mTLS, the client dials it, and a Deploy streams
- * a tiny Dockerfile build + compose-up. Asserts the container comes up running,
- * then tears it down. Run with: npx tsx scripts/agent-e2e.mts
- *
- * Not part of `npm test` (it needs Docker + the built binary); it is the manual
- * proof that the contract works machine-to-machine, complementing the unit tests.
+ * End-to-end smoke test for the server agent (PLAN Part A).
  */
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";

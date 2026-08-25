@@ -3,9 +3,7 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 
 /**
  * Without this, the route fell back to the LIST's loading.tsx and a click on
- * "Manage" flashed a grid of server cards — a skeleton of the page you just
- * left. This one is the detail page: back link, title row, tab strip, and the
- * Overview tab that opens by default.
+ * "Manage" flashed a grid of server cards — a skeleton of the page you just left.
  */
 export default function Loading() {
   return (

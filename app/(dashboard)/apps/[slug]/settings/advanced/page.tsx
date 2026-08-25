@@ -27,15 +27,6 @@ export const metadata = { title: "Advanced" };
  * Advanced app settings: the powerful, less-everyday controls in one place — the
  * Advanced features card (the container Console and Cron jobs), a from-scratch
  * container Rebuild, and the Danger Zone (transfer to another team, delete).
- * Folding these under "Advanced" keeps a destructive action off the everyday
- * sections, so it's never one stray click away from Name & logo.
- *
- * "Advanced features" is one card of ROWS rather than a card each: they are the
- * opt-ins an expert goes looking for, and a section apiece would put them on the
- * first-run path of everyone who never wants them. A feature joins that card
- * when it is powerful, off by default, and reveals its own page once on — which
- * is exactly what Cron jobs did from a settings page of its own until this one
- * absorbed it.
  */
 export default async function AppAdvancedSettingsPage(
   props: PageProps<"/apps/[slug]/settings/advanced">,
@@ -43,10 +34,8 @@ export default async function AppAdvancedSettingsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The console page refuses without this, so the way in says so up front
-  // instead of leading to a 404. The cron read is gated and THROWS, which would
-  // take the whole page down for someone who may still manage the rest of it —
-  // so it is asked for first, and the switch falls back to the app's own flag.
+  // The console page refuses without this, so the way in says so up front instead of
+  // leading to a 404.
   const [canConsole, canCron] = await Promise.all([
     hasAppCapability(project.id, "open_app_console"),
     hasAppCapability(project.id, "manage_crons"),

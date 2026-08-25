@@ -6,19 +6,7 @@ import type { DatabaseType } from "@/lib/types";
 /**
  * Real, current engine versions for the database "Version" autocomplete — synced
  * live from Docker Hub so the list tracks new releases (e.g. Postgres 18)
- * automatically, instead of a hardcoded list that goes stale. Proxied
- * server-side behind a short-lived, process-wide cache so every dashboard client
- * shares one upstream call per engine per TTL (same pattern as
- * `/api/node-versions`). Auth-gated.
- *
- * The stored value is a bare version the DB image mapping appends its suffix to
- * (`postgres:${v}-alpine`, `mysql:${v}`, …), so we keep only clean numeric tags
- * (`18`, `18.1`, `8.4`) and drop the `-alpine`/`-bookworm`/`latest` variants —
- * they'd break the derived image ref. Free text is still allowed in the combobox
- * for anything the list doesn't cover.
- *
- *   GET /api/database-versions?engine=postgres
- *     → { versions: [{ value: "18", label: "18" }, { value: "17.6", label: "17.6" }, …] }
+ * automatically, instead of a hardcoded list that goes stale.
  */
 
 // The Docker Hub repo whose tags back each engine (mirrors DB_IMAGES in

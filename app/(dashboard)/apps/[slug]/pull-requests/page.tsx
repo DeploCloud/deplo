@@ -16,11 +16,6 @@ export const metadata = { title: "Pull requests" };
 
 /**
  * Pull request previews for one app.
- *
- * The whole page is a switch on ONE server-resolved reason, so a user is never
- * left guessing why nothing is building: not a GitHub app, no installation, the
- * GitHub App is not subscribed to pull request events, or previews are simply
- * off. Each case names the fix and links straight to it.
  */
 export default async function AppPullRequestsPage(
   props: PageProps<"/apps/[slug]/pull-requests">,
@@ -42,10 +37,10 @@ export default async function AppPullRequestsPage(
 
   return (
     <div className="space-y-4">
-      {/* The same heading shape as Domains and Environment next door: a section
-          title inside the app, not a page title. These are all one app's tabs —
-          the app's own name is already in the header above them, so a second
-          2xl line here would compete with it. */}
+      {/**
+       * The same heading shape as Domains and Environment next door: a section title
+       * inside the app, not a page title.
+       */}
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Pull request previews</h3>

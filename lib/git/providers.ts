@@ -4,20 +4,9 @@ import { parsePushEvent, type GitPushEvent } from "../deploy/git-webhook";
 import type { GitProviderId } from "../types";
 
 /**
- * Every git host that is NOT GitHub, behind one adapter.
- *
- * GitHub keeps its own module (`lib/github/app.ts`) because a GitHub App is a
- * different animal: a registered application with a private key that mints
- * short-lived installation tokens. Everything else - GitLab, Bitbucket,
- * Gitea/Forgejo - authenticates with a long-lived token used as HTTP basic auth,
- * lists repositories over a REST API, and registers a push webhook. Three
- * near-identical clients would be three places to fix the same bug, so they share
- * this shape and differ only in their URLs and their JSON.
- *
- * Deliberately dependency-free (no `server-only`, no DB, no encryption): the
- * caller hands over an already-decrypted {@link GitCredential}, which keeps the
- * signature-verification and payload-parsing rules - the parts that are easy to
- * get subtly wrong - unit-testable without HTTP or a database.
+ * Every git host that is NOT GitHub, behind one adapter. Three near-identical
+ * clients would be three places to fix the same bug, so they share this shape and
+ * differ only in their URLs and their JSON.
  */
 
 /** A connection's credentials, with the token already decrypted by the caller. */
@@ -62,13 +51,9 @@ export interface ParsedPush {
 }
 
 /**
- * The outcome of checking a delivery's authenticity.
- *  - `ok`        the signature (or shared token) matched
- *  - `bad`       a signature was present and did NOT match: drop it, 401
- *  - `unsigned`  the provider sent nothing to verify. Only Bitbucket does this,
- *                and only when no secret is configured on its side; the
- *                unguessable token in the delivery URL is then the shared secret,
- *                exactly like the deploy hook's.
+ * The outcome of checking a delivery's authenticity. Only Bitbucket does this, and
+ * only when no secret is configured on its side; the unguessable token in the
+ * delivery URL is then the shared secret, exactly like the deploy hook's.
  */
 export type VerifyResult = "ok" | "bad" | "unsigned";
 
@@ -150,10 +135,7 @@ function assertFullName(fullName: string): string {
 }
 
 /**
- * How long any single provider request may take. The base URL points at a host
- * WE do not run - often a self-hosted box behind someone's VPN - and these calls
- * sit on the path of creating an app and of saving a deploy source. Without a
- * deadline an unreachable host turns "Save" into a two-minute hang.
+ * How long any single provider request may take.
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -185,9 +167,6 @@ function timedFetch(target: string, init: RequestInit): Promise<Response> {
 
 /**
  * One request against a provider, with its auth header and a readable failure.
- * The provider's own message is surfaced (truncated) rather than swallowed: a
- * 403 saying "insufficient scope: api" is the single most useful thing we can
- * put in front of someone who pasted the wrong kind of token.
  */
 async function call(
   c: GitCredential,
@@ -205,10 +184,9 @@ async function call(
       ...(rest.headers as Record<string, string> | undefined),
     },
   });
-  // A redirect is refused rather than followed (see timedFetch), and the
-  // everyday cause is not an attack: an `http://` address in front of a proxy
-  // that sends everything to https. Say that, with the address to use, instead
-  // of a bare "failed (301)" nobody can act on.
+  // A redirect is refused rather than followed (see timedFetch), and the everyday
+  // cause is not an attack: an `http://` address in front of a proxy that sends
+  // everything to https.
   if (res.status >= 300 && res.status < 400) {
     const to = res.headers.get("location") ?? "";
     throw new Error(
@@ -240,14 +218,9 @@ async function json<T>(
 /* ------------------------------------------------------------------ */
 
 /**
- * Constant-time compare of two same-purpose strings.
- *
- * An EMPTY expectation never matches, whatever arrives. `decryptSecret` answers
- * `""` both for "no secret" and for "this ciphertext will not open" (a rotated
- * `DEPLO_SECRET`), and without this line the degraded case VERIFIES: two empty
- * buffers are equal, and an HMAC taken under an empty key is one anybody can
- * compute. GitHub's own route already refuses on `!secret`; this is the same
- * refusal, for the providers that share this helper.
+ * Constant-time compare of two same-purpose strings. An EMPTY expectation never
+ * matches, whatever arrives. secret`; this is the same refusal, for the providers
+ * that share this helper.
  */
 function sameSecret(a: string, b: string): boolean {
   if (!a || !b) return false;
@@ -694,9 +667,7 @@ const bitbucket: GitProviderApi = {
       { auth: bbAuth(c) },
     );
     // Only the root listing: Bitbucket has no cheap recursive tree, and the root
-    // markers are all framework/favicon detection reads. A monorepo with a root
-    // directory set therefore detects nothing here - no framework rather than a
-    // wrong one, which is the same outcome an unreadable repo already gives.
+    // markers are all framework/favicon detection reads.
     return (res.values ?? [])
       .filter((e) => e.type === "commit_file")
       .map((e) => e.path);

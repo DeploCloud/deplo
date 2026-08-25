@@ -1,26 +1,5 @@
 /**
  * Break-glass recovery, run on the host that runs Deplo — `bun run recover`.
- *
- * WHY THIS EXISTS. The instance owner (lib/data/instance-owner.ts) is immutable
- * from inside the product: no other admin can demote, suspend or password-reset
- * them, which is the whole point — it closes the takeover where one admin you
- * promoted seizes the instance. But it also means the owner locking themselves
- * out (forgotten password, mistyped email, an account that was suspended before
- * the crown existed) has no in-product way back, and Deplo deliberately ships no
- * self-service password reset (no SMTP to depend on, no reset-token surface).
- *
- * So the escape hatch is where an escape hatch belongs: on the box, behind SSH,
- * available only to whoever already controls the machine Deplo runs on — the
- * same trust level that could read `DEPLO_SECRET` or the database directly. This
- * is Coolify's `root:reset-password` shape, and it is the ONE place in the
- * product where dropping to a shell is the intended path rather than a failure
- * of the happy path (AGENTS.md "Core mission"): every user-facing flow stays
- * shell-free, and this only exists for the case where there is no user-facing
- * flow left to use.
- *
- * It talks to Postgres through the normal data layer's client, so it inherits
- * `DEPLO_DATABASE_URL` and writes hashes with the same `hashPassword` the app
- * uses — there is no second password format to keep in sync.
  */
 
 import { and, asc, eq } from "drizzle-orm";
@@ -266,11 +245,7 @@ async function cmdUnsuspend(handle: string) {
 
 /**
  * The break-glass half of updateServerAddress (lib/data/servers.ts): same two
- * columns, none of the checks. The product path verifies the agent answers at
- * the new address before saving - which is exactly what makes it useless once a
- * typo'd address is already stored and the panel can no longer reach the host
- * to fix itself (the Deplo-host row most of all). Whoever can run this already
- * owns the box, like every other command here.
+ * columns, none of the checks.
  */
 async function cmdServerAddress(
   handle: string,

@@ -9,28 +9,16 @@ import { parseLogWindow } from "@/lib/logs/window";
 import { logMaxDays } from "@/lib/data/instance-settings";
 
 /**
- * Live runtime logs (`docker logs -f`) for a DATABASE container, over plain
- * HTTP — the database sibling of `/api/apps/[id]/logs` (same SSE framing, same
- * session plumbing; only the authorization/resolution seam differs).
- *
- *   GET    ?container=<name>&tail=<n>&sinceMinutes=<m>&timestamps=1
- *                                    → SSE stream of the container's live output.
- *                                       The first event is `session` with the id.
- *   DELETE ?sessionId=<id>           → detach (kills our local logs client only).
- *
- * Output-only — logs are read-only. The server-side session
- * (lib/logs/session.ts) is scope-keyed by the database id here, exactly as the
- * app route keys it by app id (the key is opaque to the session layer).
+ * Live runtime logs (`docker logs -f`) for a DATABASE container, over plain HTTP —
+ * the database sibling of `/api/apps/[id]/logs` (same SSE framing, same session
+ * plumbing; only the authorization/resolution seam differs).
  */
 
 // Long-lived stream; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Queued-chunk ceiling before a stalled SSE client is cut off. The controller's
-// default queuing strategy counts chunks, so desiredSize goes one more negative
-// per undelivered enqueue; past this backlog we drop the connection instead of
-// buffering the log firehose in memory without bound.
+// Queued-chunk ceiling before a stalled SSE client is cut off.
 const MAX_QUEUED_CHUNKS = 1024;
 
 export async function GET(
@@ -51,10 +39,6 @@ export async function GET(
     ? Math.min(Math.max(Math.trunc(parsedTail), 0), 5000)
     : 500;
   // How far back to reach and whether to prefix each line with its write time.
-  // Both are the AGENT's job — the stream is raw bytes with no per-line clock,
-  // so this side has nothing to filter on. An agent without `logs.timerange`
-  // ignores them and streams `--tail` as before, which is why an unsupported
-  // host still gets its logs (the viewer greys the control out instead).
   const window = parseLogWindow(
     request.nextUrl.searchParams,
     await logMaxDays(),

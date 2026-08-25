@@ -23,31 +23,7 @@ import {
 
 /**
  * The Docker-cleanup scheduler — the thing that makes the stored cron `schedule`
- * actually fire. A SIBLING of the backup scheduler (lib/backups/scheduler.ts):
- * same once-a-minute shape, same lease machinery, its own lease NAME
- * ({@link DOCKER_CLEANUP_LEASE}) so the two loops never block each other. Started
- * once per server boot from `instrumentation.ts` (Node runtime only). Every minute
- * it:
- *
- *  1. claims the cross-process lease, so at most one control-plane instance drives
- *     the sweep (a horizontally-scaled deploy must not run `docker rmi` N times on
- *     the same host); a tick that can't get the lease does nothing this minute,
- *  2. reads the ONE instance-wide policy (there is no per-server schedule) and, if
- *     it is enabled, fans it out over every server that is not excluded, and
- *  3. runs the due ones through {@link runScheduledCleanup} — the session-free
- *     executor entry, which records the same run history as a manual sweep.
- *
- * WHERE IT DIVERGES FROM THE BACKUP SCHEDULER: backups fire on `cronMatches(now)`
- * ALONE, so a minute the lease-holder was down is silently skipped and the run is
- * simply lost until tomorrow. For a nightly hygiene job whose whole purpose is
- * "the disk does not fill up", that is the wrong failure mode — the one night the
- * control plane is restarting is exactly the night the sweep matters. So this
- * scheduler ALSO fires on OVERDUE (see {@link CATCHUP_AFTER_MS}): a host that has
- * not been swept in over a day runs late rather than not at all.
- *
- * Singleton on `globalThis` via `Symbol.for(...)`: Next compiles separate module
- * graphs, and `register()` could import this through more than one, so a
- * module-level flag would start two intervals.
+ * actually fire.
  */
 
 const TICK_MS = 60_000;
@@ -56,18 +32,6 @@ const TICK_MS = 60_000;
  * A host is OVERDUE once its last sweep STARTED more than this long ago — the
  * catch-up predicate, and the reason a 3-day outage does not cost 3 nights of
  * cleanup: the boot tick sees no run inside the window and sweeps immediately
- * instead of waiting for the next cron minute.
- *
- * An hour of slack over the daily period the UI is built around ("0 4 * * *"), so
- * that a run which started at 04:00:30 yesterday is never called overdue at
- * 04:00:00 today — at that minute `cronMatches` is what fires it, and the two
- * predicates should not overlap.
- *
- * A consequence worth stating plainly: this is a FLOOR, so a sparser cron (a
- * weekly `0 4 * * 0`) still gets swept about every 25h. That is deliberate and
- * harmless — WHAT gets reclaimed is bounded by `minAgeHours` and
- * `keepImagesPerApp`, not by how often we look, so a more frequent sweep removes
- * the same objects, just sooner and in smaller bites.
  */
 const CATCHUP_AFTER_MS = 25 * 60 * 60_000;
 
@@ -104,14 +68,7 @@ function minuteKey(at: Date): string {
 
 /**
  * The servers whose most recent sweep STARTED inside the catch-up window — i.e.
- * the ones that are not overdue. Asked as "who ran recently" rather than "when did
- * each host last run" so the answer needs no aggregate and no per-server query.
- *
- * Deliberately counts a FAILED run as a sweep: an unreachable agent stamps a
- * `failed` run with `startedAt = now`, which takes that host out of the overdue set
- * until the window lapses. Keying off successful runs instead would retry a broken
- * host EVERY MINUTE, burying its history (and the activity feed) under a run row a
- * minute. A host that failed at 04:00 tries again at 04:00 tomorrow, like any other.
+ * the ones that are not overdue.
  */
 async function listServersSweptSince(cutoff: Date): Promise<Set<string>> {
   const rows = await getDb()
@@ -142,9 +99,7 @@ export async function runCleanupSchedulerTick(
     if (!policy.enabled) return;
     // `updateCleanupPolicy` refuses to enable a policy with no scopes, so this only
     // catches the downgrade case (a policy written by a newer build whose scopes this
-    // one does not recognise). Sweeping with an empty scope set would record a run
-    // that reclaimed nothing and call it a success — the exact silent lie the write
-    // path exists to prevent.
+    // one does not recognise).
     if (policy.scopes.length === 0) return;
 
     const key = minuteKey(now);
@@ -163,38 +118,30 @@ export async function runCleanupSchedulerTick(
     const inFlight = new Set([...running, ...serversWithDeploySweepInFlight()]);
 
     const due = servers.filter((s) => {
-      // A migration source is another platform's live host: reclaiming disk there
-      // would delete THEIR images and build cache, off a schedule they never set.
-      // Not an opt-out (nobody should have to know to tick it) - it is simply not
-      // a machine Deplo sweeps.
+      // A migration source is another platform's live host: reclaiming disk there would
+      // delete THEIR images and build cache, off a schedule they never set.
       if (s.importOnly) return false;
       if (excluded.has(s.id)) return false; // the host opted out of the SCHEDULE.
       if (inFlight.has(s.id)) return false; // never stack sweeps on one host.
       if (state.lastFired.get(s.id) === key) return false;
-      // A host we have never swept is overdue by construction (it is in no window),
-      // so enabling the policy sweeps the fleet promptly rather than leaving the
-      // operator to wonder until 04:00 whether it works. An immediate first sweep is
-      // safe: no scope can strand an app — a referenced image is never a candidate,
-      // and `keepImagesPerApp` keeps every app's newest image(s) even under the
-      // default-on `unused_app_images`.
+      // A host we have never swept is overdue by construction (it is in no window), so
+      // enabling the policy sweeps the fleet promptly rather than leaving the operator to
+      // wonder until 04:00 whether it works.
       return onTime || !sweptRecently.has(s.id);
     });
 
     for (const s of due) {
       // Heartbeat mid-drain: a fleet's worth of sequential sweeps can outlast
-      // LEASE_STALE_MS, and a lease whose heartbeat only advances at tick start
-      // would go stale — free for another instance to steal and double-sweep.
-      // Renew per host (real wall-clock, not the tick's `now`); losing the renewal
-      // means the lease WAS stolen, so stop draining rather than race the new owner.
+      // LEASE_STALE_MS, and a lease whose heartbeat only advances at tick start would go
+      // stale — free for another instance to steal and double-sweep.
       if (!(await acquireLease(DOCKER_CLEANUP_LEASE, state.owner))) break;
       // Stamp BEFORE awaiting so a re-entrant/overlapping tick in the same minute
       // can't double-sweep this host even before the run resolves.
       state.lastFired.set(s.id, key);
       try {
-        // Unprovisioned hosts are NOT filtered out here on purpose: the executor
-        // records "never called home" as a failed run, so a host that is enrolled but
-        // never finished provisioning says so in the history instead of vanishing
-        // from it. Sequential, like the backup tick: one host's docker at a time.
+        // Unprovisioned hosts are NOT filtered out here on purpose: the executor records
+        // "never called home" as a failed run, so a host that is enrolled but never
+        // finished provisioning says so in the history instead of vanishing from it.
         await runScheduledCleanup(s.id, s.name, policy);
       } catch (e) {
         // runScheduledCleanup already swallows + records; this is belt-and-braces.
@@ -217,10 +164,6 @@ export async function runCleanupSchedulerTick(
 /**
  * Start the once-a-minute cleanup loop. Idempotent — a second call is a no-op, so
  * importing this through more than one Next module graph can't start two loops.
- * Called from `instrumentation.ts` at boot (Node runtime only), AFTER
- * `reconcileInFlightCleanupRuns` has settled any stranded `running` run: the boot
- * tick's never-stack-sweeps check reads those rows, and an unsettled one would
- * exclude its host from the schedule forever.
  */
 export function startDockerCleanupScheduler(): void {
   if (state.started) return;
@@ -240,11 +183,8 @@ export function startDockerCleanupScheduler(): void {
 }
 
 /**
- * Release this process's hold on the cleanup lease. Called from
- * `instrumentation.ts` on SIGTERM/SIGINT so a clean restart hands the sweep to the
- * next instance immediately, instead of leaving the lease to age out over
- * LEASE_STALE_MS (2h of no cleanup). Best-effort and safe when we never held it —
- * the lease layer ignores a release by a non-holder.
+ * Release this process's hold on the cleanup lease. Best-effort and safe when we
+ * never held it — the lease layer ignores a release by a non-holder.
  */
 export async function releaseDockerCleanupLease(): Promise<void> {
   await releaseLease(DOCKER_CLEANUP_LEASE, state.owner);

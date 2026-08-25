@@ -1,22 +1,5 @@
 /**
  * Merge a re-tailed log burst into what the viewer already shows.
- *
- * `docker logs -f` ends when the container dies, so following a crash-looping
- * container means reattaching after every restart — and each reattach replays
- * `docker logs --tail`, most of which is already on screen. Appending it blindly
- * stutters the same stack trace once per loop; dropping it loses the new run.
- *
- * The burst is a window onto the same log file we were already reading, so the
- * alignment is a SUFFIX/PREFIX overlap: find the longest tail of what we show
- * that is also the head of the burst, and append only what follows it. It has to
- * be an overlap and not a substring search — a crash loop prints the same lines
- * every iteration, so "find our text in the burst" happily matches the REPLAY of
- * the previous run and then throws away the new one.
- *
- * No overlap at all means our lines have scrolled out of docker's tail window
- * (or this is a fresh container), and every byte of the burst is new.
- *
- * Pure and synchronous — the caller is a React state updater.
  */
 
 /**

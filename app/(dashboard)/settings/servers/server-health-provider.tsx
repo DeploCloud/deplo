@@ -7,26 +7,9 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ServerStatus } from "@/lib/types";
 
 /**
- * The live health of every server card on this page.
- *
- * The stored status is now a timestamped OBSERVATION, so the page can't just render
- * it — it has to say how old it is, and refuse to paint it once it's stale. That rule
- * has to be shared by the chips (one per card) and by the two buttons that force a
- * re-check (one per card, one in the header), which is what this context is for.
- *
- * It is seeded from the RSC render so the cards paint instantly, then fires a batched
- * probe on mount: that is what makes a reload — or a client-side navigation back onto
- * this page — actually verify the fleet instead of replaying a status a server reported
- * when it first called home. Deliberately NOT a `router.refresh()` afterwards: the
- * mutation already returns the fresh rows, and refreshing would re-run every read on the
- * page to learn what we are holding in our hand.
- *
- * That mount probe then REPEATS for as long as the page is open (see
- * {@link SWEEP_INTERVAL_MS}). It has to: an observation is only paintable for
- * {@link STATUS_STALE_MS}, so a page that probed once turned every chip grey "Unknown" a
- * minute later and left it there — the operator watching the fleet was the one person
- * guaranteed to be shown nothing. Staleness is the chips' honesty rule, not a bug; the
- * bug was having nothing keep the observation fresh underneath it.
+ * The live health of every server card on this page. The stored status is now a
+ * timestamped OBSERVATION, so the page can't just render it — it has to say how
+ * old it is, and refuse to paint it once it's stale.
  */
 
 /**
@@ -38,12 +21,6 @@ export const STATUS_STALE_MS = 60_000;
 
 /**
  * The ambient re-sweep, while this page is open and visible.
- *
- * Must stay comfortably BELOW {@link STATUS_STALE_MS} — a sweep slower than the staleness
- * window would let every chip flip to "Unknown" between two sweeps, which is exactly the
- * bug this interval exists to kill. It is un-forced, so the data layer's 15s probe
- * throttle — not this number — is the real floor on how often an agent is actually
- * dialed; shortening this would buy nothing but round-trips.
  */
 const SWEEP_INTERVAL_MS = 20_000;
 
@@ -55,33 +32,18 @@ export interface ServerHealthState {
   message: string | null;
   /**
    * Whether a Traefik proxy was running on the host, as of the same observation.
-   *
-   * It rides along with the status for one reason: it is only meaningful WITH it. The
-   * column is a last-known value that no path ever clears on failure, so on its own it
-   * says "Traefik on" for a host that has been unreachable for weeks. Carried here, the
-   * badge can apply the same freshness + reachability rule the chip beside it applies,
-   * and the sweep that keeps one honest keeps the other honest too.
    */
   traefikEnabled: boolean;
   /**
-   * ISO instant the agent last actually ANSWERED, or null if it never has.
-   *
-   * Deliberately not `checkedAt`: that one advances on every probe including the failed
-   * ones, so an offline server's last "check" is seconds old while the last time anyone
-   * reached it may be days. Dating a last-known value with `checkedAt` would reintroduce
-   * the exact lie this state exists to prevent, one layer down in the tooltip.
+   * ISO instant the agent last actually ANSWERED, or null if it never has. Dating
+   * a last-known value with `checkedAt` would reintroduce the exact lie this state
+   * exists to prevent, one layer down in the tooltip.
    */
   lastReachedAt: string | null;
 }
 
 /**
- * Whether an observation is recent enough to paint. `now` is the provider's clock —
- * `null` until mount (during SSR + the first client render we trust the seed rather
- * than branch on a time the two renders would disagree on), a ticking number after.
- *
- * Shared by the health chip and the Traefik badge: both refuse to assert anything about
- * a server nobody has reached lately, and they must age out on exactly the same beat or
- * a card ends up showing a grey "Unknown" status next to a confident "Traefik on".
+ * Whether an observation is recent enough to paint.
  */
 export function isObservationFresh(
   checkedAt: string | null,
@@ -106,13 +68,7 @@ interface HealthContext {
   /** True during the automatic sweep this provider runs on mount. */
   sweeping: boolean;
   /**
-   * The current time for freshness checks, or `null` until mounted. Two jobs:
-   *  - `null` on the server render and the first client render, so the chip does NOT
-   *    branch on time during SSR (server and client would pick different instants and
-   *    React would report a hydration mismatch);
-   *  - a number that TICKS every 20s once mounted, so a chip left open on an idle tab
-   *    ages its own status out to "Unknown" instead of showing "Online · 5 min ago"
-   *    frozen at the value it had when the tab was opened.
+   * The current time for freshness checks, or `null` until mounted.
    */
   now: number | null;
 }
@@ -176,9 +132,6 @@ export function ServerHealthProvider({
   const [checking, setChecking] = React.useState<Record<string, boolean>>({});
   const [sweeping, setSweeping] = React.useState(true);
   // Starts null (SSR-safe), becomes a ticking clock after mount — see `now` above.
-  // The first value is set on the next frame rather than synchronously in the effect
-  // body: SSR and the first client render must both see `null` (or React reports a
-  // hydration mismatch), and a synchronous set-in-effect is a cascading-render smell.
   const [now, setNow] = React.useState<number | null>(null);
   React.useEffect(() => {
     const raf = requestAnimationFrame(() => setNow(Date.now()));
@@ -190,11 +143,7 @@ export function ServerHealthProvider({
   }, []);
 
   /**
-   * Apply rows, WATERMARKED on the observation time. Probes do not land in the order
-   * they were started: the ambient sweep below can be mid-flight (holding a pre-check
-   * snapshot) when the operator forces a re-check, and a naive last-write-wins would let
-   * that older answer land on top of the fresher one and un-do the button they just
-   * pressed. Same reasoning — and the same fix — as `recordServerHealth` server-side.
+   * Apply rows, WATERMARKED on the observation time.
    */
   const merge = React.useCallback((rows: ServerHealthRow[]) => {
     setHealth((prev) => {
@@ -236,11 +185,9 @@ export function ServerHealthProvider({
         if (!live) return;
         if (!quiet) setSweeping(false);
         if (!res.ok) {
-          // The cards fall back to the last observation, which the chip already ages out
-          // to "Unknown" on its own — so a failed sweep degrades to "we don't know",
-          // never to a confident stale value. The ambient sweep says that silently: a
-          // toast every 20s on a broken network is noise the operator learns to dismiss,
-          // and the greying chips already carry the message.
+          // The cards fall back to the last observation, which the chip already ages out to
+          // "Unknown" on its own — so a failed sweep degrades to "we don't know", never to a
+          // confident stale value.
           if (quiet)
             console.error(
               "[deplo] ambient server-health sweep failed:",
@@ -274,10 +221,7 @@ export function ServerHealthProvider({
   const checkOne = React.useCallback(
     (serverId: string) => {
       // The timestamp we had going in — to tell a real re-check apart from a throttled
-      // no-op. checkServerHealth returns the stored row unchanged when the probe was
-      // throttled (its lease is separate from statusCheckedAt), so an UNCHANGED
-      // statusCheckedAt means "we did not actually dial". Toasting "online" off that
-      // would be reporting a result we never observed.
+      // no-op. Toasting "online" off that would be reporting a result we never observed.
       const before = health[serverId]?.checkedAt ?? null;
       setChecking((c) => ({ ...c, [serverId]: true }));
       (async () => {

@@ -7,14 +7,9 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { useServerHealth } from "./server-health-provider";
 
 /**
- * "Check status" — re-probe ONE server's agent on demand. The page already sweeps the
- * fleet on load; this is for the operator who just restarted a box and doesn't want to
- * wait out the throttle or reload the page. It forces past the ambient 15s window (a
- * short server-side floor still applies, so a mashed button can't fan out dials).
- *
- * Sits next to the per-card actions menu rather than inside it: an operator on this page
- * is usually here BECAUSE a server looks wrong, and burying the one action that answers
- * "is it still wrong?" behind a menu would be the wrong default.
+ * "Check status" — re-probe ONE server's agent on demand. It forces past the
+ * ambient 15s window (a short server-side floor still applies, so a mashed button
+ * can't fan out dials). behind a menu would be the wrong default.
  */
 export function CheckStatusButton({
   serverId,

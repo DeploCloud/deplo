@@ -136,12 +136,7 @@ const CreateTokenInputType = builder.inputType("CreateTokenInput", {
     // way. There is no "everything" default: a token that quietly held its
     // creator's whole access is exactly what this input replaced.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
-    // The scope tree, one list per level. All four empty ⇒ unrestricted: every
-    // team the creator belongs to, and everything in it. A team id means that
-    // WHOLE team; a project or folder id means that whole container, subfolders
-    // included; an app id means just that app. Naming anything below a team
-    // narrows the token inside it and drops the team-wide capabilities it was
-    // given there.
+    // The scope tree, one list per level.
     teamIds: t.stringList({ required: false }),
     projectIds: t.stringList({ required: false }),
     folderIds: t.stringList({ required: false }),

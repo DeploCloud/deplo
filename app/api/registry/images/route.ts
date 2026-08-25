@@ -7,23 +7,11 @@ import {
 } from "@/lib/registry/client";
 
 /**
- * Image-hinting proxy for the Compose / Docker-image inputs. All container
- * registries (Docker Hub, GHCR, GitLab, Quay, generic OCI) reject cross-origin
- * browser requests, so the dashboard cannot call them directly — it calls here
- * and we proxy server-side. Auth-gated to logged-in users.
- *
- * GET /api/registry/images?action=search&q=postgr      → name suggestions
- * GET /api/registry/images?action=tags&image=postgres  → tag suggestions
- * GET /api/registry/images?action=exists&image=nginx:1.27 → existence check
+ * Image-hinting proxy for the Compose / Docker-image inputs.
  */
 export async function GET(request: NextRequest) {
-  // Any logged-in user may query — the image inputs this feeds are visible to
-  // every member with `view`, so a capability gate here would break the UI.
-  // This gate is therefore NOT the SSRF defense: lib/registry/client.ts
-  // enforces the egress guard (https only, public addresses only — no
-  // loopback/RFC1918/link-local/metadata targets) on every outbound registry
-  // fetch, including the WWW-Authenticate realm follow. If image hinting is
-  // ever restricted, raise this to a capability check; never drop that guard.
+  // Any logged-in user may query — the image inputs this feeds are visible to every
+  // member with `view`, so a capability gate here would break the UI.
   const user = await getCurrentUser();
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

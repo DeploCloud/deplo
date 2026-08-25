@@ -50,10 +50,6 @@ import type { ServerSummary } from "./server-detail-tabs";
 /**
  * The Advanced tab: what this box actually IS, what time it thinks it is, the
  * Traefik web panel, and the two irreversible things.
- *
- * Host details are fetched when the tab is opened, never during the page render:
- * this is the page you reach for when a server is misbehaving, and it must not be
- * as slow as the server it is describing.
  */
 
 type HostInfo = {
@@ -86,10 +82,7 @@ const HOST_INFO_FIELDS = `
 `;
 
 /**
- * A host reading, paired with the local instant it arrived. The pair is what
- * lets the clock below tick from the SERVER's time rather than the browser's,
- * and keeping `readAt` next to the reading means neither the render nor an
- * effect ever has to ask what time it is.
+ * A host reading, paired with the local instant it arrived.
  */
 type Reading = { info: HostInfo; readAt: number };
 
@@ -268,20 +261,13 @@ function ServerClock({
   const [zone, setZone] = React.useState("");
   const info = reading?.info ?? null;
 
-  // `nowMs` is written only by the interval below — never during render, and
-  // never from an effect body. Combined with the reading's own `readAt`, the
-  // displayed time is a pure function of state: the SERVER's clock advanced by
-  // however long ago we read it, so a box whose clock is wrong shows its wrong
-  // time rather than the browser's right one. That is the whole point of it.
+  // `nowMs` is written only by the interval below — never during render, and never
+  // from an effect body.
   const [nowMs, setNowMs] = React.useState(0);
 
-  // Adopt the host's zone into the field when a fresh reading lands. Adjusting
-  // state during render is the supported pattern (cleanup-panel.tsx does the
-  // same with a saved policy); an effect would render the old zone first.
-  //
-  // Unless the operator has an unsaved pick of their own: Refresh sits next to
-  // this card and re-reads the host, and throwing away a zone someone just chose
-  // is not what pressing Refresh means.
+  // Adopt the host's zone into the field when a fresh reading lands. Adjusting state
+  // during render is the supported pattern (cleanup-panel.tsx does the same with a
+  // saved policy); an effect would render the old zone first.
   const [seen, setSeen] = React.useState(reading);
   if (seen !== reading) {
     const theirs = zone !== "" && zone !== seen?.info.timezone;
@@ -323,9 +309,7 @@ function ServerClock({
 
   // How far the host's clock is from DEPLO's, both stamped server-side around the
   // same agent call. Never against the browser: that measures the browser, and a
-  // laptop an hour out would paint every healthy server in the fleet red. It is
-  // the one number a wall clock cannot show you, and it is what explains a
-  // certificate that will not issue or a cron that fires late.
+  // laptop an hour out would paint every healthy server in the fleet red.
   const skewMs = info ? info.timeUnixMs - info.controlPlaneTimeUnixMs : 0;
 
   return (
@@ -419,14 +403,9 @@ function ServerClock({
 }
 
 /**
- * How far this host's clock is from DEPLO's, said plainly.
- *
- * Deplo's and not the viewer's: the browser is a third machine with a clock of
- * its own, and comparing against it would report the viewer's laptop as the
- * fleet drifting. Under five seconds is noise (the agent round trip is inside
- * this number), so it reads as in sync. Past a minute it is the destructive one:
- * a clock that far out breaks certificate issuance and TOTP before it breaks
- * anything visible.
+ * How far this host's clock is from DEPLO's, said plainly. Deplo's and not the
+ * viewer's: the browser is a third machine with a clock of its own, and comparing
+ * against it would report the viewer's laptop as the fleet drifting.
  */
 function SkewChip({ skewMs }: { skewMs: number }) {
   const abs = Math.abs(skewMs);
@@ -459,15 +438,7 @@ function SkewChip({ skewMs }: { skewMs: number }) {
 }
 
 /**
- * One `Intl` read of an instant in the HOST's zone. The pieces of the clock are
- * formatted separately so the seconds can be styled apart from the rest.
- *
- * A host can report an offset but no zone NAME (a copied /etc/localtime with no
- * /etc/timezone beside it: Alpine, slim images). Falling back to UTC there
- * printed a clock two hours off the offset badge right next to it, so the
- * fallback shifts the instant by the offset the host DID report and reads it as
- * UTC: same wall time, no zone database needed. Every current IANA offset is a
- * whole number of minutes, so the seconds are unaffected by the shift.
+ * One `Intl` read of an instant in the HOST's zone.
  */
 function partsIn(
   at: Date,
@@ -523,11 +494,8 @@ function TraefikPanel({
   // the page and the reading catch up with each other.
   const [applied, setApplied] = React.useState(false);
 
-  // What the HOST is publishing, read off its own Traefik configuration. Our
-  // stored row is only what we last wrote, and the two can disagree — so the
-  // switch, the button and the link below all follow the host, and the row is
-  // reduced to what it can actually answer for (the username). Before the first
-  // reading lands there is nothing else to go on, so the row stands in.
+  // What the HOST is publishing, read off its own Traefik configuration. Before the
+  // first reading lands there is nothing else to go on, so the row stands in.
   const published = info
     ? info.traefikDashboardDomain
     : (server.traefikDashboard?.domain ?? null);
@@ -641,10 +609,9 @@ function TraefikPanel({
             </p>
           ) : (
             <form className="space-y-4" onSubmit={submit}>
-              {/* Where it is answering right now, with the way in. A published
-                  panel with no link to it is a domain you have to remember. Shown
-                  only once the HOST has answered: the stored row is old news, and
-                  "live" is a claim only a reading can make. */}
+              {/**
+               * Where it is answering right now, with the way in.
+               */}
               {info && published ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
                   <div className="min-w-0">
@@ -957,10 +924,7 @@ function InstallCommand({ server }: { server: ServerSummary }) {
 
 /**
  * The address edit (the migration verb: the host got a new IP, or the whole
- * instance moved). Verify-first: the mutation refuses when the agent does not
- * answer at the new address, and only that refusal reveals "Save anyway" - the
- * escape for a host that is not up there yet. Trust is the pinned certificate,
- * not the address, so a typo is always recoverable by editing again.
+ * instance moved).
  */
 function ChangeAddress({ server }: { server: ServerSummary }) {
   const router = useRouter();
@@ -1278,15 +1242,6 @@ function DangerZone({ server }: { server: ServerSummary }) {
 /**
  * What a server is FOR: it runs apps, or it only builds for the ones that do, or
  * it only holds backups.
- *
- * ADVANCED, because it is a fleet-shaping decision nobody makes on their first
- * day, and because the default ("Everything") is what almost every server is.
- *
- * The three are not symmetric in one direction only. Any host that HAS Docker can
- * take any role - the role is a control-plane decision, and the installer's only
- * per-role difference is whether it sets Traefik up. But a server INSTALLED as
- * backups-only never had Docker put on it, and no database write can change that,
- * so it cannot leave that role until the install command is re-run on the host.
  */
 function ServerRolePanel({ server }: { server: ServerSummary }) {
   const router = useRouter();

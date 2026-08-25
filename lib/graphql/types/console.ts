@@ -21,9 +21,8 @@ import {
 
 /**
  * GraphQL surface for the real container console: read the attachable instances
- * for an app, probe the default container's shell label, and exec a command
- * inside the live container. All resolvers are thin wrappers over the data layer,
- * which enforces team-scoping (reads) and the `deploy` capability (exec).
+ * for an app, probe the default container's shell label, and exec a command inside
+ * the live container.
  */
 
 /* ------------------------------------------------------------------ */

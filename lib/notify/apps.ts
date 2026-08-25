@@ -12,17 +12,8 @@ import { shouldFire } from "./cooldown";
 
 /**
  * "This app keeps dying" — the signal `telemetrySaysRunning` has always computed
- * and thrown away.
- *
- * Alert-only: nothing here writes a status. `apps.status` is INTENT, it already
- * has eight writers (five unconditional), and the live demotion the dashboard
- * shows is computed at render time by `displayStatus`. Adding a ninth writer on
- * a 30s clock would start a write-war with the deploy pipeline for a fact the UI
- * already displays correctly. The alert IS the missing piece.
- *
- * Hysteresis is two consecutive reconciles, ~60s apart: a `compose up` recreate
- * shows `restarting` for seconds and never spans two ticks, so a normal deploy
- * cannot raise this.
+ * and thrown away. Adding a ninth writer on a 30s clock would start a write-war
+ * with the deploy pipeline for a fact the UI already displays correctly.
  */
 
 const KEY = Symbol.for("deplo.notify.crashloop");
@@ -42,11 +33,9 @@ const alerted = ((globalThis as Record<symbol, unknown>)[ALERTED_KEY] ??=
   new Set<string>()) as Set<string>;
 
 /**
- * Report this server's crash-looping apps for one reconcile pass.
- *
- * `crashing` is every app the frame says is restarting; `healthy` is every app it
- * says is up. Both are needed: the healthy list is what closes an open alert, and
- * closing it costs a `Map.get` per app because `shouldFire` is asked first.
+ * Report this server's crash-looping apps for one reconcile pass. Both are needed:
+ * the healthy list is what closes an open alert, and closing it costs a `Map.get`
+ * per app because `shouldFire` is asked first.
  */
 export async function reportAppHealth(
   serverId: string,

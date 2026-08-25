@@ -158,8 +158,6 @@ const folderScopes = {
 // Every OTHER folder mutation is a PER-FOLDER decision (owner / grantee / super-
 // user) that can't be expressed as a static team scope, so the GraphQL layer only
 // requires a logged-in caller and the data layer performs the authoritative
-// per-folder check (requireFolderCapability / requireFolderOwnerOrAdmin) — the
-// same defense-in-depth pattern the app mutations use.
 const perFolder = { loggedIn: true } as const;
 
 builder.mutationFields((t) => ({

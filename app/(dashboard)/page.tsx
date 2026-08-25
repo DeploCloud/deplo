@@ -83,16 +83,13 @@ export default async function OverviewPage(props: PageProps<"/">) {
     // dialog, so it is offered only to someone who may actually create one.
     hasCapability("create_databases"),
     // Folders and projects each have their OWN create capability, and
-    // `requireCapability` gives an instance admin no bypass — so asking for
-    // exactly what createFolder/createProject ask for is what keeps a menu
-    // entry from opening a dialog the server then refuses.
+    // `requireCapability` gives an instance admin no bypass — so asking for exactly
+    // what createFolder/createProject ask for is what keeps a menu entry from opening a
     hasCapability("create_folders"),
     hasCapability("create_projects"),
-    // Moving an app is its own permission, and it is the one a folder or app
-    // GRANT can hand out on a single corner of the fleet - so this asks the
-    // wider "anywhere" question. Which apps and which folders actually accept
-    // the move is decided per node, by the card's own capabilities and by the
-    // server; this only decides whether the affordance exists at all.
+    // Moving an app is its own permission, and it is the one a folder or app GRANT can
+    // hand out on a single corner of the fleet - so this asks the wider "anywhere"
+    // question.
     hasCapabilityAnywhere("move_apps"),
   ]);
   const canManageOrder = isAdmin || canManageTeam;
@@ -104,14 +101,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
   // own) stay on the super-user flag; aliased for clarity at the call sites.
   const canManageAllFolders = canManageOrder;
 
-  // What the grid shows:
-  //  - searching: every matching app, flat, across all folders and projects
-  //    (folders/projects hidden) so anything nested is still findable;
-  //  - a folder open: that folder's direct apps + its child folders;
-  //  - a project open: the apps of the SELECTED ENVIRONMENT (ADR-0009 —
-  //    each environment is a sub-folder of apps, picked via the dropdown in
-  //    the toolbar). The view mirrors a folder view — just its apps;
-  //  - otherwise (top level): projects, top-level folders, ungrouped apps.
+  // What the grid shows: - searching: every matching app, flat, across all folders
+  // and projects (folders/projects hidden) so anything nested is still findable; - a
+  // folder open: that folder's direct apps + its child folders; - a project open: the
   const openFolder =
     !query && folderId
       ? (folders.find((f) => f.id === folderId) ?? null)
@@ -162,11 +154,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
   // Project containers only ever show at the true top level.
   const visibleProjects = query || openFolder || openProject ? [] : projects;
 
-  // Enrich each visible folder with the CURRENT caller's effective per-folder
-  // caps and whether they may share it — the two fields the folder cards gate
-  // their own rename/colour/move/delete/share menu on. `listFolders` (the data
-  // read) doesn't carry these (they're per-caller, not stored), so we derive them
-  // here, only for the handful of folders actually rendered.
+  // Enrich each visible folder with the CURRENT caller's effective per-folder caps
+  // and whether they may share it — the two fields the folder cards gate their own
+  // rename/colour/move/delete/share menu on.
   const enrichedFolders = await Promise.all(
     visibleFolders.map(async (f) => ({
       ...f,
@@ -225,11 +215,8 @@ export default async function OverviewPage(props: PageProps<"/">) {
   // order). When off, the grid renders statically.
   const canReorder = canManageOrder && !query;
   // Dragging a card ONTO a folder or a project moves it, which is a different
-  // permission from arranging the grid - and the one that used to ride along
-  // with `manage_team`, leaving "Move & reorder apps" with nothing to do here.
-  // NOT search-restricted, unlike the reorder: the menu-driven moves stay usable
-  // while searching (a search is how you find the app you want to file), and a
-  // filtered grid renders no folder or project to drop onto anyway.
+  // permission from arranging the grid - and the one that used to ride along with
+  // `manage_team`, leaving "Move & reorder apps" with nothing to do here.
 
   const nothingToShow =
     visibleApps.length === 0 &&
@@ -311,10 +298,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
             canCreateFolder={canCreateFolder}
             canCreateProject={canCreateProject}
             isAdmin={isAdmin}
-            // Drill-in context so "New folder" nests under the folder currently
-            // open (ADR-0009: folders nest via parentId). Null inside a project —
-            // folders never live in a project — so a folder made there stays at
-            // the top level.
+            // Drill-in context so "New folder" nests under the folder currently open (ADR-0009:
+            // folders nest via parentId). Null inside a project — folders never live in a
+            // project — so a folder made there stays at the top level.
             parentFolder={
               openFolder ? { id: openFolder.id, name: openFolder.name } : null
             }
@@ -325,10 +311,10 @@ export default async function OverviewPage(props: PageProps<"/">) {
           />
         </div>
 
-        {/* The project drill-in's environment dropdown (ADR-0009) sits inline in
-            the toolbar, at the end just before the grid/list toggle. It is also
-            the whole environment-management surface (rename / default / delete /
-            create), so no separate panel is needed below the grid. */}
+        {/**
+         * The project drill-in's environment dropdown (ADR-0009) sits inline in the
+         * toolbar, at the end just before the grid/list toggle.
+         */}
         <AppSearch
           initialQuery={query}
           initialView={view}
@@ -360,11 +346,8 @@ export default async function OverviewPage(props: PageProps<"/">) {
               description={`Nothing found for “${query}”.`}
             />
           ) : openFolder ? (
-            // An empty open folder renders no grid, but the breadcrumb is the
-            // only way back out — so keep the "Overview / …" trail above the
-            // empty state regardless. The px-1 py-1 must match the grid's
-            // DroppableBreadcrumb so the trail never shifts between the empty and
-            // populated views of the same folder.
+            // An empty open folder renders no grid, but the breadcrumb is the only way back out
+            // — so keep the "Overview / …" trail above the empty state regardless.
             <div className="space-y-6">
               <div className="px-1 py-1">
                 <FolderTrail path={trailPath} view={view} />
@@ -493,10 +476,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
             canMoveApps={canMoveApps}
             canCreateFolder={canCreateFolder}
             canManageAllFolders={canManageAllFolders}
-            // The project card's manage menu (rename, recolor, delete, its
-            // environments) — each item has its own capability server-side, so
-            // this stays the wider "can shape the fleet" proxy it has always
-            // been rather than borrowing the folder gate.
+            // The project card's manage menu (rename, recolor, delete, its environments) — each
+            // item has its own capability server-side, so this stays the wider "can shape the
+            // fleet" proxy it has always been rather than borrowing the folder gate.
             canManageProjects={isAdmin || canDeploy}
             environments={
               openProject

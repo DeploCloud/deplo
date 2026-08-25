@@ -3,16 +3,7 @@ import "server-only";
 /**
  * Server-side container-registry client: image-name search, tag listing, and
  * existence checks across Docker Hub, GHCR, GitLab, Quay and any generic OCI
- * registry. MUST run server-side — none of these hosts send CORS headers, so a
- * browser fetch is blocked; the dashboard calls these through an API route.
- *
- * Two protocols are involved:
- *  - Docker Hub's bespoke JSON API (hub.docker.com) for NAME search and rich
- *    tag metadata. Hub is the only registry with a public name-search endpoint.
- *  - The OCI Distribution v2 API (everything else, and Hub for existence) with
- *    the standard `WWW-Authenticate: Bearer` token dance for anonymous pulls.
- *
- * Endpoints and response shapes here were verified live against the real APIs.
+ * registry.
  */
 
 import { lookup } from "node:dns/promises";
@@ -95,12 +86,8 @@ function isPrivateAddress(addr: string): boolean {
 }
 
 /**
- * SSRF guard for every outbound registry fetch. The registry host comes
- * straight from user input (the image reference) and the token realm from the
- * probed host's own response, so nothing here may reach a non-public target:
- * require https, and reject loopback, RFC1918, link-local (incl. the
- * 169.254.169.254 cloud-metadata IP), and ULA ranges — both as IP literals
- * and after resolving the hostname.
+ * SSRF guard for every outbound registry fetch. the 169.254.169.254 cloud-metadata
+ * IP), and ULA ranges — both as IP literals and after resolving the hostname.
  */
 async function isPublicHttpsUrl(url: string): Promise<boolean> {
   let parsed: URL;
@@ -225,9 +212,6 @@ interface HubTagsResponse {
 
 /**
  * Docker Hub tags carry rich metadata, including last-updated for sorting.
- * `filter` is passed through Hub's server-side `name=` parameter, which is what
- * surfaces a specific version (e.g. `2.0`) even when it's an OLD tag — plain
- * newest-first pagination would never reach it on images with many tags.
  */
 async function dockerHubTags(
   repository: string,

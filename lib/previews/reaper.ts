@@ -19,32 +19,9 @@ import { drainMigrationSourceUninstalls } from "../data/dokploy-import";
 import { getPullRequestState } from "../github/app";
 
 /**
- * The pull request preview reaper — the loop that makes "torn down when the
- * pull request closes" true even when the close never reached us.
- *
- * A sibling of the backup and docker-cleanup schedulers, under its OWN lease
- * (`scheduler_lease.name` is the PK, so a third loop is a third row: no
- * migration, and neither existing loop can block it). Same singleton-on-
+ * The pull request preview reaper — the loop that makes "torn down when the pull
+ * request closes" true even when the close never reached us. Same singleton-on-
  * `globalThis` shape, same `ticking` re-entrancy guard, lease claimed first.
- *
- * ONE DELIBERATE DIFFERENCE from those two: there is no cron and no catch-up
- * window. Every predicate here is a DB state query — "closed but never verifiably
- * torn down", "open and idle past its limit" — so a tick that never ran costs
- * nothing: the next one sees the same rows. Catch-up is intrinsic, and the boot
- * tick is what turns an outage into minutes of delay rather than a lost day.
- *
- * Three things get reaped, in order of urgency:
- *
- *  1. **Retry** — a preview whose pull request closed while its host was
- *     unreachable. `torn_down_at IS NULL` on a `closed` row is the only honest
- *     record that a container and a volume set are still out there.
- *  2. **Expired** — an open preview idle longer than its app's limit. This is
- *     what makes the per-app cap SELF-HEALING: without it, three abandoned pull
- *     requests would hold an app's slots forever and every later pull request
- *     would be refused.
- *  3. **Closed upstream** — an open preview whose pull request GitHub now
- *     reports as closed. The missed-webhook safety net; deliberately last,
- *     because it is the only step that spends network calls.
  */
 
 const TICK_MS = 60_000;
@@ -101,10 +78,8 @@ export async function runPreviewReaperTick(
     // ponytail: one lease for two loops. If they ever contend, the drain takes a
     // fifth `scheduler_lease` name (no migration) and a boot block of its own.
     await drainTeardowns(now);
-    // And the other thing a finished action can still owe a host: taking Deplo's
-    // agent back off a migration source. Same reasoning as the queue above - a
-    // ladder measured in minutes, a predicate that is pure DB state, and nobody
-    // to watch it - so it rides the same tick rather than growing a timer.
+    // And the other thing a finished action can still owe a host: taking Deplo's agent
+    // back off a migration source.
     await drainMigrationSourceUninstalls(now);
     // The preview sweep stays hourly: nothing here changes minute to minute.
     if (now.getTime() - state.lastSweepAt < SWEEP_INTERVAL_MS) return;
@@ -155,11 +130,8 @@ export async function runPreviewReaperTick(
 }
 
 /**
- * Start the reaper (idempotent). Ticks every minute: the teardown queue drains on
- * every tick, the preview sweep does real work at most once an hour. The interval
- * is `unref()`'d so it never keeps the process alive.
- * The boot tick runs immediately — an instance coming back from an outage
- * catches up straight away instead of waiting out the interval.
+ * Start the reaper (idempotent). The interval is `unref()`'d so it never keeps the
+ * process alive.
  */
 export function startPreviewReaper(): void {
   if (state.started) return;

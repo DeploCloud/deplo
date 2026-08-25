@@ -64,10 +64,8 @@ import type { Server } from "@/lib/types";
 /* Local enums                                                         */
 /* ------------------------------------------------------------------ */
 
-// These two unions back the Server DTO but are not shared across modules,
-// so they live locally here rather than in enums.ts (exported nothing).
-// `warning` is NOT optional here: the health prober persists it, and an enum that
-// doesn't know the value makes every `servers { status }` query fail at serialization.
+// These two unions back the Server DTO but are not shared across modules, so they
+// live locally here rather than in enums.ts (exported nothing).
 const ServerStatusEnum = builder.enumType("ServerStatus", {
   values: ["online", "warning", "error", "offline", "provisioning"] as const,
 });
@@ -154,10 +152,9 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     teams: t.field({
       type: [TeamRef],
-      // The granted-team NAMES are cross-team info, so gate them to infra
-      // managers (the only ones who edit access) — `allTeams` above stays
-      // readable by all for the count-only badge. No client selects this field
-      // without the capability today.
+      // The granted-team NAMES are cross-team info, so gate them to infra managers (the
+      // only ones who edit access) — `allTeams` above stays readable by all for the
+      // count-only badge.
       authScopes: { capability: "manage_team" },
       description:
         "Teams explicitly granted access when `allTeams` is false (empty otherwise — every team has access). Requires manage_infra.",
@@ -199,10 +196,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     statusMessage: t.string({
       nullable: true,
-      // Instance-admin only, like `teams` above is manage_infra only. The strings are
-      // curated (never a raw agent error), but they describe the internal state of
-      // shared infrastructure and belong to the operator who administers it, not to
-      // every member who can merely target the server.
+      // Instance-admin only, like `teams` above is manage_infra only.
       authScopes: { instanceAdmin: true },
       description:
         'Why `status` is not `online` — e.g. "The agent is up but Docker is unreachable". Null when online or never probed. Requires instanceAdmin.',
@@ -355,10 +349,8 @@ const ServerRestartReportRef = builder
   });
 
 /**
- * The result of registering a remote server: the new row PLUS the one-time
- * install command the operator pastes on the box (P1). The command embeds a
- * single-use bootstrap token, so it is returned ONCE here and never re-readable
- * (the control plane stores only its hash). Re-mint with `reissueBootstrap`.
+ * The result of registering a remote server: the new row PLUS the one-time install
+ * command the operator pastes on the box (P1).
  */
 interface AddServerPayload {
   server: Server;
@@ -503,10 +495,6 @@ const AddServerInputType = builder.inputType("AddServerInput", {
     // the host stays out of every deploy-target picker.
     buildOnly: t.boolean({ required: false }),
     // A MIGRATION SOURCE: another platform's host, registered only to import from.
-    // The install command touches nothing on the box beyond the agent itself (no
-    // Traefik, no shared network, no Docker configuration), the row is granted to
-    // the calling team alone, and the host is excluded from everything - deploys,
-    // builds, backup destinations, sweeps, monitoring. Set by the import wizard.
     importOnly: t.boolean({ required: false }),
   }),
 });
@@ -642,11 +630,8 @@ builder.queryFields((t) => ({
     resolve: (_r, { id }) => getServer(id),
   }),
   agentUninstallCommand: t.string({
-    // Same floor as `servers` and `server` beside it: signed in, and the data
-    // function resolves the team itself. The string holds no secret - it points
-    // at an installer this instance serves unauthenticated by design - and the
-    // people who need it are whoever is looking at a migration source they
-    // cannot get rid of, which is not only instance admins.
+    // Same floor as `servers` and `server` beside it: signed in, and the data function
+    // resolves the team itself.
     authScopes: { loggedIn: true },
     description:
       "The paste-on-the-host command that removes Deplo's agent from a machine. Instance-wide, identical for every host, and carrying no secret - the installer it points at is served unauthenticated by design. Shown next to a migration source Deplo could not reach, because an unreachable host's agent can only be taken off from the host.",
@@ -786,12 +771,9 @@ builder.mutationFields((t) => ({
       return version;
     },
   }),
-  // Health checks are MUTATIONS, not queries, even though they read. They dial out
-  // over the network and write the row — and app/api/graphql/route.ts serves GET, so a
-  // side-effecting query would be reachable by a plain link (prefetch, crawler, CSRF)
-  // and would turn the control plane into a fan-out dialer on someone else's click.
-  // Neither takes a host/port: only an opaque serverId, resolved through the pinned
-  // dial target, so this can never be pointed at an arbitrary address.
+  // Health checks are MUTATIONS, not queries, even though they read. Neither takes a
+  // host/port: only an opaque serverId, resolved through the pinned dial target, so
+  // this can never be pointed at an arbitrary address.
   checkServerHealth: t.field({
     type: ServerRef,
     authScopes: { instanceAdmin: true },
@@ -822,12 +804,9 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { force }) => checkAllServerHealth({ force: force ?? false }),
   }),
-  // A MUTATION, not a query, for exactly the reason checkServerHealth above is one: it dials
-  // out over the network, and app/api/graphql/route.ts serves GET — a side-effecting query
-  // would be reachable by a plain link (prefetch, crawler, CSRF) and would turn the control
-  // plane into a fan-out dialer on someone else's click. It takes an opaque serverId, resolved
-  // through the pinned dial target, so it can never be pointed at an arbitrary address. Unlike
-  // the health checks it writes NOTHING — the report is computed live and thrown away.
+  // A MUTATION, not a query, for exactly the reason checkServerHealth above is one:
+  // it dials out over the network, and app/api/graphql/route.ts serves GET — a
+  // side-effecting query would be reachable by a plain link (prefetch, crawler, CSRF)
   checkServerReadiness: t.field({
     type: ServerReadinessReportRef,
     authScopes: { instanceAdmin: true },
@@ -836,12 +815,8 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => checkServerReadiness(id),
   }),
-  // ---- Host ops. Like the two health checks above, checkServerHostInfo is a
-  // MUTATION despite writing nothing: it dials out over the network, and
-  // app/api/graphql/route.ts serves GET, so a side-effecting query would be
-  // reachable by a plain link (prefetch, crawler, CSRF) and would turn the
-  // control plane into a fan-out dialer on someone else's click. Each takes an
-  // opaque serverId resolved through the pinned dial target, never an address.
+  // ---- Host ops. Each takes an opaque serverId resolved through the pinned dial
+  // target, never an address.
   checkServerHostInfo: t.field({
     type: ServerHostInfoRef,
     authScopes: { instanceAdmin: true },

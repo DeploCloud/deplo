@@ -9,10 +9,8 @@ import { DatabaseConnectionSettings } from "@/components/storage/database-connec
 export const metadata = { title: "Connection" };
 
 /**
- * Connection: how clients reach this database and authenticate — public
- * exposure and its host port, the server it runs on, and password rotation.
- * Split out of General when General took over the database's identity (name +
- * logo), matching how an App's settings are laid out.
+ * Connection: how clients reach this database and authenticate — public exposure
+ * and its host port, the server it runs on, and password rotation.
  */
 export default async function DatabaseConnectionSettingsPage(
   props: PageProps<"/storage/databases/[id]/settings/connection">,

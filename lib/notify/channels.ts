@@ -7,29 +7,13 @@ import { sendWebPushTo } from "./web-push";
 import type { AlertKey } from "../types";
 
 /**
- * One channel, one message, one place. Both the dispatcher (a real alert) and
- * the settings page (the Test button) go through `sendToChannel`, so the
- * Discord/Slack/Telegram/webhook POSTs exist exactly once and a fix to one is a
- * fix to both.
- *
- * Every user-supplied URL is re-checked with `assertSafeOutboundUrl` HERE, at
- * the dial, and every dial sets `redirect: "manual"` — the save-time check ran
- * on a different day (and rows predate the guard entirely), and a 302 is the
- * other way out of a checked URL. The control plane dials these from a
- * background loop with no user behind it, which is exactly the shape SSRF wants.
- *
- * Throws on failure with the provider's own words; the dispatcher catches per
- * channel so one dead webhook never costs the others.
+ * One channel, one message, one place. Throws on failure with the provider's own
+ * words; the dispatcher catches per channel so one dead webhook never costs the
+ * others.
  */
 
 /**
- * A configured destination, ready to dial. Secrets are already decrypted by the
- * caller.
- *
- * This describes the DIAL, not the stored instance, and carries no instance id
- * on purpose: nothing downstream of the dial needs one. The alert filter runs
- * upstream, on the row, precisely BECAUSE `kind` is the same answer for two
- * Discord rooms with different selections.
+ * A configured destination, ready to dial.
  */
 export type AlertChannel =
   | { kind: "discord"; webhookUrl: string }
@@ -49,11 +33,6 @@ export type AlertChannel =
 
 /**
  * How long one channel gets before the others stop waiting for it.
- *
- * It lives HERE, next to the dials it bounds, rather than in the dispatcher:
- * `sendTestNotification` needs the same deadline, and `lib/data/notifications.ts`
- * importing the dispatcher would close a cycle (dispatch → channelsForAlert →
- * dispatch). Re-exported from `dispatch.ts`, which is where it reads best.
  */
 export const CHANNEL_TIMEOUT_MS = 5_000;
 
@@ -236,10 +215,9 @@ export async function sendToChannel(
     }
 
     default: {
-      // This switch is `async`, so falling off the end is legal TypeScript and a
-      // channel with no case would be a silent no-op — a switch that promises an
-      // alert and delivers silence, which is the exact bug this feature exists
-      // to close. The `never` makes it a compile error instead.
+      // This switch is `async`, so falling off the end is legal TypeScript and a channel
+      // with no case would be a silent no-op — a switch that promises an alert and
+      // delivers silence, which is the exact bug this feature exists to close.
       const unreachable: never = channel;
       throw new Error(`No sender for channel ${JSON.stringify(unreachable)}`);
     }
@@ -254,15 +232,9 @@ function linkLine(msg: AlertMessage): string {
 /* ---------------------------------------------------------------- Discord -- */
 
 /**
- * Discord gets a real embed, not a line of bold text: a color stripe that says
- * at a glance whether this is bad news, the catalog's own name for the event,
- * and the dashboard link on the title. Every string in it is one Deplo already
- * shows on the notification settings page — the channel is a view of the same
- * catalog, not a second vocabulary.
- *
- * No images: the embed renders on Discord's side, so a logo would have to be
- * fetched from the panel's address, which on a private instance is unreachable
- * and draws a broken thumbnail.
+ * Discord gets a real embed, not a line of bold text: a color stripe that says at
+ * a glance whether this is bad news, the catalog's own name for the event, and the
+ * dashboard link on the title.
  */
 function discordPayload(msg: AlertMessage) {
   return {

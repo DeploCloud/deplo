@@ -165,10 +165,8 @@ const MonitoringSettingsRef = builder
 builder.queryFields((t) => ({
   serverMetrics: t.field({
     type: ServerMetricsRef,
-    // Every call dials the owning server's agent (fresh mTLS connect + cert
-    // work) with no rate limit — an infra action, not a dashboard read. The
-    // buffered reads below are cheap by comparison but answer the same
-    // question, so they carry the same permission.
+    // Every call dials the owning server's agent (fresh mTLS connect + cert work) with
+    // no rate limit — an infra action, not a dashboard read.
     authScopes: { capability: "view_metrics" },
     description: "A fresh live metrics snapshot for one server.",
     args: { serverId: t.arg.string({ required: true }) },
@@ -248,8 +246,5 @@ builder.mutationFields((t) => ({
     resolve: (_r, { enabled }) => setSaveMetrics(enabled),
   }),
 
-  // There is deliberately NO per-app / per-database "Save metrics" mutation. The
-  // telemetry stream carries every container on a host in one frame, so there is
-  // no per-resource sampling cost left to ration — `setSaveMetrics` above is the
-  // one master switch. See lib/data/container-metrics.ts.
+  // There is deliberately NO per-app / per-database "Save metrics" mutation.
 }));

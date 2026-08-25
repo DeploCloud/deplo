@@ -89,11 +89,9 @@ builder.queryFields((t) => ({
     resolve: () => listMcpConnections(),
   }),
   mcpConnected: t.boolean({
-    // `loggedIn`, not `manage_mcp`: this answers one yes/no about a token the
-    // caller has just minted, and the person who mints a token holds
-    // `manage_tokens` — which is not `manage_mcp`. The real gate is inside
-    // `mcpTokenConnected`, as always, and an id outside the caller's reach
-    // reads `false` rather than erroring.
+    // `loggedIn`, not `manage_mcp`: this answers one yes/no about a token the caller
+    // has just minted, and the person who mints a token holds `manage_tokens` — which
+    // is not `manage_mcp`.
     authScopes: { loggedIn: true },
     description:
       "Has this API token spoken MCP yet? What the connect wizard waits on " +

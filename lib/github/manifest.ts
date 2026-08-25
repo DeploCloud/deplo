@@ -7,11 +7,6 @@ import { safeReturnPath } from "@/lib/utils";
 
 /**
  * GitHub App Manifest flow helpers.
- *
- * Deplo creates a GitHub App for the user the way Dokploy/Coolify do: it POSTs
- * an app "manifest" to github.com/settings/apps/new; GitHub creates the App and
- * redirects back with a one-time `code` that we exchange for the App's
- * credentials (id, slug, private key, secrets). No manual copy/paste.
  */
 
 export interface AppManifest {
@@ -37,21 +32,7 @@ export function manifestCreateUrl(org?: string | null): string {
 }
 
 /**
- * Build the manifest. Permissions are the minimum needed to list and clone the
- * user's repos, auto-deploy on push, and build a preview per pull request:
- *   contents: read        clone repositories
- *   metadata: read        list repositories / read repo metadata (mandatory)
- *   pull_requests: write  read pull requests AND post the one preview comment
- *                         (a pull request's conversation comment is an issue
- *                         comment, and GitHub accepts `pull_requests: write`
- *                         for it — so this covers both, with no `issues` grant)
- * plus the `push` and `pull_request` events.
- *
- * A manifest is only ever read when an App is CREATED, and GitHub has no API to
- * change an existing App's permissions or events. An instance that connected
- * GitHub before previews existed therefore keeps the old set until its owner
- * updates it on github.com — which is why `readAppCapabilities` exists and why
- * the Pull requests page says so out loud instead of showing an empty list.
+ * Build the manifest.
  */
 export function buildManifest(publicUrl: string): AppManifest {
   const base = publicUrl.replace(/\/+$/, "");
@@ -118,18 +99,9 @@ export async function exchangeManifestCode(
 /* ------------------------------------------------------------------ */
 
 /**
- * The signed `state` that rides both hops of the connect flow: the manifest
- * POST (GitHub echoes it to `/api/github/callback`) and the install link
- * (`installations/new?state=…`, which GitHub echoes to `/api/github/setup` —
- * documented as the way to "return people back to that state after they
- * install").
- *
- * It carries two things: WHO started the flow, so a state minted for someone
- * else is refused, and WHERE they were, so connecting from the create-app
- * wizard lands back in the wizard instead of Settings → Git. The payload is
- * HMAC'd by `signState`, so the return path cannot be tampered with in flight —
- * `safeReturnPath` still runs on both ends, because the same value is what a
- * caller handed us in the first place.
+ * The signed `state` that rides both hops of the connect flow: the manifest POST
+ * (GitHub echoes it to `/api/github/callback`) and the install link
+ * (`installations/new?
  */
 export function signConnectState(
   userId: string,
@@ -140,10 +112,7 @@ export function signConnectState(
 }
 
 /**
- * Verify a state minted by {@link signConnectState}. `null` means "not this
- * user's state" (forged, expired, or replayed from another account) and is the
- * refusal both routes act on; a valid state answers with the page to return to,
- * `null` when the flow started without one.
+ * Verify a state minted by {@link signConnectState}.
  */
 export function readConnectState(
   token: string | null | undefined,

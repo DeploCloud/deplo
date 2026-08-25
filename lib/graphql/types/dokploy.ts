@@ -40,16 +40,6 @@ import {
 /**
  * Import from Dokploy — read a Dokploy instance over its API and create the deplo
  * equivalents in the ACTIVE team.
- *
- * Every resolver is one line into `lib/data/dokploy-import.ts`, which is where the
- * gates live. `create_projects` is the entry capability on all of them (and the
- * data layer additionally refuses a narrowed principal, since an import writes
- * across the whole team); each object created then re-checks its own capability
- * inside the same `lib/data` function the UI calls, so a caller who cannot create
- * databases gets them in the report instead of a privileged shortcut.
- *
- * The import is driven one PROJECT per call. That is deliberate: progress is real,
- * each request is short, and re-running resumes rather than duplicating.
  */
 
 /* ------------------------------------------------------------------ */
@@ -510,12 +500,9 @@ builder.subscriptionFields((t) => ({
 }));
 
 /**
- * Live "is a migration running in this team". Cookie-free: the team comes from
- * the GraphQL context and the read takes it as an argument, because `cookies()`
- * is not callable across the iteration ticks of a long-lived SSE response.
- *
- * Emits on every change of the RUN, counts included, so the wizard's watching
- * panel counts up without polling. A ping that changes nothing emits nothing.
+ * Live "is a migration running in this team". Cookie-free: the team comes from the
+ * GraphQL context and the read takes it as an argument, because `cookies()` is not
+ * callable across the iteration ticks of a long-lived SSE response.
  */
 export async function* activeMigrationStream(
   teamId: string | null,

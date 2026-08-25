@@ -4,10 +4,7 @@ import { useEffect } from "react";
 import { isStaleBuildError, reloadOnce } from "@/lib/stale-build";
 
 /**
- * Global error boundary. It replaces the root layout entirely, so it renders
- * its own <html>/<body> and must NOT use request-time APIs (headers/cookies)
- * that keeps it statically renderable and avoids pulling the nonce-reading root
- * layout into the build's error-page prerender.
+ * Global error boundary.
  */
 export default function GlobalError({
   error,

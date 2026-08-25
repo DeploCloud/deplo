@@ -50,10 +50,7 @@ import { OptimisticList } from "@/components/shared/optimistic-list";
 export const metadata = { title: "Storage" };
 
 export default async function StoragePage(props: PageProps<"/storage">) {
-  // "New ▸ …" actions (the global context menu / Overview) link here with
-  // ?new=database|destination|backup so the matching create dialog opens straight
-  // away on the right tab. `?new=s3` is kept as an alias: it is linked from
-  // elsewhere in the app and from anything a user bookmarked.
+  // "New ▸ …" actions (the global context menu / Overview) link here with ?
   const { new: newParam } = await props.searchParams;
   const newKind = Array.isArray(newParam) ? newParam[0] : newParam;
   const wantsDestination = newKind === "destination" || newKind === "s3";
@@ -65,10 +62,8 @@ export default async function StoragePage(props: PageProps<"/storage">) {
       ? "backups"
       : "databases";
 
-  // Every section of this page is team-level: a database belongs to the team and
-  // to no project, and so do the backup destinations and the fleet. A member
-  // limited to part of the team therefore has none of it, and is told so rather
-  // than handed the error boundary.
+  // Every section of this page is team-level: a database belongs to the team and to
+  // no project, and so do the backup destinations and the fleet.
   if (!(await reachesWholeTeam()))
     return (
       <div className="space-y-6">
@@ -84,10 +79,9 @@ export default async function StoragePage(props: PageProps<"/storage">) {
       </div>
     );
 
-  // A team with no destination at all gets one pointing at a server it can
-  // reach. Backups are the one feature where "first go sign up for a bucket"
-  // turns a five-second decision into a project, and the fleet already has a
-  // disk. Lazy, like ensureTeamRoles, and silent when no server can hold one.
+  // A team with no destination at all gets one pointing at a server it can reach.
+  // Backups are the one feature where "first go sign up for a bucket" turns a
+  // five-second decision into a project, and the fleet already has a disk.
   await ensureDefaultDestination();
 
   const [
@@ -123,10 +117,8 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     // uses) — without them the button is simply not on the selection bar.
     hasCapability("control_databases"),
     hasCapability("delete_databases"),
-    // The three create surfaces of this page, each gated on exactly the
-    // capability its mutation requires. Without them the button is disabled
-    // (tooltip says why) and the empty state says what to ask for, instead of
-    // opening a form the server refuses on submit.
+    // The three create surfaces of this page, each gated on exactly the capability its
+    // mutation requires.
     hasCapability("create_databases"),
     hasCapability("manage_backup_destinations"),
     hasCapability("manage_backups"),
@@ -137,11 +129,9 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     isInstanceAdmin(),
   ]);
 
-  // Only provisioned servers can host a database (provisioning routes through a
-  // live agent). A server is provisioned once its agent has called home and
-  // pinned a cert fingerprint.
-  // A storage-only host runs nothing, so it can never provision a database; nor
-  // can a migration source, which is another platform's machine.
+  // Only provisioned servers can host a database (provisioning routes through a live
+  // agent). A storage-only host runs nothing, so it can never provision a database;
+  // nor can a migration source, which is another platform's machine.
   const dbServers = servers
     .filter(
       (s) =>
@@ -151,9 +141,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   // serverId → name, so a card can show which host each database runs on.
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
   // A backup destination can live on ANY server the team reaches, including a
-  // storage-only box that hosts nothing — which is exactly the point of one. A
-  // migration source is the exception: the agent there is removed the day the
-  // import ends, and it would take the artifacts with it.
+  // storage-only box that hosts nothing — which is exactly the point of one.
   const destinationServers = servers
     .filter((s) => Boolean(s.agent?.certFingerprint) && !s.importOnly)
     .map((s) => ({ id: s.id, name: s.name, storageOnly: s.storageOnly }));
@@ -189,10 +177,11 @@ export default async function StoragePage(props: PageProps<"/storage">) {
 
         {/* Databases */}
         <TabsContent value="databases" className="space-y-4">
-          {/* Creating a database closes the dialog at once and shows the card
-              pulsing in the grid while the host port is probed and the row is
-              written; the real card then takes over and reports provisioning
-              live. */}
+          {/**
+           * Creating a database closes the dialog at once and shows the card pulsing in the
+           * grid while the host port is probed and the row is written; the real card then
+           * takes over and reports provisioning live.
+           */}
           <PendingCreateProvider count={databases.length}>
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">

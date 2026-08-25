@@ -1,15 +1,7 @@
 /**
  * End-to-end smoke test for the server agent's PART B path, against the REAL
- * binary + real Docker + real git, with a SIMULATED remote: the agent is run as
- * if it were a freshly-installed remote box (no pre-written certs), it CALLS HOME
- * to a tiny stand-in for /api/agent/bootstrap that signs its CSR with the real
- * control-plane PKI, then it serves gRPC and the control plane dials it with
- * FINGERPRINT PINNING. Proves the trust inversion (P1-P4), a GIT-source deploy
- * (D3), and reconnection/replay (D5) without needing a second machine.
- *
- * Run: npx tsx scripts/agent-part-b-e2e.mts   (needs Docker + git + the binary)
- * Not part of `npm test`. Complements the Go + TS unit tests with a machine-to-
- * machine proof.
+ * binary + real Docker + real git, with a SIMULATED remote: the agent is run as if
+ * it were a freshly-installed remote box (no pre-written certs), it CALLS HOME to
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
@@ -113,10 +105,7 @@ async function main() {
   );
   agent.on("exit", (c) => console.log(`agent exited (${c})`));
 
-  // ---- 3. Build a remote-style dial target with fingerprint pinning. ----
-  // Mirror lib/infra/agent-client.remoteTarget() but inline so we don't need a
-  // store-backed Server row. Wait for bootstrap to produce the fingerprint +
-  // for the agent to start serving.
+  // ---- 3.
   for (let i = 0; i < 100 && !pinnedFingerprint; i++) await sleep(100);
   if (!pinnedFingerprint) throw new Error("agent never called home");
   console.log(
@@ -287,10 +276,9 @@ async function main() {
   if (replayCount < lastSeq)
     throw new Error("reattach replayed fewer events than were buffered");
 
-  // ---- 6. MID-FLIGHT drop + reattach (D5, the real promise). ----
-  // Start a second deploy, abandon the Deploy stream after the first event (as if
-  // the control plane crashed mid-build), then reattach from the cursor and
-  // follow it to completion — the build kept going on the agent's background ctx.
+  // ---- 6. ---- Start a second deploy, abandon the Deploy stream after the first
+  // event (as if the control plane crashed mid-build), then reattach from the cursor
+  // and follow it to completion — the build kept going on the agent's background ctx.
   await sh("docker", ["rm", "-f", NAME]);
   const DEPLOY_ID_2 = "dpl_e2e_partb_2";
   console.log("== mid-flight: start deploy, drop after 1 event, reattach ==");

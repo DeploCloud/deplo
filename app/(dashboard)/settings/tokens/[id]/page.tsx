@@ -42,9 +42,7 @@ export default async function TokenPage(
   // exactly as it does in the data layer. There is no id to guess your way into.
   if (!token) notFound();
   // SOMEONE ELSE's token is editable only from the team it was created in:
-  // re-authoring it is bounded by what you may do there (`updateToken`). Say so
-  // instead of failing on Save. Your own follows you across teams - it was
-  // minted on your account, not inside one of them.
+  // re-authoring it is bounded by what you may do there (`updateToken`).
   const editableHere =
     token.createdByUserId === user.id || token.homeTeamId === activeTeamId;
   const canEdit = canManage && editableHere;
@@ -109,11 +107,9 @@ export default async function TokenPage(
         tree={tree}
         activeTeamId={activeTeamId}
         canManage={canManage}
-        // An OAuth connection edits here like any other token: approving the
-        // consent screen mints an ordinary row and re-approving DELETES it for a
-        // fresh one, so there is never a second copy of the permissions to drift
-        // from this one. Read-only only for a token somebody else manages in
-        // another team, where revoking stays the lever that is never a dead end.
+        // An OAuth connection edits here like any other token: approving the consent screen
+        // mints an ordinary row and re-approving DELETES it for a fresh one, so there is
+        // never a second copy of the permissions to drift from this one.
         canEdit={canEdit}
         canGrantInstanceAdmin={canGrantInstanceAdmin}
         publicUrl={await instancePublicBaseUrl()}

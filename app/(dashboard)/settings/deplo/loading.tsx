@@ -2,10 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 /**
- * Mirrors `DeploSettingsPanel`. Two of its cards fetch from the hosts and
- * draw their own placeholder while they do - `h-14` for the HTTPS row and
- * `h-[5.5rem]` for the per-server certificates - so those exact heights are
- * used here and the handover from this skeleton to theirs is invisible.
+ * Mirrors `DeploSettingsPanel`.
  */
 export default function Loading() {
   return (

@@ -6,25 +6,8 @@ import { upsertInstallation } from "@/lib/data/github";
 import { resolvePublicBaseUrl } from "@/lib/public-url";
 
 /**
- * Post-install redirect. GitHub sends the user here after they install (or
- * update) the App, with `installation_id`. We resolve which connected App owns
- * it, read the account it was installed on, and record the installation so its
- * repositories become available as deploy sources.
- *
- * The `state` here is NOT a CSRF check: an install started on github.com (or
- * `setup_on_update`, when someone edits repository access later) carries none,
- * and refusing those would break a legitimate flow. It is only the return
- * address the connect flow put on the installation URL, so someone who started
- * from the create-app wizard lands back in the wizard instead of on
- * Settings → Git. Unsigned, expired or another user's state simply means "no
- * return address" and the flow ends where it always did.
- *
- * A forged/replayed `installation_id` is defused downstream instead: this
- * handler requires an authenticated session (below), and `upsertInstallation`
- * re-gates on `manage_git` AND verifies the resolved App belongs to the
- * caller's active team, so a foreign installation_id resolves to an App the
- * caller cannot write and is rejected. Do not treat the raw param as
- * authorization on its own.
+ * Post-install redirect. GitHub sends the user here after they install (or update)
+ * the App, with `installation_id`.
  */
 export async function GET(request: NextRequest) {
   // Build redirects against the public base URL, NOT request.nextUrl.origin:

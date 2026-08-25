@@ -134,10 +134,8 @@ builder.mutationFields((t) => ({
   }),
   reorderMyTeams: t.field({
     type: "Boolean",
-    // NOT capability-gated, and deliberately: this is nobody's team setting, it
-    // is where YOUR switcher puts things. The data layer's
-    // `requirePersonalSession` is the gate that matters - an API token has no
-    // switcher and no business rewriting somebody's.
+    // NOT capability-gated, and deliberately: this is nobody's team setting, it is
+    // where YOUR switcher puts things.
     authScopes: { loggedIn: true },
     description:
       "Set the current user's own order for the topbar team switcher, first to last. Personal, never team-wide: nobody else's list moves. Ids the user is not a member of are ignored, and any team left out of the list keeps its place at the end. Returns true.",

@@ -24,14 +24,6 @@ export async function generateMetadata(
 
 /**
  * One member's permissions and reach, in the team you are acting in.
- *
- * `manage_members` opens it, which is stricter than the roster beside it. The
- * Access tab names the folders someone was shared into, and a folder is private
- * to its owner and grantees (ADR-0016) — rendering this read-only to every
- * member would hand them the name of every private folder in the team.
- *
- * Everything the tabs need is read here and passed down: nothing fetches on
- * mount, which is the same contract the server detail page keeps.
  */
 export default async function MemberPage(
   props: PageProps<"/settings/members/[id]">,

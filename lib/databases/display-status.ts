@@ -2,18 +2,8 @@ import { displayStatus, type RuntimeSnapshot } from "@/lib/apps/display-status";
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
- * The status a database's badge actually renders — the DB twin of
- * {@link displayStatus} for apps. `databases.status` is intent (the last
- * lifecycle action the control plane took); only "running" is a claim about the
- * host, so only that claim is checked against the live runtime probe. A crash-
- * looping engine that the row still calls "running" reads as "restarting", a
- * partially-up state as "down"/"unhealthy" — never a false green.
- *
- * The extra states beyond DatabaseStatus are runtime facts, never persisted, and
- * share the app render vocabulary (StatusBadge knows their colours):
- *  - `restarting` — docker is restart-looping the container
- *  - `unhealthy`  — running but failing its own healthcheck
- *  - `down`       — believed running, nothing actually up
+ * The status a database's badge actually renders — the DB twin of {@link
+ * displayStatus} for apps.
  */
 export type DatabaseDisplayStatus =
   DatabaseStatus | "restarting" | "unhealthy" | "down";

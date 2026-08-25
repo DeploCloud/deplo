@@ -1,11 +1,5 @@
 /**
  * How a backup artifact announces itself in its first bytes.
- *
- * Shared by the BROWSER (the restore-from-file dialog asks for a recovery key
- * only when the picked file is actually encrypted) and the CONTROL PLANE (which
- * refuses a file that is not an artifact at all). Deliberately free of any Node
- * import so it bundles for the client - the real inspection, which needs zlib
- * and the age library, lives in `artifact-sniff.ts` and is server-side.
  */
 
 /**

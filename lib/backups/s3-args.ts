@@ -1,23 +1,7 @@
 /**
- * A backup destination's advanced S3 flags.
- *
- * Every S3-compatible store is compatible in its own way, and the ones that need
- * a workaround need a different one each: a gateway that rejects a signature
- * covering `Accept-Encoding`, a MinIO on a self-signed certificate, a store that
- * only answers path-style. Growing a checkbox per quirk would put four settings
- * on a form where nobody needs any of them, and each new one would be a schema
- * change; so the operator writes the flags, the same way they would for the tools
- * they already reach for when a bucket misbehaves.
- *
- * It is an ALLOWLIST, and that is the whole design. A free-form box that accepts
- * anything and silently drops what it cannot use is worse than no box: the flag
- * looks applied, the gateway keeps failing, and nothing anywhere says why. Here a
- * flag Deplo does not know is refused at the form, by name, with the list of the
- * ones it does.
- *
- * Pure and client-safe (no `server-only`): the dialog shows the same verdict the
- * data layer enforces, so what the operator reads while typing is what the server
- * will say.
+ * A backup destination's advanced S3 flags. A free-form box that accepts anything
+ * and silently drops what it cannot use is worse than no box: the flag looks
+ * applied, the gateway keeps failing, and nothing anywhere says why.
  */
 
 /** At most this many flags — a destination has a quirk or two, not a config file. */

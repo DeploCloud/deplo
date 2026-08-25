@@ -305,10 +305,7 @@ export const RegistrationLinkRef = builder
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
 
-// `roleId` is the current path: the member gets exactly that team role. `role` +
-// `capabilities` stay accepted (and unchanged in meaning) so existing API clients
-// keep working — they assign a rank and a hand-picked set, which lands on a real
-// role when it matches one. Exactly one of the two is required.
+// `roleId` is the current path: the member gets exactly that team role.
 const AddMemberInputType = builder.inputType("AddMemberInput", {
   fields: (t) => ({
     userId: t.string({ required: true }),

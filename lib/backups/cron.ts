@@ -1,21 +1,7 @@
 /**
  * A tiny standard 5-field cron evaluator — `minute hour day-of-month month
- * day-of-week`. Just enough for the backup scheduler (Step 6): it answers one
- * question — "is this cron due at this minute?" — so it needs `matches(expr,
- * date)`, not a next-run iterator. Kept dependency-free and pure (no clock of its
- * own) so it unit-tests against fixed `Date`s.
- *
- * Supported per field: `*`, a single number, comma lists (`1,15`), ranges
- * (`1-5`), steps on a range or wildcard (`*​/15`, `0-30/10`), and the usual
- * convenience that day-of-week `7` == `0` (Sunday). Names (`MON`, `JAN`) are NOT
- * supported — Deplo emits numeric crons everywhere (the UI default is
- * `0 3 * * *`). An unparseable expression is treated as "never matches" rather
+ * day-of-week`. An unparseable expression is treated as "never matches" rather
  * than throwing, so one malformed schedule can't crash the scheduler tick.
- *
- * Day-of-month / day-of-week semantics follow Vixie cron: when BOTH are
- * restricted (neither is `*`), the match is their UNION (either one matching
- * fires); when one is `*`, only the other constrains. This matches what operators
- * expect from `0 0 13 * 5` ("the 13th OR any Friday").
  */
 
 /** Each field's inclusive [min, max] bound. */
@@ -140,16 +126,8 @@ export function cronMatches(expr: string, at: Date): boolean {
 
 /**
  * The first instant strictly AFTER `from` at which `expr` fires, or null when it
- * is unparseable or fires nowhere inside `limitDays` (e.g. `0 0 30 2 *` — the
- * 30th of February). Minute precision, UTC, same semantics as
- * {@link cronMatches}.
- *
- * This exists for the UI, not the scheduler: the scheduler only ever asks "is
- * this due at this minute?", while a person configuring a schedule needs the
- * platform to prove what they picked actually means ("next run Sat 2 Aug,
- * 05:00"). Rather than iterate minute by minute (up to ~527k steps a year), each
- * failing field jumps the cursor to the start of the next candidate unit —
- * month, day, hour — so a yearly cron resolves in a few hundred steps.
+ * is unparseable or fires nowhere inside `limitDays` (e.g. `0 0 30 2 *` — the 30th
+ * of February).
  */
 export function nextCronRun(
   expr: string,

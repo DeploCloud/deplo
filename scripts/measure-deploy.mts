@@ -1,10 +1,6 @@
 /**
  * Trigger one deployment of an app and report where its time went, straight from
- * deployment_logs. Used to measure build-pipeline changes against a real app on a
- * real host rather than a synthetic benchmark.
- *
- *   node --env-file=.env --require ./lib/test/server-only-shim.cjs \
- *        --import tsx scripts/measure-deploy.mts <app-slug>
+ * deployment_logs.
  */
 import { desc, eq, asc } from "drizzle-orm";
 

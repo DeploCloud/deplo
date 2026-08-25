@@ -17,27 +17,9 @@ import {
 import { buildMcpServer, type McpPrincipal } from "@/lib/mcp/server";
 
 /**
- * The deplo MCP server — protocol revision **2026-07-28**.
- *
- *   POST /api/mcp   Authorization: Bearer deplo_…
- *                   X-Deplo-Team: <team id or slug>   (optional)
- *
- * An AI agent reaches deplo's features here, as an ordinary API token: the same
- * principal, the same Capabilities, the same audit trail as every other external
- * client (ADR-0015). There is no MCP-specific credential and there must never be
- * one — "how do I take this access away" has to keep having one answer, and that
- * answer is "revoke the token".
- *
- * The protocol is stateless at 2026-07-28: no session, no `initialize`
- * handshake, no `Mcp-Session-Id`. Every request carries its own protocol version
- * and capabilities, so this route authenticates, checks the team's switch, and
- * hands one self-contained request to the SDK. Nothing survives between calls,
- * which is also why a connection is pinned to ONE team by the header above: with
- * no session there is nothing for a "switch team" tool to switch.
- *
- * Team selection, the JSON body and the bearer scheme are all deliberately the
- * same contract `/api/graphql` uses. An agent and a CI script are the same kind
- * of client; only the framing differs.
+ * The deplo MCP server — protocol revision **2026-07-28**. There is no
+ * MCP-specific credential and there must never be one — "how do I take this access
+ * away" has to keep having one answer, and that answer is "revoke the token".
  */
 
 export const runtime = "nodejs";
@@ -51,14 +33,8 @@ export const dynamic = "force-dynamic";
 const RATE = { limit: 120, windowMs: 60_000 };
 
 /**
- * The limit on requests that never authenticate.
- *
- * The one above is keyed on the token, so until this existed a request WITHOUT
- * a valid token was not counted at all — and discovery now tells the whole
- * internet this endpoint is here. Guessing a token is hopeless (24 random
- * bytes), but every attempt still costs a hash and an indexed lookup, and the
- * OAuth shape costs a three-table join. Keyed on the address, because a caller
- * that has not authenticated has no other name.
+ * The limit on requests that never authenticate. Keyed on the address, because a
+ * caller that has not authenticated has no other name.
  */
 const FAILED_AUTH_RATE = { limit: 60, windowMs: 60_000 };
 
@@ -80,16 +56,9 @@ const handler = createMcpHandler((ctx) =>
 );
 
 /**
- * The RFC 6750 challenge, carrying RFC 9728 discovery.
- *
- * `resource_metadata` is how a web AI client that has never seen deplo finds its
- * way in: it reads that document, learns the authorization server, registers
- * itself and sends the user here to consent. A terminal agent keeps ignoring the
- * header and sending a `deplo_` token, exactly as before.
- *
- * The message names both routes in, because a bare 401 leaves the operator
- * guessing which of the two they were supposed to use. It names no team, user or
- * token — a challenge must not be an oracle.
+ * The RFC 6750 challenge, carrying RFC 9728 discovery. A terminal agent keeps
+ * ignoring the header and sending a `deplo_` token, exactly as before. It names no
+ * team, user or token — a challenge must not be an oracle.
  */
 function unauthorized(message: string) {
   const metadata = resourceMetadataUrl();
@@ -133,30 +102,14 @@ async function refuse(request: Request, message: string): Promise<Response> {
 
 /**
  * The context for a team a tool named explicitly, or a refusal.
- *
- * Re-authenticating the same bearer with a different hint is the whole
- * mechanism: `authenticateToken` already decides which teams a credential may
- * act in, so asking it again for another team reuses every gate — the scope, the
- * live membership check, the two-factor policy, the per-team capability clamp —
- * instead of adding a second way to be in a team.
- *
- * **It refuses rather than falling back.** The shared resolver's own behaviour
- * for an unreachable hint is to ignore it, which is right for the
- * `X-Deplo-Team` header a script sends (documented, and a client that guesses
- * should not be handed another team by surprise). It is wrong for a team a tool
- * NAMED: an agent asking for Acme and silently getting Idra Arts is how an app
- * was created in the wrong team, and with several teams in reach that mistake
- * leaves no trace at all.
  */
 async function contextForTeam(
   raw: string,
   base: RequestIdentity,
   team: string,
 ): Promise<GraphQLContext> {
-  // Resolved against what this connection may reach BEFORE re-authenticating,
-  // so the hint below is guaranteed to land. Asking `authenticateToken` first
-  // and then checking where it ended up would mean guessing whether a fallback
-  // happened, and guessing is how the wrong team wins.
+  // Resolved against what this connection may reach BEFORE re-authenticating, so the
+  // hint below is guaranteed to land.
   const teams = await runWithIdentity(base, () => listMyTeams());
   const match = teams.find((t) => t.id === team || t.slug === team);
   const refusal = new Error(
@@ -207,10 +160,7 @@ export async function POST(request: Request) {
   }
   if (!identity) return refuse(request, "That API token is not valid.");
 
-  // Everything below resolves as the token's principal. Wrapped because the
-  // membership reads inside can still refuse — the two-factor gate runs again in
-  // `requireActiveTeamId`, and a policy that turns a request away should answer
-  // in a sentence rather than as an unhandled 500.
+  // Everything below resolves as the token's principal.
   let prepared;
   try {
     prepared = await runWithIdentity(identity, async () => {
@@ -260,14 +210,8 @@ export async function POST(request: Request) {
       },
     );
 
-  // Past every gate, so this request is genuinely being served: the token is
-  // driving an agent right now. Settings → MCP Server lists a connection off
-  // this stamp, and the connect wizard waits on it, which is why it is taken
-  // here and not beside `authenticateToken` — a token the team's kill switch
-  // just refused is not a connected client, and neither is one being rate
-  // limited into a wall. Not an authorization check of any kind: it writes a
-  // timestamp and decides nothing (ADR-0021 §2, and the static test that keeps
-  // this file honest).
+  // Past every gate, so this request is genuinely being served: the token is driving
+  // an agent right now.
   stampMcpUse(identity.token!.id);
 
   return handler.fetch(request, {
@@ -283,10 +227,8 @@ export async function POST(request: Request) {
 }
 
 /**
- * A browser hitting this URL, or a client configured for the 2025 GET stream,
- * gets a sentence instead of a blank failure — the same courtesy the deploy hook
- * pays. The 2026-07-28 transport has no GET endpoint at all: server-to-client
- * notifications ride `subscriptions/listen`, which is a POST.
+ * A browser hitting this URL, or a client configured for the 2025 GET stream, gets
+ * a sentence instead of a blank failure — the same courtesy the deploy hook pays.
  */
 export async function GET() {
   return Response.json(

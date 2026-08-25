@@ -11,18 +11,9 @@ import { MCP_TOOLS, type McpToolDef } from "./tools";
 import { runGraphql } from "./execute";
 
 /**
- * Builds the MCP server for ONE request.
- *
- * Per-request is the SDK's own model under the 2026-07-28 revision (the protocol
- * is stateless: no session, no handshake, nothing to keep between calls), and it
- * is also what lets `tools/list` be filtered to the tools this particular token
- * can actually call. A token minted from the "MCP & AI agents" preset sees 34 of
- * the 78, rather than 44 it would only fail on — which is both a kindness to the
- * model's context window and the honest answer to "what can I do here?".
- *
- * The filter is COSMETIC, exactly like `hasCapability` in the dashboard. The
- * authoritative refusal happens inside `lib/data/*` when the tool runs, and a
- * tool that slipped through the filter would still be refused there.
+ * Builds the MCP server for ONE request. The authoritative refusal happens inside
+ * `lib/data/*` when the tool runs, and a tool that slipped through the filter
+ * would still be refused there.
  */
 
 export interface McpPrincipal {
@@ -35,18 +26,8 @@ export interface McpPrincipal {
   /** Whether this TOKEN carries instance-admin (never inherited from the person). */
   instanceAdmin: boolean;
   /**
-   * Resolve the context for ANOTHER team this connection was granted.
-   *
-   * The team is an argument of the call, never a remembered setting: the
-   * protocol is stateless, so there is no session to hold an "active team"
-   * between requests and nothing for a `switch_team` tool to switch. Declaring
-   * it per call is the shape that fits — and it means the connection has to
-   * have been granted that team at consent, which is the only place authority
-   * is handed out.
-   *
-   * MUST THROW for a team that was not granted. Falling back to another team is
-   * how an agent once created an app somewhere nobody chose, and with several
-   * teams in reach that mistake stops being visible at all.
+   * Resolve the context for ANOTHER team this connection was granted. MUST THROW
+   * for a team that was not granted.
    */
   forTeam: (team: string) => Promise<GraphQLContext>;
 }
@@ -72,9 +53,7 @@ function visible(tool: McpToolDef, principal: McpPrincipal): boolean {
 
 /**
  * Slice the single top-level array in a result, so a fleet of 74 apps does not
- * arrive as one wall of JSON. Reports the true total, because a model that
- * cannot tell "these are all of them" from "these are the first fifty" will
- * confidently tell its user the wrong thing.
+ * arrive as one wall of JSON.
  */
 function paginate(
   data: unknown,
@@ -100,12 +79,6 @@ function paginate(
 
 /**
  * Hard ceiling on one tool result, in characters.
- *
- * Paging covers the list tools, but not the one that reliably blows up:
- * `get_deployment` returns a whole build log, which for a failed Docker build is
- * routinely tens of thousands of lines. Something has to be the last line of
- * defence for the caller's context window, and a cap that keeps the END of the
- * output is the right shape — the tail is where the error is.
  */
 const MAX_RESULT_CHARS = 60_000;
 
@@ -153,11 +126,9 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         },
       },
       async (args) => {
-        // No confirmation step, deliberately. What an agent may do is the
-        // token's Capabilities and nothing on top: a second gate here would be
-        // a second permission system, and it could only ever drift from the
-        // first. `destructiveHint` above is how the caller's own client knows
-        // to ask - which is the only place a prompt can actually be rendered.
+        // No confirmation step, deliberately. What an agent may do is the token's
+        // Capabilities and nothing on top: a second gate here would be a second permission
+        // system, and it could only ever drift from the first.
         try {
           // `team` is deplo's, not the tool's: taken out before the arguments
           // become GraphQL variables, and resolved into a whole principal
@@ -167,12 +138,9 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
           };
           const ctx = team ? await principal.forTeam(team) : principal.gql;
 
-          // The two tools that bypass GraphQL have to enter the identity
-          // themselves: `runGraphql` does it for every other tool, and
-          // `handler.fetch` runs OUTSIDE the scope the route opened. Without
-          // this they resolve no team at all — `requireActiveTeamId` finds
-          // neither an identity nor a cookie — so every log read answered "No
-          // active team", and the `team` argument above was ignored for them.
+          // The two tools that bypass GraphQL have to enter the identity themselves:
+          // `runGraphql` does it for every other tool, and `handler.fetch` runs OUTSIDE the
+          // scope the route opened.
           if (tool.run) {
             const go = () => tool.run!(rest);
             return text(
@@ -184,10 +152,9 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
             ? tool.variables(rest)
             : (rest as Record<string, unknown>);
           const { data, error } = await runGraphql(tool.query, variables, ctx);
-          // Surfaced verbatim: deplo's messages are written to be read by a
-          // person ("This token is limited to specific projects and can't
-          // access …"), and that is exactly the sentence the model needs in
-          // order to do something else instead.
+          // Surfaced verbatim: deplo's messages are written to be read by a person ("This
+          // token is limited to specific projects and can't access …"), and that is exactly
+          // the sentence the model needs in order to do something else instead.
           if (error) return failure(error);
           // Validated by the tool's own zod schema before this runs (the test
           // pins that a paginated tool declares both), so the cast asserts what
