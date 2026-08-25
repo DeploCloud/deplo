@@ -15,25 +15,9 @@ import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The app's DEPLOY HOOK: one URL that deploys it, for everything that can't
- * click the dashboard — a GitLab or Bitbucket webhook, a CI job that just pushed
- * a new image, a cron on someone's laptop.
- *
- * Two secrets have to line up, and the panel says so out loud, because a link
- * that looks like a password but isn't one is how deploy hooks get pasted into
- * public CI logs. The URL says WHICH app; the `Authorization: Bearer deplo_…`
- * API token says WHO, and it is what actually carries the `deploy_apps`
- * permission. So the link alone deploys nothing, and revoking one API token
- * stops every call made with it across every app.
- *
- * The URL is covered by default and uncovered one deliberate click at a time
- * (the same `RevealChip` the Variables page uses for a secret), because it is
- * still half a credential — and it is never in the DOM while covered.
- *
- * Only for apps that DON'T deploy from a git provider. An app on a GitHub or Git
- * source already has a deploy trigger — the provider's own webhook — and the
- * parent renders nothing here for it: a second URL beside it would be one more
- * credential to leak for a job that is already done.
+ * The app's DEPLOY HOOK: one URL that deploys it, for everything that can't click
+ * the dashboard — a GitLab or Bitbucket webhook, a CI job that just pushed a new
+ * image, a cron on someone's laptop.
  */
 export function DeployHookPanel({
   appId,

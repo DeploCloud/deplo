@@ -15,21 +15,9 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Extra flags for the `docker compose up` that brings this app up.
- *
- * The whole design is in the preview: deplo's part of the command is printed
- * muted, the operator's flags in full contrast, live as they type. That is the
- * difference from the "custom docker command" other platforms ship — there you
- * retype the entire invocation from what the UI prints (and every hand-copied
- * copy silently rots the day the platform's own command changes, or aims compose
- * at nothing after one typo in the project name). Here you add the part that is
- * yours, you can SEE which part that is, and the flags that decide which stack
- * comes up are refused on both sides.
- *
- * Validated as you type, with the offending token named — the field is advanced,
- * but "invalid input" would still leave you guessing which of six flags Deplo
- * objected to. The same check runs in the data layer, so the bearer API can't
- * store what the form refuses.
+ * Extra flags for the `docker compose up` that brings this app up. Validated as
+ * you type, with the offending token named — the field is advanced, but "invalid
+ * input" would still leave you guessing which of six flags Deplo objected to.
  */
 export function ComposeArgsPanel({
   appId,

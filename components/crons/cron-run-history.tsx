@@ -205,10 +205,8 @@ export function CronRunHistory({
       });
   }, [jobId]);
 
-  // This history is mounted only while its row is expanded - that is, while
-  // somebody is watching a run they just started, or waiting for the next one.
-  // Polling it is what turns "Running" into an outcome without a page reload;
-  // a hidden tab has nobody to show a fresher row to.
+  // This history is mounted only while its row is expanded - that is, while somebody
+  // is watching a run they just started, or waiting for the next one.
   React.useEffect(() => {
     alive.current = true;
     load();

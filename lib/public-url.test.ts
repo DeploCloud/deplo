@@ -114,6 +114,8 @@ test("no address, and nothing to bind a passkey to", () => {
 
 /**
  * The per-request answer, which is what the panel's second address depends on.
+ * Getting THAT wrong would flip every cookie write that happens off a request, so
+ * it is pinned.
  */
 test("with no request to read, the instance's own answer stands", async () => {
   setStoredPublicBaseUrl("https://deplo.example.com");

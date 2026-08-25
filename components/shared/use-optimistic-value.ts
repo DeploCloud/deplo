@@ -13,29 +13,6 @@ import {
 /**
  * Optimistic edit: the new name, the flipped switch, the picked colour are on
  * screen on the CLICK, and the mutation settles behind them.
- *
- * The wait this replaces is the same one `useOptimisticRemove` replaces for a
- * deleted row, and it is two waits stacked: the mutation itself, and then the
- * `router.refresh()` that re-runs the page's server reads before the new value
- * can appear. A switch that answers half a second after it was flipped reads as
- * a broken switch, so the local value leads and the server confirms.
- *
- *     const [name, applyName] = useOptimisticValue(app.name);
- *     // …in the submit handler (the dialog can close right here):
- *     applyName(typed, () => gqlAction(RENAME, { id, name: typed }), {
- *       success: "App renamed",
- *     });
- *
- * If the server refuses, the override is dropped — the old value is back on
- * screen — and its message is toasted verbatim against a control the user can
- * see again. If it accepts, the override holds its ground until the refresh
- * actually brings the new value (see `settleOverride`), so nothing repaints the
- * stale one in between.
- *
- * Values are compared with `Object.is`, so this is for the ONE thing a control
- * shows: a string, a boolean, a number, an id. A form with several fields
- * already keeps what was typed in its own state — there the optimism is simply
- * not blocking the button and not holding the dialog open.
  */
 export function useOptimisticValue<T>(serverValue: T): [
   T,
@@ -55,10 +32,7 @@ export function useOptimisticValue<T>(serverValue: T): [
   const [override, setOverride] = React.useState<ValueOverride<T>>(null);
   const [, startTransition] = React.useTransition();
 
-  // Retire the override once the server has moved off the value it was taken
-  // against. Adjusting state during render is React's own derive-from-props
-  // escape hatch; an effect would run after the commit, which is one painted
-  // frame of a value the user already changed.
+  // Retire the override once the server has moved off the value it was taken against.
   const settled = settleOverride(override, serverValue);
   if (settled !== override) setOverride(settled);
 

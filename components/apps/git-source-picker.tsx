@@ -60,16 +60,6 @@ function providerFromUrl(url: string): string {
 /**
  * The Git deploy source: choose which credential to clone with, then the
  * repository.
- *
- * The provider lives in a dropdown INSIDE this card rather than as a sixth chip
- * on the Deploy Source row: GitHub is the recommended path and stays the first
- * chip, everything else is beta and sits one level in. The default entry is
- * "Repository URL" - a plain public clone, which is exactly what the Git source
- * did before providers existed, so nothing an existing app does changes.
- *
- * A connection that can list repositories gets the SAME picker GitHub gets
- * ({@link RepoBrowser}); a plain git server keeps the two text fields, because
- * there is nothing to browse.
  */
 export function GitSourcePicker({
   connections,
@@ -102,10 +92,6 @@ export function GitSourcePicker({
   const active = connections.find((c) => c.id === connectionId) ?? null;
 
   // Everything the parent needs, recomputed from whichever arm is active.
-  // Routed through a ref so `emit` keeps a stable identity (the effects below
-  // must not re-fire on every parent render) while still calling the LATEST
-  // callback - a parent whose handler closes over its own state would otherwise
-  // act on the state it had at mount.
   const onChangeRef = React.useRef(onChange);
   React.useEffect(() => {
     onChangeRef.current = onChange;
@@ -247,12 +233,11 @@ export function GitSourcePicker({
               </>
             )}
             <DropdownMenuSeparator />
-            {/* Carries where we are, so connecting a provider hands the user
-                back to this page - with the new connection in the list - instead
-                of leaving them in Settings to find their way back. Not a
-                `<Link>`: the href would need the current query, and reading it
-                with `useSearchParams` would put a Suspense boundary around every
-                screen this picker sits on. */}
+            {/**
+             * Carries where we are, so connecting a provider hands the user back to this page -
+             * with the new connection in the list - instead of leaving them in Settings to find
+             * their way back.
+             */}
             <DropdownMenuItem
               className="gap-2"
               onSelect={() =>

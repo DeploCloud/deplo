@@ -18,7 +18,8 @@ import {
 } from "./server-certificates";
 
 /**
- * Data-layer tests for custom certificates.
+ * Data-layer tests for custom certificates. - the certificate and the key are
+ * checked AS A PAIR, and before the host is dialed.
  */
 
 let db: TestDb;

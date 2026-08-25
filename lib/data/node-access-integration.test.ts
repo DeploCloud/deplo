@@ -231,7 +231,11 @@ test("a project grant governs the apps filed under it, and never hides them", as
 });
 
 /**
- * The gate a move runs, rather than the set it resolves.
+ * The gate a move runs, rather than the set it resolves. A grant REPLACES the
+ * role inside its node, so a team-wide capability must stop at the boundary of
+ * a node whose grant withholds it — and `moveAppToFolder` used to ask the TEAM
+ * for `move_apps` and then gate only the source FOLDER, which left every app
+ * inside a project answering to the team-wide set alone.
  */
 test("a project grant that withholds move_apps stops the team-wide one", async () => {
   await pg.exec(

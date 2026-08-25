@@ -9,13 +9,6 @@ import type { BuildMethod } from "@/lib/types";
  * Live framework recognition for a repository the user is still choosing — the
  * new-app wizard's "we already know what this is" moment, before any app row
  * exists to carry the answer.
- *
- * The read costs a GitHub round-trip, so it is spent carefully: nothing is
- * requested unless the build method is one that recognition applies to (the same
- * {@link supportsFrameworkDetection} gate the server enforces), the repository is
- * settled for a moment, and the previous request is abandoned the instant the
- * inputs change. A failure is silence — no toast, no error state. Nothing is
- * broken when Deplo can't name a framework; there is simply nothing to show.
  */
 
 export interface RecognizedFramework {
@@ -46,12 +39,7 @@ export function useRepoFramework(input: RepoFrameworkInput): {
     input;
 
   /**
-   * Everything the answer depends on, as one value. Results are STAMPED with it,
-   * which is what makes both derived states honest with no extra bookkeeping: an
-   * answer whose stamp no longer matches is an answer to a question about a
-   * different repository, so it reads as "still looking" rather than lingering
-   * under the new one. It also means no state is written just to record that a
-   * request started.
+   * Everything the answer depends on, as one value.
    */
   const query =
     repo && supportsFrameworkDetection(buildMethod)

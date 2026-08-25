@@ -117,9 +117,7 @@ function normalizedGitOptions(o: GitDeployOptionsValue) {
 /**
  * A canonical string for the Deploy Source card's committed configuration. Only
  * the fields the active source actually saves contribute, so switching source
- * kinds or typing in an inactive field never looks "dirty". Compared against the
- * snapshot taken at mount / last save to enable the Save button only on real
- * changes.
+ * kinds or typing in an inactive field never looks "dirty".
  */
 function computeSourceKey(s: SourceKeyInput): string {
   const usesRepo = s.source === "git" || s.source === "github";
@@ -151,11 +149,7 @@ function computeSourceKey(s: SourceKeyInput): string {
 
 /**
  * Deployment settings: how the app is built, where it runs, and what makes it
- * deploy again. Three cards on one page because they all read the live `source`
- * state — Deploy Source, Build & Output (which owns deploy-on-push, since "run
- * all of this again on every push" is the last stage of the same pipeline), and
- * Advanced settings (the build cache, the app's own `compose up` flags, and —
- * for the sources a git provider does NOT already trigger — the deploy hook).
+ * deploy again.
  */
 export function DeploymentSettingsForm({
   appId,
@@ -209,10 +203,10 @@ export function DeploymentSettingsForm({
   webhook: GitWebhookStatus | null;
   /** Whether the app's deploy hook answers at all (Advanced settings). */
   deployHookEnabled: boolean;
-  /** The hook URL with its secret segment dotted out — resolved server-side so
-   * the page can show the link's shape without the token reaching the browser.
-   * NULL for an app that deploys from a git provider: its provider already
-   * triggers it, so it has no deploy hook here and no link in the payload. */
+  /**
+   * The hook URL with its secret segment dotted out — resolved server-side so the
+   * page can show the link's shape without the token reaching the browser.
+   */
   deployHookUrlMasked: string | null;
   /** Extra flags appended to this app's `docker compose up`, or null for the
    * untouched command (Advanced settings). */
@@ -226,10 +220,7 @@ export function DeploymentSettingsForm({
 }) {
   const router = useRouter();
   const [build, setBuild] = React.useState<BuildConfig>(initialBuild);
-  // The framework correction. Lives beside `build` rather than inside it: it is
-  // a column on the app, not build config, so it saves through its own mutation —
-  // but it belongs to the Build & Output card, so it shares that card's dirty
-  // state and its one Save button.
+  // The framework correction.
   const [frameworkOverride, setFrameworkOverride] = React.useState(
     initialFrameworkOverride,
   );
@@ -290,10 +281,9 @@ export function DeploymentSettingsForm({
   const [ghSelection, setGhSelection] = React.useState<GithubSelection | null>(
     initialSource === "github" && initialRepo
       ? {
-          // NOT `installations[0]`: an app whose installation column is NULL
-          // (imported, or its App reinstalled) does not deploy through the
-          // team's first App, and seeding one here claimed it did. The picker
-          // reports the empty string back as "not connected".
+          // NOT `installations[0]`: an app whose installation column is NULL (imported, or
+          // its App reinstalled) does not deploy through the team's first App, and seeding
+          // one here claimed it did.
           installationId: initialRepo.installationId ?? "",
           fullName: initialRepo.repo,
           branch: initialRepo.branch,
@@ -308,8 +298,6 @@ export function DeploymentSettingsForm({
 
   // The Build & Output card only applies to single-image builds: a compose stack
   // builds/pulls its own images and a prebuilt Docker image has nothing to build.
-  // Derived once so the card's render gate and the dirty aggregation below stay
-  // in lockstep (a build edit can't count as "unsaved" once the card is hidden).
   const isComposeStack = usesComposeStack({
     source,
     compose,
@@ -329,25 +317,17 @@ export function DeploymentSettingsForm({
     usesGitUrl || (usesGithubApp && installations.length > 0);
 
   // Root Directory applies to source-bearing repo builds (git / GitHub) that
-  // materialise a tree: a compose stack builds its own images and a prebuilt
-  // Docker image has no tree to root into. (Upload also has a tree but isn't
-  // push-driven, so the skip-unchanged toggle would be inert — scope it to the
-  // repo sources where all three controls fully apply.)
+  // materialise a tree: a compose stack builds its own images and a prebuilt Docker
+  // image has no tree to root into.
   const rootCardVisible = buildCardVisible && repoConfigVisible;
 
-  // Deploy-on-push is real wherever a provider delivers pushes to Deplo: the
-  // GitHub App, or a git connection whose provider has an API to register a
-  // webhook with. A bare Repository URL has no sender, so it keeps triggering
-  // deploys with the deploy hook in Advanced settings.
+  // Deploy-on-push is real wherever a provider delivers pushes to Deplo: the GitHub
+  // App, or a git connection whose provider has an API to register a webhook with.
   const gitConnection =
     connections.find((c) => c.id === gitValue.connectionId) ?? null;
-  // Deploy-on-push is real only when THIS APP has a credential: both webhook
-  // routes find their candidate apps BY the credential id
-  // (`repo_installation_id` / `repo_connection_id`), so an app with neither can
-  // never be delivered a push no matter how many Apps the team has connected.
-  // Asking `installations.length > 0` asked about the TEAM and offered the
-  // switch on apps whose pushes go nowhere. The `initialRepo` fallback keeps a
-  // healthy app's switch steady while the picker's repo list loads.
+  // Deploy-on-push is real only when THIS APP has a credential: both webhook routes
+  // find their candidate apps BY the credential id (`repo_installation_id` /
+  // `repo_connection_id`), so an app with neither can never be delivered a push no
   const autoDeployPossible =
     (usesGithubApp &&
       Boolean(ghSelection?.installationId || initialRepo?.installationId)) ||
@@ -357,12 +337,9 @@ export function DeploymentSettingsForm({
     initialRepo?.branch ||
     "main";
 
-  // ── Per-section dirty tracking ──────────────────────────────────────────────
-  // Each editable card keeps a snapshot of its last-saved value; it is "dirty"
-  // when the live state diverges from that snapshot. Snapshots start at the
-  // mounted props and advance only on a successful save, so the Save button greys
-  // out the instant a save lands and lights up again on the next edit — without a
-  // server round-trip to re-seed props. (The auto-deploy switch saves on change.)
+  // ── Per-section dirty tracking ────────────────────────────────────────────── Each
+  // editable card keeps a snapshot of its last-saved value; it is "dirty" when the
+  // live state diverges from that snapshot.
   const currentSourceKey = React.useMemo(
     () =>
       computeSourceKey({
@@ -380,14 +357,6 @@ export function DeploymentSettingsForm({
   // The GitHub repo picker reconciles the seeded selection to actually-available
   // values on mount — a stored branch deleted upstream falls back to the repo
   // default, and a reinstalled App re-keys the installation — then bubbles that
-  // reconciled selection with NO user action. It diverges from the raw
-  // initialRepo the snapshot was seeded from, which would otherwise read as an
-  // "unsaved" edit and arm the leave guard, popping a spurious "discard changes?"
-  // prompt on the very first navigation or reload. Adopt the picker's first
-  // reconciled selection as the saved baseline instead; a later pick still
-  // diverges and reads as dirty. (Sources with nothing to reconcile — non-github,
-  // or github with no seeded repo — start baselined, so their first bubble is a
-  // real user action.)
   const ghBaselinedRef = React.useRef(
     !(initialSource === "github" && initialRepo),
   );
@@ -400,20 +369,15 @@ export function DeploymentSettingsForm({
   }, [source, ghSelection, currentSourceKey]);
   // The GitHub repo picker owns its selection and re-derives it asynchronously on
   // mount — it bubbles `null` until its repo list loads, and stays `null` if the
-  // saved repo can't be re-matched (App reinstalled, access revoked). Treat a null
-  // GitHub selection as "not chosen yet", not as an edit: otherwise the Deploy
-  // Source card would flash "unsaved changes" on every load and arm the leave
-  // guard with no real change. Picking a different repo makes ghSelection non-null
-  // and diverge from the snapshot, which still reads as dirty.
+  // saved repo can't be re-matched (App reinstalled, access revoked).
   const sourceDirty =
     source === "github" && !ghSelection
       ? false
       : currentSourceKey !== savedSourceKey;
 
-  // The build config drives TWO cards (Build & Output, Root Directory), so its
-  // dirty tracking is split by facet: each card's Unsaved-changes cue reflects
-  // only its own fields. Both cards persist the WHOLE build via updateAppBuild,
-  // so a save from either advances BOTH snapshots (see saveBuild).
+  // The build config drives TWO cards (Build & Output, Root Directory), so its dirty
+  // tracking is split by facet: each card's Unsaved-changes cue reflects only its own
+  // fields.
   const currentBuildKey = React.useMemo(
     () =>
       JSON.stringify({
@@ -449,11 +413,8 @@ export function DeploymentSettingsForm({
   // Save button lights up for either a source edit or a root-directory edit.
   const deploySourceCardDirty = sourceDirty || (rootCardVisible && rootDirty);
 
-  // Only count the Build card's dirt toward the leave guard when its Save control
-  // is actually on screen. The card unmounts for compose/docker-image sources —
-  // without this gate an edit made before switching source could strand the guard
-  // true with no visible button to clear it. The flag isn't lost: switching the
-  // source back re-exposes the control and re-counts it.
+  // Only count the Build card's dirt toward the leave guard when its Save control is
+  // actually on screen.
   const overallDirty =
     sourceDirty ||
     (buildCardVisible && buildDirty) ||
@@ -586,10 +547,8 @@ export function DeploymentSettingsForm({
       return;
     }
     startTransition(async () => {
-      // Commit a server change first — this moves the app and, for a
-      // previously-deployed one, marks its data for migration. updateAppSource
-      // intentionally does NOT auto-deploy for the upload source, so the redeploy
-      // below is the single deploy that runs and it consumes that migration marker.
+      // Commit a server change first — this moves the app and, for a previously-deployed
+      // one, marks its data for migration.
       if (serverId !== initialServerId) {
         const moved = await gqlAction(
           `mutation($id: String!, $input: UpdateSourceInput!) { updateAppSource(id: $id, input: $input) { id } }`,
@@ -617,11 +576,9 @@ export function DeploymentSettingsForm({
     });
   }
 
-  // Persist a PARTIAL build config. updateAppBuild merges field-by-field, so
-  // each card sends ONLY its own fields — saving one card never commits the
-  // other's pending edits (its dirty cue stays put). `onSaved` advances just that
-  // card's snapshot. NOTE: `settings` (methodSettings) fully REPLACES its row when
-  // present, so only the Build & Output card — which owns it — sends it.
+  // Persist a PARTIAL build config. updateAppBuild merges field-by-field, so each
+  // card sends ONLY its own fields — saving one card never commits the other's
+  // pending edits (its dirty cue stays put).
   function persistBuildPatch(
     input: Record<string, unknown>,
     onSaved: () => void,
@@ -800,10 +757,10 @@ export function DeploymentSettingsForm({
               </div>
             )}
 
-            {/* Git deploy options (trigger type, watch paths, submodules) — for
-                the GitHub App repo picker (once connected) and the plain Git URL.
-                Collapsed by default; the closed header summarises the active
-                trigger so the setting is legible without expanding. */}
+            {/**
+             * Git deploy options (trigger type, watch paths, submodules) — for the GitHub App
+             * repo picker (once connected) and the plain Git URL.
+             */}
             {repoConfigVisible && (
               <div className="rounded-lg border border-border">
                 <button
@@ -844,11 +801,11 @@ export function DeploymentSettingsForm({
               </div>
             )}
 
-            {/* Additional options (Root Directory) — advanced, rarely changed for
-                a single-folder repo, so collapsed by default with the current root
-                shown in the closed header. Repo sources only (git / GitHub); a
-                compose stack or prebuilt image has no tree to root into. Saved by
-                this card's Save button alongside the source. */}
+            {/**
+             * Additional options (Root Directory) — advanced, rarely changed for a
+             * single-folder repo, so collapsed by default with the current root shown in the
+             * closed header.
+             */}
             {rootCardVisible && (
               <div className="rounded-lg border border-border">
                 <button
@@ -994,10 +951,9 @@ export function DeploymentSettingsForm({
           </CardFooter>
         </Card>
 
-        {/* Build & Output — single-image builds only. A compose stack builds/pulls
-            its own images per its YAML, and a Docker image is pulled prebuilt, so
-            neither has install/build/run settings to configure. Gated off the live
-            form state so flipping the source tab shows/hides the card immediately. */}
+        {/**
+         * Build & Output — single-image builds only.
+         */}
         {buildCardVisible && (
           <BuildOutputCard
             build={build}

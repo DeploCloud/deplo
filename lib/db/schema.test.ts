@@ -28,8 +28,7 @@ after(async () => {
 
 /**
  * Better-Auth tables (schema/auth) + the live `scheduler_lease` mutex
- * (schema/scheduler) — the non-control-plane tables that survive. The legacy
- * `deplo_state` JSONB table was dropped in PLAN Step 7 (migration 0004).
+ * (schema/scheduler) — the non-control-plane tables that survive.
  */
 const PRE_EXISTING = [
   "account",

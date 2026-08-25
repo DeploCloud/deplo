@@ -59,15 +59,6 @@ const REPO_SKELETON_WIDTHS = [
 
 /**
  * Pick a repository and a branch from a credential that can list them.
- *
- * The half of the source picker that has nothing to do with GitHub: search the
- * repositories, choose one, choose its branch. Extracted so GitLab, Bitbucket
- * and Gitea get the exact UX GitHub already had - the compact "already chosen"
- * card, the skeleton list, the branch dropdown - instead of a second, worse
- * picker written next to it.
- *
- * WHO the credential is stays outside: GitHub renders its App switcher above
- * this, the other providers use the Deploy Source card's own provider dropdown.
  */
 export function RepoBrowser({
   kind,
@@ -107,17 +98,10 @@ export function RepoBrowser({
   // the source it belongs to; afterwards the user is in control.
   const seededRef = React.useRef(false);
   // The repo the app is SAVED against, when this credential cannot reach it.
-  // The list already tells us (the seed found no match); until now that answer
-  // was thrown away and the field simply rendered empty, leaving the reason -
-  // the App was reinstalled, or never had access - for the user to guess.
   const [unreachable, setUnreachable] = React.useState<string | null>(null);
-  // Mirror the latest `initial` in a ref so the one-time seed in loadRepos can
-  // read it WITHOUT making loadRepos reactive to it. If loadRepos depended on
-  // initial.fullName / initial.branch, a post-save router.refresh - which feeds
-  // the freshly-saved branch back in as `initial` - would give loadRepos a new
-  // identity, re-fire the load effect, null the current selection, and (seeding
-  // being one-time) strand the user on the repo browse list. The repo list must
-  // reload only when the source changes.
+  // Mirror the latest `initial` in a ref so the one-time seed in loadRepos can read
+  // it WITHOUT making loadRepos reactive to it. The repo list must reload only when
+  // the source changes.
   const initialRef = React.useRef(initial);
   React.useEffect(() => {
     initialRef.current = initial;
@@ -218,10 +202,9 @@ export function RepoBrowser({
         if (!res.ok) toast.error(res.error);
       }
     },
-    // Identity-stable: the seed reads `initialRef.current`, so a changed
-    // `initial` (e.g. the just-saved branch fed back by router.refresh) must NOT
-    // recreate this callback and re-fire the load effect. Reloads are driven
-    // only by sourceId.
+    // Identity-stable: the seed reads `initialRef.current`, so a changed `initial`
+    // (e.g. the just-saved branch fed back by router.refresh) must NOT recreate this
+    // callback and re-fire the load effect.
     [hydrateBranches],
   );
 
@@ -254,11 +237,8 @@ export function RepoBrowser({
     : repos;
 
   if (selected && !browsing) {
-    // Chosen repo - a compact confirmation, so the common "already picked" case
-    // isn't a wall of repos. "Change" reopens the list. The branch lives INSIDE
-    // this card: it belongs to the chosen repository (it means nothing without
-    // one, and changing repo re-picks it), so it reads as part of the source,
-    // not as a second unrelated field below it.
+    // Chosen repo - a compact confirmation, so the common "already picked" case isn't a
+    // wall of repos.
     return (
       <div className="rounded-lg border border-border bg-accent/30">
         <div className="flex items-center gap-3 p-3">
@@ -324,11 +304,11 @@ export function RepoBrowser({
               id={branchFieldId}
               className="h-8 w-auto max-w-full min-w-44 bg-background"
             >
-              {/* `flex!` is load-bearing: SelectTrigger applies
-                  `[&>span]:line-clamp-1` to its direct-child spans, whose
-                  `display:-webkit-box` outranks a plain `flex` class (the
-                  `>span` selector is more specific) and would stack the icon
-                  above the value. The important modifier keeps them on one row. */}
+              {/**
+               * `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1` to its
+               * direct-child spans, whose `display:-webkit-box` outranks a plain `flex` class
+               * (the `>span` selector is more specific) and would stack the icon above the value.
+               */}
               <span className="flex! min-w-0 items-center gap-2">
                 <GitBranch className="size-4 shrink-0 text-muted-foreground" />
                 <SelectValue />

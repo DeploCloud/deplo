@@ -17,17 +17,8 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Whether somebody with no uploaded picture falls back to their Gravatar.
- *
- * On by default, because a picture nobody had to upload is the whole point. It
- * is here, on an instance-admin page, rather than as a per-person preference
- * because the question it answers is not "which picture do I like" — it is
- * whether this company's staff addresses may be looked up against a service
- * outside it. That is one decision for the instance, not one per member.
- *
- * The panel itself never dials gravatar.com either way; it computes the address
- * and each viewer's browser fetches it. Off simply stops the address being
- * emitted, which is also what makes this work on an instance with no egress.
+ * Whether somebody with no uploaded picture falls back to their Gravatar. On by
+ * default, because a picture nobody had to upload is the whole point.
  */
 export function GravatarCard({ enabled }: { enabled: boolean }) {
   const router = useRouter();

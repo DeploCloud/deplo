@@ -61,18 +61,6 @@ type CredentialRow = BasicAuthUserDTO & { key: string };
  * App Settings → Access. Username/password credentials that gate EVERY domain of
  * the app: when one or more exist, the deploy/reroute pipeline puts a generated
  * Traefik `basicauth` middleware in front of all the app's hostnames.
- *
- * Built as the ACCESS twin of the Environment tab, deliberately: same search,
- * same people/updated filters, same sort, same "Add" on the toolbar, same
- * authorship metadata — because the questions are the same ones ("who set this
- * up?", "what changed last week?", "what is the value?"). It differs where the
- * thing itself differs: credentials are few and each carries a revealable
- * password, so they are CARDS in a grid rather than rows in a table, and the
- * password is fetched on demand instead of riding the page's props.
- *
- * Edits are LIVE: every add/change/delete re-applies the app's routing to the
- * running container (the same label-only reroute the "Reload" action performs —
- * no rebuild), so the copy here promises immediacy and means it.
  */
 export function BasicAuthManager({
   appId,
@@ -126,10 +114,7 @@ export function BasicAuthManager({
   const hasMatches = shown.length > 0;
 
   // The page's one action, with one home at a time: the toolbar when there are
-  // credentials to act on, the heading row when there are none. The size follows
-  // the home - `default` is h-9, the height of every control on the toolbar row,
-  // while a heading row has no input to line up with and takes the `sm` every
-  // other section heading uses.
+  // credentials to act on, the heading row when there are none.
   const addButton = (size: "sm" | "default") => (
     <Button
       size={size}
@@ -421,10 +406,9 @@ function BasicAuthDialog({
           toast.success("Password updated — live on every domain");
           onOpenChange(false);
         } else {
-          // The dialog stays open (a rejected password must keep what was
-          // typed), but the list behind it is refreshed anyway: the row is
-          // written before the routing is applied, so an error can still leave
-          // a change the user needs to see.
+          // The dialog stays open (a rejected password must keep what was typed), but the
+          // list behind it is refreshed anyway: the row is written before the routing is
+          // applied, so an error can still leave a change the user needs to see.
           toast.error(res.error);
         }
         router.refresh();

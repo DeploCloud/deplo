@@ -60,10 +60,8 @@ export function OtpInput({
   }, [value]);
 
   // A rejected code is cleared by the caller while the boxes are still disabled,
-  // which drops focus on the floor — the user is then looking at an empty field
-  // that swallows their next keystroke. Put the caret back when that happens.
-  // Guarded on `wasFilled` so a freshly mounted, still-empty field never steals
-  // focus from whatever the page actually wanted focused.
+  // which drops focus on the floor — the user is then looking at an empty field that
+  // swallows their next keystroke.
   const filledRef = React.useRef(value.length > 0);
   React.useEffect(() => {
     const wasFilled = filledRef.current;

@@ -1,13 +1,9 @@
 import { cn } from "@/lib/utils";
 
 /**
- * A glyph tinted with the thing's own accent colour — how projects and folders
- * are marked wherever they are listed but not tiled (the scope picker's tree,
- * the Logs picker's tree). No colour means the neutral muted glyph.
- *
- * The colour is stored data (`#rrggbb`), not a theme token, so it is applied as
- * an inline style on purpose: there is no utility for "whatever hex the user
- * picked".
+ * A glyph tinted with the thing's own accent colour — how projects and folders are
+ * marked wherever they are listed but not tiled (the scope picker's tree, the Logs
+ * picker's tree).
  */
 export function TintedMark({
   icon: Icon,

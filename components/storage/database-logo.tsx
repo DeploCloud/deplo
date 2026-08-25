@@ -8,13 +8,7 @@ import type { DatabaseType } from "@/lib/types";
 
 /**
  * A database's display avatar — the twin of `AppLogo`, with one difference: a
- * database is never logo-less. With no uploaded logo it shows its ENGINE's real
- * brand mark (the Postgres elephant, the MySQL dolphin, …), so the default is
- * already the right icon and uploading one is a genuine override, not a rescue
- * from a generic glyph.
- *
- * The generic database glyph survives only as the broken-image fallback and for
- * an engine we don't ship a mark for.
+ * database is never logo-less.
  */
 export function DatabaseLogo({
   type,

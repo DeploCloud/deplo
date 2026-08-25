@@ -7,13 +7,6 @@ import { cn } from "@/lib/utils";
 
 /**
  * One option as a big, clickable card — icon, title, one-line blurb, tick.
- *
- * The shape a wizard uses when the choice IS the step: a radio group of two or
- * three cards reads as a decision, where the same choice as a `<select>` reads as
- * a setting you are expected to already understand.
- *
- * `multi` decides the semantics, and nothing else changes: `false` (default) is
- * a radio — one of the set — and `true` is a checkbox, several at once.
  */
 export function ChoiceCard({
   title,

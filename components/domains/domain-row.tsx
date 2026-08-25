@@ -112,15 +112,7 @@ export function DomainRow({
   const [editOpen, setEditOpen] = React.useState(false);
   const services = React.useMemo(() => composeServices(compose), [compose]);
 
-  // What this hostname's router actually reaches. A compose stack routes to the
-  // compose service the domain NAMES (required on a stack — `buildComposeStack`
-  // skips a route that names none, so an empty one is genuinely unrouted); a
-  // single-image app has exactly one container, `deplo-<slug>` (the
-  // `container_name` renderCompose writes, and what lib/data/console calls it).
-  // Same thing the Logs/Console picker shows for the same app: the service name
-  // on a stack, the container name when there is only one — NOT the App's
-  // display name, which is identical on every row of this page and names no
-  // container at all.
+  // What this hostname's router actually reaches.
   const service = (domain.service ?? "").trim();
   const container = service || `deplo-${domain.appSlug}`;
   // A compose row that names no service: the stack renderer has no target to
@@ -143,12 +135,9 @@ export function DomainRow({
   const scheme = effectiveProvider === "none" ? "http" : "https";
   const middlewares = domain.middlewares ?? [];
   const proxied = domain.status === "cloudflare";
-  // A proxied domain is now put on the Cloudflare certificate provider
-  // automatically, so the certificate chip and the DNS chip would BOTH read
-  // "Cloudflare" — two badges, inches apart, saying the same word. They collapse
-  // into one: Cloudflare fronts this domain and issues its certificate. The pair
-  // only splits back apart when the two genuinely differ (a proxied domain the
-  // user moved onto Let's Encrypt), which is exactly when it's worth two chips.
+  // A proxied domain is now put on the Cloudflare certificate provider automatically,
+  // so the certificate chip and the DNS chip would BOTH read "Cloudflare" — two
+  // badges, inches apart, saying the same word.
   const oneCloudflareChip = proxied && effectiveProvider === "cloudflare";
 
   function call(
@@ -273,10 +262,8 @@ export function DomainRow({
             </Badge>
           )}
           {domain.redirectTo && (
-            // This hostname serves nothing — it answers 301 to the canonical
-            // half of its www pair. Said as a chip in the same row as the rest,
-            // because "what does this hostname do" is the question this cell
-            // answers, and a redirect is the whole answer for this one.
+            // This hostname serves nothing — it answers 301 to the canonical half of its www
+            // pair.
             <SimpleTooltip
               content={`Answers a permanent redirect (301) to ${domain.redirectTo}. Edit ${domain.redirectTo} to change or remove the pair.`}
             >
@@ -291,10 +278,7 @@ export function DomainRow({
             </Badge>
           )}
           {oneCloudflareChip ? (
-            // The merged chip — see `oneCloudflareChip`. Cloudflare's brand
-            // orange (a deliberate exception to the token-only rule) marks who
-            // is in front of the domain; the `https://` link above it and the
-            // notice below carry the rest, so this stays a label, not a lecture.
+            // The merged chip — see `oneCloudflareChip`.
             <Badge
               variant="outline"
               className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
@@ -342,19 +326,9 @@ export function DomainRow({
             </SimpleTooltip>
           )}
           {proxied && !oneCloudflareChip && (
-            // Marks WHO sits in front of the domain, nothing more. What that
-            // proxy hides — and the two things the user has to check because of
-            // it — is the notice below the row, not a tooltip here: the chip and
-            // the notice are inches apart in the same cell, so saying it twice
-            // would just teach people to ignore both.
-            //
-            // Only rendered when the certificate chip does NOT already say
-            // "Cloudflare" (the user moved this proxied domain onto Let's
-            // Encrypt); otherwise the merged chip above stands for both.
-            //
-            // Cloudflare's brand orange — a deliberate brand-color exception to
-            // the token-only rule. Alpha tints keep the fill/border legible on
-            // both the light and dark theme.
+            // Marks WHO sits in front of the domain, nothing more. Only rendered when the
+            // certificate chip does NOT already say "Cloudflare" (the user moved this proxied
+            // domain onto Let's Encrypt); otherwise the merged chip above stands for both.
             <Badge
               variant="outline"
               className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
@@ -365,13 +339,8 @@ export function DomainRow({
           )}
         </div>
         {(domain.status === "misconfigured" || domain.status === "pending") && (
-          // A pending domain has no DNS record yet; a misconfigured one
-          // resolves somewhere other than this app's server. Both need the
-          // same fix, so both get the instructions: the A record must resolve
-          // to THIS app's server IP, which is server-specific (an app on
-          // another server needs a different address) — so the concrete IP is
-          // shown, never a generic one. No "then Verify" chore: the page
-          // re-checks DNS automatically while it's open.
+          // A pending domain has no DNS record yet; a misconfigured one resolves somewhere
+          // other than this app's server.
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
             <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
             {serverIp ? (
@@ -411,16 +380,9 @@ export function DomainRow({
           </div>
         )}
         {proxied && (
-          // The one status deplo cannot settle for the user. Cloudflare's
-          // anycast IPs are shared by every proxied domain alive, so the origin
-          // behind them is invisible from DNS (lib/deploy/cloudflare.ts) — this
-          // row looks identical whether Cloudflare forwards here or to a
-          // stranger's server. Rather than imply a verification that never
-          // happened, say so and hand over the two things only the user can
-          // check, both in the Cloudflare dashboard: the record's origin IP and
-          // the SSL/TLS mode. Same shape as the pending/misconfigured hint
-          // above, and deliberately one quiet line — the likely case is that
-          // everything is fine, so this is a "confirm this", not an alarm.
+          // The one status deplo cannot settle for the user. Rather than imply a verification
+          // that never happened, say so and hand over the two things only the user can check,
+          // both in the Cloudflare dashboard: the record's origin IP and the SSL/TLS mode.
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
             <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
             {serverIp ? (
@@ -504,10 +466,9 @@ export function DomainRow({
             {domain.status !== "valid" && (
               <DropdownMenuItem
                 onClick={() =>
-                  // Verify reports what the check actually FOUND, not a blanket
-                  // "verified": a domain can settle on pending/misconfigured and
-                  // the toast must say so (the page keeps re-checking it
-                  // automatically either way).
+                  // Verify reports what the check actually FOUND, not a blanket "verified": a domain
+                  // can settle on pending/misconfigured and the toast must say so (the page keeps
+                  // re-checking it automatically either way).
                   startTransition(async () => {
                     const res = await gqlAction<{
                       verifyDomain: { id: string; status: string };

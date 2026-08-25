@@ -92,17 +92,7 @@ const DROPDOWN_KIT: MenuKit = {
 };
 
 /**
- * A folder tile in the Overview grid. The whole card is a link that opens the
- * folder (a `?folder=<id>` view); the ⋯ menu and a right-click context menu
- * (open / rename / colour / move / delete / share) sit above that link.
- *
- * Per-folder gating is SELF-DERIVED from the folder's own data, not passed in:
- * rename/colour/move/delete show when the caller's effective folder caps include
- * `deploy` (the owner always has it), and Share shows when the caller owns the
- * folder or is a super-user. `isAdminOverride` short-circuits both so a
- * super-user (manage_team / instance admin) manages every folder regardless of
- * ownership. While a reorder drag is active the link is made inert, and
- * `dropActive` highlights the card as a drop target.
+ * A folder tile in the Overview grid.
  */
 export function FolderCard({
   folder,
@@ -173,10 +163,8 @@ export function FolderCard({
       ? ` · ${subCount} ${subCount === 1 ? "folder" : "folders"}`
       : "");
 
-  // Start / stop / restart / redeploy every app in this folder, its subtree
-  // included (the same apps `count` covers). Gated on the caller's caps HERE,
-  // not on `canManageThisFolder`: running the apps and organising the folder are
-  // different permissions, and a grantee may hold one without the other.
+  // Start / stop / restart / redeploy every app in this folder, its subtree included
+  // (the same apps `count` covers).
   const bulk = useBulkAppActions({
     scope: { folderId: folder.id },
     name: folder.name,
@@ -198,9 +186,8 @@ export function FolderCard({
   const tileClass = tileColored ? "" : "bg-secondary text-muted-foreground";
 
   // A coloured folder tints its whole card: a soft ~10% wash of the colour with a
-  // slightly stronger edge, so it reads as that colour at a glance while keeping
-  // the text legible. `dropActive`'s primary ring still draws on top. Hex alpha
-  // suffixes: `1a` ≈ 10%, `40` ≈ 25%.
+  // slightly stronger edge, so it reads as that colour at a glance while keeping the
+  // text legible.
   const cardStyle = shownColor
     ? { backgroundColor: `${shownColor}1a`, borderColor: `${shownColor}40` }
     : undefined;
@@ -262,10 +249,7 @@ export function FolderCard({
     );
   }
 
-  // Folder actions, rendered once for whichever menu primitive is passed. Each
-  // item has a native `title` so hovering it explains what it does. Open is
-  // available to everyone; rename/colour/move/delete only when the viewer may
-  // manage THIS folder; Share only when they may administer its access.
+  // Folder actions, rendered once for whichever menu primitive is passed.
   const menu = (K: MenuKit) => (
     <>
       <SimpleTooltip content="Open this folder" side="left">

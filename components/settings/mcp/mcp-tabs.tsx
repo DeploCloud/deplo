@@ -21,22 +21,6 @@ import type { ScopeTreeTeam } from "@/lib/data/tokens";
 /**
  * The two halves of the MCP page: getting an agent in, and living with the ones
  * that are already in.
- *
- * They were one stack of five cards, which meant the person connecting their
- * first agent read past a kill switch and a table of seventy-eight tools to
- * reach the one line they came for, and the admin auditing access scrolled past
- * connection instructions to reach the revoke buttons. Two different jobs, two
- * different people, one screen serving neither.
- *
- * The active tab rides in `?tab=` with `window.history.replaceState`, the same
- * shape the server detail page uses — a link can then point at what is being
- * talked about ("revoke it under Manage") rather than at a page plus
- * directions, and flipping tabs neither re-runs the RSC nor fills the back
- * button.
- *
- * `forceMount` on Connect is load-bearing. Radix unmounts an inactive panel,
- * and the wizard holds a minted token's secret in state — a stray tab click
- * would have destroyed the one screen where that secret is ever visible.
  */
 
 const TABS = ["connect", "manage"] as const;
@@ -136,10 +120,10 @@ export function McpTabs({
             connections={connections}
             canManage={canManageTokens}
           />
-          {/* The tool list closes the tab as a footnote: it is reference, not a
-              control, and the person here is auditing access rather than
-              wondering what an agent can reach. The wizard asks that question
-              where it actually comes up — at the permissions step. */}
+          {/**
+           * The tool list closes the tab as a footnote: it is reference, not a control, and
+           * the person here is auditing access rather than wondering what an agent can reach.
+           */}
           <p className="border-t border-border pt-4">
             <ToolsDialogLink tools={tools} />
           </p>
@@ -151,14 +135,6 @@ export function McpTabs({
 
 /**
  * How many agents can act in this team, beside the tabs.
- *
- * It replaced a link to the tool list here, and the swap is the point: "what
- * could an agent do" is a question you ask once, while "who is in my
- * infrastructure right now" is the one a company asks every time it opens this
- * page. Zero is a real answer and is shown as one.
- *
- * A button when there is somewhere to go, plain text when there is not — a
- * viewer without the capabilities has no Manage tab to be sent to.
  */
 function ConnectedCount({
   count,

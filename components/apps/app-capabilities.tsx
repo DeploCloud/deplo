@@ -11,17 +11,8 @@ import {
 import type { Capability } from "@/lib/types";
 
 /**
- * What the current viewer may do to the app they are looking at - published by
- * the app layout, read by every control inside it.
- *
- * The sidebar's capability list is the team-wide UNION (wide on purpose, so a
- * per-folder grant doesn't hide the nav); this one is the truth for THIS app,
- * grants and all. It exists so a control the server would refuse is visibly
- * disabled instead of failing on click: an app you can only read looks
- * read-only, rather than looking editable and erroring.
- *
- * Empty is not a state the UI has to handle - an app the viewer holds nothing on
- * never loads at all (`getAppBySlug` refuses it).
+ * What the current viewer may do to the app they are looking at - published by the
+ * app layout, read by every control inside it.
  */
 const AppCapabilitiesContext = React.createContext<ReadonlySet<Capability>>(
   new Set<Capability>(),
@@ -59,14 +50,9 @@ export function needsCapability(cap: Capability): string {
 }
 
 /**
- * Makes a whole section read-only when the viewer lacks `cap`: a native
- * `<fieldset disabled>` (which disables every control inside it, however deeply
- * nested) plus one line saying why. `display: contents` keeps the page's own
- * layout untouched.
- *
- * This is the form twin of {@link CapabilityTip} - settings stay readable, they
- * just can't be changed, which beats both hiding the page and letting every
- * field fail on save.
+ * Makes a whole section read-only when the viewer lacks `cap`: a native `<fieldset
+ * disabled>` (which disables every control inside it, however deeply nested) plus
+ * one line saying why.
  */
 export function CapabilityFieldset({
   cap,
@@ -91,9 +77,6 @@ export function CapabilityFieldset({
 
 /**
  * Wraps a control that is disabled for lack of `cap` so hovering still says why.
- * A disabled button fires no pointer events, so the tooltip has to live on a
- * wrapper - that wrapper is this. When the viewer holds the capability it
- * renders nothing at all, so it can wrap the control unconditionally.
  */
 export function CapabilityTip({
   cap,

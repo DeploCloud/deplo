@@ -24,47 +24,9 @@ import type { ActionResult } from "@/lib/result";
 import { cn } from "@/lib/utils";
 
 /**
- * The confirm in front of every move of the panel's own address.
- *
- * Changing this address is the most destructive thing on the page and the only
- * one that looks harmless: it is a text field. A browser welds credentials,
- * cookies and subscriptions to the exact origin they were made on, so the move
- * takes every passkey on the instance with it, and freezes every URL Deplo has
- * ever handed out. None of that is visible from the field.
- *
- * So the dialog states facts, counted live, and shows ONLY the lines that are
- * true right now - a line that would read "0 passkeys" is not shown at all.
- * Each one is a single sentence: what breaks, and what fixes it when that is
- * not obvious. No second paragraph, ever - the reader is deciding, not
- * studying.
- *
- * The three groups are the whole point, and the split is by ONE objective test:
- * **what it takes to get the thing working again.**
- *
- *  - **Critical** - Deplo cannot give it back. A passkey is bound to the origin
- *    it was made on, the HSTS a browser remembers is not ours to clear, and a
- *    password already sent in the clear cannot be un-sent.
- *  - **Fix by hand** - it stays broken until a person goes somewhere and
- *    re-copies something. Deplo knows the new value and still cannot deliver
- *    it: the old one is pasted in someone else's CI, in a sent invite, in an
- *    AI client's config.
- *  - **Minor** - it repairs itself the next time it is used. Ending every
- *    session sounds like the scariest line here and is the cheapest one: people
- *    sign in again.
- *
- * That ordering is why the severity is worth computing rather than asserting -
- * it demotes the loud, harmless line and promotes the quiet, permanent one.
- * Within a group, rows are ordered by how many people they hit.
- *
- * Built straight on the Dialog primitives rather than ConfirmAction: this is
- * the one confirm in the app that opens on an audit, not a sentence, so it
- * earns a wider frame, a drawn header (the move itself, animated) and a card
- * per severity - none of which the shared confirm should grow options for.
- *
- * Used by the address field AND by the HTTPS switch: turning https off is the
- * same destruction by another door - WebAuthn has no relying party on plain
- * http - so that caller adds its own rows through `notes` instead of a
- * paragraph outside the list.
+ * The confirm in front of every move of the panel's own address. So the dialog
+ * states facts, counted live, and shows ONLY the lines that are true right now - a
+ * line that would read "0 passkeys" is not shown at all.
  */
 
 type Impact = {
@@ -172,11 +134,7 @@ export function PanelAddressDialog({
   const [failed, setFailed] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  // Read on mount. The caller mounts this dialog only while it is open and
-  // unmounts it on close (the repo's dialog idiom), so the counts are never
-  // stale across two openings and there is nothing to clear here first - an
-  // address moves between one look and the next, and a stale preview is exactly
-  // the surprise this dialog exists to prevent.
+  // Read on mount.
   React.useEffect(() => {
     let cancelled = false;
     void gqlAction<{ panelAddressImpact: Impact }, Impact>(
@@ -229,10 +187,10 @@ export function PanelAddressDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Wider than the house confirm on purpose: this one opens on an audit,
-          not a sentence, and three graded cards need room to breathe. p-0 so
-          the drawn header can bleed to the edges; each section carries its own
-          padding instead. */}
+      {/**
+       * Wider than the house confirm on purpose: this one opens on an audit, not a
+       * sentence, and three graded cards need room to breathe.
+       */}
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
         <form className="grid grid-cols-[minmax(0,1fr)]" onSubmit={onSubmit}>
           <div className="flex justify-center border-b border-border bg-muted/30 px-6 pt-7 pb-5">
@@ -374,16 +332,8 @@ export function PanelAddressDialog({
 }
 
 /**
- * The move, drawn: traffic leaves the window on the old address, crosses the
- * wire, and the window on the new address answers with a ring. Then it goes
- * again - after the move this is the standing state of the world, not a
- * one-off event, and a loop says that where a still frame would just decorate.
- *
- * Pure SVG + CSS keyframes (globals.css, `deplo-move-*`), no JS and no
- * library. Colours come from tokens, so it is correct in both themes without a
- * second asset - and under `prefers-reduced-motion` the packet and the ring
- * (pure motion, a smudge when parked) disappear, leaving the told story: two
- * windows and the wire between them.
+ * The move, drawn: traffic leaves the window on the old address, crosses the wire,
+ * and the window on the new address answers with a ring.
  */
 function PanelMoveGraphic() {
   return (

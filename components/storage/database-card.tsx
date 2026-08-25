@@ -37,18 +37,9 @@ import { DB_NAMES } from "./db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
- * A database on the Storage grid — visually aligned with the Overview app card:
- * a whole-card stretched link into the detail page, an engine-icon tile, a live
- * status, and a ⋯ actions menu. Grid (default) and list layouts, plus an
- * optional injected drag handle for reorder (mirrors AppCard's contract).
- *
- * Layering follows AppCard exactly: the card content is a `pointer-events-none`
- * layer floated above the stretched link, so the ENTIRE card surface reads as
- * one pointer-cursor click target (no dead zones over the metadata); only the
- * controls — status, drag handle, ⋯ menu, copy — opt back into pointer events.
- *
- * Wrapped in its own live-status provider so a card outside the detail layout
- * still flips provisioning → running and surfaces crash states without a reload.
+ * A database on the Storage grid — visually aligned with the Overview app card: a
+ * whole-card stretched link into the detail page, an engine-icon tile, a live
+ * status, and a ⋯ actions menu.
  */
 export function DatabaseCard({
   db,
@@ -73,9 +64,6 @@ export function DatabaseCard({
 }) {
   // Still arriving: a migration is creating this database and copying its volume
   // across, and every mutation on it is refused server-side until that run ends.
-  // Pulsing and inert, the same treatment an App gets - and for the sharper
-  // reason: an engine started on a half-copied data directory initialises over
-  // it. Nothing here should be one click from that.
   if (db.migrationRunId)
     return (
       <div
@@ -172,10 +160,11 @@ function DatabaseCardGrid({
           <CardActions db={db} dragHandle={dragHandle} pollMs={pollMs} />
         </div>
 
-        {/* Connection box — the databases analogue of the app card's
-            latest-deployment box: the connection string up top as the same
-            click-to-reveal chip the Variables page uses (masked, so the
-            endpoint still reads at a glance), placement + exposure below it. */}
+        {/**
+         * Connection box — the databases analogue of the app card's latest-deployment box:
+         * the connection string up top as the same click-to-reveal chip the Variables page
+         * uses (masked, so the endpoint still reads at a glance), placement + exposure
+         */}
         <div className="rounded-lg border border-border bg-secondary/40 p-3">
           <ConnectionChip db={db} canReveal={canReveal} />
           <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -269,10 +258,9 @@ function OverlayLink({
   );
 }
 
-/** The connection string, revealable and copyable without leaving the grid.
- *  Sits above the overlay link (so a click opens the chip instead of navigating)
- *  and swallows pointer-downs so it never starts a reorder drag — the same
- *  opt-out contract as the ⋯ menu. */
+/**
+ * The connection string, revealable and copyable without leaving the grid.
+ */
 function ConnectionChip({
   db,
   canReveal,

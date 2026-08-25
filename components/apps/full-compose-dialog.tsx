@@ -15,10 +15,9 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Shows the full Deplo-generated compose stack — the augmented YAML that
- * `docker compose` actually runs (Traefik + deplo labels, the injected `deplo`
- * network, absolute mount paths), as opposed to the clean source the user
- * authors in the editor. Rendered live on the server when the dialog opens.
+ * Shows the full Deplo-generated compose stack — the augmented YAML that `docker
+ * compose` actually runs (Traefik + deplo labels, the injected `deplo` network,
+ * absolute mount paths), as opposed to the clean source the user authors in the
  */
 export function FullComposeDialog({ appId }: { appId: string }) {
   const [open, setOpen] = React.useState(false);

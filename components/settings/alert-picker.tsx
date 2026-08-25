@@ -18,12 +18,8 @@ import { ALL_ALERTS, type AlertKey } from "@/lib/types";
 
 /**
  * Which alerts a team wants — the same picker shape as the role editor's
- * permissions, on purpose: search, categories, a description per row and a
- * count per category. Somebody who has ticked capabilities for a role already
- * knows how this works.
- *
- * Controlled and pure: no fetching, no saving, no dirty state. The caller owns
- * persistence, exactly like `PermissionPicker`.
+ * permissions, on purpose: search, categories, a description per row and a count
+ * per category.
  */
 export function AlertPicker({
   alerts,
@@ -102,11 +98,11 @@ export function AlertPicker({
               Reset to defaults
             </button>
           )}
-          {/* Acts on the FILTERED subset and is spelled the same as the control
-              in every category header — it is the same gesture, and the same
-              gesture cannot be called two things three lines apart. It used to
-              say "Clear all" and untick all thirty-two, including the ones the
-              search had hidden. */}
+          {/**
+           * Acts on the FILTERED subset and is spelled the same as the control in every
+           * category header — it is the same gesture, and the same gesture cannot be called
+           * two things three lines apart.
+           */}
           {!disabled && shown.some((a) => enabled.has(a)) && (
             <button
               type="button"

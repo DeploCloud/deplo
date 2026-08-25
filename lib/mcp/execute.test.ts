@@ -19,9 +19,9 @@ import { runGraphql } from "./execute";
 import { MCP_TOOLS } from "./tools";
 
 /**
- * The one thing in `lib/mcp` that would be catastrophic to get wrong. Every tool's
- * authorization comes from running its document as the token's own principal —
- * there is no second check anywhere.
+ * The one thing in `lib/mcp` that would be catastrophic to get wrong. So if
+ * `runGraphql` ever stopped wrapping `execute` in `runWithIdentity`, tools would
+ * keep working, keep returning data, and quietly return it as the wrong caller.
  */
 
 let db: TestDb;

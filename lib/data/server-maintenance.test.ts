@@ -26,7 +26,9 @@ import {
 } from "./server-maintenance";
 
 /**
- * Data-layer tests for host maintenance.
+ * Data-layer tests for host maintenance. - restartServerWorkloads leaves stopped
+ * workloads alone and reports per- workload failures instead of aborting at the
+ * first one.
  */
 
 let db: TestDb;

@@ -154,21 +154,13 @@ function OpenTargetLink({ row }: { row: LogTreeRow }) {
 
 /**
  * Step one of the Logs page: which thing's logs are we here for.
- *
- * One question in the middle of the screen, answered by typing — not a wall of
- * cards to read through. It replaced a grid because a picker is not a
- * destination: nobody comes to `/logs` to browse a list of their apps, they come
- * to read one app's output, and three letters beats a scan every time.
  */
 export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
   const router = useRouter();
   const hasTargets = rows.some((r) => r.target);
 
-  // The route is full-bleed, so the frame has no padding: this screen owns both
-  // its padding and its own centring. The extra padding at the BOTTOM lifts the
-  // block a little above true centre — optically centred, and it leaves the
-  // dropdown enough room to open downwards instead of flipping up over the
-  // question it is answering.
+  // The route is full-bleed, so the frame has no padding: this screen owns both its
+  // padding and its own centring.
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-6 pb-24">
       {hasTargets ? (
@@ -202,13 +194,8 @@ export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
 }
 
 /**
- * The toolbar's first cell on the general Logs page: the target picker, which
- * IS the title.
- *
- * The pane's usual heading is `PaneTitleLink` — the name, and the way back to
- * the thing. Here the name is said by the picker's own field (logo, name,
- * chevron), so drawing both would say it twice; the way back is the icon on the
- * open target's own row inside the menu (see {@link OpenTargetLink}).
+ * The toolbar's first cell on the general Logs page: the target picker, which IS
+ * the title.
  */
 export function LogTargetPicker({
   rows,
@@ -221,11 +208,9 @@ export function LogTargetPicker({
 }) {
   const router = useRouter();
 
-  // Remember the target so the sidebar's Logs entry reopens it. Written here,
-  // after the server resolved it, so a stale or forbidden one is never stored;
-  // read back in the page, which validates it against this same list. Client-
-  // side because a GET cannot set a cookie from an RSC render, and localStorage
-  // cannot be read there at all — which is what would make the chooser flash.
+  // Remember the target so the sidebar's Logs entry reopens it. Written here, after
+  // the server resolved it, so a stale or forbidden one is never stored; read back in
+  // the page, which validates it against this same list.
   React.useEffect(() => {
     if (!value) return;
     try {

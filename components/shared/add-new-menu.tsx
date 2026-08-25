@@ -43,17 +43,7 @@ import {
 
 /**
  * Overview "Add new" menu: a single entry point to create an app, a database, a
- * folder, a project, a team member, or (for instance admins) a global user. Each
- * creation flow reuses the same dialog component as its dedicated page, so
- * behaviour stays in sync.
- *
- * Every item is gated on exactly the capability its flow needs — an entry that
- * only leads to "you don't have permission" is not offered at all. A viewer who
- * holds none of them gets the button DISABLED, with a tooltip saying why, rather
- * than an empty menu.
- *
- * Creating a TEAM is deliberately not here: it belongs to the team switcher in
- * the topbar, which is where teams are chosen and left.
+ * folder, a project, a team member, or (for instance admins) a global user.
  */
 export function AddNewMenu({
   canCreateApp,
@@ -77,10 +67,11 @@ export function AddNewMenu({
    *  permission from folders, so the two entries appear separately. */
   canCreateProject: boolean;
   isAdmin: boolean;
-  /** The folder currently open on the Overview, if any. A folder created from
-   *  this menu nests under it (ADR-0009: folders nest via `parentId`). Null at the
-   *  top level, or inside a project — folders never live in a project, so one made
-   *  there stays at the top level. Projects always create at the top level. */
+  /**
+   * The folder currently open on the Overview, if any. Null at the top level, or
+   * inside a project — folders never live in a project, so one made there stays at
+   * the top level.
+   */
   parentFolder?: { id: string; name: string } | null;
   /** The drill-in the menu was opened in (open folder, or project + selected
    *  environment). Carried into the app-creation flows so an app created from

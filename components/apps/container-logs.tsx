@@ -66,10 +66,9 @@ const MAX_REATTACHES = 60;
  *  output arriving in this window as that replay and merge it; later output is
  *  live and appended straight. */
 const REPLAY_WINDOW_MS = 3_000;
-/** Retention cap for the log buffer. A chatty app emits tens of MB; keeping it
- *  all OOMs the tab, so only the newest tail is retained (drop-oldest, cut on
- *  a line boundary) — the latest logs are what the pane is for. Copy/Download
- *  hand off the same capped tail. */
+/**
+ * Retention cap for the log buffer.
+ */
 const MAX_BUFFER_CHARS = 512_000;
 /** Hard ceiling on rendered rows, so a flood of tiny lines can't blow up the
  *  DOM even inside the char cap. */
@@ -87,14 +86,10 @@ function capBuffer(text: string): string {
   return nl === -1 ? tail : tail.slice(nl + 1);
 }
 
-/** Classify one raw line, scanning only a bounded head (a pathological line is
- *  still RENDERED whole; only the level detection is capped).
- *
- *  `prev` is the level of the line above. A stack trace is ONE event printed
- *  across a dozen lines, so a continuation inherits rather than being judged on
- *  its own — otherwise a Python traceback renders as one red line followed by
- *  eleven grey ones, which is what both reference implementations do. Nothing
- *  inherits `info`: that is the neutral default, not a verdict worth spreading. */
+/**
+ * Classify one raw line, scanning only a bounded head (a pathological line is
+ * still RENDERED whole; only the level detection is capped).
+ */
 function classifyLine(raw: string, prev: LogLevel): ParsedLine {
   const { ts, rest: text } = splitTimestamp(raw);
   const sample =
@@ -114,18 +109,9 @@ interface ParsedLine {
 }
 
 /**
- * Live runtime logs (`docker logs -f`) for an app's container.
- *
- * Output streams over an EventSource (SSE) from GET /api/apps/:id/logs; the first
- * `session` event carries the server-side session id, used on unload to detach
- * promptly. Closing the viewer kills only our local `docker logs` client, never
- * the container.
- *
- * The container does NOT have to be running. `docker logs` reads the container's
- * log file, which outlives the process, so a stopped container still shows its
- * final words — and a crash-looping one is followed ACROSS its restarts: docker
- * ends the follow every time the process dies, so we reattach, and merge the
- * replayed tail into what is already on screen instead of duplicating it.
+ * Live runtime logs (`docker logs -f`) for an app's container. Output streams over
+ * an EventSource (SSE) from GET /api/apps/:id/logs; the first `session` event
+ * carries the server-side session id, used on unload to detach promptly.
  */
 export function ContainerLogs({
   appId,
@@ -141,10 +127,10 @@ export function ContainerLogs({
   appId: string;
   instances: ConsoleInstance[];
   runtime?: AppRuntimeView | null;
-  /** The owning host's agent honours a time window on FollowLogs
-   *  (`logs.timerange`). False greys the control out: an older agent streams
-   *  fine but ignores the window, and silently returning the wrong range is
-   *  worse than saying the host cannot do it yet. */
+  /**
+   * The owning host's agent honours a time window on FollowLogs
+   * (`logs.timerange`).
+   */
   supportsTimeline?: boolean;
   /** The instance ceiling on that window, in days. */
   logMaxDays?: number;
@@ -181,10 +167,7 @@ export function ContainerLogs({
   const [follow, setFollow] = React.useState(true);
   const sessionId = React.useRef<string | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
-  // True while WE are setting scrollTop (auto-follow). The browser fires `scroll`
-  // for programmatic scrolls too, so without this flag the tail burst's own
-  // scroll-to-bottom could be misread as a user scrolling away and flip follow
-  // off — leaving the view parked above the newest line.
+  // True while WE are setting scrollTop (auto-follow).
   const programmaticScroll = React.useRef(false);
   // Bumped on reconnect / instance switch to retrigger the stream effect.
   const [attempt, setAttempt] = React.useState(0);
@@ -194,23 +177,17 @@ export function ContainerLogs({
   const replayBaseRef = React.useRef<string | null>(null);
   const replayBurstRef = React.useRef("");
   const replayUntilRef = React.useRef(0);
-  // Incremental parse state for `publishLines`: the exact buffer the last pass
-  // saw, how far into it complete lines were parsed, and those parsed lines —
-  // so a new chunk parses only the appended tail instead of re-splitting the
-  // whole buffer (O(n²) across a chatty stream).
+  // Incremental parse state for `publishLines`: the exact buffer the last pass saw,
+  // how far into it complete lines were parsed, and those parsed lines — so a new
+  // chunk parses only the appended tail instead of re-splitting the whole buffer
   const parseRef = React.useRef<{
     text: string;
     parsedTo: number;
     lines: ParsedLine[];
   }>({ text: "", parsedTo: 0, lines: [] });
 
-  // Split the buffer into lines with a level inferred per line (Docker keeps
-  // no severity) and publish them for render. The buffer normally grows by
-  // appending, so parsing resumes where the last pass stopped; a replay merge
-  // or a cap trim that rewrote the head instead fails the prefix check and
-  // falls back to re-parsing the (capped, so bounded) buffer from scratch. The
-  // trailing partial line (no newline yet) is rendered but never stored — it
-  // reclassifies on the next chunk, once more of it has arrived.
+  // Split the buffer into lines with a level inferred per line (Docker keeps no
+  // severity) and publish them for render.
   const publishLines = React.useCallback(() => {
     const text = outputRef.current;
     if (!text) {
@@ -289,11 +266,9 @@ export function ContainerLogs({
     // turns a tail-only stream into a windowed one. Same splice, different cause.
     const windowKey = `${supportsTimeline}:${timeline.sinceMinutes}:${timeline.timestamps}`;
 
-    // A new window is a different question, not more of the same answer: the
-    // lines already on screen came from the old `--since`, and merging the new
-    // burst into them (mergeLogBurst) would splice two unrelated windows
-    // together. Drop the buffer first, and only when the window itself moved —
-    // a reconnect or a container switch has its own reset.
+    // A new window is a different question, not more of the same answer: the lines
+    // already on screen came from the old `--since`, and merging the new burst into
+    // them (mergeLogBurst) would splice two unrelated windows together.
     const previous = windowKeyRef.current;
     windowKeyRef.current = windowKey;
     if (previous !== null && previous !== windowKey) {
@@ -304,10 +279,8 @@ export function ContainerLogs({
       replayBurstRef.current = "";
     }
 
-    // The window rides the URL, so changing it reopens the stream — which is
-    // the point: `--since` is decided when `docker logs` starts, not filtered
-    // afterwards. An unsupported agent gets no window params at all, so its
-    // request is byte-for-byte the one this sent before the feature existed.
+    // The window rides the URL, so changing it reopens the stream — which is the point:
+    // `--since` is decided when `docker logs` starts, not filtered afterwards.
     const params = new URLSearchParams({ container: active.name });
     if (supportsTimeline) {
       params.set("sinceMinutes", String(timeline.sinceMinutes));
@@ -446,11 +419,9 @@ export function ContainerLogs({
   // nothing here can infer it, so offering it would be a permanently empty row.
   const filters = useLogFilters(lines, RUNTIME_LEVELS);
 
-  // Copy/download hand off PLAIN text — pasting `\x1b[33m` into an editor or a
-  // bug report is exactly the garbage the pane itself no longer shows — and
-  // they hand off what is ON SCREEN, filters applied. Copying a filtered pane
-  // and getting the unfiltered stream back is the kind of surprise that gets
-  // pasted into a bug report unread.
+  // Copy/download hand off PLAIN text — pasting `\x1b[33m` into an editor or a bug
+  // report is exactly the garbage the pane itself no longer shows — and they hand off
+  // what is ON SCREEN, filters applied.
   const plainOutput = React.useMemo(
     () =>
       filters.shown
@@ -521,10 +492,9 @@ export function ContainerLogs({
     }
   }
 
-  // The connection's own state, which is not the same thing as the container's
-  // — a stream can be live against a container that is dead, because
-  // `docker logs` reads a file. No ellipsis: a label that animates by growing
-  // three dots also reflows the toolbar next to it.
+  // The connection's own state, which is not the same thing as the container's — a
+  // stream can be live against a container that is dead, because `docker logs` reads
+  // a file.
   const statusLabel: Record<Status, string> = {
     connecting: "connecting",
     live: "streaming",
@@ -625,10 +595,8 @@ export function ContainerLogs({
         <LogSearch
           value={filters.state.q}
           onChange={(q) => filters.setState((s) => ({ ...s, q }))}
-          // No max width: the search box takes whatever the row has left, so the
-          // toolbar has no dead gap in the middle and a long query stays
-          // readable. `basis-full` still drops it onto its own line on a narrow
-          // viewport, where sharing the row would leave it unusable.
+          // No max width: the search box takes whatever the row has left, so the toolbar has
+          // no dead gap in the middle and a long query stays readable.
           className="basis-full sm:basis-auto"
         />
         <LogLevelFilter
@@ -694,10 +662,9 @@ export function ContainerLogs({
 
       <LogLines ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1">
         {filters.shown.map((l, i) => (
-          // The level here is INFERRED from the text, not authored, so the
-          // message stays neutral and only the rail and chip carry it. `auto`
-          // hides the chip on info lines, which after the detector stopped
-          // guessing is most of them.
+          // The level here is INFERRED from the text, not authored, so the message stays
+          // neutral and only the rail and chip carry it. `auto` hides the chip on info lines,
+          // which after the detector stopped guessing is most of them.
           <LogRow
             key={i}
             level={l.level}
@@ -754,16 +721,9 @@ export function ContainerLogs({
           <p className="mt-1 text-[11px] text-destructive">{failure}</p>
         ) : null}
 
-        {/*
-          The stream never opened and said nothing about why.
-
-          The route refuses an unreachable host with an HTTP 503, not with an
-          SSE `failure` frame — EventSource surfaces that as a bare `onerror`
-          with no body to read, so `failure` stays null and every branch above
-          declines to render. It used to leave a 520px box empty, which read as
-          "quiet app"; full-screen it leaves the whole page empty, which reads
-          as broken. Whatever the cause, an empty pane has to say something.
-        */}
+        {/**
+         * The stream never opened and said nothing about why.
+         */}
         {(status === "error" || status === "ended") &&
         output === "" &&
         !failure ? (

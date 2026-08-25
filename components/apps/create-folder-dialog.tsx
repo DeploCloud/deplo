@@ -56,10 +56,9 @@ export function CreateFolderDialog({
 
   function create() {
     if (!name.trim()) return;
-    // The dialog gets out of the way NOW and the folder is written behind it:
-    // this is one control-plane insert, and what takes the time is the refresh
-    // that re-reads the whole Overview afterwards. What was typed is kept aside
-    // so a refusal can put the form back exactly as it was.
+    // The dialog gets out of the way NOW and the folder is written behind it: this is
+    // one control-plane insert, and what takes the time is the refresh that re-reads
+    // the whole Overview afterwards.
     const typed = { name, color };
     onOpenChange(false);
     reset();

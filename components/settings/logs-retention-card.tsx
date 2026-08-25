@@ -22,13 +22,8 @@ import { cn } from "@/lib/utils";
 import { MAX_LOG_RANGE_DAYS, MIN_LOG_RANGE_DAYS } from "@/lib/types";
 
 /**
- * How far back the log viewer's time range may reach.
- *
- * Instance-wide, because the logs live on the HOST and a host is what several
- * teams share. It is a ceiling on the ranges the picker offers and nothing more:
- * docker rotates a container's logs by SIZE, so no number here makes a host hold
- * more of them — which is exactly what the description has to say, or an admin
- * sets 30 and reads an empty pane as a bug.
+ * How far back the log viewer's time range may reach. Instance-wide, because the
+ * logs live on the HOST and a host is what several teams share.
  */
 export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
   const router = useRouter();

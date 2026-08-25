@@ -13,7 +13,9 @@ import {
 } from "./s3-test-report";
 
 /**
- * The connection-test report.
+ * The connection-test report. A prefix we don't recognise must blame NO step
+ * rather than the wrong one, and no report may ever claim a step passed after the
+ * one that failed.
  */
 
 const target: S3TestTarget = {

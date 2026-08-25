@@ -37,9 +37,7 @@ export function AppSearch({
   const [view, setView] = React.useState<AppView>(initialView);
 
   // Build the dashboard URL from query + view (+ open folder/project), omitting
-  // defaults (empty query, grid view) so the address bar stays clean. A query is
-  // a GLOBAL search, so it drops the folder/project scope; with no query the
-  // scope is preserved so toggling the view doesn't kick you out of it.
+  // defaults (empty query, grid view) so the address bar stays clean.
   const buildHref = React.useCallback(
     (nextQ: string, nextView: AppView) => {
       const params = new URLSearchParams();

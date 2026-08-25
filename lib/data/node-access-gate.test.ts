@@ -17,8 +17,7 @@ import type { Capability } from "../types";
 
 /**
  * The gate, end to end: `requireAppCapability` is what makes an override usable,
- * and what keeps it from becoming team-wide. DEV's role gives `view` and nothing
- * else.
+ * and what keeps it from becoming team-wide.
  */
 
 let db: TestDb;

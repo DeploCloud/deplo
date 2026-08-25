@@ -56,8 +56,7 @@ test("isInGap is strict-interior: endpoints (real samples) are not in the gap", 
 
 test("GAP_MS is derived from the stream cadence + the supervisor's backoff cap, and cannot drift from it", () => {
   // Under the telemetry stream there is exactly ONE producer per host — the agent's
-  // own ticker — which removes the poll era's multi-writer arithmetic entirely. Two
-  // terms remain: the 5s cadence, and the reconnect backoff CAP.
+  // own ticker — which removes the poll era's multi-writer arithmetic entirely.
   const CADENCE_MS = 5_000; // STREAM_INTERVAL_MS, the cadence we ask the agent for
   const worstHealthySpacing = CADENCE_MS + RECONNECT_BACKOFF_CAP_MS;
   assert.ok(

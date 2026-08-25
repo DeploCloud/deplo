@@ -50,7 +50,7 @@ import { ALL_CAPABILITIES } from "./types";
 
 /**
  * A passkey as a SECOND FACTOR - the three things about it that are true only by
- * construction, and would stop being true silently (ADR-0024). 1.
+ * construction, and would stop being true silently (ADR-0024).
  * `/api/auth/passkey/*` cannot be reached over the network.
  */
 

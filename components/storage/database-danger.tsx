@@ -18,13 +18,8 @@ import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
  * The database's Danger Zone — two destructive actions, each behind a typed
- * confirmation:
- *  - Rebuild: wipe the data volume and re-provision a fresh, empty database
- *    from the current settings (same engine/version/credentials — the
- *    connection string keeps working). The "factory reset".
- *  - Delete: stop and destroy the container + data volume (and, optionally, its
- *    S3 backup artifacts) via the shared {@link DeleteDatabaseDialog}. On
- *    success, back to the storage overview.
+ * confirmation: - Rebuild: wipe the data volume and re-provision a fresh, empty
+ * database from the current settings (same engine/version/credentials — the
  */
 export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
   const router = useRouter();

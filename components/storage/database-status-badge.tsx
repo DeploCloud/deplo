@@ -15,11 +15,8 @@ import type { DatabaseStatus } from "@/lib/types";
 
 /**
  * The one place a database's badge decides what its state IS: the live
- * subscription (what the control plane last DID) folded with a poll of the
- * owning agent (what the container is actually DOING), via
- * {@link databaseDisplayStatus}. The runtime poll runs only while we claim to
- * be "running" — the only claim it can refute — so a crash-looping engine never
- * reads green.
+ * subscription (what the control plane last DID) folded with a poll of the owning
+ * agent (what the container is actually DOING), via {@link databaseDisplayStatus}.
  */
 function useDisplayStatus(
   fallback: DatabaseStatus,
@@ -59,11 +56,6 @@ function detailFor(runtime: DatabaseRuntimeView | null): string | null {
 
 /**
  * The database header's labelled status badge — the DB twin of AppStatusBadge.
- * Green "Running", amber pulsing "Provisioning", grey "Stopped", red for
- * error / not-running / crash loop, folding live in real time.
- *
- * On the /storage cards a slower `pollMs` keeps per-card polling light (the 3s
- * server cache absorbs a burst of cards); the detail header uses the default.
  */
 export function DatabaseStatusBadge({
   id,

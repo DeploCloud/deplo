@@ -52,9 +52,9 @@ import {
 import { appInTeam } from "./app-graph-load";
 
 /**
- * Does a permission actually PERMIT anything? The role editor, the token editor
- * and the deploy hook all present the same forty capabilities as if each one were
- * a switch.
+ * Does a permission actually PERMIT anything? The recurring bug class it exists to
+ * catch is a capability that is offered but never consulted — a checkbox that
+ * changes nothing.
  */
 
 let db: TestDb;

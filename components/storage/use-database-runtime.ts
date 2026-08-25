@@ -6,11 +6,8 @@ import type { RuntimeSnapshot } from "@/lib/apps/display-status";
 import type { RuntimeContainerView } from "@/components/apps/use-app-runtime";
 
 /**
- * Poll what a database's container is ACTUALLY doing on the host — the DB twin
- * of {@link import("@/components/apps/use-app-runtime").useAppRuntime}. The
- * databaseStatus subscription only fires when the control plane changes
- * something; nothing pushes when the engine crash-loops on its own, so the
- * truth is pulled from the agent-backed databaseRuntime query (3s server-cache).
+ * Poll what a database's container is ACTUALLY doing on the host — the DB twin of
+ * {@link import("@/components/apps/use-app-runtime").useAppRuntime}.
  */
 
 const DATABASE_RUNTIME_QUERY = /* GraphQL */ `

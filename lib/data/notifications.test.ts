@@ -29,9 +29,7 @@ import {
 } from "./notifications";
 
 /**
- * Data-layer tests for notification channels against pglite. A team has N
- * configured destinations and any kind may repeat, so the thing under test is the
- * INSTANCE: its config, its credentials, and its own alert selection.
+ * Data-layer tests for notification channels against pglite.
  */
 
 let db: TestDb;

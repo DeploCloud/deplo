@@ -363,7 +363,8 @@ test("rebuildDatabase: unreachable agent fails clearly and leaves the row intact
 
 test("rebuild/redeploy refuse to render an undecryptable password (no empty-auth engine)", async () => {
   // Simulate a `DEPLO_SECRET` rotation: the stored ciphertext no longer opens under
-  // the running key.
+  // the running key. The guard runs BEFORE the agent dial, so the failure is the
+  // decrypt message, not "unreachable agent".
   await seedDatabase(db, { id: "db_undec", name: "undec" });
   await db
     .update(databasesTable)

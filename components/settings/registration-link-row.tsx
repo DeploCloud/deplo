@@ -20,17 +20,6 @@ const REVEAL = /* GraphQL */ `
 /**
  * One pending registration link: what it is, when it dies, and the link itself —
  * coverable, copyable, as many times as the admin needs within its 24 hours.
- *
- * The link is a credential (whoever holds it gets an account), so it is NOT in
- * the page's HTML: the row carries only the masked form and fetches the real URL
- * through the instance-admin `revealRegistrationLink` when asked. Copying
- * resolves it the same way, which means it can go on the clipboard without ever
- * going on screen — the friendlier move while screen-sharing.
- *
- * The countdown is the point of the row, not decoration: a link that expires in
- * forty minutes is a different thing to hand someone than one that expires
- * tomorrow, and "expires in 24 hours" printed once at mint time stops being true
- * the moment the dialog closes.
  */
 export function RegistrationLinkRow({
   link,
@@ -254,12 +243,9 @@ interface TimeLeft {
 }
 
 /**
- * Time left, ticking every second. A once-a-minute counter next to "expires in
- * 24 hours" is indistinguishable from a static string; the seconds are what say
- * "this is running out while you read it".
- *
- * Null until mounted, so the server never renders a clock the client disagrees
- * with a moment later (a hydration mismatch on every row).
+ * Time left, ticking every second. Null until mounted, so the server never renders
+ * a clock the client disagrees with a moment later (a hydration mismatch on every
+ * row).
  */
 function useTimeLeft(expiresAt: string): TimeLeft | null {
   const [left, setLeft] = React.useState<TimeLeft | null>(null);
@@ -288,9 +274,8 @@ function formatLeft(ms: number): string {
 
 /**
  * "today, 22 Jul at 20:15" / "tomorrow, 23 Jul at 09:12" — the day in words
- * because that is how the operator thinks about it, and the date beside it
- * because that is what they will write down. A link never lives past tomorrow,
- * but the third branch keeps this honest if the TTL ever changes.
+ * because that is how the operator thinks about it, and the date beside it because
+ * that is what they will write down.
  */
 export function atClock(iso: string): string {
   const date = new Date(iso);

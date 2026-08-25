@@ -12,7 +12,8 @@ import { loadSharedVarsForApp } from "./shared-vars";
 import { loadInstanceEnv } from "./global-env";
 
 /**
- * EVERY env layer carries its `plain`/`secret` type to the deploy edge.
+ * EVERY env layer carries its `plain`/`secret` type to the deploy edge. ==
+ * "secret"`, and two of the four loaders never projected the column: `undefined !
  */
 
 let db: TestDb;

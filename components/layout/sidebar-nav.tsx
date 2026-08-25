@@ -57,12 +57,9 @@ export function SidebarNav({
   // running deploy is visible from anywhere in the dashboard.
   const deploying = useActiveDeployments();
 
-  // A "back" escape hatch leaves the whole current section via the browser's
-  // history — jumping to the last page you were on *outside* it — so it lands
-  // where you came from instead of stepping between sibling pages. Its href
-  // (Back to apps / dashboard) is the fallback when there's no such page
-  // (a fresh load, a reload). Modified clicks (⌘/ctrl/shift/alt → new tab) fall
-  // through to the href untouched.
+  // A "back" escape hatch leaves the whole current section via the browser's history
+  // — jumping to the last page you were on *outside* it — so it lands where you came
+  // from instead of stepping between sibling pages.
   function handleNavClick(
     item: NavItem,
     e: React.MouseEvent<HTMLAnchorElement>,
@@ -91,11 +88,9 @@ export function SidebarNav({
     onNavigate?.();
   }
 
-  // The same sidebar shows one of four navigations depending on where you are:
-  // inside an app it becomes that app's sub-menu; one level deeper, under
-  // that app's /settings, its settings sub-menu; under the top-level /settings
-  // the settings sub-menu; otherwise the main dashboard nav. One sidebar system,
-  // four left-hand navigations.
+  // The same sidebar shows one of four navigations depending on where you are: inside
+  // an app it becomes that app's sub-menu; one level deeper, under that app's
+  // /settings, its settings sub-menu; under the top-level /settings the settings
   const appSlug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
   // A database detail page swaps to its own sub-menu, one level deeper again
   // under /settings — the DB twin of the app nav swap.
@@ -117,13 +112,9 @@ export function SidebarNav({
         ? "settings"
         : "main";
 
-  // Inside an app, the gate is what the viewer holds on THAT app (published by
-  // the app layout), not the team-wide union this sidebar is handed - that union
-  // is deliberately wider than the truth so a per-folder grant doesn't hide the
-  // nav, and offering a section the app itself would refuse is exactly what it
-  // costs. Only trusted while the store matches the slug in the URL, so a stale
-  // value from the app you just left can't leak into the next one; until then
-  // (SSR, first paint) the union stands in.
+  // Inside an app, the gate is what the viewer holds on THAT app (published by the
+  // app layout), not the team-wide union this sidebar is handed - that union is
+  // deliberately wider than the truth so a per-folder grant doesn't hide the nav, and
   const appCaps =
     appSlug && service?.slug === appSlug ? new Set(service.capabilities) : caps;
 
@@ -144,10 +135,9 @@ export function SidebarNav({
       type: matches ? dbNav!.type : undefined,
     });
   } else if (appSlug && inAppSettings) {
-    // Until the store matches the slug in the URL (SSR, first paint) assume the
-    // app IS a GitHub one: that renders the entry live rather than disabled, and
-    // a link that becomes disabled a moment later is a smaller lie than a
-    // "cannot be enabled" that turns out to be wrong.
+    // Until the store matches the slug in the URL (SSR, first paint) assume the app IS
+    // a GitHub one: that renders the entry live rather than disabled, and a link that
+    // becomes disabled a moment later is a smaller lie than a "cannot be enabled" that
     sections = appSettingsNav(
       appSlug,
       service?.slug === appSlug ? service.isGithubApp : true,
@@ -189,12 +179,9 @@ export function SidebarNav({
     }))
     .filter((section) => section.items.length > 0);
 
-  // Slide the nav horizontally when it swaps between navigations: in from the
-  // right going deeper (main → service → service-settings, or main → settings),
-  // from the left coming back up. Each navigation has a depth; the slide plays
-  // toward the deeper one. Comparing against the previous render's value (a
-  // supported React pattern) plays the slide only on the boundary crossing — not
-  // on the initial mount or same-menu navigations.
+  // Slide the nav horizontally when it swaps between navigations: in from the right
+  // going deeper (main → service → service-settings, or main → settings), from the
+  // left coming back up.
   const DEPTH: Record<typeof menu, number> = {
     main: 0,
     settings: 1,
@@ -212,10 +199,8 @@ export function SidebarNav({
     );
   }
 
-  // Single background "pill" that slides to the active item — only its
-  // background moves between entries. Re-measured on navigation and whenever the
-  // rendered item set changes (an app's Console/Logs entries appear and
-  // disappear as its container starts/stops).
+  // Single background "pill" that slides to the active item — only its background
+  // moves between entries.
   const navRef = React.useRef<HTMLElement | null>(null);
   const signature = rendered
     .map((s) => s.items.map((i) => i.href).join(","))
@@ -246,8 +231,7 @@ export function SidebarNav({
       {rendered.map((section, i) => (
         <div key={i} className="flex flex-col gap-0.5">
           {/* A titled group shows its label as a header; an untitled one falls
-              back to a Vercel-style divider. Collapsed (icon-only) always uses a
-              divider since there's no room for the label. */}
+              back to a divider, as does the collapsed rail - no room for a label. */}
           {section.title && !collapsed ? (
             <div
               className={cn(
@@ -273,13 +257,8 @@ export function SidebarNav({
             // A text-only section (app/database settings) drops the icons — but
             // never while collapsed, where the icon is the only thing rendered.
             const showIcon = !section.iconless || collapsed;
-            // A settings entry the app CANNOT use — pull request previews on an
-            // app that deploys from anything but GitHub. Shown rather than
-            // hidden, because "the feature exists and here is why it is closed
-            // to you" teaches something and a missing row teaches nothing; the
-            // tooltip carries the reason in place of the usual hint. Only in
-            // SETTINGS: the operational page is hidden outright, since a page
-            // that can never list anything is a dead end, not a lesson.
+            // A settings entry the app CANNOT use — pull request previews on an app that
+            // deploys from anything but GitHub.
             if (item.disabledReason) {
               return (
                 <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
@@ -378,11 +357,6 @@ export function SidebarNav({
 /**
  * The picture on an app's or database's Overview entry, in the place the icon
  * would take.
- *
- * Sized to the 16px lucide glyphs beside it and drawn at the same footprint, so
- * the column of entries keeps one left edge. It is the SAME mark the Overview
- * grid, the breadcrumb and the log picker use for that thing, which is the whole
- * point: the first row of the sub-menu should look like what you are inside.
  */
 function NavMark({ mark }: { mark: NonNullable<NavItem["mark"]> }) {
   return (

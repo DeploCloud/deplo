@@ -86,10 +86,11 @@ export function Topbar({
         <TeamSwitcher team={team} teams={teams} />
       )}
 
-      {/* Rich trail on the apps tree (Overview ▾ / Folder ▾ / App ▾ /
-          Section ▾ with sibling menus), a plain "/ Label" everywhere else. Wrapped
-          in Suspense because Breadcrumbs reads the URL's search params
-          (?folder=/?project=) via useSearchParams. */}
+      {/**
+       * Rich trail on the apps tree (Overview ▾ / Folder ▾ / App ▾ / Section ▾ with
+       * sibling menus), a plain "/ Label" everywhere else. Wrapped in Suspense because
+       * Breadcrumbs reads the URL's search params (?
+       */}
       <React.Suspense
         fallback={
           <span className="hidden items-center gap-2 sm:flex">
@@ -109,10 +110,10 @@ export function Topbar({
       </React.Suspense>
 
       <div className="flex flex-1 items-center justify-end gap-2">
-        {/* Creation lives on the Overview's "Add New" menu only — the header
-            stays lean (theme + account). The one thing that earns a place here
-            is a migration in flight: it is moving somebody's platform across
-            the fleet, so it has to be visible from every page. */}
+        {/**
+         * Creation lives on the Overview's "Add New" menu only — the header stays lean
+         * (theme + account).
+         */}
         <MigrationChip canOpen={capabilities.includes("create_projects")} />
         <ThemeToggle />
         <UserMenu user={user} />

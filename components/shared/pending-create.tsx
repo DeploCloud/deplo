@@ -9,35 +9,9 @@ import { cn } from "@/lib/utils";
 import type { ActionResult } from "@/lib/result";
 
 /**
- * Optimistic creation: the thing appears the instant you ask for it.
- *
- * The dialogs that create something real on a host — a domain, a database, an
- * backup destination, a basic-auth credential — used to hold the user hostage
- * inside the modal with a spinning "Adding…" button while the control plane
- * talked to the server agent. That is the slowest-feeling shape a UI can have:
- * a frozen form, no context, nothing to look at.
- *
- * Instead: the dialog closes immediately and a PLACEHOLDER card/row takes the
- * new item's place in the list right away, pulsing, carrying the name the user
- * typed and what is happening to it ("Adding domain…"). The work runs in the
- * background. It is not a lie — the placeholder never pretends to be finished:
- * it pulses, it is not interactive, and it says what it is waiting on. When the
- * mutation lands, the real card replaces it in the same commit (see `create`);
- * if it fails, the placeholder disappears, the server's message is toasted and
- * the dialog reopens with exactly what was typed.
- *
- * Wiring (one provider per list; two lists on a page get two providers, so a
- * pending database never shows up in the S3 grid):
- *
- *     <PendingCreateProvider>              // usually right in the RSC page
- *       <CreateThing />                    // calls create() from usePendingCreate()
- *       <PendingList empty={things.length === 0} emptyState={<EmptyState … />}>
- *         <div className="grid …">
- *           {things.map((t) => <ThingCard key={t.id} … />)}
- *           <PendingCards />               // the placeholders live here
- *         </div>
- *       </PendingList>
- *     </PendingCreateProvider>
+ * Optimistic creation: the thing appears the instant you ask for it. It is not a
+ * lie — the placeholder never pretends to be finished: it pulses, it is not
+ * interactive, and it says what it is waiting on.
  */
 export type PendingCreate = {
   id: string;
@@ -46,10 +20,7 @@ export type PendingCreate = {
   /** What is happening to it, present tense: "Adding domain…", "Connecting…". */
   note: string;
   /**
-   * The mutation came back OK and the refresh is on its way. The placeholder
-   * stays on screen anyway until the real row LANDS (see `count`) — dropping it
-   * when the promise resolves leaves a visible hole: measured at ~400ms of
-   * "No login required" between the placeholder going and the card arriving.
+   * The mutation came back OK and the refresh is on its way.
    */
   settled: boolean;
 };
@@ -87,9 +58,7 @@ export function PendingCreateProvider({
 }: {
   /**
    * How many of these things the server currently lists (`domains.length`,
-   * `users.length`, …). This is the ARRIVAL SIGNAL: when a refresh brings a
-   * bigger number, the matching placeholder is retired in that very render, so
-   * the real row replaces it with no gap and no double.
+   * `users.length`, …).
    */
   count: number;
   children: React.ReactNode;
@@ -98,19 +67,11 @@ export function PendingCreateProvider({
   const [pending, setPending] = React.useState<PendingCreate[]>([]);
   const [, startTransition] = React.useTransition();
   const nextId = React.useRef(0);
-  // The last `count` this provider reacted to. STATE, not a ref: this is React's
-  // documented "adjusting state when a prop changes" escape hatch, and it is
-  // only correct with state — a ref written during render keeps its new value
-  // even when React throws that render away (a discarded concurrent attempt, a
-  // Strict Mode double-invoke), after which the arrival is gone and the
-  // placeholder never retires. Writing a ref during render is also what
-  // `react-hooks/refs` flags.
+  // The last `count` this provider reacted to.
   const [seen, setSeen] = React.useState(count);
 
-  // Adjusting state during render: the alternative, an effect, runs AFTER the
-  // commit, which is exactly one frame of the placeholder and the real row side
-  // by side. React re-runs this component immediately, before painting, so the
-  // extra pass costs nothing visible.
+  // Adjusting state during render: the alternative, an effect, runs AFTER the commit,
+  // which is exactly one frame of the placeholder and the real row side by side.
   if (count !== seen) {
     const landed = count - seen;
     setSeen(count);
@@ -184,9 +145,7 @@ export function usePendingCreate(): PendingCreateApi {
 
 /**
  * Renders the list, falling back to `emptyState` only when there is genuinely
- * nothing to show — not even a creation in flight. Without this, adding the
- * FIRST item of a list would have nowhere to put its placeholder: the page is
- * still showing "No domains yet".
+ * nothing to show — not even a creation in flight.
  */
 export function PendingList({
   empty,
@@ -202,12 +161,10 @@ export function PendingList({
   return (
     <>
       {children}
-      {/* The empty state usually carries its own "Add …" dialog — the one the
-          user just submitted from, when this is the FIRST item of the list.
-          Swapping it out would unmount that dialog mid-flight and throw away
-          what was typed, so it stays mounted (and out of the a11y tree) until
-          the real item lands: a rejected create can then reopen it, values
-          intact. Its content portals to the body, so a reopen still shows. */}
+      {/**
+       * The empty state usually carries its own "Add …" dialog — the one the user just
+       * submitted from, when this is the FIRST item of the list.
+       */}
       {empty && <div className="hidden">{emptyState}</div>}
     </>
   );

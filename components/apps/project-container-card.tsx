@@ -69,13 +69,7 @@ type MenuKit = {
 
 /**
  * A Project tile on the Overview — an "advanced folder" (ADR-0009) whose
- * environments each hold their own apps. The whole card links to the
- * drill-in view on the Overview itself (`/?project=<id>`, environment dropdown
- * inside); a ⋯ menu (open / rename / colour / delete) sits above the link.
- * Delete re-parents the project's apps back to the top level unless the dialog's
- * "Delete all apps" is ticked, which stops and deletes them instead. While a
- * reorder drag is active the link is made inert, and `dropActive` highlights the
- * card as a drop target.
+ * environments each hold their own apps.
  */
 export function ProjectContainerCard({
   project,

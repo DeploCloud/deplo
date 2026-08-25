@@ -41,29 +41,9 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { InstanceSettings } from "@/lib/data/instance-settings";
 
 /**
- * Settings, Deplo: the instance itself.
- *
- * Two knobs live here because they are the two facts that belong to no team and
- * to no single host, and because both used to be install-time environment
- * variables that only an SSH session could change:
- *
- *  1. The address Deplo hands out for itself (install commands, deploy hooks,
- *     invite links), and whether it is served over https at all. Deplo cannot
- *     move its own DNS, so what the field is worth is the record BESIDE it: the
- *     A record the typed domain needs, with this server's address ready to
- *     paste. Under it sits the address that needs no DNS at all - the machine's
- *     own - because a panel whose domain broke has to be reachable anyway.
- *  2. The account certificates are issued under, read from and written to each
- *     host's own proxy, and shown per host so a fleet that disagrees with itself
- *     says so rather than hiding behind one field.
- *
- * Both cards carry their explanation in ONE InfoTip on the title, like their
- * siblings on Settings, General: the live address, the badges and the switch
- * state say what is true right now, so a paragraph restating them would be
- * furniture. Copy here only appears when something is wrong or about to change.
- *
- * The certificate half is fetched after mount, never during the page render: a
- * settings page must not be as slow as the sickest server it describes.
+ * Settings, Deplo: the instance itself. Two knobs live here because they are the
+ * two facts that belong to no team and to no single host, and because both used to
+ * be install-time environment variables that only an SSH session could change: 1.
  */
 
 type CertificateAccount = {
@@ -101,11 +81,10 @@ export function DeploSettingsPanel({
       <CertificatesCard />
       <LogsRetentionCard logMaxDays={settings.logMaxDays} />
       <GravatarCard enabled={settings.gravatarEnabled} />
-      {/* After the two settings: updating Deplo is a state to read and an action
-          to take, not a knob, and the page opens on what can be changed. It lives
-          here rather than on Settings, General because only an instance admin can
-          act on it; the dashboard banner is what tells everyone else a release
-          exists. */}
+      {/**
+       * After the two settings: updating Deplo is a state to read and an action to take,
+       * not a knob, and the page opens on what can be changed.
+       */}
       <UpdateCard />
       {/* Last, because handing the instance over is the most consequential thing
           on this page - the same reason a team's delete card sits at the bottom
@@ -207,11 +186,10 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
           </Button>
         </form>
 
-        {/* The question an operator actually has in front of this field, which
-            the card used to leave them to guess: WHERE does the domain point.
-            Named after the record they have to create, with the value ready to
-            paste, and it follows what they are typing rather than describing
-            what is already saved. */}
+        {/**
+         * The question an operator actually has in front of this field, which the card used
+         * to leave them to guess: WHERE does the domain point.
+         */}
         <div>
           <p className="text-sm font-medium">
             {wantsRecord
@@ -276,16 +254,6 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
 
 /**
  * The address the panel also answers on, on the machine itself.
- *
- * Always on, with no switch, and that is the feature: it is what makes every
- * other thing on this card safe to touch. The panel's domain, its certificate
- * and the proxy in front of it are the three things Deplo cannot fix from
- * inside itself, and when one of them breaks this is the way back in - the
- * alternative being an SSH session, which is the trip Deplo exists to remove.
- *
- * Covered by default like a secret, for the same reason an environment variable
- * is: it is a working way into this panel, it is right there on a page people
- * screen-share, and it is read far less often than it is looked past.
  */
 function PanelIpAddressRow({
   url,
@@ -332,18 +300,6 @@ function PanelIpAddressRow({
  * How the panel itself is served, on the card about the panel's own address -
  * because it is a fact about that address, not about the fleet's certificates
  * below.
- *
- * The off switch is the one that matters: a Deplo on a domain that cannot get a
- * certificate yet greets its first visitor with a browser warning, on a page
- * nobody has logged into. Plain http is the way out of that, and it has to be
- * reachable from the panel, because the alternative is an SSH session.
- *
- * Says nothing while https is on - the address above already starts with it -
- * and speaks up only when the switch is off or the choice is not Deplo's.
- *
- * Fetched after mount for the same reason the accounts are: it reads the live
- * proxy config off the host, and the settings page must not be as slow as the
- * sickest server it describes.
  */
 function PanelHttpsRow() {
   const router = useRouter();
@@ -411,10 +367,11 @@ function PanelHttpsRow() {
         />
       </div>
 
-      {/* The SAME confirm the address field opens, because this is the same
-          move: the scheme is half of an origin, so turning https off takes every
-          passkey with it exactly as a new hostname would. It used to say only
-          that the proxy restarts. */}
+      {/**
+       * The SAME confirm the address field opens, because this is the same move: the
+       * scheme is half of an origin, so turning https off takes every passkey with it
+       * exactly as a new hostname would.
+       */}
       {confirming !== null && (
         <PanelAddressDialog
           open
@@ -598,10 +555,10 @@ function CertificatesCard() {
                       <span className="truncate">{account.serverName}</span>
                     </span>
                     <span className="flex min-w-0 items-center gap-2">
-                      {/* Nothing renews a certificate someone installed by hand,
-                          and the tab that holds it is not one anybody opens on a
-                          normal day. This is where certificates are thought about,
-                          so the expiry says so here. */}
+                      {/**
+                       * Nothing renews a certificate someone installed by hand, and the tab that holds it
+                       * is not one anybody opens on a normal day.
+                       */}
                       <CertificateExpiry account={account} />
                       <span
                         className={
@@ -671,10 +628,6 @@ function CertificatesCard() {
 
 /**
  * When this host's own certificates run out.
- *
- * Only ever shown while it MATTERS: a certificate the operator installed by hand
- * is renewed by hand too, so the three weeks before it lapses are the whole
- * warning, and there is nothing to say in the eleven months before that.
  */
 function CertificateExpiry({ account }: { account: CertificateAccount }) {
   const days = account.expiresInDays;

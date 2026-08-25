@@ -24,8 +24,9 @@ import {
 import { canDeleteTeam, deleteTeam } from "./team-delete";
 
 /**
- * deleteTeam gating + cascade against pglite. No apps/databases are seeded, so the
- * agent-teardown loop is a no-op and the tests stay hermetic (no gRPC dials).
+ * deleteTeam gating + cascade against pglite. The cookie switch after the delete
+ * throws outside a request scope and is best-effort by design — asserted
+ * indirectly by the delete succeeding.
  */
 
 const USER_2 = "user_2";

@@ -49,17 +49,6 @@ const STEP_LABEL: Record<StepId, string> = {
 /**
  * Register a new instance user by minting a single-use registration link
  * (instance-admin only), as a wizard.
- *
- * Step one is the decision that used to be implicit and got made by accident:
- * its predecessor derived "they create their own team" from an EMPTY checkbox
- * list, so the most consequential choice on the screen was made by not doing
- * anything. Here it is two cards, and the rest of the flow follows from it — the
- * own-team branch has nothing left to configure, so its first button IS the mint
- * and the wizard is two steps instead of three.
- *
- * `pinActiveTeam` (default true) opens on the join branch with the active team
- * already ticked, so creating a user from a team's Members page is one click.
- * Only the viewer's own teams are offered, and the server re-checks.
  */
 export function RegisterUserWizard({
   open,
@@ -94,10 +83,7 @@ export function RegisterUserWizard({
     setTeamQuery("");
   }
 
-  // Close from our own footer buttons. Flipping the controlled `open` prop does
-  // NOT fire the Dialog's onOpenChange wrapper (Radix only fires it on internal
-  // Esc/overlay/X), so we must reset here too — otherwise the next open reopens
-  // into the stale link/teams instead of a fresh picker.
+  // Close from our own footer buttons.
   function close() {
     onOpenChange(false);
     reset();
@@ -397,11 +383,9 @@ export function RegisterUserWizard({
                                 {tm.name}
                               </span>
                             </label>
-                            {/* Which of that team's two joinable default roles they
-                                land in. Fine-tuning permissions belongs on the
-                                team's own Roles page, where a change reaches every
-                                member who holds the role — not baked one-off into
-                                a link. */}
+                            {/**
+                             * Which of that team's two joinable default roles they land in.
+                             */}
                             {a && (
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {(["member", "viewer"] as Role[]).map((r) => (

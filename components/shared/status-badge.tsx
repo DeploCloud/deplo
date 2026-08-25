@@ -57,13 +57,8 @@ const COLORS: Record<string, string> = {
   unverified: "bg-[var(--warning)]",
   blocked: "bg-[var(--warning)]",
   evicted: "bg-muted-foreground",
-  // A domain proxied through Cloudflare, sitting beside `unverified` for the
-  // same reason: it IS unverified. Cloudflare's shared anycast IPs mask the
-  // origin, so deplo can see that the host is proxied and never whether
-  // Cloudflare forwards it here — green would certify a fact no DNS lookup can
-  // produce. Not red either: this is equally what a correct setup looks like.
-  // Amber says the true thing — "working as far as we can see, unconfirmed" —
-  // and the row's notice says what to double-check. Labelled "Proxied" below.
+  // A domain proxied through Cloudflare, sitting beside `unverified` for the same
+  // reason: it IS unverified.
   cloudflare: "bg-[var(--warning)]",
   // Docker is restart-looping the container: it is neither up nor off, it is
   // dying and being started again. Amber + a pulse, like every other "something
@@ -109,9 +104,7 @@ const PULSE = new Set([
 ]);
 
 // Maps each status to a translucent Badge variant, used when a caller opts into
-// `tinted` (e.g. a green "Online" chip). Mirrors the hues of COLORS: green =
-// healthy, amber = in-progress, red = failure, grey = off-but-healthy. Callers
-// that don't pass `tinted` keep the plain outline badge, so nothing else moves.
+// `tinted` (e.g. a green "Online" chip).
 const VARIANTS: Record<
   string,
   "success" | "warning" | "destructive" | "muted"
@@ -187,21 +180,15 @@ const LABELS: Record<string, string> = {
   // A fork's preview waiting on a maintainer — not a failure, and not something
   // Deplo is doing. "Blocked" would read like an error; this names the action.
   blocked: "Needs approval",
-  // Not an error and not a failure: the app hit its own `Live previews` limit
-  // and this was the one nobody had touched in the longest, so it was stopped to
-  // seat a newer pull request. Named after the SETTING that caused it, so the
-  // reader can go turn the number up. Deliberately not red — nothing went wrong,
-  // and red here would send people hunting for build logs that do not exist.
+  // Not an error and not a failure: the app hit its own `Live previews` limit and
+  // this was the one nobody had touched in the longest, so it was stopped to seat a
+  // newer pull request.
   evicted: "Over the limit",
   active: "Running",
   // "Not running", never "Stopped": the app is supposed to be up. The wording
   // has to make an unasked-for outage impossible to mistake for a deliberate one.
   down: "Not running",
-  // A domain whose DNS lands on Cloudflare. The raw key would render "Cloudflare",
-  // which states a vendor and quietly implies it works; "Proxied" names what deplo
-  // actually established — the host goes through a proxy, so what's behind it is
-  // out of view. It also stops the status column echoing the row's "Cloudflare
-  // DNS" chip word for word.
+  // A domain whose DNS lands on Cloudflare.
   cloudflare: "Proxied",
 };
 

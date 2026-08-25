@@ -4,10 +4,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 /**
  * The "Delete all apps" opt-in on a folder's or a project's delete dialog
- * (ConfirmAction's `extra` slot). Off by default, because the plain delete is
- * the safe one: the container goes and its apps move back one level. Destroying
- * them is this second, deliberate click - and the copy spells out what goes with
- * them, since nothing here can be undone.
+ * (ConfirmAction's `extra` slot). Off by default, because the plain delete is the
+ * safe one: the container goes and its apps move back one level.
  */
 export function DeleteAppsOption({
   checked,

@@ -15,8 +15,7 @@ import { userHasPasskey } from "./passkey-policy";
 
 /**
  * The ceremony, end to end, against a software authenticator that produces real
- * signatures over the server's real challenges. This is the half of the feature
- * nothing else can reach.
+ * signatures over the server's real challenges.
  */
 
 let db: TestDb;

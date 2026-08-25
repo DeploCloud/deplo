@@ -35,11 +35,6 @@ export interface CardSelection {
  * Windows/macOS-style selection for any card grid (Overview, Storage): a
  * rubber-band marquee over the empty canvas, plus ctrl/cmd-click (toggle) and
  * shift-click (range) on cards.
- * Pure DOM hit-testing against `[data-card-id]` nodes inside the canvas — no
- * dependency on dnd-kit, which only ever activates on a card (left-drag), while
- * the marquee only starts on empty space, so the two never fight.
- *
- * @param orderedIds all selectable ids in display order (for shift-range + select-all)
  */
 export function useCardSelection(orderedIds: string[]): CardSelection {
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
@@ -48,9 +43,8 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
   const anchorRef = React.useRef<string | null>(null);
 
   // Keep the latest ordered ids + selection readable from the stable imperative
-  // handlers below without rebinding them. Synced in an effect (not during
-  // render) so the handlers — which only fire after commit — always see current
-  // values.
+  // handlers below without rebinding them. Synced in an effect (not during render) so
+  // the handlers — which only fire after commit — always see current values.
   const idsRef = React.useRef(orderedIds);
   const selectedRef = React.useRef(selected);
   React.useEffect(() => {
@@ -132,10 +126,9 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
     const startY = e.clientY;
     if (!additive) setSelected(new Set());
 
-    // Snapshot the canvas + every card rect ONCE at press: they don't change
-    // during a marquee (no scroll/resize/reflow happens mid-gesture), so the
-    // per-move work is just arithmetic — no querySelectorAll and no
-    // getBoundingClientRect-per-card layout thrash on every pointermove.
+    // Snapshot the canvas + every card rect ONCE at press: they don't change during a
+    // marquee (no scroll/resize/reflow happens mid-gesture), so the per-move work is
+    // just arithmetic — no querySelectorAll and no getBoundingClientRect-per-card
     const crect = canvas.getBoundingClientRect();
     const cardRects: { id: string; r: DOMRect }[] = [];
     canvas.querySelectorAll<HTMLElement>("[data-card-id]").forEach((el) => {

@@ -48,8 +48,6 @@ import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
  * Standalone and shared variables share ONE row list so that the sort orders the
  * whole table: filtered/sorted per block, "Recently modified" would still stack
  * every standalone var above every shared one, whatever their timestamps say.
- * `kind` is what the actions cell keys off; the `Shared · <via>` badge is what
- * marks a row the app doesn't own.
  */
 type EnvRow =
   ({ kind: "standalone" } & EnvVarDTO) | ({ kind: "shared" } & AppSharedVarDTO);
@@ -82,12 +80,8 @@ export function EnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
 
-  // Shared vars this app has OPTED INTO (linked — the only way a shared var
-  // injects, ADR-0012). Their VALUES read like any other row's (plain revealed
-  // on demand, secret masked) — the app's table is what its next deploy will
-  // get, so a row it can't read at all is a hole in that picture. They can be
-  // edited and deleted straight from here too (see SharedRowActions) — a change
-  // just isn't local, so the UI says so.
+  // Shared vars this app has OPTED INTO (linked — the only way a shared var injects,
+  // ADR-0012).
   const appliedShared = React.useMemo(
     () => sharedVars.filter((v) => v.linked),
     [sharedVars],
@@ -106,11 +100,9 @@ export function EnvManager({
     [vars, appliedShared],
   );
 
-  // A deleted (or unlinked) row leaves the table on the click, instead of
-  // waiting out the mutation and then the `router.refresh()` that reloads this
-  // page's variables — the window in which a second click on the same row used
-  // to earn a "Not found". Everything below reads `rows`, so the filters, the
-  // counts and the empty states all agree the variable is gone.
+  // A deleted (or unlinked) row leaves the table on the click, instead of waiting out
+  // the mutation and then the `router.refresh()` that reloads this page's variables —
+  // the window in which a second click on the same row used to earn a "Not found".
   const {
     visible: rows,
     remove,
@@ -140,12 +132,9 @@ export function EnvManager({
   const hasVars = rows.length > 0;
   const hasMatches = shownRows.length > 0;
 
-  // The page's one action, and it only ever has one home at a time: the toolbar
-  // when there is a table to act on, the heading row when there is not - the
-  // first variable has to be reachable from a page that has no toolbar yet.
-  // The size follows the home: `default` is h-9, the height of every control on
-  // the toolbar row, while a heading row has no input to line up with and takes
-  // the `sm` every other section heading uses.
+  // The page's one action, and it only ever has one home at a time: the toolbar when
+  // there is a table to act on, the heading row when there is not - the first
+  // variable has to be reachable from a page that has no toolbar yet.
   const addButton = (size: "sm" | "default") => (
     <Button
       size={size}
@@ -334,13 +323,8 @@ export function EnvManager({
 }
 
 /**
- * Actions for a SHARED row on one app's table: edit its value, and a delete
- * menu that separates the two very different removals a shared var has.
- *
- * Every shared row here is an OPT-IN (ADR-0012), so "Remove from this app"
- * is always available — it just unlinks, and every other app keeps the
- * variable. Deleting it for the whole team is the destructive item, guarded
- * by a confirm.
+ * Actions for a SHARED row on one app's table: edit its value, and a delete menu
+ * that separates the two very different removals a shared var has.
  */
 function SharedRowActions({
   row,
@@ -365,10 +349,7 @@ function SharedRowActions({
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   function removeFromApp() {
-    // The row goes now and the unlink settles behind it. Deliberately no
-    // transition and no pending flag: this component is unmounted along with its
-    // row in the very next commit, so everything that outlives the click is
-    // either the TABLE's state (onRestored) or global (the toaster, the router).
+    // The row goes now and the unlink settles behind it.
     onRemoved();
     void (async () => {
       const res = await gqlAction(

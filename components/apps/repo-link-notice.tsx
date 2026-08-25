@@ -3,19 +3,8 @@ import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
- * The warning an App carries when it names a repository but no credential to
- * reach it with.
- *
- * `source: "github"` means "clone through a connected GitHub App", so a row with
- * no installation contradicts itself: `resolveCloneUrl` falls through to an
- * anonymous clone, which fails on a private repository, and no push can ever be
- * delivered either (both webhook routes find apps BY the credential id). The
- * state is legal - a PUBLIC repo clones anonymously just fine - so this warns
- * rather than blocks, and a bare "Repository URL" never reaches here at all
- * (see `repoCredentialMissing`).
- *
- * Server component: the whole condition is derived from the app row every caller
- * already holds, so the warning costs no query and no provider call.
+ * The warning an App carries when it names a repository but no credential to reach
+ * it with.
  */
 export function RepoLinkNotice({
   slug,

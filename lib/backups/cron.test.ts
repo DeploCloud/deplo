@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 import { parseCron, cronMatches, nextCronRun } from "./cron";
 
 /**
- * The cron matcher is the scheduler's "is this due now?" oracle (Step 6). It is
- * pure and minute-precision UTC, so it tests against fixed Dates.
+ * The cron matcher is the scheduler's "is this due now?" Bad expressions must
+ * degrade to "never matches" — never throw — so one malformed schedule can't crash
+ * the tick.
  */
 
 const at = (iso: string) => new Date(iso);

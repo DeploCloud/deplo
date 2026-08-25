@@ -58,11 +58,6 @@ export function rangesFor(
 
 /**
  * The write time as the gutter shows it, in whichever of the two formats is on.
- *
- * Local clock, not UTC: this component only ever renders on the client (the log
- * stream is an EventSource), so the hydration mismatch that forces `getUTC*` on
- * the server-rendered deployment logs cannot happen here — and a viewer reading
- * a live stream wants their own wall clock, not the server's.
  */
 export function formatLogClock(
   iso: string,

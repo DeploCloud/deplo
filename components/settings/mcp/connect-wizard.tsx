@@ -55,38 +55,9 @@ import { ToolsDialog, type McpToolSummary } from "./tools-dialog";
 import { veilProps } from "@/components/templates/veil";
 
 /**
- * Connecting an AI agent, as one path that never leaves the page.
- *
- * What it replaces: a snippet card with `deplo_your_token` written into it, and
- * a link out to Settings → API tokens. Getting connected meant reading the
- * snippet, leaving, filling in a token editor, copying a secret, coming back,
- * and reassembling the snippet by hand around it. Every one of those steps is a
- * place to lose the thread, and the last one is a place to get it subtly wrong.
- *
- * So the token is minted HERE, at the step where the question "what may this
- * agent do" is actually being asked, and the step after it prints the finished
- * configuration with the real secret already in place. Copy, paste, done — which
- * is the whole promise of the MCP server and was the one thing this page did not
- * deliver.
- *
- * Four decisions, in the order they have to be made:
- *
- *  0. `enable`      — only when the team's switch is off. A new team's is
- *                     (migration 0106), so without this step the happy path
- *                     ended in a 403 nobody could have predicted from here.
- *  1. `agent`       — which client, because their config files genuinely differ.
- *  2. `permissions` — token clients only; a web client is granted on deplo's own
- *                     consent screen, and asking twice would be asking twice.
- *  3. `connect`     — the finished configuration.
- *  4. `done`        — waits for the agent's FIRST REAL CALL and then celebrates.
- *                     "You copied something" and "your agent is talking to
- *                     deplo" are different claims and only the second is worth
- *                     making.
- *
- * The wizard renders inline rather than in a dialog, unlike the other four in
- * this repo: those are actions launched from a list, and this one IS the tab.
- * Its two Advanced editors are dialogs, though, exactly as the consent screen
- * does it — the summary row you pressed says which question you came to answer.
+ * Connecting an AI agent, as one path that never leaves the page. Getting
+ * connected meant reading the snippet, leaving, filling in a token editor, copying
+ * a secret, coming back, and reassembling the snippet by hand around it.
  */
 
 type StepId = "enable" | "agent" | "permissions" | "connect" | "done";
@@ -137,11 +108,7 @@ export function ConnectWizard({
   const https = url.startsWith("https://");
   const [runId, setRunId] = React.useState(0);
 
-  // The tab always opens on the wizard, whether or not agents are already
-  // connected. A summary screen used to stand in front of it once one was, and
-  // it read as a wall: you came to Connect to connect something and were shown a
-  // count instead. The count belongs beside the tabs, where it is answered
-  // without being in the way, and how many agents exist is Manage's business.
+  // The tab always opens on the wizard, whether or not agents are already connected.
   return (
     <WizardRun
       // Remounting is the reset: starting over must not inherit the last run's
@@ -208,11 +175,7 @@ function WizardRun({
   const [caps, setCaps] = React.useState<Capability[]>(MCP_PRESET.capabilities);
   const [expiry, setExpiry] = React.useState("90");
   const [scope, setScope] = React.useState<ScopeSelection>({
-    // Scoped to THIS team from the start. It bounds the credential to the team
-    // the person is looking at (naming teams restricts nothing inside them, so
-    // no capability is lost), and it is also what makes every snippet shorter:
-    // one reachable team means `identityForTokenRow` needs no `X-Deplo-Team`
-    // header to land in the right place.
+    // Scoped to THIS team from the start.
     teamIds: [activeTeamId],
     projectIds: [],
     folderIds: [],
@@ -256,11 +219,8 @@ function WizardRun({
         ? next.label
         : current,
     );
-    // And straight on: picking the agent IS this step's answer, so a Continue
-    // button beside it would ask the same question twice. Read off `next`, never
-    // off `steps` — that array is DERIVED from the agent, so this render's copy
-    // still describes the run without one (no permissions step yet). The stepper
-    // above walks back if the click was a misfire.
+    // And straight on: picking the agent IS this step's answer, so a Continue button
+    // beside it would ask the same question twice.
     setStep(next.kind === "web" ? "connect" : "permissions");
   }
 
@@ -343,33 +303,8 @@ function WizardRun({
         : "idle";
 
   return (
-    // Two columns only from `xl`, not `lg`. Between 1024 and ~1150px the window
-    // cannot afford a 24rem illustration AND a readable column: the agent grid
-    // got squeezed to ~180px of text per card, which clipped every blurb and
-    // pushed two cards taller than their neighbours. Below that the picture
-    // stacks on top and the content takes the full width.
-    //
-    // NO `mx-auto max-w-5xl`: the wizard starts flush with the left edge of the
-    // content area, like every other tab on this page, instead of sitting in a
-    // 64rem block floating in the middle of a 86rem shell.
-    //
-    // The illustration's track is FLUID rather than a fixed 24rem, because the
-    // width freed by dropping that cap belongs to the picture: `clamp` keeps it
-    // at today's 24rem where the split first happens (30vw at 1280px is exactly
-    // that) and lets it grow to 36rem on a wide screen, where it is the only
-    // thing with room to spare. The content column can never be squeezed by it -
-    // the picture only takes what the window itself grew by. `w-[92%]` inside
-    // that track is the breathing room: filling it edge to edge reads as a
-    // cropped drawing rather than a large one.
-    //
-    // Everything you act on down the left, the illustration large on the right.
-    // The rail travels with the content, so "where am I" and "what do I do" are
-    // one glance rather than two, and the drawing is the one element that never
-    // changes place — it anchors the page while the column beside it swaps
-    // between a switch, a grid, a form and a snippet.
-    //
-    // Borderless on purpose: this IS the tab, and a card drawn around the whole
-    // of a tab is a box around a box.
+    // Two columns only from `xl`, not `lg`. The content column can never be squeezed by
+    // it - the picture only takes what the window itself grew by.
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
       {/* First in the DOM on a phone, where the picture on top reads as a
           heading; last on a wide screen, where it belongs on the right. */}
@@ -386,12 +321,11 @@ function WizardRun({
         {connected && <ConfettiBurst className="top-28" />}
       </div>
 
-      {/* One measure for every step, and a NARROW one: the column is a rail, a
-          two-card grid, a short form and a code block in turn, and letting it
-          take the whole 1fr track made each of those grow with the window until
-          the agent cards were 374px of mostly empty space. Capped, it reads at
-          the same line length on a laptop and on a 27-inch screen, and the width
-          the window adds goes where it is worth something - the illustration. */}
+      {/**
+       * One measure for every step, and a NARROW one: the column is a rail, a two-card
+       * grid, a short form and a code block in turn, and letting it take the whole 1fr
+       * track made each of those grow with the window until the agent cards were 374px of
+       */}
       <div className="max-w-xl min-w-0 space-y-6">
         <WizardStepper
           steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
@@ -542,11 +476,8 @@ function WizardRun({
 
           {step === "connect" && agent && (
             <StepShell
-              // For a web client the heading is the ACTION and the lead is the
-              // path through its menus. "Paste this into Claude" was the one
-              // thing nobody needed telling — what they do not know is that
-              // the field lives behind Customize → Connectors, and that was in
-              // small muted type under the code block, which is not a tutorial.
+              // For a web client the heading is the ACTION and the lead is the path through its
+              // menus.
               mark={<AgentMark agent={agent} size="lg" />}
               title={
                 web
@@ -751,18 +682,8 @@ function WizardRun({
 /* ------------------------------------------------------------------ */
 
 /**
- * Every step is the same shape: a question, one line under it, the controls,
- * then one primary button. Holding that shape is what makes the four steps feel
- * like one flow rather than four screens someone bolted together.
- *
- * Left-aligned, because the illustration is on the right: a centred column of
- * text beside a picture has no edge for the eye to come back to, and every line
- * starts somewhere different.
- *
- * `mark` is the chosen agent's own logo, above the heading. The step that shows
- * a configuration is the one place the reader is following instructions for a
- * specific client, and the wizard rail says "Connect" rather than which — so the
- * mark is the confirmation that they are reading Cursor's file and not Windsurf's.
+ * Every step is the same shape: a question, one line under it, the controls, then
+ * one primary button.
  */
 function StepShell({
   mark,
@@ -789,12 +710,6 @@ function StepShell({
 
 /**
  * An agent's logo on its own tile, in the agent's own colours.
- *
- * Coloured always — not only when selected. The tile is what you scan a grid
- * of ten for, and one that only colours the card you already picked has helped
- * you exactly once you no longer need it. The ring is a token, so a near-black
- * brand still has an edge on a dark background; the fill and the glyph are the
- * brand's and stay put in both themes.
  */
 function AgentMark({
   agent,
@@ -844,10 +759,8 @@ function AgentCard({
     agent.kind === "web"
       ? "Needs the permission to manage MCP access."
       : "Needs the permission to create API tokens.";
-  // The same wash the template store's cards wear, in the brand's own colour:
-  // lit on hover while you are still looking, and held lit once this is the one
-  // you chose. It replaces the flat `bg-muted` hover — a grid of brand tiles
-  // deserves a hover that tells you WHICH brand you are about to pick.
+  // The same wash the template store's cards wear, in the brand's own colour: lit on
+  // hover while you are still looking, and held lit once this is the one you chose.
   const veil = veilProps(agent.veil, selected ? "on" : "hover");
 
   return (
@@ -873,14 +786,11 @@ function AgentCard({
       <AgentMark agent={agent} />
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{agent.label}</span>
-        {/* Exactly two lines, reserved AND capped. The blurbs are written to
-            that length, but the width they wrap at is the viewport's, so the
-            box holds its two lines whatever happens and a copy edit can never
-            grow one card and its whole row with it.
-
-            No `block` here: `line-clamp-2` sets `display: -webkit-box`, and a
-            `block` beside it wins the cascade and silently turns the clamp off
-            — which is how a four-line ChatGPT card got through. */}
+        {/**
+         * Exactly two lines, reserved AND capped. No `block` here: `line-clamp-2` sets
+         * `display: -webkit-box`, and a `block` beside it wins the cascade and silently
+         * turns the clamp off — which is how a four-line ChatGPT card got through.
+         */}
         <span className="mt-0.5 line-clamp-2 min-h-[2lh] text-xs leading-snug text-muted-foreground">
           {blocked ? note : agent.blurb}
         </span>
@@ -890,15 +800,9 @@ function AgentCard({
 }
 
 /**
- * The last step: wait for a real request, then celebrate it.
- *
- * A token client is asked about by id — the wizard just minted it and knows
- * which one to watch. A web client cannot be: the person is now inside
- * claude.ai approving a consent screen, the token is minted by that flow, and
- * the only thing this side can watch is the team's connection count going up.
- *
- * It gives up after three minutes rather than polling a forgotten tab forever,
- * and says so with a button instead of going quiet.
+ * The last step: wait for a real request, then celebrate it. It gives up after
+ * three minutes rather than polling a forgotten tab forever, and says so with a
+ * button instead of going quiet.
  */
 function DoneStep({
   agent,
@@ -920,10 +824,9 @@ function DoneStep({
 }) {
   const [round, setRound] = React.useState(0);
   const [attempt, setAttempt] = React.useState(0);
-  // Frozen on mount, via the lazy initialiser. The web branch detects success
-  // as "one more connection than there was", so a baseline that moved under it
-  // — any `router.refresh` elsewhere on the page — would make the comparison
-  // meaningless.
+  // Frozen on mount, via the lazy initialiser. The web branch detects success as "one
+  // more connection than there was", so a baseline that moved under it — any
+  // `router.refresh` elsewhere on the page — would make the comparison meaningless.
   const [baseline] = React.useState(baselineConnections);
 
   React.useEffect(() => {

@@ -10,18 +10,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Pick one thing out of a list by typing — the shell, with no opinion about what
- * the things are.
- *
- * Everything here is behaviour rather than looks: the menu opens on focus but not
- * when a dialog placed that focus itself, selection lands on `mousedown` (a click
- * would arrive after the input's blur had already closed the menu), Enter is
- * swallowed whenever the menu is open so it can never submit the surrounding
- * form, and the highlight index is guarded against a list that shrank under it.
- * Each of those is a bug someone already found once, in the destination picker
- * this was lifted out of — which is the whole reason it is shared rather than
- * written a second time next to it.
- *
- * Free text is never a value: the field resolves to one of `items` or to nothing.
+ * the things are. Free text is never a value: the field resolves to one of `items`
+ * or to nothing.
  */
 export function Combobox<T>({
   items,
@@ -54,24 +44,15 @@ export function Combobox<T>({
   renderOption: (item: T) => React.ReactNode;
   /**
    * An affordance at the RIGHT EDGE of a row — a link out to the thing, say.
-   * Rendered as a SIBLING of the option button, never inside it: a control
-   * nested in a button is neither valid HTML nor reachable, and the row would
-   * pick the item out from under the click. Return null for the rows that get
-   * none, which is usually all but one.
    */
   renderTrailing?: (item: T) => React.ReactNode;
   /**
-   * Which items can actually be chosen. Everything, unless the caller says
-   * otherwise — the tree pickers pass a predicate so their headings are drawn as
-   * rows but never landed on: the arrow keys step over them, Enter and a click
-   * ignore them. Default keeps every existing caller exactly as it was.
+   * Which items can actually be chosen.
    */
   selectable?: (item: T) => boolean;
   /**
-   * A mark for the SELECTED item, drawn inside the field to the left of the
-   * text — an app's own icon, say. Without it a picker shows you a logo per row
-   * while you choose and then a bare name once you have, which reads as having
-   * lost track of what you picked.
+   * A mark for the SELECTED item, drawn inside the field to the left of the text —
+   * an app's own icon, say.
    */
   renderLeading?: (item: T) => React.ReactNode;
   /** What the closed field shows for the selection. */
@@ -120,19 +101,6 @@ export function Combobox<T>({
 
   /**
    * Where the menu goes, and into which element.
-   *
-   * PORTALED, because every dialog scrolls now (see `DialogContent`) and an
-   * absolutely-positioned menu inside a scroll box is clipped by it — which
-   * turned a two-field step into a scrolling one and cut the options off at the
-   * fold. Radix's own Select and Popover portal for the same reason.
-   *
-   * Into the surrounding DIALOG, though, not the body. A modal Radix dialog sets
-   * `pointer-events: none` on `<body>` and treats a press anywhere outside its
-   * content as a dismiss, so a menu parked on the body was unclickable AND, had
-   * it been clickable, would have closed the dialog under the click. Inside the
-   * content it is a sibling of the scroll box: out of the clip, still in the
-   * dialog. The content is `fixed` and transformed, which makes it the
-   * containing block, so the offsets are measured against it.
    */
   const [host, setHost] = React.useState<HTMLElement | null>(null);
   const [rect, setRect] = React.useState<{
@@ -185,15 +153,8 @@ export function Combobox<T>({
     };
   }, [open]);
 
-  // Escape closes the MENU, and only the menu.
-  //
-  // On `window`, in the capture phase, because that is the only place early
-  // enough: Radix's dialog listens for Escape on `document` (also capture), and
-  // capture runs outermost-first, so a handler on the input itself — or anywhere
-  // else inside the tree — is already too late. Without this, the first Escape
-  // meant to shut a dropdown closed the whole wizard and threw away every answer
-  // in it. One Escape closes the menu; the next, with no menu open, reaches the
-  // dialog as usual.
+  // Escape closes the MENU, and only the menu. Without this, the first Escape meant
+  // to shut a dropdown closed the whole wizard and threw away every answer in it.
   React.useEffect(() => {
     if (!open) return;
     function onEscape(e: KeyboardEvent) {
@@ -295,10 +256,11 @@ export function Combobox<T>({
 
   return (
     <div ref={containerRef}>
-      {/* The positioning context is the FIELD, not the field plus whatever the
-          caller hangs under it: the chevron is centred with `top-1/2`, so a
-          footer inside this box would drag it down into that text and leave the
-          input looking like a broken control. */}
+      {/**
+       * The positioning context is the FIELD, not the field plus whatever the caller
+       * hangs under it: the chevron is centred with `top-1/2`, so a footer inside this
+       * box would drag it down into that text and leave the input looking like a broken
+       */}
       <div ref={fieldRef} className="relative">
         {selected && renderLeading && (
           <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2">

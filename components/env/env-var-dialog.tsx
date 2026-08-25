@@ -44,10 +44,7 @@ import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
 
 /**
- * A shared var as the LINK rows read it: everything but the value. This dialog
- * only ever answers "does this variable reach the app?", so it neither renders a
- * value nor asks the API for one — an `AppSharedVarDTO` passed in from a page that
- * already has the values fits it unchanged.
+ * A shared var as the LINK rows read it: everything but the value.
  */
 type LinkableSharedVar = Omit<AppSharedVarDTO, "value">;
 
@@ -70,10 +67,8 @@ export function EnvVarDialog({
   /** In-scope shared vars for this app; lazy-fetched when omitted. */
   sharedVars?: LinkableSharedVar[];
 }) {
-  // A secret has no edit form: it is write-only, and the pencil that opens this
-  // is already disabled for a secret row (EnvEditButton). The data layer refuses
-  // the write too — this is the lock that keeps a stray mount from ever putting
-  // a secret's fields on screen.
+  // A secret has no edit form: it is write-only, and the pencil that opens this is
+  // already disabled for a secret row (EnvEditButton).
   if (editing?.type === "secret") return null;
   if (editing) {
     return (
@@ -132,10 +127,9 @@ function EditForm({
     // Closes on the click; a rename that clashes reopens it on what was typed.
     onOpenChange(false);
     startTransition(async () => {
-      // A rename moves the row to its new key FIRST — it's keyed by id, so it can't
-      // clash with the value upsert below (which finds the row by (appId, key), and
-      // by then the row already lives at the new key). Bail on a rename clash before
-      // touching the value so a failed rename never half-applies.
+      // A rename moves the row to its new key FIRST — it's keyed by id, so it can't clash
+      // with the value upsert below (which finds the row by (appId, key), and by then the
+      // row already lives at the new key).
       if (renamed) {
         const r = await gqlAction<{ renameEnv: { id: string } }>(
           `mutation($id: String!, $newKey: String!) {
@@ -249,15 +243,7 @@ type AddTab = (typeof ADD_TABS)[number];
 /**
  * Standalone + Shared, as two panels on ONE horizontal track that slides between
  * them when you switch tab — and the modal's height eases to whichever panel is
- * showing, so the slide glides instead of jumping. A fixed header (title + tabs),
- * a body that scrolls inside each panel, a footer pinned under it: paste a 40-line
- * `.env` and "Add 40" stays put while the rows scroll.
- *
- * Both panels stay mounted (a slide needs the outgoing one on screen too, moving
- * out as the other moves in), so the off-screen one is `inert` — neither tabbable
- * nor read by a screen reader while it waits in the wings. Each panel keeps its
- * NATURAL height (`self-start`); the viewport is clipped to the active one, which
- * is what its measured height drives.
+ * showing, so the slide glides instead of jumping.
  */
 function AddDialog({
   open,
@@ -273,12 +259,7 @@ function AddDialog({
   const [tab, setTab] = React.useState<AddTab>("standalone");
   const index = ADD_TABS.indexOf(tab);
 
-  // The viewport's height follows the ACTIVE panel. We track BOTH panels' heights
-  // live so a switch has the target height in hand (no measure-lag), and keep them
-  // fresh as a panel grows or shrinks — a row added, the shared list loading in.
-  // Measuring happens in the panel's own callback ref (fires the moment the node
-  // attaches) rather than a layout effect: the panels mount inside Radix's Dialog
-  // presence, so an effect can run a beat before their refs are wired.
+  // The viewport's height follows the ACTIVE panel.
   const panels = React.useRef<Record<AddTab, HTMLElement | null>>({
     standalone: null,
     shared: null,
@@ -434,10 +415,9 @@ function StandaloneTab({
   }
 
   function save() {
-    // The panel closes on the click and the write settles behind it: what makes
-    // this slow is not the insert but the refresh that re-reads every variable
-    // of the app afterwards. A refusal reopens nothing — the toast carries the
-    // server's message and the rows are still typed in the closed panel.
+    // The panel closes on the click and the write settles behind it: what makes this
+    // slow is not the insert but the refresh that re-reads every variable of the app
+    // afterwards.
     onDone();
     void (async () => {
       // No `targets` on either path: an App has no Environment of its own — it

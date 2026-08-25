@@ -14,15 +14,6 @@ import {
 
 /**
  * The migration this team has in flight, live, for the whole shell.
- *
- * A migration creates apps, databases and volumes across the fleet and stops
- * the services it moves on the source platform, so "one is running right now"
- * is something every member wants to see before they touch anything - not only
- * the person who started it, and not only on the migrations page. One SSE per
- * tab, shared by the header chip and by the wizard's panel - which is the SAME
- * panel for everybody, so this feed is what drives a teammate's Stop button too.
- *
- * There is at most one: opening a run closes any older one of the same team.
  */
 export type ActiveMigration = {
   id: string;
@@ -48,21 +39,13 @@ export type ActiveMigration = {
   /**
    * When the control plane driving this run last said it was alive - null while
    * nothing has picked it up.
-   *
-   * Read against {@link MIGRATION_HEARTBEAT_STALE_MS} on the CLIENT's clock, on
-   * purpose: a boolean computed server-side would be a snapshot, and the case
-   * that matters is exactly the one where no further frame arrives to correct
-   * it. A run whose runner died stops beating; the reader notices by the number
-   * ageing, not by being told.
    */
   heartbeatAt: string | null;
 };
 
-/** Is anybody actually driving this run?
- *
- *  `now` is a parameter so a caller that already ticks a clock (the wizard's
- *  panel) measures against the same instant it renders everything else with,
- *  instead of reading the wall clock a second time per render. */
+/**
+ * Is anybody actually driving this run?
+ */
 export function isDriven(
   run: { heartbeatAt: string | null },
   now: number = Date.now(),
@@ -131,11 +114,8 @@ export function useActiveMigration(): ActiveMigration | null {
 }
 
 /**
- * The header's "hold off" sign. Amber and pulsing, like every other in-progress
- * state in the product, and it takes you straight to the migration itself.
- *
- * Not a link for somebody who cannot open that page: the warning is for the
- * whole team, the page is not.
+ * The header's "hold off" sign. Not a link for somebody who cannot open that page:
+ * the warning is for the whole team, the page is not.
  */
 export function MigrationChip({ canOpen }: { canOpen: boolean }) {
   const run = useActiveMigration();

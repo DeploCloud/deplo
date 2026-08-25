@@ -29,12 +29,9 @@ const POLL_MS = 500;
 const BOTTOM_THRESHOLD = 24;
 
 /**
- * Format a timestamp as a stable `HH:MM:SS` string.
- *
- * `toLocaleTimeString()` formats in the server's timezone/locale during SSR and
- * the browser's during hydration, so the two never match → hydration error.
- * We pad a fixed UTC `HH:MM:SS` instead: deterministic across server and client,
- * and the right shape for a log terminal regardless of the viewer's locale.
+ * Format a timestamp as a stable `HH:MM:SS` string. `toLocaleTimeString()` formats
+ * in the server's timezone/locale during SSR and the browser's during hydration,
+ * so the two never match → hydration error.
  */
 function formatLogTime(ts: string): string {
   const d = new Date(ts);
@@ -66,11 +63,6 @@ type LogsResponse = {
 
 /**
  * One deployment's build output — the WHOLE of where build logs are read.
- *
- * They used to double as a fallback inside the live runtime pane, which made
- * that pane claim to be a live stream while showing a finished transcript. It
- * doesn't any more: a build belongs to its deployment, and this is that
- * deployment's page.
  */
 export function BuildLogStream({
   deploymentId,
@@ -85,17 +77,6 @@ export function BuildLogStream({
   initialQueuePosition?: number | null;
 }) {
   // The log list is NOT seeded from `initialLogs` and is NOT server-rendered.
-  // Logs are volatile (a build appends lines, a redeploy rewrites them), so any
-  // SSR'd copy is a point-in-time snapshot. Worse, Next's client Router Cache
-  // holds this segment for ~30s (the route has a loading.tsx), so a soft reload
-  // (Ctrl+R) can paint cached rows and reconcile them against a fresher server
-  // render — a guaranteed hydration mismatch the component can't avoid while it
-  // SSRs rows. Starting empty means the server emits zero rows; the client fills
-  // them from a fetch after mount, so the first client render always matches the
-  // server regardless of cache state. `initialLogs` is still accepted (and used
-  // as the seed below) so the data already in the RSC payload paints immediately
-  // without waiting on the first fetch round-trip — but it lives in state, never
-  // in the SSR output, because state is only read after hydration.
   const [logs, setLogs] = React.useState<LogLine[]>([]);
   const [status, setStatus] = React.useState<DeploymentStatus>(initialStatus);
   // Live slot in the owning server's build queue while `queued`; null otherwise.
@@ -115,17 +96,10 @@ export function BuildLogStream({
 
   const router = useRouter();
   const [stopping, startStop] = React.useTransition();
-  // Last status we pushed to the server-rendered parts of the page. The top
-  // "Status" badge and "Build time" are RSC-rendered from `getDeployment` and
-  // DON'T share this component's polled `status`, so they'd sit stale through a
-  // queued→building→ready run until a manual reload. When the poll below sees the
-  // status move, refresh the route so those server-rendered cells re-render too.
+  // Last status we pushed to the server-rendered parts of the page.
   const lastSyncedStatus = React.useRef<DeploymentStatus>(initialStatus);
 
-  // Stop the build you're watching. cancelDeployment flips the row to `canceled`;
-  // the next log poll (below) picks that up, `live` goes false, and this button
-  // disappears on its own. router.refresh() re-renders the server card's status
-  // badge, which doesn't share this component's polled state.
+  // Stop the build you're watching.
   function stopBuild() {
     startStop(async () => {
       const res = await gqlAction<{ cancelDeployment: boolean }, boolean>(
@@ -142,12 +116,8 @@ export function BuildLogStream({
     });
   }
 
-  // Seed the log list from the RSC payload, entirely client-side (post-
-  // hydration), so the data already in the payload paints without a network
-  // round-trip. Keyed on `deploymentId` ONLY — deliberately NOT on `live`: when
-  // a build finishes, `live` flips true→false and re-running this would clobber
-  // the freshly polled logs back to the (possibly empty) seed for a beat before
-  // the fetch below restores them.
+  // Seed the log list from the RSC payload, entirely client-side (post- hydration),
+  // so the data already in the payload paints without a network round-trip.
   React.useEffect(() => {
     // Client-only seed: paints the RSC-payload logs post-hydration. Deliberate
     // setState-in-effect — it is what keeps the rows out of the SSR output.
@@ -160,9 +130,8 @@ export function BuildLogStream({
   }, [deploymentId]);
 
   // Fetch once to reconcile against the latest server state (covers a terminal
-  // deployment whose initialLogs seed may be stale), then keep polling only
-  // while the build is live. Runs after the seed effect on mount, so there's no
-  // seed-vs-fetch race.
+  // deployment whose initialLogs seed may be stale), then keep polling only while the
+  // build is live.
   React.useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
@@ -221,18 +190,11 @@ export function BuildLogStream({
     setFollow(atBottom);
   }
 
-  // Search + level filter. `command` only ever appears in a build log — deplo
-  // writes it for the shell line it ran — so this facet offers it and the live
-  // pane's doesn't. The other levels are settled server-side
-  // (`loadDeploymentLogs`): the agent stamps the builder's whole output `info`,
-  // so an unstated line is classified there before it reaches this list, and
-  // the counts here follow.
+  // Search + level filter.
   const filters = useLogFilters(logs, BUILD_LEVELS);
 
-  // Copy/download text is de-ANSI'd: the stored lines keep their escapes (the
-  // rows render them as colors), but pasted text should never carry `\x1b[33m`.
-  // It follows the FILTERS too — copying a pane narrowed to the errors and
-  // getting the whole build back is a surprise nobody catches before pasting.
+  // Copy/download text is de-ANSI'd: the stored lines keep their escapes (the rows
+  // render them as colors), but pasted text should never carry `\x1b[33m`.
   const logText = React.useMemo(
     () =>
       filters.shown
@@ -269,10 +231,8 @@ export function BuildLogStream({
           <LogSearch
             value={filters.state.q}
             onChange={(q) => filters.setState((s) => ({ ...s, q }))}
-            // No max width: the search box takes whatever the row has left, so
-            // the toolbar has no dead gap in the middle and a long query stays
-            // readable. `basis-full` still drops it onto its own line on a
-            // narrow viewport, where sharing the row would leave it unusable.
+            // No max width: the search box takes whatever the row has left, so the toolbar has
+            // no dead gap in the middle and a long query stays readable.
             className="basis-full sm:basis-auto"
           />
           <LogLevelFilter
@@ -321,10 +281,11 @@ export function BuildLogStream({
             />
           ))}
 
-          {/* Claimed but silent: the build is running and hasn't printed a
-              line yet. Placeholder rows say "waiting for output" where an empty
-              black pane says "broken". Gated on `live` — a finished deployment
-              with no logs is done waiting, and a skeleton there would lie. */}
+          {/**
+           * Claimed but silent: the build is running and hasn't printed a line yet. Gated on
+           * `live` — a finished deployment with no logs is done waiting, and a skeleton there
+           * would lie.
+           */}
           {logs.length === 0 && live ? <LogLinesSkeleton /> : null}
 
           {logs.length > 0 && filters.shown.length === 0 ? (
@@ -344,9 +305,7 @@ export function BuildLogStream({
 /**
  * The "waiting in the build queue" banner shown above the console while a
  * deployment is `queued` with no logs yet — it hasn't been claimed off its owning
- * server's queue. `position` is its 1-based slot in that queue (1 = next to
- * build); null when the position can't be resolved, so the banner still explains
- * the wait without inventing a number.
+ * server's queue.
  */
 function QueuedBanner({ position }: { position: number | null }) {
   const ahead = position == null ? 0 : position - 1;

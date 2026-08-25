@@ -45,32 +45,20 @@ export function ConfirmAction({
   variant?: "destructive" | "default";
   successMessage?: string;
   /**
-   * Typed confirmation: when set, the confirm button stays disabled until the
-   * user types this exact string (case-sensitive). Used for irreversible,
-   * in-place actions — restore (overwrites the live target) and
-   * delete-with-artifacts — so the operator can't fire one with a stray click.
-   * The phrase to type is surfaced for the operator; pass the target's slug/name.
+   * Typed confirmation: when set, the confirm button stays disabled until the user
+   * types this exact string (case-sensitive).
    */
   confirmText?: string;
   /**
    * Hold the confirm button closed for a reason the CALLER knows: the dialog is
    * still loading what it is about to destroy, or the action is refused outright
-   * and the description already says why. Independent of `confirmText` (which
-   * gates on the operator's typing) and of `pending` (which gates on the action
-   * already running).
+   * and the description already says why.
    */
   confirmDisabled?: boolean;
   /**
-   * Fire and close: the dialog shuts on the confirm CLICK and `onConfirm`
-   * settles behind it, instead of holding the user in front of a spinner for the
-   * round trip. For actions whose caller takes the target off the list in the
-   * same commit (`useOptimisticRemove`) and puts it back if the mutation is
-   * refused — the toast still reports what actually happened, so nothing here
-   * claims a success it hasn't got.
-   *
-   * Only for actions that are quick and whose target is one row. A destructive
-   * action the user should watch complete — a restore, a delete with artifacts —
-   * keeps the spinner.
+   * Fire and close: the dialog shuts on the confirm CLICK and `onConfirm` settles
+   * behind it, instead of holding the user in front of a spinner for the round
+   * trip.
    */
   optimistic?: boolean;
   /**
@@ -89,10 +77,7 @@ export function ConfirmAction({
   const confirmInputId = React.useId();
 
   // Reset the typed phrase on close so a previous attempt never leaves a stale,
-  // already-matching value behind the next time the dialog opens. `onOpenChange`
-  // is notified in BOTH modes (even uncontrolled), so a wrapper like
-  // DeleteWithArtifacts can reset its own state on close regardless of who owns
-  // the open flag.
+  // already-matching value behind the next time the dialog opens.
   const setOpen = (v: boolean) => {
     if (!v) setTyped("");
     onOpenChange?.(v);
@@ -103,10 +88,8 @@ export function ConfirmAction({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // This dialog is routinely rendered INSIDE another dialog's <form> (a row's
-    // delete action, the `extra` slot). Radix portals it out of that form in the
-    // DOM, but React still bubbles the submit up the React tree — so without
-    // this the outer form would silently submit too.
+    // This dialog is routinely rendered INSIDE another dialog's <form> (a row's delete
+    // action, the `extra` slot).
     e.stopPropagation();
     handleConfirm();
   }
@@ -114,11 +97,8 @@ export function ConfirmAction({
   function handleConfirm() {
     if (!typedOk || confirmDisabled) return;
     if (optimistic) {
-      // Close FIRST, then hand over: the caller's `onConfirm` drops the row in
-      // the same event, so the click, the dialog leaving and the row leaving are
-      // one commit. Nothing after this touches THIS component's state — only the
-      // global toaster — which is what makes it safe for the caller to unmount
-      // us, as removing a row unmounts the dialog that row renders.
+      // Close FIRST, then hand over: the caller's `onConfirm` drops the row in the same
+      // event, so the click, the dialog leaving and the row leaving are one commit.
       setOpen(false);
       void onConfirm()
         .then((res) => {
@@ -154,12 +134,10 @@ export function ConfirmAction({
           {extra}
           {confirmText && (
             <div className="space-y-2">
-              {/* Copy sits ON the name, not at the end of the sentence: what the
-                  operator does next is paste it into the box below. It stays
-                  OUTSIDE the <label> — a <button> nested in a label becomes that
-                  label's control, so clicking the words would fire a copy
-                  instead of focusing the input. Two labels for one input is
-                  legal and keeps the accessible name the whole phrase. */}
+              {/**
+               * Copy sits ON the name, not at the end of the sentence: what the operator does
+               * next is paste it into the box below.
+               */}
               <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
                 <Label
                   htmlFor={confirmInputId}

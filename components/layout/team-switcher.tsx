@@ -44,18 +44,12 @@ export function TeamSwitcher({
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = React.useTransition();
-  // The reorder gets its OWN transition: sharing `pending` with switchTo dimmed
-  // every row to 50% (data-[disabled]:opacity-50) while the mutation and the
-  // refresh ran, which is the one thing an optimistic reorder must not do - the
-  // list has already moved, so the wait belongs nowhere on screen. A failure
-  // still rolls the order back and toasts.
+  // The reorder gets its OWN transition: sharing `pending` with switchTo dimmed every
+  // row to 50% (data-[disabled]:opacity-50) while the mutation and the refresh ran,
+  // which is the one thing an optimistic reorder must not do - the list has already
   const [, startReorder] = React.useTransition();
-  // What the drag has said so far, as ids — null until somebody drags. The list
-  // itself is DERIVED from it and the prop rather than copied into state: state
-  // seeded from a prop needs an effect to stay in step, and an effect that calls
-  // setState is exactly the thing that makes a list flicker when the server
-  // answers. Ids the drag never saw (a team joined in another tab) fall in at
-  // the end instead of vanishing.
+  // What the drag has said so far, as ids — null until somebody drags. Ids the drag
+  // never saw (a team joined in another tab) fall in at the end instead of vanishing.
   const [draggedIds, setDraggedIds] = React.useState<string[] | null>(null);
   const order = React.useMemo(() => {
     if (!draggedIds) return teams;
@@ -179,13 +173,6 @@ export function TeamSwitcher({
 
 /**
  * One team in the switcher, draggable by its handle.
- *
- * The handle is separate from the row on purpose: the row's whole job is to
- * switch team on click, and making the row itself the drag surface turns every
- * slightly-imprecise click into a reorder. It appears on hover so it costs
- * nothing to anyone who never rearranges anything — out of the flow, so a row
- * with no handle showing is not a row with a hole in it: the grip fades in over
- * the item's left edge and the content slides out of its way.
  */
 function TeamRow({
   team,
@@ -224,13 +211,8 @@ function TeamRow({
         <span
           {...attributes}
           {...listeners}
-          // The handle drags; it must never also switch team - and stopping the
-          // CLICK is the whole of what that takes. There used to be an
-          // `onPointerDown` stopper here too, and it broke both halves: the prop
-          // sits after `{...listeners}`, so it REPLACED the pointer sensor's own
-          // activator (nothing ever dragged), and hiding the press from the menu
-          // item made Radix synthesize a click on release, which selected the row
-          // and switched team.
+          // The handle drags; it must never also switch team - and stopping the CLICK is the
+          // whole of what that takes.
           onClick={(e) => e.stopPropagation()}
           aria-label={`Reorder ${team.name}`}
           className="absolute left-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"

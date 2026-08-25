@@ -6,10 +6,6 @@ import { cn } from "@/lib/utils";
 /**
  * The step rail shared by the dialog wizards: where you are, what's left, and a
  * way back to a step you already finished.
- *
- * Generic over the step id so each wizard keeps its own union type; the label
- * travels with the step rather than through a lookup table, which is what lets
- * two wizards with unrelated step names share one rail.
  */
 export interface WizardStep<T extends string> {
   id: T;

@@ -42,10 +42,9 @@ export interface EnvFilterState {
   q: string;
   sort: EnvSort;
   /**
-   * facet id → the option values picked in it. Every facet is MULTI-select:
-   * values inside one facet are OR-ed ("modified by Ada **or** Linus"), and the
-   * facets themselves are AND-ed ("…**and** secret"). An absent/empty list is a
-   * facet that isn't filtering.
+   * facet id → the option values picked in it. Every facet is MULTI-select: values
+   * inside one facet are OR-ed ("modified by Ada **or** Linus"), and the facets
+   * themselves are AND-ed ("…**and** secret").
    */
   facets: Record<string, string[]>;
 }
@@ -58,14 +57,7 @@ export const EMPTY_ENV_FILTERS: EnvFilterState = {
 };
 
 /**
- * Row shape every facet can count on. Any variable DTO satisfies it — and so does
- * anything else with a name, a last-touched timestamp and an author, which is why
- * the App → Settings → Access credentials reuse this whole toolbar rather than
- * growing a second search/filter/sort of their own.
- *
- * `key` is the row's IDENTIFYING NAME — a variable's key, a basic-auth
- * credential's username. It is what the search box matches and what the A–Z sort
- * orders by.
+ * Row shape every facet can count on.
  */
 export interface FilterableVar {
   key: string;
@@ -96,12 +88,8 @@ export interface FacetOption {
 
 /**
  * One filter dropdown: what it's called, what you may pick, and what picking it
- * means. The predicate is the whole point — a tab knows how its own rows relate
- * to a project / an environment / an app, and the toolbar never has to.
- *
- * A facet with fewer than two options is HIDDEN (a menu with one real choice is
- * noise) unless it is `persistent` or currently picked — a filter you can't see
- * is a filter you can't turn off.
+ * means. The predicate is the whole point — a tab knows how its own rows relate to
+ * a project / an environment / an app, and the toolbar never has to.
  */
 export interface EnvFacet<T> {
   id: string;
@@ -166,11 +154,7 @@ function matchesFilters<T extends FilterableVar>(
 }
 
 /**
- * Narrow + sort a page of variables. Filtering is client-side over rows that are
- * already loaded (no round-trip), matching `deployments-table.tsx`.
- *
- * `extraHaystack` widens the search beyond the key: the aggregate page passes the
- * App name, so searching "storefront" finds that app's variables.
+ * Narrow + sort a page of variables.
  */
 export function applyEnvFilters<T extends FilterableVar>(
   rows: T[],
@@ -197,12 +181,8 @@ export function applyEnvFilters<T extends FilterableVar>(
 }
 
 /**
- * How many rows each option would leave standing — the number next to every
- * choice in the menus.
- *
- * A facet counts its own options against the rows the OTHER filters left (it
- * ignores itself), which is what makes the menu answer "and what if I ticked
- * this one too?" rather than "0" for every box you haven't ticked.
+ * How many rows each option would leave standing — the number next to every choice
+ * in the menus.
  */
 export function facetCounts<T extends FilterableVar>(
   rows: T[],
@@ -250,14 +230,7 @@ export function typeFacet<T extends TypedVar>(rows: T[]): EnvFacet<T> {
 }
 
 /**
- * A people filter over one authorship column. Both the "Modified by" and the
- * "Added by" facets are this: the control is an autocomplete input (`searchable`)
- * and every person leads with their avatar, so a long team narrows by typing and
- * a face is recognised before a handle is read.
- *
- * `persistent` by default: a people filter is the one people go looking for
- * ("what did Ada change?"), and hiding it on a team where one person happens to
- * have written everything reads as a missing feature, not as tidiness.
+ * A people filter over one authorship column.
  */
 function authorFacet<T extends FilterableVar>(spec: {
   rows: T[];
@@ -446,15 +419,7 @@ export function useEnvFilters<T extends FilterableVar>(
 }
 
 /**
- * The one search / filter / sort toolbar every variables table wears. Fully
- * controlled and fully declarative: the tab hands it the facets that make sense
- * there (a per-app table has no Project filter; the Shared tab has no Source
- * one) and the toolbar renders them the same way, in the same place, with the
- * same clear-everything button.
- *
- * ONE row on a desktop: search, then every filter dropdown, then the sort (+ the
- * page's own action). `lg:flex-nowrap` + flexible bases let the dropdowns share
- * the width and truncate their own labels; below `lg` the row wraps.
+ * The one search / filter / sort toolbar every variables table wears.
  */
 export function EnvFilters<T extends FilterableVar>({
   state,
@@ -533,14 +498,11 @@ export function EnvFilters<T extends FilterableVar>({
         />
       ))}
 
-      {/* The slot is RESERVED, never conditionally mounted: this button turns up
-          on the first keystroke, and inserting it into the row would shove the
-          controls around it while the cursor is still in the search box.
-          `invisible` also takes it out of the tab order and the a11y tree, so an
-          idle toolbar exposes nothing to clear.
-
-          Default size, not `sm`: every other control on this row is h-9, and an
-          h-8 button among them sits visibly short. */}
+      {/**
+       * The slot is RESERVED, never conditionally mounted: this button turns up on the
+       * first keystroke, and inserting it into the row would shove the controls around it
+       * while the cursor is still in the search box.
+       */}
       <Button
         variant="ghost"
         disabled={!hasFilter}
@@ -558,11 +520,11 @@ export function EnvFilters<T extends FilterableVar>({
           className="w-[11.5rem] shrink-0"
           aria-label={`Sort ${noun}`}
         >
-          {/* `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1`
-              to its direct-child spans, whose `display:-webkit-box` outranks a
-              plain `flex` class (the `>span` selector is more specific) and would
-              stack the icon above the value. The important modifier keeps them on
-              one row. The arrows icon is what says "this is the sort" — no label. */}
+          {/**
+           * `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1` to its
+           * direct-child spans, whose `display:-webkit-box` outranks a plain `flex` class
+           * (the `>span` selector is more specific) and would stack the icon above the value.
+           */}
           <span className="flex! items-center gap-2">
             <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
             <SelectValue />
@@ -582,10 +544,10 @@ export function EnvFilters<T extends FilterableVar>({
   );
 }
 
-/** Compact by design: six of these share one desktop row, so a permanent
- *  "Environment:" prefix would leave no room for the value. Idle, the control IS
- *  the facet's name; with one pick it becomes the pick; with several, the name
- *  plus how many. The full picture is one click away, in the menu. */
+/**
+ * Compact by design: six of these share one desktop row, so a permanent
+ * "Environment:" prefix would leave no room for the value.
+ */
 function facetSummary<T>(facet: EnvFacet<T>, values: string[]): string {
   if (facet.options.length === 0) return `${facet.label} — none`;
   if (values.length === 0) return facet.label;
@@ -607,12 +569,7 @@ function facetTitle<T>(facet: EnvFacet<T>, values: string[]): string {
 }
 
 /**
- * One facet on the toolbar. Both shapes share the multi-select menu — tick as
- * many options as you like (they are OR-ed), see how many rows each one would
- * leave, clear the whole facet from the row at the top — and differ only in the
- * control: a `searchable` facet (people lists) is a combobox whose toolbar
- * control IS an autocomplete input, everything else is a button that opens the
- * menu.
+ * One facet on the toolbar.
  */
 function FacetPicker<T>(props: {
   facet: EnvFacet<T>;
@@ -703,12 +660,10 @@ function FacetOptionRow({
   );
 }
 
-/** The default facet control: a button stating the filter in its own words —
- *  "Modified by: Ada" / "Modified by · 3" — that opens the multi-select menu.
- *
- *  Exported because the log consoles reuse it for their level filter (see
- *  `components/logs/log-filters.tsx`). It is generic and constraint-free on
- *  purpose: it reads a facet's options, never its rows. */
+/**
+ * The default facet control: a button stating the filter in its own words —
+ * "Modified by: Ada" / "Modified by · 3" — that opens the multi-select menu.
+ */
 export function FacetMenu<T>({
   facet,
   values,
@@ -786,15 +741,9 @@ export function FacetMenu<T>({
 }
 
 /**
- * The `searchable` facet control: a combobox. The toolbar control IS an input —
- * type a name straight into it and the menu narrows live, no menu-then-search
- * two-step. Idle, the placeholder wears the summary ("Modified by" / "Ada" /
- * "Modified by · 3"); the value is always the needle, so what you typed and what
- * is picked never fight over the same box.
- *
- * Keyboard: ↑/↓ walk the menu (the clear row rides at index 0), Enter ticks,
- * Escape clears the needle first and closes second, Tab moves on. Focus stays in
- * the input throughout — the menu is pointed at via `aria-activedescendant`.
+ * The `searchable` facet control: a combobox. Idle, the placeholder wears the
+ * summary ("Modified by" / "Ada" / "Modified by · 3"); the value is always the
+ * needle, so what you typed and what is picked never fight over the same box.
  */
 function FacetCombobox<T>({
   facet,
@@ -949,10 +898,9 @@ function FacetCombobox<T>({
         align="start"
         className="min-w-64 p-1"
         style={{ width: "var(--radix-popper-anchor-width)" }}
-        // Focus lives in the input for the combobox's whole life: never yank it
-        // into the menu on open, never fling it elsewhere on close, and don't
-        // treat clicks on the input (the ANCHOR — outside the content) as a
-        // dismissal.
+        // Focus lives in the input for the combobox's whole life: never yank it into the
+        // menu on open, never fling it elsewhere on close, and don't treat clicks on the
+        // input (the ANCHOR — outside the content) as a dismissal.
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => {

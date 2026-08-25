@@ -8,14 +8,9 @@ import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The team's one MCP switch.
- *
- * One, on purpose. It ships ON and it is a policy lever for a company that
- * wants AI access off — not what makes the endpoint safe, since a token is
- * required either way and revoking it is still how access is taken away. What
- * an agent may DO is the token's Capabilities and nothing else: a second set of
- * switches here would be a second permission system, and it could only ever
- * drift from the first.
+ * The team's one MCP switch. What an agent may DO is the token's Capabilities and
+ * nothing else: a second set of switches here would be a second permission system,
+ * and it could only ever drift from the first.
  */
 export function McpPanel({
   enabled: initialEnabled,

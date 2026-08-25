@@ -7,23 +7,8 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ActionResult } from "@/lib/result";
 
 /**
- * Delete confirmation for an app or database, which takes its backups with it.
- *
- * IT ASKS ONE QUESTION. There used to be a second: a checkbox, off by default,
- * offering to keep the stored backups - and "keep" was a promise the platform
- * could not hold. Nothing listed those files afterwards, nothing could delete
- * them, and a sweep removed them a month later anyway, so the honest reading of
- * the checkbox was "keep them somewhere you cannot see, for a while". Deleting
- * the thing now deletes what belongs to it, which is what "delete" means and
- * what the typed confirmation is already for.
- *
- * The sweep runs BEFORE the target itself, so the rows still resolve to the
- * server that has to be dialed - and a sweep that fails ABORTS the delete rather
- * than orphaning files nothing can name again.
- *
- * {@link forceRetry} stays: it is the escape hatch for a delete the server can
- * REFUSE (a database whose host is unreachable, so Deplo cannot prove the
- * container and volume are gone). It appears only after a real failure.
+ * Delete confirmation for an app or database, which takes its backups with it. It
+ * appears only after a real failure.
  */
 export function DeleteWithArtifacts({
   trigger,
@@ -54,11 +39,8 @@ export function DeleteWithArtifacts({
   confirmLabel: string;
   successMessage?: string;
   /**
-   * Opt-in escape hatch for a delete the server can REFUSE - a database whose
-   * host is unreachable, so Deplo cannot prove its container and data volume are
-   * gone. Omitted ⇒ no force path at all (apps proceed regardless, so they pass
-   * nothing). Shown only after a delete attempt has failed: the operator sees the
-   * real reason in the toast first, and only then the "do it anyway" choice.
+   * Opt-in escape hatch for a delete the server can REFUSE - a database whose host
+   * is unreachable, so Deplo cannot prove its container and data volume are gone.
    */
   forceRetry?: {
     /** Checkbox label - what the operator is opting into. */
@@ -120,10 +102,8 @@ export function DeleteWithArtifacts({
         ) : undefined
       }
       onConfirm={async () => {
-        // Sweep FIRST, while the target row still resolves to the server that has
-        // to be dialed for it. A sweep that fails ABORTS: deleting the target over
-        // files we could not clear would strand them where nothing can name them
-        // again, and a no-op the operator can retry is the better failure.
+        // Sweep FIRST, while the target row still resolves to the server that has to be
+        // dialed for it.
         const sweep = await gqlAction(
           `mutation($targetKind: BackupTargetKind!, $targetId: String!) {
             deleteBackupArtifacts(targetKind: $targetKind, targetId: $targetId)

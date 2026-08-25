@@ -29,22 +29,6 @@ const ACCEPT_DATABASE = /* GraphQL */ `
 /**
  * The data a migration could not bring, said where somebody is about to press
  * Deploy.
- *
- * A cross-host copy empties the destination volume before extracting into it, so
- * a copy that dies mid-stream leaves nothing or half of something - and starting
- * the workload on that is what makes the loss permanent (an engine handed an
- * empty data directory initialises a new one and reports success). Deploy, Start,
- * Restart and Redeploy are all refused while this is set, so the banner is not a
- * warning next to a button that still works: it is the explanation for a button
- * that does not.
- *
- * Two ways out, and both belong to the person, not to the platform. Copying again
- * means the migration wizard: the API key that reads the other side is never
- * stored, so nothing here could re-run the copy on its own even when the source
- * machine is still up. Accepting the loss is the other, and it has to exist -
- * the machine an app was migrated from is usually turned off soon after, and an
- * app that can never be deployed again would be a worse outcome than the one
- * this is protecting.
  */
 export function DataCopyNotice({
   kind,

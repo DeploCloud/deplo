@@ -5,13 +5,8 @@ import { KeyRound } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 /**
- * The "Secret" toggle every variable form ends with — the app's own variables
- * and a preview override alike.
- *
- * Its own module rather than an export from the dialog that first needed it:
- * that dialog is an 800-line client component with tabs, a `.env` parser and a
- * shared-variable picker, and importing this row from it would pull all of that
- * into any other bundle that wants one switch.
+ * The "Secret" toggle every variable form ends with — the app's own variables and
+ * a preview override alike.
  */
 export function SecretRow({
   secret,

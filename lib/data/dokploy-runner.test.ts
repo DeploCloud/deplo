@@ -20,7 +20,9 @@ import {
 } from "./dokploy-runner";
 
 /**
- * The runner's lease, which decides whether a migration may move.
+ * The runner's lease, which decides whether a migration may move. Per RUN, it
+ * means the only thing a lease ever meant: two processes must not drive the same
+ * one.
  */
 
 let harness: Awaited<ReturnType<typeof makeTestDb>>;

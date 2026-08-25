@@ -30,8 +30,9 @@ import {
 import { eq } from "drizzle-orm";
 
 /**
- * Profile pictures, and the four things that would hurt if they slipped. 1. **No
- * DTO ever carries an email.
+ * Profile pictures, and the four things that would hurt if they slipped. The
+ * instance-wide Gravatar switch is REAL: off must emit no address anywhere, not
+ * merely hide it in one component.
  */
 
 let db: TestDb;

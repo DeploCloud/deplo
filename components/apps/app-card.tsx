@@ -51,8 +51,7 @@ import type { AppStatus, Capability } from "@/lib/types";
 /**
  * The menu-primitive set used to render the card's action list once and reuse it
  * for BOTH the ⋯ dropdown (left-click) and the right-click context menu — same
- * items, same handlers, no duplication. Radix dropdown and context menus share
- * an isomorphic API, so the renderer just takes whichever component set applies.
+ * items, same handlers, no duplication.
  */
 type MenuKit = {
   Item: React.ElementType;
@@ -71,12 +70,9 @@ const DROPDOWN_KIT: MenuKit = {
 };
 
 /**
- * The card's status dot on the LIVE path the app header uses: an
- * {@link AppLiveStatusProvider} seeded from the server-rendered summary feeds
- * {@link AppStatusDot}, which folds the appStatus subscription with the agent
- * runtime poll — mirroring DatabaseCard's DatabaseStatusDot, so the Overview
- * never shows a stale green for a container that crashed or was stopped
- * outside deplo.
+ * The card's status dot on the LIVE path the app header uses: an {@link
+ * AppLiveStatusProvider} seeded from the server-rendered summary feeds {@link
+ * AppStatusDot}, which folds the appStatus subscription with the agent runtime
  */
 function LiveCardStatusDot({ project }: { project: AppSummary }) {
   return (
@@ -134,10 +130,7 @@ export function AppCard({
   /** Optional drag-to-reorder handle, rendered with the card's controls. */
   dragHandle?: React.ReactNode;
   /**
-   * A reorder drag is in progress for the grid. While on, the card's stretched
-   * navigation link is made inert so the whole card can be dragged without
-   * navigating away on release. (Reordering is purely drag-bound — there is no
-   * lingering "edit" mode; it ends the instant the drag does.)
+   * A reorder drag is in progress for the grid.
    */
   dragActive?: boolean;
   /** Team folders, for the "Move to folder" menu (omitted ⇒ no folders). */
@@ -146,10 +139,10 @@ export function AppCard({
    *  it. Whether it may move THIS app is the card's own `can("move_apps")`,
    *  which disables the individual entries. */
   canMoveApps?: boolean;
-  /** The surrounding project's environments, for the "Move to environment"
-   *  menu (ADR-0009). Only passed inside a project drill-in view; omitted ⇒
-   *  the menu is hidden. Moving between environments is `move_apps`, so the
-   *  caller gates it on that. */
+  /**
+   * The surrounding project's environments, for the "Move to environment" menu
+   * (ADR-0009).
+   */
   environments?: { id: string; name: string }[];
   /** The delete was RECORDED — the grid drops the card now and the host tears
    *  the stack down behind it. */
@@ -513,16 +506,15 @@ export function AppCard({
   // handle is zero-width until hover, when it expands and slides the dot left.
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
-      {/* App status as a bare dot (green / amber / red / grey), no label —
-          the dot's colour is the status; hovering it shows the word. Folded
-          LIVE (status subscription + runtime poll), never the stored status,
-          so a crashed or externally-stopped app can't sit green here. */}
+      {/**
+       * App status as a bare dot (green / amber / red / grey), no label — the dot's
+       * colour is the status; hovering it shows the word.
+       */}
       <LiveCardStatusDot project={project} />
-      {/* Drag handle is taken out of the flow at rest (display:none) so it
-          leaves no empty gap; it appears on hover / keyboard focus. The row's
-          single gap-1 then spaces all three icons identically. Going from
-          display:none → flex restarts the enter animation, so the handle slides
-          + fades in each time it reveals. */}
+      {/**
+       * Drag handle is taken out of the flow at rest (display:none) so it leaves no empty
+       * gap; it appears on hover / keyboard focus.
+       */}
       <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
         {dragHandle}
       </span>
@@ -562,10 +554,9 @@ export function AppCard({
           id: project.id,
         })
       }
-      // The delete is RECORDED by the time this fires (the teardown runs on the
-      // host behind it), so the card goes now — and the refresh re-renders the
-      // grid in place rather than bouncing the user out of the folder they were
-      // in.
+      // The delete is RECORDED by the time this fires (the teardown runs on the host
+      // behind it), so the card goes now — and the refresh re-renders the grid in place
+      // rather than bouncing the user out of the folder they were in.
       onDeleted={() => {
         onDeleted?.();
         router.refresh();
@@ -747,10 +738,7 @@ export function AppCard({
     );
 
   // Still arriving: a migration is writing this app and copying data into its
-  // volumes, and every mutation on it is refused server-side until that run
-  // ends. The card says so the way the rest of the product says "this row is
-  // not yours to act on yet" - pulsing, and inert rather than merely disabled,
-  // so there is nothing to click into and be refused from.
+  // volumes, and every mutation on it is refused server-side until that run ends.
   if (project.migrationRunId)
     return (
       <div

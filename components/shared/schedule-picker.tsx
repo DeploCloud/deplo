@@ -45,27 +45,9 @@ const onClient = () => true;
 const onServer = () => false;
 
 /**
- * Pick a schedule without writing cron.
- *
- * The value this emits is still a 5-field cron expression — that is what the
- * scheduler evaluates and what the column stores — but nobody has to type one.
- * A frequency dropdown covers the whole ladder (every minute → every month);
- * picking "Every day", "Every week" or "Every month" reveals just the one or two
- * extra controls that frequency actually needs (a time, a weekday, a day of the
- * month). Writing cron by hand survives as the last item in the list, under
- * "Advanced" — reachable for the expert, never the first thing a newcomer sees.
- *
- * Two things keep it honest. The line underneath restates the choice in words
- * and resolves the *next* run in the reader's own timezone, so "03:00 UTC" never
- * has to be converted in anyone's head. And a hand-typed expression that would
- * never fire is called out inline rather than accepted — the data layer rejects
- * it too, because a schedule that silently never runs while the UI says
- * "enabled" is the worst outcome this feature has.
- *
- * Controlled: `value` is the cron string, `onChange` gets the new one. Which
- * controls got you there is local state, seeded from `value` on mount — so an
- * edit dialog opens on the matching preset, and only an expression outside that
- * vocabulary opens on the raw text.
+ * Pick a schedule without writing cron. Writing cron by hand survives as the last
+ * item in the list, under "Advanced" — reachable for the expert, never the first
+ * thing a newcomer sees.
  */
 export function SchedulePicker({
   value,
@@ -93,17 +75,13 @@ export function SchedulePicker({
   label?: React.ReactNode;
   info?: React.ReactNode;
   /**
-   * The zone the expression is read in. UTC for backups and docker cleanup,
-   * which have no zone of their own; a cron job passes its own, and then every
-   * label, the description and the next-run resolution must agree - a time field
-   * labelled UTC on a schedule that fires at 03:00 in Rome is a plain lie.
+   * The zone the expression is read in.
    */
   timezone?: string;
   /**
    * The line under the fields reading the schedule back in words plus its next
-   * run. Off where the controls already say it plainly enough and the line was
-   * just one more thing to read past. The invalid-expression message is NOT part
-   * of it: that one always shows, or a typo would be accepted in silence.
+   * run. The invalid-expression message is NOT part of it: that one always shows,
+   * or a typo would be accepted in silence.
    */
   summary?: boolean;
 }) {
@@ -119,11 +97,9 @@ export function SchedulePicker({
   const valid = isValidSchedule(value);
   const description = describeCron(value, { timeZone: timezone });
 
-  // The next run is resolved after hydration only: it is formatted in the
-  // READER's timezone off the READER's clock, neither of which the server has,
-  // so rendering it during SSR would paint the host's answer and then disagree.
-  // `useSyncExternalStore` gives the flag with no effect and no cascading render
-  // — the value flips exactly once, server → client.
+  // The next run is resolved after hydration only: it is formatted in the READER's
+  // timezone off the READER's clock, neither of which the server has, so rendering it
+  // during SSR would paint the host's answer and then disagree.
   const hydrated = React.useSyncExternalStore(
     NEVER_CHANGES,
     onClient,
@@ -268,10 +244,10 @@ export function SchedulePicker({
         {dayField}
       </div>
 
-      {/* Row 2 — the time of day, on the same axis as whatever the caller pairs
-          with it (retention, in every current call site). Two columns even when
-          only one is filled, so a lone field keeps a field's width. The summary
-          reads the whole schedule, so it hangs off this last row. */}
+      {/**
+       * Row 2 — the time of day, on the same axis as whatever the caller pairs with it
+       * (retention, in every current call site).
+       */}
       <div className="space-y-2">
         {(needsTime || trailing) && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -324,10 +300,7 @@ export function SchedulePicker({
 }
 
 /**
- * A stored schedule, read back as words — the display twin of the picker. Lists
- * show what a schedule *does* ("Weekly, Wed 03:00 UTC"), with the expression
- * itself kept in the tooltip for whoever wants it. An expression the vocabulary
- * doesn't cover has nothing to say in words, so it shows as the cron it is.
+ * A stored schedule, read back as words — the display twin of the picker.
  */
 export function ScheduleLabel({
   cron,

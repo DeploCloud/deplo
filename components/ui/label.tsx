@@ -11,13 +11,8 @@ const Label = React.forwardRef<
   <LabelPrimitive.Root
     ref={ref}
     className={cn(
-      // `block` is load-bearing: Tailwind v4's `space-y-*` puts its gap on the
-      // FIRST child as `margin-block-end` (v3 used `margin-top` on the next
-      // child). A <label> is `display:inline` by default and inline boxes ignore
-      // vertical margins, so every `space-y` field group silently lost the gap
-      // between its label and control. Making the label a block box lets that
-      // margin apply again. Usages that pass their own `flex`/`inline-flex`
-      // (e.g. a label with an inline icon) still win via tailwind-merge.
+      // `block` is load-bearing: Tailwind v4's `space-y-*` puts its gap on the FIRST
+      // child as `margin-block-end` (v3 used `margin-top` on the next child).
       "block text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
       className,
     )}

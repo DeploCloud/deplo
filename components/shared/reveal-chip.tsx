@@ -8,32 +8,14 @@ import { cn } from "@/lib/utils";
 // lib/data/env.ts / global-env.ts.
 export const REVEAL_MASK = "••••••••••••";
 
-// The chip fills its container and owns no width of its own. Its contents are
-// ABSOLUTELY positioned, so a long value contributes zero intrinsic width — the
-// chip stays the same size whether covered or revealed, and the value just
-// truncates. `h-7` gives the out-of-flow box its height.
+// The chip fills its container and owns no width of its own.
 const OUTER =
   "relative block h-7 w-full rounded-md align-middle ring-1 ring-inset";
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 
 /**
- * The click-to-reveal chip — one covered value with an eye toggle.
- *
- * The invariant that makes it safe: **while covered, the real value is not in
- * the DOM at all**. The chip renders only the placeholder (mask dots, or a
- * partially-masked hint like a connection string with its password blanked),
- * and even the `title` attribute stays generic — inspect-element sees the mask,
- * never the value. Revealing mounts the value; hiding unmounts it.
- *
- * Three shapes:
- *  - interactive — `onToggle` flips `revealed`; `value` is rendered only then.
- *  - `locked`    — a secret the server will never hand back: dots + a padlock,
- *                  and it never opens.
- *  - `readOnly`  — the placeholder alone, no affordance (the viewer lacks the
- *                  capability to reveal it).
- *
- * Callers own the reveal state, so a value is uncovered one chip at a time,
- * deliberately, and there is never a bulk "reveal all".
+ * The click-to-reveal chip — one covered value with an eye toggle. - `locked` — a
+ * secret the server will never hand back: dots + a padlock, and it never opens.
  */
 export function RevealChip({
   value = null,

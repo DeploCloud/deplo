@@ -53,8 +53,7 @@ import {
 
 /**
  * The ROLE FLOOR: every field of the public API, driven by a real member of the
- * team whose role grants nothing at all. `view` is the always-on floor, so this
- * member is entitled to LOOK.
+ * team whose role grants nothing at all.
  */
 
 let db: TestDb;
@@ -365,7 +364,9 @@ async function snapshotWithout(
 }
 
 /**
- * Mutations a member with NO capability may still write through, and why.
+ * Mutations a member with NO capability may still write through, and why. Only a
+ * write to the actor's OWN preferences belongs here — never anything another
+ * member, another team, or an authorization check can read.
  */
 const OWN_PREFERENCES_ONLY = ["reorderMyTeams"];
 

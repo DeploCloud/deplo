@@ -35,9 +35,9 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 import { POST } from "@/app/api/apps/[id]/deploy-hook/[token]/route";
 
 /**
- * The deploy hook, driven by a token whose creator is a member of BOTH teams. The
- * existing route tests use a stranger - someone who belongs to the other team and
- * nothing else - which the team check catches on its own.
+ * The deploy hook, driven by a token whose creator is a member of BOTH teams.
+ * These tests pin that ordering down: it is the property the folder gate turned
+ * out not to have.
  */
 
 let db: TestDb;

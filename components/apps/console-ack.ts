@@ -30,10 +30,7 @@ function subscribe(onChange: () => void): () => void {
 }
 
 /**
- * Whether the user has confirmed the console warning. `null` on the server and
- * during hydration (undecided) — so an acknowledged user never flashes the
- * warning, and the sidebar chip never renders on the server then vanishes — then
- * a real boolean once the client has read localStorage.
+ * Whether the user has confirmed the console warning.
  */
 export function useConsoleAck(): boolean | null {
   return React.useSyncExternalStore(subscribe, readAck, () => null);

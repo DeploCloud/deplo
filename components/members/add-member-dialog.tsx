@@ -100,11 +100,7 @@ export function AddMemberDialog({
     };
   }, [open, canAssignOwner]);
 
-  // Debounced username search. The empty query is a valid search that returns
-  // the full available roster, so the list is populated as soon as the dialog
-  // opens; typing filters it. Only run while the dialog is open and no user is
-  // picked. All state writes happen asynchronously (inside the timeout) to
-  // avoid cascading renders.
+  // Debounced username search.
   React.useEffect(() => {
     if (!open || picked) return;
     const q = query.trim();

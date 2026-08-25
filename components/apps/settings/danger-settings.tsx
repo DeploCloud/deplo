@@ -18,11 +18,7 @@ import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 
 /**
  * Danger zone: the two actions that take this app away from the team —
- * transferring it to another team the viewer belongs to, and deleting it
- * outright. Both sit in a self-describing red card at the bottom of Advanced
- * settings, each behind a typed confirmation, so neither is one stray click away
- * from Name & logo. On success the browser returns to the dashboard: in both
- * cases the app is no longer the active team's to open.
+ * transferring it to another team the viewer belongs to, and deleting it outright.
  */
 export function DangerSettings({
   appId,

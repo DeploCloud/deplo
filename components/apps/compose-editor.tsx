@@ -35,23 +35,11 @@ import { imageCompletionSource } from "@/components/apps/compose-image-complete"
 
 /**
  * CodeMirror-based docker-compose editor with live, client-side linting.
- *
- * Linting runs through `lintCompose` (js-yaml + Deplo-aware semantic rules);
- * results are mapped to CodeMirror `Diagnostic`s and shown as squiggles plus
- * gutter markers. The server still validates at deploy time — this is fast
- * feedback, not the source of truth.
- *
- * CodeMirror touches the DOM, so this is a client component that builds the
- * `EditorView` inside `useEffect`; "use client" + the effect is sufficient under
- * Next 16 (no dynamic import with ssr:false needed).
  */
 
 /**
- * Theme bound to the dashboard's CSS variables so it tracks light/dark and
- * matches the surrounding shadcn cards. Covers the editor surface, gutters,
- * selection, the lint gutter markers, the diagnostic underlines AND the hover
- * tooltip (which CodeMirror renders unstyled by default — that was the
- * white-on-white bug).
+ * Theme bound to the dashboard's CSS variables so it tracks light/dark and matches
+ * the surrounding shadcn cards.
  */
 const deploTheme = EditorView.theme({
   "&": {

@@ -27,29 +27,8 @@ import type {
 
 /**
  * Build & Output — the card that answers "what happens between my code and a
- * running container", laid out as the PIPELINE it actually is.
- *
- * Every setting here belongs to one stage of one story: deplo picks how the
- * image is made (Builder), runs the build (Build), starts the container and
- * routes to it (Run), and then does the whole thing again on the next push
- * (Deploy on push). Rendering it as a rail of stages rather than a flat stack of
- * field groups is the point: a user who has never touched Docker can read the
- * card top to bottom and learn what a deploy IS, and every input sits under the
- * stage it affects instead of floating in a grid of unrelated boxes.
- *
- * The framework is deliberately NOT a stage: it is a setting of the Builder —
- * only Nixpacks and Railpack read the source and act on what they find — so it
- * lives inside their options panel, next to the other things they read.
- *
- * Stages appear only where they exist: a Dockerfile owns its own install/build/
- * run, so it has no Build stage and no start command; a static site has no
- * process to start. The rail never shows a control that would do nothing.
- *
- * Purely presentational — the parent owns the BuildConfig, the dirty state and
- * the save. The one exception is Deploy on push, which (like every switch in
- * deplo) commits on change through its own callback and therefore never joins
- * this card's Save button: a toggle that needs a second click to stick is the
- * classic way to make someone think a setting saved when it didn't.
+ * running container", laid out as the PIPELINE it actually is. The rail never
+ * shows a control that would do nothing.
  */
 export function BuildOutputCard({
   build,
@@ -78,10 +57,7 @@ export function BuildOutputCard({
   /** The branch pushes are watched on, for the Deploy-on-push copy. */
   autoDeployBranch: string;
   /**
-   * Whether deploy-on-push means anything for this app. Only the GitHub App
-   * source delivers pushes to deplo, so for every other source the switch would
-   * be a knob that does nothing — those apps get the deploy hook (Advanced
-   * settings) instead, and this stage is simply absent.
+   * Whether deploy-on-push means anything for this app.
    */
   showAutoDeploy: boolean;
   dirty: boolean;
@@ -92,13 +68,9 @@ export function BuildOutputCard({
     onBuildChange(updater(build));
   }
 
-  // Which overrides the deploy path actually consumes, per builder — a field is
-  // shown only where the agent-side builder reads it, so nothing here can
-  // silently do nothing:
-  //  - nixpacks / railpack: build + start commands, Node version
-  //  - static: build command + Node version (the builder stage); nginx serves
-  //    the output, so there is no process to start
-  //  - dockerfile: none — the repo's Dockerfile owns install/build/run
+  // Which overrides the deploy path actually consumes, per builder — a field is shown
+  // only where the agent-side builder reads it, so nothing here can silently do
+  // nothing: - nixpacks / railpack: build + start commands, Node version - static:
   const method = build.buildMethod;
   const showBuildCommand =
     method === "nixpacks" || method === "railpack" || method === "static";
@@ -108,11 +80,6 @@ export function BuildOutputCard({
   const showBuildStage = showBuildCommand || showNodeVersion;
 
   // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
-  // Only a valid positive integer is committed; while the box is blank or
-  // invalid the last committed port stays put (so clearing it to type a new
-  // number doesn't snap the old one straight back). `null` means "no draft —
-  // show the committed value", which is also what lets a port set from OUTSIDE
-  // (correcting the framework) appear immediately.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const portText = portDraft ?? String(build.port);
 
@@ -127,12 +94,6 @@ export function BuildOutputCard({
    * Correcting the framework carries the container port with it — that is the
    * whole reason the setting is worth having (`vite preview` binds 4173 and
    * ignores PORT, so an app mis-read as Next.js deploys green and answers
-   * nothing). Only while the port is still the OUTGOING framework's default,
-   * though: a port the user typed is an answer, not a leftover.
-   *
-   * Clearing the correction hands the port to DETECTION's framework, not to
-   * nothing — otherwise "use what deplo detected" would undo the name and leave
-   * the wrong port behind, which is the failure this setting exists to fix.
    */
   function pickFramework(next: string | null) {
     const previousPort = frameworkById(framework)?.defaultPort ?? 3000;

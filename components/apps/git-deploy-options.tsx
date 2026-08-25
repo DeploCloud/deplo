@@ -15,11 +15,9 @@ import {
 import type { GitTriggerType } from "@/lib/types";
 
 /**
- * The editable git deploy options shared by the app settings page and the
- * new-app wizard (so both surfaces stay identical): the auto-deploy trigger
- * (push vs new tag), the optional watch-path filter, and the submodules toggle.
- * `watchPaths` is held as raw multiline text; {@link watchPathsToArray} turns it
- * into the list the GraphQL `GitRepoInput.watchPaths` expects.
+ * The editable git deploy options shared by the app settings page and the new-app
+ * wizard (so both surfaces stay identical): the auto-deploy trigger (push vs new
+ * tag), the optional watch-path filter, and the submodules toggle.
  */
 export interface GitDeployOptionsValue {
   triggerType: GitTriggerType;

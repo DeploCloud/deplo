@@ -14,11 +14,6 @@ export const DEFAULT_RETENTION = 7;
 
 /**
  * A name nobody has to invent — "Backup every day", from the frequency itself.
- *
- * The field is required, so an empty one is the single thing standing between
- * opening the dialog and a working schedule; and "Nightly Postgres backup" as a
- * PLACEHOLDER only ever taught people what to retype. Custom cron has no phrase
- * to borrow, so it gets the generic one.
  */
 export function suggestScheduleName(cron: string): string {
   const mode = partsFromCron(cron)?.mode;
@@ -27,24 +22,7 @@ export function suggestScheduleName(cron: string): string {
 }
 
 /**
- * When a backup runs, and how many of them are kept. One component because four
- * dialogs ask it - schedule a backup from Storage, from an app's or a database's
- * Backups tab, and edit either - and the four drifting apart is how a field ends
- * up existing in two of them.
- *
- * RETENTION IS A COUNT, not a window in days. "Keep the last 3" is the question
- * people actually ask, and it is the only phrasing that survives a change of
- * cadence: 7 days of an hourly schedule is 168 artifacts, which nobody asked for.
- * The unit rides inside the field, which is the whole explanation the number
- * needs.
- *
- * The TIMEZONE is the other part worth explaining. A backup schedule used to be
- * read in UTC and nothing said so above the field, which for anyone outside that
- * zone meant "nightly at 03:00" quietly became 04:00 for half the year and 05:00
- * for the other half. The cron-jobs feature next door had already solved this per
- * job, with the same picker and the same evaluator, so the fix is to ask - and
- * the default is the reader's own clock, because 03:00 means 03:00 where you
- * are. It sits beside the time it qualifies, exactly as the cron dialog has it.
+ * When a backup runs, and how many of them are kept.
  */
 export function BackupScheduleFields({
   idPrefix,

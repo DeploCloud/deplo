@@ -16,11 +16,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 /**
  * Controlled colour picker for a folder: a row of curated swatches (plus a
  * "default / no colour" choice) and a free-form HEX field with a native colour
- * input and a live contrast preview. `value` is the canonical `#rrggbb` (or
- * null for the default neutral tile); `onChange` only ever fires with a
- * normalised colour or null, so callers can persist it verbatim. The readable
- * foreground is computed via {@link readableTextColor} so a custom colour can
- * never be unreadable.
+ * input and a live contrast preview.
  */
 export function FolderColorPicker({
   value,
@@ -32,10 +28,7 @@ export function FolderColorPicker({
   idPrefix?: string;
 }) {
   // The HEX field keeps its own text state so a half-typed value ("#3b8") never
-  // clobbers the committed colour; we lift a value up only once it parses. The
-  // dialog hosting this picker remounts on open (Radix unmounts closed content),
-  // so the initial `value` always seeds `hex` — no value→hex sync effect needed,
-  // and every interaction below keeps the two in step explicitly.
+  // clobbers the committed colour; we lift a value up only once it parses.
   const [hex, setHex] = React.useState(value ?? "");
 
   const current = (value ?? "").toLowerCase();

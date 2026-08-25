@@ -9,8 +9,7 @@ import {
 
 /**
  * "View full compose" is served at the `view` floor, so everything the render
- * RESOLVES into the file has to be masked on the way out. The env pass was there
- * from the start.
+ * RESOLVES into the file has to be masked on the way out.
  */
 
 const HTPASSWD =

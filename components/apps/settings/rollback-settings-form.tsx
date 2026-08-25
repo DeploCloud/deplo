@@ -23,11 +23,6 @@ import { MAX_ROLLBACK_KEEP } from "@/lib/types";
 
 /**
  * How many previous deployments this app can be put back on.
- *
- * RETENTION IS A COUNT, like backup retention and for the same reason: "keep the
- * last 3" is the question people ask. Here it is also literally how many of the
- * app's images its server holds on to, which is why the card says so - the number
- * costs disk, and a user raising it to 20 should not discover that afterwards.
  */
 export function RollbackSettingsForm({
   appId,

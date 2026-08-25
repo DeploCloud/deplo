@@ -15,26 +15,9 @@ import { timeAgo } from "@/lib/utils";
 import type { McpConnectionDTO } from "@/lib/data/mcp-clients";
 
 /**
- * Everything that can act in this team over MCP.
- *
- * Two kinds in one list, because "who can drive our infrastructure" is one
- * question. A `web` row is an OAuth connector approved on deplo's consent
- * screen; a `token` row is an API token somebody pasted into a terminal or IDE
- * agent, and it appears here once it has actually called `/api/mcp` — a token
- * that merely could is a credential, not a connection, and lives on the API
- * tokens page.
- *
- * Revoke is `revokeToken` for both, because both ARE API tokens (ADR-0022 §1).
- * One lever over a credential, never two that can drift.
- *
- * This screen speaks about THIS team and nothing else. One consent can approve
- * several teams, and Revoke ends the credential in all of them - but the other
- * teams are somebody else's business, sometimes literally (a member here need
- * not belong to them), so neither the row nor the dialog names them. The dialog
- * says the client stops everywhere without saying where everywhere is.
- *
- * No action on the empty state: connecting happens in the Connect tab, which is
- * one click away and already carries that button.
+ * Everything that can act in this team over MCP. Two kinds in one list, because
+ * "who can drive our infrastructure" is one question. Revoke is `revokeToken` for
+ * both, because both ARE API tokens (ADR-0022 §1).
  */
 export function ConnectedClients({
   connections,
@@ -141,12 +124,8 @@ export function ConnectedClients({
 }
 
 /**
- * The second line: who let it in, where it came from, what it can do, when it
- * last spoke.
- *
- * `mcpLastUsedAt` and not `lastUsedAt`: this list is about agents, and a token
- * that ran a CI job an hour ago has not been an agent since Tuesday. A web
- * connector approved thirty seconds ago has neither, and says so.
+ * The second line: who let it in, where it came from, what it can do, when it last
+ * spoke.
  */
 function describe(c: McpConnectionDTO): string {
   const parts = [

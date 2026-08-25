@@ -16,15 +16,8 @@ export interface CurrentUpload {
 
 /**
  * Drag-and-drop / file-picker upload of a code archive for an "upload"-source
- * project. Two modes:
- *
- *   - Settings mode (a `appId` is passed): streams the file to the app's
- *     upload route with a live progress bar. Storing the archive does NOT deploy
- *     it — the settings form's "Save & Deploy" button does — so on success we
- *     just refresh so the new archive surfaces and Save & Deploy lights up.
- *   - Deferred mode (`onSelect` is passed, no app exists yet): the create
- *     wizard captures the picked File and uploads it itself after the app is
- *     created. Here we only validate and hand the File up; nothing is streamed.
+ * project. - Deferred mode (`onSelect` is passed, no app exists yet): the create
+ * wizard captures the picked File and uploads it itself after the app is created.
  */
 export function UploadInput({
   appId,

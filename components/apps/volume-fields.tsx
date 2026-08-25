@@ -55,34 +55,6 @@ import type { MountPropagation, VolumeMount } from "@/lib/types";
 /**
  * The Storage editor: a list of what this app keeps, one collapsed line each,
  * expanding into a form that asks one question — where should this data live?
- *
- * WHAT THIS REPLACED. A row of bare inputs under a `Type` dropdown reading
- * "Named volume / App file / Host path": three phrases that say nothing to
- * someone who has never run Docker (the owner's words: nobody knows what a named
- * volume is). The source column silently changed meaning with the type while
- * keeping the same look, the only account of what a row would DO was a truncated
- * grey line, and the first sign that a path was invalid was a toast after Save.
- *
- * The three kinds are now **Volume**, **File** and **Bind** — labels only, the
- * stored discriminants stay `named`/`app`/`host` — each an explained card with a
- * "good for" line, so picking one is recognition instead of vocabulary. Every
- * entry states in a sentence what it will do at deploy, a Volume also shows the
- * real on-host name it will use, and a bad field is ringed and explained as you
- * type by the SAME validator the save runs (`lib/apps/volume-model.ts`, whose
- * constants the server's `validateVolumes` imports).
- *
- * A **File** entry also carries the file's CONTENTS (`fileContent`, rendered by
- * `storage-file-editor.tsx`): you write the config file here instead of having
- * to go and create it in the Files tab first, which is what used to leave the
- * commonest File entry pointing at a path with nothing behind it. That box is
- * there from the moment the entry is added, not once the other fields are filled.
- *
- * Only the SOURCE of an entry is really required. "Path inside the app" fills
- * itself in for every app deplo builds (`derivedMountPath`) — leave it empty and
- * the storage lands in the app's own folder, greyed into the field so you see the
- * path before deciding whether you want a different one.
- *
- * Fetch-free — the parent form owns the reads and the save.
  */
 
 const KIND_ICON: Record<VolumeKind, LucideIcon> = {
@@ -93,9 +65,8 @@ const KIND_ICON: Record<VolumeKind, LucideIcon> = {
 
 /**
  * The sentinel the Service dropdown uses for "let deplo pick" — the ABSENCE of a
- * choice, stored as `""`/absent. Radix forbids an empty item value, which is why
- * a row could never return to the default once a service had been picked. Same
- * pattern as `ENTRYPOINT_AUTO` in `components/domains/domain-config-fields.tsx`.
+ * choice, stored as `""`/absent. Radix forbids an empty item value, which is why a
+ * row could never return to the default once a service had been picked.
  */
 const SERVICE_AUTO = "auto";
 
@@ -129,31 +100,23 @@ export function VolumeFields({
   /**
    * Where this app's code runs inside its container ("/app" for anything deplo
    * builds), so the hardest field can say what `./uploads` in the user's code is
-   * called here. Null for a prebuilt image, whose working directory deplo cannot
-   * know — the field then gets no invented example.
+   * called here.
    */
   containerWorkdir?: string | null;
   /**
-   * Show EVERY row's problem, touched or not. The parent flips this when a save
-   * is blocked: otherwise the commonest mistake — add an entry, fill the source,
-   * forget the path, press Save — produced a toast with no field ringed, which is
-   * the exact "the toast is the first feedback" failure this editor set out to
-   * fix.
+   * Show EVERY row's problem, touched or not.
    */
   revealProblems?: boolean;
   /**
    * The content editor for a **File** entry, rendered inside its expanded body.
-   * The parent supplies it because the content is the real file on the app's
-   * host — read and written over the agent, which this fetch-free editor does
-   * not do. Absent ⇒ the entry asks for its two paths and nothing else.
+   * The parent supplies it because the content is the real file on the app's host
+   * — read and written over the agent, which this fetch-free editor does not do.
    */
   fileContent?: (mount: VolumeMount) => React.ReactNode;
   onChange: (next: VolumeMount[]) => void;
 }) {
-  // One service (or none) needs no choice — the entry can only go one place, so
-  // it stays as simple as a single-container app's. The second clause keeps the
-  // picker reachable when a compose EDIT has since collapsed the stack to one
-  // service: a row still naming the old one has to stay fixable here.
+  // One service (or none) needs no choice — the entry can only go one place, so it
+  // stays as simple as a single-container app's.
   const pickService =
     composeServices.length > 1 ||
     (composeServices.length > 0 &&
@@ -308,12 +271,8 @@ function MountRow({
   const readOnlyId = React.useId();
 
   // A File's path in Files follows the file name of the path inside the app
-  // (/etc/nginx/nginx.conf ⇒ nginx.conf) until the user writes one of their own:
-  // the same file, named once instead of twice. Only for a row that ARRIVED
-  // empty — a saved entry's stored path is never rewritten by an edit to the
-  // other field. "Did it start empty" is captured once (rows are keyed by id, so
-  // this is per entry) rather than read from the current value, which would stop
-  // deriving after the first character it wrote.
+  // (/etc/nginx/nginx.conf ⇒ nginx.conf) until the user writes one of their own: the
+  // same file, named once instead of twice.
   const [sourceStartedEmpty] = React.useState(
     () => normalizeFilesPath(mount.projectPath) === "",
   );
@@ -431,10 +390,9 @@ function MountRow({
             )}
             <Field
               label={meta.sourceLabel}
-              // A Volume's name is optional once the path can supply one — the
-              // mirror image of the path being optional once the name can. What
-              // is never optional is BOTH: the row would then be nothing at all,
-              // and the problem line says so.
+              // A Volume's name is optional once the path can supply one — the mirror image of
+              // the path being optional once the name can. What is never optional is BOTH: the
+              // row would then be nothing at all, and the problem line says so.
               optional={kind === "named" && mount.mountPath.trim() !== ""}
               info={meta.sourceTooltip}
               value={sourceValue}
@@ -518,13 +476,11 @@ function MountRow({
               </div>
             )}
 
-            {/* Bind only, and the one control here that is pure Docker
-                underneath: a folder on the server can have OTHER things mounted
-                inside it (a network disk, a FUSE share, a volume another app
-                puts there), and by default the app sees a snapshot taken when it
-                started. Nothing on this screen said so, and the failure is
-                silent — the folder simply looks empty. Named volumes and Files
-                have no submounts, so they never ask. */}
+            {/**
+             * Bind only, and the one control here that is pure Docker underneath: a folder on
+             * the server can have OTHER things mounted inside it (a network disk, a FUSE share,
+             * a volume another app puts there), and by default the app sees a snapshot taken
+             */}
             {kind === "host" && (
               <div className="space-y-1.5 sm:col-span-2">
                 <FieldLabel
@@ -548,11 +504,9 @@ function MountRow({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Each option names the docker keyword it writes. The
-                        phrase is what a non-expert picks by; the token in
-                        parentheses is what someone who already knows mount
-                        propagation (or is reading a forum answer that says
-                        "use rslave") searches the screen for. */}
+                    {/**
+                     * Each option names the docker keyword it writes.
+                     */}
                     <SelectItem value={PROPAGATION_NONE}>
                       Only what is already there (rprivate)
                     </SelectItem>
@@ -756,11 +710,10 @@ function EmptyPicker({
           you keep it here. Pick where the data should live:
         </p>
       </div>
-      {/* Volume and File are the two a normal app wants; they get the room. Bind
-          is host-coupled and permission-gated — expert surface, so it sits below
-          as one quiet row rather than a third equal default on the first screen a
-          new user sees (AGENTS.md: expert features stay off the first-run path).
-          One click away either way, never hidden, never disabled. */}
+      {/**
+       * Volume and File are the two a normal app wants; they get the room. One click away
+       * either way, never hidden, never disabled.
+       */}
       <div className="grid gap-2 sm:grid-cols-2">
         {(["named", "app"] as VolumeKind[]).map((kind) => {
           const meta = VOLUME_KINDS[kind];

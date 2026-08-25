@@ -73,16 +73,9 @@ export function logTargetOverviewHref(key: string): string {
 export const LOG_CHOOSER_HREF = "/logs?pick=1";
 
 /**
- * Which target the Logs page should show, given what the URL asks for and what
- * the browser remembers.
- *
- * The order is the whole contract: `pick` beats everything (it is how somebody
- * gets back to the chooser), then the URL, then the cookie. `targets` is the
- * list the caller may actually READ, so membership in it is the validation —
- * a deleted App, a revoked `view_logs`, a target belonging to the team the user
- * just left and a truncated cookie all come back the same way, as `null`, and
- * the chooser renders. There is no separate "is this still valid" pass to keep
- * in sync, and nothing has to clean the cookie up.
+ * Which target the Logs page should show, given what the URL asks for and what the
+ * browser remembers. The order is the whole contract: `pick` beats everything (it
+ * is how somebody gets back to the chooser), then the URL, then the cookie.
  */
 export function resolveLogTarget(
   targets: LogTarget[],
@@ -133,10 +126,10 @@ export interface LogTreeRow {
   color?: string | null;
   /** Set on exactly the rows that can be picked. */
   target?: LogTarget;
-  /** Lowercased: this row's own words, every ANCESTOR's, and — on a heading —
-   *  every descendant's. Matching on that one string gives the scope picker's
-   *  two search rules without filtering a tree: typing an app's name keeps its
-   *  headings on screen, and typing a project's name keeps all of its apps. */
+  /**
+   * Lowercased: this row's own words, every ANCESTOR's, and — on a heading — every
+   * descendant's.
+   */
   haystack: string;
 }
 
@@ -149,17 +142,9 @@ interface TreeFolder {
 }
 
 /**
- * The readable targets, arranged the way the Overview arranges them: each
- * project with its environments, then the folders (nesting as deep as they do),
- * then the apps that sit at the top level, and the databases in a section of
- * their own.
- *
- * Flat on purpose — a list of rows carrying a `depth`, not a nested object —
- * because that is what a combobox can filter, highlight and walk with the arrow
- * keys. A branch with nothing readable under it is not drawn, and **no target is
- * ever dropped**: an app whose folder or project does not resolve (the caller
- * holds no grant on it, so it never came back from `listFolders`) falls in with
- * the top-level apps rather than out of the picker.
+ * The readable targets, arranged the way the Overview arranges them: each project
+ * with its environments, then the folders (nesting as deep as they do), then the
+ * apps that sit at the top level, and the databases in a section of their own.
  */
 export function buildLogTree(
   targets: LogTarget[],

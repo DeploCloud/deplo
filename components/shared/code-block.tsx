@@ -47,11 +47,7 @@ export function CommandLine({
 }: {
   command: string;
   /**
-   * Keep it to one line, cut off at the edge. For places where the command is
-   * evidence that something has to be run rather than something to read: a
-   * bootstrap one-liner is 200 characters of token nobody parses, and wrapped
-   * across four lines it takes over the step it belongs to. Copy still takes
-   * the whole thing.
+   * Keep it to one line, cut off at the edge.
    */
   truncate?: boolean;
 }) {
@@ -68,12 +64,11 @@ export function CommandLine({
       <span className="font-mono text-sm leading-relaxed text-muted-foreground select-none">
         $
       </span>
-      {/* By default WRAP the command (break-all) instead of scrolling it: the
-          whole one-liner — long bootstrap token and all — stays visible and
-          fully selectable, so it copies correctly by hand too, with zero
-          horizontal overflow. min-w-0 keeps this flex child from forcing the
-          row wider than its container (the classic flexbox min-width:auto
-          overflow), and is what makes `truncate` able to cut at all. */}
+      {/**
+       * By default WRAP the command (break-all) instead of scrolling it: the whole
+       * one-liner — long bootstrap token and all — stays visible and fully selectable, so
+       * it copies correctly by hand too, with zero horizontal overflow.
+       */}
       <code
         className={cn(
           "min-w-0 flex-1 font-mono text-sm leading-relaxed text-zinc-200",

@@ -20,15 +20,9 @@ import type {
 } from "@/lib/types";
 
 /**
- * One channel's own fields — where to send, and what to send with.
- *
- * These used to sit inline under twelve stacked rows, which made the page a
- * wall of inputs before you had decided anything. They live in the channel's
- * sheet now, so the page itself carries no form at all.
- *
- * The plaintext credentials ride in their own bag and are write-only: a stored
- * one shows as a placeholder, never as a value, and leaving the field blank
- * keeps what is stored.
+ * One channel's own fields — where to send, and what to send with. These used to
+ * sit inline under twelve stacked rows, which made the page a wall of inputs
+ * before you had decided anything.
  */
 
 export type Secrets = NonNullable<NotificationChannelInput["secrets"]>;
@@ -79,18 +73,9 @@ export function isChannelReady(i: Draft, s: Secrets): boolean {
 }
 
 /**
- * The one line under a row's name: WHERE this channel sends.
- *
- * It is what tells two unnamed Discords apart, so it carries the part of the
- * address that differs — and none of the part that is a credential. Every URL
- * here loses its LAST path segment, always: on Discord, Slack, Mattermost and
- * Lark that segment IS the token, and a token on a list row is a token in a
- * screenshot.
- *
- * Two channels can still read the same (two Mattermost hooks on one server) and
- * that is exactly what the name field is for. Pushover and browser push have no
- * address at all that is not a secret, so they show nothing and the row leans on
- * its status line instead.
+ * The one line under a row's name: WHERE this channel sends. Pushover and browser
+ * push have no address at all that is not a secret, so they show nothing and the
+ * row leans on its status line instead.
  */
 export function channelTarget(i: Draft): string {
   switch (i.kind) {

@@ -14,17 +14,7 @@ const GIT_FEEDBACK: Record<string, { ok: boolean; msg: string }> = {
 };
 
 /**
- * One-shot feedback from the GitHub connect redirects (`?git=connected|error`),
- * then the flag is scrubbed from the URL so a reload doesn't repeat it.
- *
- * It lives in the app shell rather than on Settings → Git because the flow now
- * ends wherever it started - the create-app wizard, an app's source settings -
- * and the confirmation has to arrive on whichever page that is.
- *
- * Reads `window.location` instead of `useSearchParams`: the hook would opt the
- * whole shell into a Suspense boundary for a value only this effect wants, and
- * the flag only ever arrives on a server redirect (a full load), never on a
- * client navigation.
+ * One-shot feedback from the GitHub connect redirects (`?
  */
 export function GitConnectToast(): null {
   const router = useRouter();

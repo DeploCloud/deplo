@@ -49,14 +49,9 @@ import type { SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
 /**
- * The unified "Shared" tab: every shared variable of the team with create / edit
- * / delete and the sharing modes (team-wide / projects & their environments /
+ * The unified "Shared" tab: every shared variable of the team with create / edit /
+ * delete and the sharing modes (team-wide / projects & their environments /
  * per-app links).
- *
- * The two things you can change about a variable are now two separate actions,
- * because they are two separate jobs: the pencil edits its VALUE (a small form),
- * and the share icon changes WHO gets it (the wizard). Creating one is the wizard
- * too — that is the walk through the scopes it was built for.
  */
 export function SharedVarsManager({
   vars,
@@ -87,20 +82,17 @@ export function SharedVarsManager({
   );
 
   // A deleted variable leaves the table on the click, instead of waiting out the
-  // mutation and then the `router.refresh()` behind it — the window in which a
-  // second click on the same row earned a "Not found". The facets read `rows`
-  // too, so the project a deleted variable was the last to reach stops being
-  // offered as a filter at the same moment.
+  // mutation and then the `router.refresh()` behind it — the window in which a second
+  // click on the same row earned a "Not found".
   const {
     visible: rows,
     remove,
     restore,
   } = useOptimisticRemove(vars, (v) => v.id);
 
-  // The whole point of this tab is WHO gets the variable, so that is what it
-  // filters on: the sharing mode, and then the single project / environment /
-  // app a variable reaches. Options are the entities the variables actually name
-  // — a project nobody shares with would only ever filter the page to nothing.
+  // The whole point of this tab is WHO gets the variable, so that is what it filters
+  // on: the sharing mode, and then the single project / environment / app a variable
+  // reaches.
   const facets = React.useMemo<EnvFacet<SharedVarDTO>[]>(() => {
     const reachesProject = (v: SharedVarDTO, projectId: string) =>
       v.projectIds.includes(projectId) ||

@@ -24,9 +24,9 @@ import {
 } from "./servers";
 
 /**
- * What a server is FOR, and the one direction that is genuinely one-way. A role is
- * a CONTROL-PLANE decision - which pickers offer the host, which readiness rows
- * apply - so a host that has Docker can take any of the three and go back.
+ * What a server is FOR, and the one direction that is genuinely one-way. The
+ * exception is physical, not policy: a server installed as backups-only never had
+ * Docker put on it, and no write here can change that.
  */
 
 let db: TestDb;

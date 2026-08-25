@@ -104,10 +104,8 @@ export interface WizardTemplate {
 }
 
 /**
- * Where the new app lands (ADR-0009 — one home only): the folder, or the
- * project environment, the user had open on the Overview when they hit "New
- * app". Resolved server-side by the /new page from the `?folder=` / `?project=`
- * / `?env=` drill-in params; absent ⇒ the app is created at the top level.
+ * Where the new app lands (ADR-0009 — one home only): the folder, or the project
+ * environment, the user had open on the Overview when they hit "New app".
  */
 export interface WizardPlacement {
   /** What the summary rail shows, e.g. "Marketing" or "Shop · Production". */
@@ -226,10 +224,8 @@ export function NewAppWizard({
   // prebuilt docker image and a compose stack are deployed as-is.
   const buildsImage = source !== "docker-image" && source !== "compose";
 
-  // ── Framework recognition ────────────────────────────────────────────────
-  // Which repository (if any) Deplo can read to name the framework. GitHub only:
-  // a GitLab / Bitbucket / self-hosted URL has no tree-read path from the control
-  // plane, so asking would always come back empty.
+  // ── Framework recognition ──────────────────────────────────────────────── Which
+  // repository (if any) Deplo can read to name the framework.
   const gitRepoParsed = source === "git" ? parseRepo(gitValue.url) : null;
   const detectRepo =
     source === "github" && ghSelection
@@ -258,13 +254,8 @@ export function NewAppWizard({
   });
 
   // Once a framework is named, the container port follows ITS server instead of a
-  // hardcoded 3000 — the difference between an Astro or Vite app answering on its
-  // own port and one that deploys green and serves nothing.
-  //
-  // DERIVED, not written back into state: the recognised port is layered over the
-  // build config at render time, so there is no effect racing the user's typing
-  // and no stale value to reconcile. The moment the user edits the port it is
-  // theirs (`portTouched`) and the layer stops applying.
+  // hardcoded 3000 — the difference between an Astro or Vite app answering on its own
+  // port and one that deploys green and serves nothing.
   const [portTouched, setPortTouched] = React.useState(false);
   const build = React.useMemo(
     () =>
@@ -292,13 +283,9 @@ export function NewAppWizard({
     setSource(next);
   }
 
-  // Whether this deploy ships a docker-compose stack. Two ways in:
-  //  - a template still on its own source (docker-image) deploys its baked stack
-  //    with the template's expose/exposes/mounts/autoDomain metadata;
-  //  - a non-template project that picks the Compose source tab and writes its
-  //    own stack — the deploy engine auto-detects the service to expose. The
-  //    Compose tab is hidden for templates (it would drop their routing/mount
-  //    metadata), so source === "compose" only ever fires for non-templates.
+  // Whether this deploy ships a docker-compose stack. The Compose tab is hidden for
+  // templates (it would drop their routing/mount metadata), so source === "compose"
+  // only ever fires for non-templates.
   const templateCompose = isTemplate && source === "docker-image";
   const useCompose = templateCompose || source === "compose";
 
@@ -386,10 +373,7 @@ export function NewAppWizard({
       };
     }
 
-    // The build config only matters when Deplo builds an image. For a prebuilt
-    // image or a compose stack the build section is hidden, so persisting the
-    // editor's seed would land a misleading build method on the app; send a
-    // dockerfile default instead so settings reflects reality.
+    // The build config only matters when Deplo builds an image.
     const payloadBuild = buildsImage
       ? build
       : buildConfigFor({ buildMethod: "dockerfile" });
@@ -426,10 +410,8 @@ export function NewAppWizard({
               port: payloadBuild.port,
             },
             autoDeploy: usesGit ? autoDeploy : false,
-            // Routing metadata is template-only; a hand-written compose stack lets
-            // the engine auto-detect which service to expose. The PRIMARY domain
-            // routes to the first declared service (composeService/composePort);
-            // every OTHER declared host becomes an extra Domain row at creation.
+            // Routing metadata is template-only; a hand-written compose stack lets the engine
+            // auto-detect which service to expose.
             composeService: templateCompose
               ? (template!.expose?.service ?? null)
               : null,
@@ -510,10 +492,8 @@ export function NewAppWizard({
         return;
       }
 
-      // Non-upload sources deploy on create; a fileless upload stays idle until
-      // the user uploads from Settings — don't claim it's deploying. Neither does
-      // an app created by someone without permission to deploy: it is born idle
-      // for a teammate who has it, and `latestDeployment` is what says which.
+      // Non-upload sources deploy on create; a fileless upload stays idle until the user
+      // uploads from Settings — don't claim it's deploying.
       const firstDeploymentId = service.latestDeployment?.id;
       toast.success(
         firstDeploymentId
@@ -523,10 +503,8 @@ export function NewAppWizard({
             : "App created - it needs someone with permission to deploy",
       );
       // A first deployment kicked off inside createApp (startDeployment sets
-      // latestDeployment synchronously before it returns) means landing on its
-      // live build logs — the same destination the upload path above uses —
-      // instead of a still-empty overview. An app born idle (a fileless upload,
-      // or a creator who can't deploy) falls back to its overview.
+      // latestDeployment synchronously before it returns) means landing on its live build
+      // logs — the same destination the upload path above uses — instead of a still-empty
       router.push(
         firstDeploymentId
           ? `/apps/${service.slug}/deployments/${firstDeploymentId}`
@@ -573,11 +551,11 @@ export function NewAppWizard({
               </div>
             </div>
 
-            {/* What Deplo recognised in the repository, as soon as one is
-                picked — the app's framework named with its own mark, and the
-                container port that framework's server actually binds. Shown out
-                here, not inside the collapsed build section, because it is the
-                platform telling the user it understood their code. */}
+            {/**
+             * What Deplo recognised in the repository, as soon as one is picked — the app's
+             * framework named with its own mark, and the container port that framework's server
+             * actually binds.
+             */}
             {detectingFramework ? (
               <FrameworkRowSkeleton />
             ) : (
@@ -589,10 +567,10 @@ export function NewAppWizard({
               )
             )}
 
-            {/* Build & output settings — the same method-aware controls the
-                app settings page shows, kept inside a collapse so creation
-                stays lean. Only relevant when Deplo builds an image (not for a
-                prebuilt docker image or a compose stack). */}
+            {/**
+             * Build & output settings — the same method-aware controls the app settings page
+             * shows, kept inside a collapse so creation stays lean.
+             */}
             {!locked && buildsImage && (
               <>
                 <button
@@ -841,10 +819,9 @@ export function NewAppWizard({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {/* An install enrolls the machine Deplo runs on, so this is normally
-                impossible. It survives the cases that skip that: an instance
-                brought up by hand, or one whose host enrollment failed - where an
-                empty select and no explanation is the worst possible screen. */}
+            {/**
+             * An install enrolls the machine Deplo runs on, so this is normally impossible.
+             */}
             {servers.length === 0 ? (
               <EmptyState
                 icon={ServerIcon}
@@ -876,10 +853,10 @@ export function NewAppWizard({
           </CardContent>
         </Card>
 
-        {/* Templates carry their compose stack (source is docker-image, mapped to
-            templateCompose), so their editor lives in its own card here. The
-            from-scratch "compose" source renders the editor inline in the source
-            card above instead. */}
+        {/**
+         * Templates carry their compose stack (source is docker-image, mapped to
+         * templateCompose), so their editor lives in its own card here.
+         */}
         {templateCompose && (
           <Card>
             <CardHeader>

@@ -1,22 +1,6 @@
 /**
  * The real brand marks of the JavaScript frameworks Deplo recognises, one path
  * each, keyed by the catalog id stored on the app row.
- *
- * INLINE ON PURPOSE. The obvious shortcut is an <img> at a CDN, and it is wrong
- * for this product: a self-hosted Deplo runs on machines that are firewalled,
- * air-gapped or simply offline, and an icon that 404s there makes the platform
- * look broken over decoration. Inlining also means no third party learns which
- * frameworks a team deploys, and no request leaves the box to render a badge.
- *
- * Marks come from Simple Icons (https://simpleicons.org), whose collection is
- * CC0-1.0. Each mark remains the trademark of the project it identifies and is
- * used nominatively — to say "this app is a Next.js app" — never as a claim of
- * endorsement. They are monochrome and drawn with `currentColor`, which is what
- * lets a single copy sit correctly in light and dark themes (the same contract
- * as components/shared/brand-icons.tsx).
- *
- * The `Record<FrameworkId, string>` below is the anti-drift guarantee: adding a
- * framework to the catalog without its mark fails the type check.
  */
 import type { FrameworkId } from "@/lib/apps/framework-catalog";
 
@@ -91,10 +75,9 @@ const MARKS: Record<FrameworkId, string> = {
 };
 
 /**
- * The brand mark for a recognised framework. Sized by the caller like every
- * other icon here (`className="size-4"`), and `aria-hidden` because the name
- * always travels next to it as real text — the icon is recognition, not the
- * label.
+ * The brand mark for a recognised framework. Sized by the caller like every other
+ * icon here (`className="size-4"`), and `aria-hidden` because the name always
+ * travels next to it as real text — the icon is recognition, not the label.
  */
 export function FrameworkIcon({
   id,

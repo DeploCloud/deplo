@@ -180,8 +180,7 @@ services:
 
 /**
  * `buildComposeStack` skips every route that names no service — so a preview route
- * built with `service: null` produced a stack with NO Traefik router at all. The
- * containers came up, and the URL posted on the pull request answered 404.
+ * built with `service: null` produced a stack with NO Traefik router at all.
  */
 test("a compose preview emits a router that names a service", () => {
   const key = previewDeployKey("blog", 42);

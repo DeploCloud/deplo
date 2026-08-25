@@ -71,9 +71,7 @@ const STATUS_LABELS: Record<DatabaseStatus, string> = {
 /**
  * The Storage databases grid — the databases analogue of the Overview apps grid:
  * search, engine + status filters, a grid/list view toggle, and drag-to-reorder
- * (persisted team-wide via reorderDatabases). Reorder is disabled while any
- * search/filter is active — persisting a filtered order would drop the hidden
- * databases' arrangement, exactly like the apps grid gates reorder on `!query`.
+ * (persisted team-wide via reorderDatabases).
  */
 export function DatabasesGrid({
   databases,
@@ -103,10 +101,6 @@ export function DatabasesGrid({
   const [view, setView] = React.useState<View>("grid");
 
   // Optimistic order, seeded from the server list (already in persisted order).
-  // The parent remounts this grid (via a membership `key`) when the SET of
-  // databases changes — create/delete — so there's no reconcile effect; a plain
-  // reorder keeps the same set, so the grid is NOT remounted and the optimistic
-  // order survives its own drop (the same pattern the Overview apps grid uses).
   const [order, setOrder] = React.useState<string[]>(() =>
     databases.map((d) => d.id),
   );
@@ -373,8 +367,6 @@ const SELECTED_RING =
 /**
  * The bulk-actions bar: it floats at the bottom of the viewport whenever one or
  * more cards are selected (marquee drag / ⌘-click), exactly like the Overview's.
- * Every action is gated on the same capability its single-card twin needs, so
- * the bar never offers a button the server would refuse.
  */
 function SelectionActionBar({
   count,
@@ -453,8 +445,7 @@ function SelectionActionBar({
 /**
  * The card wrapper used when reorder is off (filtering, or no capability): the
  * same selection surface {@link SortableCard} provides — the marquee's
- * `data-card-id` target, the highlight, and modifier-click instead of navigation
- * — without dnd-kit.
+ * `data-card-id` target, the highlight, and modifier-click instead of navigation —
  */
 function SelectableCard({
   id,
@@ -597,8 +588,7 @@ function Toolbar({
 /**
  * A minimal sortable wrapper providing the whole-card drag (pointer listeners on
  * the wrapper) + a keyboard-accessible handle, and swallowing the trailing click
- * dnd-kit emits after a drop so a drag never navigates. Render-props deliver the
- * handle node and a `dragActive` flag to the card.
+ * dnd-kit emits after a drop so a drag never navigates.
  */
 function SortableCard({
   id,

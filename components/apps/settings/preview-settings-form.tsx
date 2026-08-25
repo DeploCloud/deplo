@@ -44,17 +44,9 @@ import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Settings → Pull requests.
- *
- * ONE switch decides whether any of this happens, and it saves the moment it is
- * flipped — the house rule for a switch. Everything below it is a form with a
- * Save: those fields change together (a domain and its HTTPS, a limit and a
- * timeout) and saving them one keystroke at a time would deploy half a thought.
- *
- * Two brakes on the reader rather than on the feature: while previews are off
- * the rest is inert, and the fields nobody needs to see to start live under
- * Advanced. The whole page is behind an opt-in switch precisely so it can be
- * this complete without taxing anybody's first run.
+ * Settings → Pull requests. Everything below it is a form with a Save: those
+ * fields change together (a domain and its HTTPS, a limit and a timeout) and
+ * saving them one keystroke at a time would deploy half a thought.
  */
 
 /** One row: label + explanation on the left, control on the right. */
@@ -133,10 +125,9 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
     setForm((f) => ({ ...f, [k]: v }));
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
-  // A nip.io host can never hold a certificate — one registered domain, one
-  // Let's Encrypt budget, shared with the whole internet — so the switch stays
-  // shut until there is a domain to put one on. The server coerces it too: this
-  // is the explanation, not the enforcement.
+  // A nip.io host can never hold a certificate — one registered domain, one Let's
+  // Encrypt budget, shared with the whole internet — so the switch stays shut until
+  // there is a domain to put one on.
   const canHttps = form.baseDomain.trim() !== "";
 
   function save() {

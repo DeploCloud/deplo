@@ -28,16 +28,9 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
- * General settings for a database: its name and logo — its identity, so they
- * share one card, exactly like an App's General. A picked photo goes through
- * the crop dialog and saves on confirm; the name saves with its button (and
- * arms the leave guard while dirty).
- *
- * Renaming here is a pure label change. The container's identity — the compose
- * project, its data volume, its DNS name and therefore the connection string —
- * is fixed at creation and untouched by a rename, so nothing restarts and no
- * client's DSN breaks. The copy says so, because "will this drop my database?"
- * is the first thing a non-expert wonders before typing in this box.
+ * General settings for a database: its name and logo — its identity, so they share
+ * one card, exactly like an App's General. The copy says so, because "will this
+ * drop my database?"
  */
 export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   const router = useRouter();

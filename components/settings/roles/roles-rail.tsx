@@ -36,13 +36,8 @@ const ROLE_ICON: Record<string, LucideIcon> = {
 };
 
 /**
- * The roles of the team, as the left rail of the roles pages: pick one to edit
- * it, or start a new one.
- *
- * "New role" is a menu rather than a button because the first decision is what
- * the role starts as — an empty one, or a copy of a role that already exists.
- * Asking that up front is what removes the "start from" field from the editor:
- * by the time the form opens, the answer is already in it.
+ * The roles of the team, as the left rail of the roles pages: pick one to edit it,
+ * or start a new one.
  */
 export function RolesRail({
   roles,

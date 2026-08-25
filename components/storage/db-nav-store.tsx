@@ -6,16 +6,6 @@ import type { DatabaseType } from "@/lib/types";
 
 /**
  * The per-database facts the global sidebar cannot work out on its own.
- *
- * `databaseNav` was deliberately flag-less until cron jobs: Logs works while the
- * database is stopped and Backups guards itself, so nothing there depended on
- * live state. Cron jobs does - its tab appears only once the feature is switched
- * on for that database, exactly as an app's does - and the sidebar lives OUTSIDE
- * the database layout, so a React context cannot reach it. Hence the same
- * module-state + `useSyncExternalStore` bridge the app nav uses.
- *
- * Kept to the one flag it needs. If a second ever appears, this is the file that
- * grows, not `databaseNav`'s signature.
  */
 export type DbNavState = {
   id: string;

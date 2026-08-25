@@ -25,15 +25,9 @@ const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
 };
 
 /**
- * The last sweeps, newest first — at most 3 per server (the retention cap; the data
- * layer prunes anything older after every sweep, so this is the WHOLE history, not a
- * page of it). A run that never reached the host — unprovisioned, agent offline,
- * agent too old — is in here too, as `failed` with the reason: the history records
- * the attempt, not just the successes.
- *
- * Presentational, and it holds no state of its own — but it is a CLIENT component,
- * because a sweep is a background job and this table is how it is watched: `CleanupLive`
- * above it owns the rows and pushes each transition in from the live subscription.
+ * The last sweeps, newest first — at most 3 per server (the retention cap; the
+ * data layer prunes anything older after every sweep, so this is the WHOLE
+ * history, not a page of it).
  */
 export function CleanupHistory({
   runs,
@@ -113,10 +107,10 @@ export function CleanupHistory({
                     >
                       {timeAgo(run.startedAt)}
                     </TableCell>
-                    {/* The failure verbatim — it is the agent's own message, and it is
-                        what tells an operator whether to update the agent, provision the
-                        host, or free some disk. `title` keeps the full text reachable
-                        once the cell truncates it. */}
+                    {/**
+                     * The failure verbatim — it is the agent's own message, and it is what tells an
+                     * operator whether to update the agent, provision the host, or free some disk.
+                     */}
                     <TableCell className="max-w-xs">
                       {run.error ? (
                         <span
@@ -143,14 +137,8 @@ export function CleanupHistory({
 }
 
 /**
- * How long the sweep in flight has been going, ticking against the VIEWER's clock from
- * an absolute timestamp (the same contract as `BuildDuration`). A sweep is a background
- * job with no percentage to report, so the honest progress signal is elapsed time: it
- * proves the row is live rather than stuck, and it is the only thing that distinguishes
- * "started a moment ago" from "this host has been at it for four minutes".
- *
- * `suppressHydrationWarning` covers the sub-second disagreement between the server
- * render and the browser's clock; the first tick takes over a second later.
+ * How long the sweep in flight has been going, ticking against the VIEWER's clock
+ * from an absolute timestamp (the same contract as `BuildDuration`).
  */
 function Elapsed({ startedAt }: { startedAt: string }) {
   const [now, setNow] = React.useState(() => Date.now());

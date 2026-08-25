@@ -18,16 +18,8 @@ const RED = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const toCrlf = (s: string) => s.replace(/\r?\n/g, "\r\n");
 
 /**
- * The stateless `docker exec` REPL, rendered in an xterm.js terminal with a
- * local line editor. Each entered line is ONE `execConsole` round-trip (no
- * persistent shell — a `cd` never sticks), and the response is written straight
- * into the terminal so the container's colours/escapes render for real.
- *
- * Line editing (echo, caret movement with ←/→/Home/End, mid-line insert and
- * delete, ↑/↓ history, Ctrl-C/L and the readline kill/word chords) lives in
- * `lib/exec-line-editor.ts`; input is frozen while a command is in flight.
- * Remounted per instance by the parent (keyed on the container name), so its
- * banner/prompt are fixed for the life of a mount.
+ * The stateless `docker exec` REPL, rendered in an xterm.js terminal with a local
+ * line editor.
  */
 export function ExecTerminal({
   prompt,

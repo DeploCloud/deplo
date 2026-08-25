@@ -21,18 +21,6 @@ const CHANGE_PASSWORD = /* GraphQL */ `
 
 /**
  * Change the account password.
- *
- * Lives under Security rather than Account: it belongs with the other two
- * answers to "how does this account prove it is you" — the second factor and
- * the list of devices holding a session — not next to a display name and an
- * avatar colour.
- *
- * A successful change revokes every outstanding session (see
- * lib/data/account.ts), which is the point: a password is changed precisely when
- * someone else might be holding a cookie. This device is signed straight back
- * in, unless the account has two-factor on, in which case there is a full
- * sign-in to do — so the card says so instead of appearing to log you out at
- * random.
  */
 export function PasswordCard({
   twoFactorEnabled,

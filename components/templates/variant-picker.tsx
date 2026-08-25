@@ -30,10 +30,9 @@ export function VariantPicker({
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
-  // The trigger says what was clicked while the RSC navigation is in flight;
-  // React drops the optimistic value once the transition lands and `selected`
-  // is the server's answer. Without it the picker keeps showing the old variant
-  // for the length of a round trip, which reads as a control that ignored you.
+  // The trigger says what was clicked while the RSC navigation is in flight; React
+  // drops the optimistic value once the transition lands and `selected` is the
+  // server's answer.
   const [shown, showOptimistically] = React.useOptimistic(selected);
 
   return (

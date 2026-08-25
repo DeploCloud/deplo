@@ -30,20 +30,6 @@ export type OwnerCandidate = {
 
 /**
  * Who owns this instance, and the one place ownership changes hands.
- *
- * It lives HERE, on Settings, Deplo, and no longer as a `⋯` item on each row of
- * Settings, Users. On that list it sat one entry below "Delete user", so the
- * single most consequential action on the instance was a stray click away, on a
- * page an admin opens to do routine account work. Handing the crown over is not
- * a per-user chore: it is a fact about the instance, it happens roughly once, and
- * it should cost a deliberate trip. So the successor is PICKED here rather than
- * pointed at, and the confirmation still asks for the owner's password and the
- * successor's username typed out.
- *
- * Everyone who reaches this page sees who the owner is; only the owner is offered
- * the transfer, because only the owner may perform it (`transferInstanceOwner`
- * enforces that server-side). An admin who is not the owner gets the answer to
- * "how does this move?" instead of a hidden card.
  */
 export function InstanceOwnerCard({
   ownerName,

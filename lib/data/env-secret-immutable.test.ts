@@ -29,7 +29,9 @@ import { listSharedVars, saveSharedVar } from "./shared-vars";
 import { listPreviewEnvVars, setPreviewEnvVar } from "./previews";
 
 /**
- * A SECRET variable is write-only AND immutable, on every env layer.
+ * A SECRET variable is write-only AND immutable, on every env layer. So: create
+ * it, delete it, never edit it. `plain` -> `secret` stays open, because hardening
+ * is never the thing you gate.
  */
 
 let db: TestDb;

@@ -7,9 +7,6 @@ import type { LintDiagnostic, LintSeverity } from "@/lib/deploy/compose-lint";
 
 /**
  * Compact summary of the compose linter's diagnostics, shown under the editor.
- * Counts by severity in a header row, then lists each problem with its line —
- * clicking nothing here (the gutter markers carry the in-editor affordance),
- * this is the scannable overview and the "all clear" state.
  */
 
 const META: Record<

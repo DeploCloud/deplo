@@ -1,9 +1,5 @@
 /**
  * One short phrase for what a token reaches, from its three id lists.
- *
- * Names the node when there is exactly one AND the caller could resolve it —
- * the list page only knows the names in the ACTIVE team, and a token can reach
- * others, so anything it can't name degrades to a count rather than to a blank.
  */
 export function scopeLabel(
   token: {

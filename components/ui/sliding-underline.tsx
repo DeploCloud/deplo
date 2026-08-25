@@ -42,10 +42,9 @@ export function useSlidingRect(
       const c = container.getBoundingClientRect();
       const r = el.getBoundingClientRect();
       const next: SlideRect = {
-        // Scroll offsets included on purpose: the highlight is positioned inside
-        // the container's CONTENT box, which moves when the container scrolls
-        // (the tab strip does, on a narrow screen). Viewport deltas alone would
-        // leave it lagging by scrollLeft the moment the row is swiped.
+        // Scroll offsets included on purpose: the highlight is positioned inside the
+        // container's CONTENT box, which moves when the container scrolls (the tab strip
+        // does, on a narrow screen).
         top: r.top - c.top + container.scrollTop,
         left: r.left - c.left + container.scrollLeft,
         width: r.width,

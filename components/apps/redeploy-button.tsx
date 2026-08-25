@@ -26,9 +26,7 @@ export function RedeployButton({
   const router = useRouter();
   const can = useAppCan("deploy_apps");
   // Nothing has ever been built for this app — an imported one, or one created by
-  // someone without `deploy_apps`. Same mutation either way (a deploy reads the
-  // app's source, it does not need a previous build), but "Redeploy" would name a
-  // build that does not exist, so the button says what it will actually do.
+  // someone without `deploy_apps`.
   const first = useNeverDeployed();
   const label = first ? "Deploy" : "Redeploy";
   const Icon = first ? Rocket : RotateCw;

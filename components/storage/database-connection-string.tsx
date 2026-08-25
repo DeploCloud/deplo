@@ -13,18 +13,6 @@ import { cn } from "@/lib/utils";
  * The connection string of one database, presented exactly like an env-var value
  * on the Variables page: the same `RevealChip`, covered by default, opened one
  * click at a time.
- *
- * The difference from an env var is where the value comes from. A variable's
- * value rides the row's props; a connection string carries the database password
- * and is NEVER sent with the row — the covered chip shows the server-side mask
- * (`postgres://user:••••••@host:5432/db`, so the endpoint still reads at a
- * glance) and the real string is fetched on demand through the `manage_infra`
- * gated `revealConnection` mutation. It is cached in state for the life of the
- * chip, so toggling it shut and open again doesn't re-fetch.
- *
- * The copy button resolves the string the same way, which means a user can put
- * it on the clipboard WITHOUT ever putting it on screen — the friendlier move
- * while screen-sharing, and one click instead of two.
  */
 export function DatabaseConnectionString({
   id,

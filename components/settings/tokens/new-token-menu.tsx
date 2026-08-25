@@ -36,14 +36,8 @@ export const TOKEN_PRESET_ICON: Record<TokenPresetId, LucideIcon> = {
 export const CUSTOM_TOKEN_ICON = KeyRound;
 
 /**
- * "New token" is a menu, not a button: a token's permission set is mandatory,
- * and forty checkboxes is not a first decision anyone should have to make. The
- * menu asks what the token is FOR instead, and whatever you pick opens the
- * editor with every box still editable.
- *
- * There is deliberately no "start from an existing token" (the roles menu's
- * second half): reading one credential's power to author another is not
- * something a permissions screen should teach. Our templates, or from scratch.
+ * "New token" is a menu, not a button: a token's permission set is mandatory, and
+ * forty checkboxes is not a first decision anyone should have to make.
  */
 export function NewTokenMenu() {
   const router = useRouter();

@@ -31,8 +31,7 @@ import { __resetDeploymentLogBuffers } from "../data/deployment-logs";
 
 /**
  * Step 4 deployment-reconcile test (relational-store PLAN §8 "Rewrite the
- * store-coupled tests inside the cut-sets"). The reconcile marks orphaned
- * `building` deployments + their apps `error` at boot.
+ * store-coupled tests inside the cut-sets").
  */
 
 let db: TestDb;

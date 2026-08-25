@@ -170,12 +170,11 @@ export function BackupRow({
             {/* Each item carries a native `title` (via tooltip) so hovering it
                 explains what it does. "Run now" is disabled while a mutation is
                 in flight; delete confirms before removing. */}
-            {/* Disabled rather than hidden, with the reason in the tooltip: a
-                member who cannot act should still see that the action exists and
-                learn which permission to ask for. The server refuses either
-                way - these are cosmetic, like every other capability check in
-                the UI - but an action that only fails on click is worse than one
-                that says so up front. */}
+            {/**
+             * Disabled rather than hidden, with the reason in the tooltip: a member who cannot
+             * act should still see that the action exists and learn which permission to ask
+             * for.
+             */}
             <SimpleTooltip
               content={
                 !canManage

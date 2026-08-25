@@ -147,10 +147,9 @@ function CronJobRow({
         toast.error(res.error);
         return;
       }
-      // The run can already be over by the time this returns - a stopped
-      // container, or one the overlap rule skipped, settles before the mutation
-      // answers - so report what actually happened rather than "started", and
-      // for a skip say WHICH of the two it was, in the server's own words.
+      // The run can already be over by the time this returns - a stopped container, or
+      // one the overlap rule skipped, settles before the mutation answers - so report
+      // what actually happened rather than "started", and for a skip say WHICH of the two
       const run = res.data?.runCronJobNow;
       if (run?.status === "skipped") {
         toast.warning(run.error ?? "Skipped");
@@ -204,10 +203,11 @@ function CronJobRow({
               </div>
               <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <ScheduleLabel cron={job.schedule} timezone={job.timezone} />
-                {/* The reader's clock, ticking - see the module header. The
-                    server's first paint and the browser's can disagree by a
-                    second at hydration, which is all `suppressHydrationWarning`
-                    covers here. */}
+                {/**
+                 * The reader's clock, ticking - see the module header. The server's first paint and
+                 * the browser's can disagree by a second at hydration, which is all
+                 * `suppressHydrationWarning` covers here.
+                 */}
                 {nextRunAt !== null && (
                   <span suppressHydrationWarning>
                     · next {timeAgo(nextRunAt)}
@@ -351,9 +351,8 @@ export function CronJobsList({
   );
 
   // The soonest fire ahead. When it rolls over, one has just happened - the one
-  // change this page cannot see on its own, since firing writes a run row and
-  // touches nothing a list of jobs is rendered from.
-  //
+  // change this page cannot see on its own, since firing writes a run row and touches
+  // nothing a list of jobs is rendered from.
   // ponytail: a fire is the only trigger, so a run somebody ELSE starts by hand
   //   on a page whose next fire is hours away waits for a reload. Upgrade: poll
   //   `appCronJobs` on a slow interval, which costs no RSC re-render.
@@ -436,10 +435,9 @@ export function CronJobsList({
         </Card>
       )}
 
-      {/* Follow a run until it settles, then stop - an idle list costs nothing.
-          Slower than the 5s default on purpose: a re-read here re-renders the
-          whole app section, and its sidebar asks the owning agent whether this
-          app has a files dir. The open row's own history polls faster. */}
+      {/**
+       * Follow a run until it settles, then stop - an idle list costs nothing.
+       */}
       <AutoRefresh active={jobs.some((j) => j.running)} intervalMs={10_000} />
 
       {creating && (

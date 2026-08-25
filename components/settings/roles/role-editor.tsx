@@ -35,10 +35,7 @@ import { sameCapabilities } from "@/lib/membership-shared";
 import type { TeamRoleDTO } from "@/lib/data/roles";
 
 /**
- * The role editor: a page, not a dialog. Forty permissions, a search box and a
- * summary of what the role ends up granting do not fit in a modal — and this is
- * the same shape as creating an app (config on the left, a sticky summary and the
- * primary action on the right), so the flow is one people have already done.
+ * The role editor: a page, not a dialog.
  */
 export function RoleEditor({
   mode,
@@ -95,20 +92,11 @@ export function RoleEditor({
     (scope.environmentIds?.length ?? 0) +
     scope.folderIds.length +
     scope.appIds.length;
-  // Untick anything at all and the role is limited; put every top-level node
-  // back and it is unrestricted again — which is stored as no scope at all, so
-  // the project somebody creates tomorrow is included. Zero ticks in a team that
-  // has nodes is NOT unrestricted: it is a role that reaches nothing, which is
-  // also what a scope left empty by a cascade becomes.
+  // Untick anything at all and the role is limited; put every top-level node back and
+  // it is unrestricted again — which is stored as no scope at all, so the project
+  // somebody creates tomorrow is included.
   const scoped = !coversEverything(tree, scope);
-  // What the scope silences. The set is the one the SAVE applies —
-  // `PROJECT_SCOPED_CAPABILITIES`, via `effectiveRoleCapabilities`
-  // (lib/data/roles.ts) — and it has to be, or the picker and the server
-  // disagree about which ticks still mean something. Muting
-  // `NODE_GRANTABLE_CAPABILITIES` instead left exactly three unstruck and
-  // uncounted (`move_apps`, `organize_folders`, `delete_folders`, the difference
-  // between the two sets): the admin ticked them, the role stored them, the DTO
-  // redrew them ticked forever, and not one holder ever got them.
+  // What the scope silences.
   const mutedCaps = React.useMemo(
     () =>
       scoped
@@ -539,10 +527,6 @@ function toSelection(
 
 /**
  * The four fields `RoleScopeInput` defines, and only those.
- *
- * The picker's selection also carries `teamIds`, which the input does not have —
- * and GraphQL rejects an unknown field on an input object outright, so sending
- * the whole selection made saving a scope fail every single time.
  */
 function scopeInput(scope: ScopeSelection) {
   return {

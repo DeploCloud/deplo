@@ -5,10 +5,7 @@ import { gqlSubscribe } from "@/lib/graphql-client";
 import type { AppStatus, DeploymentStatus } from "@/lib/types";
 
 /**
- * The live, client-tracked slice of an app's state. Seeded from the server
- * render and then kept current by a GraphQL subscription so the app header,
- * controls, tabs and gated pages (Console/Logs) react to start/stop/deploy
- * across every connected client without a reload.
+ * The live, client-tracked slice of an app's state.
  */
 export type LiveApp = {
   id: string;
@@ -105,14 +102,8 @@ export function useLiveStatus(fallback: AppStatus): AppStatus {
 }
 
 /**
- * True when this app has never been deployed: no deployment row at all, and it
- * has not been started either. That is NOT the same as stopped — nobody stopped
- * it, it has never shipped — and it is exactly where a bulk import from another
- * platform lands every app it creates (`createApp` with `deploy: false`).
- *
- * False when no provider is mounted: without the live app we cannot tell the two
- * apart, and claiming "never deployed" for an app that has shipped is the worse
- * of the two mistakes.
+ * True when this app has never been deployed: no deployment row at all, and it has
+ * not been started either.
  */
 export function useNeverDeployed(): boolean {
   const live = useLiveApp();

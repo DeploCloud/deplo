@@ -46,10 +46,6 @@ import { timeAgo } from "@/lib/utils";
 
 /**
  * The pull request previews of one app.
- *
- * Status is LIVE by the same route the rest of the app uses: a preview build
- * publishes on the app's own change stream, so this refreshes as builds move
- * through queued → building → running without a poll of its own.
  */
 export function PreviewsTable({
   appSlug,
@@ -170,9 +166,8 @@ export function PreviewsTable({
                         Needs approval
                       </Badge>
                     ) : p.status === "evicted" ? (
-                      // The one status whose CAUSE is a setting rather than
-                      // anything that happened to the build, so the badge alone
-                      // cannot finish the sentence: say which limit, and that
+                      // The one status whose CAUSE is a setting rather than anything that happened to the
+                      // build, so the badge alone cannot finish the sentence: say which limit, and that
                       // getting it back costs one click and keeps the address.
                       <SimpleTooltip
                         content={`This app runs ${maxActive} previews at once, and this was the one nobody had touched in the longest. Redeploy brings it back on the same address, or raise the limit in Settings.`}
@@ -199,9 +194,8 @@ export function PreviewsTable({
                         {p.host}
                       </a>
                     ) : p.status === "evicted" ? (
-                      // The host is still RESERVED for this pull request — the
-                      // row kept it, so Redeploy brings the same link back. It
-                      // just answers nothing right now, so it must not look
+                      // The host is still RESERVED for this pull request — the row kept it, so Redeploy
+                      // brings the same link back. It just answers nothing right now, so it must not look
                       // clickable.
                       <span
                         className="font-mono text-xs text-muted-foreground"

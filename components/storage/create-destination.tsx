@@ -186,10 +186,7 @@ export function CreateDestination({
   }
 
   function submit() {
-    // The destination shows up in the grid immediately, pulsing, while it is
-    // verified. The whole form is kept aside: this is the create most likely to
-    // be rejected (a wrong key, a folder that is not empty), and retyping six
-    // fields would be the worst possible answer.
+    // The destination shows up in the grid immediately, pulsing, while it is verified.
     const typed = {
       kind,
       name,
@@ -225,10 +222,9 @@ export function CreateDestination({
                     name: typed.name || typed.bucket,
                     kind: "s3",
                     provider: typed.provider.toUpperCase().replace(/-/g, "_"),
-                    // The provider hint is a real endpoint for every provider but
-                    // "other", whose placeholder is literally "https://..." — a
-                    // string that parses as a URL and resolves to nothing, so it
-                    // used to be saved as a destination that could never work.
+                    // The provider hint is a real endpoint for every provider but "other", whose
+                    // placeholder is literally "https://..." — a string that parses as a URL and
+                    // resolves to nothing, so it used to be saved as a destination that could never
                     endpoint: endpointOrHint(typed.endpoint, hint),
                     region: typed.region,
                     bucket: typed.bucket,
@@ -241,10 +237,8 @@ export function CreateDestination({
         ),
       {
         success: "Backup destination added",
-        // Every destination is born encrypted, so every destination is born with
-        // a key that exists only inside this instance. Ask for it HERE, where the
-        // person who made the thing is still looking, instead of waiting for them
-        // to notice a nudge on a card they may never scroll to.
+        // Every destination is born encrypted, so every destination is born with a key that
+        // exists only inside this instance.
         onSuccess: (data) => {
           if (data?.createDestination.id)
             offerRecoveryKey(
@@ -446,10 +440,10 @@ export function CreateDestination({
               </>
             )}
 
-            {/* One Advanced section for both kinds — the server branch used to
-                hand-roll its own disclosure next to a checkbox that had none.
-                Rendered only when it would hold something: an empty "Advanced"
-                that opens onto nothing is worse than no Advanced at all. */}
+            {/**
+             * One Advanced section for both kinds — the server branch used to hand-roll its own
+             * disclosure next to a checkbox that had none.
+             */}
             {(kind === "s3" || isInstanceAdmin) && (
               <Accordion type="single" collapsible>
                 <AccordionItem value="advanced" className="border-none">
@@ -478,12 +472,11 @@ export function CreateDestination({
                       </div>
                     ) : (
                       <>
-                        {/* Self-hosting means the bucket is often on the same
-                            private network as the fleet, and both guards refused
-                            that outright - so "MinIO (self-hosted)" was in the
-                            list and unusable at any ordinary address. Instance
-                            admins only, the same bar a custom backup folder
-                            carries, because the agent dials it as root. */}
+                        {/**
+                         * Self-hosting means the bucket is often on the same private network as the fleet,
+                         * and both guards refused that outright - so "MinIO (self-hosted)" was in the list
+                         * and unusable at any ordinary address.
+                         */}
                         {isInstanceAdmin && (
                           <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
                             <Checkbox

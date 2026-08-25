@@ -9,11 +9,7 @@ import {
 /**
  * Node.js version input with an autocomplete dropdown synced to the real Node
  * release train (served by `/api/node-versions`, cached server-side from
- * nodejs.org/dist). The stored value is a bare MAJOR ("22", "20") — what the
- * builders pin — while the dropdown labels carry the LTS codename.
- *
- * Free-text is allowed: the field accepts a bare major, a full version, or blank
- * (blank ⇒ let the builder auto-detect the version from the project).
+ * nodejs.org/dist).
  */
 export interface NodeVersionInputProps {
   value: string;

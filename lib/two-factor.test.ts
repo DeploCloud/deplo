@@ -36,8 +36,7 @@ const USER_2 = "user_2";
 
 /**
  * Two-factor authentication end to end: enrolment through Better Auth's plugin,
- * the login challenge, and the team/role policy gate. The policy half is the
- * security-critical part.
+ * the login challenge, and the team/role policy gate.
  */
 
 let db: TestDb;

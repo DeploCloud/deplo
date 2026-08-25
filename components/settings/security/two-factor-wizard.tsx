@@ -109,14 +109,8 @@ function secretOf(uri: string): string {
 }
 
 /**
- * Turn two-factor authentication on, in four steps: confirm the password, scan
- * the QR, prove the authenticator works, save the recovery codes.
- *
- * The third step is not ceremony. Better Auth does not mark the factor verified
- * until a generated code comes back, so an authenticator that was mis-scanned
- * (or a clock that is badly off) is caught HERE, while the account still logs in
- * with a password alone — rather than at the next sign-in, when it would be a
- * lockout.
+ * Turn two-factor authentication on, in four steps: confirm the password, scan the
+ * QR, prove the authenticator works, save the recovery codes.
  */
 export function TwoFactorWizard({
   open,
@@ -274,12 +268,11 @@ export function TwoFactorWizard({
           onSubmit={onSubmit}
           className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4 overflow-hidden"
         >
-          {/* `m-auto` centres the step in the fixed-height body, NOT
-              `justify-center`: a step taller than the row (Scan, Recovery on a
-              short screen) would have its top clipped outside the scrollable
-              area and be unreachable. Auto margins collapse to 0 the moment
-              there is no free space, so short steps centre and tall ones scroll
-              from the top. */}
+          {/**
+           * `m-auto` centres the step in the fixed-height body, NOT `justify-center`: a step
+           * taller than the row (Scan, Recovery on a short screen) would have its top clipped
+           * outside the scrollable area and be unreachable.
+           */}
           <div className="focus-safe-scroll flex flex-col overflow-y-auto">
             <div className="m-auto flex w-full max-w-sm shrink-0 flex-col gap-5 py-2">
               {/* One heading block, same shape on every step, so the eye lands
@@ -337,20 +330,18 @@ export function TwoFactorWizard({
 
               {step === "scan" && (
                 <div className="space-y-4">
-                  {/* Black on white regardless of theme, framed deplo-style. A QR
-                      inverted by dark mode is unreadable to a lot of scanners,
-                      and this one gets photographed off a screen — contrast wins
-                      over theme-awareness. The frame is what carries the brand. */}
+                  {/**
+                   * Black on white regardless of theme, framed deplo-style.
+                   */}
                   <div className="mx-auto w-fit rounded-2xl border border-border bg-white p-4 shadow-sm ring-1 ring-black/5">
                     <QRCodeSVG
                       value={totpUri}
                       size={180}
                       bgColor="#ffffff"
                       fgColor="#0a0a0a"
-                      // "H" (30% recovery) is what pays for the excavated middle:
-                      // the mark covers ~6% of the area, so the code still reads
-                      // with room to spare. Any lower level and the logo breaks
-                      // it — see lib/two-factor-qr.test.ts.
+                      // "H" (30% recovery) is what pays for the excavated middle: the mark covers ~6% of
+                      // the area, so the code still reads with room to spare. Any lower level and the
+                      // logo breaks it — see lib/two-factor-qr.test.ts.
                       level="H"
                       marginSize={0}
                       imageSettings={{

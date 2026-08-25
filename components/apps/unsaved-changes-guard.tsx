@@ -13,25 +13,9 @@ import {
 import { Button } from "@/components/ui/button";
 
 /**
- * Warns before leaving a page that has unsaved edits. Mount it with `when` set
- * to the page's aggregate dirty flag; it guards two navigation vectors while
- * dirty and does nothing otherwise:
- *
- *   1. Hard navigation (tab close / reload / typing a new URL) — the native
- *      `beforeunload` prompt, which browsers render themselves.
- *   2. Soft, in-app navigation (clicking a sidebar/tab `<Link>`) — a capture-
- *      phase click listener intercepts internal anchor clicks BEFORE Next's
- *      Link handler runs, then routes through our own confirm dialog so the
- *      user can keep editing or discard and continue.
- *
- * Browser Back/Forward (popstate) is intentionally NOT guarded — the App Router
- * exposes no reliable hook for it, and the two vectors above cover the paths a
- * user actually takes to leave the form.
- *
- * The wording is overridable because "unsaved changes" is only true of a form.
- * The migration wizard guards a job that is half-done on somebody else's
- * server, and telling that person they have unsaved changes would describe the
- * wrong risk entirely.
+ * Warns before leaving a page that has unsaved edits. Mount it with `when` set to
+ * the page's aggregate dirty flag; it guards two navigation vectors while dirty
+ * and does nothing otherwise: 1.
  */
 export function UnsavedChangesGuard({
   when,

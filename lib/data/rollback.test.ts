@@ -32,8 +32,7 @@ import { readFile } from "node:fs/promises";
 
 /**
  * Rollback, at the data layer: which deployments an app can be put back on, and
- * every way a target that LOOKS eligible is not. The window is the interesting
- * part.
+ * every way a target that LOOKS eligible is not.
  */
 
 let db: TestDb;

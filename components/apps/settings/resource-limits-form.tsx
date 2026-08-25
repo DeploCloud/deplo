@@ -45,23 +45,13 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
 /**
- * Resources settings: per-app caps on RAM / CPU / processes / disk, applied to
- * the app's container(s) on the next deploy (baked into the rendered compose,
- * like volumes). The two everyone reaches for — Memory and CPU — sit in the main
- * card with quick-pick sizes; the rest live under "Advanced limits" so the happy
- * path stays a two-field decision and no Docker knowledge is required.
- *
- * A compose-stack app keeps the same form, but the caps apply to EACH service
- * that doesn't set its own limit (a multi-service stack has no host-level
- * aggregate cgroup) — surfaced as a note rather than hidden, so the feature
- * still works for stacks.
+ * Resources settings: per-app caps on RAM / CPU / processes / disk, applied to the
+ * app's container(s) on the next deploy (baked into the rendered compose, like
+ * volumes).
  */
 
 /**
- * A labelled numeric/text field. The input fills its column and the unit rides
- * inside it as a right-aligned suffix (native number spinners are hidden so they
- * never collide with it) — so fields read cleanly at any width instead of tiny
- * boxes floating in empty space.
+ * A labelled numeric/text field.
  */
 function LimitField({
   label,
@@ -154,9 +144,7 @@ export function ResourceLimitsForm({
   isComposeStack: boolean;
   /**
    * The GraphQL mutation to save through — the database detail page passes
-   * `updateDatabaseResources`. Both take `(id, limits: ResourceLimitsInput!)`
-   * and return `{ id }`, so only the field name differs. Default preserves the
-   * app behavior.
+   * `updateDatabaseResources`.
    */
   mutationName?: "updateAppResources" | "updateDatabaseResources";
   /** Success toast copy — databases say "applied on the next redeploy". */

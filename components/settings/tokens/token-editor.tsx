@@ -51,13 +51,9 @@ import type {
 } from "@/lib/data/tokens";
 
 /**
- * The API-token editor: a full-width page, reached from the token LIST.
- *
- * A page and not a dialog because forty permissions, a search box, a project
- * scope and a summary of what the credential ends up able to do do not fit in a
- * modal. Full width and not a master-detail rail because nobody compares two
- * tokens side by side — the list is where you scan them, and the space a rail
- * would take is space the permission checkboxes actually use.
+ * The API-token editor: a full-width page, reached from the token LIST. A page and
+ * not a dialog because forty permissions, a search box, a project scope and a
+ * summary of what the credential ends up able to do do not fit in a modal.
  */
 export function TokenEditor({
   mode,
@@ -110,10 +106,9 @@ export function TokenEditor({
         appIds: token?.appIds ?? [],
       } as ScopeSelection,
       instanceAdmin: token?.instanceAdmin ?? false,
-      // A token that already has one keeps it unless the picker is touched;
-      // a new one defaults to 90 days rather than forever, because the
-      // credential nobody ever revokes is the one nobody ever chose an end
-      // for. "Never" stays one click away.
+      // A token that already has one keeps it unless the picker is touched; a new one
+      // defaults to 90 days rather than forever, because the credential nobody ever
+      // revokes is the one nobody ever chose an end for.
       expiry: token ? "keep" : "90",
     }),
     [token, preset],
@@ -213,9 +208,8 @@ export function TokenEditor({
   }
 
   // The secret takes over the page rather than opening a dialog: a modal is
-  // dismissible by Escape and by clicking away, and this is the one screen in
-  // deplo that must not be dismissible by accident. It also leaves nobody
-  // standing on a filled-in form for a token that already exists.
+  // dismissible by Escape and by clicking away, and this is the one screen in deplo
+  // that must not be dismissible by accident.
   if (created)
     return (
       <TokenCreated
@@ -614,12 +608,9 @@ function nameOf(tree: ScopeTreeTeam[], id: string): string | null {
 }
 
 /**
- * The instant a picked span lands on, in the shape the API takes.
- *
- * `undefined` (the "keep" option) is OMITTED from the mutation, which is what
- * leaves an existing expiry alone; `null` clears it. Computed at submit rather
- * than at render so a form left open overnight cannot post a date the server has
- * already decided is in the past.
+ * The instant a picked span lands on, in the shape the API takes. Computed at
+ * submit rather than at render so a form left open overnight cannot post a date
+ * the server has already decided is in the past.
  */
 function expiresAtFor(choice: string): string | null | undefined {
   if (choice === "keep") return undefined;

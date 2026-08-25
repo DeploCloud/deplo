@@ -13,9 +13,7 @@ import type { DatabaseDTO } from "@/lib/data/databases";
 /**
  * The database detail Overview: the connection string as a click-to-reveal chip
  * (the same one the Variables page uses for a value), the create-only engine
- * facts, network/exposure, a LIVE data size and container summary from the
- * runtime poll, and the "provisioned before labels" callout that steers a
- * pre-labels database to Redeploy (so logs/console/runtime work).
+ * facts, network/exposure, a LIVE data size and container summary from the runtime
  */
 export function DatabaseOverview({
   db,

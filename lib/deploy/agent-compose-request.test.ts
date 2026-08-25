@@ -88,6 +88,8 @@ test("compose plan with no mounts sends an empty mounts list", async () => {
 
 /**
  * Heavy build methods (static/nixpacks/buildpacks/railpack) now run agent-side.
+ * The git arm can't probe the tree, so it keys purely off the method — these pin
+ * that mapping.
  */
 
 test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfile", async () => {

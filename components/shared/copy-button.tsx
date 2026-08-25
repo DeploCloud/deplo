@@ -7,12 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * `navigator.clipboard` exists only in a SECURE context. A Deplo reached over
- * plain http — an IP, a LAN hostname, the first-run URL before a domain is set
- * up — has no clipboard API at all, so every copy button on the page would be a
- * silent no-op. Fall back to the legacy select + `execCommand("copy")` path,
- * which still works there, and put the focus back where it was (the button is
- * routinely next to an input the user is typing in).
+ * `navigator.clipboard` exists only in a SECURE context.
  */
 async function writeClipboard(value: string): Promise<boolean> {
   try {

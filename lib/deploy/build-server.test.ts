@@ -137,8 +137,7 @@ test("a storage-only server can never build - it has no Docker", () => {
 });
 
 test("a migration source can never build - it HAS Docker, and that is the trap", () => {
-  // Every other "can this machine build?" check reads storageOnly, which a migration
-  // source passes: the other platform's host obviously has Docker.
+  // Every other "can this machine build?"
   const box = srv({ id: "srv_import", importOnly: true, hostArch: "amd64" });
   assert.equal(canBuildFor(box, TARGET), false);
   // And it is never picked automatically either, even alone in the fleet.

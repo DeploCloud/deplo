@@ -7,14 +7,6 @@ import { cn } from "@/lib/utils";
 /**
  * One option as a compact card — icon and title on one line, a caption under it,
  * selection carried by the border and a tint.
- *
- * The quiet twin of {@link ChoiceCard}: use this when the choice is a KIND that
- * changes the fields below it (a destination's server-or-bucket, a backup's
- * app-or-database) and the form goes on underneath. Use `ChoiceCard` when the
- * choice IS the whole step and the card needs to carry a tick.
- *
- * The caller owns the `role="radiogroup"` wrapper and its label — a card knows
- * it is one of a set, not what the set is called.
  */
 export function KindCard({
   selected,

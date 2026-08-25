@@ -8,21 +8,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * The TOTP setup key, covered until asked for — the same bargain as an
- * environment variable's value.
- *
- * It keeps `RevealChip`'s invariant: **while covered the key is not in the DOM
- * at all**, so inspecting the element, reading the accessibility tree or
- * screenshotting the page finds dots and nothing else. It cannot BE RevealChip
- * because that chip is built on absolute positioning to keep a table column from
- * resizing, so it truncates — and a key you cannot read in full is a key you
- * cannot type into your phone.
- *
- * Covering it matters more here than the usual "secret" reflex suggests. This is
- * the one moment the key exists on screen, and enrolment happens over a shared
- * screen, a support call or a recorded demo more often than anyone plans for.
- * The QR beside it encodes the same secret, but a QR is not readable over a
- * shoulder at a glance, and this is.
+ * The TOTP setup key, covered until asked for — the same bargain as an environment
+ * variable's value. Covering it matters more here than the usual "secret" reflex
+ * suggests.
  */
 export function SetupKey({ secret }: { secret: string }) {
   const [revealed, setRevealed] = React.useState(false);

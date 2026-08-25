@@ -31,16 +31,6 @@ interface OpenPullRequest {
 
 /**
  * Deploy a specific open pull request, on purpose.
- *
- * This is what makes previews useful the moment the switch goes on: before the
- * GitHub App is subscribed to pull request events, and for every case the
- * automatic path deliberately skips — a draft, a pull request aimed at another
- * branch, one that was destroyed and is wanted back. Listing pull requests needs
- * only `pull_requests: read`, which every Deplo GitHub App has always had.
- *
- * It is an ACTION, not a setting, which is why there is no "deploy drafts"
- * toggle anywhere: shipping the action answers all of those cases at once
- * without taxing the first-run settings surface.
  */
 export function DeployPullRequestDialog({
   appId,

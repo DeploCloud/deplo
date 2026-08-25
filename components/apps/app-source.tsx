@@ -20,19 +20,14 @@ export interface AppSourceDescriptor {
   label: string;
   /**
    * True ONLY for a git-backed source (github / plain git), where a branch and
-   * commit are meaningful. A compose stack, a docker image or an uploaded
-   * archive has no git — so the UI must not invent a branch for it. This is the
-   * single source of truth the app card AND the app overview share, so
-   * they can never disagree about what an app's source is.
+   * commit are meaningful. A compose stack, a docker image or an uploaded archive
+   * has no git — so the UI must not invent a branch for it.
    */
   isGit: boolean;
 }
 
 /**
- * Describe where an app's code/image comes from, for display. `compose` is
- * authoritative first (via {@link usesComposeStack}, which also catches legacy
- * template apps), then a real git repo, then docker-image / upload, then a
- * generic container fallback.
+ * Describe where an app's code/image comes from, for display.
  */
 export function describeAppSource(project: AppSourceLike): AppSourceDescriptor {
   if (usesComposeStack(project)) {

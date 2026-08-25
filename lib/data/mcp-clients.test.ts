@@ -190,7 +190,8 @@ test("the minted capabilities are the ones the form submitted, never the client'
 });
 
 test("a connection is scoped to EXACTLY the active team, whoever the approver is", async () => {
-  // The bug this pins reached production.
+  // The bug this pins reached production. It created an app in the wrong one before
+  // this was fixed.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
      values ('mem_owner_b2', $1, $2, 'owner', '2025-01-01T00:00:00.000Z')`,

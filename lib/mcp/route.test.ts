@@ -38,7 +38,8 @@ import { GET as PROTECTED_RESOURCE } from "@/app/.well-known/oauth-protected-res
 import type { Capability } from "../types";
 
 /**
- * The MCP endpoint as a resource server.
+ * The MCP endpoint as a resource server. The first section is the regression net:
+ * it passes on the pre-OAuth code and is what says "we did not break deplo".
  */
 
 let db: TestDb;

@@ -49,8 +49,7 @@ before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
   // The queue is durable in the DB; the in-process dispatcher would try to dial an
-  // agent that doesn't exist here. Swap in a fake runner that just SETTLES the row,
-  // so these tests measure what a deploy trigger writes rather than a build.
+  // agent that doesn't exist here.
   __setRunnerForTest(async (depId: string) => {
     await db
       .update(deploymentsTable)

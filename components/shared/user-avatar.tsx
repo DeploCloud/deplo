@@ -8,22 +8,6 @@ import { cn, readableTextColor } from "@/lib/utils";
 
 /**
  * The one way a person or a team is drawn before their name.
- *
- * Every surface that names somebody renders this, so the rules live in one place
- * instead of in the two dozen call sites that used to hand-roll
- * `slice(0, 2).toUpperCase()` and a hardcoded `color: "#000"`:
- *
- *  - the picture wins when there is one, and `avatarUrl` already decided WHICH
- *    picture (uploaded, else Gravatar, else nothing) back in the data layer —
- *    nothing here knows Gravatar exists;
- *  - a picture that fails to load falls back to the monogram on its own. Radix
- *    preloads the image and flips to the fallback on `error`, which is what a
- *    Gravatar `404` (the `d=404` we ask for), a CSP refusal and a missing `src`
- *    all produce. That is why this needs none of the broken-image bookkeeping
- *    `LogoImage` carries — that one is a bare `<img>`;
- *  - the monogram's text colour is DERIVED from its background. Two of the five
- *    avatar colours (`#7928ca`, `#0070f3`) are unreadable in black, which is what
- *    every call site used to hardcode.
  */
 
 /** The sizes actually in use across the product, in Tailwind steps. */
@@ -81,12 +65,9 @@ function Mark({
         // it was rendered on.
         referrerPolicy="no-referrer"
       />
-      {/* No `delayMs`. It exists to hide the monogram-then-photo swap on a remote
-          image, but the common case here is somebody with NO Gravatar: their
-          address 404s (that is what `d=404` asks for), so a delay would leave
-          an empty ring on every page load and only then draw their initials.
-          Initials-then-photo is what every product does and what people read as
-          normal; an empty circle is not. */}
+      {/**
+       * No `delayMs`.
+       */}
       <AvatarFallback
         className={cn(
           "font-medium",
@@ -121,7 +102,7 @@ export function UserAvatar({
 }: {
   name?: string | null;
   username?: string | null;
-  /** The monogram's fill. Omitted (a Dokploy person being imported, say) ⇒ the
+  /** The monogram's fill. Omitted (an imported person, say) ⇒ the
    *  neutral mark, since they have no deplo account to have a colour on yet. */
   avatarColor?: string | null;
   avatarUrl?: string | null;
@@ -141,9 +122,8 @@ export function UserAvatar({
 
 /**
  * A team. Its monogram colour is DERIVED from the name rather than stored: a
- * team's mark is cosmetic and referenced nowhere else, so a column would only
- * buy a colour picker in Settings that nobody asked for. Same five colours a
- * person gets, so the two marks read as one product.
+ * team's mark is cosmetic and referenced nowhere else, so a column would only buy
+ * a colour picker in Settings that nobody asked for.
  */
 export function TeamAvatar({
   name,

@@ -13,7 +13,8 @@ import type { Capability } from "../types";
 
 /**
  * Drives the real SDK over a real HTTP request, so the wiring is tested rather
- * than assumed.
+ * than assumed. No database: `tools/list` never reaches a resolver, so a principal
+ * is just a capability set here.
  */
 
 /**
@@ -173,9 +174,7 @@ test("a destructive tool runs straight away, with no confirmation step", () => {
 });
 
 test("a client that cannot prompt is served exactly like one that can", async () => {
-  // The old behaviour refused here, because deplo owned the confirmation. Now the
-  // prompt belongs to the client, so a client without elicitation support is not a
-  // second-class caller — it just gets whatever its own approval flow decides to run.
+  // The old behaviour refused here, because deplo owned the confirmation.
   const withPrompt = await rpc("tools/call", principal(ALL, true), {
     name: "delete_app",
     arguments: { appId: "prj_whatever" },

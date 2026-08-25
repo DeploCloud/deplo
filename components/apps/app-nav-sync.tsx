@@ -5,12 +5,8 @@ import { useLiveRunning } from "./app-live-status";
 import { setAppNav } from "./app-nav-store";
 
 /**
- * Publishes the active app's nav facts into the sidebar store (see
- * {@link setAppNav}) so the sidebar can render this app's sub-menu.
- * Rendered inside {@link AppLiveStatusProvider} so `running` tracks the live
- * container state — Console/Logs appear and disappear in the sidebar the moment
- * the app starts/stops, exactly as the old horizontal tabs did. Renders
- * nothing itself.
+ * Publishes the active app's nav facts into the sidebar store (see {@link
+ * setAppNav}) so the sidebar can render this app's sub-menu.
  */
 export function AppNavSync({
   slug,

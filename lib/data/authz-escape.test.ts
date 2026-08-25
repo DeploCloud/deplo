@@ -71,8 +71,8 @@ import {
 
 /**
  * ESCAPING YOUR OWN BOUNDARY — the three ways deplo hands out less than
- * everything, and what happens when a caller tries to reach past the line. 1. an
- * API TOKEN narrowed to one Project (the scope tree), 2.
+ * everything, and what happens when a caller tries to reach past the line. a
+ * DEPLOY HOOK, which is one app's URL secret plus a bearer token.
  */
 
 let db: TestDb;
@@ -722,8 +722,16 @@ test("the masked hook URL is a mask, not a prefix of the secret", async () => {
 
 /**
  * `memberships.role` is a RANK, and it is the one part of a membership the API
- * token clamp does NOT narrow: a token gets its creator's `role` verbatim and only
- * their capabilities intersected.
+ * token clamp does NOT narrow: a token gets its creator's `role` verbatim and
+ * only their capabilities intersected. So every place that used to read
+ * `actor.role === "owner"` as "may hand out anything" was a door out of the
+ * token's own capability set — the owner behind an ordinary token could mint an
+ * all-powerful successor, re-scope the role every member holds, or promote a
+ * member, from a token that was granted one administrative permission.
+ *
+ * The bound is the actor's CAPABILITIES everywhere now. A real owner holds all
+ * of them, so nothing legitimate changed; what changed is that a token stops at
+ * what it was given.
  */
 
 /** An owner's token holding exactly one administrative capability. */

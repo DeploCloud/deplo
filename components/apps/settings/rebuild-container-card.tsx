@@ -16,13 +16,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 
 /**
- * Advanced settings: rebuild the container. Surfaces the `rebuildApp` mutation —
- * a full deployment that rebuilds the image from the current source and REPLACES
- * the running container, even when nothing about the stack changed (the deploy
- * carries `forceRecreate`, so `compose up` can't decide there is nothing to do).
- * Not destructive (volumes/domains/env survive), so a plain button with an honest
- * description, no confirmation dialog. On success we follow the build itself, so
- * the user watches it instead of hunting for it in the list.
+ * Advanced settings: rebuild the container.
  */
 export function RebuildContainerCard({
   appId,

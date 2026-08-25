@@ -15,14 +15,7 @@ import {
 const HEARTBEAT_INTERVAL_MS = 10_000;
 
 /**
- * Connection watchdog mounted once in the root layout. Heartbeats the web
- * server hosting the panel and, when it becomes unreachable, raises a persistent
- * corner NOTIFICATION (not a full-screen lock): the page you're on stays fully
- * usable, but navigating to any OTHER page is paused — a broken connection can't
- * load a new route, so we block the attempt and say so instead of letting it
- * fail. The notification auto-reconnects — it probes for the server on a backoff
- * and reloads the page the instant it answers — and offers a single "Retry now"
- * button to probe on demand instead of waiting out the timer.
+ * Connection watchdog mounted once in the root layout.
  */
 export function ServerConnectionGuard() {
   const state = React.useSyncExternalStore(
@@ -71,20 +64,6 @@ type ReconnectPhase = "reconnecting" | "restored";
 
 /**
  * Drives the auto-reconnect loop that runs the whole time the notification is up.
- *
- * It probes `/api/health` on a backoff and, the instant a probe answers, flips
- * to "restored" and reloads the page. The reload — not an in-place un-latch —
- * is deliberate: it re-reads server data and resubscribes the SSE streams that
- * `gqlSubscribe` tore down when the connection dropped. The browser's `online`
- * event and a tab regaining focus both trigger an immediate probe, so recovery
- * usually beats the timer. All loop state lives in closure-local `let`s so each
- * effect run is self-contained — StrictMode's mount/unmount/mount cycle tears
- * the first run's timers down and re-arms the second cleanly.
- *
- * The UI shows the wait as a progress bar rather than a number: each scheduled
- * wait is one "cycle", and `cycle.key` bumps on every new one so the bar can
- * remount and restart its fill animation over `cycle.ms`. `checking` marks a
- * probe in flight (the bar yields to a spinner).
  */
 function useAutoReconnect(): {
   phase: ReconnectPhase;
@@ -181,29 +160,8 @@ const NAV_BLOCK_TOAST_ID = "deplo-nav-paused";
 
 /**
  * Pauses navigation to any OTHER page while the notification is up, WITHOUT
- * locking the current page. Two vectors are covered:
- *
- *  - **Link / anchor clicks** — capture-phase `click` + `auxclick` listeners on
- *    `document` fire before React dispatches, so they beat both Next's `<Link>`
- *    handler and the app's own onClicks. For an in-app anchor it calls
- *    `preventDefault()` (App Router's Link bails on `defaultPrevented`; the
- *    browser's native anchor nav is cancelled too) AND `stopImmediatePropagation()`
- *    (so the sidebar's "back" links can't fire their `history.go()` jump). Both
- *    the primary and middle mouse buttons are paused — a middle-click would
- *    otherwise open the dead route in a background tab. External links, downloads,
- *    `mailto:`/`tel:`, in-page `#` anchors and right-clicks (the context menu)
- *    fall through untouched.
- *  - **Back / forward** — an extra history entry is pinned on mount and re-pinned
- *    on every `popstate`, so the browser's back/forward buttons can't walk off
- *    the current route. Best-effort: a rapid/held back gesture that coalesces
- *    several traversals before the handler runs can still slip past the pin.
- *
- * Programmatic `router.push` from a button isn't intercepted here: those almost
- * always sit behind a server round-trip, and while disconnected `gql()` refuses
- * that round-trip outright with `SERVER_UNREACHABLE_MESSAGE` (the same "paused"
- * copy this toast carries), so they never reach the navigation. The listeners
- * live only while this hook is mounted (i.e. only while disconnected) and
- * unwind cleanly on the reload.
+ * locking the current page. Both the primary and middle mouse buttons are paused —
+ * a middle-click would otherwise open the dead route in a background tab.
  */
 function useBlockNavigationWhileDisconnected(active: boolean): void {
   React.useEffect(() => {
@@ -286,12 +244,7 @@ function useBlockNavigationWhileDisconnected(active: boolean): void {
 }
 
 /**
- * The persistent connection notification. Portaled to <body> and pinned to the
- * bottom-center of the viewport as a compact card — it deliberately does NOT
- * cover or inert the page, so the current view stays fully interactive; only
- * cross-page navigation is paused (see `useBlockNavigationWhileDisconnected`).
- * The huge z-index keeps it above sonner's toaster (hardcoded z-index 999999999,
- * where the "navigation paused" toasts land): max int32 wins over it.
+ * The persistent connection notification.
  */
 function DisconnectedNotification() {
   const { phase, checking, cycleKey, cycleMs, retryNow } = useAutoReconnect();
@@ -321,10 +274,9 @@ function DisconnectedNotification() {
         aria-describedby="server-connection-lost-description"
         className="pointer-events-auto relative isolate w-full max-w-sm animate-in duration-300 fade-in-0 slide-in-from-bottom-4"
       >
-        {/* Red glow radiating from the centre outward behind the card. Its core
-            sits behind the opaque card, so what shows is a soft halo bleeding out
-            past every edge — a glow "behind the modal". Tracks the accent, so it
-            is red while disconnected and turns emerald the moment it recovers. */}
+        {/**
+         * Red glow radiating from the centre outward behind the card.
+         */}
         <div
           aria-hidden
           className="pointer-events-none absolute -inset-10 -z-10 opacity-80 blur-3xl transition-colors duration-500"

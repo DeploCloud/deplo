@@ -89,20 +89,9 @@ const COPY: Record<
 };
 
 /**
- * Schedule a backup from Storage, where nothing about the target is known yet.
- *
- * A WIZARD rather than one long form, and the reason is the first field: this is
- * the only backup dialog that has to ask WHAT is being backed up, and that
- * answer changes the two questions after it. Asked all at once it was a
- * ten-control modal opening on a decision most people make in a second; asked in
- * order it is three short screens - what, where, when - each with one thing on
- * it. The per-app and per-database tabs run the same wizard minus this first
- * step (`ScheduleBackup` in `backups-panel.tsx`), because there the target is
- * the page.
- *
- * Same shape as the two-factor wizard next door: a step rail that doubles as the
- * way back, a fixed-height body so the footer never moves under the cursor, and
- * Enter always running the current step's primary button.
+ * Schedule a backup from Storage, where nothing about the target is known yet. The
+ * per-app and per-database tabs run the same wizard minus this first step
+ * (`ScheduleBackup` in `backups-panel.tsx`), because there the target is the page.
  */
 export function CreateBackup({
   databases,
@@ -117,10 +106,9 @@ export function CreateBackup({
   databases: BackupTargetOption[];
   services?: BackupTargetOption[];
   destinations: DestinationOption[];
-  /** Whether the current user may schedule a backup (`manage_backups`). False
-   *  shows the button disabled with a tooltip saying so and nothing can open the
-   *  dialog. Defaults to true for the per-app and per-database backup tabs,
-   *  whose pages already refuse the whole surface without the capability. */
+  /**
+   * Whether the current user may schedule a backup (`manage_backups`).
+   */
   canCreate?: boolean;
   /** Whether this user may run the destination picker's live probe
    *  (`manage_backup_destinations`). Without it the picker shows the stored
@@ -147,10 +135,9 @@ export function CreateBackup({
     suggestScheduleName(DEFAULT_SCHEDULE),
   );
   const [nameTouched, setNameTouched] = React.useState(false);
-  // Apps are the common case — a whole app (volumes, files, compose/env
-  // snapshot) is what most people come here to protect, and a database that
-  // matters usually belongs to one. Databases still win the default when the
-  // team has no apps at all, so the dialog never opens on an empty picker.
+  // Apps are the common case — a whole app (volumes, files, compose/env snapshot) is
+  // what most people come here to protect, and a database that matters usually
+  // belongs to one.
   const [targetKind, setTargetKind] = React.useState<TargetKind>(
     services.length === 0 && databases.length > 0 ? "database" : "app",
   );

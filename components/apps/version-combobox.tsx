@@ -7,17 +7,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * A free-text input with a lazy autocomplete dropdown, backing the "pick a
- * builder/runtime version" fields in build settings. Shared by
- * {@link RailpackVersionInput} and {@link NodeVersionInput} so the two behave
- * identically — they differ only in what they load and their placeholder.
- *
- * Free-text is always allowed: the field accepts anything the user types, and
- * the dropdown is only a hint synced from an upstream release list. Items load
- * lazily on first focus, so the network call happens only when the field opens.
- *
- * Items are `{ value, label }`: `value` is what round-trips through the form
- * (what gets stored/pinned); `label` is what the dropdown shows. For lists whose
- * display equals their stored value (e.g. railpack tags), pass value === label.
+ * builder/runtime version" fields in build settings. Items load lazily on first
+ * focus, so the network call happens only when the field opens.
  */
 export interface VersionItem {
   value: string;

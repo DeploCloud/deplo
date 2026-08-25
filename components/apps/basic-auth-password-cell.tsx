@@ -11,28 +11,16 @@ import { cn } from "@/lib/utils";
 // covered password reads identically wherever a secret is shown.
 const MASK = "••••••••••••";
 
-// The chip owns no width of its own and its contents are ABSOLUTELY positioned,
-// so a long password contributes zero intrinsic width: the card stays the same
-// size covered or revealed, and the value just truncates. `h-7` gives the
-// out-of-flow box its height.
+// The chip owns no width of its own and its contents are ABSOLUTELY positioned, so
+// a long password contributes zero intrinsic width: the card stays the same size
+// covered or revealed, and the value just truncates.
 const OUTER =
   "relative block h-7 min-w-0 flex-1 rounded-md ring-1 ring-inset align-middle";
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 
 /**
  * The password of one basic-auth credential — masked, with a deliberate reveal.
- *
- * Unlike an app secret, a basic-auth password is a credential you HAND TO A
- * PERSON, so it can be read back (see `revealBasicAuthPassword`): otherwise
- * "what was the password again?" can only be answered by overwriting it and
- * locking out everyone already using it.
- *
- * The plaintext is FETCHED ON DEMAND and never rides the page's props: until
- * someone clicks the eye, the password is not in the DOM, not in a `title`, and
- * not in the RSC payload. Hiding it drops the value from state entirely — the
- * next reveal is a fresh, separately-authorised round-trip — and one card is
- * uncovered at a time (there is no "reveal all"). The reveal is a mutation, so
- * it is never cached or prefetched.
+ * The reveal is a mutation, so it is never cached or prefetched.
  */
 export function BasicAuthPasswordCell({
   id,
@@ -61,11 +49,9 @@ export function BasicAuthPasswordCell({
       (d) => d.revealBasicAuthPassword,
     );
     setPending(false);
-    // A password that can't be decrypted (rotated DEPLO_SECRET, restored dump)
-    // comes back as an error, not as an empty string — surface it verbatim so
-    // the fix ("set a new password") is the message itself. `data` is optional on
-    // the shared ActionResult, so an `ok` with nothing in it stays covered rather
-    // than flashing an empty chip.
+    // A password that can't be decrypted (rotated DEPLO_SECRET, restored dump) comes
+    // back as an error, not as an empty string — surface it verbatim so the fix ("set a
+    // new password") is the message itself.
     if (res.ok) setValue(res.data ?? null);
     else toast.error(res.error);
   }

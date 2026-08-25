@@ -170,14 +170,9 @@ function areaPath(seg: XY[], baseY: number): string {
 /* ------------------------------------------------------------------ */
 
 /**
- * Grafana-style live time-series panel: documented axes (unit-formatted y
- * ticks, wall-clock x ticks), recessive hairline grid, gap-aware 2px lines,
- * a crosshair + all-series tooltip (pointer AND arrow keys), and — for two
- * or more series — a legend with live values that toggles series on/off.
- *
- * The x domain is a fixed sliding window ending at the newest sample, so
- * "Last 5m" always means exactly that; a freshly-opened page fills leftward
- * as samples accumulate rather than stretching the little it has.
+ * Grafana-style live time-series panel: documented axes (unit-formatted y ticks,
+ * wall-clock x ticks), recessive hairline grid, gap-aware 2px lines, a crosshair +
+ * all-series tooltip (pointer AND arrow keys), and — for two or more series — a
  */
 export function TimeSeriesChart({
   series,
@@ -229,15 +224,8 @@ export function TimeSeriesChart({
     firstIdx >= 0 ? points.slice(Math.max(0, firstIdx - 1)) : [];
   const hoverPoints = firstIdx >= 0 ? points.slice(firstIdx) : [];
 
-  // Stretches with no measurements (the poll skipped: agent busy deploying,
-  // offline, or the tab was throttled). Rendered as an explicit "No data" band,
-  // and answered on hover with "No data" instead of the nearest real sample —
-  // so a genuine hole never reads as a glitch or a dip to zero.
-  //
-  // Window-aware on purpose: `drawPoints` carries one sample from BEFORE the
-  // window so the line can enter from the left edge, and a straggler that far
-  // back would otherwise band most of the plot as a failure. Where the buffer
-  // simply doesn't reach, the plot stays empty instead (see `visibleGapSpans`).
+  // Stretches with no measurements (the poll skipped: agent busy deploying, offline,
+  // or the tab was throttled).
   const gaps = visibleGapSpans(
     drawPoints.map((p) => p.ts),
     GAP_MS,

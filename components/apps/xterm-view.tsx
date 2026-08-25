@@ -9,8 +9,7 @@ import { FitAddon } from "@xterm/addon-fit";
 /**
  * The imperative surface a parent drives a mounted terminal through. Handed back
  * once via `onReady` (a ref would have to thread through `next/dynamic`, which
- * doesn't forward them). `fit()` re-measures and returns the resulting size so
- * the caller can seed/resize the backing pty.
+ * doesn't forward them).
  */
 export interface XtermApi {
   write: (data: string) => void;
@@ -49,9 +48,7 @@ const FONT_FAMILY =
 /**
  * A thin `@xterm/xterm` wrapper: mounts a real terminal emulator, fits it to its
  * container (and refits on resize), and pumps keystrokes/resizes out through
- * callbacks. Rendering-only — the caller owns the data on both ends (an attach
- * stream, or a local exec line-editor). Loaded exclusively via `xterm-lazy` so
- * the ~55–80KB emulator is code-split to the console route and never touches SSR.
+ * callbacks.
  */
 export function XtermView({
   onData,

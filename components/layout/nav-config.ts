@@ -45,11 +45,9 @@ export interface NavItem {
   /** exact match for active state (default: startsWith) */
   exact?: boolean;
   /**
-   * A picture that stands in for {@link icon}: the app's or database's own logo
-   * on its Overview entry, so the sub-menu opens with the thing you are inside
-   * rather than a generic dashboard glyph. Data, not an element — this module
-   * is plain TS and the sidebar does the drawing. Absent until the layout has
-   * published it (SSR, first paint), where the icon stands in.
+   * A picture that stands in for {@link icon}: the app's or database's own logo on
+   * its Overview entry, so the sub-menu opens with the thing you are inside rather
+   * than a generic dashboard glyph.
    */
   mark?:
     | { kind: "app"; logo: string | null }
@@ -67,22 +65,14 @@ export interface NavItem {
    */
   requires?: string;
   /**
-   * Visible when the member holds ANY ONE of these. For the rare page that two
-   * different capabilities each open a real half of — MCP Server, where
-   * `manage_mcp` owns the switch and `manage_tokens` owns minting the
-   * credential — and where naming only one hides it from somebody who has work
-   * to do there. Combined with `requires` if both are given.
+   * Visible when the member holds ANY ONE of these.
    */
   requiresAny?: string[];
   /** Visible only to instance admins (orthogonal to team capabilities). */
   requiresAdmin?: boolean;
   /**
    * Render the entry but do NOT link it, with this sentence as its tooltip.
-   *
-   * For a setting the app is structurally incapable of using — pull request
-   * previews on an app that deploys from a docker image — where hiding the row
-   * would leave the reader wondering whether the feature exists at all. Distinct
-   * from `requires`, which is about the VIEWER's permission and hides: a
+   * Distinct from `requires`, which is about the VIEWER's permission and hides: a
    * permission can be granted, this cannot.
    */
   disabledReason?: string;
@@ -92,10 +82,7 @@ export interface NavSection {
   title?: string;
   items: NavItem[];
   /**
-   * Render this section's entries as plain text — no icons. Used by the app /
-   * database settings sub-menus, where the list is short, already titled, and an
-   * icon per row is decoration rather than a wayfinding aid. Ignored while the
-   * sidebar is collapsed, since there the icon IS the entry.
+   * Render this section's entries as plain text — no icons.
    */
   iconless?: boolean;
 }
@@ -185,10 +172,7 @@ export const NAV: NavSection[] = [
 ];
 
 /**
- * Settings navigation. When the viewer is anywhere under `/settings`, the
- * sidebar swaps {@link NAV} for this set — the same sidebar UI, just a different
- * left-hand nav — so each settings section is its own route/link (including the
- * relocated Servers page). The first item is a "back to dashboard" escape hatch.
+ * Settings navigation. The first item is a "back to dashboard" escape hatch.
  */
 export const SETTINGS_NAV: NavSection[] = [
   {
@@ -253,12 +237,8 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/mcp",
         icon: Bot,
         tooltip: "AI agents that can drive this team",
-        // TWO capabilities open a real half of this page, so naming one hid it
-        // from people with work to do there. `manage_mcp` owns the team switch
-        // and approving a web connector; `manage_tokens` owns minting the
-        // credential a terminal or IDE agent connects with. Holding either is a
-        // reason to be here; the wizard then disables the branch the viewer
-        // cannot finish, saying why, rather than failing at the last click.
+        // TWO capabilities open a real half of this page, so naming one hid it from people
+        // with work to do there.
         requiresAny: ["manage_mcp", "manage_tokens"],
       },
       {
@@ -266,10 +246,7 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/migrations",
         icon: Cable,
         tooltip: "Bring projects over from Dokploy",
-        // The smallest capability that can produce what an import produces. Every
-        // object it creates then re-checks its own permission, so someone who can
-        // make projects but not databases still has a use for this page - the
-        // databases land in the report instead of being created.
+        // The smallest capability that can produce what an import produces.
         requires: "create_projects",
       },
     ],
@@ -307,10 +284,9 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/servers",
         icon: Server,
         tooltip: "Connected servers & Docker hosts",
-        // Server administration is an instance-wide concern (the management view
-        // lists EVERY server across teams), so it is gated to instance admins —
-        // not the per-team manage_infra capability. Members reach servers only
-        // through the team-scoped deploy pickers, never this page.
+        // Server administration is an instance-wide concern (the management view lists
+        // EVERY server across teams), so it is gated to instance admins — not the per-team
+        // manage_infra capability.
         requiresAdmin: true,
       },
       {
@@ -334,10 +310,11 @@ export const SETTINGS_NAV: NavSection[] = [
   },
 ];
 
-/** Per-app facts the sidebar can't derive itself (the URL gives the slug and
- *  the viewer's capabilities gate Environment/Backups, but whether the container
- *  is running and whether the app has a files dir are known
- *  only to the app layout, which publishes them via the app-nav store). */
+/**
+ * Per-app facts the sidebar can't derive itself (the URL gives the slug and the
+ * viewer's capabilities gate Environment/Backups, but whether the container is
+ * running and whether the app has a files dir are known only to the app layout,
+ */
 export interface AppNavFlags {
   /** Full current pathname — lets a section stay listed while it's the open page
    *  even before the store has confirmed its flag (avoids a missing active item
@@ -348,11 +325,7 @@ export interface AppNavFlags {
   running: boolean;
   showFiles: boolean;
   /**
-   * The app deploys from GitHub. Only such an app can ever receive a
-   * `pull_request` delivery, so only such an app gets the operational Pull
-   * requests page — deliberately NOT gated on the installation as well, since an
-   * app that is github-sourced but not yet connected must reach the page to be
-   * told to connect it.
+   * The app deploys from GitHub.
    */
   isGithubApp: boolean;
   /** Pull request previews are switched on for this app. */
@@ -360,11 +333,7 @@ export interface AppNavFlags {
   /** Cron jobs are switched on for this app. */
   cronsEnabled: boolean;
   /**
-   * The app's own logo, for the Overview entry's mark. `undefined` while the
-   * layout has not published it yet (SSR, first paint, or the store still
-   * holding the app you just left), where the generic glyph stands in; `null`
-   * is an app that HAS no logo, which draws its default mark like everywhere
-   * else in the UI.
+   * The app's own logo, for the Overview entry's mark.
    */
   logo?: string | null;
   /** The console is an advanced surface: its chip appears only once the user has
@@ -373,12 +342,7 @@ export interface AppNavFlags {
 }
 
 /**
- * An app's navigation. When the viewer is anywhere under `/apps/<slug>`
- * the sidebar swaps {@link NAV} for this set — the same sidebar UI, a different
- * left-hand nav — so each app section (Overview, Deployments, Domains, …) is
- * its own icon-led entry instead of a horizontal tab. Mirrors {@link SETTINGS_NAV}:
- * a "back" escape hatch on top, then the sections. The conditional entries match
- * the visibility rules the old horizontal tabs used.
+ * An app's navigation.
  */
 export function appNav(slug: string, f: AppNavFlags): NavSection[] {
   const base = `/apps/${slug}`;
@@ -407,17 +371,9 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: Rocket,
       tooltip: "Deployment history",
     },
-    // Pull request previews — the OPERATIONAL page, offered only once the
-    // feature is actually on. Off, there is nothing for it to list: turning the
-    // switch off destroys every live preview (see setAppPreviewSettings), so it
-    // cannot even be the place you go to find leftovers. The setting itself is
-    // always reachable under Settings, which is where you go to turn it back on.
-    //
-    // Never for a non-GitHub app at all: a docker image, an upload, a compose
-    // paste or a raw git URL never receives a `pull_request` delivery.
-    //
-    // `on(...)` keeps it while you are standing on it, so the entry cannot
-    // vanish from under the page you are reading.
+    // Pull request previews — the OPERATIONAL page, offered only once the feature is
+    // actually on. Never for a non-GitHub app at all: a docker image, an upload, a
+    // compose paste or a raw git URL never receives a `pull_request` delivery.
     ...((f.isGithubApp && f.previewsEnabled) || on("/pull-requests")
       ? [
           {
@@ -431,14 +387,9 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
-    // Cron jobs - the OPERATIONAL page, offered only once the feature is on,
-    // exactly like Pull requests above and for the same reason: with the switch
-    // off there is nothing to list, and the setting that turns it back on lives
-    // under Settings where you would look for it.
-    //
-    // Unlike previews there is no structural impossibility here - every app can
-    // run a command in its own container - so there is no equivalent of the
-    // `isGithubApp` clause.
+    // Cron jobs - the OPERATIONAL page, offered only once the feature is on, exactly
+    // like Pull requests above and for the same reason: with the switch off there is
+    // nothing to list, and the setting that turns it back on lives under Settings where
     ...(f.cronsEnabled || on("/cron-jobs")
       ? [
           {
@@ -469,10 +420,8 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
-    // Console is an ADVANCED surface — a live shell into the container, reached
-    // from Advanced settings. Its chip stays hidden until the user confirms the
-    // one-time warning (consoleAcknowledged), and then only while there's a live
-    // container to reach (running, or the console page is itself open).
+    // Console is an ADVANCED surface — a live shell into the container, reached from
+    // Advanced settings.
     ...(f.consoleAcknowledged && (f.running || on("/console"))
       ? [
           {
@@ -550,13 +499,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
 }
 
 /**
- * An app's SETTINGS sub-menu — one level deeper than {@link appNav}. When
- * the viewer is under `/apps/<slug>/settings` the sidebar swaps the app
- * nav for this set, so each settings section (General, Deployments, Storage,
- * Access, Advanced) is its own dedicated page. The "back" escape hatch here goes UP
- * one level to the app overview — unlike {@link appNav}'s "Back to
- * apps", which leaves the app entirely — so it is a plain link (not a
- * history `back`, which would exit the whole `/apps/<slug>` section).
+ * An app's SETTINGS sub-menu — one level deeper than {@link appNav}.
  */
 export function appSettingsNav(
   slug: string,
@@ -601,12 +544,9 @@ export function appSettingsNav(
           icon: GitPullRequest,
           tooltip: "Preview deploys, and everything that shapes them",
           requires: "manage_previews",
-          // SHOWN, not hidden, when the app cannot use it. Only a GitHub app
-          // ever receives a `pull_request` delivery, but an operator looking for
-          // the feature deserves to find out that it exists and what it needs —
-          // a missing row would leave them hunting. The operational page under
-          // the app menu is hidden instead: there, a page that can never list
-          // anything is a dead end rather than a lesson.
+          // SHOWN, not hidden, when the app cannot use it. Only a GitHub app ever receives a
+          // `pull_request` delivery, but an operator looking for the feature deserves to find
+          // out that it exists and what it needs — a missing row would leave them hunting.
           ...(isGithubApp
             ? {}
             : {
@@ -648,15 +588,7 @@ export function appSettingsNav(
 }
 
 /**
- * A database's navigation. When the viewer is under `/storage/databases/<id>`
- * the sidebar swaps {@link NAV} for this set — the DB twin of {@link appNav}.
- * Deliberately almost flag-less (no nav store / sync component): Logs works
- * while stopped, and the Backups page guards itself, so nothing here depends on
- * live per-database state. Console + Backups are manage_infra-only.
- *
- * The one flag is the console acknowledgement, for the same reason apps have it:
- * the console is an ADVANCED surface reached from Advanced settings, and its
- * chip stays hidden until the user has confirmed the one-time warning.
+ * A database's navigation.
  */
 export function databaseNav(
   id: string,

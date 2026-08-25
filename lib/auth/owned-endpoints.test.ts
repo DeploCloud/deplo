@@ -5,7 +5,8 @@ import { isDeploOwnedAuthPath } from "./better-auth";
 
 /**
  * `app/api/auth/[...all]/route.ts` mounts Better Auth WHOLE, because the OAuth
- * surface has to be reachable.
+ * surface has to be reachable. These tests pin both halves - what must be shut,
+ * and what must stay open.
  */
 
 test("the account surface deplo drives itself is shut", () => {

@@ -11,23 +11,9 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The build cache of one app, as ONE setting: reuse the layers from its last
- * build (on by default — it is what makes a redeploy of an unchanged app take
- * seconds), with the button that starts the next build from scratch sitting
- * beside its own switch. Clearing is an action ON this setting, not a second
- * feature, so it does not get a panel of its own.
- *
- * ADVANCED: the parent renders this in the Deployment page's "Advanced settings"
- * card, so a first-run user never meets it, and both controls are inert until
- * touched. They save on change / on click rather than joining a Save button —
- * a switch that needs a separate Save is the classic way to make someone think a
- * setting stuck when it didn't.
- *
- * "Clear" arms a one-shot the next build consumes; nothing is pruned on the
- * server. The BuildKit cache is per-SERVER and shared by every app on it, so
- * deleting it from one app's settings would silently slow down its neighbours —
- * an app can only clear its own by refusing to read it once. Reclaiming disk is
- * the server-wide Docker cleanup's job (Servers → Cleanup).
+ * The build cache of one app, as ONE setting: reuse the layers from its last build
+ * (on by default — it is what makes a redeploy of an unchanged app take seconds),
+ * with the button that starts the next build from scratch sitting beside its own
  */
 export function BuildCachePanel({
   appId,
@@ -102,11 +88,10 @@ export function BuildCachePanel({
             : "Reuse the layers from this app's last build. Off rebuilds everything, on every deploy."}
         </p>
       </div>
-      {/* Clearing sits WITH the setting it acts on, ahead of the switch: it is
-          the same subject, and a whole panel for one button read as a second
-          feature. Disabled while the cache is off (nothing is being reused) or
-          already armed — the tooltip says which, so the dead button still
-          answers "why can't I press this". */}
+      {/**
+       * Clearing sits WITH the setting it acts on, ahead of the switch: it is the same
+       * subject, and a whole panel for one button read as a second feature.
+       */}
       <div className="flex shrink-0 items-center gap-3">
         <SimpleTooltip
           content={

@@ -108,7 +108,10 @@ test("a wrong password refuses the transfer", async () => {
 
 /**
  * The crown IS full access, so a plain member can receive it — the transfer puts
- * them on the Owner role itself.
+ * them on the Owner role itself. Requiring the rank up front blocked nothing (the
+ * same admin grants it with one click) and allowed the incoherent end state this
+ * asserts against: a crowned member who reaches only part of their own team, and
+ * whose permissions no one is allowed to widen ever again.
  */
 test("a plain member is put on the Owner role by the transfer", async () => {
   await seedTeam();

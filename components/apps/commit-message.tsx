@@ -12,12 +12,9 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 
 /**
- * A commit message as it comes off GitHub — subject line plus an arbitrarily
- * long body. Shows the first three lines and, only when there is genuinely more
- * to see, a "Read more" that opens the untruncated text in a dialog. Overflow is
- * measured rather than guessed (a 500-char subject wraps past three lines just
- * as a body does), so the affordance never appears on a message that already
- * fits.
+ * A commit message as it comes off GitHub — subject line plus an arbitrarily long
+ * body. Shows the first three lines and, only when there is genuinely more to see,
+ * a "Read more" that opens the untruncated text in a dialog.
  */
 export function CommitMessage({
   message,

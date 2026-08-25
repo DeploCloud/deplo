@@ -42,16 +42,11 @@ export function AppShell({
           the stream opens, so switching teams has to reconnect it. */}
       <DeployActivityProvider key={team.id}>
         <MigrationActivityProvider key={team.id}>
-          {/* The frame itself is a client component: it reads the route, because
-          the log consoles take the whole area to the right of the sidebar and
-          every other page does not. Everything below is unchanged by that —
-          `ShellFrame` renders the same markup for a normal route. Keyed by the
-          active team so switching teams REMOUNTS the page instead of
-          re-rendering it in place: switching keeps you on the open section (see
-          lib/team-switch), and a client component that seeded state from its
-          props at mount — a selected row, a filter, an open dialog, a live
-          subscription — would otherwise keep pointing at the team you just
-          left. */}
+          {/**
+           * The frame itself is a client component: it reads the route, because the log
+           * consoles take the whole area to the right of the sidebar and every other page
+           * does not.
+           */}
           <ShellFrame
             contentKey={team.id}
             sidebar={
@@ -78,10 +73,11 @@ export function AppShell({
                   isAdmin={isAdmin}
                 />
                 <UpdateBanner />
-                {/* Renders nothing for an account that already has a second factor -
-                an authenticator app OR a passkey (ADR-0024) - and nothing at all
-                once the user has dismissed it for good. Nagging somebody who has
-                set passkeys up is how a reminder teaches people to ignore it. */}
+                {/**
+                 * Renders nothing for an account that already has a second factor - an
+                 * authenticator app OR a passkey (ADR-0024) - and nothing at all once the user has
+                 * dismissed it for good.
+                 */}
                 <TwoFactorReminder
                   hasSecondFactor={user.twoFactorEnabled || hasPasskey}
                 />

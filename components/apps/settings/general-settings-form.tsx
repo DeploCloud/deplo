@@ -125,10 +125,9 @@ export function GeneralSettingsForm({
     reader.readAsDataURL(file);
   }
 
-  // Ask the server to find this app's own favicon and set it as the logo: in a
-  // GitHub repo, the uploaded archive, or — for a compose stack — its files dir
-  // on its server plus the icon the running app serves. The mutation errors when
-  // none is found, which we surface as an info toast.
+  // Ask the server to find this app's own favicon and set it as the logo: in a GitHub
+  // repo, the uploaded archive, or — for a compose stack — its files dir on its
+  // server plus the icon the running app serves.
   function detectFromSource() {
     startTransition(async () => {
       const res = await gqlAction(

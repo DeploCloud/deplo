@@ -50,11 +50,9 @@ export function DeploymentActions({
   appSlug: string;
   url: string;
   status: DeploymentStatus;
-  /** Set for a pull request preview build: a link straight to the pull request.
-   *  It replaced "Promote to Production", which only ever flipped metadata —
-   *  once a preview is a real, separate stack, promoting it pointed the app's
-   *  production URL at a host the reaper deletes. Merging the pull request is
-   *  the honest promotion, and the existing push auto-deploy already ships it. */
+  /**
+   * Set for a pull request preview build: a link straight to the pull request.
+   */
   pullRequestUrl?: string | null;
   /** Show the "Delete" item (a finished deployment only). Cosmetic — the data
    *  layer re-checks `deploy` on the app's folder. */
@@ -72,8 +70,7 @@ export function DeploymentActions({
   /**
    * Whether the viewer holds `rollback_apps`. Separate from {@link canDeploy}
    * because they are separate permissions - someone may be trusted to put the app
-   * back without being trusted to ship something new. Cosmetic; the data layer
-   * re-checks it.
+   * back without being trusted to ship something new.
    */
   canRollbackApps?: boolean;
   /** What the app goes back TO, for the confirm dialog: the short sha or, for an
@@ -154,8 +151,7 @@ export function DeploymentActions({
 
   // Two one-click destinations sit out in the open — "Open deployment" (its build
   // logs & details) and "Visit" (the live app) — so neither is buried in the menu;
-  // the ⋯ keeps the mutating actions (Redeploy / Promote / Stop build). Visit only
-  // shows when the deployment actually has a reachable URL.
+  // the ⋯ keeps the mutating actions (Redeploy / Promote / Stop build).
   const detailHref = `/apps/${appSlug}/deployments/${id}`;
   return (
     <>

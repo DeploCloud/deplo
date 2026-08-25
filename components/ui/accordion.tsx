@@ -47,16 +47,9 @@ const AccordionContent = React.forwardRef<
     { className, children, onAnimationStart, onAnimationEnd, ...props },
     ref,
   ) => {
-    // `overflow: hidden` is what turns the open/close height animation into a
-    // slide instead of a spill — but it clips ANYTHING a child paints outside its
-    // own box, and a focus ring is exactly that. The panel has no side padding, so
-    // a focused full-width field inside it came out with its ring sliced off left
-    // and right (the "half border" on the domain dialog's advanced settings).
-    //
-    // The clip is only needed WHILE the height is animating, so release it the
-    // moment the panel settles. With animations off (reduced motion) no animation
-    // event ever fires and it simply never clips — which is correct, there is no
-    // slide to contain.
+    // `overflow: hidden` is what turns the open/close height animation into a slide
+    // instead of a spill — but it clips ANYTHING a child paints outside its own box,
+    // and a focus ring is exactly that.
     const [animating, setAnimating] = React.useState(false);
     return (
       <AccordionPrimitive.Content

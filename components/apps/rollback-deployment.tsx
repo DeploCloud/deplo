@@ -9,12 +9,9 @@ import { CapabilityTip } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Rollback - putting an app back on a build it already ran.
- *
- * The dialog lives here rather than beside each trigger because the copy is the
- * load-bearing part: everyone assumes a rollback restores the settings that went
- * with the code, and it does not. Two triggers use it (the deployments row menu
- * and a deployment's own page) and they must not drift into telling two stories.
+ * Rollback - putting an app back on a build it already ran. Two triggers use it
+ * (the deployments row menu and a deployment's own page) and they must not drift
+ * into telling two stories.
  */
 export function RollbackDialog({
   open,

@@ -9,11 +9,7 @@ import type { DatabaseType } from "@/lib/types";
 
 /**
  * Database engine version input with an autocomplete dropdown synced live to
- * Docker Hub (via `/api/database-versions?engine=…`), so the list tracks new
- * engine releases automatically instead of a hardcoded set. Free text is always
- * allowed — the dropdown is a hint, and a user can pin any tag the image
- * publishes. The stored value is the bare version the DB image mapping appends
- * its suffix to (`postgres:<v>-alpine`, `mysql:<v>`, …).
+ * Docker Hub (via `/api/database-versions?
  */
 export function DbVersionInput({
   engine,

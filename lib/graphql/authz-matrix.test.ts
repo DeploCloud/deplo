@@ -331,7 +331,9 @@ function refusedByGrant(e: Endpoint, messages: string[]): boolean {
 /* ------------------------------------------------------------------ */
 
 /**
- * The only fields that may answer an anonymous caller.
+ * The only fields that may answer an anonymous caller. The two passkey ones are
+ * public for the same reason `login` is: they ARE a sign-in, so requiring a
+ * session would be circular.
  */
 const PUBLIC_FIELDS = new Set([
   "Q.me",
@@ -514,8 +516,7 @@ const ADMIN_SUBSCRIPTIONS = ENDPOINTS.filter(
 );
 
 /**
- * Open one subscription as one principal and pull its FIRST event. `[]` ⇒ the
- * subscriber received a payload.
+ * Open one subscription as one principal and pull its FIRST event.
  */
 async function open(p: Principal, e: Endpoint): Promise<string[]> {
   const result = await runWithIdentity(p.identity, () =>

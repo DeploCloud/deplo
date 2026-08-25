@@ -58,10 +58,7 @@ export interface EditUserSeedUser {
 }
 
 /**
- * Optional instant-render seed of the editable global flags. Callers that list
- * users already hold these (the settings Users panel), so the editor renders
- * immediately; callers that don't (the team Members page) omit it and the
- * editor initialises from the fetched `userDetail` instead.
+ * Optional instant-render seed of the editable global flags.
  */
 export interface EditUserSeedFlags {
   isInstanceAdmin: boolean;
@@ -90,29 +87,7 @@ const UPDATE_USER = /* GraphQL */ `
 `;
 
 /**
- * The instance-admin editor for ONE user's global account. Rendered as the
- * Account tab of a member's page (team Members → a member) and, seeded from the
- * list row, inside {@link EditUserDialog} on Settings → Users. Every field here
- * is instance-wide, NOT team-scoped — that distinction is why this is separate
- * from the member permissions editor beside it. Backed by
- * `userDetail`/`updateUserAdmin`/`deleteUser`, all instance-admin only.
- *
- * The layout is three NAMED sections rather than a flat stack of switches, because
- * a bare toggle never says what it is: an admin flipping "Publish ports" has to be
- * told they are editing PERMISSIONS, and permissions that reach every team and
- * every server at that.
- *
- *  - **Permissions** — the three grants. STAGED: they apply on "Save changes", so
- *    a mis-click is undone by leaving the page.
- *  - **Password** — an admin reset, staged with the same button.
- *  - **Danger zone** — suspend and delete. These apply IMMEDIATELY (each behind its
- *    own confirm), which is why they are quarantined from the staged fields above
- *    instead of hiding among them.
- *
- * Because `updateUserAdmin` replaces the whole flag set, the immediate actions send
- * {@link Grants} as the SERVER holds them ({@link savedGrants}) rather than what the
- * form currently shows — suspending someone must not silently commit a permission
- * toggle the admin flipped but has not saved.
+ * The instance-admin editor for ONE user's global account.
  */
 export function UserAccountSettings({
   user,
@@ -174,9 +149,7 @@ export function UserAccountSettings({
   const [twoFactorEnabled, setTwoFactorEnabled] = React.useState(false);
   const [passkeyCount, setPasskeyCount] = React.useState(0);
   // The two narrow grants are folded away (the house "Advanced" affordance) so the
-  // section leads with the permission that actually matters. Folded away is not
-  // hidden, though: a grant that is ON opens the panel, or the admin would have to
-  // go looking for state nothing on screen mentions.
+  // section leads with the permission that actually matters.
   const [advancedOpen, setAdvancedOpen] = React.useState(
     Boolean(seed?.canExposePorts || seed?.canMountHostVolumes),
   );
@@ -248,11 +221,9 @@ export function UserAccountSettings({
   const teams = detail?.teams ?? null;
   const teamCount = teams?.length ?? seed?.teamCount ?? 0;
 
-  // The instance owner's account is editable only by the owner themselves — no
-  // other admin may demote, suspend, reset or delete them, because all of those
-  // are routes to the same takeover (see lib/data/instance-owner.ts).
-  // Server-enforced; the form goes read-only so the operator sees the rule
-  // instead of a toast.
+  // The instance owner's account is editable only by the owner themselves — no other
+  // admin may demote, suspend, reset or delete them, because all of those are routes
+  // to the same takeover (see lib/data/instance-owner.ts).
   const isOwner = seed?.isInstanceOwner ?? detail?.isInstanceOwner ?? false;
   const ownerLocked = isOwner && !isSelf;
   // The flags nobody may flip on the owner, the owner included: ownership leaves
@@ -269,10 +240,7 @@ export function UserAccountSettings({
     password.length > 0;
 
   /**
-   * One write for every caller here. `updateUserAdmin` replaces the whole flag
-   * set, so anything the caller doesn't name is sent as the server's own current
-   * value — that is what keeps an immediate suspend from committing unsaved
-   * permission edits.
+   * One write for every caller here.
    */
   function commit(patch: {
     grants?: Grants;
@@ -451,10 +419,11 @@ export function UserAccountSettings({
               <Meta label="Teams" value={String(teamCount)} />
               <Meta label="Sign-in" value={suspended ? "Blocked" : "Allowed"} />
             </div>
-            {/* The chips need the fetch, but the seed already carries the
-                COUNT — so the row that is coming is held open (and the row
-                that isn't never appears) instead of pushing the sections down
-                a second later. */}
+            {/**
+             * The chips need the fetch, but the seed already carries the COUNT — so the row
+             * that is coming is held open (and the row that isn't never appears) instead of
+             * pushing the sections down a second later.
+             */}
             {teams == null && teamCount > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 <Skeleton className="h-[22px] w-32 rounded-full" />
@@ -588,10 +557,11 @@ export function UserAccountSettings({
                       }
                     />
                   )}
-                  {/* Separate from the reset above on purpose: the phone and the
-                      laptop are lost independently, and clearing a dead
-                      authenticator is no reason to take away a passkey that
-                      still works. */}
+                  {/**
+                   * Separate from the reset above on purpose: the phone and the laptop are lost
+                   * independently, and clearing a dead authenticator is no reason to take away a
+                   * passkey that still works.
+                   */}
                   {passkeyCount > 0 && (
                     <ActionRow
                       title="Remove passkeys"
@@ -771,11 +741,7 @@ export function UserAccountSettings({
 /**
  * The same editor in a modal, for Settings → Users: that page lists every account
  * on the instance, most of which are in no team of yours, so there is no member
- * page to send the admin to. The team Members page has one, and uses the panel
- * above directly.
- *
- * The visible header lives in the panel (it reads state the panel owns), so the
- * dialog's own title is for screen readers only.
+ * page to send the admin to.
  */
 export function EditUserDialog({
   user,
@@ -813,14 +779,7 @@ export function EditUserDialog({
 }
 
 /**
- * The stand-in shown until the account is loaded. It is not a spinner but a
- * TRACING of the real layout — same containers, same paddings, same row heights —
- * because the editor is opened from a list row and the fetch always lands after
- * the first paint: a centred spinner made the dialog open short, jump to full
- * height a beat later, and collapse again on close.
- *
- * It mirrors the folded default (the advanced grants closed), so the only thing
- * that can still move is a team list long enough to wrap onto a second line.
+ * The stand-in shown until the account is loaded.
  */
 function EditorSkeleton({ withDanger }: { withDanger: boolean }) {
   return (
@@ -890,10 +849,9 @@ function SkeletonRow({ button }: { button?: boolean }) {
 }
 
 /**
- * A bar sitting in a box the height of the text line it replaces. Without the
- * box the placeholder would be its own (shorter) height and every section would
- * come up a few pixels short — which is the jump this whole component exists to
- * remove.
+ * A bar sitting in a box the height of the text line it replaces. Without the box
+ * the placeholder would be its own (shorter) height and every section would come
+ * up a few pixels short — which is the jump this whole component exists to remove.
  */
 function TextLine({ box, bar }: { box: string; bar: string }) {
   return (
@@ -915,9 +873,7 @@ function Meta({ label, value }: { label: string; value: string }) {
 /**
  * A named group of controls. The heading is the whole point: it tells the admin
  * WHAT they are editing before they touch a switch, which a bare row of toggles
- * never did. Anything longer than the name rides in the `info` tooltip — a dialog
- * where every row explains itself in grey 12px reads as a wall, not as a form
- * (the repo's "field help lives in the tooltip" rule).
+ * never did.
  */
 function Section({
   icon: Icon,

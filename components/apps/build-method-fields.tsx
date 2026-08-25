@@ -84,10 +84,8 @@ export function BuildMethodFields({
   onMethodChange: (m: BuildMethod) => void;
   onSettingsChange: (patch: Partial<BuildMethodSettings>) => void;
   /**
-   * The framework in force — the user's correction if they made one, else what
-   * the last deploy read. Shown as the first setting of the auto-detecting
-   * builders' options panel, because that is whose setting it is: only Nixpacks
-   * and Railpack read the source and act on what they find.
+   * The framework in force — the user's correction if they made one, else what the
+   * last deploy read.
    */
   framework?: string | null;
   /** What DETECTION found, so the field can say whose answer is showing. */
@@ -184,13 +182,7 @@ function MethodCard({
 
 /**
  * The selected method's own settings, grouped into a labelled panel so it reads as
- * "the {method} configuration" rather than loose fields under the picker. Every
- * method has at least one setting, so the panel always renders.
- *
- * The framework leads that panel where it applies. It is not a step of its own:
- * "which framework is this" is a question only the auto-detecting builders ask,
- * and the answer only ever changes what THEY do — so it belongs among their
- * options, not floating above the method that owns it.
+ * "the {method} configuration" rather than loose fields under the picker.
  */
 function MethodSettings({
   method,
@@ -317,11 +309,6 @@ const FRAMEWORK_CHOICES = [...FRAMEWORKS].sort((a, b) =>
 
 /**
  * Which framework the builder should treat this app as.
- *
- * Detection is a heuristic over a `package.json` and where it is wrong it is
- * wrong about the container PORT (`vite preview` binds 4173 and ignores PORT),
- * so the answer has to be correctable — with what deplo actually detected still
- * visible next to the correction, and a one-click way back to it.
  */
 function FrameworkField({
   framework,

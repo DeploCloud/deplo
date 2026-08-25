@@ -1,8 +1,7 @@
 /**
  * The rule a variable name must satisfy, mirroring the server's
  * (`lib/data/env.ts`) so a bad key fails loudly in the form instead of at the
- * mutation. Shared, because every dialog that names a variable — the app's own,
- * and a preview override — has to agree on it or one of them drifts.
+ * mutation.
  */
 export const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 

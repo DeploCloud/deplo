@@ -215,25 +215,7 @@ export function advancedSummary(
 
 /**
  * The derived answer to "what will this domain actually do" — the public URL on
- * top, where the request lands underneath. Read-only status, never a control:
- * every value on it is computed from fields the user can already see, so it
- * teaches the routing model instead of requiring anyone to know Traefik. It is
- * also what makes leaving the expert panel closed SAFE (scheme, target and
- * middleware count are legible without opening it), and it is the first place
- * deplo's certs-are-opt-in default is visible BEFORE a site fails to load over
- * https rather than after.
- *
- * Two fidelity rules, because a readout that can lie is worse than none:
- *  - the scheme mirrors `domainScheme()` (lib/deploy/domains.ts) EXACTLY — it
- *    keys off `certProvider` alone and deliberately ignores the entrypoint — so
- *    this line can never disagree with the URL the domain row shows once saved.
- *    A manually-overridden entrypoint is instead STATED on line 2, so the odd
- *    `letsencrypt` + `web` combination is legible rather than hidden;
- *  - the path only joins the URL once it is a path `resolveDomainConfig` would
- *    accept, so typing `api` never renders `https://app.example.comapi`.
- *
- * What the app RECEIVES after stripprefix is deliberately not claimed here — it
- * is shown exactly, as a literal rewrite, next to the switch that causes it.
+ * top, where the request lands underneath.
  */
 function RoutePreview({
   hostname,
@@ -253,11 +235,9 @@ function RoutePreview({
   const manualEntrypoint =
     state.manualEntrypoint && state.certProvider !== "none";
   const middlewares = parseMiddlewares(state.middlewares).length;
-  // The `www` pair, spelled out: the URL on top is always the hostname that
-  // SERVES the app — which, under `toCounterpart`, is the counterpart rather than
-  // the hostname being edited. Showing the edited host there would advertise a
-  // URL that answers 301, which is exactly the confusion this pairing exists to
-  // remove.
+  // The `www` pair, spelled out: the URL on top is always the hostname that SERVES
+  // the app — which, under `toCounterpart`, is the counterpart rather than the
+  // hostname being edited.
   const counterpart = wwwCounterpart(host);
   const paired = state.www !== "none" && counterpart != null;
   const servedHost =
@@ -314,11 +294,11 @@ function RoutePreview({
   );
 }
 
-/** A titled group inside the advanced panel — the same fieldset/legend rhythm
+/**
+ * A titled group inside the advanced panel — the same fieldset/legend rhythm
  * `LimitGroup` uses in `components/apps/settings/resource-limits-form.tsx`, so
- * "advanced" looks the same everywhere in deplo. Single-column by design: at the
- * dialog's ~464px content width a two-column row clips the entrypoint option
- * labels exactly where they disambiguate. */
+ * "advanced" looks the same everywhere in deplo.
+ */
 function AdvancedGroup({
   icon: Icon,
   title,
@@ -341,17 +321,7 @@ function AdvancedGroup({
 
 /**
  * The shared per-domain routing fields, rendered identically in the Add and Edit
- * dialogs so the two never drift. Always-visible: the service selector (compose
- * stacks only), the service port, and a read-only preview of the route they
- * produce. Folded into an "Advanced settings" collapsible — whose closed header
- * summarises anything that diverges from the defaults — three grouped concerns:
- * HTTPS (certificate + entrypoint), the `www` redirect (which spelling of the
- * hostname serves the app, offered only when the hostname HAS a meaningful `www`
- * counterpart), and request routing (path, strip, the middleware chain).
- *
- * `idPrefix` namespaces the input ids (multiple instances can coexist on a page).
- * `services` lists a compose app's service names — when non-empty the service
- * selector is shown (empty ⇒ a single-image project, no service concept).
+ * dialogs so the two never drift.
  */
 export function DomainConfigFields({
   state,
@@ -366,11 +336,10 @@ export function DomainConfigFields({
   idPrefix: string;
   /** Compose service names for the service selector; empty ⇒ single-image. */
   services?: string[];
-  /** Whether this domain's DNS check found it proxied through Cloudflare
-   * (status `cloudflare`). Only the Edit dialog knows — an Add hasn't resolved
-   * the host yet — and it exists solely to explain why the certificate provider
-   * is already on Cloudflare, so the user reads it as a decision deplo made for
-   * them rather than one they have to second-guess. */
+  /**
+   * Whether this domain's DNS check found it proxied through Cloudflare (status
+   * `cloudflare`).
+   */
   proxied?: boolean;
   /** The hostname currently typed in the dialog's Domain field, so the route
    * preview shows the real URL as it is typed. Purely presentational — it never
@@ -406,12 +375,9 @@ export function DomainConfigFields({
     noCert || !state.manualEntrypoint ? ENTRYPOINT_AUTO : state.entrypoint;
   const summary = advancedSummary(state, hostname);
 
-  // The `www` pair of the hostname currently typed. Null for a hostname that has
-  // no meaningful one (an `api.` subdomain, a generated nip.io host) — the whole
-  // group is then absent rather than offering a choice about a hostname nobody
-  // would use. A path-routed domain is offered the group only while a pair
-  // already exists, so an existing pair stays visible (and undoable) but a path
-  // route can't start one: a redirect answers for a whole hostname.
+  // The `www` pair of the hostname currently typed. Null for a hostname that has no
+  // meaningful one (an `api.` subdomain, a generated nip.io host) — the whole group
+  // is then absent rather than offering a choice about a hostname nobody would use.
   const host = (hostname ?? "").trim();
   const counterpart = wwwCounterpart(host);
   const showWww = counterpart != null && (!hasPath || state.www !== "none");
@@ -422,11 +388,10 @@ export function DomainConfigFields({
     <>
       {isCompose && (
         <div className="space-y-2">
-          {/* The stack's containers, by their compose service name — the same
-              names the Logs and Console pickers list for this app. Labelled
-              "Container", not "App": the App is the whole stack, and calling one
-              of its containers an App is what made the domains table look like
-              it was naming the app rather than what actually serves the host. */}
+          {/**
+           * The stack's containers, by their compose service name — the same names the Logs
+           * and Console pickers list for this app.
+           */}
           <FieldLabel
             htmlFor={`${idPrefix}-service`}
             info="Which container of this app's compose stack serves this domain."
@@ -479,11 +444,10 @@ export function DomainConfigFields({
 
       <RoutePreview hostname={hostname} state={state} isCompose={isCompose} />
 
-      {/* Expert territory: collapsed on every open, in Add AND in Edit, so the
-          two dialogs can never drift and the first-run path never meets it.
-          Uncontrolled — Radix stamps `data-state` on the trigger, which carries
-          `group`, so the summary steps aside in CSS. No React state, and no
-          flash of the summary during the 200ms collapse animation. */}
+      {/**
+       * Expert territory: collapsed on every open, in Add AND in Edit, so the two dialogs
+       * can never drift and the first-run path never meets it.
+       */}
       <Accordion type="single" collapsible className="border-t border-border">
         <AccordionItem value="advanced" className="border-none">
           <AccordionTrigger className="group gap-3 rounded-md py-3 hover:no-underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
@@ -513,12 +477,8 @@ export function DomainConfigFields({
                 <Select
                   value={state.certProvider}
                   onValueChange={(v) =>
-                    // Written as ONE onChange, never two set() calls: a second
-                    // set() would spread the stale `state` and drop the first
-                    // key. Dropping to "none" also clears the manual entrypoint
-                    // — resolveDomainConfig discards it there anyway, and
-                    // keeping it alive under a locked control means a stale
-                    // override silently reappears when a cert comes back.
+                    // Written as ONE onChange, never two set() calls: a second set() would spread the
+                    // stale `state` and drop the first key.
                     onChange({
                       ...state,
                       certProvider: v as CertProvider,
@@ -539,10 +499,8 @@ export function DomainConfigFields({
                   </SelectContent>
                 </Select>
                 {proxied && state.certProvider === "cloudflare" && (
-                  // Not field help (that lives in the tooltip): this names a
-                  // decision DEPLO made, said once, next to the dropdown that
-                  // undoes it. It is the only conditional prose left in the
-                  // panel, and it only ever renders in the Edit dialog.
+                  // Not field help (that lives in the tooltip): this names a decision DEPLO made,
+                  // said once, next to the dropdown that undoes it.
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">
                     <Cloud className="mt-px size-3.5 shrink-0" aria-hidden />
                     <span>
@@ -571,11 +529,10 @@ export function DomainConfigFields({
                 >
                   Entrypoint
                 </FieldLabel>
-                {/* One stable control replaces a disabled checkbox, a
-                    conditionally-mounted Select and two muted paragraphs that
-                    used to swap in the same slot. The default option IS the
-                    derived outcome spelled out, so the disabled state displays
-                    the truth instead of an ambiguous unchecked box. */}
+                {/**
+                 * One stable control replaces a disabled checkbox, a conditionally-mounted Select
+                 * and two muted paragraphs that used to swap in the same slot.
+                 */}
                 <Select
                   value={entrypointValue}
                   disabled={noCert}
@@ -647,10 +604,8 @@ export function DomainConfigFields({
                     </SelectContent>
                   </Select>
                   {state.www !== "none" && (
-                    // Said once, next to the control that causes it: the one
-                    // thing the user still has to do themselves is point the
-                    // second hostname's DNS here. It is re-checked automatically,
-                    // so this is a heads-up, not a chore list.
+                    // Said once, next to the control that causes it: the one thing the user still has
+                    // to do themselves is point the second hostname's DNS here.
                     <p className="text-xs text-muted-foreground">
                       <span className="font-mono">{redirectingHost}</span> is
                       added as a domain of this app. Point its DNS at this
@@ -694,11 +649,10 @@ export function DomainConfigFields({
                 />
               </div>
 
-              {/* Revealed by the user's own keystroke, never a disabled stub:
-                  strip is a property OF the path, so it only exists once one
-                  does. The bordered container makes that containment visible,
-                  and the line under the switch is the literal rewrite — the one
-                  thing that teaches Traefik stripprefix without naming it. */}
+              {/**
+               * Revealed by the user's own keystroke, never a disabled stub: strip is a property
+               * OF the path, so it only exists once one does.
+               */}
               {hasPath && (
                 <div className="space-y-2 rounded-md border border-border px-3 py-2">
                   <div className="flex items-center justify-between gap-3">

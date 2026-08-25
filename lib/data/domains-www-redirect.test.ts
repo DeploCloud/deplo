@@ -32,7 +32,8 @@ import {
 
 /**
  * The `www` ⇄ non-`www` pairing: one hostname serves the app, the other answers a
- * permanent 301 to it.
+ * permanent 301 to it. The resolver is stubbed ({@link __setDnsResolve4ForTest});
+ * the seeded server's IP is 10.0.0.1, so that is the "points here" answer.
  */
 
 const SERVER_IP = "10.0.0.1";

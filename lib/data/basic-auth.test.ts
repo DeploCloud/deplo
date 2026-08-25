@@ -25,7 +25,8 @@ import {
 
 /**
  * HTTP Basic Auth credentials — the rows the deploy/reroute renderers turn into a
- * Traefik `basicauth` middleware in front of every one of an app's domains.
+ * Traefik `basicauth` middleware in front of every one of an app's domains. -
+ * **The password reveal is the ONLY way back to a plaintext, and it is gated.
  */
 
 process.env.DEPLO_SECRET = "test-secret-for-basic-auth-aaaaaaaaaaaaaaaa";
@@ -353,7 +354,12 @@ test("a password that cannot be decrypted fails the reveal (never returns empty)
 });
 
 /**
- * A credential carried over from another platform keeps working.
+ * A credential carried over from another platform keeps working. Deplo's two
+ * password gates are for a password someone is CHOOSING; an imported one is
+ * already in use and already protecting a public URL, so refusing it removed the
+ * protection instead of strengthening it - a real migration put a code-server
+ * online with no basic auth at all because "CoderPass123" has no special
+ * character.
  */
 test("an imported credential skips the password policy and is flagged weak", async () => {
   const weak = await as(OWNER_A, TEAM_A, () =>

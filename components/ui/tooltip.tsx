@@ -9,10 +9,8 @@ const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = TooltipPrimitive.Root;
 
 /**
- * Keep a tooltip SHUT unless the user asked for it. Radix opens on ANY focus of
- * the trigger, and `:focus-visible` does not settle it - Chrome carries it over
- * to whatever is focused programmatically next. Hence {@link isOverlayAutoFocusing}.
- * `preventDefault()` is Radix's escape hatch; focus itself is not cancelled. */
+ * Keep a tooltip SHUT unless the user asked for it.
+ */
 function keyboardOnlyTooltipFocus(event: React.FocusEvent<HTMLElement>) {
   if (isOverlayAutoFocusing() || !event.currentTarget.matches(":focus-visible"))
     event.preventDefault();

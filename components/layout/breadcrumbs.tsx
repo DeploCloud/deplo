@@ -36,12 +36,7 @@ import { cn } from "@/lib/utils";
 const MAX_FOLDER_CRUMBS = 3;
 
 /**
- * The topbar breadcrumb. On an apps-tree location — browsing a folder/project
- * on the Overview, or anywhere inside an app — it renders
- * "Overview ▾ / Folder ▾ / App ▾ / Section ▾", where clicking a name navigates
- * and the ▾ opens a menu of sibling targets (hop between apps in the same
- * folder, pivot into a sibling subfolder, jump to another section). On any other
- * route it renders the caller's `fallback` label unchanged.
+ * The topbar breadcrumb.
  */
 export function Breadcrumbs({
   pathname,
@@ -55,10 +50,7 @@ export function Breadcrumbs({
   /** Plain label shown (after a "/") when there's no rich trail to build. */
   fallback: string;
 }) {
-  // The Overview drill-in lives in the query string (?folder=/?project=/?view=),
-  // which layouts don't receive — so the topbar reads it client-side. During a
-  // search (?q=) the Overview shows flat results with no folder open, so we drop
-  // the folder/project context to match.
+  // The Overview drill-in lives in the query string (?
   const params = useSearchParams();
   const searching = Boolean(params.get("q"));
   const openFolderId = searching ? null : params.get("folder");
@@ -73,8 +65,7 @@ export function Breadcrumbs({
 
   // Inside an app, gate the section menu on what the viewer holds on THAT app
   // (published by the app layout); the prop is the team-wide union, which is
-  // deliberately wider than the truth. Outside an app, and until the store
-  // catches up, the union stands in.
+  // deliberately wider than the truth.
   const appCaps = service?.slug === slug ? service.capabilities : null;
   const capKey = appCaps ? appCaps.join(",") : capabilities.join(",");
   const caps = React.useMemo(() => {
@@ -255,15 +246,6 @@ function SiblingMenu({
 
 /**
  * The mark a crumb or a menu row wears, from the kind of thing it names.
- *
- * An app and a database wear their OWN avatar — the same one their card, their
- * header and their Overview show — so a trail or a menu reads as the things you
- * recognise rather than a column of identical boxes. A database with no uploaded
- * logo still gets its engine's mark, which is what `DatabaseLogo` falls back to;
- * a logo-less app falls back to the generic glyph inside `AppLogo`.
- *
- * `null` for a section and for Overview: those name a PLACE, not a thing, and an
- * icon on every crumb is an icon on none.
  */
 function KindIcon({
   kind,
@@ -284,10 +266,8 @@ function KindIcon({
   if (kind === "database") {
     return (
       <DatabaseLogo
-        // The model keeps the engine as a plain string on purpose — a breadcrumb
-        // has no business owning the engine union. It is one of these by
-        // construction (it comes off the `databases.type` column), and an
-        // unknown value lands on DatabaseLogo's own generic fallback anyway.
+        // The model keeps the engine as a plain string on purpose — a breadcrumb has no
+        // business owning the engine union.
         type={(dbType ?? "postgres") as DatabaseType}
         logo={logo ?? null}
         size={size}

@@ -27,8 +27,7 @@ import {
 } from "./user-access";
 
 /**
- * The instance-admin write path for one person's access (ADR-0016). The point of
- * this surface is that an admin can answer "who can touch Prod?"
+ * The instance-admin write path for one person's access (ADR-0016).
  */
 
 let db: TestDb;

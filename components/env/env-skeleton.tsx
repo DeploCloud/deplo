@@ -10,19 +10,11 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * Loading skeletons for the environment-variables UI. They mirror the real DOM
- * of <EnvManager> (toolbar + table) so the page doesn't jump when the data
- * arrives — crucially the table reuses the SAME <Table>/<TableRow>/<TableCell>
- * primitives the live table does, so cell padding, header height and the
- * content-driven column widths line up instead of drifting against a hand-rolled
- * grid. Each row is offset via the `--shimmer-delay` custom property so the
- * highlight cascades down rather than every bar pulsing in unison.
+ * Loading skeletons for the environment-variables UI.
  */
 
-// Per-row shape, varied so the placeholder reads as real data instead of a
-// perfect grid. `masked` adds the little "secret" eye dot in the value cell;
-// `author` is false for a row with no known author (pre-0029 rows render an em
-// dash), which is also the narrowest the cell ever gets.
+// Per-row shape, varied so the placeholder reads as real data instead of a perfect
+// grid.
 const ROWS = [
   { key: "w-28", value: "w-40", when: "w-20", author: true, masked: false },
   { key: "w-40", value: "w-24", when: "w-16", author: true, masked: true },
@@ -33,17 +25,15 @@ const ROWS = [
 ];
 
 // 90ms between rows — enough to read as a wave, short enough to feel alive. A
-// negative delay starts each row mid-cycle so the whole table is already in
-// motion on first paint. Set as a custom property the .animate-shimmer ::after
-// overlay reads (inline style can't target a pseudo-element directly).
+// negative delay starts each row mid-cycle so the whole table is already in motion
+// on first paint.
 const rowDelay = (i: number): React.CSSProperties =>
   ({ "--shimmer-delay": `-${(i * 0.09).toFixed(2)}s` }) as React.CSSProperties;
 
 /**
  * The bordered env-vars table: a header row plus `rows` body rows rendered with
- * the real Table primitives on the same Key / Value / Last modified / Modified
- * by / Actions columns the live table uses. Set `actions={false}` for a
- * read-only table, which drops the trailing row-actions column.
+ * the real Table primitives on the same Key / Value / Last modified / Modified by
+ * / Actions columns the live table uses.
  */
 export function EnvTableSkeleton({
   rows = 5,
@@ -163,10 +153,9 @@ export function EnvTableSkeleton({
 }
 
 /**
- * Full loading state for an app's Environment Variables tab: the title block,
- * then the toolbar row <EnvManager> renders — the search/filter/sort bar on the
- * left, the Reveal all / Add / view-toggle actions pinned right — above the
- * table.
+ * Full loading state for an app's Environment Variables tab: the title block, then
+ * the toolbar row <EnvManager> renders — the search/filter/sort bar on the left,
+ * the Reveal all / Add / view-toggle actions pinned right — above the table.
  */
 export function EnvManagerSkeleton({ rows = 5 }: { rows?: number }) {
   return (

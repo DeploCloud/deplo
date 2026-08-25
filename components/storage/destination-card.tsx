@@ -119,20 +119,12 @@ export function DestinationCard({
   const [logOpen, setLogOpen] = React.useState(false);
   const isServer = dest.kind === "server";
   // What decides whether there is a key to save is the KEYPAIR, not the kind: a
-  // bucket connected since bucket artifacts started being encrypted has one too,
-  // and gating on `isServer` left those backups locked by a key that existed
-  // only inside the instance they are meant to survive.
+  // bucket connected since bucket artifacts started being encrypted has one too, and
+  // gating on `isServer` left those backups locked by a key that existed only inside
   const encrypted = dest.encrypted;
 
   /**
    * Test the destination and say what actually happened.
-   *
-   * A failed probe is a NORMAL result of this mutation, not an error — which is
-   * exactly how the old version came to announce "Connection verified" over a
-   * destination the agent had just refused: it only checked that the request
-   * succeeded. The verdict lives in `report.ok`, and the reason (`report.error`,
-   * the agent's own words) goes straight into the toast with a shortcut to the
-   * full log.
    */
   function test() {
     startTransition(async () => {
@@ -234,12 +226,10 @@ export function DestinationCard({
                       Beta
                     </Badge>
                   )}
-                  {/* A property of the destination, so it sits with its name -
-                      not a row in the detail grid, where "Encryption: Always on"
-                      read as a setting somebody might have chosen. There is no
-                      chip for the unencrypted case: that one owns the warning
-                      block below, and saying it twice in two voices reads as two
-                      different facts. */}
+                  {/**
+                   * A property of the destination, so it sits with its name - not a row in the detail
+                   * grid, where "Encryption: Always on" read as a setting somebody might have chosen.
+                   */}
                   {encrypted && (
                     <SimpleTooltip content="Backups here are encrypted before they leave the server. Only this destination's recovery key can open them.">
                       <Badge
@@ -376,23 +366,11 @@ export function DestinationCard({
             </div>
           </dl>
 
-          {/* The UNENCRYPTED nudge, and it is deliberately the loudest thing on
-              the card.
-
-              A destination connected before bucket artifacts started being
-              encrypted has no keypair, so the agent skips the age layer and
-              writes plaintext dumps into the bucket. That state was already
-              stated - as "Encryption: Off (older destination)", four lines into
-              a detail grid you have to expand, in the neutral voice of a
-              setting. Two cards looked identical on their face while one of them
-              was writing an app's entire decrypted environment somewhere the
-              bucket's own file browser can read.
-
-              There is no in-place upgrade: the keypair is minted at creation and
-              the artifacts already written stay readable by whoever has the
-              bucket. So the nudge asks for the only thing that actually fixes
-              it, rather than offering a button that would quietly re-encrypt
-              nothing. */}
+          {/**
+           * The UNENCRYPTED nudge, and it is deliberately the loudest thing on the card. So
+           * the nudge asks for the only thing that actually fixes it, rather than offering a
+           * button that would quietly re-encrypt nothing.
+           */}
           {!encrypted && (
             <div className="flex w-full items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left">
               <ShieldOff className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
@@ -452,12 +430,10 @@ export function DestinationCard({
         onTested={() => router.refresh()}
       />
 
-      {/* The copy used to say backups "will stop running", which was not what
-          happened: the schedules and the whole run history are DELETED. And for
-          a server destination "the files are not deleted" left them on that disk
-          with nothing in Deplo able to name them again — reclaimable only over
-          SSH, which is the one thing this platform exists to make unnecessary.
-          So: say the real numbers, and offer the sweep. */}
+      {/**
+       * The copy used to say backups "will stop running", which was not what happened:
+       * the schedules and the whole run history are DELETED.
+       */}
       <ConfirmAction
         open={confirmOpen}
         onOpenChange={onConfirmOpenChange}
@@ -484,11 +460,9 @@ export function DestinationCard({
         extra={
           impact && impact.artifacts > 0 ? (
             <div className="grid gap-3">
-              {/* Removing the destination deletes its keypair with it. "The
-                  backup files stay on the server" was true and useless: what
-                  stays is ciphertext, and the only key that opens it is the one
-                  this dialog is about to destroy. Anyone who kept the files to
-                  be safe was keeping bytes nobody will ever read again. */}
+              {/**
+               * Removing the destination deletes its keypair with it.
+               */}
               {encrypted && !alsoDeleteFiles && !dest.recoveryKeySavedAt && (
                 <RecoveryKeyNudge
                   destinationId={dest.id}

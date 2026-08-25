@@ -7,15 +7,6 @@ import { gqlAction } from "@/lib/graphql-client";
 /**
  * The ONE delete-database confirmation — used by the Storage card menu and by the
  * database's Danger Zone, which only differ in where they go afterwards.
- *
- * Deleting a database is a real teardown, not a record removal: the server stops
- * and destroys the container and its data volume first, and the mutation REFUSES
- * (deleting nothing) when it can't prove that happened — an unreachable host, a
- * stack the agent couldn't remove. The operator gets that reason verbatim in the
- * toast, and only then the "delete it anyway" option {@link DeleteWithArtifacts}
- * renders, for the case that matters: a server that is never coming back, whose
- * databases would otherwise be undeletable (a server can't be removed while it
- * still hosts one).
  */
 export function DeleteDatabaseDialog({
   open,

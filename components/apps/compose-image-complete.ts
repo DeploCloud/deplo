@@ -6,14 +6,7 @@ import type {
 import { splitForCompletion } from "@/lib/registry/image-ref";
 
 /**
- * CodeMirror async completion source for `image:` lines inside the compose
- * editor. When the cursor sits on a service's `image:` value we offer registry
- * suggestions — image NAMES while the repository is being typed, and TAGS once a
- * `:` separates the tag. Backed by the same `/api/registry/images` proxy the
- * standalone image input uses (registries don't allow direct browser calls).
- *
- * This is what makes `image: dxflrs/garage:2.0.|` suggest `2.0.0`, `2.0.1`, …
- * directly in the YAML, instead of only in the Docker-image source tab.
+ * CodeMirror async completion source for `image:` lines inside the compose editor.
  */
 
 interface TagSuggestion {

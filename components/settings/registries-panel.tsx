@@ -73,12 +73,7 @@ const TYPE_META: Record<
 
 /**
  * The whole Registries page: one header, one grid of connected registries, one
- * empty state - the shape the Git settings page uses, for the same reason. A
- * registry is a host this team connected to, exactly like a git host, and two
- * pages that answer the same question have no business looking different.
- *
- * The page body is one client component because the header's Add button and the
- * dialog it opens are the same interaction.
+ * empty state - the shape the Git settings page uses, for the same reason.
  */
 export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
   return (

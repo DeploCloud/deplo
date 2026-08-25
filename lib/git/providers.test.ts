@@ -252,7 +252,8 @@ test("the token help link resolves against a self-hosted base URL", () => {
 
 /**
  * A secret that no longer decrypts (`decryptSecret` fails closed to `""` after a
- * `DEPLO_SECRET` rotation) must never verify.
+ * `DEPLO_SECRET` rotation) must never verify. The route refuses on an empty secret
+ * before any of them is called, and this is the second lock on the same door.
  */
 test("an empty secret never verifies, whatever arrives", () => {
   const headers = (h: Record<string, string>) => new Headers(h);

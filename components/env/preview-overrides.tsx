@@ -51,19 +51,9 @@ export interface PreviewOverride {
 }
 
 /**
- * Preview-only variable overrides (advanced).
- *
- * A preview inherits this app's variables exactly, which is what makes previews
- * work with no configuration at all. This is the escape hatch for the one case
- * that genuinely matters: pointing previews at a scratch database instead of the
- * production one. An override outranks the app's own value AND any shared
- * variable, in previews only.
- *
- * Built to read as the SIBLING of the variables table above it, not as a
- * different product: the same section heading, the same bordered table, the same
- * key/value/modified columns and the same row actions. It stays a disclosure —
- * an app that never opens it should not have to read past an empty box — but
- * everything inside the disclosure is the neighbour's furniture.
+ * Preview-only variable overrides (advanced). It stays a disclosure — an app that
+ * never opens it should not have to read past an empty box — but everything inside
+ * the disclosure is the neighbour's furniture.
  */
 export function PreviewOverrides({
   appId,
@@ -271,11 +261,11 @@ export function PreviewOverrides({
           </div>
         ))}
 
-      {/* Deliberately the same dialog as Add variable, down to the row editor
-          itself: overriding one value and adding one are the same act in the
-          user's head, and doing five of them a modal at a time is the kind of
-          thing nobody does twice. Same `.env` paste, same "Add another", same
-          rule about the secret toggle only speaking for a single row. */}
+      {/**
+       * Deliberately the same dialog as Add variable, down to the row editor itself:
+       * overriding one value and adding one are the same act in the user's head, and
+       * doing five of them a modal at a time is the kind of thing nobody does twice.
+       */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>

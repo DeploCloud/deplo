@@ -46,14 +46,7 @@ export const S3_TEST_REPORT_FIELDS = `
 /**
  * The full debug output of a destination's "Test connection": the verdict, the
  * probe sequence with the step it stopped at, the agent's verbatim message, and
- * the commands that reproduce the same calls by hand. Bucket or folder — the
- * report arrives already worded for the destination's kind (lib/data/s3-test-report.ts).
- *
- * Opens on the STORED result of the last test (`destinationTestReport` — reading it never
- * re-dials the bucket), so a failure can be read at leisure, and re-runs on
- * demand from here. Before this existed, a failing destination showed a red badge
- * and nothing else: the reason was thrown away, and the card even reported
- * success over it.
+ * the commands that reproduce the same calls by hand.
  */
 export function DestinationTestLogDialog({
   open,

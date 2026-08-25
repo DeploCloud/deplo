@@ -594,7 +594,9 @@ test("the sweep never touches a LIVE target, however old its runs", async () => 
 /* ------------------------------------------------------------------ */
 
 test("deleteAllBackupArtifacts (database) needs delete_databases, not manage_backups", async () => {
-  // It wipes every restore point a database has, with no undo.
+  // It wipes every restore point a database has, with no undo. Re-seed the whole
+  // identity graph with a SECOND member who holds exactly the capability the old gate
+  // accepted, and nothing that may destroy a database.
   await pg.exec(TRUNCATE_IDENTITY);
   await seedIdentity(db, {
     users: [

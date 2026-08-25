@@ -59,17 +59,6 @@ const plural = (n: number, one: string, many: string) =>
 
 /**
  * Hand this app to another team the viewer belongs to.
- *
- * The whole point of the dialog is that the operator reads what the move costs
- * BEFORE it happens, for the team they actually picked: the app leaves its
- * folder/project, its shared-variable links and backup schedules go, and its
- * GitHub connection survives only when the destination team owns an
- * installation on the repository's account. Those consequences are per-target,
- * so the list re-renders as the team changes rather than being generic prose.
- *
- * Confirmation is by typing the app name ({@link ConfirmAction}) — from the
- * source team's side a transfer is one-way: only a member of the destination
- * team can hand it back.
  */
 export function TransferTeamDialog({
   trigger,

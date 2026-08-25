@@ -15,12 +15,6 @@ import type {
 /**
  * The build-method-aware "Build & Output" section of the NEW-APP WIZARD: build
  * method, the commands, and the runtime, in the order the questions get asked.
- *
- * Owns no persistence: the parent holds the BuildConfig and decides how/when to
- * save it. The app's settings page does NOT use this — it lays the same
- * configuration out as a pipeline (`settings/build-output-card.tsx`), where a
- * deployed app can also correct the framework deplo detected. Nothing to correct
- * here: the wizard runs before the first deploy has read anything.
  */
 export function BuildConfigFields({
   build,
@@ -45,13 +39,7 @@ export function BuildConfigFields({
   }
 
   // Build command / start command / Node version are optional OVERRIDES for the
-  // auto-detecting builders. Show each only where the deploy path (agent-side
-  // builders) actually consumes it, so a field never silently does nothing:
-  //  - nixpacks: build (-b) + start (-s) commands + Node (NIXPACKS_NODE_VERSION)
-  //  - railpack: build + start commands + Node (RAILPACK_{BUILD,START}_CMD / _NODE_VERSION)
-  //  - static:   build command (produces the assets) + Node (the builder stage).
-  //              No start command — nginx serves the output, there is no app process.
-  //  - dockerfile: none — the repo's Dockerfile owns install/build/run.
+  // auto-detecting builders.
   const method = build.buildMethod;
   const showBuildCommand =
     method === "nixpacks" || method === "railpack" || method === "static";
@@ -61,14 +49,6 @@ export function BuildConfigFields({
   const showCommands = showBuildCommand || showStartCommand;
 
   // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
-  // Only a valid positive integer is committed to the build config; while the
-  // field is blank/invalid the last committed port stays put (so clearing it to
-  // type a new number no longer snaps the default straight back).
-  //
-  // `null` means "no draft — show the committed port", which is also what makes
-  // a port set from OUTSIDE (the wizard seeding the framework's own port) appear
-  // immediately, while a draft in progress keeps the user's own text until they
-  // leave the field.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const portText = portDraft ?? String(build.port);
 

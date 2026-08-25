@@ -18,7 +18,7 @@ import { htpasswdLine } from "../crypto";
 
 /**
  * These lock the two properties that make rewriting a live host's reverse-proxy
- * config survivable: 1. NOTHING the host already had is dropped.
+ * config survivable: 1.
  */
 
 /** What install-agent.sh actually writes, acme path expanded as the shell leaves it. */
@@ -409,7 +409,8 @@ test("a proxy that issues no certificates refuses the setting instead of pretend
 /* ------------------------------------------------------------------ */
 
 /**
- * The certificate half locks three things: 1.
+ * The certificate half locks three things: 1. an operator's own file provider is
+ * used, never duplicated.
  */
 const CERT = {
   certPem: "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n",
@@ -755,8 +756,7 @@ test("turning HTTPS off moves the panel to plain http, and back", () => {
 
 test("a plain-http panel outranks the entrypoint redirect, which is what makes it reachable", () => {
   // MEASURED on traefik:v3.7, not assumed: an entrypoint redirection answers 301
-  // ahead of EVERY router on that entrypoint, including one pinned to MaxInt32. Its
-  // own priority is the only lever, so publishing an http route pins it.
+  // ahead of EVERY router on that entrypoint, including one pinned to MaxInt32.
   assert.ok(
     !commandOf(INSTALLED).some((c) =>
       c.includes("redirections.entrypoint.priority"),

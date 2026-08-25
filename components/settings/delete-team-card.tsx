@@ -9,10 +9,8 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Settings → General danger zone. Rendered only for members who may delete the
- * team (founder / instance admin — gated server-side in the page AND re-checked
- * in the mutation). `onlyTeam` disables the action with an explanation: a user
- * must always keep at least one team.
+ * Settings → General danger zone. `onlyTeam` disables the action with an
+ * explanation: a user must always keep at least one team.
  */
 export function DeleteTeamCard({
   teamId,

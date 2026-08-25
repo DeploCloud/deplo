@@ -22,18 +22,7 @@ import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
  * The engine's own config files (Advanced): `postgresql.conf`, `my.cnf`,
- * `redis.conf`, a script under `/docker-entrypoint-initdb.d`. The third expert
- * override, next to image and command — and the one an engine's own
- * documentation assumes you have.
- *
- * It differs from its neighbours in one visible way, and the copy says so
- * twice: saving APPLIES. The image and command overrides change what the next
- * Redeploy builds; a config file changes what the running engine reads, so the
- * save writes the file and recreates the container.
- *
- * Every rule the server enforces is linted here too (relative file name,
- * absolute container path, nothing inside the data directory) so the form
- * refuses what the mutation would refuse, in the same words.
+ * `redis.conf`, a script under `/docker-entrypoint-initdb.d`.
  */
 
 /** ~40KB of CodeMirror, loaded only when a database actually has a file. */

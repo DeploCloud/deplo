@@ -46,25 +46,12 @@ import type {
 } from "@/lib/types";
 
 /**
- * The three the picker leads with. They are the three that are not beta, which
- * is the same thing as the three we are confident about — but SPELLED OUT
- * rather than derived from `beta`, so a channel leaving beta does not silently
- * become a fourth tile in a three-column grid.
+ * The three the picker leads with.
  */
 const FEATURED: NotificationChannel[] = ["discord", "email", "webhook"];
 
 /**
  * The notification settings.
- *
- * The page is a LIST OF CONFIGURED CHANNELS and nothing else — not the twelve
- * types, the ones this team actually set up, and a type may appear as many
- * times as it likes. Two Discord rooms with different alert lists is the normal
- * case, so a row is one destination rather than one kind.
- *
- * Everything editable lives in one modal, which serves both add and edit: a
- * type picker when there is nothing yet, then the name, that kind's fields, and
- * its own alert list. Opening snapshots the draft and dismissing throws it away,
- * so Save means exactly what it says.
  */
 export function NotificationsPanel({
   initial,
@@ -122,10 +109,9 @@ export function NotificationsPanel({
     setDraft({
       kind,
       name: "",
-      // Every kind starts on, EXCEPT browser push: turning that switch on is
-      // what asks this device for permission and registers it (`toggle`), so a
-      // push channel born already-on would be saved enabled with no device
-      // behind it and would deliver nothing, silently, for ever.
+      // Every kind starts on, EXCEPT browser push: turning that switch on is what asks
+      // this device for permission and registers it (`toggle`), so a push channel born
+      // already-on would be saved enabled with no device behind it and would deliver
       enabled: kind !== "push",
       // ntfy is the one kind with a meaningful default address.
       url: kind === "ntfy" ? "https://ntfy.sh" : "",
@@ -239,10 +225,10 @@ export function NotificationsPanel({
 
   return (
     <div className="space-y-6">
-      {/* The page header lives HERE, not in the server page, because "Add
-          channel" belongs in it and only this component can open the modal.
-          Putting the action at page level is what lets the empty state drop the
-          card entirely and still leave exactly one button on screen. */}
+      {/**
+       * The page header lives HERE, not in the server page, because "Add channel" belongs
+       * in it and only this component can open the modal.
+       */}
       <PageHeader
         title="Notifications"
         description="Pick a channel, then pick what it should tell you about."
@@ -277,10 +263,8 @@ export function NotificationsPanel({
               description="Add a channel, then pick what it should tell you about."
             />
           ) : (
-            // No wrapper card: the channels ARE the cards, and a card holding
-            // cards is two surfaces for one list. What the card header carried
-            // that is worth keeping - the count, and the line explaining what a
-            // channel is - becomes a plain heading row above the grid.
+            // No wrapper card: the channels ARE the cards, and a card holding cards is two
+            // surfaces for one list.
             <div className="space-y-3">
               <div className="flex w-fit flex-wrap items-center gap-1.5 px-1 text-sm font-medium">
                 <Bell className="size-4" />
@@ -318,14 +302,11 @@ export function NotificationsPanel({
         )}
       </div>
 
-      {/* ONE modal for whichever channel is open, so only one alert picker is
-          ever mounted - which is also what keeps its per-row DOM ids unique.
-          Its height is FIXED, not content-driven: the twelve kinds range from no
-          fields at all to six, and a modal that resized to each of them would
-          jump every time you opened a different one. Only the middle row
-          scrolls, so the channel stays named and its buttons stay reachable
-          however far down the alert list you are. `max-h` is a floor for short
-          viewports - without it a 600px laptop would push the footer off screen. */}
+      {/**
+       * ONE modal for whichever channel is open, so only one alert picker is ever mounted
+       * - which is also what keeps its per-row DOM ids unique. `max-h` is a floor for
+       * short viewports - without it a 600px laptop would push the footer off screen.
+       */}
       <Dialog open={open} onOpenChange={(next) => !next && setOpen(false)}>
         <DialogContent
           selfManaged

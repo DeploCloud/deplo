@@ -156,10 +156,11 @@ export function AddServer({
                 hour. It is shown only now; if you lose it, re-mint one from the
                 server&rsquo;s menu.
               </p>
-              {/* Over plain http the installer AND its checksum travel on the same
-                  unauthenticated channel, so anyone on the network path between the
-                  two machines can replace what runs as root here. Nothing in the
-                  command can fix that — the operator has to know. */}
+              {/**
+               * Over plain http the installer AND its checksum travel on the same unauthenticated
+               * channel, so anyone on the network path between the two machines can replace what
+               * runs as root here.
+               */}
               {command.includes("http://") ? (
                 <p className="text-xs text-warning">
                   This panel is on an http address, so the installer is
@@ -200,11 +201,9 @@ export function AddServer({
                 onChange={setAccess}
                 disabled={pending}
               />
-              {/* What the box is for. A choice rather than two checkboxes: the
-                  three are mutually exclusive, and each one changes what the
-                  installer does on the host. Only the build axis can be revised
-                  afterwards - the backups option skips installing Docker, which
-                  no later setting can undo. */}
+              {/**
+               * What the box is for.
+               */}
               <div className="space-y-2">
                 <FieldLabel info="Changes what the install command sets up on the host. Most servers should do everything.">
                   What this server is for

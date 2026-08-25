@@ -37,11 +37,7 @@ type BackupRunLite = {
 };
 
 /**
- * Lists a backup target's recent runs and restores a chosen one in place. Used
- * from the storage Backups table (a schedule row's "Restore…" action) where the
- * runs aren't already on the page — so it lazy-loads them via `backupRuns` the
- * first time it opens. Restore is irreversible (overwrites the live target), so
- * each one is behind a typed confirmation.
+ * Lists a backup target's recent runs and restores a chosen one in place.
  */
 export function RestoreRunsDialog({
   open,
@@ -60,10 +56,8 @@ export function RestoreRunsDialog({
   const [runs, setRuns] = React.useState<BackupRunLite[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Lazy-load on open; reload each time it opens so the list stays current after
-  // a fresh "Run now". Aborts if the dialog closes mid-flight. The `runs`/`error`
-  // reset happens on CLOSE (handleOpenChange) — keeping the effect body free of a
-  // synchronous setState so loading state is null again before the next open.
+  // Lazy-load on open; reload each time it opens so the list stays current after a
+  // fresh "Run now".
   React.useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -177,10 +171,10 @@ function RestoreRunRow({
           <StatusDot status={run.status} />
           {run.status}
         </span>
-        {/* Only for the old runs: everything taken since carries a checksum, so
-            saying "verified" on the normal case would be noise. Saying nothing
-            on this one would be worse - the operator is about to overwrite live
-            data from a file Deplo cannot vouch for. */}
+        {/**
+         * Only for the old runs: everything taken since carries a checksum, so saying
+         * "verified" on the normal case would be noise.
+         */}
         {!run.verified && (
           <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
             <span className="mt-1 block text-[10px] text-muted-foreground">

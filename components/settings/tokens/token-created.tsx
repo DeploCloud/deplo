@@ -8,12 +8,6 @@ import { CommandLine } from "@/components/shared/code-block";
 
 /**
  * The one time a token's secret is ever shown.
- *
- * Deliberately a page state and not a dialog: a modal is dismissible by Escape
- * and by clicking away, and this is the single screen in deplo where an
- * accidental dismissal loses something unrecoverable. Taking over the create
- * page also means nobody is left standing on a filled-in form for a token that
- * already exists, one Enter away from minting a second one.
  */
 export function TokenCreated({
   raw,

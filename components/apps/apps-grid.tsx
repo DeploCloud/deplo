@@ -94,10 +94,9 @@ type ProjectRef = { id: string; name: string };
 export type TrailSeg = { id: string; name: string; href?: string };
 
 function gridClass(view: "grid" | "list"): string {
-  // Grid view: 1 col on mobile, 2 from sm up, and 3 only on Full-HD (1920px)
-  // screens and wider (the `3xl` breakpoint) — applied to every grouped surface
-  // (Overview, folder contents, sub-folders, projects). Sibling galleries
-  // (Templates, Apps) mirror this exact scheme.
+  // Grid view: 1 col on mobile, 2 from sm up, and 3 only on Full-HD (1920px) screens
+  // and wider (the `3xl` breakpoint) — applied to every grouped surface (Overview,
+  // folder contents, sub-folders, projects).
   return view === "list"
     ? "flex flex-col gap-3"
     : "grid gap-4 sm:grid-cols-2 3xl:grid-cols-3";
@@ -131,16 +130,8 @@ interface SelectionBulk {
 }
 
 /**
- * The dynamic BULK-actions bar. It floats at the bottom of the viewport whenever
- * one or more cards are selected (marquee drag / ⌘-click), replacing what used to
- * be a right-click menu. "New folder with selection" is a CREATE action (gated on
- * `canCreateFolder`); Move is gated on `canMoveApps` - the same permission the
- * server checks per app and per destination folder - and both only appear while
- * the selection actually contains apps. Delete carries its
- * own already-resolved gate (`selection.canDelete`) because projects, folders and
- * apps don't share one. Select all + Clear are always shown. Keyboard shortcuts
- * (⌘A / Esc / ⌫) stay wired on the grid regardless of the bar. This is the one
- * place the bulk actions live.
+ * The dynamic BULK-actions bar. Delete carries its own already-resolved gate
+ * (`selection.canDelete`) because projects, folders and apps don't share one.
  */
 function SelectionActionBar({
   selection,
@@ -258,10 +249,10 @@ export interface AppsGridProps {
   /** Drag-to-REORDER is enabled - a team-wide arrangement, so `manage_team` or
    *  an instance admin (off during search). */
   canReorder: boolean;
-  /** Drag-into-folder / into-project and the Move actions are enabled - the
-   *  viewer holds `move_apps` somewhere (off during search). Separate from
-   *  `canReorder` on purpose: moving one app and arranging everyone's grid are
-   *  different permissions, and holding only the first must still work. */
+  /**
+   * Drag-into-folder / into-project and the Move actions are enabled - the viewer
+   * holds `move_apps` somewhere (off during search).
+   */
   canMoveApps: boolean;
   /** The viewer may CREATE folders (has `deploy`, or is an instance admin) —
    *  gates the "New ▸ Folder" and "New folder with selection" affordances. */
@@ -282,26 +273,11 @@ export interface AppsGridProps {
 /**
  * Overview project grid with team-wide drag-to-reorder, folders, and
  * drag-into-folder.
- *
- * The drag does two DIFFERENT things, and they are two different permissions:
- * dropping a card next to another writes the team-level order (everyone sees the
- * same arrangement, so `manage_team` / instance admin - `canReorder`), while
- * dropping it onto a folder, a project or the breadcrumb MOVES that one app
- * (`move_apps` - `canMoveApps`). Holding either one gets the dnd-kit grid, with
- * only the drops it may actually perform wired up; holding neither (or searching,
- * where there is nothing to drop onto) renders statically with no dnd at all.
- *
- * Reordering is purely DRAG-BOUND: there is no toolbar, no instructional banner,
- * and no lingering "edit"/jiggle mode. Cards jiggle only while a drag is in
- * flight and settle the instant the pointer is released (onDragEnd/onDragCancel).
  */
 export function AppsGrid(props: AppsGridProps) {
-  // Deleting is OPTIMISTIC: an app's delete is recorded server-side before its
-  // stack comes down, so by the time the mutation answers the app is gone from
-  // the product and the card has no reason to still be there. It used to stay,
-  // dimmed and pulsing, until the teardown finished — except nothing tells the
-  // Overview when that happens, so it pulsed until the next navigation. The
-  // card goes now; the teardown runs on the host behind it.
+  // Deleting is OPTIMISTIC: an app's delete is recorded server-side before its stack
+  // comes down, so by the time the mutation answers the app is gone from the product
+  // and the card has no reason to still be there.
   const [deleted, setDeleted] = React.useState<ReadonlySet<string>>(new Set());
   const hide = React.useCallback(
     (ids: string[]) => setDeleted((prev) => new Set([...prev, ...ids])),
@@ -416,13 +392,7 @@ function StaticGrid({
 }
 
 /**
- * The drill-in breadcrumb: "Overview / A / B / Current". Every ancestor segment
- * links to that level; the last (current) folder or project is plain text. A
- * segment can carry its own `href` (the project segment links to `/?project=`).
- *
- * Exported so an EMPTY open folder/project (which renders a full-page empty
- * state instead of this grid) can still show the same trail above it — the
- * breadcrumb is the only way back out, so it must survive having no contents.
+ * The drill-in breadcrumb: "Overview / A / B / Current".
  */
 export function FolderTrail({
   path,
@@ -488,11 +458,8 @@ function SortableGrid({
   const router = useRouter();
   const [, startTransition] = React.useTransition();
 
-  // Local optimistic order for snappy moves. The order arrays are the sole
-  // source of arrangement; the card objects always come from props (so status
-  // etc. stay fresh). The parent keys this component on the *membership* of the
-  // grid (the sets of project + folder ids), so a reorder/move never remounts
-  // it — letting the drag survive a drop — while add/remove re-seeds.
+  // Local optimistic order for snappy moves. The order arrays are the sole source of
+  // arrangement; the card objects always come from props (so status etc.
   const [order, setOrder] = React.useState<string[]>(() => allAppIds);
   const [folderOrder, setFolderOrder] = React.useState<string[]>(() =>
     folders.map((f) => f.id),
@@ -500,10 +467,8 @@ function SortableGrid({
   const [projectOrder, setProjectOrder] = React.useState<string[]>(() =>
     projects.map((p) => p.id),
   );
-  // Apps AND folders optimistically hidden from the current view while a
-  // move (into a folder or a project container) round-trips. Cleared whenever
-  // the visible projection actually changes (the refresh landing, or navigating
-  // in/out of a folder/project) — see the render-time reset below.
+  // Apps AND folders optimistically hidden from the current view while a move (into a
+  // folder or a project container) round-trips.
   const [movedIds, setMovedIds] = React.useState<Set<string>>(() => new Set());
   // The card's own move menu drives the same optimistic hide the drag does.
   const hideMoved = React.useCallback(
@@ -540,10 +505,8 @@ function SortableGrid({
     [projects],
   );
 
-  // Clear optimistic move-hides whenever the visible projection actually changes
-  // — the move's refresh landing, or navigating in/out of a folder. Done in
-  // render via the previous-value pattern (not an effect) so it never triggers a
-  // cascading render; a pending move keeps its hide until its own refresh lands.
+  // Clear optimistic move-hides whenever the visible projection actually changes —
+  // the move's refresh landing, or navigating in/out of a folder.
   const sig = [
     ...services.map((p) => `${p.id}:${p.folderId ?? ""}`),
     ...folders.map((f) => `${f.id}:${f.parentId ?? ""}`),
@@ -637,10 +600,7 @@ function SortableGrid({
     selectAll,
   } = useCardSelection(selectableIds);
 
-  // Only ever count / act on selected ids that are STILL on screen, in display
-  // order. A card moved into a folder (or deleted) without a remount leaves a
-  // stale id in `selected`; intersecting with the currently-selectable ids keeps
-  // the count honest and stops a stale id from becoming a bulk target.
+  // Only ever count / act on selected ids that are STILL on screen, in display order.
   const effectiveSelected = React.useMemo(
     () => selectableIds.filter((id) => selected.has(id)),
     [selectableIds, selected],
@@ -675,9 +635,7 @@ function SortableGrid({
   );
 
   // Deleting apps/folders is the team-wide super-user action; deleting a project
-  // container needs `deploy` (the same gate as its own ⋯ menu). A mixed
-  // selection therefore needs both — otherwise the bar would offer a Delete that
-  // half-fails on the server.
+  // container needs `deploy` (the same gate as its own ⋯ menu).
   const canDeleteSelection =
     selectionCount > 0 &&
     (selectedProjectIds.length === 0 || canManageProjects) &&
@@ -685,9 +643,8 @@ function SortableGrid({
       canManageAllFolders);
 
   // The confirm copy names exactly what is selected: the three kinds have very
-  // different consequences (only apps are actually destroyed — a folder or a
-  // project is just removed, its contents survive), so one fixed sentence would
-  // either scare or mislead depending on the selection.
+  // different consequences (only apps are actually destroyed — a folder or a project
+  // is just removed, its contents survive), so one fixed sentence would either scare
   const deleteParts: string[] = [];
   if (selectedAppIds.length)
     deleteParts.push(
@@ -804,9 +761,7 @@ function SortableGrid({
     // rather than starting a reorder.
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     // Touch: a short hold before a drag begins, so a tap navigates and a brief
-    // rest-then-swipe still scrolls the page; only a deliberate hold-and-drag
-    // reorders. Releasing always ends the drag — there is no separate hold-to-
-    // edit gesture any more.
+    // rest-then-swipe still scrolls the page; only a deliberate hold-and-drag reorders.
     useSensor(TouchSensor, {
       activationConstraint: { delay: 220, tolerance: 8 },
     }),
@@ -844,11 +799,8 @@ function SortableGrid({
     });
   }
 
-  // Move a nested SUB-FOLDER out one level — to the open folder's own parent, or
-  // to the top level when that parent is a root. Same optimistic-hide + refresh +
-  // revert contract as moveApp; only called with a folder open (there is no level
-  // to climb out to otherwise). The server rejects cyclic moves, but "out" is
-  // always safe.
+  // Move a nested SUB-FOLDER out one level — to the open folder's own parent, or to
+  // the top level when that parent is a root.
   function moveFolderOut(folderId: string) {
     const dest = openFolder?.parentId ?? null;
     setMovedIds((prev) => new Set(prev).add(folderId));
@@ -917,10 +869,9 @@ function SortableGrid({
         clearSelection();
       } else {
         toast.error(failed.error);
-        // Revert the whole batch's optimistic hide (like the single-item move):
-        // if EVERY mutation failed the refresh returns identical props, the sig
-        // never changes, and un-reverted ids would stay invisible forever. Any
-        // ids that DID move are re-hidden by the refresh itself.
+        // Revert the whole batch's optimistic hide (like the single-item move): if EVERY
+        // mutation failed the refresh returns identical props, the sig never changes, and
+        // un-reverted ids would stay invisible forever.
         setMovedIds((prev) => {
           const next = new Set(prev);
           ids.forEach((id) => next.delete(id));
@@ -986,12 +937,7 @@ function SortableGrid({
 
   // Restrict each card kind to the droppables it can meaningfully land on, so
   // closestCenter never resolves a drag onto a neighbour the drop handler would
-  // ignore (which makes reordering feel broken):
-  //  - a project container only reorders among other projects;
-  //  - a folder only reorders among other folders (folders never enter a
-  //    project — ADR-0009: a project's contents are its environments' apps);
-  //  - an app keeps every droppable (siblings to reorder among, folders and
-  //    projects to drop into, and the breadcrumb to move out a level).
+  // ignore (which makes reordering feel broken): - a project container only reorders
   const collisionDetection = React.useCallback<CollisionDetection>(
     (args) => {
       const a = String(args.active.id);
@@ -1033,11 +979,7 @@ function SortableGrid({
     if (!over) return;
     const a = String(active.id);
     const o = String(over.id);
-    // Which drops this viewer may actually perform. Both branches are reachable
-    // from the same drag, so each one asks for its own permission rather than
-    // the grid deciding once: a member with only `move_apps` files cards into
-    // folders and projects but never rewrites the team's arrangement, and a
-    // member with only `manage_team` arranges without moving anything.
+    // Which drops this viewer may actually perform.
 
     const aIsFolder = folderIdSet.has(a);
     const aIsProject = projectIdSet.has(a);
@@ -1403,11 +1345,9 @@ function DroppableBreadcrumb({
 }
 
 /**
- * Sortable wrapper shared by project + folder cards. Provides the dnd-kit
- * sortable node, a keyboard drag handle, the drag-bound jiggle, and swallows the
- * click dnd-kit emits on the dragged card after a drop (so a drag never
- * navigates). Children render with the handle, the link-inert flag, and whether
- * a draggable is currently over this node (for the folder drop highlight).
+ * Sortable wrapper shared by project + folder cards. Provides the dnd-kit sortable
+ * node, a keyboard drag handle, the drag-bound jiggle, and swallows the click
+ * dnd-kit emits on the dragged card after a drop (so a drag never navigates).
  */
 function SortableItem({
   id,
@@ -1463,9 +1403,8 @@ function SortableItem({
   const { onKeyDown: keyboardListener, ...rawPointerDragListeners } =
     listeners ?? {};
   // …and scoped to the card's own DOM: a press inside a menu or modal THIS card
-  // rendered still reaches these listeners through the React tree (portals move
-  // the DOM node, not the React parent), and must never pick the card up under
-  // the backdrop. See lib/portal-event-scope.ts.
+  // rendered still reaches these listeners through the React tree (portals move the
+  // DOM node, not the React parent), and must never pick the card up under the
   const pointerDragListeners = scopeListenersToSubtree(rawPointerDragListeners);
   // Drop the draggable's role="button" (and its role-only ARIA companions) from
   // the wrapper: it also hosts the ⋯ menu button, and a button must not nest one.
@@ -1479,12 +1418,9 @@ function SortableItem({
     ...wrapperAttributes
   } = attributes;
 
-  // Belt-and-suspenders for the trailing click after a drag: dnd-kit already
-  // stops that click at the document level, but if it slips through we swallow
-  // it so a drag never navigates. CRITICAL: the latch must SELF-CLEAR on drag
-  // end — not only inside onClickCapture — because when dnd-kit eats the click
-  // our handler never runs, and a left-true latch would then eat the user's NEXT
-  // genuine click (or modifier-select) on this same (never-remounted) card.
+  // Belt-and-suspenders for the trailing click after a drag: dnd-kit already stops
+  // that click at the document level, but if it slips through we swallow it so a drag
+  // never navigates.
   const draggedRef = React.useRef(false);
   React.useEffect(() => {
     if (isDragging) {
@@ -1500,10 +1436,9 @@ function SortableItem({
   }, [isDragging]);
 
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
-    // Menus and modals this card opens are portalled to <body> but stay REACT
-    // children of it, so their clicks arrive here first (capture runs before the
-    // event ever reaches the surface, so the surface cannot stop it — see
-    // lib/portal-event-scope.ts). Only clicks physically inside the card are ours.
+    // Menus and modals this card opens are portalled to <body> but stay REACT children
+    // of it, so their clicks arrive here first (capture runs before the event ever
+    // reaches the surface, so the surface cannot stop it — see
     if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(
       (e.target as HTMLElement).closest?.("[data-card-actions]"),
@@ -1560,11 +1495,9 @@ function SortableItem({
       {...wrapperAttributes}
       {...pointerDragListeners}
     >
-      {/* Inner wrapper carries the jiggle (non-active cards). The card actually
-          being dragged is rendered by the floating <DragOverlay> clone (which
-          tracks the cursor with the lift); here the original is left as a dimmed
-          placeholder that holds — and, when hovering a folder, collapses — its
-          slot in the grid flow. */}
+      {/**
+       * Inner wrapper carries the jiggle (non-active cards).
+       */}
       <div
         className={cn(
           "rounded-xl",

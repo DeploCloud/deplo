@@ -20,10 +20,8 @@ const DialogOverlay = React.forwardRef<
     ref={ref}
     className={cn(
       // pointer-events-auto is load-bearing: while a modal is open Radix sets
-      // `pointer-events: none` on <body>, which the overlay would otherwise
-      // INHERIT — letting clicks fall through to background elements that opt
-      // back in with pointer-events-auto (e.g. the cards' stretched-link
-      // controls). Making the overlay capture pointer events blocks all of them.
+      // `pointer-events: none` on <body>, which the overlay would otherwise INHERIT —
+      // letting clicks fall through to background elements that opt back in with
       "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
@@ -69,26 +67,12 @@ const DialogContent = React.forwardRef<
           }}
           className={cn(
             // grid-cols-[minmax(0,1fr)]: a grid item's automatic minimum size is its
-            // min-content width, so one wide child (an unwrapped <pre>, a long URL)
-            // would stretch the column past max-w-* and push the content out of the
-            // modal instead of scrolling inside it. Pinning the column to min 0 makes
-            // the child's own overflow-auto do its job.
+            // min-content width, so one wide child (an unwrapped <pre>, a long URL) would
+            // stretch the column past max-w-* and push the content out of the modal instead of
             "fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] grid-cols-[minmax(0,1fr)] gap-4 rounded-xl border border-border bg-card p-6 shadow-2xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
-            // Centred with a translate and nothing bounding it, a dialog taller than
-            // the window used to run off BOTH edges at once - and Radix scroll-locks
-            // the page behind it, so neither end could be reached. Zooming in is all
-            // it takes.
-            //
-            // 85dvh, matching what the dialogs that already capped themselves chose:
-            // a modal that reaches within a few pixels of the viewport stops reading
-            // as a layer over the page and starts reading as the page. `dvh` rather
-            // than `vh` so a phone's collapsing browser chrome cannot hide the
-            // footer.
-            //
-            // `grid-rows-[minmax(0,1fr)]` as well as the cap: a grid row's automatic
-            // minimum size is its content, so the wrapper below would grow straight
-            // past the max-height and overflow the dialog instead of scrolling
-            // inside it. `min-h-0` on the item alone does not relax the TRACK.
+            // Centred with a translate and nothing bounding it, a dialog taller than the window
+            // used to run off BOTH edges at once - and Radix scroll-locks the page behind it,
+            // so neither end could be reached.
             !selfManaged && "max-h-[85dvh] grid-rows-[minmax(0,1fr)]",
             className,
           )}

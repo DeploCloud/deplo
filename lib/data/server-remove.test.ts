@@ -32,7 +32,8 @@ let pg: PGlite;
 const SERVER = "srv_target";
 const OTHER = "srv_other";
 /**
- * RFC 5737 TEST-NET-1, not the helper's default 10.0.0.1.
+ * RFC 5737 TEST-NET-1, not the helper's default 10.0.0.1. A TEST-NET address is
+ * guaranteed never to be assigned to an interface.
  */
 const REMOTE_IP = "192.0.2.10";
 /** What this instance believes its OWN address is, for the Deplo-host case. */

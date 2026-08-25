@@ -6,14 +6,9 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 /**
- * Docker-image reference input with live, registry-backed hinting.
- *
- * While the user types the repository part we suggest image NAMES (Docker Hub
- * search). Once they type a `:` we switch to suggesting TAGS for that image
- * (works on Docker Hub, GHCR, GitLab, Quay and generic OCI registries). On a
- * complete `image:tag` we validate that it actually resolves and show a status
- * badge. All registry calls go through `/api/registry/images` because the
- * registries don't allow direct browser requests.
+ * Docker-image reference input with live, registry-backed hinting. All registry
+ * calls go through `/api/registry/images` because the registries don't allow
+ * direct browser requests.
  */
 
 interface NameSuggestion {

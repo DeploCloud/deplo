@@ -265,8 +265,7 @@ function GlobalEnvDialog({
   const [key, setKey] = React.useState(editing?.key ?? "");
   // A secret's value is never sent to the client; prefill the MASK sentinel when
   // editing a secret so the operator can re-save it without re-entering it (the
-  // upsert keeps the stored value when it sees the unchanged MASK) — or
-  // overwrite it by typing. Plain vars prefill their real value.
+  // upsert keeps the stored value when it sees the unchanged MASK) — or overwrite it
   const [value, setValue] = React.useState(
     editing ? (editing.masked ? MASK : editing.value) : "",
   );

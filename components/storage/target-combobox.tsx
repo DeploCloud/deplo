@@ -24,12 +24,6 @@ export interface BackupTargetOption {
 
 /**
  * Pick the app or database a schedule backs up, by typing.
- *
- * A `<select>` of bare names was fine while a team had five apps and became a
- * scroll the moment it had fifty — with nothing to tell "api" from "api-2" but
- * the order they happened to be created in. So: the same combobox the
- * destination field uses, each row wearing the app's own icon (the one its card
- * and its header wear) and its slug underneath, and typing filtering over both.
  */
 export function TargetCombobox({
   targets,

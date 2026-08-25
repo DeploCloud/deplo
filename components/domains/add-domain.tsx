@@ -136,10 +136,9 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
         ),
       {
         onSuccess: (data) => {
-          // DNS was checked as part of the add, so the toast reports the real
-          // outcome: a pre-pointed host is already live; an unpointed one is
-          // watched automatically from the domains page — never a generic
-          // "now go verify" chore.
+          // DNS was checked as part of the add, so the toast reports the real outcome: a
+          // pre-pointed host is already live; an unpointed one is watched automatically from
+          // the domains page — never a generic "now go verify" chore.
           const status = data?.addDomain.status;
           if (status === "valid")
             toast.success(

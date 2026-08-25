@@ -6,12 +6,6 @@ import type { RuntimeSnapshot } from "@/lib/apps/display-status";
 
 /**
  * Poll what an app's containers are ACTUALLY doing on the host.
- *
- * The `appStatus` subscription only fires when the control plane itself changes
- * something (deploy / start / stop) — nothing pushes when a container dies on
- * its own, which is exactly when the stored status starts lying. So the truth
- * has to be pulled: a short poll of the agent-backed `appRuntime` query, held
- * for 3s server-side so several watchers of the same app cost one round trip.
  */
 
 const APP_RUNTIME_QUERY = /* GraphQL */ `

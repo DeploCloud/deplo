@@ -39,14 +39,7 @@ import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
 import type { ApiTokenDTO } from "@/lib/data/tokens";
 
 /**
- * Your API tokens, and the ones that can act in the active team. A LIST, not a
- * master-detail rail: nobody compares two tokens side by side, and what you
- * actually do here is scan metadata — how much power, over what, last used when.
- * That is columns. It also leaves the editor the full page width, which is what
- * forty permission checkboxes need.
- *
- * The list spans teams, so it carries a Team column: without it two credentials
- * called "CI" are the same row twice.
+ * Your API tokens, and the ones that can act in the active team.
  */
 export function TokensList({
   tokens,
@@ -209,10 +202,10 @@ export function TokensList({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    {/* Same rule the token's own page applies: an OAuth
-                        connection is re-authored by connecting again, and a
-                        token managed in another team can only be revoked here.
-                        Both still open — as a read-only view, so say View. */}
+                    {/**
+                     * Same rule the token's own page applies: an OAuth connection is re-authored by
+                     * connecting again, and a token managed in another team can only be revoked here.
+                     */}
                     <Button asChild variant="ghost" size="icon-sm">
                       <Link
                         href={`/settings/tokens/${t.id}`}

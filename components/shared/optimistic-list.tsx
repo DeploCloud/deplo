@@ -6,25 +6,6 @@ import { useOptimisticRemove } from "./use-optimistic-remove";
 
 /**
  * Optimistic removal for a list an RSC page maps itself.
- *
- * `useOptimisticRemove` needs the ARRAY, which a client component has and a
- * server-rendered page does not: the page maps its rows and the rows own their
- * delete. Rather than lifting three such lists (domains, backup destinations,
- * backup schedules) into client components that would have to re-declare every
- * prop, this wraps the rows the page already rendered and hides them by key —
- * the same bookkeeping, one component up.
- *
- *     <OptimisticList>
- *       {domains.map((d) => <DomainRow key={d.id} domain={d} … />)}
- *       <PendingRows columns={3} />        // no key of its own: never hidden
- *     </OptimisticList>
- *
- * and inside the row:
- *
- *     const { hide, restore } = useOptimisticRow(domain.id);
- *
- * A row used outside a list (there are a few) gets a no-op pair rather than a
- * crash: it simply waits for the refresh, which is exactly what it does today.
  */
 type OptimisticListApi = {
   hide: (key: string) => void;

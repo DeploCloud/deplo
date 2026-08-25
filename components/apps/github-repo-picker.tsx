@@ -51,11 +51,9 @@ function installationSettingsUrl(inst: GithubInstallationDTO): string {
 }
 
 /**
- * How an installation reads in the switcher: the connected GitHub App's name
- * first (that's what decides which repositories are reachable — the same
- * account can host several Apps with different access), with the account it is
- * installed on as muted context, since one App can also be installed on more
- * than one account.
+ * How an installation reads in the switcher: the connected GitHub App's name first
+ * (that's what decides which repositories are reachable — the same account can
+ * host several Apps with different access), with the account it is installed on as
  */
 function InstallationLabel({ inst }: { inst: GithubInstallationDTO }) {
   return (
@@ -104,15 +102,6 @@ function ConnectPanel() {
 /**
  * Repo source picker for the GitHub deploy source (app settings + the new-app
  * wizard): choose the connected account, then pick a repository and branch.
- *
- * This component owns only the GitHub-specific half — WHICH App installation
- * you deploy through. Browsing the repositories is {@link RepoBrowser}, shared
- * with every other provider so they all behave identically.
- *
- * The account switcher is ALWAYS rendered — even with zero connected Apps — so
- * the layout never jumps and there's always an obvious path to connect or manage
- * Apps. `manageHref`, when set, adds a "Manage connected apps" affordance
- * linking to the team's GitHub settings.
  */
 export function GithubRepoPicker({
   installations,
@@ -123,10 +112,6 @@ export function GithubRepoPicker({
   installations: GithubInstallationDTO[];
   /**
    * Pre-select a repo/branch already attached to the app (settings flow).
-   * The installation is matched by id; when it isn't among the connected
-   * installations (the App was reinstalled, or the app was imported and never
-   * had one) NOTHING is selected - the switcher says so rather than showing an
-   * App the app does not actually deploy through.
    */
   initial?: {
     installationId?: string | null;
@@ -146,10 +131,7 @@ export function GithubRepoPicker({
   const [installationId, setInstallationId] = React.useState(() =>
     pickerInstallationId(initial, installations),
   );
-  // An app that carries a repo but no App to reach it through. The row is legal
-  // (a public repo clones anonymously) but it is almost never what was meant,
-  // and until now nothing on this screen said so - the switcher simply showed
-  // the first connected App as though it were linked.
+  // An app that carries a repo but no App to reach it through.
   const unlinkedRepo = Boolean(
     initial && !installationId && installations.length > 0,
   );

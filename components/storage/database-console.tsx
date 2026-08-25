@@ -11,11 +11,8 @@ import type { ConsoleInstance } from "@/lib/data/console";
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
- * A database's console — the same {@link ConsolePane} an App gets, pointed at
- * the database endpoints. All that differs is where a line is executed
- * (`execDatabaseConsole`), where attach streams from, and where the shell probe
- * asks; the toolbar, the shell picker, the Shell/Attach control and the warning
- * are one implementation now, so the two can't drift apart again.
+ * A database's console — the same {@link ConsolePane} an App gets, pointed at the
+ * database endpoints.
  */
 export function DatabaseConsole({
   id,

@@ -11,16 +11,7 @@ export const SECRET_EDIT_BLOCKED =
 
 /**
  * The pencil every variable table shows, and the ONE place that decides a secret
- * does not get one.
- *
- * A secret is write-only. The edit dialog used to let you untick "Secret", which
- * relabelled the row while keeping its ciphertext, so the next read handed back
- * the plaintext to anyone holding `manage_env`. The data layer refuses that now;
- * this is the half that stops a user discovering it by trying.
- *
- * Radix hangs a tooltip off the trigger's pointer events and a disabled `button`
- * emits none, so the button rides inside a span — the same shape
- * `components/apps/app-status-dot.tsx` uses.
+ * does not get one. A secret is write-only.
  */
 export function EnvEditButton({
   secret,

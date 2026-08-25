@@ -25,15 +25,9 @@ export function invalidRows(rows: EnvRow[]): EnvRow[] {
 }
 
 /**
- * The multi-row key/value editor: the one place a batch of variables is typed
- * in, shared by "Add variables" and "Add preview overrides" so adding five of
- * either is the same gesture.
- *
- * The rows are a small TABLE, not a stack of loose inputs: two labelled columns
- * the eye can run down, and cells that carry no border of their own - the same
- * shape the variables table shows them in afterwards. It renders the invalid-name
- * warning itself (it is about these rows); the caller reads {@link invalidRows}
- * to hold its own submit button closed.
+ * The multi-row key/value editor: the one place a batch of variables is typed in,
+ * shared by "Add variables" and "Add preview overrides" so adding five of either
+ * is the same gesture.
  */
 export function EnvRowsEditor({
   rows,
@@ -54,9 +48,8 @@ export function EnvRowsEditor({
   }
 
   // Pasting `.env` content into a key field explodes into editable rows. A key can
-  // never contain "=", so ANY paste that parses into at least one KEY=VALUE pair is
-  // a .env paste - including the single most common case, one `KEY=value` line.
-  // A paste with no "=" is just a key name and falls through to the normal paste.
+  // never contain "=", so ANY paste that parses into at least one KEY=VALUE pair is a
+  // .env paste - including the single most common case, one `KEY=value` line.
   function onPaste(i: number, e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
     const parsed = parseEnv(text);

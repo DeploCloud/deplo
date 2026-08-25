@@ -22,15 +22,6 @@ import type { ActionResult } from "@/lib/result";
 /**
  * Restore an app or a database from an artifact the operator has on their own
  * machine.
- *
- * The one recovery path that does not need this instance to remember anything:
- * every other restore starts from a run Deplo recorded, so a lost control plane
- * or a deleted destination takes the artifacts out of reach with it. Here the
- * file IS the restore point.
- *
- * Whether a recovery key is needed is read off the file rather than asked: an
- * encrypted artifact says so in its first bytes, and the file Deplo's own
- * Download hands over is already decrypted and needs none.
  */
 export function RestoreFromFile({
   target,
@@ -54,11 +45,11 @@ export function RestoreFromFile({
     <Button size="sm" variant="outline" disabled={!canRestore}>
       <Upload className="size-4" />
       Restore from file
-      {/* On the button, not inside the dialog: this is the newest way to put data
-          back and the only one whose input comes from outside the fleet, so the
-          maturity note belongs where someone decides to start - not after they
-          have already picked a file. `info` and not `warning`, like every other
-          Beta chip here: it is a maturity note, not something wrong. */}
+      {/**
+       * On the button, not inside the dialog: this is the newest way to put data back and
+       * the only one whose input comes from outside the fleet, so the maturity note
+       * belongs where someone decides to start - not after they have already picked a
+       */}
       <Badge variant="info" className="text-[10px] font-normal">
         Beta
       </Badge>

@@ -53,20 +53,6 @@ type LogsInfoResponse = {
 
 /**
  * Logs page body: an App's RUNTIME logs, and nothing else.
- *
- * The stream opens whenever a container EXISTS on the host — running,
- * restarting, or long dead. It used to gate on "the app is running", which hid
- * the logs in the one case where they matter most: a crash-looping container is
- * never in state "running", so the page sat on a spinner while `docker logs` on
- * the host printed the stack trace that explained the crash. `docker logs` reads
- * the container's log file, which outlives the process.
- *
- * BUILD logs are deliberately NOT here, in any state. They are one deployment's
- * finished transcript, not a live stream, and putting them behind a switch in
- * this toolbar made the pane claim to be something it was not — same chrome,
- * same colours, static output. They are read where they have always been read,
- * on the deployment's own page; with no container to stream, this pane says so
- * and links there.
  */
 export function LiveLogs({
   appId,
@@ -80,10 +66,11 @@ export function LiveLogs({
   toolbar,
 }: {
   appId: string;
-  /** The App's name and the way back to its Overview. The full-screen route has
-   *  no page title and no app header, so the toolbar carries both. Omitted on
-   *  the general Logs page, where the target picker in `toolbar` shows the name
-   *  itself and drawing this too would say it twice. */
+  /**
+   * The App's name and the way back to its Overview. Omitted on the general Logs
+   * page, where the target picker in `toolbar` shows the name itself and drawing
+   * this too would say it twice.
+   */
   title?: PaneTitle;
   initialInstances: ConsoleInstance[];
   initialStreamable: boolean;
@@ -121,9 +108,8 @@ export function LiveLogs({
   const runtime = useAppRuntime(appId);
 
   // Re-read the instance list whenever the control plane changes the app's power
-  // state (deploy / start / stop): a redeploy replaces the containers, so the
-  // names we stream from must be re-resolved. The runtime poll above tracks the
-  // container's own comings and goings, which need no refetch.
+  // state (deploy / start / stop): a redeploy replaces the containers, so the names
+  // we stream from must be re-resolved.
   const liveStatus = live?.status;
   React.useEffect(() => {
     let cancelled = false;
@@ -144,10 +130,7 @@ export function LiveLogs({
     };
   }, [appId, liveStatus]);
 
-  // Nothing on the host to stream from. The toolbar ROW stays: on the general
-  // Logs page it holds the target picker, and a screen that answers "nothing
-  // here" by taking away the only way to look somewhere else is a dead end. It
-  // is also the one heading a full-bleed route has.
+  // Nothing on the host to stream from.
   if (!streamable || instances.length === 0) {
     // The build to offer is the LIVE one, so a redeploy started while this is on
     // screen points at the run that is actually happening.
@@ -201,14 +184,7 @@ export function LiveLogs({
 }
 
 /**
- * What the log pane's notice chip says when the container is NOT healthy. It
- * exists so the output below is never read as "everything is fine" — and so a
- * crash loop is named as a crash loop, since the logs alone (a stack trace
- * repeating every 60 seconds) leave the user to infer it.
- *
- * A descriptor rather than a component: the full-screen logs page has no room
- * above the pane for a banner, so `LogNoticeChip` renders this in the toolbar
- * instead, headline visible and paragraph one click away.
+ * What the log pane's notice chip says when the container is NOT healthy.
  */
 export function runtimeNotice(
   runtime: AppRuntimeView | null,

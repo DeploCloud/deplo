@@ -442,8 +442,7 @@ test("composeBuildReachesHost: absolute/ssh/privileged build reaches the host; a
 
 /**
  * Keys that merge config from a file the gate can't inspect are refused outright:
- * they smuggle privileged/host binds/ports and even traefik. * labels (label_file)
- * past every check.
+ * they smuggle privileged/host binds/ports and even traefik.
  */
 /**
  * The network twin of the foreign-STORAGE gate.

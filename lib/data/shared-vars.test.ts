@@ -229,8 +229,7 @@ test("a var with neither a mode nor a link is rejected", async () => {
 
 test("an omitted target set means every runtime", async () => {
   // An App belongs to exactly ONE Environment, so the legacy production/preview
-  // picker is gone from every dialog. A save that names no target is no longer an
-  // error — it reaches every runtime, which is what the picker defaulted to anyway.
+  // picker is gone from every dialog.
   await asUser1(() =>
     saveSharedVar({
       key: "NOTARGET",

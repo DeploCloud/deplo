@@ -5,9 +5,9 @@ import { renderCompose, parseStackVolumes } from "./build";
 import type { RoutableDomain } from "../data/domains";
 
 /**
- * Volumes injection into the single-container stack. The load-bearing contract: 1.
- * NO volumes ⇒ output byte-identical to the long-standing stack (so a reroute of
- * an unchanged routing set never restarts the container).
+ * Volumes injection into the single-container stack. NO volumes ⇒ output
+ * byte-identical to the long-standing stack (so a reroute of an unchanged routing
+ * set never restarts the container).
  */
 
 const route: RoutableDomain = {

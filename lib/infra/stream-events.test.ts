@@ -46,7 +46,9 @@ class FakeStream<E> extends EventEmitter {
 const settle = () => new Promise((r) => setImmediate(r));
 
 /**
- * Prime the generator so its listeners are attached.
+ * Prime the generator so its listeners are attached. Real callers always `for
+ * await` immediately, so this only matters here; every test below holds the first
+ * pull's promise, pushes, and then reads.
  */
 async function prime<E>(
   gen: AsyncGenerator<E, void, unknown>,

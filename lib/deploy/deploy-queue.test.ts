@@ -200,9 +200,7 @@ test("deploys on different servers run in parallel", async () => {
   await finish("d_b");
 });
 
-// The regression a BUILD SERVER makes possible. Two production deploys of one app
-// used to be guaranteed into the same lane (the app's own server), so the exclusion
-// could live there.
+// The regression a BUILD SERVER makes possible.
 test("two deploys of one app never overlap, even in different lanes", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);

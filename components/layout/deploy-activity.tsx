@@ -4,12 +4,7 @@ import * as React from "react";
 import { gqlSubscribe } from "@/lib/graphql-client";
 
 /**
- * How many builds the active team has in flight, live. One SSE for the whole
- * shell (the sidebar renders twice - desktop and the mobile sheet - and both
- * read this context), seeded by the subscription's own first emission rather
- * than by a server prop: the chip is a transient notification, and a count that
- * appears a moment after paint is cheaper than threading a number through the
- * layout on every single page load.
+ * How many builds the active team has in flight, live.
  */
 const DeployActivityContext = React.createContext(0);
 

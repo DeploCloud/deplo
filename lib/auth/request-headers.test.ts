@@ -4,9 +4,7 @@ import assert from "node:assert/strict";
 import { authRequestHeaders } from "./request-headers";
 
 /**
- * Both halves of this selection fail SILENTLY, which is why they are pinned. Drop
- * `user-agent` and the signed-in-devices table still renders — every row just says
- * "Unknown device" forever, and nothing anywhere reports an error.
+ * Both halves of this selection fail SILENTLY, which is why they are pinned.
  */
 
 const request = new Headers({

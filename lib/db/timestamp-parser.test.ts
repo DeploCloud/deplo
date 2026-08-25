@@ -13,7 +13,8 @@ import { nowIso } from "../ids";
 
 /**
  * Step 0 round-trip GATE (relational-store PLAN §8 Step 0: "the round-trip test
- * passes").
+ * passes"). Validating the same exported function in both regimes is what
+ * guarantees they can't drift.
  */
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;

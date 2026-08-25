@@ -45,11 +45,7 @@ export interface WizardRef {
 }
 
 /**
- * An App, plus where it lives and what it looks like. The two ids are exactly
- * what the server matches a shared variable's project/environment scope against
- * (`listSharedVarsForApp`), so counting apps by them on Review gives the same
- * reach the deploy will; the logo and the primary domain are what the Details
- * cards show, so you recognise an app without reading its slug.
+ * An App, plus where it lives and what it looks like.
  */
 export interface AppRef extends WizardRef {
   projectId: string | null;
@@ -113,8 +109,7 @@ const STEP_LABEL: Record<StepId, string> = {
 /**
  * How one checked project shares: with all of its environments (the project id
  * goes to `projectIds`) or with a hand-picked few (those env ids go to
- * `environmentIds` and the project id does NOT). The two are mutually exclusive
- * — "all" already covers every environment.
+ * `environmentIds` and the project id does NOT).
  */
 interface ProjectScope {
   mode: "all" | "some";
@@ -154,13 +149,8 @@ function initialProjectScopes(
 }
 
 /**
- * Create/edit one shared variable, as a wizard: name and value, then WHO gets
- * it, then only the details of what you picked. Its predecessor showed every
- * scope picker at once — team-wide switch, project grid, environment grid — and
- * was unreadable.
- *
- * Named `SharedVarDialog` because both the Shared tab and the aggregate App tab
- * open it as the one editor for a shared variable.
+ * Create/edit one shared variable, as a wizard: name and value, then WHO gets it,
+ * then only the details of what you picked.
  */
 export function SharedVarDialog({
   open,
@@ -306,11 +296,10 @@ export function SharedVarDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Wide AND tall: the Details step lays its project + app cards out side by
-          side, and each card carries an icon, a name and a domain under it. The
-          height is FIXED (not content-driven) so the stepper and the Back/Next
-          buttons hold their place instead of jumping around as you move between a
-          three-field form and a hundred app cards — only the middle row scrolls. */}
+      {/**
+       * Wide AND tall: the Details step lays its project + app cards out side by side,
+       * and each card carries an icon, a name and a domain under it.
+       */}
       <DialogContent
         selfManaged
         className="h-[min(90vh,52rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-3xl"

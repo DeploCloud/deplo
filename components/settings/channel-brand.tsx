@@ -15,14 +15,6 @@ import type { NotificationChannel } from "@/lib/types";
 /**
  * How each channel presents itself: its name, its one-line pitch, and its own
  * brand colour.
- *
- * The colour is the point. Twelve identical grey tiles are twelve things you
- * have to READ to tell apart; the brand colour makes the row you want findable
- * before you have parsed a single word.
- *
- * The marks are real (simple-icons, CC0). Lark, Gotify and Pushover publish no
- * clean single-path mark, so they carry a brand-coloured initial instead — an
- * initial is honest, a logo redrawn from memory is not.
  */
 export interface ChannelBrand {
   label: string;

@@ -385,7 +385,8 @@ test("a WRONG password on a suspended account is the GENERIC error, not an enume
 
 /**
  * A successful `login` writes the session cookie via `cookies()`, which throws
- * "outside a request scope" under `node --test`.
+ * "outside a request scope" under `node --test`. (A wrong password returns
+ * ok:false before any cookie write and never throws.)
  */
 async function assertLoginAccepts(
   email: string,

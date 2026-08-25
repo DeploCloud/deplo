@@ -77,15 +77,7 @@ function initials(username: string): string {
 }
 
 /**
- * Manage who can access a folder. Shows the owner and every grantee with a short
- * summary of their per-folder capabilities, lets the owner (or a super-user)
- * add a member and pick which capabilities to hand out, and remove a grant.
- *
- * The capability checkboxes are bounded to `grantableFolderCapabilities` — the
- * granter can only pass on caps they themselves hold on the folder — and `view`
- * is always implied, so it isn't offered as a togglable box. Every successful
- * mutation refreshes the in-dialog lists AND the RSC tree (`router.refresh()`)
- * so the grid reflects the changed visibility.
+ * Manage who can access a folder.
  */
 export function ShareFolderDialog({
   folderId,

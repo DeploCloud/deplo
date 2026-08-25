@@ -40,13 +40,7 @@ type ConsoleInfoResponse = {
 };
 
 /**
- * An App's console, following the app's live running state. When the container
- * is running it shows the pane; when it stops (live, no reload) it swaps to the
- * "not running" state, and back again when it restarts — fetching fresh console
- * info on the transition, since a stopped app has none server-rendered.
- *
- * Everything the pane renders is shared with the database console; what is
- * app-specific and lives here is the live-status source and the shell probe.
+ * An App's console, following the app's live running state.
  */
 export function LiveConsole({
   appId,
@@ -60,11 +54,9 @@ export function LiveConsole({
   initialRunning: boolean;
 }) {
   const running = useLiveRunning(initialRunning);
-  // Console info for the *current* running session. Seeded from SSR; re-fetched
-  // whenever the app transitions into the running state (a stopped app has
-  // none, and a restart may target a fresh container). Display is gated on
-  // `running`, so we never null this on stop — it is simply ignored, which keeps
-  // all state writes inside async callbacks (no synchronous effect churn).
+  // Console info for the *current* running session. Display is gated on `running`, so
+  // we never null this on stop — it is simply ignored, which keeps all state writes
+  // inside async callbacks (no synchronous effect churn).
   const [info, setInfo] = React.useState<ConsoleInfo | null>(
     initialRunning ? initialInfo : null,
   );

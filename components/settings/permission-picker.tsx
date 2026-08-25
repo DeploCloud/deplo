@@ -22,11 +22,6 @@ const OPTIONAL = ALL_CAPABILITIES.filter((c) => c !== "view");
  * The permission list shared by the role editor and the API-token editor: every
  * capability deplo enforces, one checkbox each, grouped into categories only so
  * they can be FOUND — there is no category-level grant, because a permission you
- * can only take in a bundle isn't a permission.
- *
- * With forty of them the search box is the primary navigation: it matches the
- * label, the description and a keyword list (so "ssh" finds the console, "api"
- * finds tokens), and hides every category that has no hit.
  */
 export function PermissionPicker({
   capabilities,
@@ -43,21 +38,13 @@ export function PermissionPicker({
   /** Tooltip beside the heading — name the thing being granted. */
   hint?: string;
   /**
-   * Bound the category list and scroll it, the way `ScopePicker` bounds its
-   * tree. For a dialog: forty-odd permissions unbounded push the footer past
-   * the modal's own cap, so Save is only reachable by scrolling the whole
-   * screen. On a page (the role and token editors) the page is the scroller and
-   * a second one inside it is the wrong shape — hence off by default.
+   * Bound the category list and scroll it, the way `ScopePicker` bounds its tree.
    */
   scroll?: boolean;
   /**
    * Capabilities the current SCOPE makes meaningless. They stay ticked, stay
-   * tickable and keep their value — only the rendering says they do nothing
-   * right now, because widening the scope brings them back with no edit to undo.
-   *
-   * Marked rather than disabled on purpose: a disabled checkbox leaves the tab
-   * order, and this can be half the list. The accessible carrier of the state is
-   * the icon's label, not the strike, which is decoration.
+   * tickable and keep their value — only the rendering says they do nothing right
+   * now, because widening the scope brings them back with no edit to undo.
    */
   muted?: { caps: Capability[]; reason: string };
 }) {

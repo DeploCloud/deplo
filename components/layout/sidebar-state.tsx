@@ -26,8 +26,7 @@ const SidebarContext = React.createContext<SidebarState | null>(null);
 /**
  * Owns the desktop sidebar's collapsed flag and width. It lives above both the
  * sidebar and the topbar because the expand control sits in the topbar (the
- * sidebar itself collapses to zero width and has nowhere to host it). Both
- * values persist in localStorage.
+ * sidebar itself collapses to zero width and has nowhere to host it).
  */
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState({

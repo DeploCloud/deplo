@@ -38,11 +38,6 @@ const DEVICE_ICON: Record<
 
 /**
  * Every device signed in to this account, with a way to end any of them.
- *
- * The current session is shown but NOT revocable: ending the session you are
- * using is signing out, which already has its own affordance, and offering it
- * here would make "sign out everywhere else" ambiguous at the exact moment
- * someone is reaching for it in a hurry.
  */
 export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
   const router = useRouter();
@@ -133,10 +128,11 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
         />
       </CardHeader>
       <CardContent>
-        {/* Defensive rather than expected: a cookie-authenticated page always has
-            at least its own session, so an empty list means the row was swept
-            between the read and the render. A bare table header is a worse way
-            to say that than nothing at all. */}
+        {/**
+         * Defensive rather than expected: a cookie-authenticated page always has at least
+         * its own session, so an empty list means the row was swept between the read and
+         * the render.
+         */}
         {rows.length === 0 ? (
           <EmptyState
             icon={Monitor}

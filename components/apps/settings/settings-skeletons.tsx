@@ -3,8 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 /**
  * An uppercase section label placeholder with its leading icon + hairline —
  * mirrors {@link SettingsSection} so a settings page's loading skeleton keeps the
- * same anchored heading the page itself renders. Shared by the per-section
- * `loading.tsx` files under `/apps/[slug]/settings`.
+ * same anchored heading the page itself renders.
  */
 export function SectionLabel({ width }: { width: string }) {
   return (

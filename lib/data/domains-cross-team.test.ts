@@ -22,9 +22,9 @@ import {
 } from "./domains";
 
 /**
- * A hostname belongs to ONE TEAM. The stored uniqueness is `(name,
- * coalesce(path_prefix,''))` rather than `name`, on purpose: one team serving
- * `app.com` on `/` and `app.com` on `/api` from two apps is a real feature.
+ * A hostname belongs to ONE TEAM. These tests are the guard, and the third one is
+ * the half that must NOT regress: inside one team the shared-hostname feature
+ * still works.
  */
 
 let db: TestDb;

@@ -107,9 +107,7 @@ test("an application-level gRPC error is `error`", () => {
 });
 
 test("the persisted message NEVER leaks the pinned fingerprint or the dial address", () => {
-  // `status_message` is stored and served over GraphQL. checkServerIdentity's raw
-  // text carries our trust anchor; grpc-js UNAVAILABLE details routinely carry
-  // `10.x.x.x:9443`.
+  // `status_message` is stored and served over GraphQL.
   const raw =
     "14 UNAVAILABLE: agent cert fingerprint mismatch: pinned deadbeefcafe, got 0badf00d (10.4.2.9:9443)";
   const messages = [

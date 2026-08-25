@@ -10,14 +10,13 @@ import type { DatabaseType } from "../types";
 
 /**
  * The username/dbName the pre-parameterization tests implicitly assumed: the
- * service name for the DB, `app` for the login. Passed explicitly now that both
- * are required params, keeping every existing assertion's expected value intact.
+ * service name for the DB, `app` for the login.
  */
 const DEFAULTS = { username: "app", dbName: "mydb", databaseId: "db_test" };
 
 /**
  * The database compose is the on-host stack the agent provisions for a managed
- * database. Two properties are load-bearing for the backup/restore feature: 1.
+ * database.
  */
 
 // A CURRENT major per engine.

@@ -75,18 +75,9 @@ const COPY: Record<
 const plural = (n: number) => `${n} app${n === 1 ? "" : "s"}`;
 
 /**
- * The "Actions" submenu shared by the folder and project ⋯ menus: one action
- * for every app inside, confirmed once and run server-side (one mutation, not
- * one call per app - the ids are resolved there, so a nested folder or a second
- * environment can't be missed).
- *
- * Returns the two halves separately because they live in different places: the
- * `items` go inside the menu, the `dialog` outside it (a menu unmounts its
- * content when it closes, and the confirm has to outlive that).
- *
- * Every action is gated again per app on the server, so what a member without
- * the capability actually gets is a refusal - these flags only keep the menu
- * from offering it.
+ * The "Actions" submenu shared by the folder and project ⋯ menus: one action for
+ * every app inside, confirmed once and run server-side (one mutation, not one call
+ * per app - the ids are resolved there, so a nested folder or a second environment
  */
 export function useBulkAppActions({
   scope,

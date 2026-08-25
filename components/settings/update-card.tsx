@@ -17,10 +17,6 @@ const UPDATE_INFO_FIELDS = "{ updateAvailable latest url error }";
 
 /**
  * Whether a newer Deplo exists, and the button that re-asks.
- *
- * Deliberately does NOT restate the running version: it sits on Settings, Deplo,
- * whose header already prints it, and a version printed twice on one screen is
- * furniture.
  */
 export function UpdateCard() {
   const [info, setInfo] = React.useState<UpdateInfo | null>(null);

@@ -19,11 +19,7 @@ export function GitHubIcon({ className }: { className?: string }) {
 
 /**
  * Real brand marks, single-path, 24x24, `fill="currentColor"` — taken from
- * simple-icons (CC0) so nothing here is drawn from memory. Lark, Gotify and
- * Pushover are deliberately absent: none of them publishes a clean single-path
- * mark, and an approximation of a logo is a wrong logo. The notification
- * settings render those three as a brand-coloured initial instead, which is
- * honest and still tells them apart at a glance.
+ * simple-icons (CC0) so nothing here is drawn from memory.
  */
 export function MattermostIcon({ className }: { className?: string }) {
   return (
@@ -171,9 +167,7 @@ export function GitIcon({ className }: { className?: string }) {
 /**
  * The mark of a git host, by provider id — one mapping so the provider dropdown,
  * the connections list and the connect dialog can never show three different
- * glyphs for the same host. Every mark is the real one (simple-icons, CC0);
- * anything unrecognised falls back to the Git logo, which is honest for "some
- * git server" and never a wrong brand.
+ * glyphs for the same host.
  */
 export function GitProviderIcon({
   provider,
@@ -210,8 +204,7 @@ const GIT_BRAND: Record<string, { bg: string; fg: string }> = {
 /**
  * A git host's mark on its own brand colour — the same shape the notification
  * channels use, and for the same reason: four identical grey glyphs are four
- * things you have to read, while the colour makes the one you want findable
- * before you have parsed a word.
+ * things you have to read, while the colour makes the one you want findable before
  */
 export function GitProviderMark({
   provider,
@@ -229,11 +222,10 @@ export function GitProviderMark({
       )}
       style={{ backgroundColor: brand.bg, color: brand.fg }}
     >
-      {/* Half the tile, whatever the tile is: the mark stays proportional at
-          every size this is used at, with nothing to pass at the call site.
-          Important because a menu item sizes "any icon inside me" with a
-          descendant selector (`[&_svg]:size-4`) — right for a bare glyph, wrong
-          for this, which is a tile with a glyph in it. */}
+      {/**
+       * Half the tile, whatever the tile is: the mark stays proportional at every size
+       * this is used at, with nothing to pass at the call site.
+       */}
       <GitProviderIcon provider={provider} className="h-1/2! w-1/2!" />
     </span>
   );
@@ -253,13 +245,7 @@ export function DockerIcon({ className }: { className?: string }) {
 }
 
 /**
- * A registry's mark, on its brand colour where it HAS one. Same tile as
- * {@link GitProviderMark} - one shape for "a host this team connected to",
- * whether it holds repositories or images.
- *
- * `generic` is the honest exception: a self-hosted registry has no brand, so it
- * gets the neutral surface and a plain box rather than a colour borrowed from
- * somebody else's logo.
+ * A registry's mark, on its brand colour where it HAS one.
  */
 const REGISTRY_BRAND: Record<string, { bg: string; fg: string }> = {
   ghcr: { bg: "#181717", fg: "#FFFFFF" },
@@ -301,11 +287,9 @@ export function RegistryMark({
 }
 
 /**
- * The AI agents Settings → MCP Server offers to connect, same source and same
- * rule as the marks above: simple-icons (CC0), single path, 24x24,
- * `fill="currentColor"`. Codex CLI wears the OpenAI mark because that IS its
- * mark - simple-icons ships no separate Codex glyph, and inventing one would
- * break the rule this file opens with.
+ * The AI agents Settings → MCP Server offers to connect, same source and same rule
+ * as the marks above: simple-icons (CC0), single path, 24x24,
+ * `fill="currentColor"`.
  */
 
 export function ClaudeIcon({ className }: { className?: string }) {

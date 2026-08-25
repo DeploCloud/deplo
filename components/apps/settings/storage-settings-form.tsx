@@ -46,10 +46,7 @@ function volumesKey(vs: VolumeMount[], workdir?: string | null): string {
     vs.map((v) => {
       // Hash exactly what the save SENDS, so nothing invisible can arm the
       // unsaved-changes guard: a stored row comes back with `type` absent (the
-      // back-compat default), each kind's payload carries only its own source,
-      // and an empty path is sent as the derived one. All three are normalised
-      // here. Without this, switching a kind out and back left the form "dirty"
-      // with an identical payload.
+      // back-compat default), each kind's payload carries only its own source, and an
       const kind = kindOf(v);
       return {
         type: kind,
@@ -106,25 +103,8 @@ function errMessage(e: unknown): string {
 
 /**
  * Storage settings: persistent volumes mounted into the app's container(s).
- *
- * Available for EVERY source. A compose stack used to be sent away with "declare
- * volumes directly in your docker-compose.yml" — precisely the Docker knowledge
- * deplo exists to not require — so it now gets the same editor, plus a Service
- * picker per row (`composeServices`, empty for a single-container app) naming
- * which service the mount lands in.
- *
- * A **File** entry additionally carries the file's CONTENT. This form owns those
- * reads and writes because they are not database rows: each one is the real file
- * under this app's Files, on the app's own server, reached over the agent
- * (`appStorageFile` / `writeAppFile`). Two rules keep that honest:
- *
- *  - **Files are written BEFORE the rows.** A saved entry whose file is missing
- *    is the one storage mistake that fails silently — Docker answers a missing
- *    bind source by inventing an empty DIRECTORY at the mount path, so the app
- *    boots with a folder where its config should be. Writing first (including an
- *    empty file the user never typed into) means an entry always has a file.
- *  - **A read is tied to the path it was read for.** Edit the path and the new
- *    one is re-read; nothing is ever written to a path deplo has not looked at.
+ * Writing first (including an empty file the user never typed into) means an entry
+ * always has a file.
  */
 export function StorageSettingsForm({
   appId,
@@ -166,11 +146,8 @@ export function StorageSettingsForm({
   const [savedVolumesKey, setSavedVolumesKey] =
     React.useState(currentVolumesKey);
 
-  // Every File entry and the path it names right now — an entry that has not
-  // been named yet is IN this list, with an empty path. Its content box is on
-  // screen from the moment it is added, so its text counts as unsaved work like
-  // any other; the read and the write below are the two steps that skip it,
-  // because there is no file to read or write yet.
+  // Every File entry and the path it names right now — an entry that has not been
+  // named yet is IN this list, with an empty path.
   const fileTargets = React.useMemo(
     () =>
       volumes
@@ -190,11 +167,9 @@ export function StorageSettingsForm({
   });
 
   /**
-   * In-flight reads, so a re-render can't fire the same read twice — and so a
-   * read the user has already superseded (they kept typing the path) can tell
-   * that it lost and leave the newer answer alone. `token` is that identity: two
-   * reads of the same entry can be in flight at once and they do NOT necessarily
-   * come back in the order they left.
+   * In-flight reads, so a re-render can't fire the same read twice — and so a read
+   * the user has already superseded (they kept typing the path) can tell that it
+   * lost and leave the newer answer alone.
    */
   const inFlight = React.useRef(
     new Map<
@@ -224,10 +199,9 @@ export function StorageSettingsForm({
             previous?.status === "editable" && previous.draft !== previous.saved
               ? previous.draft
               : undefined;
-          // Keyed by the path we ASKED for, not the one the server echoed: every
-          // other check (is this draft still for this entry, may the save write
-          // it) compares against the entry's current path, so the two must be
-          // the same string even if the server normalised it differently.
+          // Keyed by the path we ASKED for, not the one the server echoed: every other check
+          // (is this draft still for this entry, may the save write it) compares against the
+          // entry's current path, so the two must be the same string even if the server
           const next = storageFileDraft({ ...appStorageFile, path }, keep);
           if (!superseded()) setFiles((prev) => ({ ...prev, [rowId]: next }));
           return next;
@@ -246,10 +220,9 @@ export function StorageSettingsForm({
     [appId],
   );
 
-  // Read every File entry's path, and re-read it when the path changes. Debounced
-  // so typing `config.toml` is one read, not eleven. An entry whose read FAILED
-  // is left alone — retrying it on every keystroke would hammer an unreachable
-  // agent; the editor offers a "Try again" button instead.
+  // Read every File entry's path, and re-read it when the path changes. An entry
+  // whose read FAILED is left alone — retrying it on every keystroke would hammer an
+  // unreachable agent; the editor offers a "Try again" button instead.
   React.useEffect(() => {
     if (!canManageFiles) return;
     const timer = setTimeout(() => {
@@ -284,13 +257,9 @@ export function StorageSettingsForm({
   const dirty = currentVolumesKey !== savedVolumesKey || contentDirty;
 
   function saveVolumes() {
-    // The SAME validator the editor rings fields with, so nothing can be typed
-    // here that the save then rejects with different words. (The server remains
+    // The SAME validator the editor rings fields with, so nothing can be typed here
+    // that the save then rejects with different words. (The server remains
     // authoritative — this is the snappy first pass, not the boundary.)
-    //
-    // A blocked save also REVEALS every row's problem, so the toast is never the
-    // only signal: the field it is talking about is ringed at the same moment,
-    // including on a card the user never touched.
     for (const v of volumes) {
       const problem = volumeProblem(v, containerWorkdir);
       if (problem) {
@@ -309,10 +278,8 @@ export function StorageSettingsForm({
     const committedVolumesKey = volumesKey(volumes, containerWorkdir);
     const targets = fileTargets;
     startTransition(async () => {
-      // 1. The files, first and one at a time, so a failure names the file it
-      //    failed on and no row is ever saved pointing at a file that isn't
-      //    there. A path typed a moment ago may still be mid-read: await it
-      //    rather than skip it.
+      // 1. The files, first and one at a time, so a failure names the file it failed on
+      // and no row is ever saved pointing at a file that isn't there.
       const written: { id: string; path: string; text: string }[] = [];
       if (canManageFiles) {
         for (const t of targets) {
@@ -361,10 +328,9 @@ export function StorageSettingsForm({
           // Compose stacks only; the server ignores it elsewhere. Blank ⇒ the
           // stack's default service, resolved at render time.
           service: (v.service ?? "").trim() || undefined,
-          // A path the user left empty is DERIVED and sent explicitly, never
-          // left to the server to invent: the row is stored with the exact path
-          // the editor previewed, so a later change to the app's root directory
-          // cannot silently move a mount that is already live.
+          // A path the user left empty is DERIVED and sent explicitly, never left to the
+          // server to invent: the row is stored with the exact path the editor previewed, so
+          // a later change to the app's root directory cannot silently move a mount that is
           mountPath: effectiveMountPath(v, containerWorkdir),
           readOnly: v.readOnly,
           // Host binds only, like hostPath: a propagation left behind by a row
@@ -407,10 +373,10 @@ export function StorageSettingsForm({
             <InfoTip content="Storage the app keeps across deploys. A Volume is disk space deplo creates for it, a File is a config file you write here, and a Bind shares a folder that already exists on the server." />
           </CardTitle>
         </CardHeader>
-        {/* A real form, so Enter in any field saves — `display: contents` keeps
-            Card's own layout untouched. Every other control here is a
-            `type="button"` (Button's default), so only Save submits, and its
-            disabled-while-clean guard is what makes Enter a no-op. */}
+        {/**
+         * A real form, so Enter in any field saves — `display: contents` keeps Card's own
+         * layout untouched.
+         */}
         <form
           className="contents"
           onSubmit={(e) => {

@@ -15,21 +15,9 @@ import {
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 
 /**
- * Change a profile picture by clicking the picture.
- *
- * There is no "Upload" button and no file field: the avatar IS the control, and
- * dropping a file on it works too. Picking opens the crop dialog, and confirming
- * there saves - there is no Save button after it, because the change is one
- * value with no other state to reconcile. Optimistic, with the previous picture
- * put back if the server refuses.
- *
- * The crop used to be a blind centre crop, on the grounds that a face is in the
- * middle of a photo often enough. It is not, and when it was not the only fix
- * was to crop the file in another program and upload it again.
- *
- * Nothing here knows about Gravatar. `preview` is whatever the server already
- * resolved, and clearing simply hands back null and lets the read path decide
- * what shows next.
+ * Change a profile picture by clicking the picture. Picking opens the crop dialog,
+ * and confirming there saves - there is no Save button after it, because the
+ * change is one value with no other state to reconcile.
  */
 
 export function AvatarPicker({

@@ -94,13 +94,7 @@ async function postConsent(body: {
 }
 
 /**
- * The consent screen's form. Approving it MINTS an API token, which is why it
- * is the token editor's controls rather than a yes/no button: the person is
- * choosing what a third party may do inside their team, and a screen that only
- * says "Allow" cannot tell them.
- *
- * Defaults to the "MCP & AI agents" preset — written for this threat model, and
- * the reason this is one click for anyone who does not want to think about it.
+ * The consent screen's form.
  */
 export function ConsentForm({
   client,
@@ -120,11 +114,6 @@ export function ConsentForm({
   activeTeamId: string;
   /**
    * The teams the mint would accept, ticked to begin with.
-   *
-   * Starting empty meant the screen never said where the app was going: the
-   * rule it relied on ("nothing ticked is the team you came from") is invisible,
-   * and untickable in the direction that matters. Starting on every team the
-   * person may grant makes the reach readable, and narrowing it is unticking.
    */
   connectableTeamIds: string[];
   /** The origin deplo publishes, which the consent POST must come from. */
@@ -152,10 +141,8 @@ export function ConsentForm({
   // ticked. Not a control any more — the picker is the only one.
   const connectingTeam = tree.find((t) => t.id === activeTeamId);
 
-  // Better Auth refuses a cookie-carrying POST whose Origin is not the address
-  // deplo publishes — the CSRF defence the consent posts through. On an instance
-  // reachable at a second address that refusal is correct and completely
-  // baffling, so say it before the click rather than after.
+  // Better Auth refuses a cookie-carrying POST whose Origin is not the address deplo
+  // publishes — the CSRF defence the consent posts through.
   const wrongOrigin =
     typeof window !== "undefined" &&
     !!publicOrigin &&
@@ -184,11 +171,9 @@ export function ConsentForm({
   const accessLabel = scoped
     ? scopeLabel({ scoped: true, ...selection }, teamNames)
     : { text: connectingTeam?.name ?? "This team", empty: false };
-  // A team wears its initials everywhere else in deplo (the team switcher), so
-  // it wears them here too — the reach of a connection is the one place a name
-  // in plain text is easiest to skim past. Only when teams are what is ticked:
-  // stamping the connecting team's badge next to "2 folders" would say the
-  // connection reaches all of it.
+  // A team wears its initials everywhere else in deplo (the team switcher), so it
+  // wears them here too — the reach of a connection is the one place a name in plain
+  // text is easiest to skim past.
   const accessTeams = (
     selection.teamIds.length ? selection.teamIds : scoped ? [] : [activeTeamId]
   )
@@ -197,24 +182,8 @@ export function ConsentForm({
     .slice(0, 3);
 
   /**
-   * Consent FIRST, mint second, navigate last.
-   *
-   * The order is the security property. `POST /oauth2/consent` verifies the
-   * provider's signature over the authorization query and only then records the
-   * approval, so the mint that follows can require that record and refuse to
-   * create a credential for anyone who merely got a person onto this page with
-   * a chosen `client_id`. Minting first answered to a URL.
-   *
-   * The code the consent hands back is not redeemable until the browser
-   * navigates, which is the last thing here — so the window in which a code
-   * exists without a connection behind it is this function, and a failure in it
-   * leaves a visible error rather than a working credential.
-   *
-   * `gqlAction`, not `useGraphqlMutation`: the latter's `error` is React state,
-   * so reading it straight after the await gets the value from BEFORE the
-   * failure — the server's refusal would be swallowed and the button would look
-   * inert. Every path below ends in either a navigation or a message; none ends
-   * in silence.
+   * Consent FIRST, mint second, navigate last. The order is the security property.
+   * Minting first answered to a URL.
    */
   async function onApprove(e: React.FormEvent) {
     e.preventDefault();
@@ -251,17 +220,9 @@ export function ConsentForm({
   }
 
   /**
-   * Signed in as the wrong person — the one thing this screen can be right
-   * about and still be wrong, because the token it mints acts as whoever is
-   * looking at it.
-   *
-   * Back to THIS url after signing in, not to the dashboard: `safeNext` on the
-   * login page allows `/oauth/consent?…` for exactly this reason, and losing
-   * the query strands someone mid-flow inside a third-party product.
-   *
-   * `push` then `refresh`, the same pair the account menu logs out with — the
-   * session cookie has just changed, and the RSC tree cached behind it was
-   * rendered for the person who is no longer signed in.
+   * Signed in as the wrong person — the one thing this screen can be right about
+   * and still be wrong, because the token it mints acts as whoever is looking at
+   * it.
    */
   async function onSwitchAccount() {
     setPending(true);
@@ -298,10 +259,10 @@ export function ConsentForm({
             what it gets, then the choice. Everything else is behind a row. */}
         <form className="grid gap-6 p-6" onSubmit={onApprove}>
           <div className="grid justify-items-center gap-4 text-center">
-            {/* Remote icons never render — the CSP is `img-src 'self' blob:
-                data:` — so this is initials for almost every client, and the
-                `src` is here for the rare `data:` one. Radix falls back on the
-                blocked load by itself. */}
+            {/**
+             * Remote icons never render — the CSP is `img-src 'self' blob: data:` — so this is
+             * initials for almost every client, and the `src` is here for the rare `data:` one.
+             */}
             <Avatar className="size-14">
               <AvatarImage src={client.icon ?? undefined} alt="" />
               <AvatarFallback className="bg-muted text-base font-semibold">
@@ -394,10 +355,10 @@ export function ConsentForm({
         </button>
       </p>
 
-      {/* Where the app may work, opened on demand so the default path is reading
-          two lines and pressing Authorize. Its own dialog, because narrowing the
-          reach and picking what may be done there are two decisions, and the row
-          you pressed said which one you came for. */}
+      {/**
+       * Where the app may work, opened on demand so the default path is reading two lines
+       * and pressing Authorize.
+       */}
       <Dialog
         open={editing === "access"}
         onOpenChange={(open) => setEditing(open ? "access" : null)}
@@ -419,10 +380,9 @@ export function ConsentForm({
               setEditing(null);
             }}
           >
-            {/* ONE control for "where". A separate team dropdown next to it was
-                the contradiction that let a connection be approved for one team
-                and granted four: two controls both answering "which team", free
-                to disagree. */}
+            {/**
+             * ONE control for "where".
+             */}
             <ScopePicker
               tree={tree}
               selection={selection}

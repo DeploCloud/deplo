@@ -12,15 +12,8 @@ export type AttachStatus = "connecting" | "live" | "ended" | "error";
 
 /**
  * Interactive `docker attach` to a running container's PID 1, rendered in a real
- * xterm.js terminal.
- *
- * Output streams over an EventSource (SSE) from GET /api/apps/:id/attach; the
- * first `session` event carries the server-side session id. Every keystroke —
- * arrows, Tab, Ctrl-C, the lot — is POSTed raw to that session's stdin, so a
- * shell/TUI behaves as it would over a local `docker attach`. The terminal seeds
- * the pty with its own size on open and POSTs a resize on every refit. Detaching
- * kills only our local attach client, never the container (spawn is
- * `--sig-proxy=false`).
+ * xterm.js terminal. Detaching kills only our local attach client, never the
+ * container (spawn is `--sig-proxy=false`).
  */
 export function ContainerAttach({
   appId,

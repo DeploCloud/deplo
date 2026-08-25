@@ -101,15 +101,7 @@ type SharedVar = AppliedSharedVarDTO & { type: "plain" | "secret" };
 
 /**
  * Every variable of every app in ONE flat row list, each row carrying its app and
- * the name of the app's project. Flat is what lets the filters cut across cards (a
- * Project filter is a property of the app, a Type filter of the variable) and the
- * sort order the whole page; the sections are folded back out of the survivors
- * afterwards.
- *
- * `projectName` rides on the ROW rather than being looked up in a closure because
- * the search haystack is what reads it, and `useEnvFilters` deliberately does not
- * depend on the haystack function — anything it reads that isn't in the rows goes
- * stale.
+ * the name of the app's project.
  */
 type EnvRow =
   | ({ kind: "standalone"; app: RowApp; projectName: string } & EnvVarDTO)
@@ -127,9 +119,7 @@ const rowKey = (row: EnvRow) =>
 
 /**
  * The ids of the sections the user has COLLAPSED, persisted so a page you tidied
- * stays tidy across reloads. Everything not in the set is open — which is what
- * makes "open" the default for a project or an app the user has never touched
- * (including ones created later).
+ * stays tidy across reloads.
  */
 function useCollapsed(storageKey: string) {
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(
@@ -203,15 +193,7 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /**
  * The editable aggregate of every app's variables (the Variables page's "All"
- * tab). One collapsible section per Project — open by default, in the team's own
- * project order and draggable into another — holding one card per app: standalone
- * vars with per-row edit/delete + an Add button, plus the shared vars that apply,
- * shown read-only. The same per-variable editing experience as the single-app
- * page, aggregated across the team.
- *
- * An app with no variables at all gets NO card, and a project with no such app no
- * section — an empty card is pure noise on a page whose whole subject is
- * variables. Reach such an app through its own page.
+ * tab).
  */
 export function AllAppsEnvManager({
   groups,
@@ -253,18 +235,13 @@ export function AllAppsEnvManager({
   const [, startTransition] = React.useTransition();
 
   // The local, optimistic project order — the sole source of the sections'
-  // arrangement, so a drag lands instantly and the write settles behind it. It
-  // holds EVERY project of the team (not only the ones with a section on
-  // screen), which is what lets a drag under an active filter still send a total
-  // order rather than a subset the server would have to guess the rest of.
+  // arrangement, so a drag lands instantly and the write settles behind it.
   const [order, setOrder] = React.useState<string[]>(() =>
     projects.map((p) => p.id),
   );
-  // Re-seed when the MEMBERSHIP changes (a project created or deleted
-  // elsewhere), not when the order does: our own reorder's `router.refresh()`
-  // returns the same ids in the order we already show, and re-seeding on that
-  // would fight an in-flight drag. Done in render (previous-value pattern), not
-  // in an effect, so it never costs a second paint.
+  // Re-seed when the MEMBERSHIP changes (a project created or deleted elsewhere), not
+  // when the order does: our own reorder's `router.refresh()` returns the same ids in
+  // the order we already show, and re-seeding on that would fight an in-flight drag.
   const membership = projects
     .map((p) => p.id)
     .sort()
@@ -341,22 +318,18 @@ export function AllAppsEnvManager({
     [groups, sharedByApp, projectName],
   );
 
-  // A deleted variable leaves its card on the click, rather than sitting there
-  // — still clickable, still good for a "Not found" — for the length of the
-  // mutation and then the `router.refresh()` that reloads every app's variables.
-  // The sections, the filter counts and the empty states all read `rows`, so
-  // they agree with each other about what is left.
+  // A deleted variable leaves its card on the click, rather than sitting there —
+  // still clickable, still good for a "Not found" — for the length of the mutation
+  // and then the `router.refresh()` that reloads every app's variables.
   const {
     visible: rows,
     remove,
     restore,
   } = useOptimisticRemove(serverRows, rowKey);
 
-  // This tab is the only place a variable is seen next to every OTHER app's, so
-  // it is the only place WHERE the app lives is a filter: its project, and the
-  // environment of that project it sits in. The options are the projects and
-  // environments the rows actually reach — a project whose apps hold no variable
-  // would only ever filter the page down to nothing.
+  // This tab is the only place a variable is seen next to every OTHER app's, so it is
+  // the only place WHERE the app lives is a filter: its project, and the environment
+  // of that project it sits in.
   const facets = React.useMemo<EnvFacet<EnvRow>[]>(() => {
     const projectIds = new Set<string>();
     const environmentIds = new Set<string>();
@@ -452,10 +425,9 @@ export function AllAppsEnvManager({
   const draggable = new Set(reorderable ? draggableIds : []);
 
   /**
-   * Drop: move the dragged project to the target's slot IN THE FULL ORDER, so
-   * the projects a filter is currently hiding keep their places (the mutation
-   * takes a total order and appends whatever it isn't given — a subset would
-   * scramble them). Optimistic, reverted on failure.
+   * Drop: move the dragged project to the target's slot IN THE FULL ORDER, so the
+   * projects a filter is currently hiding keep their places (the mutation takes a
+   * total order and appends whatever it isn't given — a subset would scramble
    */
   function onDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -478,10 +450,7 @@ export function AllAppsEnvManager({
 
   /**
    * Collapse (or expand) every section ON SCREEN, by MERGING into the collapsed
-   * set rather than replacing it. `sections` is the post-FILTER list, so writing
-   * it wholesale would drop the ids of the projects the current search is hiding
-   * — and "Collapse all" would then quietly EXPAND a project you had collapsed by
-   * hand, as soon as you cleared the search.
+   * set rather than replacing it.
    */
   function toggleAllSections() {
     const next = new Set(projectCollapse.collapsed);
@@ -704,12 +673,9 @@ export function AllAppsEnvManager({
 }
 
 /**
- * A Project section the viewer may drag into a new place in the team's order.
- *
- * The drag is HANDLE-bound: the header is a collapse toggle and the page scrolls
- * under the pointer, so lifting the whole section on any press would fight both.
- * The transform is clamped to Y — the sections are a vertical list, and sideways
- * travel would only be noise.
+ * A Project section the viewer may drag into a new place in the team's order. The
+ * drag is HANDLE-bound: the header is a collapse toggle and the page scrolls under
+ * the pointer, so lifting the whole section on any press would fight both.
  */
 function SortableSection({
   id,
@@ -770,14 +736,8 @@ function SortableSection({
 }
 
 /**
- * One Project's collapsible header. It wears the project's own colour — the same
- * ~10% wash / 25% edge the Overview's project cards use — so a section is
- * recognised here the way it is there. Collapsed, its counts are the only thing
- * left to say what is inside, and under an active search those counts are what
- * they matched.
- *
- * The drag handle (when the viewer may reorder) sits BESIDE the toggle rather
- * than inside it — a button never nests in a button.
+ * One Project's collapsible header. The drag handle (when the viewer may reorder)
+ * sits BESIDE the toggle rather than inside it — a button never nests in a button.
  */
 function ProjectSectionHeader({
   section,
@@ -853,9 +813,7 @@ function ProjectSectionHeader({
 
 /**
  * One App's collapsible card: its own variables (editable) and the shared ones
- * that reach it (read-only, edited centrally). Only the title block toggles the
- * card — Add and Open are real actions and must stay clickable, which is also why
- * they can't live inside the toggle (a button never nests in a button).
+ * that reach it (read-only, edited centrally).
  */
 function AppVarsCard({
   card,

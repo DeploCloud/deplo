@@ -604,8 +604,9 @@ test("HEALTH_WRITE_MS stays under the prober's 15s THROTTLE_MS, or the prober si
     `HEALTH_WRITE_MS (${HEALTH_WRITE_MS}) must stay under the prober's throttle (${PROBER_THROTTLE_MS})`,
   );
 
-  // .and that alone is NOT enough, which we learned the expensive way. The assertion
-  // above passed while production wrote every 15 SECONDS.
+  // .and that alone is NOT enough, which we learned the expensive way. The heartbeat
+  // can only fire when a frame arrives, so its real period is a MULTIPLE of the
+  // cadence, never HEALTH_WRITE_MS itself.
   const EARLY_FRAME_TOLERANCE_MS = 100;
   const effectivePeriod =
     Math.ceil(
@@ -761,7 +762,8 @@ test("a frame reporting a RUNNING container clears a stale `error` — the reboo
 
 test("only `error` is ever promoted — active/idle/stopping/queued/building are left exactly as stored", async () => {
   // The status allowlist is the core of the write-war guard, and it is exactly ONE
-  // value wide.
+  // value wide. - `stopping` — written BEFORE an up-to-60s `docker stop`, so frames
+  // in that window still say "running"; promoting would make the user's Stop bounce.
   const untouchable = [
     "active",
     "idle",
@@ -1165,8 +1167,7 @@ test("the reconcile runs on its OWN clock, not the frame's", async () => {
 });
 
 test("APP_STATUS_RECONCILE_MS is slower than the frame cadence but still self-heals promptly", () => {
-  // Both bounds matter. Too fast and the reconcile is DB churn on the stream's
-  // cadence — the thing this architecture removed.
+  // Both bounds matter.
   assert.ok(
     APP_STATUS_RECONCILE_MS > STREAM_INTERVAL_MS,
     "the reconcile must not run at the frame cadence",

@@ -60,11 +60,11 @@ const IN_PROGRESS = new Set<DeploymentStatus>(["queued", "building"]);
 /** Sentinel for the "no filter" option — shadcn `SelectItem` can't hold "". */
 const ALL = "__all__";
 
-/** Anything inside a row that owns its own click: links (commit sha, the App
- *  name, the row's action buttons), the selection checkbox (`role=checkbox`),
- *  and any cell explicitly opted out with `data-no-row-nav` (the checkbox cell,
- *  whose padding is aimed at while selecting). A click landing on one of these
- *  never falls through to the row's "open this deployment" navigation. */
+/**
+ * Anything inside a row that owns its own click: links (commit sha, the App name,
+ * the row's action buttons), the selection checkbox (`role=checkbox`), and any
+ * cell explicitly opted out with `data-no-row-nav` (the checkbox cell, whose
+ */
 const ROW_NAV_EXEMPT =
   'a, button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-no-row-nav]';
 
@@ -174,17 +174,7 @@ type StatusSub = {
 
 /**
  * Keeps the deployment Status chips live without a reload, on BOTH the global and
- * an app's own history. A deployment's status only moves while it's queued/building
- * → ready/error/canceled, and an app's in-flight build is (bar the rare concurrent
- * -preview case) its LATEST deployment — exactly what the `appStatus` subscription
- * streams. So we open one SSE per app that currently has an in-progress row and
- * overlay each pushed status onto the matching deployment id. When a tracked build
- * settles we also refresh the RSC read so the rest of the row (actions,
- * selectability, any newly-appeared build) reconciles from the authoritative data.
- *
- * Returns `statusOf(id, serverStatus)` → the row's effective (live) status. The
- * overlay only ever holds a status pushed by the authoritative stream, so it can
- * never show something the server would contradict (ids are never reused).
+ * an app's own history.
  */
 function useLiveDeploymentStatuses(
   rows: { id: string; appSlug: string; status: DeploymentStatus }[],
@@ -200,10 +190,8 @@ function useLiveDeploymentStatuses(
     [overlay],
   );
 
-  // Distinct app slugs with an in-progress row, by EFFECTIVE status — the only
-  // apps whose deployment status can still change. Sorted + comma-joined into a
-  // stable key so the effect re-subscribes only when the SET changes, not on
-  // every render.
+  // Distinct app slugs with an in-progress row, by EFFECTIVE status — the only apps
+  // whose deployment status can still change.
   const slugKey = React.useMemo(() => {
     const s = new Set<string>();
     for (const r of rows)
@@ -285,25 +273,9 @@ export interface DeploymentRow {
 }
 
 /**
- * The deployments table with multi-select DELETION. Shared by the global
- * Deployments page and an app's own Deployment history. It owns the page header
- * row (`header` on the left, the bulk-action buttons on the right — a
- * `justify-between` layout), the filters, the table, and client-side pagination
- * (10 rows/page over the filtered set).
- *
- * The global page also gets a Server column and Server/App filters (`showServer`);
- * Status, Environment and a Created sort surface on EITHER page whenever the rows
- * warrant them (≥2 distinct values, or >1 row for the sort). Filtering is a VIEW
- * concern — it narrows the rendered rows AND the scope of the bulk "Stop all builds"
- * / "Delete all" sweeps (their appId/serverId/environment/status args all follow the
- * active filters), so the buttons always act on exactly what you see. Sorting is
- * pure ordering — it never changes the swept set. Only FINISHED deployments
- * (ready/error/canceled) are selectable; an in-progress one must be canceled first.
- * Everything is capability-gated server-side; `canManage` only hides the affordances.
- *
- * A row is clickable as a whole: clicking anywhere that isn't a dedicated control
- * (a link, an action button, the selection checkbox and its cell) opens that
- * deployment's page — see `openDeployment` / `ROW_NAV_EXEMPT`.
+ * The deployments table with multi-select DELETION. Sorting is pure ordering — it
+ * never changes the swept set. Only FINISHED deployments (ready/error/canceled)
+ * are selectable; an in-progress one must be canceled first.
  */
 export function DeploymentsTable({
   deployments,
@@ -333,10 +305,8 @@ export function DeploymentsTable({
 }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
-  // Deleted deployments leave the table on the click — one row, the selection,
-  // or a whole filtered sweep. The rows the FILTERS see are the ones still
-  // present; the dropdown options keep reading the full set so an option never
-  // vanishes mid-interaction.
+  // Deleted deployments leave the table on the click — one row, the selection, or a
+  // whole filtered sweep.
   const {
     visible: remaining,
     remove,
@@ -479,20 +449,16 @@ export function DeploymentsTable({
     ],
   );
 
-  // The Created sort is a VIEW concern over the already-filtered set. The incoming
-  // rows are a total order (createdAt DESC, seq DESC), so "newest" is the set as-is
-  // and "oldest" is its exact reverse — preserving the seq tie-break without a lossy
-  // string compare. Selection/counts key off `visible` (order-free), so only the
-  // rendered page reads from `sorted`.
+  // The Created sort is a VIEW concern over the already-filtered set.
+  // Selection/counts key off `visible` (order-free), so only the rendered page reads
+  // from `sorted`.
   const sorted = React.useMemo(
     () => (sortDir === "oldest" ? [...visible].reverse() : visible),
     [visible, sortDir],
   );
 
-  // Endless scroll over the filtered+sorted set: the table renders the first
-  // `shown` rows and the sentinel below it asks for the next batch as it comes
-  // into view. Clamped in render (no effect) so a filter change or a post-delete
-  // refresh that shrinks the list can never leave the count past the end.
+  // Endless scroll over the filtered+sorted set: the table renders the first `shown`
+  // rows and the sentinel below it asks for the next batch as it comes into view.
   const paged = sorted.slice(0, Math.min(shown, sorted.length));
   const hasMore = sorted.length > paged.length;
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
@@ -530,10 +496,9 @@ export function DeploymentsTable({
     [selectableIds],
   );
 
-  // Keep the selection honest across refreshes and filter changes: drop ids that
-  // are gone, filtered out, or no longer selectable (e.g. a row that started
-  // building). Render-time via the previous-value pattern — never cascades a
-  // re-render.
+  // Keep the selection honest across refreshes and filter changes: drop ids that are
+  // gone, filtered out, or no longer selectable (e.g. a row that started building).
+  // Render-time via the previous-value pattern — never cascades a re-render.
   const effectiveSelected = React.useMemo(
     () => [...selected].filter((id) => selectableSet.has(id)),
     [selected, selectableSet],
@@ -545,9 +510,7 @@ export function DeploymentsTable({
   const someSelected = selectedCount > 0 && !allSelected;
 
   // The scope the bulk sweeps target: the app page pins one app; the global page
-  // follows the active filters. ALL active view filters flow into the sweep args
-  // (app/server/environment/status) so "Delete all" / "Stop all builds" act on
-  // exactly the rows the filters leave visible.
+  // follows the active filters.
   const sweepAppId = scopeAppId ?? effectiveAppFilter ?? null;
   const sweepServerId = effectiveServerFilter ?? null;
   const sweepEnv = effectiveEnvFilter ?? null;
@@ -629,10 +592,7 @@ export function DeploymentsTable({
 
   // Whole-row navigation: clicking a row anywhere that isn't a dedicated control
   // opens that deployment (its build logs & details) — the same destination as the
-  // row's ScrollText button and its commit-message link. Bails on a click that
-  // landed on an own-click element, and on a click that merely ended a text
-  // selection (drag-to-select inside the row must not navigate). A modified or
-  // middle click opens a new tab, matching what an anchor would do.
+  // row's ScrollText button and its commit-message link.
   function openDeployment(
     d: DeploymentRow,
     e: React.MouseEvent<HTMLTableRowElement>,
@@ -763,11 +723,7 @@ export function DeploymentsTable({
     6 + (showApp ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
   // Server/App narrowers only exist on the global page (showServer); Status,
   // Environment and Sort surface wherever the rows warrant them — the app's own
-  // history included. The Server selector is the PRIMARY scoping axis of this
-  // "across all of your apps and servers" view, so it stays visible whenever any
-  // server is resolvable — even a single one (it names where the builds ran and is
-  // ready the instant a second server appears). The rest auto-hide until they'd
-  // offer a real choice (≥2 distinct values).
+  // history included.
   const showServerFilter = showServer && serverOptions.length >= 1;
   const showAppFilter = showServer && appOptions.length >= 2;
   const showStatusFilter = statusOptions.length >= 2;
@@ -825,11 +781,9 @@ export function DeploymentsTable({
         </div>
       )}
 
-      {/* Filters + Created sort on one wrapping row. Server/App exist only on the
-          global page (showServer); Status/Environment/Sort appear wherever the rows
-          warrant them (the app's own history included). The multi-select delete
-          controls live in a floating bottom-center pill near the end of this
-          component. */}
+      {/**
+       * Filters + Created sort on one wrapping row.
+       */}
       {showFilters && (
         <div className="flex min-h-9 flex-wrap items-center gap-2">
           {showSearch && (
@@ -965,11 +919,11 @@ export function DeploymentsTable({
                 className={cn("w-[150px]", showNarrowers && "sm:ml-auto")}
                 aria-label="Sort by created date"
               >
-                {/* `flex!` is load-bearing: SelectTrigger applies
-                    `[&>span]:line-clamp-1` to its direct-child spans, whose
-                    `display:-webkit-box` outranks a plain `flex` class (the
-                    `>span` selector is more specific) and would stack the icon
-                    above the value. The important modifier keeps them on one row. */}
+                {/**
+                 * `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1` to its
+                 * direct-child spans, whose `display:-webkit-box` outranks a plain `flex` class
+                 * (the `>span` selector is more specific) and would stack the icon above the value.
+                 */}
                 <span className="flex! items-center gap-2">
                   <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
                   <SelectValue />
@@ -1092,10 +1046,9 @@ export function DeploymentsTable({
                           url={d.commitUrl}
                           className="font-mono text-xs text-muted-foreground"
                         />
-                        {/* This build did not produce its code - it went BACK to
-                            it. Without the badge the row is indistinguishable
-                            from the original deploy of the same commit, which is
-                            exactly the question the history gets asked. */}
+                        {/**
+                         * This build did not produce its code - it went BACK to it.
+                         */}
                         {d.rollbackOf ? (
                           <SimpleTooltip content="This deployment put the app back on an earlier build">
                             <Badge
@@ -1130,11 +1083,9 @@ export function DeploymentsTable({
                     {showServer && (
                       <TableCell>
                         {d.serverName ? (
-                          // The BUILD server rides in the tooltip rather than a
-                          // column of its own: it is null for almost every row,
-                          // and a mostly-empty column is a worse way to say
-                          // "this one is different" than a mark on the one cell
-                          // that already names a host.
+                          // The BUILD server rides in the tooltip rather than a column of its own: it is null
+                          // for almost every row, and a mostly-empty column is a worse way to say "this one
+                          // is different" than a mark on the one cell that already names a host.
                           <SimpleTooltip
                             content={
                               d.buildServerName
@@ -1248,11 +1199,10 @@ export function DeploymentsTable({
         </div>
       )}
 
-      {/* Multi-select action bar — floats at the bottom-center of the viewport
-          whenever one or more finished deployments are checked. Mirrors the
-          Overview selection pill (counter + Delete + Clear), scoped to this
-          table's delete flow. Shared component, so both the global Deployments
-          page and an app's own history get it. */}
+      {/**
+       * Multi-select action bar — floats at the bottom-center of the viewport whenever
+       * one or more finished deployments are checked.
+       */}
       {selectedCount > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-6">
           <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">

@@ -110,7 +110,9 @@ before(async () => {
     values
       ('env_dev',  'prc_1', 'Development', 'development', 'development', '', true,  0, '${T0}', '${T0}'),
       ('env_prod', 'prc_1', 'Production',  'production',  'production',  '', false, 1, '${T0}', '${T0}');`);
-  // app_p lives in the project's Development env; app_top is top-level.
+  // app_p lives in the project's Development env; app_top is top-level. Only the apps
+  // rows (the FK anchors env_vars need) are seeded — the loaders the assertions drive
+  // read env/shared vars, never the app_build child.
   await pg.exec(`
     insert into apps (
       id, name, slug, team_id, server_id, source, status, auto_deploy,

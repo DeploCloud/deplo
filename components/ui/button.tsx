@@ -48,11 +48,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
-        // A bare <button> inside a <form> defaults to type="submit" — which
-        // would turn every Cancel/secondary button in a dialog form into an
-        // accidental submit. Default to "button"; the one button that submits
-        // opts in with type="submit". (asChild renders someone else's element —
-        // often an <a> — so don't force the attribute onto it.)
+        // A bare <button> inside a <form> defaults to type="submit" — which would turn
+        // every Cancel/secondary button in a dialog form into an accidental submit.
         {...(asChild ? (type ? { type } : {}) : { type: type ?? "button" })}
         {...props}
       />

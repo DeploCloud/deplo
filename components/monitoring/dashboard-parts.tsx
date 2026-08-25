@@ -183,11 +183,11 @@ export function LiveStatusLine({
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
         <span className="relative inline-flex size-2 rounded-full bg-[var(--success)]" />
       </span>
-      {/* NOT "sampling every Ns": the cadence is the agent's to choose (it
-          clamps our hint into [1s, 60s]) and this timer no longer causes a
-          measurement at all — it only re-reads a buffer the agent is pushing
-          into. Naming a number here would be stating a rate the UI does not
-          know and does not control. */}
+      {/**
+       * NOT "sampling every Ns": the cadence is the agent's to choose (it clamps our hint
+       * into [1s, 60s]) and this timer no longer causes a measurement at all — it only
+       * re-reads a buffer the agent is pushing into.
+       */}
       Live · streaming
     </div>
   );

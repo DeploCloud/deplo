@@ -32,11 +32,9 @@ function applyClass(resolved: Resolved) {
 }
 
 /**
- * Persist the RESOLVED theme in a cookie so the SERVER can set the <html> class
- * on the next load — the zero-flash mechanism that replaces an inline bootstrap
+ * Persist the RESOLVED theme in a cookie so the SERVER can set the <html> class on
+ * the next load — the zero-flash mechanism that replaces an inline bootstrap
  * script (React 19.2 refuses to execute inline scripts rendered through React,
- * server or client, and warns). The cookie holds the concrete light/dark to
- * paint; the raw preference (incl. "system") lives in localStorage for the UI.
  */
 function writeCookie(resolved: Resolved) {
   try {
@@ -49,9 +47,7 @@ function writeCookie(resolved: Resolved) {
 /**
  * Minimal theme provider — replaces `next-themes`, which rendered its no-flash
  * <script> from a client component (React 19.2 warns that such inline scripts
- * never run on the client). Here the server paints the initial theme from the
- * cookie and this provider owns the live state: current preference, the
- * system-resolved value, toggling, and keeping the cookie + <html> class in sync.
+ * never run on the client).
  */
 export function ThemeProvider({
   children,

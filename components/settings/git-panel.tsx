@@ -65,18 +65,8 @@ export interface GitProviderChoice {
 type PreviewReadiness = Record<string, { ready: boolean; settingsUrl: string }>;
 
 /**
- * The whole Git settings page: one header, one grid of connected hosts, one
- * empty state.
- *
- * GitHub deliberately does NOT get a list of its own. A GitHub App and a token
- * connection are the same thing to the rest of the product - a host deplo can
- * clone from - so they share one grid, and the only difference the page draws
- * between them is the mark on the card and what sits in its menu. Two stacked
- * cards said they were two features.
- *
- * The whole page body is one client component because the header's Connect menu
- * and the connect dialog are the same interaction: the menu is where you pick
- * the provider, and the dialog opens already set to it.
+ * The whole Git settings page: one header, one grid of connected hosts, one empty
+ * state.
  */
 export function GitPanel({
   githubApps,
@@ -92,10 +82,9 @@ export function GitPanel({
   providers: GitProviderChoice[];
   previewReadiness?: PreviewReadiness;
   /**
-   * Where to send the browser once a provider is connected: the page that
-   * linked here (`?next=`), already validated server-side. Connecting is almost
-   * never the errand — picking a repo in the create-app wizard is — so the
-   * detour ends by handing the user back to it.
+   * Where to send the browser once a provider is connected: the page that linked
+   * here (`? Connecting is almost never the errand — picking a repo in the
+   * create-app wizard is — so the detour ends by handing the user back to it.
    */
   next?: string | null;
   /** Gates the one advanced option: pointing a connection inside the network. */
@@ -253,10 +242,7 @@ export function GitPanel({
 /* ------------------------------------------------------------------ */
 
 /**
- * The page's one add button. Every host lives in the same menu with GitHub
- * first, so there is a single place to start from instead of one button per
- * subsystem - and the Beta chip sits on the providers that are actually in beta
- * rather than on a card heading that lumped them together.
+ * The page's one add button.
  */
 function ConnectMenu({
   providers,
@@ -365,10 +351,11 @@ function HostCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            {/* Rendered HERE rather than by each card, so no host can end up
-                without a way back to its own settings page - which is where
-                repository access, tokens and everything else Deplo does not own
-                is actually changed. */}
+            {/**
+             * Rendered HERE rather than by each card, so no host can end up without a way back
+             * to its own settings page - which is where repository access, tokens and
+             * everything else Deplo does not own is actually changed.
+             */}
             <DropdownMenuItem asChild>
               <a href={href} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="size-4" />
@@ -540,9 +527,7 @@ function ConnectionCard({
 
 /**
  * The provider is already chosen — it was picked in the Connect menu — so this
- * dialog only asks for what deplo cannot know: the address and the token. It
- * shows the choice back rather than offering it again, which is why there is no
- * provider picker in here.
+ * dialog only asks for what deplo cannot know: the address and the token.
  */
 function ConnectDialog({
   provider,
@@ -590,10 +575,8 @@ function ConnectDialog({
       }
       toast.success("Provider connected");
       onClose();
-      // Straight back to whatever sent the user here (the create-app wizard's
-      // source picker, an app's source settings), where the new connection is
-      // now in the list. `router.push` re-runs the reads on the way, so no
-      // refresh is needed on top of it.
+      // Straight back to whatever sent the user here (the create-app wizard's source
+      // picker, an app's source settings), where the new connection is now in the list.
       if (next) router.push(next);
       else router.refresh();
     });
@@ -682,12 +665,11 @@ function ConnectDialog({
               )}
             </div>
 
-            {/* Self-hosted GitLab/Gitea is often on the same private network as
-                the fleet, and the SSRF guard on the address refuses that
-                outright - so the ordinary form would reject a perfectly normal
-                setup. Instance admins only, the same bar a private bucket
-                endpoint carries, because deplo dials this address itself and
-                shows what comes back. */}
+            {/**
+             * Self-hosted GitLab/Gitea is often on the same private network as the fleet, and
+             * the SSRF guard on the address refuses that outright - so the ordinary form would
+             * reject a perfectly normal setup.
+             */}
             {isInstanceAdmin && (
               <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
                 <Checkbox

@@ -32,7 +32,9 @@ import { getBreadcrumbGraph } from "./breadcrumb";
 import { membershipFor, requireInstanceAdmin } from "../membership";
 
 /**
- * What an API token limited to Projects can actually reach.
+ * What an API token limited to Projects can actually reach. Fixture: TEAM_A holds
+ * `prc_in` and `prc_out`; `prj_in` lives in the first, `prj_out` in the second,
+ * and `prj_top` sits at the team top level with no project at all.
  */
 
 let db: TestDb;

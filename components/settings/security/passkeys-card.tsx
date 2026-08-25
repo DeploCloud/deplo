@@ -48,20 +48,8 @@ const FINISH = /* GraphQL */ `
 `;
 
 /**
- * The passkeys on this account: add, rename, remove.
- *
- * Add is the only action that needs the browser to be in the right place - a
- * passkey is welded to one hostname and the platform refuses the ceremony from
- * anywhere else, silently and before any request leaves the page. So the button
- * is disabled with the reason on it rather than left to fail in a way that looks
- * like deplo doing nothing. The LIST stays usable regardless: removing a passkey
- * you can no longer use is exactly what someone on the wrong host wants.
- *
- * The reason is split by who knows it: the two configuration ones come from the
- * server as props and disable the button on the first paint, while "you are on
- * some other host" needs `window` and is checked when the person actually adds
- * one. Reading `window.location` during render would disagree with the server's
- * HTML and break hydration.
+ * The passkeys on this account: add, rename, remove. Reading `window.location`
+ * during render would disagree with the server's HTML and break hydration.
  */
 export function PasskeysCard({
   passkeys,
@@ -75,10 +63,8 @@ export function PasskeysCard({
   rpId: string | null;
 }) {
   const router = useRouter();
-  // The two reasons the SERVER already knows, resolved during render from props
-  // - no state, no effect, and correct on the first paint. The third reason
-  // (this browser is on some other host) needs `window` and is checked when the
-  // person actually adds one, inside the dialog.
+  // The two reasons the SERVER already knows, resolved during render from props - no
+  // state, no effect, and correct on the first paint.
   const blocked = !panelUrl
     ? "Set this instance's address in Settings → deplo before adding a passkey."
     : !rpId
@@ -99,10 +85,11 @@ export function PasskeysCard({
       <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Passkeys
-          {/* A promise about support, not a warning: the ceremony is covered by
-              tests end to end, but no real fleet has carried it yet, and the
-              rpID is welded to the panel's address in a way operators will
-              meet the first time they move it. */}
+          {/**
+           * A promise about support, not a warning: the ceremony is covered by tests end to
+           * end, but no real fleet has carried it yet, and the rpID is welded to the panel's
+           * address in a way operators will meet the first time they move it.
+           */}
           <BetaChip />
           <InfoTip content="Sign in with your fingerprint, face or device PIN instead of a password, and it counts as your second factor." />
         </CardTitle>
@@ -141,10 +128,9 @@ export function PasskeysCard({
                     <span className="flex items-center gap-2">
                       <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
                       <span className="font-medium">{p.name}</span>
-                      {/* A credential minted for another panel address. The
-                          browser will not offer it here, so saying so is the
-                          difference between "my passkey is broken" and "that
-                          one belongs to the old address". */}
+                      {/**
+                       * A credential minted for another panel address.
+                       */}
                       {!p.usableHere && (
                         <SimpleTooltip content="Registered for a different address of this panel, so this browser will not offer it. Remove it.">
                           <Badge variant="secondary">Not usable here</Badge>
@@ -178,13 +164,9 @@ export function PasskeysCard({
 }
 
 /**
- * Add: password, then the ceremony, then the label.
- *
- * The password is taken BEFORE the browser prompt rather than after, so a person
- * who cannot produce it is not asked for their fingerprint first. The label is
- * prefilled from the user agent - the same string the signed-in-devices table
- * shows - because "Chrome on macOS" is what they would have typed, and an empty
- * required field between them and a working passkey is a toll for nothing.
+ * Add: password, then the ceremony, then the label. The password is taken BEFORE
+ * the browser prompt rather than after, so a person who cannot produce it is not
+ * asked for their fingerprint first.
  */
 function AddPasskeyDialog({
   trigger,

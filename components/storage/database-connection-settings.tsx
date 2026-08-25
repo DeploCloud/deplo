@@ -36,8 +36,7 @@ import type { DatabaseDTO } from "@/lib/data/databases";
 /**
  * A database's Connection settings — everything about how clients reach it and
  * authenticate: public exposure (+ host port), server location / move, and
- * password rotation. Engine, version, username and db name stay create-only
- * (shown read-only on the Overview); the name and logo live in General.
+ * password rotation.
  */
 export function DatabaseConnectionSettings({
   db,

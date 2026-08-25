@@ -10,9 +10,7 @@ export interface SettingsServer {
 
 /**
  * Heads an app-settings page (General, Deployment, Storage, Access) with the
- * section's icon and a hairline. Now that each settings section is its own
- * dedicated page, this reuses the exact chrome the old single-scroll page put
- * above each group so the pages keep a consistent, anchored heading.
+ * section's icon and a hairline.
  */
 export function SettingsSection({
   icon: Icon,
@@ -37,15 +35,12 @@ export function SettingsSection({
 
 /**
  * A muted "unsaved changes" cue shown on the left of a card footer while that
- * section has pending edits (paired with its Save button, which is disabled
- * until then). Its slot is always reserved (opacity toggles, not display) so the
- * Save button never shifts as the cue appears or clears.
+ * section has pending edits (paired with its Save button, which is disabled until
+ * then).
  */
 export function DirtyHint({ dirty }: { dirty: boolean }) {
-  // Always render the span so it's a stable ARIA live region (its text is
-  // announced when a section becomes dirty). Empty when clean; as the footer's
-  // first justify-between child it holds the left edge so the Save button never
-  // shifts as the cue appears or clears.
+  // Always render the span so it's a stable ARIA live region (its text is announced
+  // when a section becomes dirty).
   return (
     <span
       role="status"

@@ -43,11 +43,10 @@ export function NoResultsGraphic({ className }: { className?: string }) {
       {/* The lens. It fades in at the left edge and out at the right one rather
           than snapping back, so the loop has no seam. */}
       <g className="deplo-find-lens">
-        {/* No fill at all: you have to be able to see the row THROUGH the
-            glass, or this is a disc that eats templates rather than a lens
-            that looks at them. The glint below is what says "glass"; a tinted
-            disc would have to be white at a few percent, which this repo does
-            not draw. */}
+        {/**
+         * No fill at all: you have to be able to see the row THROUGH the glass, or this is
+         * a disc that eats templates rather than a lens that looks at them.
+         */}
         <circle
           cx="60"
           cy="60"

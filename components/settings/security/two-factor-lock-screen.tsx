@@ -18,20 +18,8 @@ import { TwoFactorWizard } from "./two-factor-wizard";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * What a member sees instead of the dashboard when a team's (or their role's)
- * 2FA policy is unmet.
- *
- * The dashboard layout returns this INSTEAD of rendering its children, so no
- * page under it ever runs — the data layer would refuse those reads anyway, and
- * a screenful of error boundaries is a worse way to say "enrol first".
- *
- * Three ways out, all of them honest: enrol (the wizard, which is the point),
- * switch to a team without the policy, or sign out.
- *
- * A FOURTH for somebody who already holds a passkey and simply signed in with
- * their password (ADR-0024 §3): sign in again with the passkey. Telling that
- * person to "add a passkey" would be advice they have already taken, at the one
- * moment they most need to know why it is not counting.
+ * What a member sees instead of the dashboard when a team's (or their role's) 2FA
+ * policy is unmet.
  */
 export function TwoFactorLockScreen({
   reason,
@@ -74,12 +62,11 @@ export function TwoFactorLockScreen({
           <Button className="w-full" onClick={() => setWizard(true)}>
             Turn on two-factor authentication
           </Button>
-          {/* The other way out of this screen (ADR-0024). Adding a passkey here
-              unblocks the CURRENT session, because registering one is a
-              user-verified ceremony on this device - so it is a way out and not
-              just a suggestion. A link rather than a second wizard: it needs the
-              password and a prompt from the device, which is the Security page's
-              job. */}
+          {/**
+           * The other way out of this screen (ADR-0024). Adding a passkey here unblocks the
+           * CURRENT session, because registering one is a user-verified ceremony on this
+           * device - so it is a way out and not just a suggestion.
+           */}
           <p className="text-center text-sm text-muted-foreground">
             {hasPasskey ? (
               <>Or sign out and sign back in with your passkey.</>

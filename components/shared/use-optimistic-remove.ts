@@ -10,29 +10,6 @@ import {
 /**
  * Optimistic removal: a deleted row leaves the list on the CLICK, not when the
  * server answers and certainly not when the RSC refresh behind it lands.
- *
- * Both waits were real. On this instance a `deleteEnv` takes ~0.3–0.6s, and the
- * `router.refresh()` after it another ~0.5s — because that refresh re-runs the
- * whole page's server reads: every variable of the app, the shared ones, their
- * authors. The delete confirm used to hold the user in front of a spinner for
- * the first half, and then leave the deleted row sitting on screen for the
- * second, with a live delete button under the cursor they had just clicked. A
- * second click there fires a second mutation against a row the server no longer
- * has, so the reward for a successful delete was a red "Not found".
- *
- * So the row is hidden the moment the user confirms, and stays hidden until the
- * refresh actually lands (see `retainRemoved` for how a key is retired). If the
- * mutation is refused, `restore` puts the row back and the caller toasts the
- * server's message against a row the user can see again.
- *
- *     const { visible, remove, restore } = useOptimisticRemove(rows, rowKey);
- *     // …in the confirm dialog (ConfirmAction with `optimistic`, which closes
- *     // on the click so the row and the dialog leave in the same frame):
- *     const key = rowKey(row);
- *     remove(key);
- *     const res = await gqlAction(DELETE, { id: row.id });
- *     if (res.ok) router.refresh();
- *     else restore(key);
  */
 export function useOptimisticRemove<T>(
   items: T[],

@@ -32,18 +32,9 @@ import {
 } from "@/lib/apps/crop-geometry";
 
 /**
- * Choose what a picture is cropped to before it is saved.
- *
- * Every picker that stores a square image opens this: the profile picture, the
- * team picture, an App's logo and a database's logo. It replaces a blind centre
- * crop, which was right often enough for a face in the middle of a photo and
- * wrong with no recourse for everything else - the only fix was to crop the
- * file somewhere else and upload it again, which is exactly the "do it by hand
- * elsewhere" this product does not ask for.
- *
- * The preview is a CANVAS drawn from {@link cropRect}, not an <img> under a CSS
- * transform, so the preview and the exported file come out of the same three
- * numbers and cannot drift apart.
+ * Choose what a picture is cropped to before it is saved. The preview is a CANVAS
+ * drawn from {@link cropRect}, not an <img> under a CSS transform, so the preview
+ * and the exported file come out of the same three numbers and cannot drift apart.
  */
 
 /** How big the working bitmap is allowed to get. A 24-megapixel phone photo is
@@ -56,12 +47,9 @@ const WORK_EDGE_PX = 2048;
 const PREVIEW_PX = 640;
 
 /**
- * Whether a picked LOGO should go through the dialog at all.
- *
- * A canvas is raster-only, so SVG / ICO / GIF keep the plain read-and-store
- * path (see CROPPABLE_LOGO_TYPES). WebP is the one type that can be either, and
- * a moving logo that came back still would be a silent regression - so its
- * header is read before deciding.
+ * Whether a picked LOGO should go through the dialog at all. WebP is the one type
+ * that can be either, and a moving logo that came back still would be a silent
+ * regression - so its header is read before deciding.
  */
 export async function isCroppableLogo(file: File): Promise<boolean> {
   if (
@@ -89,10 +77,10 @@ export function ImageCropDialog({
   /** The picked file. Non-null OPENS the dialog - "a file is waiting" and "the
    *  dialog is up" are the same fact, so there is no separate `open` prop. */
   file: File | null;
-  /** `avatar`: zoom 1 fills the square, 256px out, circular mask - a profile
-   *  picture with transparent bars is the one outcome worth forbidding.
-   *  `logo`: zoom 1 shows the whole picture, 512px out, square mask - saving
-   *  without touching anything crops nothing, which is how logos render today. */
+  /**
+   * `avatar`: zoom 1 fills the square, 256px out, circular mask - a profile
+   * picture with transparent bars is the one outcome worth forbidding.
+   */
   variant?: "avatar" | "logo";
   /** Cancel, Esc, a click outside, or a file that will not decode. */
   onClose: () => void;

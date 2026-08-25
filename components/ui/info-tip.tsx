@@ -72,9 +72,7 @@ export function FieldLabel({
 }) {
   return (
     // `w-fit` so the label — and the info trigger it carries — hug their content
-    // instead of stretching the full column width. A stretched label would give
-    // the hover/click target (and the tooltip's anchor) a misleading width; the
-    // tooltip and its container should span only the title + icon.
+    // instead of stretching the full column width.
     <Label
       className={cn("flex w-fit items-center gap-1.5", className)}
       {...props}

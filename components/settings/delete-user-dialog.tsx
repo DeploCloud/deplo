@@ -70,18 +70,8 @@ const IMPACT_QUERY = /* GraphQL */ `
 
 /**
  * Permanently delete a user account — the one irreversible action in Settings →
- * Users, so it opens by ASKING THE SERVER what it would actually destroy and
- * shows that instead of a generic warning.
- *
- * Two tiers, deliberately different affordances:
- *  - Teams the user is the only member of are listed, not offered: they are
- *    deleted no matter what, because a memberless team is unreachable forever
- *    (every read resolves through a membership) and its apps would keep running
- *    with nothing able to show or stop them.
- *  - Everything else the account merely OWNS is a checkbox, default off, each
- *    labelled with the real count behind it. "This person left" and "everything
- *    they built must go" are different decisions and only the operator knows
- *    which one they are making.
+ * Users, so it opens by ASKING THE SERVER what it would actually destroy and shows
+ * that instead of a generic warning.
  */
 export function DeleteUserDialog({
   userId,
@@ -109,11 +99,7 @@ export function DeleteUserDialog({
     React.useState(false);
   const [deleteFoundedTeams, setDeleteFoundedTeams] = React.useState(false);
 
-  // Read on open. The caller mounts this dialog only while it is open (and
-  // unmounts it on close), so the preview is never stale across two openings and
-  // there is nothing to clear here first — memberships and apps move between one
-  // look and the next, and a stale preview is exactly the surprise this dialog
-  // exists to prevent.
+  // Read on open.
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;

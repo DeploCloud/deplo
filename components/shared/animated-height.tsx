@@ -8,18 +8,6 @@ import { cn } from "@/lib/utils";
  * A dialog body that is the height of its CONTENT and eases between sizes, so a
  * form that swaps a branch (or a wizard that swaps a step) reads as the same
  * dialog growing rather than a new one being drawn over the old one.
- *
- * Measured rather than `auto`, because `auto -> a number` does not animate. The
- * first measurement is therefore silent: the box only clips while a height is
- * actually moving, which is what lets a combobox menu hang past the field it
- * belongs to at rest instead of turning a two-field step into a scrolling one.
- * Content taller than three quarters of the window is the one case that has to
- * scroll on its own, and there the menus clip as they do in any scrolling dialog.
- *
- * Belongs INSIDE `DialogContent` (which wants `selfManaged`, so the generic
- * bounded shell doesn't clip it): Radix unmounts that subtree on close, and that
- * is what makes the next open measure from scratch instead of animating out of
- * the last size.
  */
 export function AnimatedHeight({
   children,

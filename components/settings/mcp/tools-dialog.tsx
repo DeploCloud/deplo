@@ -18,12 +18,8 @@ import { cn } from "@/lib/utils";
 import type { Capability } from "@/lib/types";
 
 /**
- * One MCP tool, flattened for the browser.
- *
- * `lib/mcp/tools.ts` is 55 KB of GraphQL documents and zod schemas, and none of
- * it means anything to a reader — so the page derives this on the server and
- * ships only what is rendered. Importing the table into a client component
- * instead would put every tool's query text in the bundle.
+ * One MCP tool, flattened for the browser. Importing the table into a client
+ * component instead would put every tool's query text in the bundle.
  */
 export interface McpToolSummary {
   name: string;
@@ -36,22 +32,6 @@ export interface McpToolSummary {
 
 /**
  * What an agent can actually do, behind a link.
- *
- * Seventy-eight rows used to sit permanently on this page, which made the
- * screen look like a reference manual for a feature whose entire promise is
- * "copy one line". The list still has to exist — "what am I handing a third
- * party" is a fair question and the honest answer is long — so it lives one
- * click away, and the trigger says the count so nobody has to open it to learn
- * the size of the answer.
- *
- * Search is the primary navigation, as in `PermissionPicker`: with fourteen
- * groups, scrolling to find `app_logs` is worse than typing it. A group with no
- * hit disappears rather than showing an empty heading.
- *
- * `highlight` marks the tools a set of capabilities actually opens. The
- * permissions step passes what is ticked, so the same list answers a different
- * question there — not "what exists" but "what am I about to allow" — without a
- * second component that could drift from this one.
  */
 export function ToolsDialog({
   tools,

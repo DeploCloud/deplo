@@ -24,15 +24,13 @@ export function AppControls({
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
-  // Live status (subscription) takes precedence over the server-rendered value
-  // so the button reflects start/stop/deploy in real time — and the "Stopping"
-  // label is driven by the persisted "stopping" status, so it survives reload
-  // and every viewer sees it, not just the user who clicked.
+  // Live status (subscription) takes precedence over the server-rendered value so the
+  // button reflects start/stop/deploy in real time — and the "Stopping" label is
+  // driven by the persisted "stopping" status, so it survives reload and every viewer
   const status = useLiveStatus(serverStatus);
-  // Nothing has ever been built for this app, so there is no container to start,
-  // stop or reroute — every control here would dial the host for a stack that is
-  // not there. The header's Deploy button is the only thing that can act on it,
-  // and it stands alone until the first build lands.
+  // Nothing has ever been built for this app, so there is no container to start, stop
+  // or reroute — every control here would dial the host for a stack that is not
+  // there.
   const neverDeployed = useNeverDeployed();
   // Start / Stop / Reload are all one permission. Without it every button here
   // is disabled rather than hidden, so the app still reads as an app - it just
@@ -63,12 +61,7 @@ export function AppControls({
   }
 
   // Reload re-applies the app's routing (domains + basic auth) to the running
-  // container WITHOUT a rebuild. The mutation returns a status string we turn
-  // into an honest toast — "deferred" means nothing was running to reroute.
-  //
-  // Unlike start/stop this one gets a spinner: there is no status for it. The
-  // container never leaves "running", so a click with no feedback looks like a
-  // click that missed, and the reroute takes as long as the host takes.
+  // container WITHOUT a rebuild.
   const [reloading, setReloading] = React.useState(false);
   function reload() {
     setReloading(true);

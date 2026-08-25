@@ -90,17 +90,7 @@ function rate(cur: number, prev: number, dtSec: number): number {
 }
 
 /**
- * The per-app / per-database Monitoring tab. Mirrors the fleet Monitoring page,
- * but scoped to ONE stack's containers.
- *
- * NOTHING HERE MAKES A HOST MEASURE. Every read below is a read of the control
- * plane's in-RAM ring buffer, which the telemetry-stream supervisor fills from a
- * single long-lived stream per host carrying every Deplo-managed container. That
- * is why this tab no longer owns a "Save metrics" switch: the stream carries this
- * stack whether or not anyone opted in, so the toggle's only remaining effect
- * would have been declining ~23KB of RAM while its tooltip described a per-sample
- * agent cost that no longer exists. The instance-wide switch on the fleet
- * Monitoring page remains the master control.
+ * The per-app / per-database Monitoring tab.
  */
 export function ContainerMonitoringDashboard({
   kind,
@@ -122,16 +112,7 @@ export function ContainerMonitoringDashboard({
     kind === "app" ? "appMetricsHistory" : "databaseMetricsHistory";
   const idArg = kind === "app" ? "appId" : "databaseId";
 
-  // Configured PER-CONTAINER caps. deplo applies the app-level resource limits to
-  // EVERY container in the stack (see mergeResourceLimits), so a stack's aggregate
-  // budget is the cap × its running-container count. The app-total usage we chart
-  // is SUMMED across those same containers, so the "% of limit" gauges must divide
-  // by that aggregate — dividing the summed usage by a SINGLE container's cap
-  // over-reports by ~the container count (a 3-service stack pegged at its caps
-  // would read ~300%, not ~100%). docker's memory % is already relative to the
-  // applied mem_limit, but CPU % is host-relative (100% = one core), so both are
-  // rescaled here against the CONFIGURED cap × running: the gauges match the note
-  // and still read honestly >100% when a cap isn't applied yet (pre-redeploy).
+  // Configured PER-CONTAINER caps.
   const cpuLimitCores =
     resources?.cpuMilli != null ? resources.cpuMilli / 1000 : null;
   const memLimitMb = resources?.memoryMb ?? null;
@@ -149,37 +130,19 @@ export function ContainerMonitoringDashboard({
       : dockerPct;
 
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
-  // The live-vs-history split is kept, but both halves now come from the same
-  // buffer: `samples` is the SERIES the charts draw, `last` is the latest-value
-  // CELL — the per-container breakdown and the `unsupported` flag, which are a
-  // live table rather than a series and so are not carried in every point.
-  // Splitting them also lets the header say "not answering" while the charts
-  // keep the honest gap instead of drawing a fake zero.
+  // The live-vs-history split is kept, but both halves now come from the same buffer:
+  // `samples` is the SERIES the charts draw, `last` is the latest-value CELL — the
+  // per-container breakdown and the `unsupported` flag, which are a live table rather
   const [samples, setSamples] = React.useState<ContainerSample[]>(() =>
     initialHistory.filter((s) => s.online),
   );
   const [last, setLast] = React.useState<ContainerLive | null>(null);
-  // A render clock, advanced by the read loop below. Without it, "live" would be
-  // decided by whatever timestamp the last SUCCESSFUL read returned: if reads
-  // start failing, or the stream stops delivering, nothing re-renders and the
-  // header keeps claiming live against a frozen chart. Ticking it on every
-  // attempt is what lets staleness assert itself.
+  // A render clock, advanced by the read loop below.
   const [now, setNow] = React.useState<number>(() => Date.now());
 
-  // ONE read, on POLL_MS, for both halves.
-  //
-  // What this replaced: a 1s "live" poll that each tick made the owning host
-  // measure, appending its answer as the chart's primary feed, with a slower
-  // history re-merge bolted on beside it to repair the holes the append-only
-  // feed inevitably left. Under the stream the append-only feed is gone: the
-  // MERGE is the feed. Every point the charts draw comes from the server-side
-  // buffer, so a missed request, a slow tab, or a stretch when nobody was
-  // looking simply resolves on the next read instead of scarring the window
-  // permanently — the repair pass and the thing it repaired are now one path.
-  //
-  // Both fields ride ONE document deliberately. They are two reads of the same
-  // in-RAM buffer; splitting them into two timers would double the request rate
-  // for no extra freshness and let the tiles and the charts land a beat apart.
+  // ONE read, on POLL_MS, for both halves. They are two reads of the same in-RAM
+  // buffer; splitting them into two timers would double the request rate for no extra
+  // freshness and let the tiles and the charts land a beat apart.
   React.useEffect(() => {
     let active = true;
     // A read is cheap but not instant (auth + team scoping). Keep the in-flight
@@ -209,10 +172,7 @@ export function ContainerMonitoringDashboard({
         if (!active || !res.ok || !res.data) return;
         setLast(res.data.live);
         if (res.data.history.length === 0) return;
-        // Keep every recorded measurement, `running: 0` included. The buffer
-        // only ever holds online samples, and filtering the idle ones back out
-        // here is what once made a redeploy read as a hole: a stopped stack
-        // genuinely measures zero, and zero is a measurement.
+        // Keep every recorded measurement, `running: 0` included.
         const fresh = res.data.history.filter((s) => s.online);
         setSamples((prev) => {
           const byTs = new Map<number, ContainerSample>();
@@ -222,10 +182,8 @@ export function ContainerMonitoringDashboard({
           const merged = [...byTs.values()]
             .sort((a, b) => a.ts - b.ts)
             .slice(-MAX_POINTS);
-          // Reads run faster than the agent's cadence, so most of them return a
-          // window identical to the one already on screen. Keep the previous
-          // ARRAY in that case: a fresh identity would invalidate the points
-          // memo and redraw every chart several times per new measurement.
+          // Reads run faster than the agent's cadence, so most of them return a window
+          // identical to the one already on screen.
           const head = merged[merged.length - 1];
           const prevHead = prev[prev.length - 1];
           if (merged.length === prev.length && head?.ts === prevHead?.ts) {
@@ -240,13 +198,9 @@ export function ContainerMonitoringDashboard({
 
     void read();
     const iv = setInterval(read, POLL_MS);
-    // Read on wake as well as on the timer. A backgrounded tab has its timers
-    // clamped to roughly 1/min, which is PRECISELY the case server-side
-    // buffering exists to cover: the frames kept arriving while the tab slept,
-    // so an immediate read on return paints the whole continuous window at once
-    // instead of showing a false hole that fills in over the next minute. A
-    // soft-nav back or a bfcache restore may not remount this component, so a
-    // mount-only read would never re-run — `pageshow` covers the bfcache case.
+    // Read on wake as well as on the timer. A soft-nav back or a bfcache restore may
+    // not remount this component, so a mount-only read would never re-run — `pageshow`
+    // covers the bfcache case.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void read();
     };
@@ -272,10 +226,9 @@ export function ContainerMonitoringDashboard({
         return {
           ts: s.ts,
           values: {
-            // CPU/mem rescaled to the aggregate caps (per-container cap × that
-            // sample's running count) so the charts' 0-100% axis means "% of the
-            // limit" when one is set (inlined from cpuOf/memPctOf so the memo
-            // depends only on the primitive caps).
+            // CPU/mem rescaled to the aggregate caps (per-container cap × that sample's running
+            // count) so the charts' 0-100% axis means "% of the limit" when one is set (inlined
+            // from cpuOf/memPctOf so the memo depends only on the primitive caps).
             cpu:
               cpuLimitCores && s.running > 0
                 ? s.cpu / (cpuLimitCores * s.running)
@@ -326,8 +279,6 @@ export function ContainerMonitoringDashboard({
 
   // "Live" is a claim about the FEED, not about the last request: a read that
   // succeeds and returns the same frame it returned a minute ago is not live.
-  // Judge it by how old the newest measurement is, at the same threshold the
-  // charts band "No data" at, so the header and the chart cannot contradict.
   const stale =
     Boolean(last && !last.online) ||
     (cur ? now - cur.ts > STALE_AFTER_MS : false);
@@ -358,11 +309,6 @@ export function ContainerMonitoringDashboard({
   } else if (!cur) {
     if (last && !last.online) {
       // "Offline" now means the control plane holds NO frame for this stack.
-      // Under the stream that has two causes it cannot tell apart from here —
-      // the host isn't reachable, or its server agent is too old to stream and
-      // the supervisor fell back to host-only telemetry. So the copy stays
-      // neutral about the cause and points at the one page that shows both
-      // (Servers carries the reachability state and the update button).
       body = (
         <EmptyCard
           icon={ServerOff}

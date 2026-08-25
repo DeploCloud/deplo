@@ -11,26 +11,7 @@ import type { LogLevel } from "@/lib/types";
 
 /**
  * The one row shape every log console renders: the build-log stream, the
- * deployments Logs page, and the app's live runtime logs. They had drifted into
- * three near-copies of the same markup, which is how the level chip ended up
- * stretching in two of them and sitting still in the third.
- *
- * Two rules the chip has to obey, and neither is cosmetic:
- *
- *  - FIXED HEIGHT. A chip is a label, not a bar. As a flex child it inherited
- *    `align-items: stretch`, so a wrapped ten-line stack trace grew its ERROR
- *    chip into a ten-line coloured column down the left of the pane. It is now a
- *    fixed-size box pinned to the top of its row, whatever the message does.
- *
- *  - FIXED WIDTH. The labels differ in length (CMD vs SUCCESS), so sizing the
- *    chip to its text ragged the message column — every line started at a
- *    different x. One width for all of them puts the messages in a true column.
- *    This holds even when the chip is HIDDEN (`chip="auto"`): the gutter stays,
- *    or the x of the message would move from line to line as levels change.
- *
- * The 2px rail is the exception that proves the first rule — it is positioned
- * absolutely and DOES span the whole row on purpose, so a wrapped stack trace
- * reads as one block. A bar may do that; a label may not.
+ * deployments Logs page, and the app's live runtime logs.
  */
 
 /** Width of the level chip's gutter. Sized for the longest label (SUCCESS) with
@@ -41,26 +22,14 @@ const CHIP = `h-[18px] ${CHIP_WIDTH}`;
 
 /**
  * Matches http(s) URLs inside a log line. Kept deliberately conservative: a URL
- * runs until the first whitespace, and a trailing `.,;:!?)]}` (common sentence /
- * bracket punctuation) is trimmed off the match so "see https://x.dev/foo." links
- * `https://x.dev/foo`, not `…/foo.`. The capturing group lets `split` keep the
- * URLs interleaved with the surrounding text.
+ * runs until the first whitespace, and a trailing `.,;:!?)]
  */
 const URL_RE = /(https?:\/\/[^\s]+?)(?=[.,;:!?)\]}]*(?:\s|$))/g;
 
 /**
- * Wrap every case-insensitive occurrence of `term` in a `<mark>`, returning
- * React nodes.
- *
- * Nodes, not HTML, is the whole design. Dokploy renders its ANSI to an HTML
- * string and then runs a regex `replace` over it to highlight the search term,
- * which happily rewrites the inside of a `<span class=…>` when the user searches
- * for "span" or "class". Here the ANSI parse, the linkifier and the highlighter
- * each hand the next one plain text and get elements back, so the three compose
- * with no escaping and no `dangerouslySetInnerHTML` anywhere.
- *
- * `indexOf` rather than a regex: the term is arbitrary user input, and scanning
- * for a literal needs no escaping and cannot backtrack.
+ * Wrap every case-insensitive occurrence of `term` in a `<mark>`, returning React
+ * nodes. `indexOf` rather than a regex: the term is arbitrary user input, and
+ * scanning for a literal needs no escaping and cannot backtrack.
  */
 function markMatches(text: string, term: string): React.ReactNode {
   if (!term) return text;
@@ -182,27 +151,17 @@ export function LogRow({
   /** Rendered as a dim, tabular gutter. Omitted by streams that carry no clock. */
   time?: string;
   /**
-   * Colour the message to match its level. True where the level is AUTHORED by
-   * the producer (build + deployment logs). Runtime container logs pass false:
-   * their level is inferred from the text, and tinting a whole pane on an
-   * inference turns a stray "error" inside a JSON payload into a red line.
-   * The chip still shows it; the message stays neutral.
+   * Colour the message to match its level.
    */
   tintMessage?: boolean;
   /**
    * `"auto"` draws the chip only when there is something to say — i.e. not for
-   * `info`. Runtime logs use it: once the level detector stops guessing, most
-   * lines ARE info, and a column of identical grey INFO chips down a full-screen
-   * pane is noise that hides the four chips that matter. Build logs keep
-   * `"always"`, where the level is authored and every line carries real meaning.
+   * `info`.
    */
   chip?: "always" | "auto";
   /**
-   * Draw this row on the banded background instead of the bare slab — the
-   * caller alternates it, so a live stream reads as lines rather than as one
-   * black field. A row whose LEVEL already carries a wash keeps that wash:
-   * `cn` drops the band, because a red line saying "error" outranks a stripe
-   * saying "second".
+   * Draw this row on the banded background instead of the bare slab — the caller
+   * alternates it, so a live stream reads as lines rather than as one black field.
    */
   zebra?: boolean;
   /** Search term to mark inside the message. Composes with ANSI and links. */
@@ -256,16 +215,11 @@ export function LogRow({
             : "text-zinc-300",
         )}
       >
-        {/*
-          Log producers (docker build, buildkit, app stdout) emit raw ANSI, and
-          lines are stored verbatim — so parse each line into styled runs: SGR
-          colors render as colors, every other escape is swallowed instead of
-          showing up as `[0m`-style garbage. Parsing is per line, so styling
-          deliberately does NOT carry across rows: a producer that forgets its
-          reset tints one line, not the whole rest of the log. A segment's own
-          color (a nested class) wins over the level tint inherited from this
-          span; unstyled segments keep the tint.
-        */}
+        {/**
+         * Log producers (docker build, buildkit, app stdout) emit raw ANSI, and lines are
+         * stored verbatim — so parse each line into styled runs: SGR colors render as
+         * colors, every other escape is swallowed instead of showing up as `[0m`-style
+         */}
         {parseAnsi(text).map((seg, i) =>
           seg.className ? (
             <span key={i} className={seg.className}>
@@ -295,14 +249,7 @@ const SKELETON_WIDTHS = [
 
 /**
  * Placeholder lines for a console that has no rows yet but is still waiting on
- * data (a build that has been claimed but hasn't printed anything). Mirrors
- * `LogRow`'s geometry — same gutter, same chip box, same columns — so the real
- * lines land exactly where the placeholders were instead of jumping.
- *
- * Painted in flat `zinc` rather than `Skeleton`: the pane is `#0a0a0a` in BOTH
- * themes, while `bg-muted` and the shimmer sweep are both derived from
- * `--foreground` and would be a bright slab on the light theme and an invisible
- * one over black respectively.
+ * data (a build that has been claimed but hasn't printed anything).
  */
 export function LogLinesSkeleton() {
   return (

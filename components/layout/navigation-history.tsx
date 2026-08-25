@@ -5,31 +5,12 @@ import { usePathname } from "next/navigation";
 
 /**
  * "Smart back" for the sidebar sub-menu back links.
- *
- * A sub-menu back link ("Back to apps", "Back to dashboard") should EXIT
- * the current section — settings, or one app — and return you to the last
- * page you were on *before* you entered it, using the browser's own history.
- * Stepping one entry at a time (a plain back) would just walk between sibling
- * pages inside the section (settings/notifications → settings/account); instead
- * we skip the whole section in one jump. When there is no earlier in-app page
- * outside the section (a fresh tab, a deep link, a reload) the link falls back
- * to its href.
- *
- * We track the app's own history as a stack of visited pathnames indexed by a
- * monotonic depth stamped into `window.history.state`. Next preserves custom
- * history-state keys and, on a push, copies the current entry's state onto the
- * new one (`preserveCustomHistoryState`), so the stamp lets us tell a pushed
- * entry (inherits the previous depth → one deeper) from a popped one (keeps its
- * own depth). The stack then lets a back link find the nearest earlier entry
- * outside a given path prefix and jump straight to it with `history.go()`.
  */
 
 const DEPTH_KEY = "__deploNavDepth";
 
 // Module-level singleton — survives the back links mounting/unmounting between
-// menus and is shared by the desktop and mobile sidebars. `stack[d]` is the
-// pathname we recorded at depth `d`; a null means "not known" (e.g. entries
-// that predate a reload, whose paths we can't recover).
+// menus and is shared by the desktop and mobile sidebars.
 let depth = 0;
 let known = false;
 let lastPath: string | null = null;
@@ -110,20 +91,13 @@ function isUnder(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(prefix + "/");
 }
 
-// The app-creation funnel — pages a back link must never land on, because by
-// then the app they exist to create already exists. Coming out of a brand-new
-// app, "Back to apps" would otherwise return to the wizard that made it
-// (refilled, one click from creating it twice) or to the template you deployed;
-// the scan walks straight past them to the page you opened the funnel from.
+// The app-creation funnel — pages a back link must never land on, because by then
+// the app they exist to create already exists.
 const TRANSIENT_PREFIXES = ["/new", "/templates"];
 
 /**
- * Exit the section identified by `prefix` (e.g. "/settings" or "/apps/abc"):
- * jump to the nearest earlier in-app entry whose pathname is outside that
- * prefix. Returns:
- *   "jumped" — a history.go() was fired (caller should suppress the href)
- *   "busy"   — a jump is already in flight (caller should ignore the click)
- *   "none"   — no such entry is known (caller should follow the fallback href)
+ * Exit the section identified by `prefix` (e.g. "/settings" or "/apps/abc"): jump
+ * to the nearest earlier in-app entry whose pathname is outside that prefix.
  */
 export function backOutOf(prefix: string): "jumped" | "busy" | "none" {
   if (navigating) return "busy";

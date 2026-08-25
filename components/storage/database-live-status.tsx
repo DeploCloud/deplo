@@ -5,12 +5,8 @@ import { gqlSubscribe } from "@/lib/graphql-client";
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
- * The live, client-tracked slice of a database's state — the DB twin of
- * {@link import("@/components/apps/app-live-status").AppLiveStatusProvider}.
- * Seeded from the server render, kept current by the databaseStatus
- * subscription so the header badge, controls and gated pages react to
- * provisioning → running, start/stop and redeploy across every client without
- * a reload.
+ * The live, client-tracked slice of a database's state — the DB twin of {@link
+ * import("@/components/apps/app-live-status").
  */
 export type LiveDatabase = {
   id: string;

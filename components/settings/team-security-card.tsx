@@ -11,12 +11,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The team-wide two-factor policy.
- *
- * One switch, because that is the whole decision: either this team's work is
- * behind a second factor or it is not. The member count under it exists so an
- * admin sees who they are about to interrupt BEFORE flipping it, rather than
- * finding out from the people who can suddenly do nothing.
+ * The team-wide two-factor policy. One switch, because that is the whole decision:
+ * either this team's work is behind a second factor or it is not.
  */
 export function TeamSecurityCard({
   name,

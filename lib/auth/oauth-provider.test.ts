@@ -91,7 +91,6 @@ test("the access token is stored hashed over the BARE secret", async () => {
 
 test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly", async () => {
   // This is the bug that made Authorize a dead button, pinned from both ends.
-  // `consentEndpoint` funnels into `authorizeEndpoint`, which opens with `if (!
   const reg = await registerClient();
   const cookie = await signIn(EMAIL, PASSWORD);
   const authorized = await authorize(cookie, {
@@ -296,7 +295,8 @@ test("a moved panel leaves exactly one requestable audience", async () => {
 
 test("the discovery documents agree on one issuer, and it resolves", async () => {
   // RFC 8414 §3.3 makes a client check that the `issuer` it reads back equals the
-  // identifier it built the discovery URL from.
+  // identifier it built the discovery URL from. An issuer WITH a path also moves its
+  // metadata: §3.1 inserts the path after the well-known segment.
   const prm = (await (await protectedResourceResponse()).json()) as {
     authorization_servers: string[];
   };

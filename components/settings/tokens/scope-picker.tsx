@@ -46,17 +46,8 @@ export interface ScopeSelection {
 
 /**
  * What an API token may reach, as the tree it actually is: teams, then their
- * projects and folders, then the apps inside them, folders nesting as deep as
- * they do on the Overview.
- *
- * One rule makes the whole control readable — ticking a node grants everything
- * under it, now and later. So a whole team is one click, a whole folder is one
- * click, and a single app is one click, and the deeper boxes go
- * checked-and-disabled to show they are already covered rather than silently
- * disagreeing with their parent.
- *
- * Nothing ticked means unrestricted. That is deliberate: an empty scope with a
- * separate "all / specific" radio above it is two controls for one decision.
+ * projects and folders, then the apps inside them, folders nesting as deep as they
+ * do on the Overview.
  */
 export function ScopePicker({
   tree,
@@ -74,10 +65,8 @@ export function ScopePicker({
   onChange: (next: ScopeSelection) => void;
   disabled?: boolean;
   /**
-   * Whether a whole TEAM can be ticked. False for the ROLE editor, where a role
-   * already belongs to exactly one team and a scope only ever names a project, a
-   * folder or an app. A team checkbox there would be a second way to say "no
-   * limit", which is what ticking nothing already says.
+   * Whether a whole TEAM can be ticked. A team checkbox there would be a second
+   * way to say "no limit", which is what ticking nothing already says.
    */
   teamPickable?: boolean;
   /** The heading's tooltip. */
@@ -450,16 +439,15 @@ export function ScopePicker({
                               />
                               {projExpanded && (
                                 <>
-                                  {/* Environments first: ADR-0009 makes the
-                                      environment the primary axis of a project,
-                                      and folders are their siblings, never
-                                      their children. */}
-                                  {/* Only a consumer whose selection carries
-                                      the field can express an environment: the
-                                      token scope and the per-node grant have
-                                      nowhere to put one, and an offered tick
-                                      that the save drops is worse than no tick.
-                                      The optional field IS the discriminator. */}
+                                  {/**
+                                   * Environments first: ADR-0009 makes the environment the primary axis of a project,
+                                   * and folders are their siblings, never their children.
+                                   */}
+                                  {/**
+                                   * Only a consumer whose selection carries the field can express an environment: the
+                                   * token scope and the per-node grant have nowhere to put one, and an offered tick
+                                   * that the save drops is worse than no tick.
+                                   */}
                                   {(selection.environmentIds === undefined
                                     ? []
                                     : project.environments
@@ -512,10 +500,11 @@ export function ScopePicker({
                                   {project.folders.map((f) =>
                                     renderFolder(f, 2, projOn),
                                   )}
-                                  {/* When environments are not expressible the
-                                      rows above are not drawn, so the apps that
-                                      live in them are folded in here — hiding
-                                      the level must never hide its contents. */}
+                                  {/**
+                                   * When environments are not expressible the rows above are not drawn, so the apps
+                                   * that live in them are folded in here — hiding the level must never hide its
+                                   * contents.
+                                   */}
                                   {(selection.environmentIds === undefined
                                     ? [
                                         ...project.environments.flatMap(
@@ -592,11 +581,6 @@ export function ScopePicker({
 /**
  * Every top-level node of the tree, ticked — "all of it", said in the only
  * vocabulary a picker with no team checkbox has.
- *
- * The editors that start from everything (a role, a member) show this rather
- * than an empty tree: "nothing ticked" is a fine way to STORE unrestricted, and
- * a terrible way to show it, because the one thing an admin wants to do next is
- * untick the parts this person should not have.
  */
 export function everythingSelection(tree: ScopeTreeTeam[]): ScopeSelection {
   return {
@@ -610,10 +594,6 @@ export function everythingSelection(tree: ScopeTreeTeam[]): ScopeSelection {
 /**
  * Whether a selection leaves nothing out — which is what gets STORED as
  * unrestricted, so that a project created tomorrow is included too.
- *
- * Asked of the top level only: everything under a ticked node follows it, and a
- * selection that ticked every app one by one instead of their project reaches
- * the same apps today but is a genuine limit tomorrow.
  */
 export function coversEverything(
   tree: ScopeTreeTeam[],
@@ -631,9 +611,7 @@ export function coversEverything(
 
 /**
  * Open whatever already holds a selection, so an edit lands on what it edits —
- * plus every TEAM, always. A collapsed team row is a dead end on first sight,
- * and most instances have exactly one; its projects and folders stay closed so
- * the list opens at a readable size.
+ * plus every TEAM, always.
  */
 function openForSelection(
   tree: ScopeTreeTeam[],

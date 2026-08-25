@@ -2,21 +2,8 @@ import type { TokenTeam } from "@/lib/data/tokens";
 
 /**
  * What the Revoke dialog says, for an API token that may reach several teams.
- *
- * Revoke deletes the credential everywhere (`revokeToken`), so the sentence
- * never promises a survivor. What it does add, when the token also works in
- * other teams, is WHICH ones: the person pressing the button is about to stop
- * automation they may not be able to see, and a blast radius nobody is told
- * about is how a revoke becomes somebody else's outage.
- *
- * Shared by both dialogs that offer the button, because the same action
- * described two ways is how a UI teaches the wrong model.
- *
- * A token with no scope (`scoped: false`) reaches every team its creator belongs
- * to, live, with no stored set to name: it gets the plain sentence.
- *
- * Connected clients (Settings → MCP) deliberately do NOT use this: that screen
- * speaks about the active team only, and never names the others.
+ * Revoke deletes the credential everywhere (`revokeToken`), so the sentence never
+ * promises a survivor.
  */
 interface RevokeCopyInput {
   /** Every team the credential reaches, named. Empty when it is not scoped. */

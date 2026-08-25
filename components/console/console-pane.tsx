@@ -114,11 +114,9 @@ export function ConsolePane({
   // Handed up by whichever terminal is mounted; drives Clear/Copy/Download.
   const [controls, setControls] = React.useState<ConsoleControls | null>(null);
 
-  // The shell label of the ACTIVE container, re-probed on every switch — the
-  // note used to reflect the container the page opened on and then lie about
-  // every other one in the stack. Stored WITH the container it describes rather
-  // than cleared on switch, so every write happens in an async callback and the
-  // stale answer is discarded by comparison instead of by an extra render.
+  // The shell label of the ACTIVE container, re-probed on every switch — the note
+  // used to reflect the container the page opened on and then lie about every other
+  // one in the stack.
   const [probed, setProbed] = React.useState<{
     name: string;
     label: string | null;
@@ -381,12 +379,9 @@ export function ConsolePane({
 }
 
 /**
- * The pane when there is no container to open — stopped, or still starting.
- *
- * It keeps the toolbar's first row, because on a full-bleed route that link is
- * the only thing on screen saying which App this is and the only way back to it.
- * A bare empty state floating in an unlabelled viewport is how the logs pane
- * looked before `BuildLogStream` grew the same heading.
+ * The pane when there is no container to open — stopped, or still starting. It
+ * keeps the toolbar's first row, because on a full-bleed route that link is the
+ * only thing on screen saying which App this is and the only way back to it.
  */
 export function ConsoleEmpty({
   title,
@@ -447,16 +442,6 @@ function ConsoleStatus({
 
 /**
  * The first-visit warning, as a strip instead of a modal.
- *
- * It used to be a mandatory dialog in front of an unmounted terminal: two clicks
- * before a prompt, on the surface an expert reaches for when something is on
- * fire. The warning is still worth saying — this is a live shell in a running
- * container — so it is said, once, where it can be read while the terminal is
- * already usable behind it.
- *
- * Dismissing it is what records the acknowledgement, and that same flag is what
- * unlocks the Console entry in the sidebar (`components/layout/nav-config.ts`),
- * so it stays an explicit gesture: leaving it up keeps it coming back.
  */
 function ConsoleWarningStrip() {
   const acknowledged = useConsoleAck();

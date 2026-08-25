@@ -30,22 +30,9 @@ const AUTOMATIC = "__auto__";
 const SELF = "__self__";
 
 /**
- * Where this app COMPILES, when that is not where it runs.
- *
- * A build server lets a production box be sized for the workload instead of the
- * build: an app that serves in 300 MB can need several GB to compile, and while it
- * compiles it competes with the apps already running beside it.
- *
- * ADVANCED: the parent renders this in the Deployment page's "Advanced settings"
- * card, and only for an app Deplo actually builds - a compose stack has no single
- * image to move and a prebuilt image is not built at all. It saves on change rather
- * than joining a Save button, like every other panel in that card, and changing it
- * never starts a deploy: it decides where the NEXT build happens.
- *
- * A choice whose architecture differs from the app's own server is offered but
- * DISABLED, with the reason on the row. Hiding it would leave the operator hunting
- * for a server they can see in the fleet; an image built there would start on this
- * host and immediately die with `exec format error`.
+ * Where this app COMPILES, when that is not where it runs. It saves on change
+ * rather than joining a Save button, like every other panel in that card, and
+ * changing it never starts a deploy: it decides where the NEXT build happens.
  */
 export function BuildServerPanel({
   appId,

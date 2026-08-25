@@ -9,11 +9,8 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Re-render the database's compose from its current settings and reroute it —
- * the "apply my pending edits" verb, and the migration path that stamps the
- * deplo.* labels onto containers provisioned before they existed (enabling
- * logs / terminal / the runtime poll). Honest tooltip: brief downtime, data
- * volume preserved.
+ * Re-render the database's compose from its current settings and reroute it — the
+ * "apply my pending edits" verb, and the migration path that stamps the deplo.
  */
 export function DatabaseRedeployButton({
   id,

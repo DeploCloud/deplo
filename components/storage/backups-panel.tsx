@@ -99,14 +99,6 @@ function capturedBlurb(target: BackupTarget): string {
 
 /**
  * The Backups tab — schedules, one-off runs, and the artifacts they produced.
- *
- * ONE component for an app and for a database, because the two pages had drifted
- * into two different products: the app tab could run a backup on demand and
- * listed every artifact with a download and a restore, while a database's tab
- * showed schedules and nothing else, with restore buried in a row menu. Which of
- * the two you are looking at is not a reason to be offered different features -
- * so the target is a prop, and the only things that read it are the heading, the
- * blurb, and the word in the restore confirmation.
  */
 export function BackupsPanel({
   target,
@@ -141,22 +133,15 @@ export function BackupsPanel({
     [destinations],
   );
 
-  // A dump runs on the host for minutes with nothing on this page changing by
-  // itself, and the mutation that started it only resolves at the very END. So a
-  // run started HERE gets a placeholder row immediately (see `PendingRunRow`),
-  // and `AutoRefresh` re-reads the page until every runner has settled.
+  // A dump runs on the host for minutes with nothing on this page changing by itself,
+  // and the mutation that started it only resolves at the very END.
   const [pending, setPending] = React.useState<
     { id: number; destinationId: string; baseline: number }[]
   >([]);
   const runningNow = runs.filter((r) => r.status === "running").length;
   // Retire a placeholder the moment a real `running` row shows up above the count
-  // that stood when it was created: the swap happens in one commit, so there is
-  // never a duplicate. Adjusting state DURING RENDER rather than in an effect,
-  // React's documented escape hatch and the same one `pending-create.tsx` uses -
-  // an effect runs after the commit, which is one painted frame of the
-  // placeholder and its real row side by side. It is dropped from STATE rather
-  // than filtered at render, or it would come back for a frame when the run
-  // settles and the count falls to where it started.
+  // that stood when it was created: the swap happens in one commit, so there is never
+  // a duplicate.
   const [seenRunning, setSeenRunning] = React.useState(runningNow);
   if (runningNow !== seenRunning) {
     setSeenRunning(runningNow);
@@ -182,10 +167,8 @@ export function BackupsPanel({
     runningNow > 0 ||
     schedules.some((s) => s.lastStatus === "running");
 
-  // Destinations this target already writes to, whose artifacts are encrypted
-  // and whose key nobody has taken. Scheduled OR already used: a one-off run is
-  // as much a restore point as a nightly job, and its bytes are just as
-  // unreadable without the key.
+  // Destinations this target already writes to, whose artifacts are encrypted and
+  // whose key nobody has taken.
   const unsavedKeyDestinations = React.useMemo(() => {
     if (!canTestDestinations) return [];
     const used = new Set([
@@ -206,13 +189,11 @@ export function BackupsPanel({
         active={anythingRunning}
         intervalMs={pending.length > 0 ? 2_000 : 5_000}
       />
-      {/* The recovery key, asked for where the backups actually are.
-          The Storage page's card was the only screen that ever mentioned it, and
-          it is not the screen anyone stands on: the default destination is
-          seeded right here, on first visit, and a schedule made here writes
-          encrypted artifacts from that moment on. Only the destinations THIS
-          target writes to, so a page for one app never nags about a bucket it
-          has nothing to do with. */}
+      {/**
+       * The recovery key, asked for where the backups actually are. Only the destinations
+       * THIS target writes to, so a page for one app never nags about a bucket it has
+       * nothing to do with.
+       */}
       {unsavedKeyDestinations.map((d) => (
         <RecoveryKeyNudge
           key={d.id}
@@ -407,10 +388,7 @@ function BackUpNow({
   }
 
   function submit() {
-    // The mutation runs the WHOLE dump - it resolves only once the archive is
-    // written. So the dialog closes now, a pulsing placeholder takes the run's
-    // seat in the artifacts table immediately, and the real `running` row (the
-    // executor records it before it starts) replaces it within a tick.
+    // The mutation runs the WHOLE dump - it resolves only once the archive is written.
     setOpen(false);
     const mutation =
       target.kind === "app"
@@ -542,12 +520,8 @@ const STEP_COPY: Record<
 };
 
 /**
- * Schedule a backup of THIS app or database — the Storage wizard without its
- * first step, because the page already answers what is being backed up.
- *
- * Two screens, where and when, so the two questions are read one at a time
- * instead of arriving as one seven-control form. Edit keeps its single form:
- * there nothing is being decided, a field is being corrected.
+ * Schedule a backup of THIS app or database — the Storage wizard without its first
+ * step, because the page already answers what is being backed up.
  */
 function ScheduleBackup({
   target,
@@ -1139,11 +1113,6 @@ function ScheduleRow({
 
 /**
  * One icon button with a tooltip that survives being disabled.
- *
- * A disabled button swallows pointer events (`disabled:pointer-events-none`), so
- * a tooltip attached straight to it never opens — and the disabled state is
- * exactly when the reason matters most. The focusable wrapper is the same idiom
- * the "Back up now" trigger uses.
  */
 function IconAction({
   label,
@@ -1181,12 +1150,8 @@ function IconAction({
 /* ------------------------------------------------------------------ */
 
 /**
- * A run that was started from this page and has not surfaced yet.
- *
- * The dump takes minutes and the mutation only answers at the end, so without
- * this the table sits unchanged for a whole refresh interval after the click —
- * on a first backup, still showing "No backups yet". It never pretends to be
- * finished: it pulses, its actions are dead, and it says Running.
+ * A run that was started from this page and has not surfaced yet. It never
+ * pretends to be finished: it pulses, its actions are dead, and it says Running.
  */
 function PendingRunRow({
   destinationName,
@@ -1214,10 +1179,7 @@ function PendingRunRow({
 }
 
 /**
- * The two things you can do with an artifact. ALWAYS both, disabled with the
- * reason in the tooltip rather than hidden: a row's actions must not appear,
- * move or vanish as the run settles, and a member who cannot act should still
- * see that the action exists. The server refuses either way.
+ * The two things you can do with an artifact.
  */
 function RunActions({
   href,
@@ -1242,10 +1204,7 @@ function RunActions({
   onDelete?: () => void;
   onCancel?: () => void;
 }) {
-  // Every successful artifact is downloadable, wherever it is kept. Where it
-  // LIVES used to decide that: an artifact in a bucket got a disabled button and
-  // a tooltip explaining how to fetch it with your own S3 credentials and decrypt
-  // it yourself, which is a shell answer to a question asked in a panel.
+  // Every successful artifact is downloadable, wherever it is kept.
   const canDownload = ok && canRestore && href !== null;
   function reason(verb: "download" | "restore") {
     if (!canRestore) return `You don't have permission to ${verb} backups`;
@@ -1265,11 +1224,9 @@ function RunActions({
     if (running) return "This backup is still running";
     return "Delete this backup permanently";
   }
-  // Icon + label as DIRECT children of the button, never wrapped: one <span>
-  // around them makes the pair a single flex item, and the button's `gap-2` and
+  // Icon + label as DIRECT children of the button, never wrapped: one <span> around
+  // them makes the pair a single flex item, and the button's `gap-2` and
   // `items-center` stop applying — the icon glues to the text and drops onto its
-  // baseline. That is only visible on a run that did NOT succeed, which is
-  // exactly the row that also carries an error line.
   const downloadLabel = (
     <>
       <Download className="size-4" />
@@ -1328,11 +1285,10 @@ function RunActions({
           <Square className="size-4" />
         </IconAction>
       )}
-      {/* Icon-only, unlike its two neighbours: this is the destructive one, and
-          a third labelled button would give it the same weight as Download.
-          IconAction is the file's own pattern for that - same h-8 as `size="sm"`,
-          so the row stays aligned, and its tooltip shows whether or not it is
-          disabled, which is what an unlabelled button needs. */}
+      {/**
+       * Icon-only, unlike its two neighbours: this is the destructive one, and a third
+       * labelled button would give it the same weight as Download.
+       */}
       <IconAction
         label="Delete this backup"
         tooltip={deleteReason()}
@@ -1462,11 +1418,11 @@ function RunRow({
             return res;
           }}
         />
-        {/* No typed confirmation, unlike Restore. That one overwrites a live
-            target and the typing is what stops a misclick from taking an app
-            down; this removes one restore point and leaves everything running.
-            Asking someone to type an app's name to delete a failed run would be
-            ceremony, and ceremony everywhere is ceremony nowhere. */}
+        {/**
+         * No typed confirmation, unlike Restore. Asking someone to type an app's name to
+         * delete a failed run would be ceremony, and ceremony everywhere is ceremony
+         * nowhere.
+         */}
         <ConfirmAction
           open={deleteOpen}
           onOpenChange={setDeleteOpen}

@@ -17,11 +17,9 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * Desktop sidebar. Collapses fully to zero width — the control that brings it
- * back lives in the topbar (see SidebarExpandButton) — and, when open, can be
- * dragged wider or narrower. Collapsed flag and width come from SidebarProvider,
- * which persists them; the width transition is suppressed during a drag and on
- * first paint so neither animates unexpectedly.
+ * Desktop sidebar. Collapsed flag and width come from SidebarProvider, which
+ * persists them; the width transition is suppressed during a drag and on first
+ * paint so neither animates unexpectedly.
  */
 export function Sidebar({
   capabilities = [],

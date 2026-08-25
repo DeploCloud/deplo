@@ -34,15 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /**
- * Browse and edit an app's on-disk files directory
- * (`/data/stacks/files/<slug>`). Everything routes through the GraphQL
- * `appFile*` operations — all of them sandboxed and `manage_files`-gated on
- * the server — so the client never holds a host path, only a relative one.
- *
- * State is dir-listing + an optionally-open file. Navigating folders refetches
- * the listing; opening a file fetches its text into the editor. Mutations
- * (save / delete / mkdir / rename / upload) refetch the affected listing so the
- * tree stays truthful without a full page reload.
+ * Browse and edit an app's on-disk files directory (`/data/stacks/files/<slug>`).
  */
 
 interface FileEntry {
@@ -129,10 +121,8 @@ export function FileExplorer({ appId }: { appId: string }) {
   const [newName, setNewName] = React.useState("");
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Fetch a directory listing. `cancelled` lets the effect ignore a stale
-  // response if the user navigates again before it resolves. setState only ever
-  // runs in the async `.then`/`.catch` continuations — never synchronously in
-  // the effect body — so this stays clear of cascading-render lint.
+  // Fetch a directory listing. `cancelled` lets the effect ignore a stale response if
+  // the user navigates again before it resolves.
   const loadDir = React.useCallback(
     (path: string, cancelled?: () => boolean) =>
       gql<{ appFiles: FileEntry[] }>(LIST, { appId, path })

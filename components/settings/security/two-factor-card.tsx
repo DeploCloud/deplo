@@ -29,28 +29,14 @@ const REGENERATE = /* GraphQL */ `
 /**
  * Two-factor status and the three things you can do with it: turn it on (the
  * wizard), mint a fresh set of recovery codes, and turn it off.
- *
- * The last two ask for the password AND a live code, which is the whole point:
- * a password on its own is exactly what two-factor is there to survive, so
- * letting it switch two-factor off would make the feature protect nothing
- * against the attack it exists for. A recovery code counts as the second factor,
- * so losing the phone is not a dead end. See lib/data/two-factor.ts.
  */
 export function TwoFactorCard({
   enabled,
   /** Named when a team or role policy makes 2FA mandatory: disabling is refused. */
   requiredBy,
   /**
-   * Where this account's passkey stands RIGHT NOW, which is not the same
-   * question as whether it owns one:
-   *
-   *  - `none`: no usable passkey. The password really is the only thing.
-   *  - `idle`: there is one, but this session signed in with the password, so it
-   *    is not carrying a second factor and a mandated team is blocked. Saying
-   *    "you are covered" here would be wrong at the exact moment somebody has
-   *    arrived from the lock screen to find out why they are not.
-   *  - `carrying`: this session was opened by a passkey, so the mandate is met
-   *    and an authenticator app is a spare rather than a requirement.
+   * Where this account's passkey stands RIGHT NOW, which is not the same question
+   * as whether it owns one: - `none`: no usable passkey.
    */
   passkeyStanding = "none",
 }: {
@@ -87,11 +73,6 @@ export function TwoFactorCard({
 
   /**
    * The password + code pair both dialogs collect.
-   *
-   * One field for the code, not a TOTP/recovery toggle: a recovery code never
-   * looks like six digits, so the server can tell them apart on its own, and
-   * somebody reaching for one has already lost their phone and does not need to
-   * find a switch first.
    */
   const stepUpFields = (
     <div className="space-y-2">

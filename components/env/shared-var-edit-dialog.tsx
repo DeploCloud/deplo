@@ -26,25 +26,12 @@ import type { SharedVarDTO } from "@/lib/data/shared-vars";
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 /**
- * Edit ONE shared variable's value — not who gets it. The single form both the
- * App tab and the Shared tab open on Edit; the four-step wizard is now reserved
- * for CREATING a variable and for changing its scope, which is what
- * `onChangeSharing` hands it. Editing a value used to mean walking Scope →
- * Details → Review to reach the Save button.
- *
- * The scope isn't merely left alone in the UI, it is round-tripped VERBATIM:
- * `teamWide` / `environmentIds` / `projectIds` go back exactly as they came, and
- * `appIds` is OMITTED — which `saveSharedVar` reads as "leave the per-app links
- * exactly as they are" (a set that IS sent replaces them wholesale, so sending
- * `[]` would silently unlink every app). `targets` is omitted for the same
- * reason: an edit must never widen the deploy runtimes a legacy variable reaches.
- * So a save here can only ever change the value and the type.
+ * Edit ONE shared variable's value — not who gets it. `targets` is omitted for the
+ * same reason: an edit must never widen the deploy runtimes a legacy variable
+ * reaches.
  */
 export function SharedVarEditDialog(props: SharedVarEditDialogProps) {
-  // A secret has no edit form. Every affordance that opens this one is already
-  // disabled for a secret row (EnvEditButton) and the data layer refuses the
-  // write — this is the third lock, so a stray mount cannot put a secret's
-  // fields on screen at all.
+  // A secret has no edit form.
   if (props.editing.type === "secret") return null;
   return <SharedVarEditForm {...props} />;
 }
@@ -58,8 +45,7 @@ interface SharedVarEditDialogProps {
   /**
    * Opened from a single app's table, where the variable is one row among the
    * app's own — surface that this edit is NOT local (it lands on every app the
-   * variable reaches). Redundant on the Shared tab, where that is already the
-   * whole frame, so it defaults off.
+   * variable reaches).
    */
   warnShared?: boolean;
 }

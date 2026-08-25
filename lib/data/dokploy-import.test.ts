@@ -837,8 +837,7 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
   );
 
   // .but the app still answers on TWO addresses, because it answered on two over
-  // there. The throwaway one is RE-HOSTED: a temporary address of Deplo's, same port,
-  // and a row that remembers what it replaced so the Domains section can say so.
+  // there.
   assert.equal(doms.length, 2);
   const rehosted = doms.find((d) => !d.isPrimary)!;
   assert.equal(rehosted.importedFrom, "blink-web-abc.traefik.me");
@@ -1724,8 +1723,7 @@ test("without the publish-ports grant the port is dropped, and the report says w
 /* ------------------------------------------------------------------ */
 
 /**
- * The half-finished migration, taken back out. The property that matters is not
- * "it deletes things" - it is the LINE it draws.
+ * The half-finished migration, taken back out.
  */
 
 test("a revert removes what the run created", async () => {

@@ -28,9 +28,6 @@ import { gqlAction } from "@/lib/graphql-client";
  * Kicks off GitHub's App Manifest flow: asks the server for a manifest + signed
  * state, then POSTs them to GitHub via a transient form so the browser navigates
  * to GitHub to create (and then install) the App — no manual id/key copy/paste,
- * the way Dokploy does it. Exposed as a hook so surfaces that aren't a button
- * (e.g. a menu item in the repo picker's account switcher) can trigger the exact
- * same flow.
  */
 export function useGithubConnect() {
   const [pending, startTransition] = React.useTransition();
@@ -54,12 +51,7 @@ export function useGithubConnect() {
           `mutation ($org: String, $returnTo: String) { startGithubConnect(org: $org, returnTo: $returnTo) { actionUrl manifest state } }`,
           {
             org: owner,
-            // Where to come back to once GitHub is done. Read here rather than
-            // passed in by each call site, so every surface that connects — the
-            // create-app wizard, an app's source settings, Settings → Git —
-            // returns the user to the page they were on instead of stranding
-            // them in Settings. The server drops anything that is not an in-app
-            // path, and a flow with no return address ends where it always did.
+            // Where to come back to once GitHub is done.
             returnTo: window.location.pathname + window.location.search,
           },
           (d) => d.startGithubConnect,
@@ -95,9 +87,7 @@ export function useGithubConnect() {
 /**
  * The owner choice every connect surface shares: GitHub creates the App under
  * whoever owns it, and the two owners live at different addresses on github.com,
- * so it is picked here, before the browser leaves. Returns the menu items to
- * drop into any menu plus the dialog to render beside it, so no screen has to
- * re-implement the pair.
+ * so it is picked here, before the browser leaves.
  */
 export function useGithubOwnerConnect() {
   const { connect, pending } = useGithubConnect();

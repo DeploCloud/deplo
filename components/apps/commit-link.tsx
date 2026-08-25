@@ -7,12 +7,6 @@ import { cn } from "@/lib/utils";
  * The short commit SHA. When the app deploys from a GitHub source we know the
  * repo, so it links to that exact commit on GitHub (opened in a new tab);
  * otherwise (non-GitHub source, or no commit) it renders as plain monospace text.
- *
- * Rendered as a role="link" <code> rather than an <a> so it stays valid,
- * keyboard-navigable HTML even when it sits inside a row-level <Link> (the
- * deployment lists) — an <a> nested in an <a> is invalid. On activation it stops
- * propagation so clicking the SHA never ALSO fires that row's navigation, then
- * opens the commit URL in a new tab.
  */
 export function CommitLink({
   sha,

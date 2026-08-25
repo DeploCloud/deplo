@@ -10,10 +10,9 @@ export const DB_TYPES: {
   name: string;
   versions: string[];
 }[] = [
-  // These lists are only the OFFLINE FALLBACK + default (versions[0]) for the
-  // create dialog — the real version picker (DbVersionInput) fetches the live
-  // tag list from Docker Hub via /api/database-versions, so it tracks new
-  // releases automatically. Keep the first entry a sensible current default.
+  // These lists are only the OFFLINE FALLBACK + default (versions[0]) for the create
+  // dialog — the real version picker (DbVersionInput) fetches the live tag list from
+  // Docker Hub via /api/database-versions, so it tracks new releases automatically.
   { id: "postgres", name: "PostgreSQL", versions: ["18", "17", "16"] },
   { id: "mysql", name: "MySQL", versions: ["8.4", "8.0"] },
   { id: "mariadb", name: "MariaDB", versions: ["11", "10"] },
@@ -30,24 +29,9 @@ export const DB_NAMES = Object.fromEntries(
 ) as Record<DatabaseType, string>;
 
 /**
- * Engine id → its REAL brand mark, bundled under `/public/engines` and served
- * from our own origin (the dashboard CSP is `img-src 'self' blob: data:` — no
- * remote fetch, ever). These are the engines' actual logos, not a stand-in
- * glyph: a database with no custom logo of its own shows the elephant, the
- * dolphin, the seal, the leaf.
- *
- * This is the DEFAULT, not the value: a database's uploaded logo (Settings →
- * General) always wins, and clearing it falls back here — the same
- * override-or-derive rule an App's logo follows. Rendered by
- * {@link file://./database-logo.tsx DatabaseLogo}, the only component that
- * should read this map.
- *
- * Provenance: dashboard-icons (homarr-labs, CC0) for every engine except MySQL,
- * whose mark there carries the wordmark and turns to mush at 36px — that one is
- * devicon's dolphin (MIT). Each was checked to stay legible on BOTH the light
- * and the dark tile background before it was picked; a mark that vanishes in one
- * theme (the navy MariaDB seal, the black ClickHouse bars) was rejected for the
- * brand's own light variant.
+ * Engine id → its REAL brand mark, bundled under `/public/engines` and served from
+ * our own origin (the dashboard CSP is `img-src 'self' blob: data:` — no remote
+ * fetch, ever).
  */
 export const DB_LOGOS: Record<DatabaseType, string> = {
   postgres: "/engines/postgres.svg",
@@ -60,17 +44,8 @@ export const DB_LOGOS: Record<DatabaseType, string> = {
 
 /**
  * Which credential inputs each engine's official image actually supports as
- * first-init env vars, and the default the data layer falls back to when the
- * field is left blank (shown as the placeholder). Drives both the conditional
- * inputs on create and the read-only summary on edit.
- *
- * - `username`: does the image create a named login? (postgres POSTGRES_USER,
- *   mysql/mariadb MYSQL_USER, mongo MONGO_INITDB_ROOT_USERNAME, clickhouse
- *   CLICKHOUSE_USER). Redis has no user concept — auth is a single requirepass and
- *   the built-in ACL user is literally `default`.
- * - `dbName`: does the image create a named logical DB? Redis has none; mongo
- *   creates DBs lazily on first write, so we don't surface a DB-name field for it.
- * - `password`: every engine takes a password.
+ * first-init env vars, and the default the data layer falls back to when the field
+ * is left blank (shown as the placeholder).
  */
 export const ENGINE_CREDS: Record<
   DatabaseType,

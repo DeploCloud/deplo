@@ -46,17 +46,13 @@ export function CreateDatabase({
 }: {
   servers: { id: string; name: string }[];
   /**
-   * Whether the current user may create a database (`create_databases`). When
-   * false the button is shown DISABLED with a tooltip saying so, and nothing
-   * can open the dialog — not even the ?new=database deep link. Without this
-   * the whole form could be filled in only to be refused on submit.
+   * Whether the current user may create a database (`create_databases`).
    */
   canCreate: boolean;
   /**
-   * Whether the current user holds the publish-ports grant. When false the
-   * "Expose publicly" control is shown DISABLED with an explanatory tooltip —
-   * the toggle can't be turned on, so no port field ever appears. The server
-   * re-checks this grant on create regardless (this only hides the affordance).
+   * Whether the current user holds the publish-ports grant. When false the "Expose
+   * publicly" control is shown DISABLED with an explanatory tooltip — the toggle
+   * can't be turned on, so no port field ever appears.
    */
   canExposePorts?: boolean;
   /**
@@ -109,12 +105,9 @@ export function CreateDatabase({
     : noServers
       ? "Provision a server first"
       : null;
-  // The useState initializer runs only on mount, but `servers` arrives via a
-  // soft router.refresh() that reconciles this component in place (no remount) —
-  // e.g. when a server finishes provisioning while the page is open (0→1). Derive
-  // the effective id from the live prop so a stale "" never blocks a valid submit
-  // (which would otherwise be unrecoverable without a full reload, since the
-  // <Select> only renders for >1 server).
+  // The useState initializer runs only on mount, but `servers` arrives via a soft
+  // router.refresh() that reconciles this component in place (no remount) — e.g. when
+  // a server finishes provisioning while the page is open (0→1).
   const effectiveServerId =
     servers.find((s) => s.id === serverId)?.id ?? servers[0]?.id ?? "";
 
@@ -131,10 +124,8 @@ export function CreateDatabase({
     setShowPassword(false);
   }
 
-  // Ask the server for a host port that is currently free on the target server
-  // (it probes the owning agent), then drop it into the field. The value is only
-  // a suggestion — createDatabase re-checks it, so a race between this and submit
-  // is still caught server-side.
+  // Ask the server for a host port that is currently free on the target server (it
+  // probes the owning agent), then drop it into the field.
   function generatePort() {
     if (!effectiveServerId) return;
     setGeneratingPort(true);
@@ -163,11 +154,8 @@ export function CreateDatabase({
   }
 
   function submit() {
-    // The database takes its place in the grid straight away, pulsing, while
-    // the host port is probed and the row written. The card that replaces it
-    // then reports provisioning → running live, which is the same "follow the
-    // thing you just made" payoff the old redirect to the detail page gave —
-    // without hijacking the user's page a second after the dialog closed.
+    // The database takes its place in the grid straight away, pulsing, while the host
+    // port is probed and the row written.
     const typed = {
       name: name.trim(),
       type,

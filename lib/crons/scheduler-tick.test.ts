@@ -25,7 +25,7 @@ import * as lease from "../backups/lease";
 /**
  * The TICK's cadence, which is the part `scheduler.test.ts` cannot see: it calls
  * the two phases directly, so it would pass just as well if they ran at the same
- * rate.
+ * rate. They must not.
  */
 
 let db: TestDb;

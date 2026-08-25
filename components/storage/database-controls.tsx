@@ -11,10 +11,7 @@ import { useLiveDatabaseStatus } from "@/components/storage/database-live-status
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
- * Start / Stop / Restart for a database — the DB twin of AppControls. Live
- * status (subscription) drives the button so start/stop/restart reflect in real
- * time; everything is disabled while provisioning (the compose project doesn't
- * exist yet).
+ * Start / Stop / Restart for a database — the DB twin of AppControls.
  */
 export function DatabaseControls({
   id,

@@ -16,13 +16,6 @@ import type { AppStatus } from "@/lib/types";
 
 /**
  * The one place the app header decides what the app's state IS.
- *
- * Two sources, folded by {@link displayStatus}: the live subscription (what the
- * control plane last DID — deploy / start / stop) and a poll of the owning agent
- * (what the containers are actually DOING). The subscription alone is what used
- * to report a crash-looping app as "Online" — nothing pushes when a container
- * dies of its own accord, so the stored "active" stood unchallenged. The runtime
- * poll runs only while we claim to be up, which is the only claim it can refute.
  */
 function useDisplayStatus(fallback: AppStatus): {
   status: DisplayStatus;
@@ -100,10 +93,8 @@ export function AppStatusDot({ status }: { status: AppStatus }) {
 
 /**
  * The same live app status as {@link AppStatusDot}, but as a LABELLED badge
- * ("Online" / "Restarting" / "Degraded" / "Not running" / "Stopped" /
- * "Not deployed" / "Building" / "Error") for the app header — so the container's
- * lifecycle reads clearly and in real time, kept separate from the
- * deployment/commit status shown elsewhere on the page. Rendered as a tinted chip.
+ * ("Online" / "Restarting" / "Degraded" / "Not running" / "Stopped" / "Not
+ * deployed" / "Building" / "Error") for the app header — so the container's
  */
 export function AppStatusBadge({ status }: { status: AppStatus }) {
   const { status: shown, detail } = useDisplayStatus(status);

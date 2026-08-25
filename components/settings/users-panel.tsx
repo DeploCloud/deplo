@@ -135,10 +135,8 @@ function UserRow({
   const [pending, startTransition] = React.useTransition();
 
   // The owner's row is closed to everyone, THEMSELVES INCLUDED, for these two
-  // actions: no admin may demote or suspend them, and they may not uncrown
-  // themselves either (ownership leaves only via transfer, which names a
-  // successor). Server-enforced in lib/data/members.ts; this only spares the
-  // operator a click that would toast an error.
+  // actions: no admin may demote or suspend them, and they may not uncrown themselves
+  // either (ownership leaves only via transfer, which names a successor).
   const ownerLocked = user.isInstanceOwner;
 
   // Quick ⋯-menu actions flip ONE global flag while preserving the rest
@@ -169,10 +167,9 @@ function UserRow({
     });
   }
 
-  // Compact, horizontal card — deliberately distinct from the team Members
-  // cards (which stack vertically with a badge row): here the avatar sits left,
-  // status badges sit inline with the handle, and a single meta line carries
-  // name · team count · join date.
+  // Compact, horizontal card — deliberately distinct from the team Members cards
+  // (which stack vertically with a badge row): here the avatar sits left, status
+  // badges sit inline with the handle, and a single meta line carries name · team
   const meta = [
     user.name && user.name !== user.username ? user.name : null,
     `${user.teamCount} team${user.teamCount === 1 ? "" : "s"}`,
@@ -316,10 +313,11 @@ function UserRow({
                 {user.suspended ? "Reactivate account" : "Suspend account"}
               </DropdownMenuItem>
             </SimpleTooltip>
-            {/* Permanent deletion sits below the reversible actions, behind its
-                own separator: suspending is the answer to "they shouldn't be
-                able to log in", and only the operator who means "and everything
-                they own goes too" should reach past it. */}
+            {/**
+             * Permanent deletion sits below the reversible actions, behind its own separator:
+             * suspending is the answer to "they shouldn't be able to log in", and only the
+             * operator who means "and everything they own goes too" should reach past it.
+             */}
             <DropdownMenuSeparator />
             <SimpleTooltip
               content={
