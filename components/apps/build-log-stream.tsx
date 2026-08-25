@@ -74,6 +74,7 @@ export function BuildLogStream({
   showQueueBanner = false,
   notice = null,
   title,
+  toolbar,
   fill = false,
 }: {
   deploymentId: string;
@@ -87,6 +88,10 @@ export function BuildLogStream({
    *  full-screen route, where the toolbar is the only heading left; the
    *  deployment detail page keeps the app header and would say it twice. */
   title?: PaneTitle;
+  /** Extra controls for the toolbar, dropped in right after the title: the
+   *  Runtime/Build switch, and on the general Logs page the target picker that
+   *  stands in for the title entirely. The per-resource routes pass nothing. */
+  toolbar?: React.ReactNode;
   /** Fill the height of the frame instead of sitting in a fixed-height card.
    *  Set on the full-bleed logs page; the deployment detail page leaves it off
    *  and keeps its card. */
@@ -267,14 +272,15 @@ export function BuildLogStream({
       <div
         className={
           fill
-            ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0a0a0a]"
-            : "overflow-hidden rounded-xl border border-border bg-[#0a0a0a]"
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-terminal"
+            : "overflow-hidden rounded-xl border border-border bg-terminal"
         }
       >
         {/* Every control beside the search input is h-9 — `size="sm"` is h-8,
             which lands a button 4px short of an Input and reads as a broken row. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <PaneTitleLink title={title} />
+          {toolbar}
           <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
             {logs.length === 1 ? "1 line" : `${logs.length} lines`}
             {live && (
@@ -318,11 +324,15 @@ export function BuildLogStream({
                 {stopping ? "Stopping" : "Stop build"}
               </Button>
             )}
-            <CopyButton value={logText} label="Copy logs" />
+            {/* h-9 like everything else on this row: the labelled variants of
+                both buttons are `size="sm"`, which is h-8 and lands them 4px
+                short of the search input beside them. */}
+            <CopyButton value={logText} label="Copy logs" className="h-9" />
             <DownloadButton
               value={logText}
               filename={`build-${deploymentId}.log`}
               label="Download"
+              className="h-9"
             />
           </div>
         </div>

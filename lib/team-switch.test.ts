@@ -33,6 +33,9 @@ test("drops the query string — filters and selections name the old team's rows
   assert.equal(teamSwitchDestination("/?project=prc_1&env=environ_1"), "/");
   assert.equal(teamSwitchDestination("/templates?folder=fld_1"), "/templates");
   assert.equal(teamSwitchDestination("/new?template=t&repo=o%2Fr"), "/new");
+  // The Logs page leans on this: switching team lands on a bare /logs, whose
+  // remembered target belongs to the team just left and is refused there.
+  assert.equal(teamSwitchDestination("/logs?app=my-app"), "/logs");
 });
 
 test("leaves an App page for the Overview", () => {

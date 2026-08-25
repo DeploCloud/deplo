@@ -28,6 +28,10 @@ import { cn } from "@/lib/utils";
  * viewport. Flexbox already knows their height. Let it do the arithmetic.
  */
 const FULL_BLEED = [
+  // The general Logs page is BOTH of its states: the chooser is a full-screen
+  // step, and this matches on the pathname only, so one entry covers the pane
+  // at `/logs?app=…` too.
+  /^\/logs\/?$/,
   /^\/apps\/[^/]+\/logs\/?$/,
   /^\/storage\/databases\/[^/]+\/logs\/?$/,
   /^\/apps\/[^/]+\/console\/?$/,

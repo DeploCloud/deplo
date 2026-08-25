@@ -134,6 +134,7 @@ export function ContainerLogs({
   apiBase,
   notice = null,
   title,
+  toolbar,
   supportsTimeline = false,
   logMaxDays = DEFAULT_LOG_RANGE_DAYS,
 }: {
@@ -152,6 +153,10 @@ export function ContainerLogs({
   notice?: LogNotice | null;
   /** What these logs belong to, linked back to its Overview. See PaneTitleLink. */
   title?: PaneTitle;
+  /** Extra controls for the toolbar, dropped in right after the title: the
+   *  Runtime/Build switch, and on the general Logs page the target picker that
+   *  stands in for the title entirely. The per-resource routes pass nothing. */
+  toolbar?: React.ReactNode;
   /**
    * Override the logs endpoint — the database logs viewer passes
    * `/api/databases/<id>/logs` (same SSE contract). Default: the app route
@@ -537,6 +542,7 @@ export function ContainerLogs({
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
         <ScrollText className="size-4 shrink-0 text-muted-foreground" />
         <PaneTitleLink title={title} />
+        {toolbar}
         {instances.length > 1 ? (
           <Select value={active.name} onValueChange={switchInstance}>
             <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">

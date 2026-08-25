@@ -55,6 +55,7 @@ export default async function AppLogsPage(
         title={{ label: project.name, href: `/apps/${project.slug}` }}
         initialInstances={info?.instances ?? []}
         initialStreamable={!!info?.streamable}
+        initialUnreachable={!!info?.unreachable}
         initialSupportsTimeline={!!info?.supportsTimeline}
         initialLogMaxDays={info?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS}
         latestDeployment={

@@ -1,8 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { CircleAlert, Hammer, XCircle, RotateCw } from "lucide-react";
+import {
+  Activity,
+  CircleAlert,
+  Hammer,
+  ScrollText,
+  XCircle,
+  RotateCw,
+} from "lucide-react";
 import { gql } from "@/lib/graphql-client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ContainerLogs } from "@/components/apps/container-logs";
 import { LogsGraphic } from "@/components/apps/logs-graphic";
@@ -13,7 +22,7 @@ import {
   type AppRuntimeView,
 } from "@/components/apps/use-app-runtime";
 import type { LogNotice } from "@/components/logs/log-notice";
-import type { PaneTitle } from "@/components/shared/pane-title";
+import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import type { ConsoleInstance } from "@/lib/data/console";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
 
@@ -56,44 +65,65 @@ type LogsInfoResponse = {
 type LatestDeployment = { id: string; status: DeploymentStatus };
 
 /**
- * Logs page body.
+ * Logs page body: an App's two log sources, with a switch between them.
  *
- * It streams runtime logs whenever a container EXISTS on the host — running,
- * restarting, or long dead — and falls back to the last build's logs only when
- * there is no container to read from. It used to gate the stream on "the app is
- * running", which hid the logs in the one case where they matter most: a
- * crash-looping container is never in state "running", so the page sat on a
- * spinner (or showed a stale build log) while `docker logs` on the host printed
- * the stack trace that explained the crash. `docker logs` reads the container's
- * log file, which outlives the process — a dead container still has plenty to say.
+ * **Runtime** streams from the container whenever one EXISTS on the host —
+ * running, restarting, or long dead. It used to gate on "the app is running",
+ * which hid the logs in the one case where they matter most: a crash-looping
+ * container is never in state "running", so the page sat on a spinner while
+ * `docker logs` on the host printed the stack trace that explained the crash.
+ * `docker logs` reads the container's log file, which outlives the process.
+ *
+ * **Build** is the latest deployment's build log. This used to be a FALLBACK,
+ * reachable only when the app had no container at all — which meant the build
+ * logs of a running app could not be opened from here by any route, exactly
+ * when somebody is trying to work out why the deploy they just shipped broke
+ * it. Now it is a tab, and the fallback survives only as the DEFAULT: with no
+ * click, the pane opens on whichever source has something to say.
+ *
+ * Older builds are deliberately not offered. `/deployments` is the history, and
+ * a second picker in this toolbar would duplicate it.
  */
 export function LiveLogs({
   appId,
   title,
   initialInstances,
   initialStreamable,
+  initialUnreachable,
   initialSupportsTimeline,
   initialLogMaxDays,
   latestDeployment,
   initialBuildLogs,
+  toolbar,
 }: {
   appId: string;
   /** The App's name and the way back to its Overview. The full-screen route has
-   *  no page title and no app header, so the toolbar carries both. */
-  title: PaneTitle;
+   *  no page title and no app header, so the toolbar carries both. Omitted on
+   *  the general Logs page, where the target picker in `toolbar` shows the name
+   *  itself and drawing this too would say it twice. */
+  title?: PaneTitle;
   initialInstances: ConsoleInstance[];
   initialStreamable: boolean;
+  /** The owning agent could not be reached, so `initialStreamable` is false for
+   *  a reason that has nothing to do with whether a container exists. */
+  initialUnreachable: boolean;
   /** The owning host's agent honours a log time window (`logs.timerange`). */
   initialSupportsTimeline: boolean;
   /** The instance ceiling on that window, in days. */
   initialLogMaxDays: number;
   latestDeployment: LatestDeployment | null;
   initialBuildLogs: LogLine[];
+  /** Extra toolbar controls to sit beside the Runtime/Build switch. The general
+   *  Logs page passes its target picker; the App's own Logs tab passes nothing. */
+  toolbar?: React.ReactNode;
 }) {
   const live = useLiveApp();
   const [instances, setInstances] =
     React.useState<ConsoleInstance[]>(initialInstances);
   const [streamable, setStreamable] = React.useState(initialStreamable);
+  // Why `streamable` is false, which the disabled Runtime tab has to say out
+  // loud: an unreachable agent is transient and NOT the same as no container.
+  const [unreachable, setUnreachable] = React.useState(initialUnreachable);
   // Both follow the same refetch as `streamable`: moving the app to another
   // server, or updating that server's agent, changes whether the window is
   // honoured, and the control must not keep offering one the host ignores.
@@ -119,6 +149,7 @@ export function LiveLogs({
         const li = data.logsInfo;
         if (!li) return;
         setStreamable(li.streamable);
+        setUnreachable(li.unreachable);
         setSupportsTimeline(li.supportsTimeline);
         setLogMaxDays(li.logMaxDays);
         if (li.instances.length) setInstances(li.instances);
@@ -129,56 +160,177 @@ export function LiveLogs({
     };
   }, [appId, liveStatus]);
 
-  if (streamable && instances.length) {
-    return (
-      <ContainerLogs
-        appId={appId}
-        instances={instances}
-        runtime={runtime}
-        notice={runtimeNotice(runtime)}
-        title={title}
-        supportsTimeline={supportsTimeline}
-        logMaxDays={logMaxDays}
-      />
-    );
-  }
-
   // No container on the host at all (never deployed, or the stack was torn
-  // down): keep the page useful with the most recent build's logs rather than a
-  // dead end. Prefer the live subscription's latest deployment (so a redeploy
-  // started while viewing this page swaps in the new build's logs, no reload).
+  // down) makes Build the only thing there is to read; a container with no
+  // deployment behind it (an image App, an import) makes Runtime the only one.
+  // Prefer the live subscription's latest deployment, so a redeploy started
+  // while viewing this page swaps in the new build's logs with no reload.
   const seededId = latestDeployment?.id ?? null;
   const depId = live?.latestDeploymentId ?? seededId;
   const depStatus =
     live?.latestDeploymentStatus ?? latestDeployment?.status ?? null;
 
-  if (depId && depStatus) {
+  const runtimeAvailable = streamable && instances.length > 0;
+  const buildAvailable = Boolean(depId && depStatus);
+
+  // An explicit click pins the source; with no click, the pane opens on
+  // whichever source has something to say. If the pinned one goes away — the
+  // stack is torn down while its runtime logs are on screen — it falls back
+  // rather than leaving a dead pane up. Derived, so there is no effect to run
+  // and nothing to keep in sync.
+  const [chosen, setChosen] = React.useState<Source | null>(null);
+  const source: Source =
+    chosen === "runtime" && runtimeAvailable
+      ? "runtime"
+      : chosen === "build" && buildAvailable
+        ? "build"
+        : runtimeAvailable
+          ? "runtime"
+          : "build";
+
+  // Nothing to switch between, so no switch is drawn. The toolbar ROW stays,
+  // though: on the general Logs page it holds the target picker, and a screen
+  // that answers "nothing here" by taking away the only way to look somewhere
+  // else is a dead end. It is also the one heading a full-bleed route has.
+  if (!runtimeAvailable && !buildAvailable) {
     return (
-      <BuildLogStream
-        // Keyed by id so a redeploy remounts against the new build cleanly
-        // (fresh log buffer, its own polling) rather than appending to the old.
-        key={depId}
-        deploymentId={depId}
-        initialLogs={depId === seededId ? initialBuildLogs : []}
-        initialStatus={depStatus}
-        notice={noticeForStatus(depStatus)}
-        title={title}
-        fill
-      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
+          <ScrollText className="size-4 shrink-0 text-muted-foreground" />
+          <PaneTitleLink title={title} />
+          {toolbar}
+        </div>
+        {/* Centred in what is left of the full-bleed frame rather than pinned to
+            its top edge, which in a viewport-tall pane reads as a page that
+            failed to load the rest of itself. */}
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <EmptyState
+            graphic={<LogsGraphic />}
+            title="No logs yet"
+            description="Runtime logs stream from the app's container, and this app hasn't been deployed yet. Deploy it to see its build and runtime output here."
+          />
+        </div>
+      </div>
     );
   }
 
-  // Centred in the full-bleed frame rather than pinned to its top edge, which
-  // for an empty state in a viewport-tall pane reads as a page that failed to
-  // load the rest of itself.
+  const controls = (
+    <>
+      {toolbar}
+      <TabsList className="h-9 gap-0 rounded-lg border border-border bg-background/60 p-1">
+        <SourceTab
+          value="runtime"
+          icon={<Activity />}
+          label="Runtime"
+          available={runtimeAvailable}
+          reason={
+            unreachable
+              ? "Can't reach the server this app runs on."
+              : "This app has no container on its server."
+          }
+          enabledHint="Live output from the app's container."
+        />
+        <SourceTab
+          value="build"
+          icon={<Hammer />}
+          label="Build"
+          available={buildAvailable}
+          reason="This app has never been deployed."
+          enabledHint="Output from the latest build."
+        />
+      </TabsList>
+    </>
+  );
+
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center">
-      <EmptyState
-        graphic={<LogsGraphic />}
-        title="No logs yet"
-        description="Runtime logs stream from the app's container, and this app hasn't been deployed yet. Deploy it to see its build and runtime output here."
-      />
-    </div>
+    <Tabs
+      value={source}
+      onValueChange={(v) => setChosen(v as Source)}
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      {/* Radix unmounts the inactive panel, so exactly one of these is ever
+          live: one SSE stream, or one 500ms build poll. Never both. */}
+      {runtimeAvailable ? (
+        <TabsContent
+          value="runtime"
+          className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-0"
+        >
+          <ContainerLogs
+            appId={appId}
+            instances={instances}
+            runtime={runtime}
+            notice={runtimeNotice(runtime)}
+            title={title}
+            toolbar={controls}
+            supportsTimeline={supportsTimeline}
+            logMaxDays={logMaxDays}
+          />
+        </TabsContent>
+      ) : null}
+
+      {buildAvailable ? (
+        <TabsContent
+          value="build"
+          className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-0"
+        >
+          <BuildLogStream
+            // Keyed by id so a redeploy remounts against the new build cleanly
+            // (fresh log buffer, its own polling) rather than appending to the old.
+            key={depId}
+            deploymentId={depId!}
+            initialLogs={depId === seededId ? initialBuildLogs : []}
+            initialStatus={depStatus!}
+            notice={noticeForStatus(depStatus!)}
+            title={title}
+            toolbar={controls}
+            fill
+          />
+        </TabsContent>
+      ) : null}
+    </Tabs>
+  );
+}
+
+/** Which log source the pane is showing. */
+type Source = "runtime" | "build";
+
+/**
+ * One half of the Runtime/Build switch.
+ *
+ * A source with nothing behind it is DISABLED rather than hidden, and its
+ * tooltip says which of the three reasons applies — "no container" and "can't
+ * reach the server" look identical from the outside and mean opposite things,
+ * one permanent until you deploy and one that clears itself. A disabled Radix
+ * trigger takes no pointer events, so the tooltip needs a wrapper that does.
+ */
+function SourceTab({
+  value,
+  icon,
+  label,
+  available,
+  reason,
+  enabledHint,
+}: {
+  value: Source;
+  icon: React.ReactNode;
+  label: string;
+  available: boolean;
+  reason: string;
+  enabledHint: string;
+}) {
+  return (
+    <SimpleTooltip content={available ? enabledHint : reason}>
+      <span className="inline-flex">
+        <TabsTrigger
+          value={value}
+          disabled={!available}
+          className="px-2.5 py-1 text-xs data-[state=active]:bg-accent"
+        >
+          {icon}
+          {label}
+        </TabsTrigger>
+      </span>
+    </SimpleTooltip>
   );
 }
 
