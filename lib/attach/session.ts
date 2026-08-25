@@ -9,7 +9,7 @@ import { type AttachHandle } from "../infra/docker";
 
 export interface AttachSession {
   id: string;
-  /** App that authorised this session — POST/GET must match it. */
+  /** App that authorised this session - POST/GET must match it. */
   appId: string;
   /**
    * Team the session was opened under. POST/DELETE re-check the caller's active
@@ -18,7 +18,7 @@ export interface AttachSession {
   teamId: string;
   /**
    * The single user who opened this session and was authorised for it. POST/DELETE
-   * honour ONLY this principal — possession of the id is not authority, so a
+   * honour ONLY this principal - possession of the id is not authority, so a
    * different (or since-demoted) user can't keep writing to PID 1 on its TTL.
    */
   userId: string;
@@ -47,7 +47,7 @@ function armIdleReaper(s: AttachSession) {
 }
 
 // Hard ceilings on live sessions. The idle reaper only fires at zero subscribers,
-// so a client that holds its EventSource open forever is never reclaimed by it —
+// so a client that holds its EventSource open forever is never reclaimed by it -
 // without a cap each open() pins a backing (and its gRPC client) for good.
 const MAX_SESSIONS = 64;
 const MAX_SESSIONS_PER_APP = 8;
@@ -68,7 +68,7 @@ function enforceSessionCaps(appId: string) {
 
 /**
  * Open a new attach session over a pre-built backing handle. `cleanup` runs once
- * when the backing exits/closes (e.g. `conn.close()` for a remote gRPC client) —
+ * when the backing exits/closes (e.g. `conn.close()` for a remote gRPC client) -
  * bound here so it can never leak.
  */
 export function open(
@@ -127,6 +127,18 @@ export function subscribe(
     s.subscribers.delete(onChunk);
     if (s.subscribers.size === 0) armIdleReaper(s);
   };
+}
+
+/**
+ * Tear down every session of one app - what turning the app's console OFF does,
+ * so an open terminal stops at the flip rather than at the next page load.
+ */
+export function destroyForApp(appId: string): void {
+  for (const s of [...sessions.values()]) {
+    if (s.appId !== appId) continue;
+    s.onExit?.();
+    destroy(s.id);
+  }
 }
 
 /** Tear down a session: kill the local attach client (never the container). */

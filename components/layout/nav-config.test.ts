@@ -23,7 +23,7 @@ const FLAGS: AppNavFlags = {
   isGithubApp: true,
   previewsEnabled: true,
   cronsEnabled: true,
-  consoleAcknowledged: true,
+  consoleEnabled: true,
 };
 
 const flags = (over: Partial<AppNavFlags> = {}): AppNavFlags => ({
@@ -43,7 +43,7 @@ test("the app menu offers Pull requests only when previews are actually on", () 
   assert.ok(labels(flags()).includes("Pull requests"));
 
   // Off ⇒ nothing to list. Turning the switch off destroys every live preview,
-  // so the page cannot even be where you go to find leftovers — and the setting
+  // so the page cannot even be where you go to find leftovers, and the setting
   // that turns it back on lives under Settings, which is always reachable.
   assert.ok(
     !labels(flags({ previewsEnabled: false })).includes("Pull requests"),
@@ -60,8 +60,8 @@ test("the app menu offers Pull requests only when previews are actually on", () 
 });
 
 test("the entry survives while you are standing on the page", () => {
-  // Otherwise turning previews off from the settings page — or landing here by
-  // URL — would make the entry vanish from under the page being read.
+  // Otherwise turning previews off from the settings page, or landing here by
+  // URL - would make the entry vanish from under the page being read.
   assert.ok(
     labels(
       flags({ previewsEnabled: false, pathname: "/apps/blog/pull-requests" }),
@@ -157,4 +157,12 @@ test("MCP Server is offered to either capability that opens half of it", () => {
     "manage_mcp",
     "manage_tokens",
   ]);
+});
+
+test("the Console chip follows the app's own switch, not just a running container", () => {
+  assert.ok(labels(flags()).includes("Console"));
+  // Off in Advanced settings ⇒ the route 404s, so the chip must not offer it.
+  assert.ok(!labels(flags({ consoleEnabled: false })).includes("Console"));
+  // On but stopped: nothing to attach to until it runs again.
+  assert.ok(!labels(flags({ running: false })).includes("Console"));
 });

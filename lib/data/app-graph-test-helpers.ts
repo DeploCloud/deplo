@@ -87,7 +87,7 @@ export interface SeedAppOpts {
   resources?: App["resources"];
   /** How many previous deployments this app can be rolled back to. */
   rollbackKeep?: number;
-  /** Compose YAML — pair with `source: "compose"` to seed a compose-stack app. */
+  /** Compose YAML - pair with `source: "compose"` to seed a compose-stack app. */
   compose?: string | null;
   /** Park the app inside a folder (seed the folder row yourself first). */
   folderId?: string | null;
@@ -95,7 +95,7 @@ export interface SeedAppOpts {
   projectId?: string | null;
   environmentId?: string | null;
   /**
-   * Authorship — NOT on the App type (it never reaches the renderer), so it is
+   * Authorship, NOT on the App type (it never reaches the renderer), so it is
    * written straight onto the row, exactly as `createApp` does.
    */
   createdByUserId?: string | null;
@@ -138,6 +138,7 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     status: opts.status ?? "active",
     previewEnabled: false,
     cronEnabled: false,
+    consoleEnabled: false,
     autoDeploy: true,
     deployHookEnabled: true,
     composeUpArgs: null,
@@ -159,7 +160,7 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
 }
 
 /** Seed a deployment row for a project. `serverId` denormalizes the owning server
- *  onto the row (what the deploy queue drains on) — omit to leave it null. */
+ *  onto the row (what the deploy queue drains on) - omit to leave it null. */
 export async function seedDeployment(
   db: TestDb,
   opts: {
@@ -167,7 +168,7 @@ export async function seedDeployment(
     appId: string;
     status?: Deployment["status"];
     createdAt?: string;
-    /** When the build was claimed off the queue — omit to leave it null (a row
+    /** When the build was claimed off the queue - omit to leave it null (a row
      *  that never started building). */
     startedAt?: string;
     serverId?: string;

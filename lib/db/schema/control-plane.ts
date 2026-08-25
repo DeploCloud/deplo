@@ -16,15 +16,15 @@ import { sql } from "drizzle-orm";
 import { isoTimestamptz } from "./columns";
 
 /**
- * Relational control-plane schema — the full normalization of the single JSONB
+ * Relational control-plane schema - the full normalization of the single JSONB
  * `deplo_state` document (relational-store PLAN §1, §2).
  */
 
 /* ------------------------------------------------------------------ */
-/* pgEnums — only the closed, coerce-at-backfill value sets            */
+/* pgEnums - only the closed, coerce-at-backfill value sets            */
 /* ------------------------------------------------------------------ */
 
-/** [LogLevel](../../types.ts) — closed; verbose builds only ever emit these. */
+/** [LogLevel](../../types.ts) - closed; verbose builds only ever emit these. */
 export const deploymentLogLevel = pgEnum("deployment_log_level", [
   "info",
   "warn",
@@ -34,7 +34,7 @@ export const deploymentLogLevel = pgEnum("deployment_log_level", [
   "success",
 ]);
 
-/** [GithubInstallation.accountType](../../types.ts) — GitHub's two account kinds. */
+/** [GithubInstallation.accountType](../../types.ts) - GitHub's two account kinds. */
 export const githubAccountType = pgEnum("github_account_type", [
   "User",
   "Organization",
@@ -95,7 +95,7 @@ export const teams = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     plan: text("plan").notNull(),
-    // The team's ABSOLUTE owner — the user who originally created the team (the
+    // The team's ABSOLUTE owner - the user who originally created the team (the
     // "crown").
     founderUserId: text("founder_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -138,7 +138,7 @@ export const folders = pgTable(
       onDelete: "set null",
     }),
     // The Project CONTAINER this folder lives in, or NULL when the folder sits at the
-    // team top level (additive adoption — ADR-0008). Forward-ref thunk because
+    // team top level (additive adoption - ADR-0008). Forward-ref thunk because
     // `projects` (the container) is declared just below.
     projectId: text("project_id").references((): AnyPgColumn => projects.id, {
       onDelete: "set null",
@@ -153,8 +153,8 @@ export const folders = pgTable(
 );
 
 /**
- * [Project](../../types.ts) — the top-level, team-scoped CONTAINER introduced in
- * ADR-0008 (folder-like, but it owns Environments). It has NO `parent_id` — a
+ * [Project](../../types.ts) - the top-level, team-scoped CONTAINER introduced in
+ * ADR-0008 (folder-like, but it owns Environments). It has NO `parent_id` - a
  * Project never nests in a Project.
  */
 export const projects = pgTable(
@@ -182,7 +182,7 @@ export const projects = pgTable(
 );
 
 /**
- * Per-Project-container access grants — the direct clone of `folder_grants` for
+ * Per-Project-container access grants - the direct clone of `folder_grants` for
  * the new Project container. One row per (project, user, capability); the OWNER
  * is derived from `projects.owner_user_id`, not stored here. Both FKs CASCADE.
  */
@@ -204,7 +204,7 @@ export const projectGrants = pgTable(
 );
 
 /**
- * [Environment](../../types.ts) — a per-Project, first-class ISOLATED deploy
+ * [Environment](../../types.ts) - a per-Project, first-class ISOLATED deploy
  * target (ADR-0008 Phase 3).
  */
 export const environments = pgTable(
@@ -233,7 +233,7 @@ export const environments = pgTable(
 );
 
 /**
- * Per-(App, Environment) RUNTIME state (ADR-0008 Phase 3b) — the join that lets a
+ * Per-(App, Environment) RUNTIME state (ADR-0008 Phase 3b) - the join that lets a
  * service's status / URL / latest deployment fan out along the environment axis
  * without duplicating the whole App row.
  */
@@ -262,7 +262,7 @@ export const appEnvironments = pgTable(
 );
 
 /**
- * Per-folder access grants — the capabilities the folder OWNER hands to OTHER
+ * Per-folder access grants - the capabilities the folder OWNER hands to OTHER
  * users so they can see/use a folder that is otherwise private to the owner.
  */
 export const folderGrants = pgTable(
@@ -283,7 +283,7 @@ export const folderGrants = pgTable(
 );
 
 /**
- * Per-App access grants — the third and most specific rung of the same ladder as
+ * Per-App access grants - the third and most specific rung of the same ladder as
  * `folder_grants` / `project_grants`: one row per (app, user, capability).
  */
 export const appGrants = pgTable(
@@ -324,7 +324,7 @@ export const environmentGrants = pgTable(
 );
 
 /**
- * A named, per-team capability set a member can be assigned — the team's Roles
+ * A named, per-team capability set a member can be assigned - the team's Roles
  * (Settings → Team → Roles).
  */
 export const teamRoles = pgTable(
@@ -461,14 +461,14 @@ export const memberships = pgTable(
     roleId: text("role_id").references(() => teamRoles.id, {
       onDelete: "restrict",
     }),
-    // Whether this member's access is set per NODE on top of the role — the admin's
+    // Whether this member's access is set per NODE on top of the role - the admin's
     // MODE choice, not a derived fact. Kept as a column because node rows cascade away:
     // "granular with nothing left ticked" must not read as Role mode.
     granular: boolean("granular").notNull().default(false),
     // This member's capability set is THEIR OWN: the member page saved something other
     // than what their role grants, so `syncMembersOfRole` leaves them alone.
     customCapabilities: boolean("custom_capabilities").notNull().default(false),
-    // THIS PERSON's arrangement of the topbar team switcher — their own preference, not
+    // THIS PERSON's arrangement of the topbar team switcher - their own preference, not
     // a team-wide one, which is why it sits here rather than in a `user_team_order`
     // junction: this row already IS the (user, team) junction the order is grained on,
     // the same shape `team_app_order.position` has.
@@ -544,12 +544,12 @@ export const registrationLinks = pgTable(
     tokenHash: text("token_hash").notNull(),
     // The same token, encrypted, so the admin can copy the link again instead of
     // minting a second one because they lost the first. NULL on links minted before
-    // migration 0048 — those can only be revoked and re-minted.
+    // migration 0048 - those can only be revoked and re-minted.
     tokenEnc: text("token_enc"),
     status: text("status").notNull(),
     // How the registrant's team is decided: 'own_team' (they name + own a fresh team at
     // registration, the historical behavior) or 'existing_teams' (an admin pre-assigned
-    // them to existing teams — see registration_link_teams).
+    // them to existing teams - see registration_link_teams).
     mode: text("mode").notNull().default("own_team"),
     createdBy: text("created_by").notNull(),
     usedByUsername: text("used_by_username"),
@@ -635,12 +635,12 @@ export const servers = pgTable(
     // When `status` was last OBSERVED (a probe classified and recorded a result), and
     // the curated reason behind a non-online value.
     statusCheckedAt: isoTimestamptz("status_checked_at"),
-    // The throttle LEASE — when a probe was last claimed, advanced whether or not it
+    // The throttle LEASE - when a probe was last claimed, advanced whether or not it
     // went on to observe anything. Kept separate from status_checked_at so an
     // inconclusive probe (timeout/skip) never fabricates a fresh observation timestamp.
     statusProbedAt: isoTimestamptz("status_probed_at"),
     statusMessage: text("status_message"),
-    // Team access scope. `true` (default) = available to every team — the
+    // Team access scope. `true` (default) = available to every team - the
     // historical instance-wide behaviour. `false` restricts the server to the
     // teams enumerated in `server_teams`. See [Server.allTeams](../../types.ts).
     allTeams: boolean("all_teams").notNull().default(true),
@@ -712,7 +712,7 @@ export const serverTeams = pgTable(
 /* ================================================================== */
 
 /**
- * [App](../../types.ts) — flat scalar columns only.
+ * [App](../../types.ts) - flat scalar columns only.
  */
 export const apps = pgTable(
   "apps",
@@ -727,12 +727,12 @@ export const apps = pgTable(
       onDelete: "set null",
     }),
     // The Project this service belongs to, or NULL at the team top level
-    // (additive — ADR-0008). `ON DELETE SET NULL`: deleting a project orphans
+    // (additive - ADR-0008). `ON DELETE SET NULL`: deleting a project orphans
     // its apps to the top level.
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
-    // The Environment (of `project_id`'s Project) this service LIVES in — the
+    // The Environment (of `project_id`'s Project) this service LIVES in - the
     // membership axis of the advanced-folder model (ADR-0009): each environment of a
     // project holds its OWN apps, like a sub-folder.
     environmentId: text("environment_id").references(() => environments.id, {
@@ -784,10 +784,10 @@ export const apps = pgTable(
     // Git deploy options (also flattened GitRepo fields; defaults when no repo). Read
     // by the GitHub webhook to gate a delivery.
     repoTriggerType: text("repo_trigger_type"),
-    // `repo_watch_paths` — newline-separated path globs; an auto-deploy only fires
+    // `repo_watch_paths` - newline-separated path globs; an auto-deploy only fires
     // when a pushed commit changed a file matching one. NULL/empty ⇒ any change.
     repoWatchPaths: text("repo_watch_paths"),
-    // `repo_submodules` — clone the repo's git submodules at build time.
+    // `repo_submodules` - clone the repo's git submodules at build time.
     repoSubmodules: boolean("repo_submodules").notNull().default(false),
     dockerImage: text("docker_image"),
     // Flattened UploadArchive (NULL columns when source !== "upload").
@@ -808,7 +808,7 @@ export const apps = pgTable(
     // The hook's kill switch, ON by default (it is already bearer-gated).
     deployHookEnabled: boolean("deploy_hook_enabled").notNull().default(true),
     // Extra flags this app adds to the `docker compose up` its server runs (migration
-    // 0060) — the RAW string as typed; the deploy edge splits it into argv tokens.
+    // 0060) - the RAW string as typed; the deploy edge splits it into argv tokens.
     composeUpArgs: text("compose_up_args"),
     // How many previous deployments this app can be rolled back to (migration 0094).
     // Defaults to 3 - the point of the feature is that a bad deploy is undoable without
@@ -832,7 +832,7 @@ export const apps = pgTable(
     // behaves identically to one that did.
     previewEnabled: boolean("preview_enabled").notNull().default(false),
     // NULL ⇒ a deterministic nip.io host on plain HTTP (zero DNS configuration, and
-    // nip.io can never hold a Let's Encrypt certificate — it is ONE registered domain
+    // nip.io can never hold a Let's Encrypt certificate - it is ONE registered domain
     // sharing one rate limit across the whole internet).
     previewBaseDomain: text("preview_base_domain"),
     // NULL ⇒ PREVIEW_MAX_ACTIVE_DEFAULT. That asymmetry is the whole design: without
@@ -872,6 +872,9 @@ export const apps = pgTable(
     previewRequiredLabels: text("preview_required_labels"),
     // Cron jobs (scheduled commands run inside this app's container).
     cronEnabled: boolean("cron_enabled").notNull().default(false),
+    // The container console (exec + attach). Off until asked for: it is a shell
+    // inside the running container.
+    consoleEnabled: boolean("console_enabled").notNull().default(false),
     // Pointer to the service's latest Deployment. `SET NULL` so deleting a deployment
     // can't leave a dangling pointer (the orphan-prevention-as-DB- invariant goal).
     latestDeploymentId: text("latest_deployment_id").references(
@@ -880,7 +883,7 @@ export const apps = pgTable(
     ),
     // Who created this app. `ON DELETE SET NULL` because the default must be the safe
     // one: removing someone's account can never, by itself, destroy an app the team
-    // still runs — that call belongs to the operator ticking the box, not to a cascade.
+    // still runs - that call belongs to the operator ticking the box, not to a cascade.
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -921,7 +924,7 @@ export const appBuild = pgTable("app_build", {
     .notNull()
     .default(false),
   // Reuse the owning server's Docker layer cache (and the builder's own cache mounts)
-  // between this app's builds — default ON, which is what makes a redeploy of an
+  // between this app's builds - default ON, which is what makes a redeploy of an
   // unchanged app take seconds.
   buildCache: boolean("build_cache").notNull().default(true),
   // Armed by "Clear build cache": the NEXT build of this app ignores the cache, then
@@ -1000,7 +1003,7 @@ export const appMounts = pgTable(
 );
 
 /**
- * [Deployment](../../types.ts) — fully flat. `seq bigint identity` (PLAN §5) so
+ * [Deployment](../../types.ts) - fully flat. `seq bigint identity` (PLAN §5) so
  * sorts are `ORDER BY created_at DESC, seq DESC`. `(project_id, created_at DESC,
  * seq DESC)` index. No `team_id` (joined via service).
  */
@@ -1012,7 +1015,7 @@ export const deployments = pgTable(
     appId: text("app_id")
       .notNull()
       .references(() => apps.id, { onDelete: "cascade" }),
-    // Denormalized owning server (mirrors apps.server_id at insert time). NOT a FK — a
+    // Denormalized owning server (mirrors apps.server_id at insert time). NOT a FK - a
     // deployment is a historical record that must survive its server's deletion
     // (apps.server_id is RESTRICT, so a live service can't lose its server).
     serverId: text("server_id"),
@@ -1042,7 +1045,7 @@ export const deployments = pgTable(
     branch: text("branch").notNull(),
     url: text("url").notNull(),
     readyAt: isoTimestamptz("ready_at"),
-    // When the build actually STARTED — the moment the queue drain claimed this row
+    // When the build actually STARTED - the moment the queue drain claimed this row
     // (`queued` → `building`), i.e. the instant `build_duration_ms` is measured from.
     startedAt: isoTimestamptz("started_at"),
     buildDurationMs: bigint("build_duration_ms", { mode: "number" }),
@@ -1247,7 +1250,7 @@ export const envVars = pgTable(
 /**
  * Preview-only environment variable OVERRIDES (advanced). It is a separate table
  * rather than a second `env_vars` row because `env_vars_app_key_uq` is
- * `UNIQUE(app_id, key)` — two values for one key are not representable there.
+ * `UNIQUE(app_id, key)` - two values for one key are not representable there.
  */
 export const appPreviewEnvVars = pgTable(
   "app_preview_env_vars",
@@ -1288,7 +1291,7 @@ export const envVarTargets = pgTable(
 // 0027 converts the rows and 0028 drops the tables.
 
 /**
- * [GlobalEnvVar](../../types.ts) (instance scope) — a variable injected into EVERY
+ * [GlobalEnvVar](../../types.ts) (instance scope) - a variable injected into EVERY
  * service of EVERY team (an instance-wide default), managed by an instance admin.
  */
 export const instanceEnvVars = pgTable(
@@ -1379,7 +1382,7 @@ export const domainMiddlewares = pgTable(
 );
 
 /**
- * [BasicAuthUser](../../types.ts) — an HTTP Basic Auth credential that gates EVERY
+ * [BasicAuthUser](../../types.ts) - an HTTP Basic Auth credential that gates EVERY
  * domain of a service.
  */
 export const appBasicAuthUsers = pgTable(
@@ -1447,7 +1450,7 @@ export const teamFolderOrder = pgTable(
 );
 
 /**
- * Team-wide Project-CONTAINER display order (ADR-0008) — the direct analogue of
+ * Team-wide Project-CONTAINER display order (ADR-0008) - the direct analogue of
  * `team_folder_order`/`team_app_order` for the new top-level container. PK
  * `(team_id, project_id)`, both FKs CASCADE so a dead id can't sit in the order.
  */
@@ -1480,7 +1483,7 @@ export const databases = pgTable(
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
-    // DISPLAY name only — editable in Settings → General, like an App's. The
+    // DISPLAY name only - editable in Settings → General, like an App's. The
     // container's identity is `host` (the compose project / volume / DNS name),
     // frozen at create: renaming a database never touches the running stack.
     name: text("name").notNull(),
@@ -1513,7 +1516,7 @@ export const databases = pgTable(
     // The HOST port the container publishes when exposedPublicly is true (the compose
     // `ports:` maps exposed_port:port).
     exposedPort: integer("exposed_port"),
-    // Per-database resource limits — the exact flattened ResourceLimits shape and units
+    // Per-database resource limits - the exact flattened ResourceLimits shape and units
     // used on `apps` above (NULL ⇒ uncapped, all-NULL ⇒ `resources: null`; MiB / GiB /
     // milli-CPUs).
     resourceMemLimitMb: integer("resource_mem_limit_mb"),
@@ -1560,7 +1563,7 @@ export const databaseMounts = pgTable(
 );
 
 /**
- * Team-wide database display order for the Storage grid — the direct analogue of
+ * Team-wide database display order for the Storage grid - the direct analogue of
  * `team_app_order` for the databases list.
  */
 export const teamDatabaseOrder = pgTable(
@@ -1578,9 +1581,9 @@ export const teamDatabaseOrder = pgTable(
 );
 
 /**
- * [BackupDestination](../../types.ts) — where backup artifacts are kept. TWO kinds
+ * [BackupDestination](../../types.ts), where backup artifacts are kept. TWO kinds
  * behind one `kind` discriminator, because `backups.destination_id` and
- * `backup_runs.destination_id` must keep pointing at one table: - `s3` — a bucket.
+ * `backup_runs.destination_id` must keep pointing at one table: - `s3` - a bucket.
  */
 export const backupDestination = pgTable(
   "backup_destination",
@@ -1659,7 +1662,7 @@ export const backupDestination = pgTable(
 );
 
 /**
- * [Backup](../../types.ts) — schedule table (not run history).
+ * [Backup](../../types.ts) - schedule table (not run history).
  */
 export const backups = pgTable(
   "backups",
@@ -1699,7 +1702,7 @@ export const backups = pgTable(
 );
 
 /**
- * [BackupRun](../../types.ts) — history; a SEPARATE table, NOT a child of
+ * [BackupRun](../../types.ts) - history; a SEPARATE table, NOT a child of
  * `backups`. `size_bytes` MUST be `bigint`.
  */
 export const backupRuns = pgTable(
@@ -1727,7 +1730,7 @@ export const backupRuns = pgTable(
     targetId: text("target_id").notNull(),
     objectKey: text("object_key").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
-    // How big the artifact is once DECRYPTED — the exact byte count a download hands
+    // How big the artifact is once DECRYPTED - the exact byte count a download hands
     // the browser, and so its Content-Length. NULL for every run taken before migration
     // 0092 and for one written by an agent that predates the field.
     decryptedSizeBytes: bigint("decrypted_size_bytes", { mode: "number" }),
@@ -1751,7 +1754,7 @@ export const backupRuns = pgTable(
     index("backup_runs_running_idx")
       .on(t.status)
       .where(sql`${t.status} = 'running'`),
-    // FK columns are ON DELETE SET NULL — index them so a delete's cascade is a
+    // FK columns are ON DELETE SET NULL - index them so a delete's cascade is a
     // lookup, not a full-table scan (migration 0042).
     index("backup_runs_app_idx").on(t.appId),
     index("backup_runs_database_idx").on(t.databaseId),
@@ -1962,7 +1965,7 @@ export const apiTokens = pgTable(
 );
 
 /**
- * A token's own capabilities — the same forty from `lib/capabilities.ts` a Role is
+ * A token's own capabilities - the same forty from `lib/capabilities.ts` a Role is
  * built from. `view` is the always-on floor and is stored explicitly, so "no rows"
  * never has two meanings.
  */
@@ -1978,7 +1981,7 @@ export const apiTokenCapabilities = pgTable(
 );
 
 /**
- * What a token may REACH, as four junctions — one per level of the tree the editor
+ * What a token may REACH, as four junctions - one per level of the tree the editor
  * shows: whole Teams, whole Projects, whole Folders, individual Apps.
  */
 export const apiTokenTeams = pgTable(
@@ -2046,7 +2049,7 @@ export const apiTokenApps = pgTable(
 );
 
 /**
- * [Activity](../../types.ts) — append-only. Backfill maps empty-string team_id to
+ * [Activity](../../types.ts) - append-only. Backfill maps empty-string team_id to
  * a real team before NOT NULL+FK, and assigns `seq` in source-array order.
  */
 export const activities = pgTable(
@@ -2072,10 +2075,10 @@ export const activities = pgTable(
       t.createdAt.desc(),
       t.seq.desc(),
     ),
-    // app_id is ON DELETE SET NULL — index it so deleting an app doesn't scan the
+    // app_id is ON DELETE SET NULL - index it so deleting an app doesn't scan the
     // whole activity history (migration 0042).
     index("activities_app_idx").on(t.appId),
-    // "What has this person done?" — the per-user feed on an account's admin
+    // "What has this person done?" - the per-user feed on an account's admin
     // page, which reads across every team and would otherwise seq-scan.
     index("activities_actor_created_idx").on(t.actorUserId, t.createdAt.desc()),
   ],
@@ -2103,7 +2106,7 @@ export const notificationChannels = pgTable(
     secret2Enc: text("secret2_enc").notNull().default(""),
     /* ---- email only ---- */
     emailFrom: text("email_from").notNull().default(""),
-    /** `smtp` | `resend` — see `EmailProvider`. Resend is the default transport. */
+    /** `smtp` | `resend` - see `EmailProvider`. Resend is the default transport. */
     emailProvider: text("email_provider").notNull().default("resend"),
     smtpHost: text("smtp_host").notNull().default(""),
     smtpPort: integer("smtp_port").notNull().default(587),
@@ -2116,7 +2119,7 @@ export const notificationChannels = pgTable(
 );
 
 /**
- * One row per alert ONE CHANNEL INSTANCE has been decided about — the `alerts`
+ * One row per alert ONE CHANNEL INSTANCE has been decided about - the `alerts`
  * list of a [NotificationChannelInstance](../../types.ts) (PLAN §1: a list is a
  * junction table, never a column per item).
  */
@@ -2220,7 +2223,7 @@ export const installedPlugins = pgTable(
 // below.
 
 /**
- * [SharedVar](../../types.ts) — ONE individual shared variable owned by a team,
+ * [SharedVar](../../types.ts) - ONE individual shared variable owned by a team,
  * the unified replacement for shared-env groups, environment-scoped vars, and
  * team-global vars (ADR-0010).
  */
@@ -2296,7 +2299,7 @@ export const sharedEnvVarProjects = pgTable(
   ],
 );
 
-/** The 4th mechanism — an explicit per-app link attached from the app UI. */
+/** The 4th mechanism - an explicit per-app link attached from the app UI. */
 export const sharedEnvVarApps = pgTable(
   "shared_env_var_apps",
   {
@@ -2362,7 +2365,7 @@ export const githubInstallation = pgTable(
 );
 
 /**
- * [GitConnection](../../types.ts) — a team's credentials for one git host that is
+ * [GitConnection](../../types.ts) - a team's credentials for one git host that is
  * NOT GitHub (GitLab, Bitbucket, Gitea/Forgejo, or a plain git server). UNIQUE
  * because it is a routing key.
  */
@@ -2416,7 +2419,7 @@ export const gitConnections = pgTable(
 /* ================================================================== */
 
 /**
- * The Docker-cleanup POLICY — a SINGLETON row (`id` is a fixed `'default'`), not a
+ * The Docker-cleanup POLICY - a SINGLETON row (`id` is a fixed `'default'`), not a
  * row per server. No `team_id`: servers are the one shared cross-team resource, so
  * this is instance-wide infra state like `servers.deploy_concurrency`.
  */
@@ -2445,7 +2448,7 @@ export const dockerCleanupPolicy = pgTable("docker_cleanup_policy", {
 });
 
 /**
- * The scopes the policy is allowed to reclaim — a LIST, so a junction table, never
+ * The scopes the policy is allowed to reclaim - a LIST, so a junction table, never
  * a JSONB array.
  */
 export const dockerCleanupPolicyScopes = pgTable(
@@ -2460,7 +2463,7 @@ export const dockerCleanupPolicyScopes = pgTable(
 );
 
 /**
- * Servers the SCHEDULED sweep skips — the policy's opt-out list.
+ * Servers the SCHEDULED sweep skips - the policy's opt-out list.
  */
 export const dockerCleanupExcludedServers = pgTable(
   "docker_cleanup_excluded_servers",
@@ -2472,7 +2475,7 @@ export const dockerCleanupExcludedServers = pgTable(
 );
 
 /**
- * One cleanup RUN on one server — the history, and a SEPARATE table from the
+ * One cleanup RUN on one server - the history, and a SEPARATE table from the
  * policy (the `backup_runs` precedent).
  */
 export const dockerCleanupRuns = pgTable(
@@ -2486,7 +2489,7 @@ export const dockerCleanupRuns = pgTable(
     serverName: text("server_name").notNull(),
     /** `'manual'` | `'scheduled'`. */
     trigger: text("trigger").notNull(),
-    /** The human's name, or `"Scheduler"` for a tick — free text, like `activities.actor`. */
+    /** The human's name, or `"Scheduler"` for a tick - free text, like `activities.actor`. */
     actor: text("actor").notNull(),
     /** `'running'` | `'success'` | `'failed'`. */
     status: text("status").notNull(),
@@ -2508,7 +2511,7 @@ export const dockerCleanupRuns = pgTable(
 );
 
 /**
- * The per-scope breakdown of one run — a LIST, so a child table.
+ * The per-scope breakdown of one run - a LIST, so a child table.
  */
 export const dockerCleanupRunItems = pgTable(
   "docker_cleanup_run_items",
@@ -2530,7 +2533,7 @@ export const dockerCleanupRunItems = pgTable(
 /* ================================================================== */
 
 /**
- * Monitoring settings — a SINGLETON row like {@link dockerCleanupPolicy} (`id` is
+ * Monitoring settings - a SINGLETON row like {@link dockerCleanupPolicy} (`id` is
  * a fixed `'default'`), and instance-wide for the same reason: servers are the one
  * shared cross-team resource, so whether the control plane keeps their metrics
  * history is a property of the fleet, not of a team.
@@ -2548,14 +2551,14 @@ export const monitoringSettings = pgTable("monitoring_settings", {
 /* ================================================================== */
 
 /**
- * Instance settings — a SINGLETON row (`id` fixed at `'default'`), the shape of
+ * Instance settings - a SINGLETON row (`id` fixed at `'default'`), the shape of
  * {@link monitoringSettings} / {@link dockerCleanupPolicy}. The first account had
  * no protection whatsoever.
  */
 export const instanceSettings = pgTable("instance_settings", {
   /** Always `'default'`. The row is a singleton; the PK exists to enforce that. */
   id: text("id").primaryKey().default("default"),
-  /** The instance owner — see the table comment. NULL means "unowned". */
+  /** The instance owner - see the table comment. NULL means "unowned". */
   ownerUserId: text("owner_user_id").references(() => users.id),
   /**
    * The address this Deplo answers on (`https://deplo.example.com`), as the
@@ -2609,7 +2612,7 @@ export const rateLimits = pgTable(
 /* ================================================================== */
 
 /**
- * One run of the Dokploy importer — the report, kept. Shaped like {@link
+ * One run of the Dokploy importer - the report, kept. Shaped like {@link
  * dockerCleanupRuns} because it is the same kind of object: a long operation whose
  * outcome outlives the tab that started it.
  */

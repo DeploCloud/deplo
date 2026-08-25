@@ -233,7 +233,7 @@ export interface AppSummary extends App {
 // app-graph backfill can apply the IDENTICAL normalization before exploding a
 // legacy row into the strict child tables (relational-store PLAN §7). The live
 // READ path no longer normalizes (relational rows are already in the current
-// model — the backfill/live writes store normalized rows). `deriveVolumeName` is
+// model - the backfill/live writes store normalized rows). `deriveVolumeName` is
 // still used by `validateVolumes` here and re-exported for the volume tests.
 import { deriveVolumeName } from "./normalize-app";
 
@@ -244,7 +244,7 @@ export { deriveVolumeName };
  * container teardown (≤60s). If the server is killed mid-stop, a project can be
  * left wedged in "stopping" forever. Self-heal on read: a "stopping" project
  * whose last update is older than the stop timeout is reported as "idle" (the
- * stop's intended terminal state). The store row is not rewritten here — the
+ * stop's intended terminal state). The store row is not rewritten here - the
  * next real status change persists the corrected value.
  */
 const STOPPING_STALE_MS = 90_000;
@@ -253,8 +253,8 @@ const STOPPING_STALE_MS = 90_000;
  * "restoring" is the same shape of promise over a much longer call: the restore
  * runs inside one HTTP request, holds no lock, and has no crash recovery, so a
  * control plane that dies mid-restore would pin the app in "restoring" forever.
- * The window is the agent's own ceiling for a backup operation — anything longer
- * than that is not a slow restore, it is a restore nobody is running any more —
+ * The window is the agent's own ceiling for a backup operation - anything longer
+ * than that is not a slow restore, it is a restore nobody is running any more,
  * and it heals to "error", not "idle": a half-restored app is broken, not stopped
  * on purpose, and the telemetry reconciler promotes it back to "active" on its own
  * the moment the host says the containers are up.
@@ -290,7 +290,7 @@ export function reconcileStatus(
 
 /**
  * Fold a (relational, already-normalized) project into a {@link AppSummary}
- * — a PURE function over preloaded latest-deployment + domain-count maps (PLAN §6
+ * - a PURE function over preloaded latest-deployment + domain-count maps (PLAN §6
  * "`summarize` becomes a pure function over preloaded data"). No DB access, so a
  * list of N apps costs the bounded batch-load below, not N×(deployment +
  * domain) round-trips. `reconcileStatus` still self-heals a wedged "stopping".
@@ -355,10 +355,10 @@ export async function listApps(query?: string): Promise<AppSummary[]> {
     appOrderRank(teamId),
   ]);
   // `loadAppsByTeam` is an engine primitive (the deploy queue and team teardown
-  // read through it too) and must never filter itself — the project scope of an
+  // read through it too) and must never filter itself - the project scope of an
   // API token is applied HERE, where the answer is a user-facing list.
-  // A stamped app (`deleting_at`) is GONE as far as the product is concerned —
-  // every gate refuses it and its pages 404 — so it is not listed either. It
+  // A stamped app (`deleting_at`) is GONE as far as the product is concerned -
+  // every gate refuses it and its pages 404, so it is not listed either. It
   // used to be, dimmed and pulsing until the teardown finished, but nothing
   // refreshes the Overview when the host is done: the card sat there pulsing
   // for good, and the next delete was the only thing that ever cleared it.
@@ -369,7 +369,7 @@ export async function listApps(query?: string): Promise<AppSummary[]> {
   //
   // A narrowed token is NOT exempt. It used to be, because the token clamp
   // strips `manage_team` and so blinded a super-user's scoped token to every
-  // folder — that is fixed at the source (`holdsManageTeam` reads the person),
+  // folder - that is fixed at the source (`holdsManageTeam` reads the person),
   // and the exemption it justified was how a token scoped to a folder its
   // creator cannot see listed the apps inside.
   const reach = await appCapabilitiesForTeam(
@@ -401,17 +401,17 @@ export async function listApps(query?: string): Promise<AppSummary[]> {
 
 /**
  * Persist the team-wide order of apps shown in the Overview grid. Team-wide
- * by design — every member sees the same arrangement — so it is gated like a
+ * by design, every member sees the same arrangement, so it is gated like a
  * team setting: an instance admin (who bypasses team capabilities) or a member
  * holding `manage_team`. The incoming ids are sanitised to the caller's own team
  * apps (dropping unknown/duplicate ids); the `team_app_order` junction is
  * rewritten over the survivors. Any team project the client omitted is appended,
- * so the stored order stays total — and a dead id can no longer be stored at all
+ * so the stored order stays total, and a dead id can no longer be stored at all
  * (the FK CASCADE makes the self-healing a DB invariant, PLAN §1).
  */
 export async function reorderApps(orderedIds: string[]): Promise<void> {
   const teamId = await requireActiveTeamId();
-  // A team-wide arrangement is not something a project-scoped token rewrites —
+  // A team-wide arrangement is not something a project-scoped token rewrites,
   // and this is the one gate an instance admin bypasses, so the clamp on
   // `manage_team` wouldn't have covered it.
   await requireTeamWide("the team-wide app order");
@@ -452,8 +452,8 @@ async function summarizeOne(p: App): Promise<AppSummary> {
   return summarize(p, pre);
 }
 
-// React-cached so a request that reads the same project twice — e.g. the project
-// layout's generateMetadata AND its render — only hits the DB once per request.
+// React-cached so a request that reads the same project twice - e.g. the project
+// layout's generateMetadata AND its render - only hits the DB once per request.
 export const getAppBySlug = cache(async function getAppBySlug(
   slug: string,
 ): Promise<AppSummary | null> {
@@ -484,7 +484,7 @@ async function canReachApp(id: string): Promise<boolean> {
  * The cookie-free twin of {@link canReachApp}, for the subscription seams.
  *
  * `appCapabilities` resolves the caller through `getCurrentUser()`, which reads
- * cookies — not callable across the async-iteration ticks of a long-lived SSE
+ * cookies, not callable across the async-iteration ticks of a long-lived SSE
  * response. So the principal is passed in and the per-app answer comes from
  * `nodeCapabilitiesFor`, which takes an explicit user id and touches nothing
  * request-scoped beyond the token identity (safe: yoga re-establishes it around
@@ -505,7 +505,7 @@ async function reachableByUser(
  * App summary by id for an already-resolved team and principal, WITHOUT reading
  * the request's cookies. The live `appStatus` subscription resolves the caller
  * once from the GraphQL context (`ctx.teamId` / `ctx.viewer`, established in
- * request scope) and then reloads snapshots through this seam on each change —
+ * request scope) and then reloads snapshots through this seam on each change -
  * Next's `cookies()` is NOT callable across the async-iteration ticks of a
  * long-lived SSE response (it runs after the request scope closes), so both are
  * passed explicitly rather than re-derived. The same applies to the slug lookup
@@ -519,7 +519,7 @@ async function reachableByUser(
  *
  * The per-app reachability check is the same one `getAppBySlug` applies: an app
  * whose folder the caller can't see is not theirs to watch either. Without it a
- * live status feed — name, source repo, URL, every deployment — was readable for
+ * live status feed (name, source repo, URL, every deployment) was readable for
  * an app they are refused everywhere else, which made the subscription the one
  * way around folder privacy.
  */
@@ -584,7 +584,7 @@ export interface CreateAppInput {
    * to. When absent for a compose project, detectDefaultApp picks one. */
   composeService?: string | null;
   composePort?: number | null;
-  /** A multi-domain template's EXTRA (non-primary) routed hosts — each becomes
+  /** A multi-domain template's EXTRA (non-primary) routed hosts - each becomes
    * its own auto Domain row at creation (the primary is the `autoDomain`). The
    * `domains` table is the sole routing source afterward; there is no `exposes`. */
   extraDomains?: { service: string; port: number; host: string }[] | null;
@@ -615,14 +615,14 @@ export interface CreateAppInput {
   projectId?: string | null;
   environmentId?: string | null;
   /**
-   * Start the first deployment. Default TRUE — creating an app is how you ship
+   * Start the first deployment. Default TRUE - creating an app is how you ship
    * one, and every interactive path wants that.
    *
    * `false` is for a BULK import from another platform: the source is still
    * serving those hostnames, so deploying thirty apps as they land would fight
    * the live system for the same ports and ask Let's Encrypt for certificates on
-   * names another proxy is answering. The app is born `idle` — the same state a
-   * fileless upload is born in — for someone to deploy when they are ready.
+   * names another proxy is answering. The app is born `idle` - the same state a
+   * fileless upload is born in - for someone to deploy when they are ready.
    *
    * Not exposed over GraphQL: it is a property of the import, not a choice an
    * API client makes about one app.
@@ -633,13 +633,13 @@ export interface CreateAppInput {
 /**
  * Resolve (and authorize) where a brand-new app is filed.
  *
- * ADR-0009: an app lives in exactly ONE place — a folder, or one environment of
+ * ADR-0009: an app lives in exactly ONE place - a folder, or one environment of
  * a project, or the top level. The folder and project drill-ins are mutually
  * exclusive on the Overview, so if both somehow arrive the folder wins.
  *
  * Authorized exactly like a MOVE into the same destination (`moveAppToFolder` /
  * `moveAppToEnvironment`): the destination must belong to the active team, and
- * filing into a folder additionally needs `deploy` ON THAT FOLDER — otherwise
+ * filing into a folder additionally needs `deploy` ON THAT FOLDER, otherwise
  * the create path would be a way to smuggle an app into a folder the caller
  * doesn't control. Errors mirror the move path's ("Folder not found") so a
  * foreign id never leaks existence.
@@ -654,14 +654,14 @@ async function resolveNewAppPlacement(
 }> {
   const placement = await resolvePlacement(input, teamId);
   // A caller who reaches part of the team creates INSIDE that part or not at
-  // all — otherwise the create path is how anyone walks out of their own
+  // all, otherwise the create path is how anyone walks out of their own
   // boundary. Which question to ask depends on where the app is being filed: an
   // app lives in exactly ONE place, and a FOLDER has no `project_id` of its own,
   // so asking about the project for a folder destination answered "no project ⇒
   // out of scope" and refused a folder-scoped caller their own folder. The team
   // top level (neither set) is outside every narrowed scope, which is the
   // fail-closed default. Same messages the destination lookups use, so nothing
-  // leaks — and both principals are asked, a token through the request predicate
+  // leaks, and both principals are asked, a token through the request predicate
   // and a member through their role's reach.
   const roleScope = await currentMemberScope();
   if (placement.folderId) {
@@ -726,7 +726,7 @@ async function resolvePlacement(
         .limit(1)
     )[0];
     if (!env || env.teamId !== teamId) throw new Error("Environment not found");
-    // An explicitly passed project must agree with the environment it names —
+    // An explicitly passed project must agree with the environment it names -
     // a mismatched pair is a bug (or a crafted payload), never a placement.
     if (input.projectId && input.projectId !== env.projectId)
       throw new Error("Environment not found");
@@ -787,10 +787,10 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     throw new Error(
       "Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).",
     );
-  // Publishing container ports — a service's `ports:` (bound to the host) or
-  // `expose:` (advertised to linked containers) — needs the expose-ports grant.
-  // Giving a service a public Traefik DOMAIN (composeService/composePort/exposes)
-  // is routing, NOT port publishing, so it is intentionally NOT gated here.
+  // Binding a HOST port - a service's `ports:` - needs the expose-ports grant.
+  // Two things that look like it are intentionally NOT gated: a public Traefik
+  // DOMAIN (composeService/composePort/exposes), which is routing, and `expose:`,
+  // which advertises a container port to the same network and binds nothing.
   if (input.compose != null && composePublishesPorts(input.compose)) {
     await requireExposePorts();
   }
@@ -822,7 +822,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   }
   // A REAL hostname the caller chose is a domain claim, not a by-product of
   // creating an app. `domains.name` is unique across the whole instance, so
-  // registering one takes it away from every other team — which is exactly why
+  // registering one takes it away from every other team, which is exactly why
   // `addDomain` asks for `manage_domains`. Creating the app was the way around
   // that: the FIRST host went in through `ensureAutoDomain(preferred)` ungated
   // while the second, on the same app, was refused. Our own generated
@@ -834,7 +834,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     ...(input.extraDomains ?? []).map((e) => e.host),
   ].some(isHostnameClaim);
   if (claimsAHostname) await requireCapability("manage_domains");
-  // Where the app is filed (folder / project environment / top level) — resolved
+  // Where the app is filed (folder / project environment / top level) - resolved
   // and authorized BEFORE anything is written, so an unusable destination fails
   // the create outright instead of silently stranding the app at the top level.
   const placement = await resolveNewAppPlacement(input, membership.teamId);
@@ -846,7 +846,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     .replace(/^-+|-+$/g, "");
   // slug is globally UNIQUE in the relational table; pick the first free suffix
   // optimistically. The pick races a concurrent same-name create (both read the
-  // same snapshot, pick the same suffix) — so the INSERT is retried below on a
+  // same snapshot, pick the same suffix), so the INSERT is retried below on a
   // `apps_slug_uq` violation, advancing the suffix each time. `nextSlug`
   // continues the suffix sequence past whatever the pre-check already considered.
   const existing = new Set(
@@ -865,17 +865,17 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   };
 
   // Servers are relational (cut-set (e)); read the picklist for the `server_id`
-  // FK from the `servers` table — scoped to the team, so a project can only land
+  // FK from the `servers` table - scoped to the team, so a project can only land
   // on a server this team may target (every `all_teams` server + its grants).
   const servers = await listServersForTeam(membership.teamId);
-  // An explicit pick must be one this team can actually use — otherwise a crafted
+  // An explicit pick must be one this team can actually use, otherwise a crafted
   // request could place a project on a server scoped to another team. Reject it
   // rather than silently falling back to a different server.
   if (input.serverId && !servers.some((s) => s.id === input.serverId))
     throw new Error("That server isn't available to this team.");
   // Default to the first server available to the team; honour the explicit pick.
   // With no accessible server, surface a clear error so the operator adds (and
-  // provisions) a host — or grants this team access — first.
+  // provisions) a host, or grants this team access, first.
   // A specialised host cannot run an app: a storage-only one has no Docker, a
   // build-only one has no proxy and exists to compile for other machines. The
   // pickers already hide them, but this is the boundary - an id can also arrive
@@ -913,7 +913,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // exposes[].host, and any env value that embedded ${domain}) are baked in the
   // /new page against the instance IP (instanceHost), because the server isn't
   // known until submit. If this project targets a DIFFERENT server, those hosts
-  // would route to (and display) the wrong IP — re-host them onto the target
+  // would route to (and display) the wrong IP - re-host them onto the target
   // server's IP. A no-op when the target IP matches and for non-nip.io hosts.
   // resolveServerIp falls back to instanceHost for a server with no known IP yet,
   // so that case also no-ops rather than rehosting toward a bad address.
@@ -984,9 +984,11 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     // Off, like previews: a cron job runs arbitrary commands in the container,
     // so it is asked for rather than inherited.
     cronEnabled: false,
+    // Same reasoning: a shell inside the container is asked for, never inherited.
+    consoleEnabled: false,
     autoDeploy: input.autoDeploy ?? true,
     // The deploy hook answers as soon as someone opens it (it mints its URL on
-    // first read and is bearer-gated either way) — nothing to configure at create.
+    // first read and is bearer-gated either way), nothing to configure at create.
     deployHookEnabled: true,
     // The bring-up command starts untouched; extra flags are an advanced setting.
     composeUpArgs: null,
@@ -1034,7 +1036,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   //
   // The optimistic slug pick races a concurrent same-name create, so the whole tx
   // is retried (bounded) on a `apps_slug_uq` violation, advancing to the next
-  // free suffix — the `UNIQUE(slug)` constraint is the real arbiter, the in-app
+  // free suffix - the `UNIQUE(slug)` constraint is the real arbiter, the in-app
   // pick is just a friendly first guess.
   for (let attempt = 0; ; attempt++) {
     try {
@@ -1086,11 +1088,11 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // POST-COMMIT (PLAN cut-set (c) "post-commit deploy"): register the generated
   // nip.io domain so it shows up in the Domains section immediately and the
   // deploy routes to the same hostname a template baked into its env. This is
-  // the ONLY place a project's auto domain is born — deploys no longer create
+  // the ONLY place a project's auto domain is born - deploys no longer create
   // one, so once every domain is deleted none is ever resurrected.
   const ip = resolveServerIp(server);
   // The PRIMARY domain's default route: an explicit composeService/composePort
-  // (the wizard's single picker), else — for a compose project — the service
+  // (the wizard's single picker), else, for a compose project, the service
   // detectDefaultApp picks from the stack, else build.port (single-image,
   // appless). After creation the `domains` table (each row's service) is the
   // sole routing source.
@@ -1100,7 +1102,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       : input.compose
         ? detectDefaultApp(input.compose)
         : null;
-  // No certificate is registered by default — auto domains are born plain-HTTP
+  // No certificate is registered by default - auto domains are born plain-HTTP
   // (`none`). The one opt-in: a blueprint that itself expects HTTPS (it baked an
   // `https://<one of its own hosts>` URL into its env, compose text, or a config
   // file) would break over plain HTTP, so ALL its auto domains get letsencrypt.
@@ -1126,7 +1128,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     });
 
   // Register every EXTRA hostname a multi-domain template declares (e.g. a web
-  // UI's `web-ui.*` host) — also ONCE, here at creation, never on a deploy. Each
+  // UI's `web-ui.*` host) - also ONCE, here at creation, never on a deploy. Each
   // extra carries its own service + port. Like the primary, a deleted extra is
   // never resurrected by a later deploy. The `domains` table is the sole routing
   // source from here on.
@@ -1164,7 +1166,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // precisely so a role can add an app without being allowed to ship code onto
   // the fleet, and creating one must not be the loophole that ships it anyway.
   // Asked ON THE NEW APP (a folder grant counts), and only after it exists.
-  // Without it the app is born idle — exactly like a fileless upload — for
+  // Without it the app is born idle, exactly like a fileless upload, for
   // someone who can deploy to pick up.
   const wantsDeploy = input.deploy !== false;
   if (
@@ -1194,7 +1196,7 @@ export async function updateAppBuild(
   const { membership } = await requireAppCapability(id, "configure_apps");
   // build.port is only WHICH container port Traefik routes to (routing), not a
   // published host port, so changing it isn't gated behind the expose-ports
-  // grant — any member who can deploy may edit build settings.
+  // grant - any member who can deploy may edit build settings.
   const user = (await getCurrentUser())!;
   // One tx (PLAN cut-set (c) Decision 15): the parent `app_build` columns
   // MERGE field-by-field, while a provided `methodSettings` object FULLY REPLACES
@@ -1211,7 +1213,7 @@ export async function updateAppBuild(
       // methodSettings replaces wholesale when provided, else keep the existing.
       methodSettings: build.methodSettings ?? existing.build.methodSettings,
       // The pending cache clear is armed by clearAppBuildCache and consumed by
-      // the next build — never by a build-settings save. Saving the form while a
+      // the next build, never by a build-settings save. Saving the form while a
       // clear is armed must not swallow it (nor could a caller arm one here).
       buildCacheClearPending: existing.build.buildCacheClearPending,
     };
@@ -1262,7 +1264,7 @@ export async function updateAppBuild(
  * There is deliberately nothing to delete here. The BuildKit cache lives on the
  * SERVER and is shared by every app on it (and, on a managed deplo, by other
  * tenants), so pruning it from one app's settings page would quietly slow down
- * everyone else's next deploy — an app can only clear its OWN cache by refusing
+ * everyone else's next deploy - an app can only clear its OWN cache by refusing
  * to read it once. Reclaiming disk stays the server-wide Docker cleanup's job.
  *
  * Idempotent: clearing twice before a deploy is still one cache-less build.
@@ -1411,13 +1413,13 @@ export async function updateAppSource(
     throw new Error(
       "Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).",
     );
-  // Saving compose YAML that publishes ports (`ports:`/`expose:`) requires the
+  // Saving compose YAML that binds a HOST port (`ports:`) requires the
   // expose-ports grant. Routing (the Traefik domains) lives in the `domains`
-  // table, not here, and is NOT port publishing — so it isn't gated here.
+  // table, not here, and `expose:` binds nothing - neither is gated.
   if (input.compose != null && composePublishesPorts(input.compose)) {
     await requireExposePorts();
   }
-  // Saving compose YAML that bind-mounts a host path requires the host grant —
+  // Saving compose YAML that bind-mounts a host path requires the host grant,
   // and so does asking for host privileges (`privileged`, `cap_add`, `devices`,
   // `pid: host`, …), which reach the host without naming a path at all.
   if (
@@ -1496,7 +1498,7 @@ export async function updateAppSource(
 
     // MOVING the project to a different server: its auto nip.io domains encode
     // the OLD server's IP (as the trailing hex label), so re-host them onto the
-    // new server's IP — otherwise the Domains section (and Traefik's routing
+    // new server's IP, otherwise the Domains section (and Traefik's routing
     // target) keeps pointing at the old host. Only the hex IP is swapped; the
     // random words are preserved, so the host stays recognisably the same
     // project's. The `domains` table is the sole routing source, so rehosting its
@@ -1566,13 +1568,13 @@ export async function updateAppSource(
   if (movedOff) await dropAppWebhook(before.repo).catch(() => {});
   await syncAppWebhook(repo).catch(() => {});
   // A MOVE takes effect on a deploy (the container physically relocates to the new
-  // host on the next build). Trigger it here so the move actually happens — and so
+  // host on the next build). Trigger it here so the move actually happens, and so
   // the data migration runs when that deploy succeeds (it consumes the marker set
   // above). Fire-and-forget, mirroring how creation deploys (startDeployment floats
   // runDeployment). A non-move source edit is NOT auto-deployed (unchanged
   // behavior); the user deploys when ready.
   //
-  // Exception — the upload source: its deploy is driven explicitly (the settings
+  // Exception - the upload source: its deploy is driven explicitly (the settings
   // "Save & Deploy" button calls this to persist the move, then redeploys). That
   // redeploy consumes the same migration marker, so auto-deploying here too would
   // double-fire. Leave the marker set and let the caller's deploy complete the move.
@@ -1585,7 +1587,7 @@ export async function updateAppSource(
     } catch (e) {
       // The move (serverId + migration marker) is already committed, but the deploy
       // that would relocate the container + migrate the data failed to start. The
-      // state is RECOVERABLE — the marker persists, so a manual production deploy
+      // state is RECOVERABLE - the marker persists, so a manual production deploy
       // will still complete the move + copy. Surface a legible error instead of a
       // raw failure so the operator knows to redeploy.
       throw new Error(
@@ -1598,7 +1600,7 @@ export async function updateAppSource(
 }
 
 // Container paths the runtime owns, the managed-volume name shape, and its length
-// cap all live in `lib/apps/volume-model.ts` — the SAME constants the Storage
+// cap all live in `lib/apps/volume-model.ts` - the SAME constants the Storage
 // editor lints against, so the form cannot accept a mount this writer will
 // refuse. Only the messages differ (API errors here, typing help there).
 
@@ -1613,14 +1615,14 @@ export async function updateAppSource(
  *    the top-level `  <name>:` map), derived from the path when blank.
  *  - name unique within the project; mountPath unique within the SERVICE it
  *    mounts into (a compose stack may legitimately give two services their own
- *    `/data` — a single-container app has one service, so this is the old
+ *    `/data` - a single-container app has one service, so this is the old
  *    project-wide rule for it).
  *  - `service` (compose stacks only) names a service the compose actually
  *    declares, so the deploy can never fail on a stale name; `composeServices`
  *    null ⇒ single-container, where the field is meaningless and is dropped.
  * For a HOST bind mount (`type: "host"`) the `hostPath` SOURCE is validated to be
  * an absolute path with no spaces/":"/".." (so it can't smuggle extra compose
- * fields) — but it is intentionally NOT subject to RESERVED_MOUNT_PREFIXES (those
+ * fields), but it is intentionally NOT subject to RESERVED_MOUNT_PREFIXES (those
  * guard the in-container target; a privileged user picks the host source on
  * purpose). The grant check that authorizes host mounts lives in the CALLER
  * (setAppVolumes), not here, so this stays a pure validator usable in tests.
@@ -1678,7 +1680,7 @@ export function validateVolumes(
     }
     // A volume conflicts with a template config file when their paths are equal,
     // when the volume is INSIDE a config file's dir, OR when the volume's dir
-    // would SHADOW (contain) a config file — any of which breaks the bind-mount.
+    // would SHADOW (contain) a config file - any of which breaks the bind-mount.
     if (
       mountFilePaths.some((raw) => {
         const f = raw.replace(/\/+$/, "");
@@ -1709,12 +1711,12 @@ export function validateVolumes(
 
     if (v.type === "app") {
       // Bind a path INSIDE the project's isolated files dir. The source is
-      // relative (no leading "/") and must stay in the sandbox — a ".." segment
+      // relative (no leading "/") and must stay in the sandbox - a ".." segment
       // would climb out, which is exactly what we forbid (a rename could then
       // repoint it at another project). No top-level volumes entry is emitted;
       // renderCompose resolves it to the absolute files dir at deploy time.
       // Accept an optional `./` prefix (the same marker the compose convention
-      // uses) but NOT a leading `/` — an absolute source is a host path, which
+      // uses) but NOT a leading `/` - an absolute source is a host path, which
       // must be declared as type:"host" so it goes through the permission gate.
       const projectPath = (v.projectPath ?? "")
         .trim()
@@ -1750,7 +1752,7 @@ export function validateVolumes(
     if (v.type === "host") {
       // Host bind mount: validate the host SOURCE path the same way as the
       // target (absolute, no spaces/":"/".."), but it is NOT reserved-prefix
-      // checked — the source is a deliberate host path. No top-level volumes
+      // checked - the source is a deliberate host path. No top-level volumes
       // entry is emitted, so docker-name rules don't apply.
       const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
       if (!/^\/[^\s:]*$/.test(hostPath) || hostPath.length < 2) {
@@ -1769,7 +1771,7 @@ export function validateVolumes(
       const propagation = v.propagation;
       if (propagation && !MOUNT_PROPAGATIONS.includes(propagation)) {
         throw new Error(
-          `Unknown mount propagation "${propagation}" — use ${MOUNT_PROPAGATIONS.join(" or ")}.`,
+          `Unknown mount propagation "${propagation}" - use ${MOUNT_PROPAGATIONS.join(" or ")}.`,
         );
       }
       out.push({
@@ -1807,7 +1809,7 @@ export function validateVolumes(
 }
 
 /**
- * Replace an app's volumes (full set) — docker-managed named volumes, binds into
+ * Replace an app's volumes (full set) - docker-managed named volumes, binds into
  * the app's files dir, and (for privileged users) host bind mounts. Works for
  * EVERY source, compose stacks included: requiring the user to hand-write
  * `volumes:` into their YAML is exactly the Docker knowledge deplo exists to not
@@ -1864,7 +1866,7 @@ export type ResourceLimitsInput = {
   [K in keyof ResourceLimits]?: ResourceLimits[K] | null;
 };
 
-// A limit is a guard rail, not a quota — bounds are deliberately generous. We
+// A limit is a guard rail, not a quota - bounds are deliberately generous. We
 // reject only what Docker itself would refuse (or an obvious typo) and NEVER
 // clamp silently: a settings form should save exactly what you typed, or tell
 // you why it can't. Ceilings exist just to turn a fat-fingered "999999" GiB into
@@ -1942,7 +1944,7 @@ export function cleanResourceLimits(
     1000,
   );
 
-  // Cross-field coherence — Docker rejects these combinations outright, so we
+  // Cross-field coherence - Docker rejects these combinations outright, so we
   // catch them here with a plain-language reason rather than at `compose up`.
   if (
     memoryReservationMb != null &&
@@ -1954,7 +1956,7 @@ export function cleanResourceLimits(
   if (swapMb != null) {
     if (memoryMb == null) {
       throw new Error(
-        "Set a memory limit before a swap limit — the swap value is the memory + swap total.",
+        "Set a memory limit before a swap limit - the swap value is the memory + swap total.",
       );
     }
     if (swapMb < memoryMb) {
@@ -1995,7 +1997,7 @@ export async function updateAppResources(
   const cleaned = cleanResourceLimits(input);
   // A NEGATIVE oom_score_adj is the structured twin of compose's
   // `oom_kill_disable`: it tells the kernel to spare THIS container and kill its
-  // neighbours — other tenants, and the platform's own containers — when the host
+  // neighbours (other tenants, and the platform's own containers) when the host
   // runs out of memory. Same cross-tenant reach, so the same grant. A positive
   // value only volunteers this container first and stays free, as does every
   // other cap here (they bound this app, they don't reach past it).
@@ -2070,7 +2072,7 @@ export async function renameApp(id: string, name: string): Promise<void> {
  * Set (or clear) the project's display logo. An empty value clears it, falling
  * the UI back to a generic icon. The logo is stored INLINE on the project
  * as a base64 image data-URI (uploaded image) or a local /templates path
- * (template default) — never a remote URL, so it renders under the strict CSP
+ * (template default), never a remote URL, so it renders under the strict CSP
  * with no cross-origin fetch (see {@link isValidLogoValue}). Purely cosmetic:
  * it never touches the deploy source or the Docker image the stack runs.
  *
@@ -2114,22 +2116,22 @@ export async function updateAppLogo(
 
 /**
  * Why detection came up empty, in the terms of where it actually looked. A
- * compose app is read twice — its own files AND the icon the running app serves
- * — so telling that user we found "no file named favicon" would describe half
+ * compose app is read twice - its own files AND the icon the running app serves
+ *, so telling that user we found "no file named favicon" would describe half
  * the search and point them at the wrong thing to fix.
  */
 function noIconFoundMessage(
   app: Parameters<typeof detectAppFavicon>[0],
 ): string {
   if (faviconSourceKind(app) === "app-files") {
-    return "No icon found. deplo looked in this app's files and asked the running app for its favicon — check that the app is running and serves one.";
+    return "No icon found. deplo looked in this app's files and asked the running app for its favicon - check that the app is running and serves one.";
   }
   return "No file named favicon (SVG, PNG or ICO) found in this app's files";
 }
 
 /**
  * Re-run favicon auto-detection for an app on demand (the settings "Detect
- * from source" button) and, when one is found, set it as the logo — overwriting
+ * from source" button) and, when one is found, set it as the logo - overwriting
  * any current inline value, since the user explicitly asked to detect. Throws a
  * friendly message when the source has no detectable icon so the caller can
  * surface it. Returns the detected logo data-URI.
@@ -2145,8 +2147,8 @@ export async function redetectAppLogo(id: string): Promise<string> {
   if (!project || project.teamId !== membership.teamId) {
     throw new Error("App not found");
   }
-  // A compose stack is read on its own server — its files, and the icon the
-  // running app serves — so its routed domains come along: they name the compose
+  // A compose stack is read on its own server - its files, and the icon the
+  // running app serves, so its routed domains come along: they name the compose
   // service and port the app answers on, which is how the probe reaches it the
   // same way Traefik does.
   const domains = await loadDomainsForApp(id);
@@ -2184,7 +2186,7 @@ export async function redetectAppLogo(id: string): Promise<string> {
 }
 
 /**
- * Recognise the framework in a repository the user is ABOUT to deploy — the read
+ * Recognise the framework in a repository the user is ABOUT to deploy - the read
  * behind the new-app wizard's "Next.js" badge, before any app row exists. Pure
  * read: it stores nothing, and the value it returns is re-derived (and persisted)
  * by the app's first deploy anyway.
@@ -2193,7 +2195,7 @@ export async function redetectAppLogo(id: string): Promise<string> {
  *  - `deploy`, the same capability creating an app needs. Reading someone's
  *    repository through the team's GitHub App is not a view-only act.
  *  - the installation must belong to the ACTIVE TEAM. Installations are
- *    team-scoped, so an id from another team is dropped rather than used —
+ *    team-scoped, so an id from another team is dropped rather than used,
  *    otherwise a crafted request could borrow another team's token to read their
  *    private repo. Dropping it (instead of failing) degrades to the
  *    unauthenticated read, which is exactly right for a public repo.
@@ -2233,7 +2235,7 @@ export async function previewRepoFramework(input: {
 }
 
 /**
- * Correct the framework Deplo recognised in this app's source — or drop the
+ * Correct the framework Deplo recognised in this app's source, or drop the
  * correction (`framework: null`) and go back to trusting detection.
  *
  * Written to its own column, never over `apps.framework`: the deploy keeps
@@ -2241,7 +2243,7 @@ export async function previewRepoFramework(input: {
  * on the next push. Which one wins is {@link effectiveFramework}'s answer, not
  * this function's.
  *
- * Gated like every other build setting (`configure_apps` + the folder gate) — it
+ * Gated like every other build setting (`configure_apps` + the folder gate) - it
  * changes which port the app is routed on, so it is a configuration change, not
  * a label edit. An id the catalog doesn't know is refused rather than stored:
  * unlike a value detection wrote, this one comes from a client.
@@ -2277,7 +2279,7 @@ export async function setAppFramework(
  *
  * Validated here, not only in the form: the same value arrives from the bearer
  * API, and a bad one would reach a host's argv. The agent vets it a second time
- * and drops the whole set rather than half-applying it — see
+ * and drops the whole set rather than half-applying it - see
  * lib/deploy/compose-args.ts for why those flags are additive by design.
  */
 export async function setAppComposeUpArgs(
@@ -2358,7 +2360,7 @@ export async function setAppRollbackKeep(
  *
  * NOT gated and NOT team-scoped: every caller has already resolved this app
  * through a capability check (stop/start here, restore in `lib/data/backups.ts`),
- * and the write is unconditional on purpose — a read-then-decide would lose the
+ * and the write is unconditional on purpose - a read-then-decide would lose the
  * race against a deploy landing in the gap.
  */
 export async function setAppStatus(
@@ -2380,7 +2382,7 @@ export async function stopApp(id: string): Promise<void> {
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
   // Persist "stopping" BEFORE the (up to 60s) container stop so the transition
-  // is visible to every client immediately and survives a reload — not just a
+  // is visible to every client immediately and survives a reload, not just a
   // local label on the clicking user's button. We settle to "idle" once the
   // stop returns (success or failure: the intent was to stop).
   await setAppStatus(id, "stopping");
@@ -2424,13 +2426,13 @@ export async function startApp(id: string): Promise<void> {
 }
 
 /**
- * Rebuild the image from the current source and replace the running container —
+ * Rebuild the image from the current source and replace the running container -
  * a full deployment that also FORCES the container to be recreated.
  *
  * The force matters: `docker compose up -d` compares compose's own config hash
  * and does nothing when it matches, so for a compose stack or a prebuilt image
  * whose config had not moved, "Rebuild container" used to finish green with the
- * same container still running — the one case the button exists for. A source
+ * same container still running - the one case the button exists for. A source
  * Deplo builds tags a new image per deploy, so it recreated anyway; forcing it
  * only makes the promise the same for every source.
  */
@@ -2448,7 +2450,7 @@ export async function rebuildApp(id: string): Promise<void> {
 }
 
 /**
- * Stamp `deleting_at` — the point of no return, written before a single byte is
+ * Stamp `deleting_at` - the point of no return, written before a single byte is
  * torn down.
  *
  * From here the app is GONE as far as the product is concerned even though its
@@ -2513,7 +2515,7 @@ function appOwnVolumeNames(project: App): string[] {
 async function destroyApp(project: App, actor: string): Promise<void> {
   const id = project.id;
   // Tear down the running container/stack before dropping the records. A REMOTE
-  // whose agent is unreachable can't be torn down now — proceed with the delete
+  // whose agent is unreachable can't be torn down now - proceed with the delete
   // anyway (P6 spirit: never leave records pinned to a dead box) and hand the
   // stack to the TEARDOWN QUEUE, which keeps retrying until the host confirms it
   // is gone. Nothing is ever left for the operator to remove by hand. The agent
@@ -2550,7 +2552,7 @@ async function destroyApp(project: App, actor: string): Promise<void> {
       label: project.name,
       teamId: project.teamId,
       // Named BY NAME, because `down -v` can only reclaim what the compose file
-      // ON THE HOST declares — and an app that was never deployed has no file
+      // ON THE HOST declares, and an app that was never deployed has no file
       // there. That is exactly the state a migrated app sits in between "the
       // data arrived" and "somebody deployed it", so deleting one used to leave
       // its imported volumes on the disk with nothing able to name them.
@@ -2558,10 +2560,10 @@ async function destroyApp(project: App, actor: string): Promise<void> {
     });
     // Drop any uploaded archive backing an "upload" source.
     await removeUploads(id).catch(() => {});
-    // One DELETE — the FK CASCADEs do the rest: deployments (+ logs), env_vars
+    // One DELETE - the FK CASCADEs do the rest: deployments (+ logs), env_vars
     // (+ targets), domains (+ middlewares), the 6 project child tables, the
     // team_app_order rows, AND shared_env_var_apps (the per-app shared-variable
-    // links — the orphan the old JSONB deleteApp leaked is now impossible — PLAN §7
+    // links, the orphan the old JSONB deleteApp leaked is now impossible, PLAN §7
     // "the live cascade is fixed in cut-set (c)"). backups.project_id is SET NULL (history outlives the
     // project), so no project-target backup is orphaned either.
     await getDb().delete(appsTable).where(eq(appsTable.id, id));
@@ -2588,7 +2590,7 @@ async function destroyApp(project: App, actor: string): Promise<void> {
 }
 
 /**
- * Delete an app, waiting for the host to be clear of it — the whole operation in
+ * Delete an app, waiting for the host to be clear of it - the whole operation in
  * one await, for a caller that has no response to get out of the way of (a
  * script, a test asserting the cascade). Anything serving a user wants
  * {@link startAppDelete} instead.
@@ -2599,7 +2601,7 @@ export async function deleteApp(id: string): Promise<void> {
 }
 
 /**
- * The same delete, minus the wait — what the dashboard calls.
+ * The same delete, minus the wait - what the dashboard calls.
  *
  * The app is stamped (and therefore locked everywhere, on every client, across
  * a reload) before this returns; the teardown finishes behind the response.
@@ -2627,7 +2629,7 @@ export async function startAppDelete(id: string): Promise<void> {
  * Bulk-delete several apps. Tears down each project's stack with BOUNDED
  * concurrency (so a large multi-select can't flood one server's agent with
  * simultaneous teardowns), then removes ALL their records in a SINGLE store write
- * — one document persist + one activity row, instead of N independent
+ * - one document persist + one activity row, instead of N independent
  * `deleteApp` round-trips. Team-scoped; unknown/foreign ids are ignored.
  * Returns the number actually deleted.
  */
@@ -2639,7 +2641,7 @@ export async function deleteApps(ids: string[]): Promise<number> {
 }
 
 /**
- * The bulk delete the dashboard calls — the multi-select twin of
+ * The bulk delete the dashboard calls - the multi-select twin of
  * {@link startAppDelete}. Every selected app is stamped (and so locked, and so
  * pulsing on the Overview) before this returns; the teardowns run behind the
  * response, where a slow host can't hold up a selection of twenty.
@@ -2670,7 +2672,7 @@ async function beginAppsDelete(
   if (apps.length === 0) return { apps, actor: user.name };
 
   // Gate EACH app on its own node: bulk delete is not a way around per-folder
-  // access, and since ADR-0016 `delete_apps` can be held on one app alone — so
+  // access, and since ADR-0016 `delete_apps` can be held on one app alone, so
   // the question has to be asked per app rather than once for the team.
   for (const p of apps) {
     await requireAppCapability(p.id, "delete_apps");
@@ -2696,7 +2698,7 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
     const tornDown = await withKeyedLock(
       `app-lifecycle:${project.id}`,
       async () => {
-        // Preview stacks first — see deleteApp.
+        // Preview stacks first - see deleteApp.
         await destroyPreviewsForApp(project.id).catch(() => {});
         // Volumes go too - see deleteApp for why "keeping" them was not a kindness.
         const ok = await teardownOrQueue({
@@ -2741,7 +2743,7 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
  * Finish the deletes a dead control plane left stamped.
  *
  * A teardown runs behind the response (see {@link startAppDelete}), so a restart
- * in the middle of one loses the only thing that was going to remove the stack —
+ * in the middle of one loses the only thing that was going to remove the stack,
  * and the app would sit stamped forever: refused by every gate, pulsing on the
  * Overview, with nothing left to finish it. Boot picks them back up, exactly
  * like the deployment and backup reconciles next to it.

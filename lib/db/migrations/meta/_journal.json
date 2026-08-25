@@ -876,6 +876,13 @@
       "when": 1784942206006,
       "tag": "0124_migration_report_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1784942207006,
+      "tag": "0125_app_console_enabled",
+      "breakpoints": true
     }
   ]
 }

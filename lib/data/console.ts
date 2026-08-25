@@ -27,6 +27,9 @@ import {
 import { logMaxDays } from "./instance-settings";
 import type { App, Server } from "../types";
 
+/** What a console session sees the moment the app's switch goes off. */
+const CONSOLE_OFF_MESSAGE = "! the console is turned off for this app";
+
 /**
  * Resolve a project's owning server.
  */
@@ -46,7 +49,7 @@ export interface AttachInfo {
   running: boolean;
   /**
    * Shell label of the default instance: "/bin/sh" | "/bin/bash" |
-   * "raw exec (no shell)". Real (probed), not assumed — drives the no-shell
+   * "raw exec (no shell)". Real (probed), not assumed - drives the no-shell
    * notice. Reflects the default instance only; switching is handled client-side.
    */
   shell: string;
@@ -72,23 +75,23 @@ export interface ConsoleInstance {
   /** Effective working dir from container config ("/" when unset). */
   workdir: string;
   /**
-   * Container was started with stdin open — `docker attach` keystrokes reach
+   * Container was started with stdin open - `docker attach` keystrokes reach
    * PID 1. When false, attach is output-only (the app never reads input).
    */
   openStdin: boolean;
   /**
-   * Container has a TTY allocated — attach is a raw interactive terminal and
+   * Container has a TTY allocated - attach is a raw interactive terminal and
    * control chars (e.g. Ctrl-C → \x03) reach the app as signals.
    */
   tty: boolean;
   /**
    * Raw docker state ("running" | "restarting" | "exited" | …), straight from
-   * the owning agent. EMPTY when that agent predates the field — `running`
+   * the owning agent. EMPTY when that agent predates the field - `running`
    * alone cannot separate a crash loop from a clean stop, so "" means unknown.
    */
   state: string;
   /** "healthy" | "unhealthy" | "starting", or "" when the image declares no
-   *  healthcheck — which is NOT a synonym for healthy. */
+   *  healthcheck, which is NOT a synonym for healthy. */
   health: string;
   /** Times docker has restarted this container: what turns "it is starting" into
    *  "it has been dying all afternoon". */
@@ -97,7 +100,7 @@ export interface ConsoleInstance {
 
 /**
  * The container an App's console/logs attach to. `deployKey` defaults to the
- * app's own slug — a pull request preview passes its key
+ * app's own slug - a pull request preview passes its key
  * (`<slug>__pr-<n>`) to reach its own container instead.
  */
 export function containerName(p: App, deployKey: string = p.slug): string {
@@ -105,7 +108,7 @@ export function containerName(p: App, deployKey: string = p.slug): string {
 }
 
 /**
- * Every attachable container for a project, default (exposed/running) first — via
+ * Every attachable container for a project, default (exposed/running) first - via
  * the owning agent's ListInstances (ordering applied agent-side).
  */
 export async function listInstances(p: App): Promise<ConsoleInstance[]> {
@@ -149,7 +152,7 @@ export interface LogsInfo {
   /** At least one container of the app is in docker state "running". */
   running: boolean;
   /**
-   * A real container exists on the host, so `docker logs` has output to stream —
+   * A real container exists on the host, so `docker logs` has output to stream -
    * whether it is running, restarting or long dead.
    */
   streamable: boolean;
@@ -190,7 +193,7 @@ function displayFallback(p: App): ConsoleInstance {
 }
 
 /**
- * listInstances for a page render: never throws, never empty — degrades to a
+ * listInstances for a page render: never throws, never empty - degrades to a
  * single honest, not-running placeholder so the console/logs page always loads.
  */
 async function listInstancesForDisplay(p: App): Promise<{
@@ -246,14 +249,14 @@ export interface RuntimeContainer {
   name: string;
   service: string;
   /**
-   * The raw docker state — "running" | "restarting" | "exited" | "created" |
+   * The raw docker state - "running" | "restarting" | "exited" | "created" |
    * "paused" | "dead", or "" when the owning agent is too old to report it (it
    * only answers a running/not-running boolean).
    */
   state: string;
   /** "healthy" | "unhealthy" | "starting", or "" for an image with no healthcheck. */
   health: string;
-  /** Times docker has restarted it — the difference between "booting" and "dying". */
+  /** Times docker has restarted it - the difference between "booting" and "dying". */
   restartCount: number;
   running: boolean;
   exposed: boolean;
@@ -261,7 +264,7 @@ export interface RuntimeContainer {
 
 /**
  * What an app's containers are ACTUALLY doing on the host, read live from the
- * owning agent — as opposed to `apps.status`, which only records the last thing
+ * owning agent - as opposed to `apps.status`, which only records the last thing
  * the control plane asked for (deploy / start / stop) and therefore keeps
  */
 export interface AppRuntime {
@@ -269,11 +272,11 @@ export interface AppRuntime {
   total: number;
   /** How many are in docker state "running". */
   running: number;
-  /** How many docker is restarting right now — i.e. a crash loop. */
+  /** How many docker is restarting right now - i.e. a crash loop. */
   restarting: number;
   /**
    * How many are running but FAILING their own healthcheck. Up, listening, and
-   * broken — the state a running/not-running boolean can never express.
+   * broken - the state a running/not-running boolean can never express.
    */
   unhealthy: number;
   /**
@@ -322,7 +325,7 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
     );
 
     // The agent reports each container's raw docker state. An agent older than that
-    // field sends "" — and then a restarting container is indistinguishable from a dead
+    // field sends "", and then a restarting container is indistinguishable from a dead
     // one, because all we have is a bool.
     let legacySoloState = "";
     const agentReportsState = instances.some((i) => i.state !== "");
@@ -351,7 +354,7 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
 
     // A compose app declares its services; a single-image one has exactly one,
     // named after the slug. Anything declared with no container on the host is
-    // missing — the failure `docker ps` cannot show you.
+    // missing - the failure `docker ps` cannot show you.
     const declared = p.compose ? composeServiceNames(p.compose) : [p.slug];
     const present = new Set(containers.map((c) => c.service));
     const missing = declared.filter((s) => !present.has(s));
@@ -483,7 +486,7 @@ async function probeShellLabel(
 
 /**
  * Authorise an attach request and resolve the real container to attach to. Never
- * trusts a raw container name from the client — the target must belong to this
+ * trusts a raw container name from the client - the target must belong to this
  * project (same guard as execInContainer).
  */
 export async function resolveAttachTarget(
@@ -497,10 +500,12 @@ export async function resolveAttachTarget(
     }
 > {
   // Attaching to PID 1 (full-duplex, stdin to the live container) is a
-  // deploy-class operation — never available to a view-only member.
+  // deploy-class operation, never available to a view-only member.
   const { teamId } = await requireAppCapability(appId, "open_app_console");
   const p = await loadTeamApp(appId, teamId);
-  if (!p) return { ok: false, reason: "not-found" };
+  // An app whose console is off answers like one that isn't there: the switch is
+  // the feature's existence, not a permission to explain.
+  if (!p || !p.consoleEnabled) return { ok: false, reason: "not-found" };
 
   let instances: ConsoleInstance[];
   try {
@@ -516,7 +521,7 @@ export async function resolveAttachTarget(
     ? instances.find((i) => i.name === target)
     : (instances.find((i) => i.running) ?? instances[0]);
   if (!pick) return { ok: false, reason: "no-instance" };
-  // Attaching to a stopped container's PID 1 would just hang — refuse early.
+  // Attaching to a stopped container's PID 1 would just hang - refuse early.
   if (!pick.running) return { ok: false, reason: "stopped" };
   return { ok: true, instance: pick, server: await serverOf(p) };
 }
@@ -565,11 +570,13 @@ export async function execInContainer(
   rawCommand: string,
   target?: string,
 ): Promise<{ output: string; detach?: boolean }> {
-  // Running arbitrary commands in the live container is RCE — gate on deploy,
+  // Running arbitrary commands in the live container is RCE - gate on deploy,
   // never bare team membership (a viewer must never reach this).
   const { teamId } = await requireAppCapability(appId, "open_app_console");
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { output: "Error: project not found" };
+  // Read per command, so turning the switch off ends the session in flight.
+  if (!p.consoleEnabled) return { output: CONSOLE_OFF_MESSAGE, detach: true };
 
   const command = rawCommand.trim();
   if (!command) return { output: "" };
@@ -579,7 +586,7 @@ export async function execInContainer(
 
   try {
     const instances = await listInstances(p);
-    // Only exec into a container that belongs to this project — never trust a
+    // Only exec into a container that belongs to this project, never trust a
     // raw name from the client. Fall back to the default target.
     const pick = target
       ? instances.find((i) => i.name === target)
@@ -592,7 +599,7 @@ export async function execInContainer(
     const res = await execOnAgent(p, pick.name, command, pick.image);
 
     // Docker/OCI-level failure: `docker exec` couldn't run the command at all
-    // (container stopped/removed, daemon error, or the exec target binary is missing —
+    // (container stopped/removed, daemon error, or the exec target binary is missing -
     // e.g. no shell in a distroless image).
     if (isDockerLevelStderr(res.stderr)) {
       const reason =
@@ -613,7 +620,7 @@ export async function execInContainer(
     }
     return { output: body };
   } catch (e) {
-    // Reject path: spawn failure / timeout / daemon unreachable — docker never
+    // Reject path: spawn failure / timeout / daemon unreachable - docker never
     // produced an exit status. An infrastructure error, not guest output. A
     // remote whose agent is unreachable surfaces here with a clear message.
     if (e instanceof AgentUnreachableError) {
@@ -638,4 +645,30 @@ async function execOnAgent(
   } finally {
     conn.close();
   }
+}
+
+/**
+ * Turn the container console on or off for one app. Switching it OFF kills the
+ * attach sessions already open, so the revocation is immediate rather than
+ * "until the tab is closed".
+ */
+export async function setConsoleEnabled(
+  appId: string,
+  enabled: boolean,
+): Promise<void> {
+  const { teamId } = await requireAppCapability(appId, "configure_apps");
+  const rows = await getDb()
+    .update(appsTable)
+    .set({ consoleEnabled: enabled, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
+    .returning({ name: appsTable.name });
+  if (rows.length === 0) throw new Error("App not found");
+  if (!enabled) destroyForApp(appId);
+  const user = await getCurrentUser();
+  await recordActivity(
+    "app",
+    `${enabled ? "Enabled" : "Disabled"} the console for ${rows[0].name}`,
+    user?.name ?? "Deplo",
+    appId,
+  );
 }

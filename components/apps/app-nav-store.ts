@@ -15,12 +15,14 @@ export type AppNavState = {
   showFiles: boolean;
   /** The viewer's effective capabilities on this app. */
   capabilities: string[];
-  /** The app deploys from GitHub — the only source that gets pull requests. */
+  /** The app deploys from GitHub - the only source that gets pull requests. */
   isGithubApp: boolean;
   /** Pull request previews are switched on. */
   previewsEnabled: boolean;
   /** Cron jobs are switched on. */
   cronsEnabled: boolean;
+  /** The container console is switched on. */
+  consoleEnabled: boolean;
 };
 
 // Client-only module state: each browser tab owns its own instance. It is never
@@ -44,7 +46,7 @@ function subscribe(onStoreChange: () => void): () => void {
 
 const getSnapshot = () => current;
 // SSR (and the first, pre-effect client render) has no per-app facts yet, so
-// the sidebar renders its base entries only — no hydration mismatch.
+// the sidebar renders its base entries only, no hydration mismatch.
 const getServerSnapshot = (): AppNavState | null => null;
 
 /**

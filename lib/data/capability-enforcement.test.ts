@@ -38,7 +38,12 @@ import { createApp } from "./apps";
 import { getLogs, redeploy } from "./deployments";
 import { listActivity, recordActivity } from "./activity";
 import { getAppMetrics, getAppMetricsHistory } from "./container-metrics";
-import { getLogsInfo, resolveLogsTarget } from "./console";
+import {
+  getLogsInfo,
+  resolveAttachTarget,
+  resolveLogsTarget,
+  setConsoleEnabled,
+} from "./console";
 import { resolveDatabaseLogsTarget } from "./database-console";
 import { listEnv, upsertEnv } from "./env";
 import { deleteTeam } from "./team-delete";
@@ -53,7 +58,7 @@ import { appInTeam } from "./app-graph-load";
 
 /**
  * Does a permission actually PERMIT anything? The recurring bug class it exists to
- * catch is a capability that is offered but never consulted — a checkbox that
+ * catch is a capability that is offered but never consulted - a checkbox that
  * changes nothing.
  */
 
@@ -181,7 +186,7 @@ async function outcome(
   } catch (e) {
     const m = (e as Error).message;
     // `only …` covers the refusals that name WHO may act instead of what is
-    // missing ("Only the folder owner can share this folder") — a refusal that
+    // missing ("Only the folder owner can share this folder") - a refusal that
     // says so plainly, which a caller who can SEE the folder should get instead
     // of a pretend "not found". Same set the sibling helper in
     // authz-escape.test.ts recognises.
@@ -211,7 +216,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 test("every capability is enforced in the data layer", () => {
   // The catalog, the presets and the type list all NAME every capability; none
   // of them gates anything. So they are excluded, and what is left is the code
-  // that actually decides — `lib/data/*` plus the membership gates themselves.
+  // that actually decides - `lib/data/*` plus the membership gates themselves.
   const CATALOG = [
     "lib/capabilities.ts",
     "lib/types.ts",
@@ -229,12 +234,12 @@ test("every capability is enforced in the data layer", () => {
   assert.deepEqual(
     dead,
     [],
-    `these capabilities can be granted but are never checked — the checkbox is a lie: ${dead.join(", ")}`,
+    `these capabilities can be granted but are never checked - the checkbox is a lie: ${dead.join(", ")}`,
   );
 });
 
 /* ------------------------------------------------------------------ */
-/* Roles — the read permissions the "Viewer" role is built from        */
+/* Roles - the read permissions the "Viewer" role is built from        */
 /* ------------------------------------------------------------------ */
 
 test("view_logs gates a deployment's build log", async () => {
@@ -244,8 +249,30 @@ test("view_logs gates a deployment's build log", async () => {
   assert.deepEqual(
     await as(NO_READS, () => getLogs(DEP)),
     [],
-    "a build log carries build-time variables — without view_logs it must not be readable",
+    "a build log carries build-time variables - without view_logs it must not be readable",
   );
+});
+
+test("the console switch gates attach, not only the sidebar chip", async () => {
+  // Off is the default, so even the owner is answered like the route isn't there.
+  assert.deepEqual(await as(OWNER, () => resolveAttachTarget(APP)), {
+    ok: false,
+    reason: "not-found",
+  });
+
+  await as(OWNER, () => setConsoleEnabled(APP, true));
+  const on = await as(OWNER, () => resolveAttachTarget(APP));
+  assert.notEqual(
+    on.ok ? "ok" : on.reason,
+    "not-found",
+    "with the switch on the gate is past, and only the (absent) host stops it",
+  );
+
+  await as(OWNER, () => setConsoleEnabled(APP, false));
+  assert.deepEqual(await as(OWNER, () => resolveAttachTarget(APP)), {
+    ok: false,
+    reason: "not-found",
+  });
 });
 
 test("view_logs gates the live container log stream", async () => {
@@ -285,7 +312,7 @@ test("view_activity gates the audit trail", async () => {
   assert.deepEqual(
     await as(NO_READS, () => listActivity()),
     [],
-    "the audit trail is who-did-what across the whole team — view_activity must gate it",
+    "the audit trail is who-did-what across the whole team - view_activity must gate it",
   );
 });
 
@@ -297,7 +324,7 @@ test("view_metrics gates the monitoring reads", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Roles — create is not deploy                                        */
+/* Roles - create is not deploy                                        */
 /* ------------------------------------------------------------------ */
 
 const deploymentsOf = async (appId: string) =>
@@ -399,7 +426,7 @@ test("a member without create_apps cannot create at all", async () => {
 /* Secrets are write-only, for EVERY role                              */
 /* ------------------------------------------------------------------ */
 
-test("nobody reads a secret back — not even the owner", async () => {
+test("nobody reads a secret back, not even the owner", async () => {
   await as(OWNER, () =>
     upsertEnv({ appId: APP, key: "API_KEY", value: "s3cr3t", type: "secret" }),
   );
@@ -435,7 +462,7 @@ test("nobody reads a secret back — not even the owner", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Roles — delete_team                                                 */
+/* Roles - delete_team                                                 */
 /* ------------------------------------------------------------------ */
 
 test("delete_team gates deleting the team, even for the founder", async () => {
@@ -488,7 +515,7 @@ test("delete_team gates deleting the team, even for the founder", async () => {
 /* ------------------------------------------------------------------ */
 
 test("a token can never exceed its own capability set", async () => {
-  // The creator is the team owner — the token is not.
+  // The creator is the team owner - the token is not.
   await asToken(OWNER, ["view"], async () => {
     assert.equal(await outcome(() => redeploy(APP)), "refused");
     assert.deepEqual(await getLogs(DEP), []);
@@ -542,7 +569,7 @@ test("a read-only token cannot delete its creator's team", async () => {
 
 test("instance-admin is per-token: a plain token minted by an admin is not an admin", async () => {
   // Someone ELSE's folder, shared with nobody. Its owner may re-share it, and so
-  // may an instance admin — as a PERSON. The question here is whether that admin
+  // may an instance admin - as a PERSON. The question here is whether that admin
   // power rides along on a token that was never given it.
   await db.insert(foldersTable).values({
     id: "fld_private",
@@ -644,7 +671,7 @@ test("a minted token's capabilities are clamped to its creator at mint time", as
   const { raw } = await as(ENV_ONLY, () =>
     createToken({ name: "over-reaching", capabilities: [...ALL_CAPABILITIES] }),
   ).catch(() => ({ raw: "" }));
-  // ENV_ONLY has no manage_tokens, so it cannot mint at all — that is the first
+  // ENV_ONLY has no manage_tokens, so it cannot mint at all - that is the first
   // clamp. The owner's mint is the one that must be narrowed, not refused.
   assert.equal(raw, "", "minting a token needs manage_tokens");
 
@@ -707,7 +734,7 @@ test("a deploy hook needs BOTH secrets and the deploy permission", async () => {
   assert.equal(
     await hookCall(ro.raw, APP, urlToken),
     "refused",
-    "the URL is not an authorization — a token without deploy_apps deploys nothing",
+    "the URL is not an authorization - a token without deploy_apps deploys nothing",
   );
   assert.equal(
     await hookCall(ci.raw, APP, "wrong-token"),
@@ -761,7 +788,7 @@ test("a suspended member's token stops working everywhere", async () => {
   const principal = await authenticateToken(ci.raw, TEAM_A);
   assert.ok(
     principal,
-    "the row still resolves — the account check is downstream",
+    "the row still resolves - the account check is downstream",
   );
   await runWithIdentity(principal!, async () => {
     assert.equal(await outcome(() => redeploy(APP)), "refused");
@@ -782,7 +809,7 @@ test("an unmet two-factor policy refuses a token, with a reason", async () => {
   await assert.rejects(
     () => authenticateToken(ci.raw, TEAM_A),
     /two-factor/i,
-    "the credential is refused, and says why — a CI job must not get a bare 500",
+    "the credential is refused, and says why - a CI job must not get a bare 500",
   );
   // The deploy hook maps that refusal onto 401 rather than crashing.
   assert.equal(await hookCall(ci.raw, APP, "whatever"), "401");

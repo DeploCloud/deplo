@@ -82,7 +82,7 @@ type AddServerPayload {
 }
 
 """
-A team API token. Only the prefix is ever exposed — the raw token is shown once at creation and only its hash is persisted.
+A team API token. Only the prefix is ever exposed - the raw token is shown once at creation and only its hash is persisted.
 """
 type ApiToken {
   """Individually-named apps in the scope."""
@@ -119,7 +119,7 @@ type ApiToken {
   folderIds: [String!]
 
   """
-  The team this token is MANAGED from — where it was created. Any team it reaches can revoke it; only this one can change it.
+  The team this token is MANAGED from, where it was created. Any team it reaches can revoke it; only this one can change it.
   """
   homeTeamId: ID
 
@@ -128,7 +128,7 @@ type ApiToken {
   id: ID
 
   """
-  The token may administer the whole instance — users, servers and the global environment — not just its team. Mutually exclusive with a project scope.
+  The token may administer the whole instance (users, servers and the global environment), not just its team. Mutually exclusive with a project scope.
   """
   instanceAdmin: Boolean
   lastUsedAt: String
@@ -170,7 +170,7 @@ type App {
   compose: String
 
   """
-  Extra flags this app appends to the `docker compose up` that brings it up, or null for the untouched command. Additive only — the flags that choose the project, stack file or env-file are refused.
+  Extra flags this app appends to the `docker compose up` that brings it up, or null for the untouched command. Additive only - the flags that choose the project, stack file or env-file are refused.
   """
   composeUpArgs: String
   createdAt: String
@@ -181,7 +181,7 @@ type App {
   dataCopyError: String
 
   """
-  Whether this app's deploy hook answers. The hook URL itself is never a field — read it back with revealAppDeployHook.
+  Whether this app's deploy hook answers. The hook URL itself is never a field - read it back with revealAppDeployHook.
   """
   deployHookEnabled: Boolean
 
@@ -194,7 +194,7 @@ type App {
   folderId: ID
 
   """
-  The JavaScript framework backing this app ("nextjs", "astro", "nestjs", …), or null when none was found or the app doesn't build with one of the auto-detecting builders (Nixpacks / Railpack). Detected on every deploy, unless setAppFramework has corrected it — in which case that choice is what this returns.
+  The JavaScript framework backing this app ("nextjs", "astro", "nestjs", …), or null when none was found or the app doesn't build with one of the auto-detecting builders (Nixpacks / Railpack). Detected on every deploy, unless setAppFramework has corrected it - in which case that choice is what this returns.
   """
   framework: String
 
@@ -354,7 +354,7 @@ type AppRuntime {
   containers: [RuntimeContainer!]
 
   """
-  Declared services with NO container on the host — the failure the running/total counts cannot see, because a container that was never created is not there to be counted as stopped.
+  Declared services with NO container on the host - the failure the running/total counts cannot see, because a container that was never created is not there to be counted as stopped.
   """
   missing: [String!]
   restarting: Int
@@ -362,7 +362,7 @@ type AppRuntime {
   total: Int
 
   """
-  Containers that are running and failing their own healthcheck — up, listening, and broken.
+  Containers that are running and failing their own healthcheck - up, listening, and broken.
   """
   unhealthy: Int
 
@@ -371,7 +371,7 @@ type AppRuntime {
 }
 
 """
-A shared variable as seen from one app. `linked` is the explicit opt-in (the only thing that injects — ADR-0012); `inScope`/`scope` say whether an availability scope suggests it here.
+A shared variable as seen from one app. `linked` is the explicit opt-in (the only thing that injects - ADR-0012); `inScope`/`scope` say whether an availability scope suggests it here.
 """
 type AppSharedVar {
   id: ID
@@ -382,7 +382,7 @@ type AppSharedVar {
   inScope: Boolean
   key: String
 
-  """The app opted in — the var injects on its next deploy."""
+  """The app opted in - the var injects on its next deploy."""
   linked: Boolean
   masked: Boolean
 
@@ -423,12 +423,12 @@ type AppTransferInfo {
   appName: String
 
   """
-  Backup schedules targeting this app — removed on transfer, because they point at the current team's backup destination.
+  Backup schedules targeting this app - removed on transfer, because they point at the current team's backup destination.
   """
   backupCount: Int
 
   """
-  The git connection authenticating this app's clone, or null. It is always dropped on transfer — a token is owned by the current team and cannot be assumed to reach the repository from another one.
+  The git connection authenticating this app's clone, or null. It is always dropped on transfer - a token is owned by the current team and cannot be assumed to reach the repository from another one.
   """
   gitConnectionLabel: String
   githubConnected: Boolean
@@ -447,7 +447,7 @@ type AppTransferInfo {
 }
 
 """
-A team the viewer could hand this app to — one of their OWN other teams where they hold the deploy capability.
+A team the viewer could hand this app to - one of their OWN other teams where they hold the deploy capability.
 """
 type AppTransferTarget {
   avatarUrl: String
@@ -460,7 +460,7 @@ type AppTransferTarget {
   name: String
 
   """
-  False when the app's server is restricted and not shared with that team — the transfer is refused until an instance admin grants access.
+  False when the app's server is restricted and not shared with that team - the transfer is refused until an instance admin grants access.
   """
   serverAvailable: Boolean
 }
@@ -503,7 +503,7 @@ type Backup {
 }
 
 """
-Where a team's backup artifacts are kept: an S3-compatible bucket, or a directory on a server in the fleet. Secrets are masked and the recovery key is never a field — it has its own mutation, which records who took it.
+Where a team's backup artifacts are kept: an S3-compatible bucket, or a directory on a server in the fleet. Secrets are masked and the recovery key is never a field - it has its own mutation, which records who took it.
 """
 type BackupDestination {
   accessKeyMasked: String
@@ -559,7 +559,7 @@ type BackupDestinationOption {
 }
 
 """
-One executed backup — a single dump+upload artifact, and the source for an in-place restore.
+One executed backup - a single dump+upload artifact, and the source for an in-place restore.
 """
 type BackupRun {
   appId: ID
@@ -607,7 +607,7 @@ enum BackupTargetKind {
 }
 
 """
-An HTTP Basic Auth credential that gates every domain of an app. The password is never a field — read one back with revealBasicAuthPassword.
+An HTTP Basic Auth credential that gates every domain of an app. The password is never a field - read one back with revealBasicAuthPassword.
 """
 type BasicAuthUser {
   createdAt: String
@@ -781,7 +781,7 @@ input ConnectGitProviderInput {
 }
 
 """
-Console attach info for an app (no shell probe — fetch the shell label separately via shellLabel).
+Console attach info for an app (no shell probe - fetch the shell label separately via shellLabel).
 """
 type ConsoleInfo {
   containerName: String
@@ -804,7 +804,7 @@ type ConsoleInstance {
 }
 
 """
-Live resource usage for ONE container of an app/database stack — the Monitoring tab's per-container breakdown. net_* / block_* are cumulative byte counters since the container started.
+Live resource usage for ONE container of an app/database stack - the Monitoring tab's per-container breakdown. net_* / block_* are cumulative byte counters since the container started.
 """
 type ContainerInstanceMetrics {
   blockRead: Float
@@ -821,7 +821,7 @@ type ContainerInstanceMetrics {
 }
 
 """
-A fresh live metrics snapshot for one app/database stack: the aggregate across its containers, plus the per-container breakdown and an `unsupported` flag (the owning server's agent is too old for per-container metrics — the tab shows 'update the agent').
+A fresh live metrics snapshot for one app/database stack: the aggregate across its containers, plus the per-container breakdown and an `unsupported` flag (the owning server's agent is too old for per-container metrics - the tab shows 'update the agent').
 """
 type ContainerMetrics {
   blockRead: Float
@@ -845,7 +845,7 @@ type ContainerMetrics {
 }
 
 """
-One buffered aggregate metrics sample for an app/database stack (the sum across its running containers) — what the Monitoring tab's charts seed from. net_* / block_* are cumulative bytes; the client derives bytes/sec from the delta between consecutive samples.
+One buffered aggregate metrics sample for an app/database stack (the sum across its running containers) - what the Monitoring tab's charts seed from. net_* / block_* are cumulative bytes; the client derives bytes/sec from the delta between consecutive samples.
 """
 type ContainerMetricsSample {
   blockRead: Float
@@ -943,7 +943,7 @@ input CreateTokenInput {
 }
 
 """
-Result of creating a token. `raw` is the full secret and is returned only here, once — store it now, it cannot be recovered later.
+Result of creating a token. `raw` is the full secret and is returned only here, once - store it now, it cannot be recovered later.
 """
 type CreateTokenPayload {
   """The full token secret. Shown once and never again."""
@@ -1123,7 +1123,7 @@ type Database {
   createdAt: String
 
   """
-  Expert override: replaces the container command verbatim (redis's default command carries --requirepass — omit it and auth is off).
+  Expert override: replaces the container command verbatim (redis's default command carries --requirepass - omit it and auth is off).
   """
   customCommand: String
 
@@ -1153,7 +1153,7 @@ type Database {
   mounts: [DatabaseMount!]
 
   """
-  Display name, editable with renameDatabase. Not the container's identity — `host` is, and it is fixed at creation.
+  Display name, editable with renameDatabase. Not the container's identity - `host` is, and it is fixed at creation.
   """
   name: String
   port: Int
@@ -1211,7 +1211,7 @@ A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `dat
 scalar DateTime
 
 """
-Exactly what permanently deleting an account would take with it — read live so the confirmation states facts, not warnings.
+Exactly what permanently deleting an account would take with it - read live so the confirmation states facts, not warnings.
 """
 type DeleteUserImpact {
   """Non-null ⇒ this account can't be deleted at all; the reason to show."""
@@ -1219,7 +1219,7 @@ type DeleteUserImpact {
   createdAppCount: Int
 
   """
-  Teams they founded that still have other members — deleted only on request.
+  Teams they founded that still have other members - deleted only on request.
   """
   foundedTeams: [DeleteUserTeamImpact!]
 
@@ -1231,7 +1231,7 @@ type DeleteUserImpact {
   ownedProjectCount: Int
 
   """
-  Teams where they are the ONLY member — always deleted with the account, since nobody would be left who could ever open them.
+  Teams where they are the ONLY member - always deleted with the account, since nobody would be left who could ever open them.
   """
   soloTeams: [DeleteUserTeamImpact!]
   tokenCount: Int
@@ -1330,7 +1330,7 @@ type Deployment {
   rollbackOf: ID
 
   """
-  When the build was claimed off the queue and started running — the origin `buildDurationMs` is measured from, and what a live build timer counts up from. Null while still queued.
+  When the build was claimed off the queue and started running - the origin `buildDurationMs` is measured from, and what a live build timer counts up from. Null while still queued.
   """
   startedAt: String
   status: DeploymentStatus
@@ -1371,7 +1371,7 @@ enum DestinationStatus {
 }
 
 """
-A completed connection test: the destination with its badge repainted, plus the verdict. Callers MUST read `report.ok` — a failed probe is a normal result, not a mutation error.
+A completed connection test: the destination with its badge repainted, plus the verdict. Callers MUST read `report.ok` - a failed probe is a normal result, not a mutation error.
 """
 type DestinationTestResult {
   destination: BackupDestination
@@ -1386,13 +1386,13 @@ enum DeviceKind {
 }
 
 """
-The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults — ENABLED, daily at 04:00 UTC, every scope — so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.
+The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults (ENABLED, daily at 04:00 UTC, every scope), so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.
 """
 type DockerCleanupPolicy {
   enabled: Boolean
 
   """
-  Servers the SCHEDULED sweep skips. A manual runDockerCleanupNow ignores this list — the operator standing in front of the button has already made that decision.
+  Servers the SCHEDULED sweep skips. A manual runDockerCleanupNow ignores this list - the operator standing in front of the button has already made that decision.
   """
   excludedServerIds: [String!]
 
@@ -1419,7 +1419,7 @@ type DockerCleanupPolicy {
 }
 
 """
-One executed sweep on one server. A run that could not even start — an unprovisioned host, an agent offline or too old — is still recorded, as `failed`: the history never lies about an attempt.
+One executed sweep on one server. A run that could not even start (an unprovisioned host, an agent offline or too old) is still recorded, as `failed`: the history never lies about an attempt.
 """
 type DockerCleanupRun {
   """The user who ran it, or "Scheduler" for a scheduled sweep."""
@@ -1433,7 +1433,7 @@ type DockerCleanupRun {
   reclaimedBytes: Float
 
   """
-  Null once the server is removed — `serverName` is what keeps the row readable.
+  Null once the server is removed - `serverName` is what keeps the row readable.
   """
   serverId: ID
   serverName: String
@@ -1443,7 +1443,7 @@ type DockerCleanupRun {
 }
 
 """
-One scope's outcome in an executed run. Counts only — the history keeps how much was reclaimed, not which objects.
+One scope's outcome in an executed run. Counts only - the history keeps how much was reclaimed, not which objects.
 """
 type DockerCleanupRunItem {
   error: String
@@ -1477,7 +1477,7 @@ enum DockerCleanupTrigger {
 
 input DokployConnectInput {
   """
-  Allow a private or loopback address — what the same-machine case needs (http://172.17.0.1:3000). Instance admin only, like a git connection's or an S3 endpoint's private-endpoint flag.
+  Allow a private or loopback address - what the same-machine case needs (http://172.17.0.1:3000). Instance admin only, like a git connection's or an S3 endpoint's private-endpoint flag.
   """
   allowPrivate: Boolean
 
@@ -1674,7 +1674,7 @@ type DokployPlan {
 
 type DokployPlanEnvironment {
   """
-  An environment of that name is already in the matching project — Dokploy's `production` maps onto the one every Deplo project starts with.
+  An environment of that name is already in the matching project - Dokploy's `production` maps onto the one every Deplo project starts with.
   """
   exists: Boolean
   name: String
@@ -1728,7 +1728,7 @@ type DokployPlanService {
   buildsFromSource: Boolean
 
   """
-  The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.
+  The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped - Deplo mints its own.
   """
   domains: [String!]
 
@@ -1858,7 +1858,7 @@ type Domain {
 }
 
 """
-Per-domain routing config; an omitted certProvider means no certificate (plain HTTP), unless the add-time DNS check finds the host proxied through Cloudflare — then it is stored as `cloudflare`.
+Per-domain routing config; an omitted certProvider means no certificate (plain HTTP), unless the add-time DNS check finds the host proxied through Cloudflare, then it is stored as `cloudflare`.
 """
 input DomainConfigInput {
   certProvider: CertProvider
@@ -1894,7 +1894,7 @@ input DomainPatchInput {
 """A custom domain's DNS verification state."""
 enum DomainStatus {
   """
-  Proxied through Cloudflare's orange-cloud. UNVERIFIED — treat as an open question, not a success. The host resolves to Cloudflare's anycast IPs, which are shared by every proxied domain on the internet and mask the origin, so public DNS can show only that the domain is proxied — never whether Cloudflare forwards it to this app's server or to somebody else's. The domain is routed regardless (it must be, or a correct setup could never work), but nothing has been confirmed.
+  Proxied through Cloudflare's orange-cloud. UNVERIFIED - treat as an open question, not a success. The host resolves to Cloudflare's anycast IPs, which are shared by every proxied domain on the internet and mask the origin, so public DNS can show only that the domain is proxied, never whether Cloudflare forwards it to this app's server or to somebody else's. The domain is routed regardless (it must be, or a correct setup could never work), but nothing has been confirmed.
   """
   cloudflare
 
@@ -1907,7 +1907,7 @@ enum DomainStatus {
   misconfigured
 
   """
-  No A record resolves yet — the normal state of a record just created. Re-checked automatically.
+  No A record resolves yet - the normal state of a record just created. Re-checked automatically.
   """
   pending
 
@@ -2290,7 +2290,7 @@ type InstanceSettings {
   deploHostName: String
 
   """
-  Whether a person with no uploaded picture falls back to their Gravatar. The panel never dials gravatar.com itself — it only computes the address, and each viewer's browser fetches it.
+  Whether a person with no uploaded picture falls back to their Gravatar. The panel never dials gravatar.com itself - it only computes the address, and each viewer's browser fetches it.
   """
   gravatarEnabled: Boolean
 
@@ -2339,12 +2339,12 @@ type LogsInfo {
   running: Boolean
 
   """
-  A real container exists on the host, so its logs can be streamed — whether it is running, restarting or exited. Attach on this, not on `running`: a crash-looping container is the one whose logs you need.
+  A real container exists on the host, so its logs can be streamed - whether it is running, restarting or exited. Attach on this, not on `running`: a crash-looping container is the one whose logs you need.
   """
   streamable: Boolean
 
   """
-  The owning host's agent can narrow a log stream by time (`logs.timerange`). False on an older agent, which still streams but only honours `tail` — the viewer greys out the time-range control rather than offering a window the host would silently ignore.
+  The owning host's agent can narrow a log stream by time (`logs.timerange`). False on an older agent, which still streams but only honours `tail` - the viewer greys out the time-range control rather than offering a window the host would silently ignore.
   """
   supportsTimeline: Boolean
 
@@ -2353,7 +2353,7 @@ type LogsInfo {
 }
 
 """
-An AI client that can act in this team over MCP. Either a web connector approved on the consent screen, or an API token somebody pasted into a terminal or IDE agent — both are ordinary API tokens, so `id` is that token's id and revoking it is `revokeToken`, which deletes the credential and disconnects the client from every team it reached.
+An AI client that can act in this team over MCP. Either a web connector approved on the consent screen, or an API token somebody pasted into a terminal or IDE agent - both are ordinary API tokens, so `id` is that token's id and revoking it is `revokeToken`, which deletes the credential and disconnects the client from every team it reached.
 """
 type McpConnection {
   capabilities: [String!]
@@ -2365,7 +2365,7 @@ type McpConnection {
   id: ID
 
   """
-  `web` for an OAuth connector, listed from the moment it is approved. `token` for a bearer credential, listed once it has actually called `/api/mcp` — a token that merely could is not a connected client.
+  `web` for an OAuth connector, listed from the moment it is approved. `token` for a bearer credential, listed once it has actually called `/api/mcp` - a token that merely could is not a connected client.
   """
   kind: String
   lastUsedAt: String
@@ -2442,7 +2442,7 @@ input MountInput {
 }
 
 """
-How mounts appearing UNDER a host bind mount cross between the server and the container. Null is docker's `rprivate` default: the container sees only the submounts that existed when it started, so a network disk, a FUSE share or a volume another container mounts there never appears. `rslave` keeps following the server; `rshared` is two-way. Host binds only — docker rejects the option on a managed volume.
+How mounts appearing UNDER a host bind mount cross between the server and the container. Null is docker's `rprivate` default: the container sees only the submounts that existed when it started, so a network disk, a FUSE share or a volume another container mounts there never appears. `rslave` keeps following the server; `rshared` is two-way. Host binds only - docker rejects the option on a managed volume.
 """
 enum MountPropagation {
   rshared
@@ -2456,7 +2456,7 @@ type Mutation {
   abandonDokployImport: Int
 
   """
-  Add a basic-auth user to an app. The login is required on every one of its domains within seconds — the routing is re-applied to the running container, no redeploy needed.
+  Add a basic-auth user to an app. The login is required on every one of its domains within seconds - the routing is re-applied to the running container, no redeploy needed.
   """
   addBasicAuthUser(appId: String!, password: String!, username: String!): BasicAuthUser
   addDomain(appId: String!, config: DomainConfigInput, name: String!): Domain
@@ -2482,7 +2482,7 @@ type Mutation {
   approvePreview(id: ID!): AppPreview
 
   """
-  Approve an AI client: mint an API token with the chosen capabilities and scope, and link it to the client. Also needs `manage_tokens`, and cannot grant more than the approver holds. The OAuth handshake itself is then finished by the browser posting to `/api/auth/oauth2/consent` — that endpoint refuses a server-side call, so it cannot be done here. `teamIds` names the teams the connection may work in — the team it is created from is always included, and each one is gated in that team.
+  Approve an AI client: mint an API token with the chosen capabilities and scope, and link it to the client. Also needs `manage_tokens`, and cannot grant more than the approver holds. The OAuth handshake itself is then finished by the browser posting to `/api/auth/oauth2/consent` - that endpoint refuses a server-side call, so it cannot be done here. `teamIds` names the teams the connection may work in - the team it is created from is always included, and each one is gated in that team.
   """
   authorizeMcpClient(
     appIds: [String!]
@@ -2490,7 +2490,7 @@ type Mutation {
     clientId: String!
 
     """
-    The team the consent screen showed. Not a choice — the server takes the team from the session — but a disagreement is refused rather than connecting the client to a team nobody read.
+    The team the consent screen showed. Not a choice, the server takes the team from the session, but a disagreement is refused rather than connecting the client to a team nobody read.
     """
     expectedTeamId: String
     folderIds: [String!]
@@ -2565,12 +2565,12 @@ type Mutation {
   checkServerHostInfo(id: String!): ServerHostInfo
 
   """
-  Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted — it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.
+  Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted - it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.
   """
   checkServerReadiness(id: String!): ServerReadinessReport
 
   """
-  Clear this app's build cache: the next deployment builds from scratch instead of reusing cached layers, then caches again. Nothing is pruned on the server — the build cache is shared by every app on it.
+  Clear this app's build cache: the next deployment builds from scratch instead of reusing cached layers, then caches again. Nothing is pruned on the server - the build cache is shared by every app on it.
   """
   clearAppBuildCache(id: String!): App
 
@@ -2633,7 +2633,7 @@ type Mutation {
   deleteAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
 
   """
-  Delete the app. Returns as soon as the deletion is RECORDED — from that moment the app is refused by every gate and gone from the product — and the stack teardown finishes on the host behind the response.
+  Delete the app. Returns as soon as the deletion is RECORDED - from that moment the app is refused by every gate and gone from the product, and the stack teardown finishes on the host behind the response.
   """
   deleteApp(id: String!): Boolean
 
@@ -2662,7 +2662,7 @@ type Mutation {
   deleteCronJob(id: ID!): Boolean
 
   """
-  Stop and destroy the database's container + data volume on its server, then delete it (dependent backup schedules cascade). The teardown must verifiably succeed: if the server can't be reached — or something of the stack survives it — nothing is deleted and the mutation errors, so a live database is never silently forgotten. `force` deletes the record anyway (for a host that is never coming back) and queues the teardown, which Deplo retries until the host confirms it. Returns true.
+  Stop and destroy the database's container + data volume on its server, then delete it (dependent backup schedules cascade). The teardown must verifiably succeed: if the server can't be reached, or something of the stack survives it, nothing is deleted and the mutation errors, so a live database is never silently forgotten. `force` deletes the record anyway (for a host that is never coming back) and queues the teardown, which Deplo retries until the host confirms it. Returns true.
   """
   deleteDatabase(force: Boolean, id: String!): Boolean
 
@@ -2730,7 +2730,7 @@ type Mutation {
   deleteUser(input: DeleteUserInput!): DeleteUserResult
 
   """
-  Build a preview for a specific open pull request. Also approves it when it comes from a fork — clicking this IS the approval.
+  Build a preview for a specific open pull request. Also approves it when it comes from a fork - clicking this IS the approval.
   """
   deployPullRequest(appId: ID!, prNumber: Int!): AppPreview
 
@@ -2750,7 +2750,7 @@ type Mutation {
   destroyPreview(id: ID!): Boolean
 
   """
-  Auto-detect a favicon from the app's own files — its GitHub repo, its uploaded archive, or (for a compose stack) its files dir on its server — and set it as the logo. Errors if none is found.
+  Auto-detect a favicon from the app's own files - its GitHub repo, its uploaded archive, or (for a compose stack) its files dir on its server, and set it as the logo. Errors if none is found.
   """
   detectAppLogo(id: String!): App
 
@@ -2770,17 +2770,17 @@ type Mutation {
   dismissImportedDomains(appId: String!): Boolean
 
   """
-  Run a command in the app's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.
+  Run a command in the app's live container (docker exec). Gated on the deploy capability - this is arbitrary code execution.
   """
   execConsole(input: ExecConsoleInput!): ExecResult
 
   """
-  Run a command in the database's live container (docker exec). Gated on manage_infra — arbitrary code execution inside infrastructure.
+  Run a command in the database's live container (docker exec). Gated on manage_infra - arbitrary code execution inside infrastructure.
   """
   execDatabaseConsole(input: ExecDatabaseConsoleInput!): ExecResult
 
   """
-  Close the run and settle its totals. Idempotent — a finished run is left alone.
+  Close the run and settle its totals. Idempotent - a finished run is left alone.
   """
   finishDokployImport(runId: String!): Boolean
 
@@ -2795,12 +2795,12 @@ type Mutation {
   generateAvailableDbPort(serverId: ID): Int
 
   """
-  Bring the Dokploy organization's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there — the report says who was an owner or admin so it can be granted on purpose.
+  Bring the Dokploy organization's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there - the report says who was an owner or admin so it can be granted on purpose.
   """
   importDokployMembers(input: DokployConnectInput!, runId: String!): [DokployInvite!]
 
   """
-  Import ONE Dokploy project into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed — the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.
+  Import ONE Dokploy project into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed - the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.
   """
   importDokployProject(
     input: DokployConnectInput!
@@ -2888,7 +2888,7 @@ type Mutation {
   rebuildApp(id: String!): App
 
   """
-  DESTRUCTIVE factory reset: tear down the database container AND its data volume, then re-provision a fresh, empty stack from the current settings — same engine, version and credentials, so the connection string is unchanged. ALL DATA IS ERASED. Use redeployDatabase for the data-preserving recreate.
+  DESTRUCTIVE factory reset: tear down the database container AND its data volume, then re-provision a fresh, empty stack from the current settings - same engine, version and credentials, so the connection string is unchanged. ALL DATA IS ERASED. Use redeployDatabase for the data-preserving recreate.
   """
   rebuildDatabase(id: String!): Database
   redeploy(appId: String!): Deployment
@@ -2946,7 +2946,7 @@ type Mutation {
   removeMember(userId: String!): Boolean
 
   """
-  Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host — the agent, Traefik and the deplo network keep running there — so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.
+  Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host (the agent, Traefik and the deplo network keep running there), so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.
   """
   removeServer(id: String!): ServerRemoval
 
@@ -2965,7 +2965,7 @@ type Mutation {
   renameAppFile(appId: String!, newPath: String!, path: String!): FileEntry
 
   """
-  Rename a database — its DISPLAY name only. The container's identity (compose project, data volume, DNS name and therefore the connection string) is fixed at creation and is untouched, so nothing restarts. The name must be unique within the team.
+  Rename a database - its DISPLAY name only. The container's identity (compose project, data volume, DNS name and therefore the connection string) is fixed at creation and is untouched, so nothing restarts. The name must be unique within the team.
   """
   renameDatabase(id: String!, name: String!): Database
 
@@ -3027,12 +3027,12 @@ type Mutation {
   restartDatabase(id: String!): Database
 
   """
-  Restart the Deplo control plane on the host that runs it. Refused for any other server. Returns once the restart is SCHEDULED, not once it is done: the restart ends the process serving this request, so the answer necessarily arrives first — expect the dashboard to be briefly unreachable.
+  Restart the Deplo control plane on the host that runs it. Refused for any other server. Returns once the restart is SCHEDULED, not once it is done: the restart ends the process serving this request, so the answer necessarily arrives first - expect the dashboard to be briefly unreachable.
   """
   restartDeploPanel(id: String!): Boolean
 
   """
-  Restart the Traefik reverse proxy on this server. The configuration is untouched — this is the 'it is wedged, bounce it' action. Routing on this host is interrupted for the few seconds Traefik takes to come back. Errors when Deplo did not install Traefik there.
+  Restart the Traefik reverse proxy on this server. The configuration is untouched - this is the 'it is wedged, bounce it' action. Routing on this host is interrupted for the few seconds Traefik takes to come back. Errors when Deplo did not install Traefik there.
   """
   restartServerTraefik(id: String!): Boolean
 
@@ -3052,7 +3052,7 @@ type Mutation {
   revealAppDeployHook(id: String!): String
 
   """
-  Reveal one credential's password. A basic-auth login is handed to a person, so whoever may change it may also read it back — otherwise the only answer to “what is the password?” is to reset it and lock everyone out. A mutation, not a query, so it is never cached or prefetched.
+  Reveal one credential's password. A basic-auth login is handed to a person, so whoever may change it may also read it back, otherwise the only answer to “what is the password?” is to reset it and lock everyone out. A mutation, not a query, so it is never cached or prefetched.
   """
   revealBasicAuthPassword(id: String!): String
 
@@ -3060,7 +3060,7 @@ type Mutation {
   revealConnection(id: String!): String
 
   """
-  The full registration URL of a link that is still pending — so the admin who minted it can hand it over again instead of minting a second one. Errors, rather than returning a dead URL, when the link was used, revoked, expired, or minted before the token was stored encrypted.
+  The full registration URL of a link that is still pending, so the admin who minted it can hand it over again instead of minting a second one. Errors, rather than returning a dead URL, when the link was used, revoked, expired, or minted before the token was stored encrypted.
   """
   revealRegistrationLink(id: String!): String
 
@@ -3078,7 +3078,7 @@ type Mutation {
   revokeRegistrationLink(id: String!): Boolean
 
   """
-  Sign one device out. Refuses the viewer's own session — use `logout` for that. Returns true.
+  Sign one device out. Refuses the viewer's own session - use `logout` for that. Returns true.
   """
   revokeSession(id: String!): Boolean
 
@@ -3098,7 +3098,7 @@ type Mutation {
   rotateAppDeployHook(id: String!): String
 
   """
-  Rotate the database's engine password (auto-generated when none is given) and return the NEW connection string — shown once, like revealConnection. Engines that persist users in the data volume are told first via an exec in the running container; the compose is then re-rendered so env/command/healthcheck agree. Requires the database to be running.
+  Rotate the database's engine password (auto-generated when none is given) and return the NEW connection string - shown once, like revealConnection. Engines that persist users in the data volume are told first via an exec in the running container; the compose is then re-rendered so env/command/healthcheck agree. Requires the database to be running.
   """
   rotateDatabasePassword(id: String!, password: String): String
 
@@ -3119,7 +3119,7 @@ type Mutation {
   runDatabaseBackup(databaseId: String!, destinationId: String!): Boolean
 
   """
-  START a sweep of this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at — unreachable, unprovisioned, an agent too old — lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.
+  START a sweep of this server now, with the policy's scopes - whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at (unreachable, unprovisioned, an agent too old) lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.
   """
   runDockerCleanupNow(serverId: String!): DockerCleanupRun
 
@@ -3179,7 +3179,7 @@ type Mutation {
   setAppRollbackKeep(count: Int!, id: String!): App
 
   """
-  Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.
+  Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included - each volume names the service it mounts into.
   """
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
 
@@ -3187,6 +3187,11 @@ type Mutation {
   Point every manageable server's certificates at this account email, where Let's Encrypt sends expiry and revocation notices. Each host's proxy is recreated to pick it up, one host at a time, so routing there is interrupted for a few seconds; certificates already issued keep working. Servers Deplo cannot manage are skipped and reported as skipped, never counted as done.
   """
   setCertificateEmail(email: String!): [CertificateAccount!]
+
+  """
+  Turn the container console on or off for one app. Off closes the attach sessions already open and hides the console everywhere.
+  """
+  setConsoleEnabled(appId: String!, enabled: Boolean!): Boolean
 
   """
   Turn cron jobs on or off for one target. Off stops the schedule and keeps the jobs; runs already in flight are left to finish.
@@ -3309,7 +3314,7 @@ type Mutation {
   setServerTimezone(id: String!, timezone: String!): ServerHostInfo
 
   """
-  Publish Traefik's own web dashboard for this server on a domain, protected by basic auth, or turn it off by passing no input. A domain, a username and a password are ALL required to enable it — the dashboard lists every route, service and certificate on the host, so it is never published unprotected. On an edit that only changes the domain the stored password is reused; the password itself can never be read back. Applying the change recreates the Traefik container, so routing on this host is interrupted for a few seconds.
+  Publish Traefik's own web dashboard for this server on a domain, protected by basic auth, or turn it off by passing no input. A domain, a username and a password are ALL required to enable it - the dashboard lists every route, service and certificate on the host, so it is never published unprotected. On an edit that only changes the domain the stored password is reused; the password itself can never be read back. Applying the change recreates the Traefik container, so routing on this host is interrupted for a few seconds.
   """
   setServerTraefikDashboard(id: String!, input: TraefikDashboardInput): Server
 
@@ -3367,12 +3372,12 @@ type Mutation {
   switchTeam(teamId: String!): Boolean
 
   """
-  Probe the destination through its agent — for a bucket, head/write/remove; for a server, resolve the folder, check it is writable and report its free space — and return BOTH the repainted destination and the verdict. A failed probe resolves normally with `report.ok = false`: check it rather than assuming success, and show `report.error` verbatim.
+  Probe the destination through its agent - for a bucket, head/write/remove; for a server, resolve the folder, check it is writable and report its free space, and return BOTH the repainted destination and the verdict. A failed probe resolves normally with `report.ok = false`: check it rather than assuming success, and show `report.error` verbatim.
   """
   testDestination(id: String!): DestinationTestResult
 
   """
-  Re-probe EVERY destination in the active team and return them with their badges repainted, newest first. For pickers that must show live connectivity the moment they open, rather than a status that was true hours ago. A destination whose probe fails comes back as `error` with `lastTestError` set — the call itself still resolves.
+  Re-probe EVERY destination in the active team and return them with their badges repainted, newest first. For pickers that must show live connectivity the moment they open, rather than a status that was true hours ago. A destination whose probe fails comes back as `error` with `lastTestError` set - the call itself still resolves.
   """
   testDestinations: [BackupDestination!]
 
@@ -3450,7 +3455,7 @@ type Mutation {
   updateDatabaseResources(id: String!, limits: ResourceLimitsInput!): Database
 
   """
-  Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse — an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.
+  Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse - an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.
   """
   updateDockerCleanupPolicy(input: UpdateDockerCleanupPolicyInput!): DockerCleanupPolicy
 
@@ -3499,7 +3504,7 @@ type Mutation {
   ): String
 
   """
-  Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates — the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or — until the agent ships the self-update RPC — when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).
+  Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates - the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or, until the agent ships the self-update RPC, when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).
   """
   updateServerAgent(id: String!): String
   updateTeam(input: UpdateTeamInput!): Team
@@ -3637,7 +3642,7 @@ type PreviewEnvVar {
 }
 
 """
-A top-level, team-scoped CONTAINER (ADR-0008): folder-like, but it owns Environments and holds folders/apps via their `projectId`. NOT the deployable app — that is an `App`. A Project never nests in a Project.
+A top-level, team-scoped CONTAINER (ADR-0008): folder-like, but it owns Environments and holds folders/apps via their `projectId`. NOT the deployable app - that is an `App`. A Project never nests in a Project.
 """
 type Project {
   appCount: Int
@@ -3703,7 +3708,7 @@ type Query {
   appMetrics(appId: String!): ContainerMetrics
 
   """
-  The metrics history buffered for one app (oldest first) — what the app's Monitoring charts seed from. Empty when the owning server's telemetry stream has not delivered a frame for it yet.
+  The metrics history buffered for one app (oldest first) - what the app's Monitoring charts seed from. Empty when the owning server's telemetry stream has not delivered a frame for it yet.
   """
   appMetricsHistory(appId: String!): [ContainerMetricsSample!]
 
@@ -3711,7 +3716,7 @@ type Query {
   appPreviews(appId: ID!): AppPreviewsView
 
   """
-  Live container state for an app, straight from the owning agent — the truth behind the stored status. Polled by the app's status badge.
+  Live container state for an app, straight from the owning agent - the truth behind the stored status. Polled by the app's status badge.
   """
   appRuntime(appId: String!): AppRuntime
 
@@ -3796,7 +3801,7 @@ type Query {
   databaseRuntime(databaseId: String!): AppRuntime
 
   """
-  The database container's shell label — drives the console's "no shell" notice, like shellLabel does for apps.
+  The database container's shell label - drives the console's "no shell" notice, like shellLabel does for apps.
   """
   databaseShellLabel(databaseId: String!): String
 
@@ -3809,7 +3814,7 @@ type Query {
   ): [Database!]
 
   """
-  What permanently deleting this account would remove. Read-only — nothing is deleted.
+  What permanently deleting this account would remove. Read-only, nothing is deleted.
   """
   deleteUserImpact(userId: String!): DeleteUserImpact
   deployment(id: String!): Deployment
@@ -3821,12 +3826,12 @@ type Query {
   destinationRemovalImpact(id: String!): DestinationRemovalImpact
 
   """
-  The STORED result of this destination's last connection test — reading it never re-dials. `never` is true until the first test.
+  The STORED result of this destination's last connection test - reading it never re-dials. `never` is true until the first test.
   """
   destinationTestReport(id: String!): S3TestReport
 
   """
-  Recognise the JavaScript framework in a GitHub repository before an app exists for it — what the new-app wizard shows while you pick a repo. Null when there is nothing to recognise: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or a repository with no framework in it. Reads only; the app's first deploy re-derives and stores the answer.
+  Recognise the JavaScript framework in a GitHub repository before an app exists for it - what the new-app wizard shows while you pick a repo. Null when there is nothing to recognise: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or a repository with no framework in it. Reads only; the app's first deploy re-derives and stores the answer.
   """
   detectRepoFramework(
     """Branch to read; empty ⇒ the repository's default branch."""
@@ -3851,7 +3856,7 @@ type Query {
   ): RecognizedFramework
 
   """
-  The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults — enabled, daily, every scope.
+  The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults - enabled, daily, every scope.
   """
   dockerCleanupPolicy: DockerCleanupPolicy
 
@@ -3860,7 +3865,7 @@ type Query {
   """
   dockerCleanupRuns(
     """
-    Clamped to [1, 100]. Defaults to the retention cap — 3 × the number of servers — which is also all the store keeps (older runs are pruned after every sweep).
+    Clamped to [1, 100]. Defaults to the retention cap, 3 × the number of servers, which is also all the store keeps (older runs are pruned after every sweep).
     """
     limit: Int
 
@@ -3872,7 +3877,7 @@ type Query {
   dokployImport(id: String!): DokployImport
 
   """
-  This team's import history, newest first. Without the per-run report — read one run for that.
+  This team's import history, newest first. Without the per-run report - read one run for that.
   """
   dokployImports: [DokployImport!]
 
@@ -3888,7 +3893,7 @@ type Query {
   environments(projectId: ID!): [Environment!]
 
   """
-  Who can access a folder — its owner plus every user it's shared with. Owner/admin only.
+  Who can access a folder - its owner plus every user it's shared with. Owner/admin only.
   """
   folderGrants(folderId: ID!): [FolderGrant!]
 
@@ -3937,7 +3942,7 @@ type Query {
   hostPortsInUse(ports: [Int!]!, serverId: ID!): HostPortCheck
 
   """
-  Instance-wide env vars — injected into every app of every team. Instance admin only.
+  Instance-wide env vars - injected into every app of every team. Instance admin only.
   """
   instanceEnv: [GlobalEnvVar!]
 
@@ -4035,7 +4040,7 @@ type Query {
   serverMetrics(serverId: String!): ServerMetrics
 
   """
-  The metrics history buffered on the control plane for one server (oldest first) — what the Monitoring charts seed from on load. Empty when saving is off or the control plane restarted recently.
+  The metrics history buffered on the control plane for one server (oldest first) - what the Monitoring charts seed from on load. Empty when saving is off or the control plane restarted recently.
   """
   serverMetricsHistory(serverId: String!): [ServerMetrics!]
 
@@ -4055,7 +4060,7 @@ type Query {
   """
   shellLabel(input: ShellLabelInput!): String
 
-  """Every role of the active team — defaults first, then the team's own."""
+  """Every role of the active team - defaults first, then the team's own."""
   teamRoles: [TeamRole!]
 
   """
@@ -4079,15 +4084,15 @@ type Query {
 }
 
 """
-A JavaScript framework Deplo recognised in an app's source, with what it knows about it. Detection only — Deplo never writes build commands from a framework; the auto-detecting builders own that.
+A JavaScript framework Deplo recognised in an app's source, with what it knows about it. Detection only - Deplo never writes build commands from a framework; the auto-detecting builders own that.
 """
 type RecognizedFramework {
   """
-  The port this framework's production server binds when nothing tells it otherwise — what a new app's container port defaults to.
+  The port this framework's production server binds when nothing tells it otherwise - what a new app's container port defaults to.
   """
   defaultPort: Int
 
-  """Stable id, e.g. "nextjs" — also the key for its brand mark."""
+  """Stable id, e.g. "nextjs" - also the key for its brand mark."""
   id: String
 
   """Display name, e.g. "Next.js"."""
@@ -4111,7 +4116,7 @@ type RecoveryKey {
 """A single-use link to register a new account."""
 type RegistrationLink {
   """
-  The link can still be read back with revealRegistrationLink — pending, unexpired, and minted after the token started being stored encrypted.
+  The link can still be read back with revealRegistrationLink - pending, unexpired, and minted after the token started being stored encrypted.
   """
   canReveal: Boolean
   createdAt: String
@@ -4147,7 +4152,7 @@ input RegistrationTeamAssignmentInput {
 }
 
 """
-A container-image registry credential owned by a team. The password / access token is never exposed — only the connection metadata.
+A container-image registry credential owned by a team. The password / access token is never exposed - only the connection metadata.
 """
 type Registry {
   createdAt: String
@@ -4242,7 +4247,7 @@ type RuntimeContainer {
   exposed: Boolean
 
   """
-  "healthy" | "unhealthy" | "starting", or "" when the image declares no healthcheck — which is not a synonym for healthy.
+  "healthy" | "unhealthy" | "starting", or "" when the image declares no healthcheck, which is not a synonym for healthy.
   """
   health: String
   name: String
@@ -4310,7 +4315,7 @@ Create (omit id) or update (provide id) one shared variable. It must be shared w
 """
 input SaveSharedVarInput {
   """
-  The per-app links, as a whole set. OMIT to leave the existing links untouched — that is what preserves setSharedVarAppLink's app-side toggle.
+  The per-app links, as a whole set. OMIT to leave the existing links untouched - that is what preserves setSharedVarAppLink's app-side toggle.
   """
   appIds: [String!]
   environmentIds: [ID!]!
@@ -4383,7 +4388,7 @@ type Server {
   dockerVersion: String
 
   """
-  The agent version this server should be running — the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.
+  The agent version this server should be running - the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.
   """
   expectedAgentVersion: String
   host: String
@@ -4400,7 +4405,7 @@ type Server {
   """
   isDeploHost: Boolean
 
-  """Heartbeat cache (P5) — a hint, not the source of truth."""
+  """Heartbeat cache (P5) - a hint, not the source of truth."""
   lastSeenAt: String
   memoryMb: Int
   memoryUsage: Int
@@ -4416,17 +4421,17 @@ type Server {
   status: ServerStatus
 
   """
-  When `status` was last OBSERVED by a live agent Hello probe (ISO), or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated — a probe that times out or is throttled writes nothing.
+  When `status` was last OBSERVED by a live agent Hello probe (ISO), or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated - a probe that times out or is throttled writes nothing.
   """
   statusCheckedAt: String
 
   """
-  Why `status` is not `online` — e.g. "The agent is up but Docker is unreachable". Null when online or never probed. Requires instanceAdmin.
+  Why `status` is not `online` - e.g. "The agent is up but Docker is unreachable". Null when online or never probed. Requires instanceAdmin.
   """
   statusMessage: String
 
   """
-  Teams explicitly granted access when `allTeams` is false (empty otherwise — every team has access). Requires manage_infra.
+  Teams explicitly granted access when `allTeams` is false (empty otherwise - every team has access). Requires manage_infra.
   """
   teams: [Team!]
 
@@ -4504,7 +4509,7 @@ input ServerCertificateInput {
 }
 
 """
-What a server IS — its hardware, OS and clock — read live from its agent and stored nowhere. Distinct from the usage gauges on Monitoring: this is the make and model, not the load.
+What a server IS (its hardware, OS and clock) read live from its agent and stored nowhere. Distinct from the usage gauges on Monitoring: this is the make and model, not the load.
 """
 type ServerHostInfo {
   """Machine architecture, e.g. "x86_64"."""
@@ -4530,7 +4535,7 @@ type ServerHostInfo {
   """
   cpuModel: String
 
-  """Logical processors — what schedulers and `nproc` count."""
+  """Logical processors - what schedulers and `nproc` count."""
   cpuThreads: Int
 
   """Size of the filesystem the agent's data lives on, in bytes."""
@@ -4540,7 +4545,7 @@ type ServerHostInfo {
   diskUsedBytes: Float
 
   """
-  Where Docker actually keeps images and volumes — on a host with a mounted data disk this is not the root filesystem.
+  Where Docker actually keeps images and volumes - on a host with a mounted data disk this is not the root filesystem.
   """
   dockerRootDir: String
 
@@ -4567,12 +4572,12 @@ type ServerHostInfo {
   timezone: String
 
   """
-  The domain the host is CURRENTLY serving Traefik's dashboard on, read from the live stack file rather than from what Deplo stored — so a host reconfigured out of band reports the truth.
+  The domain the host is CURRENTLY serving Traefik's dashboard on, read from the live stack file rather than from what Deplo stored, so a host reconfigured out of band reports the truth.
   """
   traefikDashboardDomain: String
 
   """
-  Whether Deplo installed the Traefik on this host. False for a server behind the operator's own proxy, where Deplo will not reconfigure anything — the dashboard cannot be published there.
+  Whether Deplo installed the Traefik on this host. False for a server behind the operator's own proxy, where Deplo will not reconfigure anything - the dashboard cannot be published there.
   """
   traefikManaged: Boolean
 
@@ -4580,7 +4585,7 @@ type ServerHostInfo {
   uptimeSec: Float
 
   """
-  Offset from UTC in MINUTES, not hours — Kathmandu is +345 and Kolkata +330.
+  Offset from UTC in MINUTES, not hours - Kathmandu is +345 and Kolkata +330.
   """
   utcOffsetMinutes: Int
 }
@@ -4617,7 +4622,7 @@ One row of a server readiness report: a single thing Deplo could verify about th
 """
 type ServerReadinessCheck {
   """
-  What we found. Drawn from a closed, curated set whenever it describes a failure — never a raw agent error (which would leak the pinned certificate fingerprint and the dial address).
+  What we found. Drawn from a closed, curated set whenever it describes a failure, never a raw agent error (which would leak the pinned certificate fingerprint and the dial address).
   """
   detail: String
   group: ServerReadinessGroup
@@ -4641,7 +4646,7 @@ enum ServerReadinessGroup {
 }
 
 """
-A live, never-persisted answer to 'is this host set up to run deployments?'. Assembled from one agent Hello, two host port bind-tests and one host-metrics call, plus the control plane's own record of the server. It is NOT a sixth ServerStatus and nothing gates on it — the deploy gate is and stays the mandatory live Hello pre-flight.
+A live, never-persisted answer to 'is this host set up to run deployments?'. Assembled from one agent Hello, two host port bind-tests and one host-metrics call, plus the control plane's own record of the server. It is NOT a sixth ServerStatus and nothing gates on it - the deploy gate is and stays the mandatory live Hello pre-flight.
 """
 type ServerReadinessReport {
   """When the probe STARTED (ISO). Never fabricated."""
@@ -4656,7 +4661,7 @@ type ServerReadinessReport {
 }
 
 """
-How much a readiness row matters. fail = a deployment to this server cannot succeed. warn = a deployment succeeds, but the result is not fully usable. info = a true, neutral fact. pass = verified good. skip = we could not evaluate it (the agent is too old, or an upstream fact is missing) — a skip never moves the verdict.
+How much a readiness row matters. fail = a deployment to this server cannot succeed. warn = a deployment succeeds, but the result is not fully usable. info = a true, neutral fact. pass = verified good. skip = we could not evaluate it (the agent is too old, or an upstream fact is missing) - a skip never moves the verdict.
 """
 enum ServerReadinessSeverity {
   fail
@@ -4677,7 +4682,7 @@ enum ServerReadinessVerdict {
 }
 
 """
-The result of removing a server. Removal revokes the agent's trust and forgets the row — it does NOT uninstall anything on the host, so the uninstall command is always returned.
+The result of removing a server. Removal revokes the agent's trust and forgets the row - it does NOT uninstall anything on the host, so the uninstall command is always returned.
 """
 type ServerRemoval {
   """
@@ -4692,7 +4697,7 @@ type ServerRemoval {
 }
 
 """
-The outcome of restarting everything Deplo runs on a server. Partial success is normal and is reported as such — one wedged stack must not hide that the other twenty came back.
+The outcome of restarting everything Deplo runs on a server. Partial success is normal and is reported as such - one wedged stack must not hide that the other twenty came back.
 """
 type ServerRestartReport {
   failures: [RestartedWorkload!]
@@ -4835,7 +4840,7 @@ type Subscription {
   databaseStatus(id: String!): Database
 
   """
-  Emits the whole cleanup history whenever it changes — a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.
+  Emits the whole cleanup history whenever it changes - a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.
   """
   dockerCleanupRuns: [DockerCleanupRun!]
 }
@@ -4896,7 +4901,7 @@ type TeamRole {
   locked: Boolean
   memberCount: Int
 
-  """A default role edited away from what deplo ships — it can be reset."""
+  """A default role edited away from what deplo ships - it can be reset."""
   modified: Boolean
   name: String
 
@@ -5060,7 +5065,7 @@ input UpsertGlobalEnvInput {
 }
 
 """
-Full per-user detail for the admin editor — the email IS included here.
+Full per-user detail for the admin editor - the email IS included here.
 """
 type UserDetail {
   avatarColor: String
@@ -5119,7 +5124,7 @@ type UserSearchResult {
 }
 
 """
-A browser or client currently signed in to the viewer's account. Carries no credential — a session is addressed by its id, never by its token.
+A browser or client currently signed in to the viewer's account. Carries no credential - a session is addressed by its id, never by its token.
 """
 type UserSession {
   createdAt: String
@@ -5178,7 +5183,7 @@ input UserTeamInput {
 }
 
 """
-The user who created or last modified a variable. Identity only — never an email.
+The user who created or last modified a variable. Identity only, never an email.
 """
 type VarAuthor {
   avatarColor: String
@@ -5214,7 +5219,7 @@ type Viewer {
 }
 
 """
-A persistent volume mounted into an app — a docker named volume, an app-files bind, or a host bind mount.
+A persistent volume mounted into an app - a docker named volume, an app-files bind, or a host bind mount.
 """
 type Volume {
   hostPath: String

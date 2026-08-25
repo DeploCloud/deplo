@@ -16,10 +16,11 @@ export function AppNavSync({
   isGithubApp,
   previewsEnabled,
   cronsEnabled,
+  consoleEnabled,
   capabilities,
 }: {
   slug: string;
-  /** The app's own logo — the mark on its Overview entry. */
+  /** The app's own logo - the mark on its Overview entry. */
   logo: string | null;
   /** Server-rendered running state; the live subscription takes over after mount. */
   running: boolean;
@@ -27,6 +28,7 @@ export function AppNavSync({
   isGithubApp: boolean;
   previewsEnabled: boolean;
   cronsEnabled: boolean;
+  consoleEnabled: boolean;
   /** The viewer's capabilities on this app - gates the sub-menu's entries. */
   capabilities: string[];
 }) {
@@ -45,6 +47,7 @@ export function AppNavSync({
       isGithubApp,
       previewsEnabled,
       cronsEnabled,
+      consoleEnabled,
     });
   }, [
     slug,
@@ -55,6 +58,7 @@ export function AppNavSync({
     isGithubApp,
     previewsEnabled,
     cronsEnabled,
+    consoleEnabled,
   ]);
 
   // Clear only on unmount (leaving the app). Keeping this separate from the

@@ -34,7 +34,7 @@ import type {
 /**
  * The ONE place that maps the app-graph relational rows ↔ the domain objects
  * (`App`, `Domain`, `EnvVar`, `Deployment`, `Folder`) (relational-store PLAN
- * cut-set (c), §1 "No JSONB anywhere — total normalization").
+ * cut-set (c), §1 "No JSONB anywhere - total normalization").
  */
 
 /* ------------------------------------------------------------------ */
@@ -137,7 +137,7 @@ export function assembleMethodSettings(
 export function assembleApp(row: AppRow, children: AppChildRows): App {
   if (!children.build)
     // Every project has a 1-to-1 build row (NOT NULL FK), so a missing one is a
-    // data-integrity bug, not a tri-state — surface it loudly rather than emit a
+    // data-integrity bug, not a tri-state - surface it loudly rather than emit a
     // half-built object the renderer would choke on.
     throw new Error(`project ${row.id} is missing its app_build row`);
 
@@ -188,7 +188,8 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     autoDeploy: row.autoDeploy,
     previewEnabled: row.previewEnabled,
     cronEnabled: row.cronEnabled,
-    // The hook's on/off state travels with the app; its TOKEN never does — that
+    consoleEnabled: row.consoleEnabled,
+    // The hook's on/off state travels with the app; its TOKEN never does - that
     // column is read only by lib/data/deploy-hook.ts, which decrypts it behind
     // its own gate (App is the shape every DTO is built from).
     deployHookEnabled: row.deployHookEnabled,
@@ -207,7 +208,7 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
 }
 
 /**
- * The camelCase drizzle properties of the flat `resource_*` columns — the block is
+ * The camelCase drizzle properties of the flat `resource_*` columns - the block is
  * declared identically on `apps` AND `databases`, so both row shapes satisfy this
  * structurally and share the one mapping below (exported for `backup-rows.ts`, the
  * databases anti-drift twin of this module).
@@ -229,7 +230,7 @@ export interface ResourceLimitsRowColumns {
 
 /**
  * Fold the flat `resource_*` columns into a {@link ResourceLimits}, or null when
- * EVERY column is NULL (no limits set) — the same null-when-absent shape
+ * EVERY column is NULL (no limits set) - the same null-when-absent shape
  * `assembleRepo`/`assembleUpload` use, so an app that never set a limit
  * round-trips to `resources: null` and renders a byte-identical stack.
  */
@@ -298,7 +299,7 @@ function assembleUpload(row: AppRow): App["upload"] {
 
 function volumeRowToMount(v: AppVolumeRow): VolumeMount {
   // A NULL `service` means "the stack's default service" and is the only value a
-  // single-container app ever has, so the key is spread in only when set — the
+  // single-container app ever has, so the key is spread in only when set - the
   // object then round-trips to the same shape a volume-less app emits.
   const service = v.service ? { service: v.service } : {};
   if (v.type === "host") {
@@ -494,7 +495,7 @@ export function volumesToRows(
     hostPath: v.type === "host" ? v.hostPath : null,
     mountPath: v.mountPath,
     readOnly: Boolean(v.readOnly),
-    // Host binds only — docker rejects a propagation option on a managed volume.
+    // Host binds only - docker rejects a propagation option on a managed volume.
     propagation: v.type === "host" ? (v.propagation ?? null) : null,
   }));
 }
@@ -570,7 +571,7 @@ export function domainToRow(d: Domain): DomainInsert {
     isPrimary: d.primary,
     redirectTo: d.redirectTo ?? null,
     ssl: d.ssl,
-    // entrypoint/certProvider/source NULLABLE with NO default — the auto/manual
+    // entrypoint/certProvider/source NULLABLE with NO default - the auto/manual
     // tri-state; never coerce an absent value to a concrete one.
     source: d.source ?? null,
     port: d.port ?? null,

@@ -14,9 +14,11 @@ export default async function AppConsolePage(
   if (!project) notFound();
   // Re-gate on the page, not just the sidebar entry: the terminal's own RPCs
   // require this, so a direct URL hit would render a shell that refuses to open.
+  // The app's own switch answers the same way - off means the route is not there.
+  if (!project.consoleEnabled) notFound();
   if (!(await hasAppCapability(project.id, "open_app_console"))) notFound();
 
-  // No shell probe here — getConsoleInfo skips it so the console renders
+  // No shell probe here - getConsoleInfo skips it so the console renders
   // instantly. The pane resolves the shell label after mount and appends the
   // distroless notice lazily if the container has no shell.
   const info = await getConsoleInfo(project.id);

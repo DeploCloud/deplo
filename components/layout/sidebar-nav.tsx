@@ -43,22 +43,22 @@ export function SidebarNav({
   collapsed?: boolean;
   /** The current member's capabilities; items whose `requires` isn't held are hidden. */
   capabilities?: string[];
-  /** Instance admin — gates items marked `requiresAdmin` (e.g. the Users settings). */
+  /** Instance admin - gates items marked `requiresAdmin` (e.g. the Users settings). */
   isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const caps = new Set(capabilities);
   const service = useAppNav();
   const dbNav = useDbNav();
-  // The console chip is unlocked only once the user confirms its warning; `null`
-  // (undecided, pre-hydration) reads as "not yet" so nothing flashes.
+  // A DATABASE console is still unlocked by the one-time "I understand"; an app's
+  // is a per-app switch instead. `null` (pre-hydration) reads as "not yet".
   const consoleAcknowledged = useConsoleAck() === true;
   // Builds in flight right now, live. Decorates the Deployments entry so a
   // running deploy is visible from anywhere in the dashboard.
   const deploying = useActiveDeployments();
 
   // A "back" escape hatch leaves the whole current section via the browser's history
-  // — jumping to the last page you were on *outside* it — so it lands where you came
+  //, jumping to the last page you were on *outside* it, so it lands where you came
   // from instead of stepping between sibling pages.
   function handleNavClick(
     item: NavItem,
@@ -82,7 +82,7 @@ export function SidebarNav({
             ? "/settings"
             : null;
       // Suppress the href when we handled it (jumped out, or a jump is already
-      // running); only "none" — no in-app page outside the section — follows it.
+      // running); only "none", no in-app page outside the section, follows it.
       if (prefix && backOutOf(prefix) !== "none") e.preventDefault();
     }
     onNavigate?.();
@@ -93,7 +93,7 @@ export function SidebarNav({
   // /settings, its settings sub-menu; under the top-level /settings the settings
   const appSlug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
   // A database detail page swaps to its own sub-menu, one level deeper again
-  // under /settings — the DB twin of the app nav swap.
+  // under /settings - the DB twin of the app nav swap.
   const dbId = pathname.match(/^\/storage\/databases\/([^/]+)/)?.[1] ?? null;
   const inDbSettings =
     dbId != null &&
@@ -155,7 +155,7 @@ export function SidebarNav({
       previewsEnabled: matches ? service!.previewsEnabled : false,
       cronsEnabled: matches ? service!.cronsEnabled : false,
       logo: matches ? service!.logo : undefined,
-      consoleAcknowledged,
+      consoleEnabled: matches ? service!.consoleEnabled : false,
     });
   } else if (inSettings) {
     sections = SETTINGS_NAV;
@@ -199,7 +199,7 @@ export function SidebarNav({
     );
   }
 
-  // Single background "pill" that slides to the active item — only its background
+  // Single background "pill" that slides to the active item - only its background
   // moves between entries.
   const navRef = React.useRef<HTMLElement | null>(null);
   const signature = rendered
@@ -254,10 +254,10 @@ export function SidebarNav({
           {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
             const Icon = item.icon;
-            // A text-only section (app/database settings) drops the icons — but
+            // A text-only section (app/database settings) drops the icons, but
             // never while collapsed, where the icon is the only thing rendered.
             const showIcon = !section.iconless || collapsed;
-            // A settings entry the app CANNOT use — pull request previews on an app that
+            // A settings entry the app CANNOT use - pull request previews on an app that
             // deploys from anything but GitHub.
             if (item.disabledReason) {
               return (

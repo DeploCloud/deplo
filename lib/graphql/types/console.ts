@@ -5,6 +5,7 @@ import {
   getShellLabel,
   getAppRuntime,
   execInContainer,
+  setConsoleEnabled,
   type ConsoleInfo,
   type LogsInfo,
   type ConsoleInstance,
@@ -48,7 +49,7 @@ const ConsoleInstanceRef = builder
 
 const ConsoleInfoRef = builder.objectRef<ConsoleInfo>("ConsoleInfo").implement({
   description:
-    "Console attach info for an app (no shell probe — fetch the shell " +
+    "Console attach info for an app (no shell probe - fetch the shell " +
     "label separately via shellLabel).",
   fields: (t) => ({
     containerName: t.exposeString("containerName"),
@@ -67,7 +68,7 @@ const LogsInfoRef = builder.objectRef<LogsInfo>("LogsInfo").implement({
     running: t.exposeBoolean("running"),
     streamable: t.exposeBoolean("streamable", {
       description:
-        "A real container exists on the host, so its logs can be streamed — " +
+        "A real container exists on the host, so its logs can be streamed - " +
         "whether it is running, restarting or exited. Attach on this, not on " +
         "`running`: a crash-looping container is the one whose logs you need.",
     }),
@@ -82,7 +83,7 @@ const LogsInfoRef = builder.objectRef<LogsInfo>("LogsInfo").implement({
       description:
         "The owning host's agent can narrow a log stream by time " +
         "(`logs.timerange`). False on an older agent, which still streams but " +
-        "only honours `tail` — the viewer greys out the time-range control " +
+        "only honours `tail` - the viewer greys out the time-range control " +
         "rather than offering a window the host would silently ignore.",
     }),
     logMaxDays: t.exposeInt("logMaxDays", {
@@ -109,7 +110,7 @@ const RuntimeContainerRef = builder
       health: t.exposeString("health", {
         description:
           '"healthy" | "unhealthy" | "starting", or "" when the image declares ' +
-          "no healthcheck — which is not a synonym for healthy.",
+          "no healthcheck, which is not a synonym for healthy.",
       }),
       restartCount: t.exposeInt("restartCount", {
         description: "Times docker has restarted this container.",
@@ -131,12 +132,12 @@ const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
     restarting: t.exposeInt("restarting"),
     unhealthy: t.exposeInt("unhealthy", {
       description:
-        "Containers that are running and failing their own healthcheck — up, " +
+        "Containers that are running and failing their own healthcheck - up, " +
         "listening, and broken.",
     }),
     missing: t.exposeStringList("missing", {
       description:
-        "Declared services with NO container on the host — the failure the " +
+        "Declared services with NO container on the host - the failure the " +
         "running/total counts cannot see, because a container that was never " +
         "created is not there to be counted as stopped.",
     }),
@@ -222,7 +223,7 @@ builder.queryFields((t) => ({
     nullable: true,
     authScopes: { loggedIn: true },
     description:
-      "Live container state for an app, straight from the owning agent — the " +
+      "Live container state for an app, straight from the owning agent - the " +
       "truth behind the stored status. Polled by the app's status badge.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => getAppRuntime(appId),
@@ -268,7 +269,7 @@ builder.queryFields((t) => ({
     type: "String",
     authScopes: { loggedIn: true },
     description:
-      "The database container's shell label — drives the console's " +
+      "The database container's shell label - drives the console's " +
       '"no shell" notice, like shellLabel does for apps.',
     args: { databaseId: t.arg.string({ required: true }) },
     resolve: (_r, { databaseId }) => getDatabaseShellLabel(databaseId),
@@ -280,12 +281,27 @@ builder.queryFields((t) => ({
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
+  setConsoleEnabled: t.field({
+    type: "Boolean",
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Turn the container console on or off for one app. Off closes the attach " +
+      "sessions already open and hides the console everywhere.",
+    args: {
+      appId: t.arg.string({ required: true }),
+      enabled: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { appId, enabled }) => {
+      await setConsoleEnabled(appId, enabled);
+      return true;
+    },
+  }),
   execConsole: t.field({
     type: ExecResultRef,
     authScopes: { capability: "open_app_console" },
     description:
       "Run a command in the app's live container (docker exec). Gated on " +
-      "the deploy capability — this is arbitrary code execution.",
+      "the deploy capability - this is arbitrary code execution.",
     args: { input: t.arg({ type: ExecConsoleInputType, required: true }) },
     resolve: (_r, { input }) =>
       execInContainer(
@@ -299,7 +315,7 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "open_database_console" },
     description:
       "Run a command in the database's live container (docker exec). Gated on " +
-      "manage_infra — arbitrary code execution inside infrastructure.",
+      "manage_infra - arbitrary code execution inside infrastructure.",
     args: {
       input: t.arg({ type: ExecDatabaseConsoleInputType, required: true }),
     },

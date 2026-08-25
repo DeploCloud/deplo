@@ -7,7 +7,7 @@ export type ID = string;
 export type Role = "owner" | "member" | "viewer";
 
 /**
- * A single thing a member is allowed to do within a team — ONE action, never a
+ * A single thing a member is allowed to do within a team - ONE action, never a
  * bundle. `view` is the always-on floor: every member of a team holds it, and it
  * is never offered as a toggle.
  */
@@ -68,7 +68,7 @@ export type Capability =
   | "delete_team";
 
 /**
- * Canonical order of every capability — the order the role editor lists them in
+ * Canonical order of every capability - the order the role editor lists them in
  * and the order every stored set is normalised to. Keep it in step with
  * `CAPABILITY_CATEGORIES` in `lib/capabilities.ts` (a test pins the two together).
  */
@@ -125,7 +125,7 @@ export interface User {
   id: ID;
   email: string;
   /**
-   * Unique, instance-wide handle — the public identity. Shown (with no email)
+   * Unique, instance-wide handle - the public identity. Shown (with no email)
    * in the member picker and the global users list, and used to add an existing
    * user to a team. Lowercased, `[a-z0-9_-]`, unique across the instance.
    */
@@ -148,7 +148,7 @@ export interface User {
    */
   suspended?: boolean;
   /**
-   * Instance-wide grant: may publish container ports declared in a compose stack —
+   * Instance-wide grant: may publish container ports declared in a compose stack -
    * a service's `ports:` (bound to the host) or `expose:`.
    */
   canExposePorts?: boolean;
@@ -185,7 +185,7 @@ export interface PublicUser {
 }
 
 /**
- * A user's membership of a team — the join row that makes the app multi-tenant.
+ * A user's membership of a team - the join row that makes the app multi-tenant.
  */
 export interface Membership {
   id: ID;
@@ -246,7 +246,7 @@ export interface Team {
   slug: string;
   plan: "pro" | "enterprise";
   /**
-   * The team's ABSOLUTE owner — the user who originally created the team, the
+   * The team's ABSOLUTE owner - the user who originally created the team, the
    * holder of the "crown" (👑).
    */
   founderUserId?: ID | null;
@@ -270,15 +270,15 @@ export interface Team {
   folderOrder?: ID[];
   /**
    * The team's picture, already resolved: its uploaded image, or null for the
-   * two-letter monogram. Unlike a person's there is no Gravatar step — a team has
-   * no email — so this is the stored value, validated on the way out.
+   * two-letter monogram. Unlike a person's there is no Gravatar step - a team has
+   * no email, so this is the stored value, validated on the way out.
    */
   avatarUrl: string | null;
   createdAt: string;
 }
 
 /**
- * Who a team IS, with none of its settings — what the shell needs to name the team
+ * Who a team IS, with none of its settings - what the shell needs to name the team
  * you are working in, on every page.
  */
 export type TeamIdentity = Pick<Team, "id" | "name" | "slug" | "avatarUrl">;
@@ -291,7 +291,7 @@ export interface TeamSummary extends Team {
 
 /**
  * A team-wide grouping of apps shown on the Overview. Creating a folder requires
- * the `deploy` capability — the same gate as creating a project.
+ * the `deploy` capability - the same gate as creating a project.
  */
 export interface Folder {
   id: ID;
@@ -308,7 +308,7 @@ export interface Folder {
    */
   color?: string | null;
   /**
-   * The folder's OWNER — the user who created it. Null/absent only for legacy
+   * The folder's OWNER - the user who created it. Null/absent only for legacy
    * folders whose owner could not be backfilled, or after the owner's account is
    * deleted (the FK is `ON DELETE SET NULL`).
    */
@@ -324,7 +324,7 @@ export interface Folder {
 }
 
 /**
- * A **Project** — the top-level, team-scoped CONTAINER introduced in ADR-0008.
+ * A **Project** - the top-level, team-scoped CONTAINER introduced in ADR-0008.
  * Folders and Apps live INSIDE a Project via their `projectId`; a Project never
  * nests in another Project (no `parentId`).
  */
@@ -345,7 +345,7 @@ export interface Project {
 }
 
 /**
- * The well-known ROLE of an {@link Environment} — the discriminant that keeps
+ * The well-known ROLE of an {@link Environment} - the discriminant that keeps
  * legacy `EnvTarget` resolution and team/instance/shared-env targeting working
  * once environments become customizable.
  */
@@ -353,7 +353,7 @@ export type EnvironmentKind =
   "development" | "preview" | "production" | "custom";
 
 /**
- * An **Environment** (ADR-0008 Phase 3) — a per-{@link Project}, first-class
+ * An **Environment** (ADR-0008 Phase 3) - a per-{@link Project}, first-class
  * ISOLATED deploy target.
  */
 export interface Environment {
@@ -375,7 +375,7 @@ export interface Environment {
 }
 
 /**
- * A server's health, as last OBSERVED by a live agent `Hello` probe — not a
+ * A server's health, as last OBSERVED by a live agent `Hello` probe, not a
  * lifecycle the control plane drives.
  */
 export type ServerStatus =
@@ -388,7 +388,7 @@ export interface ServerAgent {
   /** The TCP port the agent's gRPC listener is on (default 9443). */
   port: number;
   /**
-   * sha256(DER) of the agent's signed server cert, lowercase hex — the pinning
+   * sha256(DER) of the agent's signed server cert, lowercase hex - the pinning
    * identity (P3/P6). The control plane trusts an agent iff the cert it presents
    * on dial matches this. Cleared on removal to revoke trust.
    */
@@ -401,7 +401,7 @@ export interface ServerAgent {
 
 /**
  * The one-time bootstrap secret for a provisioning server (PLAN P2). Mirrors the
- * registration-link pattern ([[RegistrationLink]]) — only the token's sha256 is
+ * registration-link pattern ([[RegistrationLink]]) - only the token's sha256 is
  * stored, never the raw token, and both carry a short automatic expiry.
  */
 export interface ServerBootstrap {
@@ -472,7 +472,7 @@ export interface Server {
    */
   hostArch: string;
   /**
-   * How many deployments this server runs concurrently — the per-server slot count
+   * How many deployments this server runs concurrently - the per-server slot count
    * the deploy queue enforces. 1 (the default a server is born with) = strict
    * serialization: one deploy at a time on this host, deploys on other servers
    * still run in parallel.
@@ -484,29 +484,29 @@ export interface Server {
   traefikDashboard?: { domain: string; username: string };
   createdAt: string;
   /**
-   * Agent trust material — present once a server is provisioned (Part B). Absent
+   * Agent trust material - present once a server is provisioned (Part B). Absent
    * only while a server is still in `provisioning` (before its agent has called
    * home). Applies to every server, the host running Deplo included.
    */
   agent?: ServerAgent;
   /**
-   * The pending call-home bootstrap secret — present only while a server is
+   * The pending call-home bootstrap secret - present only while a server is
    * `provisioning`, cleared once its agent has been provisioned (Part B, P2).
    */
   bootstrap?: ServerBootstrap;
   /**
-   * Last time the agent answered (ISO) — fed by the heartbeat (P5). A CACHE
+   * Last time the agent answered (ISO) - fed by the heartbeat (P5). A CACHE
    * behind the live-read health check, never the source of truth.
    */
   lastSeenAt?: string;
   /**
-   * When [[Server.status]] was last OBSERVED (ISO) — i.e. when a probe classified
+   * When [[Server.status]] was last OBSERVED (ISO) - i.e. when a probe classified
    * and recorded a result, not when the row was last written.
    */
   statusCheckedAt?: string;
   /**
    * The operator-facing reason behind a non-`online` status ("Docker daemon
-   * unreachable — deploys to this server will fail"), from the closed set in
+   * unreachable - deploys to this server will fail"), from the closed set in
    * `classifyServerHealth`. Absent when `online` or never probed.
    */
   statusMessage?: string;
@@ -539,7 +539,7 @@ export const MIGRATION_HEARTBEAT_STALE_MS = 90_000;
 /**
  * The internal `DeploySource` strings are lowercase and hyphenated
  * ("docker-image"), but the GraphQL `DeploySource` enum exposes uppercase,
- * underscored value *names* (GITHUB, DOCKER_IMAGE …) — GraphQL enum names can't
+ * underscored value *names* (GITHUB, DOCKER_IMAGE …) - GraphQL enum names can't
  * contain hyphens.
  */
 export function deploySourceEnumName(source: DeploySource): string {
@@ -644,7 +644,7 @@ export interface BuildConfig {
   includeFilesOutsideRoot: boolean;
   /**
    * Skip an auto-deploy when an inbound push changed nothing inside the root
-   * directory. Default false. Gates git push-triggered deploys only — a manual
+   * directory. Default false. Gates git push-triggered deploys only - a manual
    * redeploy always runs regardless.
    */
   skipUnchangedDeployments: boolean;
@@ -679,7 +679,7 @@ export const MOUNT_PROPAGATIONS = ["rslave", "rshared"] as const;
 export type MountPropagation = (typeof MOUNT_PROPAGATIONS)[number];
 
 /**
- * A persistent volume mounted into an app's container. No grant needed — it can't
+ * A persistent volume mounted into an app's container. No grant needed - it can't
  * escape the project. - "host": a bind mount of a real HOST filesystem path
  * (`hostPath`).
  */
@@ -712,12 +712,12 @@ export interface VolumeMount {
   hostPath?: string;
   /**
    * COMPOSE-STACK apps only: the compose service to mount into. Empty/absent ⇒ the
-   * stack's default service (the one a domain would route to — a published port,
+   * stack's default service (the one a domain would route to - a published port,
    * else the first).
    */
   service?: string | null;
   /**
-   * Absolute in-container mount path, e.g. "/data". UNIQUE PER PROJECT — or, for
+   * Absolute in-container mount path, e.g. "/data". UNIQUE PER PROJECT, or, for
    * a compose stack, unique per (service, path), so two services can each mount
    * their own volume at `/data`.
    */
@@ -731,7 +731,7 @@ export interface VolumeMount {
 }
 
 /**
- * Per-app resource limits — caps applied to the app's container(s) at deploy time
+ * Per-app resource limits - caps applied to the app's container(s) at deploy time
  * so a runaway app can't starve its neighbours on a shared host.
  */
 export interface ResourceLimits {
@@ -743,7 +743,7 @@ export interface ResourceLimits {
   swapMb: number | null;
   /** Hard CPU ceiling in milli-CPUs (1000 = one core) → `cpus`. */
   cpuMilli: number | null;
-  /** Relative CPU weight under contention, 2–262144 → `cpu_shares`. */
+  /** Relative CPU weight under contention, 2-262144 → `cpu_shares`. */
   cpuShares: number | null;
   /** Pin to specific host cores, e.g. "0,2-3" → `cpuset`. */
   cpuset: string | null;
@@ -779,7 +779,7 @@ export interface App {
    */
   projectId?: ID | null;
   /**
-   * The {@link Environment} (of `projectId`'s Project) this app LIVES in —
+   * The {@link Environment} (of `projectId`'s Project) this app LIVES in -
    * ADR-0009's membership axis: each environment of a project holds its own apps,
    * like a sub-folder picked from the project's environment dropdown. null/absent
    * outside a project.
@@ -822,7 +822,7 @@ export interface App {
    */
   logo: string | null;
   /**
-   * The JavaScript framework Deplo recognised in this app's own source — a {@link
+   * The JavaScript framework Deplo recognised in this app's own source - a {@link
    * FrameworkId} from `lib/apps/framework-catalog.ts` ("nextjs", "astro", …), or
    * null when none was found or the build method isn't one of the auto-detecting
    * builders (Nixpacks / Railpack), the only ones this applies to.
@@ -854,9 +854,9 @@ export interface App {
   mounts?: { filePath: string; content: string }[] | null;
   /**
    * User-managed persistent volumes for the SINGLE-CONTAINER deploy path
-   * (renderCompose) — docker-managed named volumes and (for privileged users) host
+   * (renderCompose) - docker-managed named volumes and (for privileged users) host
    * bind mounts. null/absent for compose-stack apps and apps that never added one
-   * — so renderCompose emits no `volumes:` keys and the stack stays byte-identical
+   *, so renderCompose emits no `volumes:` keys and the stack stays byte-identical
    * (no reroute churn).
    */
   volumes?: VolumeMount[] | null;
@@ -875,14 +875,19 @@ export interface App {
    */
   cronEnabled: boolean;
   /**
-   * Whether this app's deploy hook — the URL that triggers a production deploy
-   * from outside the dashboard — answers at all.
+   * The container console is ON for this app - same reason it rides the App as
+   * `cronEnabled`: the sidebar and the console page both decide from it.
+   */
+  consoleEnabled: boolean;
+  /**
+   * Whether this app's deploy hook - the URL that triggers a production deploy
+   * from outside the dashboard - answers at all.
    */
   deployHookEnabled: boolean;
   /**
    * Extra flags this app appends to the `docker compose up` that brings it up, as
    * the operator typed them (`"--pull always --scale web=3"`), or null for the
-   * untouched command — which is every app that never opened the setting.
+   * untouched command, which is every app that never opened the setting.
    */
   composeUpArgs: string | null;
   /**
@@ -946,7 +951,7 @@ export interface Deployment {
   prNumber: number | null;
   /**
    * The server this deploy runs on. Denormalized so the queue can drain per-server
-   * without an apps join — and load-bearing beyond that, because a pull request
+   * without an apps join, and load-bearing beyond that, because a pull request
    * preview may be pinned to a different machine than production.
    */
   serverId: ID | null;
@@ -962,7 +967,7 @@ export interface Deployment {
   branch: string;
   url: string;
   createdAt: string;
-  /** When the build was claimed off the queue and actually started running —
+  /** When the build was claimed off the queue and actually started running -
    *  the origin `buildDurationMs` is measured from, and what the UI ticks the
    *  live "Build time" from. Null while queued (nothing has started yet). */
   startedAt: string | null;
@@ -985,7 +990,7 @@ export interface Deployment {
   /**
    * The account behind {@link creator}, when there is one. NULL for a webhook push
    * (whose creator is a GitHub login, not a deplo account) and for every row
-   * written before it existed — both of which render the bare string.
+   * written before it existed - both of which render the bare string.
    */
   creatorUserId: ID | null;
   /** That person, resolved for display. A DECORATION the list batch-resolves. */
@@ -1004,7 +1009,7 @@ export interface LogLine {
 export type EnvTarget = "production" | "preview";
 
 /** Canonical ordered list of every env target. (`development` died with dev
- * mode — migration 0041 stripped its junction rows.) */
+ * mode - migration 0041 stripped its junction rows.) */
 export const ALL_ENV_TARGETS: EnvTarget[] = ["production", "preview"];
 
 /**
@@ -1034,7 +1039,7 @@ export interface VarAuthor {
   username: string;
   avatarColor: string;
   /** Resolved picture: uploaded image, else Gravatar, else null. See
-   *  {@link PublicUser.avatarUrl} — the address itself never reaches here. */
+   *  {@link PublicUser.avatarUrl} - the address itself never reaches here. */
   avatarUrl: string | null;
 }
 
@@ -1067,12 +1072,12 @@ export interface EnvVarDTO {
 }
 
 /**
- * A GLOBAL environment variable — injected into services without being attached
+ * A GLOBAL environment variable - injected into services without being attached
  * per-project.
  */
 /**
  * Global env scope. Only `instance` remains: team-global vars became team-wide
- * SHARED vars (ADR-0010), so there is no `team` scope any more — the union is kept
+ * SHARED vars (ADR-0010), so there is no `team` scope any more - the union is kept
  * (rather than deleted) so the manager keeps one explicit, checkable scope name.
  */
 export type GlobalEnvScope = "instance";
@@ -1117,7 +1122,7 @@ export type DomainStatus =
 export type DomainEntrypoint = "websecure" | "web";
 
 /**
- * How a domain's TLS certificate is issued — the user's *choice*, distinct from
+ * How a domain's TLS certificate is issued - the user's *choice*, distinct from
  * `ssl` (whether a cert is currently active, derived from DNS verification): -
  * letsencrypt the HTTP-01 ACME resolver baked into the proxy (resolved via
  * `certResolver()` / `DEPLO_CERT_RESOLVER`). - cloudflare Cloudflare fronts the
@@ -1156,7 +1161,7 @@ export interface Domain {
   entrypoint?: DomainEntrypoint;
   /**
    * How TLS is issued for this host (see {@link CertProvider}). Absent ⇒
-   * `letsencrypt`. `none` means no certificate — the router serves plain HTTP
+   * `letsencrypt`. `none` means no certificate - the router serves plain HTTP
    * and is forced onto the `web` entrypoint regardless of `entrypoint`.
    */
   certProvider?: CertProvider;
@@ -1201,11 +1206,11 @@ export interface BasicAuthUser {
    * never in a DTO, read back only through the gated reveal. */
   passwordEnc: string;
   /** Carried over from another platform verbatim, so it never went through the
-   * password policy or the breach check — see `addBasicAuthUser`. */
+   * password policy or the breach check - see `addBasicAuthUser`. */
   imported?: boolean;
   /** Who added the credential / who last rotated its password. Null for rows
    * written before migration 0045, or once that user is deleted. Identity
-   * metadata, never a value — see {@link VarAuthor}. */
+   * metadata, never a value - see {@link VarAuthor}. */
   createdByUserId: ID | null;
   updatedByUserId: ID | null;
   createdAt: string;
@@ -1226,7 +1231,7 @@ export interface Database {
    */
   name: string;
   /**
-   * Uploaded display logo — a base64 image data-URI, or null to fall back to the
+   * Uploaded display logo - a base64 image data-URI, or null to fall back to the
    * engine's real brand mark (`DB_LOGOS`). Same contract as an App's logo:
    * cosmetic only, never read by a deploy, validated by `isValidLogoValue`.
    */
@@ -1235,7 +1240,7 @@ export interface Database {
   version: string;
   /**
    * The engine login the connection string authenticates as, and the user the
-   * backup dump execs as (except mysql/mariadb, which always dump as `root` — see
+   * backup dump execs as (except mysql/mariadb, which always dump as `root` - see
    * {@link file://./data/backups.ts} `dumpUserFor`).
    */
   username: string;
@@ -1264,7 +1269,7 @@ export interface Database {
    */
   exposedPort: number | null;
   /**
-   * Per-database resource limits, or null when none set — the exact
+   * Per-database resource limits, or null when none set - the exact
    * {@link ResourceLimits} shape apps use, applied to the rendered stack on the
    * next provision/reroute (lib/deploy/resources.ts).
    */
@@ -1277,7 +1282,7 @@ export interface Database {
   customImage: string | null;
   /**
    * Expert override: REPLACES the container command verbatim. Redis's default
-   * command carries `--requirepass <password>` — omitting it from a custom
+   * command carries `--requirepass <password>` - omitting it from a custom
    * command drops auth, so the UI warns. Null = image/engine default.
    */
   customCommand: string | null;
@@ -1381,7 +1386,7 @@ export interface BackupDestination {
   lastTestMs: number | null;
   /**
    * Server destinations only: the headroom and the resolved root the last check
-   * saw. Information for the operator, never a pre-flight gate — a dump's size
+   * saw. Information for the operator, never a pre-flight gate - a dump's size
    * is unknown until it exists, so ENOSPC on the write is the real guard.
    */
   lastFreeBytes: number | null;
@@ -1425,7 +1430,7 @@ export interface Backup {
 }
 
 /**
- * One executed backup — the record of a single dump+upload (or restore source).
+ * One executed backup - the record of a single dump+upload (or restore source).
  */
 export interface BackupRun {
   id: ID;
@@ -1453,7 +1458,7 @@ export interface BackupRun {
    */
   decryptedSizeBytes: number | null;
   /**
-   * Hex sha256 of the artifact as written (ciphertext, before decryption) — what a
+   * Hex sha256 of the artifact as written (ciphertext, before decryption) - what a
    * restore checks before feeding those bytes to anything.
    */
   sha256: string | null;
@@ -1592,7 +1597,7 @@ export type ActivityType =
   | "monitoring"
   /**
    * MCP: who let AI agents into this team, and when. "An agent deleted it" must
-   * never be a dead end — the trail names the human who opened the door.
+   * never be a dead end - the trail names the human who opened the door.
    */
   | "mcp";
 
@@ -1606,11 +1611,11 @@ export interface Activity {
   /**
    * The human behind `actor`, when there is one. `actor` is free text and also
    * carries non-human actors ("system" / "github"), which must NEVER be attributed
-   * to a person — those stay `null`, as do rows predating the column.
+   * to a person - those stay `null`, as do rows predating the column.
    */
   actorUserId: ID | null;
   /**
-   * That person's identity, resolved for display — the avatar the row shows before
+   * That person's identity, resolved for display - the avatar the row shows before
    * the name.
    */
   actorUser: VarAuthor | null;
@@ -1619,7 +1624,7 @@ export interface Activity {
 }
 
 /**
- * A unified shared variable (ADR-0010) — ONE variable owned by a team, the
+ * A unified shared variable (ADR-0010) - ONE variable owned by a team, the
  * replacement for the shared-env group, environment-scoped, and team-global
  * models.
  */
@@ -1677,7 +1682,7 @@ export interface InstalledPlugin {
 
 /**
  * Where a team's alerts are delivered. The union is derived from the array so
- * there is ONE declaration — the GraphQL enum reads the same array, and the two
+ * there is ONE declaration - the GraphQL enum reads the same array, and the two
  * cannot drift. Everything after `telegram` is beta.
  */
 export const ALL_CHANNELS = [
@@ -1752,7 +1757,7 @@ export type AlertKey =
   | "domain_dns_drift";
 
 /**
- * Canonical order of every alert — the order the picker lists them in and the
+ * Canonical order of every alert - the order the picker lists them in and the
  * order a stored set is normalised to. Keep it in step with `ALERT_CATEGORIES`
  * in `lib/alerts.ts` (a test pins the two together).
  */
@@ -1797,12 +1802,12 @@ export const ALL_ALERTS: AlertKey[] = [
 /**
  * ONE configured destination. Flat, mirroring its row: `url`/`target`/`secret*`
  * are the shared concepts (see `notification_channels`), and only the fields this
- * `kind` uses carry meaning — the UI decides which to show.
+ * `kind` uses carry meaning - the UI decides which to show.
  */
 export interface NotificationChannelInstance {
   id: ID;
   kind: NotificationChannel;
-  /** The team's own label, or "" — the UI falls back to the kind's own name. */
+  /** The team's own label, or "" - the UI falls back to the kind's own name. */
   name: string;
   enabled: boolean;
   /** The outbound endpoint: a webhook URL, a Gotify server, an ntfy server. */
@@ -1882,7 +1887,7 @@ export type GitProviderId = "gitlab" | "bitbucket" | "gitea" | "git";
 
 /**
  * A team's credentials for one git host, created once in Settings → Git and reused
- * by every App deploying from that host — the counterpart of a {@link
+ * by every App deploying from that host - the counterpart of a {@link
  * GithubInstallation}.
  */
 export interface GitConnection {

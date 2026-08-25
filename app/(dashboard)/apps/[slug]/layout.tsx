@@ -19,12 +19,13 @@ import {
   AppLiveStatusProvider,
   type LiveApp,
 } from "@/components/apps/app-live-status";
+import { titleClass } from "@/components/shared/page-header";
 
 // Cap the app-name portion of the browser-tab title so the trailing
-// "– <Section> – Deplo" stays legible instead of a long name crowding it out.
+// "– <Section> - Deplo" stays legible instead of a long name crowding it out.
 const PROJECT_TITLE_MAX = 24;
 
-// Titles nest as "<project> – <section> – Deplo".
+// Titles nest as "<project> - <section> - Deplo".
 export async function generateMetadata(
   props: LayoutProps<"/apps/[slug]">,
 ): Promise<Metadata> {
@@ -34,8 +35,8 @@ export async function generateMetadata(
   const name = truncate(project.name, PROJECT_TITLE_MAX);
   return {
     title: {
-      template: `${name} – %s – Deplo`,
-      default: `${name} – Overview – Deplo`,
+      template: `${name} - %s - Deplo`,
+      default: `${name} - Overview - Deplo`,
     },
   };
 }
@@ -45,7 +46,7 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
   const project = await getAppBySlug(slug);
   // Gone, or on its way out: a delete is irreversible from the moment it is
   // confirmed, so the app's pages stop existing then rather than when its host
-  // finishes the teardown — otherwise a reload during that window serves back every
+  // finishes the teardown, otherwise a reload during that window serves back every
   if (!project || project.deletingAt) notFound();
   // The Files entry only appears when the caller can manage files AND the app
   // actually has an on-disk files dir (appFilesExist returns false for both
@@ -69,7 +70,7 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
     <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
       <AppCapabilitiesProvider capabilities={capabilities}>
         {/**
-         * An app's pages are forms and detail views, not grids — they stay at a readable
+         * An app's pages are forms and detail views, not grids - they stay at a readable
          * width instead of the wide shell the list pages use.
          */}
         <DetailFrame
@@ -85,16 +86,14 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
                   </LogoEditLink>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h1 className="text-xl font-semibold tracking-tight">
-                        {project.name}
-                      </h1>
+                      <h1 className={titleClass.page}>{project.name}</h1>
                       {/* The live container lifecycle (Running / Stopped / Building /
-                    Error) — the header's headline status, distinct from any
+                    Error) - the header's headline status, distinct from any
                     deployment status shown further down the page. */}
                       <AppStatusBadge status={project.status} />
                     </div>
                     {/* The subtitle slot: the live URL when a domain is linked,
-                  otherwise what this App *is* — never an empty line under the
+                  otherwise what this App *is*, never an empty line under the
                   name. */}
                     {project.productionUrl ? (
                       <a
@@ -151,6 +150,7 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
               isGithubApp={project.source === "github"}
               previewsEnabled={project.previewEnabled}
               cronsEnabled={project.cronEnabled}
+              consoleEnabled={project.consoleEnabled}
             />
           }
         >

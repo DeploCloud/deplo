@@ -82,7 +82,7 @@ export interface NavSection {
   title?: string;
   items: NavItem[];
   /**
-   * Render this section's entries as plain text — no icons.
+   * Render this section's entries as plain text, no icons.
    */
   iconless?: boolean;
 }
@@ -134,7 +134,7 @@ export const NAV: NavSection[] = [
         icon: LayoutTemplate,
         tooltip: "One-click deploy templates",
         // No capability: the catalogue is a catalogue, and anyone on the team
-        // may read it. Deploying is the gated action — the Deploy button on a
+        // may read it. Deploying is the gated action - the Deploy button on a
         // template's page needs `create_apps`, and `createApp` enforces it.
       },
       // Plugins deliberately have NO nav entry: the feature is deferred and its
@@ -146,7 +146,7 @@ export const NAV: NavSection[] = [
     title: "Workspace",
     items: [
       // Members lives under Settings → Team, beside the Roles page that defines
-      // what a member can do — one decision, one place.
+      // what a member can do - one decision, one place.
       {
         label: "Activity",
         href: "/activity",
@@ -187,7 +187,7 @@ export const SETTINGS_NAV: NavSection[] = [
       },
     ],
   },
-  // Team — settings scoped to the active team (the team header stays shown here).
+  // Team - settings scoped to the active team (the team header stays shown here).
   {
     title: "Team",
     items: [
@@ -251,7 +251,7 @@ export const SETTINGS_NAV: NavSection[] = [
       },
     ],
   },
-  // Account — the signed-in user's own settings (no team context).
+  // Account - the signed-in user's own settings (no team context).
   {
     title: "Account",
     items: [
@@ -275,7 +275,7 @@ export const SETTINGS_NAV: NavSection[] = [
       },
     ],
   },
-  // System — instance-wide administration (admins) + posture.
+  // System - instance-wide administration (admins) + posture.
   {
     title: "System",
     items: [
@@ -285,7 +285,7 @@ export const SETTINGS_NAV: NavSection[] = [
         icon: Server,
         tooltip: "Connected servers & Docker hosts",
         // Server administration is an instance-wide concern (the management view lists
-        // EVERY server across teams), so it is gated to instance admins — not the per-team
+        // EVERY server across teams), so it is gated to instance admins, not the per-team
         // manage_infra capability.
         requiresAdmin: true,
       },
@@ -317,7 +317,7 @@ export const SETTINGS_NAV: NavSection[] = [
  * which publishes them via the app-nav store).
  */
 export interface AppNavFlags {
-  /** Full current pathname — lets a section stay listed while it's the open page
+  /** Full current pathname - lets a section stay listed while it's the open page
    *  even before the store has confirmed its flag (avoids a missing active item
    *  on a hard load of e.g. /apps/x/console). */
   pathname: string;
@@ -337,9 +337,8 @@ export interface AppNavFlags {
    * The app's own logo, for the Overview entry's mark.
    */
   logo?: string | null;
-  /** The console is an advanced surface: its chip appears only once the user has
-   *  confirmed the one-time "I understand" warning (persisted in localStorage). */
-  consoleAcknowledged: boolean;
+  /** The container console is switched on for this app (Advanced settings). */
+  consoleEnabled: boolean;
 }
 
 /**
@@ -372,7 +371,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: Rocket,
       tooltip: "Deployment history",
     },
-    // Pull request previews — the OPERATIONAL page, offered only once the feature is
+    // Pull request previews - the OPERATIONAL page, offered only once the feature is
     // actually on. Never for a non-GitHub app at all: a docker image, an upload, a
     // compose paste or a raw git URL never receives a `pull_request` delivery.
     ...((f.isGithubApp && f.previewsEnabled) || on("/pull-requests")
@@ -411,7 +410,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: Globe,
       tooltip: "Custom domains & routing",
     },
-    // Environment holds sensitive values — only for manage_env holders.
+    // Environment holds sensitive values - only for manage_env holders.
     ...(f.canManageEnv
       ? [
           {
@@ -422,9 +421,9 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
-    // Console is an ADVANCED surface — a live shell into the container, reached from
+    // Console is an ADVANCED surface - a live shell into the container, reached from
     // Advanced settings.
-    ...(f.consoleAcknowledged && (f.running || on("/console"))
+    ...(f.consoleEnabled && (f.running || on("/console"))
       ? [
           {
             label: "Console",
@@ -453,7 +452,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       tooltip: "Live resource usage",
       requires: "view_metrics",
     },
-    // Files — only when an on-disk files dir exists and the viewer can manage it.
+    // Files - only when an on-disk files dir exists and the viewer can manage it.
     ...(f.showFiles || on("/files")
       ? [
           {
@@ -464,7 +463,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
-    // Backups are infra ops — manage_infra only.
+    // Backups are infra ops - manage_infra only.
     ...(f.canBackup || on("/backups")
       ? [
           {
@@ -501,11 +500,11 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
 }
 
 /**
- * An app's SETTINGS sub-menu — one level deeper than {@link appNav}.
+ * An app's SETTINGS sub-menu - one level deeper than {@link appNav}.
  */
 export function appSettingsNav(
   slug: string,
-  /** The app deploys from GitHub — see the Pull requests entry below. */
+  /** The app deploys from GitHub - see the Pull requests entry below. */
   isGithubApp = true,
 ): NavSection[] {
   const base = `/apps/${slug}/settings`;
@@ -548,7 +547,7 @@ export function appSettingsNav(
           requires: "manage_previews",
           // SHOWN, not hidden, when the app cannot use it. Only a GitHub app ever receives a
           // `pull_request` delivery, but an operator looking for the feature deserves to find
-          // out that it exists and what it needs — a missing row would leave them hunting.
+          // out that it exists and what it needs - a missing row would leave them hunting.
           ...(isGithubApp
             ? {}
             : {
@@ -598,7 +597,7 @@ export function databaseNav(
     pathname: string;
     consoleAcknowledged: boolean;
     cronsEnabled: boolean;
-    /** The database's own logo, and its engine — the Overview entry's mark. Both
+    /** The database's own logo, and its engine - the Overview entry's mark. Both
      *  absent until the layout has published them (see {@link AppNavFlags.logo}). */
     logo?: string | null;
     type?: DatabaseType;
@@ -627,7 +626,7 @@ export function databaseNav(
           label: "Overview",
           href: base,
           icon: LayoutDashboard,
-          // The database's own logo, or its engine's brand mark — the same
+          // The database's own logo, or its engine's brand mark - the same
           // picture Storage lists it under.
           ...(f.type
             ? {
@@ -654,7 +653,7 @@ export function databaseNav(
           icon: LineChart,
           tooltip: "Live resource usage",
         },
-        // Console is an ADVANCED surface — a live shell into the container,
+        // Console is an ADVANCED surface - a live shell into the container,
         // reached from Advanced settings. Its chip stays hidden until the user
         // confirms the one-time warning (and stays put while the page is open).
         ...(f.consoleAcknowledged || onConsole
@@ -701,7 +700,7 @@ export function databaseNav(
 }
 
 /**
- * A database's SETTINGS sub-menu — one level deeper than {@link databaseNav},
+ * A database's SETTINGS sub-menu - one level deeper than {@link databaseNav},
  * the DB twin of {@link appSettingsNav}. "Back to database" goes UP one level to
  * the overview (a plain link, not a history back, which would exit the section).
  */
@@ -754,13 +753,13 @@ export function databaseSettingsNav(id: string): NavSection[] {
 }
 
 /**
- * The settings routes that are NOT team-scoped — the user's own account and the
+ * The settings routes that are NOT team-scoped - the user's own account and the
  * instance/system pages. On these the topbar hides the team switcher (there is
  * no team context to act in). Everything else under /settings is team-scoped.
  */
 export const NON_TEAM_SETTINGS_PREFIXES = [
   "/settings/account",
-  // Two-factor enrolment belongs to the ACCOUNT, not to a team — and it must stay
+  // Two-factor enrolment belongs to the ACCOUNT, not to a team, and it must stay
   // reachable when a team's 2FA policy has locked the member out of that team.
   "/settings/security",
   "/settings/tokens",

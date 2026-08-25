@@ -1,18 +1,14 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { SlidersHorizontal, SquareTerminal } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { listAppCronJobs } from "@/lib/data/crons";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
+import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
-import { Button } from "@/components/ui/button";
-import {
-  CapabilityFieldset,
-  CapabilityTip,
-} from "@/components/apps/app-capabilities";
+import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import {
   Card,
   CardContent,
@@ -24,7 +20,7 @@ import {
 export const metadata = { title: "Advanced" };
 
 /**
- * Advanced app settings: the powerful, less-everyday controls in one place — the
+ * Advanced app settings: the powerful, less-everyday controls in one place - the
  * Advanced features card (the container Console and Cron jobs), a from-scratch
  * container Rebuild, and the Danger Zone (transfer to another team, delete).
  */
@@ -34,8 +30,8 @@ export default async function AppAdvancedSettingsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The console page refuses without this, so the way in says so up front instead of
-  // leading to a 404.
+  // The console page refuses without this, so the row says so up front instead of
+  // handing out a link that 404s.
   const [canConsole, canCron] = await Promise.all([
     hasAppCapability(project.id, "open_app_console"),
     hasAppCapability(project.id, "manage_crons"),
@@ -59,29 +55,14 @@ export default async function AppAdvancedSettingsPage(
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
-            <div className="min-w-56 flex-1 space-y-1">
-              <p className="flex items-center gap-2 text-sm font-medium">
-                <SquareTerminal className="size-4 text-muted-foreground" />
-                Console
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Open a terminal in the running container, or attach to its live
-                output. No SSH needed.
-              </p>
-            </div>
-            {canConsole ? (
-              <Button asChild size="sm" variant="outline">
-                <Link href={`/apps/${slug}/console`}>Open console</Link>
-              </Button>
-            ) : (
-              <CapabilityTip cap="open_app_console">
-                <Button size="sm" variant="outline" disabled>
-                  Open console
-                </Button>
-              </CapabilityTip>
-            )}
-          </div>
+          <CapabilityFieldset cap="configure_apps">
+            <ConsoleSettingsForm
+              appId={project.id}
+              slug={slug}
+              enabled={project.consoleEnabled}
+              canConsole={canConsole}
+            />
+          </CapabilityFieldset>
 
           <CapabilityFieldset cap="manage_crons">
             <CronSettingsForm
