@@ -590,6 +590,9 @@ export interface CreateAppInput {
   extraDomains?: { service: string; port: number; host: string }[] | null;
   /** Pre-generated PRIMARY domain a template baked into its env; kept consistent. */
   autoDomain?: string | null;
+  /** The path {@link autoDomain} routes here. An import brings apps that share one
+   *  hostname on different paths; without it the second one is refused the name. */
+  autoDomainPath?: string | null;
   /**
    * Create the app with NO address at all.
    *
@@ -1116,6 +1119,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       slug,
       ip,
       preferred: input.autoDomain ?? undefined,
+      preferredPath: input.autoDomainPath ?? undefined,
       defaultPort: detected?.port ?? project.build.port,
       defaultApp: detected?.service ?? null,
       certProvider,

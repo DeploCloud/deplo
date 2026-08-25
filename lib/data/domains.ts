@@ -18,7 +18,7 @@ import { requireActiveTeamId } from "../membership";
 import { recordActivity } from "./activity";
 import { dispatchAlert } from "../notify/dispatch";
 import { assertLetsencryptQuota } from "../deploy/domains";
-import yaml from "js-yaml";
+import yaml from "../yaml";
 import {
   resolveServerIp,
   nipDomain,
@@ -151,13 +151,28 @@ export async function assertPreviewBaseNotAnotherTeams(
     );
 }
 
-async function domainNameExists(name: string): Promise<boolean> {
-  const hit = await getDb()
-    .select({ id: domainsTable.id })
+/**
+ * Whether `name` is unavailable. With a `pathPrefix` the stored uniqueness rule
+ * applies - `(name, coalesce(path_prefix,''))` - so one team may serve `app.com`
+ * on `/` and `app.com` on `/api` from two apps; another team's claim on the name
+ * still refuses it at any path. Without one, any row with that name is a taken
+ * name (what a generated host has to avoid).
+ */
+async function domainNameExists(
+  name: string,
+  pathPrefix?: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ teamId: appsTable.teamId, pathPrefix: domainsTable.pathPrefix })
     .from(domainsTable)
-    .where(eq(domainsTable.name, name))
-    .limit(1);
-  return hit.length > 0;
+    .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
+    .where(eq(domainsTable.name, name));
+  if (rows.length === 0) return false;
+  if (pathPrefix === undefined) return true;
+  const teamId = await requireActiveTeamId();
+  return rows.some(
+    (r) => r.teamId !== teamId || (r.pathPrefix ?? "") === pathPrefix,
+  );
 }
 
 /**
@@ -199,6 +214,13 @@ export async function ensureAutoDomain(
      * ever registered by default); createApp passes `letsencrypt` only when the
      * blueprint itself expects HTTPS (it baked an `https://<own host>` URL). */
     certProvider?: CertProvider;
+    /**
+     * The path this host routes here. An import brings apps that share ONE
+     * hostname on different paths (a frontend on `/`, an API on `/api`), which
+     * the stored uniqueness allows and a name-only check refused - so the second
+     * one answered on an invented address.
+     */
+    preferredPath?: string;
   },
 ): Promise<string> {
   const existing = await loadDomainsForApp(appId);
@@ -238,10 +260,13 @@ export async function ensureAutoDomain(
   const preferredOk =
     !!preferred &&
     (nipEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
+  const preferredPath = (opts.preferredPath ?? "").trim();
   const name =
-    preferredOk && !(await domainNameExists(preferred!))
+    preferredOk && !(await domainNameExists(preferred!, preferredPath))
       ? preferred!
       : await uniqueAutoDomainName(opts.slug, opts.ip);
+  // The path only comes across with the host it belongs to.
+  const pathPrefix = name === preferred ? preferredPath : "";
   // Our own generated nip.io hosts point at the server IP by construction, so they
   // are born routable ("valid").
   const status =
@@ -267,6 +292,7 @@ export async function ensureAutoDomain(
     // service it routes to) so no auto domain is ever portless or appless.
     port: opts.defaultPort,
     ...(opts.defaultApp ? { service: opts.defaultApp } : {}),
+    ...(pathPrefix ? { pathPrefix } : {}),
     certProvider,
     createdAt: nowIso(),
   };

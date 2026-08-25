@@ -15,6 +15,7 @@ import {
 import {
   addDomain,
   assertPreviewBaseNotAnotherTeams,
+  ensureAutoDomain,
   routableRoutes,
   updateDomain,
   __setDnsResolve4ForTest,
@@ -115,6 +116,36 @@ test("the same team may still share one hostname across two apps by path", async
   );
   assert.equal(api.name, HOST);
   assert.equal(api.pathPrefix, "/api");
+});
+
+test("an import claims a hostname this team serves on another path", async () => {
+  await asVictim(() => addDomain("prj_victim", HOST, {}));
+  // The import shape: a frontend on `/` and an API on `/api`, both created with
+  // the host they answered on over there.
+  const name = await asVictim(() =>
+    ensureAutoDomain("prj_sibling", {
+      slug: "sibling",
+      ip: HOST_IP,
+      preferred: HOST,
+      preferredPath: "/api",
+      defaultPort: 3000,
+    }),
+  );
+  assert.equal(name, HOST, "the second app must keep the real hostname");
+});
+
+test("a hostname another team serves is still not claimed by an import", async () => {
+  await asVictim(() => addDomain("prj_victim", HOST, {}));
+  const name = await asAttacker(() =>
+    ensureAutoDomain("prj_attacker", {
+      slug: "attacker",
+      ip: HOST_IP,
+      preferred: HOST,
+      preferredPath: "/api",
+      defaultPort: 3000,
+    }),
+  );
+  assert.notEqual(name, HOST);
 });
 
 test("the same row can still be edited without tripping over itself", async () => {

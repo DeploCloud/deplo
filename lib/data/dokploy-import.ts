@@ -14,7 +14,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import yaml from "js-yaml";
+import yaml from "../yaml";
 
 import { getDb } from "../db/client";
 import {
@@ -2256,6 +2256,9 @@ async function importAppService(
     // createApp would either refuse it or point this app at the old box.
     autoDomain:
       mayClaimHosts && primary && !primary.generated ? primary.host : null,
+    // Two apps of one team may share a hostname on different paths, and the
+    // import is where that shape arrives - so the path is claimed with the name.
+    autoDomainPath: primary?.pathPrefix || null,
     // A service that answered on NOTHING over there gets nothing here.
     noAutoDomain: domains.value.length === 0,
     composeService: isCompose ? (primary?.service ?? null) : null,
