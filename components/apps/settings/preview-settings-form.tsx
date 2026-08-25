@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FieldLabel } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -53,17 +54,19 @@ import { gqlAction } from "@/lib/graphql-client";
 function SettingRow({
   label,
   info,
+  docs,
   htmlFor,
   children,
 }: {
   label: string;
   info: string;
+  docs?: DocsTopic;
   htmlFor?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-      <FieldLabel htmlFor={htmlFor} info={info}>
+      <FieldLabel htmlFor={htmlFor} info={info} docs={docs}>
         {label}
       </FieldLabel>
       {children}

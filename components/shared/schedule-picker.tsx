@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldLabel } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   DEFAULT_PARTS,
@@ -57,6 +58,7 @@ export function SchedulePicker({
   id = "schedule",
   label = "Schedule",
   info = DEFAULT_INFO,
+  docs,
   timezone = "UTC",
   summary = true,
 }: {
@@ -74,6 +76,7 @@ export function SchedulePicker({
   /** The frequency field's own label — the picker renders it, to stay aligned with `trailing`. */
   label?: React.ReactNode;
   info?: React.ReactNode;
+  docs?: DocsTopic;
   /**
    * The zone the expression is read in.
    */
@@ -199,7 +202,7 @@ export function SchedulePicker({
       {/* Row 1 — how often, plus the day that frequency has to pin down. */}
       <div className={dayField ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
         <div className="space-y-2">
-          <FieldLabel htmlFor={id} info={info}>
+          <FieldLabel htmlFor={id} info={info} docs={docs}>
             {label}
           </FieldLabel>
           <Select value={mode} onValueChange={pickMode} disabled={disabled}>

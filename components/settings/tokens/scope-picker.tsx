@@ -317,7 +317,7 @@ export function ScopePicker({
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
         <h3 className="text-sm font-medium">Access</h3>
-        <InfoTip content={info} />
+        <InfoTip content={info} docs="tokens.scope" />
         {tree.length > 0 && (
           <Button
             type="button"

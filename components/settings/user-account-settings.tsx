@@ -33,6 +33,7 @@ import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import { PasswordField } from "@/components/ui/password-field";
 import { passwordMeetsPolicy } from "@/lib/password-policy";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -879,12 +880,14 @@ function Section({
   icon: Icon,
   title,
   info,
+  docs,
   tone = "default",
   children,
 }: {
   icon: LucideIcon;
   title: string;
   info?: React.ReactNode;
+  docs?: DocsTopic;
   tone?: "default" | "destructive";
   children: React.ReactNode;
 }) {
@@ -899,7 +902,9 @@ function Section({
       >
         <Icon className="size-4 shrink-0" />
         {title}
-        {info != null && <InfoTip content={info} label={`About ${title}`} />}
+        {info != null && (
+          <InfoTip content={info} docs={docs} label={`About ${title}`} />
+        )}
       </h3>
       <div className="space-y-2">{children}</div>
     </section>
@@ -927,17 +932,19 @@ function sectionShell(tone: "default" | "destructive") {
 function Row({
   title,
   info,
+  docs,
   control,
 }: {
   title: string;
   info: React.ReactNode;
+  docs?: DocsTopic;
   control: React.ReactNode;
 }) {
   return (
     <div className={ROW_SHELL}>
       <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
         <span className="truncate">{title}</span>
-        <InfoTip content={info} label={`About ${title}`} />
+        <InfoTip content={info} docs={docs} label={`About ${title}`} />
       </p>
       {/* `flex` on purpose: an inline-flex control (Switch, Button) in a block
           box sits on the text baseline and drags 5px of descender space in with
@@ -950,12 +957,14 @@ function Row({
 function ToggleRow({
   title,
   info,
+  docs,
   checked,
   disabled,
   onChange,
 }: {
   title: string;
   info: React.ReactNode;
+  docs?: DocsTopic;
   checked: boolean;
   disabled?: boolean;
   onChange: (v: boolean) => void;
@@ -964,6 +973,7 @@ function ToggleRow({
     <Row
       title={title}
       info={info}
+      docs={docs}
       control={
         // The title is a <p>, not a <label>, so the switch carries the name
         // itself — otherwise it announces as a bare "switch, off".
@@ -982,11 +992,13 @@ function ToggleRow({
 function ActionRow({
   title,
   info,
+  docs,
   action,
 }: {
   title: string;
   info: React.ReactNode;
+  docs?: DocsTopic;
   action: React.ReactNode;
 }) {
-  return <Row title={title} info={info} control={action} />;
+  return <Row title={title} info={info} docs={docs} control={action} />;
 }

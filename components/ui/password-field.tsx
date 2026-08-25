@@ -4,6 +4,7 @@ import * as React from "react";
 import { Check, Eye, EyeOff, X } from "lucide-react";
 
 import { FieldLabel } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import { Input } from "@/components/ui/input";
 import { passwordRuleStatus } from "@/lib/password-policy";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export function PasswordField({
   onChange,
   label = "Password",
   info,
+  docs,
   name,
   autoComplete = "new-password",
   placeholder = "Choose a strong password",
@@ -33,6 +35,7 @@ export function PasswordField({
   label?: React.ReactNode;
   /** Longer explanation, shown as the label's info tooltip (never as helper text). */
   info?: React.ReactNode;
+  docs?: DocsTopic;
   name?: string;
   autoComplete?: string;
   placeholder?: string;
@@ -51,7 +54,7 @@ export function PasswordField({
 
   return (
     <div className={cn("space-y-2", className)}>
-      <FieldLabel htmlFor={fieldId} info={info}>
+      <FieldLabel htmlFor={fieldId} info={info} docs={docs}>
         {label}
       </FieldLabel>
       <div className="relative">

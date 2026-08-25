@@ -9,6 +9,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { DocsLink } from "@/components/ui/docs-link";
+import type { DocsTopic } from "@/lib/docs";
 
 type Side = "top" | "right" | "bottom" | "left";
 
@@ -19,11 +21,17 @@ type Side = "top" | "right" | "bottom" | "left";
  */
 export function InfoTip({
   content,
+  docs,
+  docsLabel,
   side = "top",
   className,
   label = "More information",
 }: {
   content: React.ReactNode;
+  /** The manual section that explains this properly. Radix keeps the tooltip
+   *  open while the pointer travels into it, so the link is clickable. */
+  docs?: DocsTopic;
+  docsLabel?: string;
   side?: Side;
   className?: string;
   /** Accessible name for the trigger, announced by screen readers. */
@@ -49,6 +57,9 @@ export function InfoTip({
       </TooltipTrigger>
       <TooltipContent side={side} className="max-w-xs leading-relaxed">
         {content}
+        {docs && (
+          <DocsLink topic={docs} label={docsLabel} className="mt-1.5 block" />
+        )}
       </TooltipContent>
     </Tooltip>
   );
@@ -61,12 +72,16 @@ export function InfoTip({
 export function FieldLabel({
   children,
   info,
+  docs,
+  docsLabel,
   infoSide,
   infoLabel,
   className,
   ...props
 }: React.ComponentPropsWithoutRef<typeof Label> & {
   info?: React.ReactNode;
+  docs?: DocsTopic;
+  docsLabel?: string;
   infoSide?: Side;
   infoLabel?: string;
 }) {
@@ -79,7 +94,13 @@ export function FieldLabel({
     >
       {children}
       {info != null && (
-        <InfoTip content={info} side={infoSide} label={infoLabel} />
+        <InfoTip
+          content={info}
+          docs={docs}
+          docsLabel={docsLabel}
+          side={infoSide}
+          label={infoLabel}
+        />
       )}
     </Label>
   );

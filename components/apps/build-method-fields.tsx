@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -412,16 +413,20 @@ function TextField({
   onChange,
   placeholder,
   help,
+  docs,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   help?: string;
+  docs?: DocsTopic;
 }) {
   return (
     <div className="space-y-2">
-      <FieldLabel info={help}>{label}</FieldLabel>
+      <FieldLabel info={help} docs={docs}>
+        {label}
+      </FieldLabel>
       <Input
         value={value}
         placeholder={placeholder}

@@ -15,6 +15,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -634,6 +635,7 @@ function Field({
   label,
   optional,
   info,
+  docs,
   value,
   onChange,
   placeholder,
@@ -643,6 +645,7 @@ function Field({
   label: string;
   optional?: boolean;
   info: string;
+  docs?: DocsTopic;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -655,7 +658,7 @@ function Field({
   const id = React.useId();
   return (
     <div className="space-y-1.5">
-      <FieldLabel className="text-xs" htmlFor={id} info={info}>
+      <FieldLabel className="text-xs" htmlFor={id} info={info} docs={docs}>
         {label}
         {optional && (
           <span className="text-xs font-normal text-muted-foreground">

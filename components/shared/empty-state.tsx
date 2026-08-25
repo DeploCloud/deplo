@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils";
+import { DocsLink } from "@/components/ui/docs-link";
+import type { DocsTopic } from "@/lib/docs";
 
 export function EmptyState({
   icon: Icon,
@@ -6,6 +8,8 @@ export function EmptyState({
   graphic,
   title,
   description,
+  docs,
+  docsLabel,
   action,
   className,
 }: {
@@ -20,6 +24,10 @@ export function EmptyState({
   graphic?: React.ReactNode;
   title: string;
   description?: string;
+  /** The manual section for the feature this empty list belongs to. Skip it on
+   *  a "no results" state: an empty filter is not a gap in knowledge. */
+  docs?: DocsTopic;
+  docsLabel?: string;
   action?: React.ReactNode;
   className?: string;
 }) {
@@ -42,9 +50,16 @@ export function EmptyState({
         )
       )}
       <h3 className="text-sm font-medium">{title}</h3>
-      {description && (
+      {(description || docs) && (
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
           {description}
+          {docs && (
+            <DocsLink
+              topic={docs}
+              label={docsLabel}
+              className={description ? "ml-1.5" : undefined}
+            />
+          )}
         </p>
       )}
       {action && <div className="mt-5">{action}</div>}

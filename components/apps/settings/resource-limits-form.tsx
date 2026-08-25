@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import {
   Accordion,
   AccordionContent,
@@ -56,6 +57,7 @@ import { cn } from "@/lib/utils";
 function LimitField({
   label,
   info,
+  docs,
   value,
   onChange,
   unit,
@@ -66,6 +68,7 @@ function LimitField({
 }: {
   label: string;
   info: React.ReactNode;
+  docs?: DocsTopic;
   value: string;
   onChange: (v: string) => void;
   unit?: string;
@@ -76,7 +79,9 @@ function LimitField({
 }) {
   return (
     <div className="space-y-2">
-      <FieldLabel info={info}>{label}</FieldLabel>
+      <FieldLabel info={info} docs={docs}>
+        {label}
+      </FieldLabel>
       <div className="relative">
         <Input
           type={type}
