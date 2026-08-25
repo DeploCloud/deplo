@@ -497,7 +497,7 @@ builder.subscriptionFields((t) => ({
     type: ImportRunRef,
     nullable: true,
     description:
-      'Emits the migration this team currently has in flight, or null when there is none. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard\'s watching panel read. Deliberately NOT gated on `create_projects`: "somebody is moving a platform into this team right now" is a warning every member needs.',
+      'Emits the migration this team currently has in flight, or null when there is none. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard\'s panel read. Deliberately NOT gated on `create_projects`: "somebody is moving a platform into this team right now" is a warning every member needs.',
     authScopes: { loggedIn: true },
     subscribe: (_root, _args, ctx) => activeMigrationStream(ctx.teamId),
     resolve: (run) => run,

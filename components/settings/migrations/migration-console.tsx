@@ -4,12 +4,15 @@ import * as React from "react";
 import {
   ArrowDownToLine,
   Check,
+  CircleSlash,
+  Copy,
   Search,
   SkipForward,
   TriangleAlert,
   Info,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import {
@@ -26,12 +29,14 @@ import { gql } from "@/lib/graphql-client";
 import type { ReportItem } from "./types";
 
 /**
- * What a migration is doing, line by line, while it does it.
+ * What a migration did, line by line - while it runs, and ever after.
  *
- * It replaces a dialog that listed the same rows in prose and told nobody
- * anything: no times, no way to find the one service you care about among four
- * hundred lines, and the failures - the only rows anyone opens this for - in the
- * same weight as the two hundred that worked.
+ * The ONE viewer for a run's log. There used to be two: this console for
+ * whoever started the run, and a "Report" dialog - same rows, grouped by
+ * outcome, no timestamps, no search - for everybody else, for the end of the
+ * wizard and for History. One table read two ways is two answers to the same
+ * question, and the one people were handed depended on which door they came
+ * through. This is the surviving one, because chronology is what a log is.
  *
  * So it is a console. Fixed-width, densest thing in the product, newest at the
  * bottom, following the run unless you scroll away from it. Every line carries
@@ -45,16 +50,17 @@ import type { ReportItem } from "./types";
  * per tab that has to be reconciled with the first.
  */
 
-const RUN_LOG = /* GraphQL */ `
+/**
+ * One document for the whole feature. `settleFinished` in the wizard reads the
+ * run through it too - it wants `status` and `error`, which are on it already -
+ * so a field renamed in the schema breaks one query rather than two.
+ */
+export const RUN_LOG = /* GraphQL */ `
   query MigrationLog($id: String!) {
     dokployImport(id: $id) {
       id
       status
       error
-      created
-      skipped
-      failed
-      manual
       phase
       stepLabel
       items {
@@ -76,16 +82,12 @@ interface RunLog {
   id: string;
   status: string;
   error: string | null;
-  created: number;
-  skipped: number;
-  failed: number;
-  manual: number;
   phase: string;
   stepLabel: string | null;
   items: ReportItem[];
 }
 
-/** The four outcomes, and what each one looks like at a glance. */
+/** The five outcomes, and what each one looks like at a glance. */
 const LEVELS = {
   created: {
     label: "Created",
@@ -98,6 +100,15 @@ const LEVELS = {
     icon: SkipForward,
     tone: "text-muted-foreground",
     dot: "bg-muted-foreground",
+  },
+  // Its own row, not folded into "Needs you": "Deplo has no equivalent for this"
+  // is a different sentence from "this came over, go and look at it", and the
+  // grouped report the console replaced said them apart.
+  unsupported: {
+    label: "No equivalent",
+    icon: CircleSlash,
+    tone: "text-muted-foreground",
+    dot: "bg-border",
   },
   manual: {
     label: "Needs you",
@@ -115,7 +126,7 @@ const LEVELS = {
 
 type Level = keyof typeof LEVELS;
 
-/** Anything the server sends that is not one of the four reads as "needs you". */
+/** Anything the server sends that is not one of the five reads as "needs you". */
 function levelOf(outcome: string): Level {
   return outcome in LEVELS ? (outcome as Level) : "manual";
 }
@@ -141,7 +152,15 @@ export function MigrationConsole({
   /** Keep polling. False once the run is over: the list cannot change again. */
   live: boolean;
 }) {
-  const [log, setLog] = React.useState<RunLog | null>(null);
+  // Stamped with the run it came from, so re-opening the dialog on a DIFFERENT
+  // run never paints the previous one's lines while this one's are on the way -
+  // and `undefined` (nothing read yet) stays distinct from `null` (the server
+  // says there is no such run), which the empty state below tells apart.
+  const [fetched, setFetched] = React.useState<{
+    runId: string;
+    log: RunLog | null;
+  } | null>(null);
+  const log = fetched?.runId === runId ? fetched.log : undefined;
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [only, setOnly] = React.useState<Level | null>(null);
@@ -158,7 +177,7 @@ export function MigrationConsole({
         });
         if (!alive) return;
         setError(null);
-        setLog(d.dokployImport);
+        setFetched({ runId, log: d.dokployImport });
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       }
@@ -201,12 +220,34 @@ export function MigrationConsole({
     bottom.current?.scrollIntoView({ block: "end" });
   }, [shown.length, follow, open]);
 
-  const counts: Record<Level, number> = {
-    created: log?.created ?? 0,
-    skipped: log?.skipped ?? 0,
-    manual: log?.manual ?? 0,
-    failed: log?.failed ?? 0,
-  };
+  // Counted here rather than read off the run: the stored counters fold
+  // `unsupported` into `manual` (see `refreshCounts`), so a chip reading them
+  // would disagree with the rows its own filter shows.
+  const counts = items.reduce(
+    (acc, i) => {
+      acc[levelOf(i.outcome)] += 1;
+      return acc;
+    },
+    { created: 0, skipped: 0, unsupported: 0, manual: 0, failed: 0 } as Record<
+      Level,
+      number
+    >,
+  );
+
+  function copyLog() {
+    // What is on screen, not the whole run: somebody who filtered to the four
+    // failures is copying four failures.
+    navigator.clipboard.writeText(
+      shown
+        .map(
+          (i) =>
+            `${clock(i.at)}  ${i.outcome.padEnd(11)} ${i.sourceKind.padEnd(9)} ${i.path}` +
+            (i.message ? `  ${i.message}` : ""),
+        )
+        .join("\n"),
+    );
+    toast.success("Log copied");
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -268,9 +309,13 @@ export function MigrationConsole({
           {error && <p className="p-3 text-destructive">{error}</p>}
           {!error && shown.length === 0 && (
             <p className="p-3 text-muted-foreground">
-              {items.length === 0
-                ? "Nothing yet."
-                : "Nothing matches that filter."}
+              {/* A run that is gone is a row somebody deleted out from under
+                  this list; saying so beats an empty console. */}
+              {log === null
+                ? "That migration is no longer here."
+                : items.length === 0
+                  ? "Nothing yet."
+                  : "Nothing matches that filter."}
             </p>
           )}
           <ul className="divide-y divide-border/40">
@@ -311,10 +356,20 @@ export function MigrationConsole({
               ? `${items.length} line(s)`
               : `${shown.length} of ${items.length} line(s)`}
           </span>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            <X className="size-4" />
-            Close
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              onClick={copyLog}
+              disabled={shown.length === 0}
+            >
+              <Copy className="size-4" />
+              Copy
+            </Button>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              <X className="size-4" />
+              Close
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

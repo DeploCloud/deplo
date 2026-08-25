@@ -17,8 +17,9 @@ import {
  * A migration creates apps, databases and volumes across the fleet and stops
  * the services it moves on the source platform, so "one is running right now"
  * is something every member wants to see before they touch anything - not only
- * the person driving it, and not only on the migrations page. One SSE per tab,
- * shared by the header chip and by the wizard's watching panel.
+ * the person who started it, and not only on the migrations page. One SSE per
+ * tab, shared by the header chip and by the wizard's panel - which is the SAME
+ * panel for everybody, so this feed is what drives a teammate's Stop button too.
  *
  * There is at most one: opening a run closes any older one of the same team.
  */

@@ -147,6 +147,13 @@ export interface Placement {
   exposedPort?: number | null;
 }
 
+/** How far the panel thinks the run has got. */
+export interface MigrationProgress {
+  done: number;
+  total: number;
+  current: string;
+}
+
 /** A server's answer to "are these host ports free?" - see `hostPortsInUse`. */
 export interface PortCheck {
   checked: boolean;

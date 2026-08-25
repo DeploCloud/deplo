@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
-import { formatBuildDuration, timeAgo } from "@/lib/utils";
+import { formatBuildDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -33,20 +33,18 @@ import {
 } from "@/components/layout/migration-activity";
 import { InstallStep, type PendingMachine } from "./install-step";
 import { MigrationGraphic, type MigrationState } from "./migration-graphic";
-import { MigrationReportDialog, RUN_REPORT_QUERY } from "./migration-report";
 import { RemoveMigrationSources } from "./remove-sources";
 import { ReviewStep } from "./review-step";
 import { PeopleStep } from "./people-step";
-import { MigrationConsole } from "./migration-console";
+import { MigrationConsole, RUN_LOG } from "./migration-console";
 import { StepShell } from "./step-shell";
-import { type MigrationProgress } from "./migration-progress";
 import {
   importableOf,
   type ImportRun,
   type Invite,
+  type MigrationProgress,
   type Placement,
   type Plan,
-  type ReportItem,
   type RevertResult,
   type ServerChoice,
 } from "./types";
@@ -248,24 +246,8 @@ const MINT_LINK = /* GraphQL */ `
   }
 `;
 
-/**
- * A copy's line in the same report the rest of the import writes to.
- *
- * The server records its own row against the run; this is the LIVE echo of it,
- * so the dialog shows the copy happening instead of going quiet for the minutes
- * a volume takes.
- */
-function dataNote(message: string, outcome: string = "manual"): ReportItem {
-  return {
-    path: "Data",
-    sourceKind: "volume",
-    sourceName: "data",
-    outcome,
-    targetKind: null,
-    targetId: null,
-    message,
-  };
-}
+/** Nothing has moved yet, or this tab does not know what has. */
+const NO_PROGRESS: MigrationProgress = { done: 0, total: 0, current: "" };
 
 /**
  * The page's snapshot of a run, in the shape the live feed uses, so the panel
@@ -303,7 +285,6 @@ export function MigrationWizard({
   buildServers,
   isInstanceAdmin,
   canExposePorts,
-  viewerName,
   resumable,
   prefill,
 }: {
@@ -315,12 +296,6 @@ export function MigrationWizard({
   isInstanceAdmin: boolean;
   /** The publish-ports grant. Without it a database's port cannot come over at all. */
   canExposePorts: boolean;
-  /**
-   * Who is looking. Compared against a running migration's `actor` to tell the
-   * person who started it from a teammate who walked in on it - the first gets
-   * their wizard back, the second gets the read-only panel.
-   */
-  viewerName: string;
   /**
    * The run this person is in the middle of, read at page load: one still moving,
    * or one whose report they have not closed yet. It is what makes leaving the
@@ -362,12 +337,6 @@ export function MigrationWizard({
     {},
   );
 
-  const [progress, setProgress] = React.useState<MigrationProgress>({
-    done: 0,
-    total: 0,
-    current: "",
-  });
-  const [items, setItems] = React.useState<ReportItem[]>([]);
   /**
    * Where the run stood when this page was rendered, kept until the live feed
    * connects - a fraction of a second in which the wizard would otherwise paint
@@ -381,13 +350,9 @@ export function MigrationWizard({
   );
   const [runId, setRunId] = React.useState<string | null>(null);
   const [failure, setFailure] = React.useState<string | null>(null);
+  /** The `startDokployImport` call is in flight. It is over in about a second,
+   *  and from then on the run is the server's and the live feed is the truth. */
   const [running, setRunning] = React.useState(false);
-  /**
-   * Somebody pressed Stop. A ref, not state: the loop below reads it between
-   * calls in a closure that was made before the click, and a state read there
-   * would be the value it had when the run started.
-   */
-  const cancelled = React.useRef(false);
   const [stopped, setStopped] = React.useState(false);
   /** The run this tab took over rather than started. Set when it is stopped from
    *  here, so revert/keep act on it exactly as they do for the driver. */
@@ -532,7 +497,6 @@ export function MigrationWizard({
       return;
     }
 
-    setItems([]);
     setFailure(null);
     setStopped(false);
     setRunning(true);
@@ -585,24 +549,23 @@ export function MigrationWizard({
       (r?.projects ?? 0) +
       (r?.environments ?? 0) +
       (r?.sharedVars ?? 0);
+    // What is STILL here, and why, is a list rather than a sentence - and a
+    // toast expires in four seconds. The server writes one line per leftover
+    // into the run's own log, so this only has to point at it.
     if (r && r.failed.length > 0)
-      // Not a toast: a list of what is STILL here is the thing to read, and a
-      // toast expires in four seconds. It lands in the log instead.
-      setItems((prev) => [
-        ...prev,
-        ...r.failed.map((f) => dataNote(f, "failed")),
-      ]);
-    toast.success(
-      removed === 0
-        ? "Nothing was left to remove"
-        : `Removed ${removed} object(s)`,
-    );
+      toast.warning(
+        `Removed ${removed} object(s) - ${r.failed.length} could not be removed, see the log in History`,
+      );
+    else
+      toast.success(
+        removed === 0
+          ? "Nothing was left to remove"
+          : `Removed ${removed} object(s)`,
+      );
     setStopped(false);
     setFailure(null);
     setPlan(null);
     setRunId(null);
-    setItems([]);
-    setProgress({ done: 0, total: 0, current: "" });
     setChosen(new Set());
     setPlacements({});
     setServerMap({});
@@ -634,7 +597,6 @@ export function MigrationWizard({
     router.refresh();
   }
 
-  /** The log of a run this tab did not start: read off its own ledger. */
   /**
    * The run ended somewhere else - in the control plane, which is where it runs
    * now - so this tab has to find out how.
@@ -651,16 +613,11 @@ export function MigrationWizard({
     async (id: string) => {
       const res = await gqlAction<
         {
-          dokployImport: {
-            status: string;
-            error: string | null;
-            items: ReportItem[];
-          } | null;
+          dokployImport: { status: string; error: string | null } | null;
         },
-        { status: string; error: string | null; items: ReportItem[] } | null
-      >(RUN_REPORT_QUERY, { id }, (d) => d.dokployImport);
+        { status: string; error: string | null } | null
+      >(RUN_LOG, { id }, (d) => d.dokployImport);
       if (!res.ok || !res.data) return;
-      setItems(res.data.items);
       // Still moving: the live feed owns the screen. Only the arrival path gets
       // here - the edge below fires when the feed has already gone quiet.
       if (res.data.status === "running") return;
@@ -680,19 +637,6 @@ export function MigrationWizard({
     },
     [isInstanceAdmin, hasPlan],
   );
-
-  async function loadResumedLog(id: string) {
-    setLogOpen(true);
-    const res = await gqlAction<
-      { dokployImport: { items: ReportItem[] } | null },
-      { items: ReportItem[] } | null
-    >(RUN_REPORT_QUERY, { id }, (d) => d.dokployImport);
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    setItems(res.data?.items ?? []);
-  }
 
   /**
    * Leaving the report for good. Until this lands, the page opens on this run
@@ -823,14 +767,13 @@ export function MigrationWizard({
    * that only existed in this tab - state that now outlives the tab entirely.
    */
   /**
-   * A migration this tab is NOT driving - somebody else's, or one this tab
-   * started before a reload. The wizard opens on it instead of on an empty
-   * connect form: a second run would mark the first one Interrupted, and a
-   * blank form is the worst thing to show while half a platform is in flight.
+   * The team's run in flight, whoever started it. The wizard opens on it instead
+   * of on an empty connect form: a second run would mark the first one
+   * Interrupted, and a blank form is the worst thing to show while half a
+   * platform is in the air.
    *
    * Read live from the same stream the header chip uses, so it appears the
-   * moment a teammate starts one and clears itself when the run ends. Anything
-   * this tab holds of its own wins: the driver keeps its panel with Stop on it.
+   * moment anybody starts one and clears itself when the run ends.
    */
   const watched = useActiveMigration();
 
@@ -866,46 +809,34 @@ export function MigrationWizard({
     const now = watched?.id ?? null;
     const before = wasWatching.current;
     wasWatching.current = now;
-    if (before && !now && before === (adoptedId ?? runId))
-      void settleFinished(before);
-  }, [watched, adoptedId, runId, settleFinished]);
+    // Whatever run this tab was showing, not only one it had adopted: the panel
+    // is the same for everybody, so the screen it turns into when the run lands
+    // has to be too. Without this, a teammate whose page was already open when
+    // somebody started a migration watched it finish and got dropped back onto
+    // the connect form, while the person who started it got the last screen.
+    if (before && !now) void settleFinished(before);
+  }, [watched, settleFinished]);
   /**
-   * Whether the run in flight is THIS person's. `actor` is a display name rather
-   * than an id, which is as much as the run row carries - and it is enough here,
-   * because both panels' actions are gated `create_projects` server-side and the
-   * whole page already is: guessing wrong costs a visible button, never an
-   * action somebody was not allowed to take.
-   */
-  const mine =
-    feed != null && (feed.id === adoptedId || feed.actor === viewerName);
-  /**
-   * The run this tab started, come back to after a reload (or opened from the
-   * header chip). The loop is gone - it held the API key, which is never stored
-   * - but every button on the panel is a server call that needs only the run's
-   * id, so the person who started it gets the SAME screen they left, Stop and
-   * all, rather than a second kind of screen that only watches.
+   * A run in flight, on the screen of whoever has this page open.
+   *
+   * There is ONE panel, and everybody with the page gets it: the person who
+   * started the run, the same person after a reload, and the teammate who walked
+   * in on it. There used to be a second, read-only one for anybody whose display
+   * name did not match the run's `actor` - which was fiction twice over. The run
+   * has not lived in a browser tab since it moved into the control plane, and
+   * the server never asked who started it: stopping, undoing and dismissing are
+   * gated on `create_projects` and the team, and reaching this page already
+   * needs both. A screen that hides a button the server would honour teaches
+   * people that Deplo is guessing.
    */
   const resumed =
-    feed != null &&
-    mine &&
-    !running &&
-    !stopped &&
-    failure === null &&
-    step !== "done";
-  /** The same run once this tab has stopped it: `runId` is set now, so the
-   *  panel's second half - remove what came over, or keep it - is the driver's. */
+    feed != null && !running && !stopped && failure === null && step !== "done";
+  /** The same run once it has been stopped from here: `runId` is set now, so the
+   *  panel's second half - remove what came over, or keep it - is on offer. */
   const resumedStopped =
     adoptedId != null && !running && (stopped || failure !== null);
-  const watching =
-    feed != null &&
-    !mine &&
-    runId == null &&
-    !running &&
-    !stopped &&
-    failure === null &&
-    step !== "done";
   /** A migration owns the screen, whoever is looking and however they got here. */
-  const takenOver = watching || resumed || resumedStopped;
+  const takenOver = resumed || resumedStopped;
 
   // One derived value drives the picture. A run in flight wins over the step -
   // driven here or watched from here - because the cable full of packets is the
@@ -1005,7 +936,7 @@ export function MigrationWizard({
           The Done step opts out entirely - see `DoneStep`. */}
       {step === "done" ? (
         <DoneStep
-          items={items}
+          onShowLog={() => setLogOpen(true)}
           onFinish={() => {
             void closeReport();
             router.push("/");
@@ -1046,9 +977,9 @@ export function MigrationWizard({
                   // could not read a single volume. A gate the chrome around it
                   // does not honour is a suggestion.
                   if (s === "review") return plan != null && machinesReady;
-                  // People and the report are what the migration produces: an
-                  // empty one is worse than a chip that does not respond.
-                  return items.length > 0;
+                  // People and the report are what the migration produces:
+                  // neither is anywhere until there is a run.
+                  return (adoptedId ?? runId) != null;
                 }}
                 onSelect={(s) => {
                   // Nothing moves while the loop is mid-flight, or while a
@@ -1060,11 +991,9 @@ export function MigrationWizard({
             </div>
 
             <div>
-              {watching && <WatchingPanel run={feed} />}
-
-              {/* The same panel the driver sees, for the person who started this
-                  run and came back to it. Not a second kind of screen: the step
-                  they left is the step they get, with the Stop still on it. */}
+              {/* One panel, one run, whoever is looking: the person who started
+                  it, the same person after a reload, the teammate who walked in
+                  on it. The step they left is the step they get, Stop and all. */}
               {(resumed || resumedStopped) && (
                 <MovingPanel
                   progress={
@@ -1074,18 +1003,13 @@ export function MigrationWizard({
                           total: feed.totalSteps,
                           current: feed.stepLabel ?? lastStep(feed.lastPath),
                         }
-                      : progress
+                      : NO_PROGRESS
                   }
-                  // Never stalled now: the run is in the control plane, and a
-                  // page with no run open shows no panel at all.
-                  stalled={false}
                   startedAt={feed ? Date.parse(feed.startedAt) : null}
                   failure={failure}
                   running={resumed}
                   reverting={reverting}
-                  onShowLog={() =>
-                    void loadResumedLog(adoptedId ?? feed?.id ?? "")
-                  }
+                  onShowLog={() => setLogOpen(true)}
                   onStop={() => void stopResumed(feed?.id ?? "")}
                   onRevert={revertRun}
                   onKeep={keepPartial}
@@ -1125,16 +1049,14 @@ export function MigrationWizard({
                 plan &&
                 (moving ? (
                   <MovingPanel
-                    progress={progress}
-                    stalled={false}
+                    progress={NO_PROGRESS}
                     startedAt={null}
                     failure={failure}
                     running={running}
                     reverting={reverting}
                     onShowLog={() => setLogOpen(true)}
-                    onStop={() => {
-                      cancelled.current = true;
-                    }}
+                    // No Stop: this is the second the `startDokployImport` call
+                    // is in flight, and there is no run id to stop yet.
                     onRevert={revertRun}
                     onKeep={keepPartial}
                     canRevert={runId != null}
@@ -1325,74 +1247,6 @@ function ConnectStep({
 /* ------------------------------------------------------------------ */
 
 /**
- * Somebody else's migration, from the outside.
- *
- * The loop that moves a platform lives in the tab that started it - it holds
- * the API key, which is never stored - so there is nothing to resume and
- * nothing to drive from here. What there IS is the one thing a second person
- * needs: that it is running, whose it is, how far it has got, and the advice to
- * leave the fleet alone until it lands. The report reads live off the run's own
- * ledger, so "12 created" is the truth of a minute ago, not of the page load.
- */
-function WatchingPanel({ run }: { run: ActiveMigration }) {
-  const [items, setItems] = React.useState<ReportItem[] | null>(null);
-  const [loading, setLoading] = React.useState(false);
-
-  async function showLog() {
-    setLoading(true);
-    const res = await gqlAction<
-      { dokployImport: { items: ReportItem[] } | null },
-      { items: ReportItem[] } | null
-    >(RUN_REPORT_QUERY, { id: run.id }, (d) => d.dokployImport);
-    setLoading(false);
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    setItems(res.data?.items ?? []);
-  }
-
-  const done = run.created + run.skipped + run.failed + run.manual;
-
-  return (
-    <StepShell
-      title="A migration is running"
-      lead={`${run.actor} is bringing ${run.orgName ?? run.sourceUrl} into this team. It keeps going in the tab that started it - best not to change anything here until it finishes.`}
-    >
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
-        <span>
-          Started {timeAgo(run.startedAt)} · {done} thing(s) across so far
-          {run.failed > 0 && `, ${run.failed} failed`}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          onClick={() => void showLog()}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <ScrollText className="size-4" />
-          )}
-          Show log
-        </Button>
-      </div>
-
-      <MigrationReportDialog
-        open={items != null}
-        onOpenChange={(o) => !o && setItems(null)}
-        items={items ?? []}
-        description="What has come over so far."
-      />
-    </StepShell>
-  );
-}
-
-/**
  * What the review turns into once the move starts, and what it becomes if that
  * move does not finish.
  *
@@ -1410,7 +1264,6 @@ function WatchingPanel({ run }: { run: ActiveMigration }) {
  */
 function MovingPanel({
   progress,
-  stalled,
   startedAt,
   failure,
   running,
@@ -1422,21 +1275,15 @@ function MovingPanel({
   canRevert,
 }: {
   progress: MigrationProgress;
-  /**
-   * The run is open and NOBODY is driving it - what a reload leaves behind, since
-   * the loop lives in the tab. The panel must not spin as if work were happening:
-   * a bar sweeping over a dead run is the most convincing lie this screen can
-   * tell, and somebody watching it wait is somebody not pressing Stop.
-   */
-  stalled: boolean;
-  /** Epoch ms this tab started driving, or null when there is no live loop. */
+  /** Epoch ms the run started, or null when there is no run to time yet. */
   startedAt: number | null;
   failure: string | null;
   running: boolean;
   reverting: boolean;
   onShowLog: () => void;
-  /** Stop after the call in flight. Never mid-request - see the loop. */
-  onStop: () => void;
+  /** Ask the control plane to stop between steps. Absent for the second while
+   *  the run is being opened, when there is no run id to stop. */
+  onStop?: () => void;
   onRevert: () => Promise<ActionResult<unknown>>;
   onKeep: () => void;
   /**
@@ -1485,7 +1332,7 @@ function MovingPanel({
             />
           )}
           <Button variant="outline" onClick={onKeep} disabled={reverting}>
-            {canRevert ? "Keep it and see the report" : "Back to the review"}
+            {canRevert ? "Keep it and finish" : "Back to the review"}
           </Button>
           <Button variant="ghost" onClick={onShowLog} disabled={reverting}>
             <ScrollText className="size-4" />
@@ -1497,46 +1344,27 @@ function MovingPanel({
 
   return (
     <StepShell
-      title={
-        stalled ? "This migration is not running" : "Migration in progress..."
-      }
-      lead={
-        stalled
-          ? "Nothing is moving: the tab driving it is gone. Stop it and start again - what is already here is skipped."
-          : "Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
-      }
+      title="Migration in progress"
+      lead="Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
     >
       <div className="space-y-2">
         {/* The bar alone stalls for minutes on a big volume - same fill, no
             movement, and it reads as hung. The sweep and the spinner are the
-            only two things on screen saying the work is still going - so a
-            STALLED run gets neither. */}
+            two things on screen still saying the work is going. */}
         <div className="flex items-center gap-3">
-          <Progress
-            value={pct}
-            className={stalled ? undefined : "deplo-progress-working"}
-          />
-          {!stalled && (
-            <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
-          )}
+          <Progress value={pct} className="deplo-progress-working" />
+          <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
         </div>
         <p className="text-sm text-muted-foreground">
-          {stalled
-            ? [
-                `${progress.done} thing(s) across`,
-                progress.current && `last: ${progress.current}`,
-              ]
-                .filter(Boolean)
-                .join(" · ")
-            : [
-                progress.total > 0 &&
-                  `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`,
-                progress.current,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+          {[
+            progress.total > 0 &&
+              `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`,
+            progress.current,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
-        {!stalled && <ElapsedLine startedAt={startedAt} progress={progress} />}
+        <ElapsedLine startedAt={startedAt} progress={progress} />
       </div>
 
       {/* Both at the end of the row, Stop first: it is the one somebody is
@@ -1545,21 +1373,23 @@ function MovingPanel({
         {/* Stop, not Cancel: the call in flight finishes either way, so this
             asks for no confirmation - it is the safe half of the decision, and
             the destructive one (take it back out) comes after, with its own. */}
-        <Button
-          variant="outline"
-          onClick={() => {
-            setStopping(true);
-            onStop();
-          }}
-          disabled={stopping}
-        >
-          {stopping ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <CircleStop className="size-4" />
-          )}
-          {stopping ? "Stopping" : "Stop"}
-        </Button>
+        {onStop && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              setStopping(true);
+              onStop();
+            }}
+            disabled={stopping}
+          >
+            {stopping ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <CircleStop className="size-4" />
+            )}
+            {stopping ? "Stopping" : "Stop"}
+          </Button>
+        )}
         <Button variant="ghost" onClick={onShowLog}>
           <ScrollText className="size-4" />
           Show log
@@ -1627,21 +1457,21 @@ function ElapsedLine({
  * drawing IS the screen - Deplo lit, Dokploy dark - and it goes to the middle at
  * twice the size with the confetti over it.
  *
- * The report is a dialog rather than the body of this step for the same reason.
+ * The log is a dialog rather than the body of this step for the same reason.
  * "It worked" is the message; the hundred lines behind it are for whoever wants
  * them, and they are still there in History tomorrow morning.
  */
 function DoneStep({
-  items,
+  onShowLog,
   onFinish,
   isInstanceAdmin,
 }: {
-  items: ReportItem[];
+  /** The wizard's own console - the same one the panel opened while it ran. */
+  onShowLog: () => void;
   onFinish: () => void;
   /** Uninstalling an agent is instance-admin, like every server action. */
   isInstanceAdmin: boolean;
 }) {
-  const [reportOpen, setReportOpen] = React.useState(false);
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
       {/* Over the WINDOW, not over the drawing. A burst thrown from the middle
@@ -1667,9 +1497,9 @@ function DoneStep({
           back here gives a blank wizard, which is the same thing without a
           button nobody presses twice. */}
       <div className="flex w-full flex-wrap items-center justify-between gap-2">
-        <Button variant="outline" onClick={() => setReportOpen(true)}>
+        <Button variant="outline" onClick={onShowLog}>
           <ScrollText className="size-4" />
-          View report
+          Show log
         </Button>
         <Button onClick={onFinish}>Finish</Button>
       </div>
@@ -1682,13 +1512,6 @@ function DoneStep({
           <RemoveMigrationSources />
         </div>
       )}
-
-      <MigrationReportDialog
-        open={reportOpen}
-        onOpenChange={setReportOpen}
-        items={items}
-        description="What this migration did, line by line. Nothing here was deployed."
-      />
     </div>
   );
 }

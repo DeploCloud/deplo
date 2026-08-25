@@ -331,7 +331,20 @@ beforeEach(async () => {
   await db.execute(TRUNCATE_PROJECT_GRAPH);
   await db.execute(TRUNCATE_IDENTITY);
   await db.execute("truncate table dokploy_imports cascade;");
-  await seedIdentity(db);
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      // May START a migration and may undo one, but may not delete an app: the
+      // revert keeps every delete's own gate, so this is what a leftover looks
+      // like without a dead host to fake.
+      {
+        id: USER_2,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "create_projects"],
+      },
+    ],
+  });
   await seedServer(db);
   fixtures = defaultFixtures();
   __setDokployFetchForTest(routingFetch());
@@ -339,6 +352,9 @@ beforeEach(async () => {
   await db.execute("truncate table databases cascade;");
   calls = [];
 });
+
+/** A member of team A who may run a migration and nothing destructive. */
+const USER_2 = "user_2";
 
 /** Run as the seeded owner of team A, the way a resolver would. */
 function asOwner<T>(fn: () => Promise<T>): Promise<T> {
@@ -1429,16 +1445,31 @@ test("the wizard opens on the run you left, until you close its report", async (
   );
 });
 
-test("the run that comes back is yours, and only this team may close it", async () => {
+test("a teammate opens on the run in flight, but not on somebody else's report", async () => {
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   await db.execute(
     `update dokploy_imports set actor_user_id = 'someone_else' where id = '${runId}'`,
   );
 
+  // Running: it is the TEAM's, and everybody who may open the page gets the same
+  // panel on it - the same Stop included, which is what the server has always
+  // allowed. A screen that hides a button the server would honour is a lie.
+  assert.equal(
+    (await asOwner(() => resumableDokployImport()))?.id,
+    runId,
+    "a run in flight must reach every member of the team, not only its actor",
+  );
+
+  // Ended: now it is one person's verdict to read and close. A teammate would
+  // otherwise be handed somebody else's report to dismiss - History is where
+  // they read it.
+  await db.execute(
+    `update dokploy_imports set status = 'done' where id = '${runId}'`,
+  );
   assert.equal(
     await asOwner(() => resumableDokployImport()),
     null,
-    "a teammate's wizard must not open on somebody else's migration - they get the header chip and the watching panel",
+    "a finished run belongs to whoever started it until they close its report",
   );
 
   await assert.rejects(() =>
@@ -1752,6 +1783,41 @@ test("a revert removes what the run created", async () => {
   // The run stays in History, saying what it now is.
   const rows = await db.select().from(runsTable).where(eq(runsTable.id, runId));
   assert.equal(rows[0].status, "reverted");
+});
+
+test("what a revert could not remove is written into the run's log", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await settleProvisioning(db);
+
+  // Undone by somebody who may start a migration but may not delete an app.
+  // Every delete keeps its own gate, so what they may not remove comes back as
+  // a leftover rather than as a thrown error.
+  const result = await runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () =>
+    revertDokployImport(runId),
+  );
+  await settleProvisioning(db);
+
+  assert.ok(
+    result.failed.length > 0,
+    "nothing failed, so this fixture proves nothing",
+  );
+  assert.equal(
+    result.apps,
+    0,
+    "an app went out under a capability that bars it",
+  );
+
+  // The reason used to be appended to a client-side array that the same
+  // function cleared three lines later, so "this is still here, and here is
+  // why" reached nobody at all.
+  const report = await asOwner(() => getDokployImport(runId));
+  const leftovers = report!.items.filter((i) => i.sourceKind === "undo");
+  assert.equal(leftovers.length, result.failed.length);
+  assert.ok(
+    leftovers.every((i) => i.outcome === "failed" && i.message),
+    "a leftover with no reason is not a log line",
+  );
 });
 
 test("a revert never touches a project the run only reused", async () => {

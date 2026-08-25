@@ -9,6 +9,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  or,
   sql,
 } from "drizzle-orm";
 import yaml from "js-yaml";
@@ -3604,6 +3605,21 @@ async function runRevertDokployImport(runId: string): Promise<RevertResultDTO> {
     }
   }
 
+  // What could NOT be taken back out goes into the run's own log, which is the
+  // only place anybody looks afterwards. It used to be appended to a client-side
+  // array that the same function cleared three lines later, so "this app is
+  // still here, and here is why" reached nobody at all.
+  for (const line of failed) {
+    const [head, ...rest] = line.split(": ");
+    await appendRunItem(runId, {
+      path: `Undo / ${head}`,
+      sourceKind: "undo",
+      sourceName: head,
+      outcome: "failed",
+      message: rest.join(": ") || "could not be removed",
+    });
+  }
+
   // The run stays in History - what happened is still what happened - but it
   // says out loud that it was taken back out, so nobody reads "12 created" as
   // twelve apps that exist. `report_seen_at` goes with it: undoing a migration
@@ -3647,11 +3663,14 @@ async function environmentIsGone(id: string): Promise<boolean> {
  * were away lost its report entirely. This is what makes the wizard a VIEW of
  * the run instead: whichever tab, whichever device, the same screen comes back.
  *
- * It is the person's OWN latest run (`actor_user_id`, not the display name) and
- * it stops coming back the moment they close its report - see
- * {@link dismissDokployReport}. A teammate's run is not restored here: the live
- * one already reaches them through the header chip and the watching panel, and a
- * finished one is somebody else's report to read in History.
+ * Two runs qualify, and the difference is the point. A run still RUNNING belongs
+ * to the whole team: everybody who may open this page gets the same panel on it,
+ * with the same Stop, because that is what the server already allows - stopping,
+ * undoing and dismissing are gated on `create_projects` and the team, never on
+ * who started it. A run that has ENDED is still only its actor's, until they
+ * close its report (see {@link dismissDokployReport}); a teammate would
+ * otherwise be handed somebody else's verdict to dismiss, which is what History
+ * is for.
  */
 export async function resumableDokployImport(): Promise<ImportRunDTO | null> {
   const teamId = await requireActiveTeamId();
@@ -3663,8 +3682,8 @@ export async function resumableDokployImport(): Promise<ImportRunDTO | null> {
     .where(
       and(
         eq(runsTable.teamId, teamId),
-        eq(runsTable.actorUserId, user.id),
         isNull(runsTable.reportSeenAt),
+        or(eq(runsTable.actorUserId, user.id), eq(runsTable.status, "running")),
       ),
     )
     .orderBy(desc(runsTable.seq))

@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { ScrollText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,10 +14,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
-import { gqlAction } from "@/lib/graphql-client";
 import { MigrationGraphic } from "./migration-graphic";
-import { MigrationReportDialog, RUN_REPORT_QUERY } from "./migration-report";
-import type { ImportRun, ReportItem } from "./types";
+import { MigrationConsole } from "./migration-console";
+import type { ImportRun } from "./types";
 
 /**
  * Every migration this team has run, and the report each one left behind.
@@ -28,9 +26,11 @@ import type { ImportRun, ReportItem } from "./types";
  * which is a scan down a column, not a browse. The wizard next door is where
  * you start one, so this tab never offers to.
  *
- * The report is fetched on demand. `dokployImports` deliberately returns runs
- * WITHOUT their items (a team with twenty migrations would otherwise ship
- * thousands of lines to render four dates), so opening one is a second call.
+ * The log is fetched on demand, by the console itself. `dokployImports`
+ * deliberately returns runs WITHOUT their items (a team with twenty migrations
+ * would otherwise ship thousands of lines to render four dates), so opening one
+ * is a second call - and it is the SAME console the wizard shows while the run
+ * is still moving, down to the search box and the filters.
  */
 
 export function MigrationsHistory({
@@ -41,35 +41,14 @@ export function MigrationsHistory({
   /** Take that address back to the wizard. The key was never stored. */
   onUseAddress: (run: ImportRun) => void;
 }) {
-  const [loadingId, setLoadingId] = React.useState<string | null>(null);
-  const [report, setReport] = React.useState<ReportItem[] | null>(null);
-
-  async function openReport(run: ImportRun) {
-    setLoadingId(run.id);
-    const res = await gqlAction<
-      { dokployImport: { items: ReportItem[] } | null },
-      { items: ReportItem[] } | null
-    >(RUN_REPORT_QUERY, { id: run.id }, (d) => d.dokployImport);
-    setLoadingId(null);
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    // A run that is gone is a row someone else deleted the team out from under;
-    // saying so beats an empty dialog.
-    if (!res.data) {
-      toast.error("That migration is no longer here");
-      return;
-    }
-    setReport(res.data.items);
-  }
+  const [open, setOpen] = React.useState<ImportRun | null>(null);
 
   if (runs.length === 0)
     return (
       <EmptyState
         graphic={<MigrationGraphic state="connect" className="h-28" />}
         title="No migrations yet"
-        description="Once you bring a Dokploy over, every run and its report stay here."
+        description="Once you bring a Dokploy over, every run and its log stay here."
       />
     );
 
@@ -128,13 +107,10 @@ export function MigrationsHistory({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => void openReport(r)}
-                      disabled={loadingId != null}
+                      onClick={() => setOpen(r)}
                     >
-                      {loadingId === r.id && (
-                        <Loader2 className="size-4 animate-spin" />
-                      )}
-                      View report
+                      <ScrollText className="size-4" />
+                      Show log
                     </Button>
                     <Button
                       variant="ghost"
@@ -151,11 +127,13 @@ export function MigrationsHistory({
         </Table>
       </div>
 
-      <MigrationReportDialog
-        open={report !== null}
-        onOpenChange={(o) => !o && setReport(null)}
-        items={report ?? []}
-        description="What this migration did, line by line. Nothing here was deployed."
+      <MigrationConsole
+        runId={open?.id ?? null}
+        open={open !== null}
+        onOpenChange={(o) => !o && setOpen(null)}
+        // A run still moving is watchable from here too - History is just
+        // another door onto the same console.
+        live={open?.status === "running"}
       />
     </>
   );
