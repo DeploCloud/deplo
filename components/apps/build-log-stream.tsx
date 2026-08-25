@@ -20,7 +20,7 @@ import {
   BUILD_LEVELS,
 } from "@/components/logs/log-filters";
 import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
-import { LogTitleLink, type LogTitle } from "@/components/logs/log-title";
+import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
@@ -86,7 +86,7 @@ export function BuildLogStream({
   /** What these logs belong to, linked back to its Overview. Set only on the
    *  full-screen route, where the toolbar is the only heading left; the
    *  deployment detail page keeps the app header and would say it twice. */
-  title?: LogTitle;
+  title?: PaneTitle;
   /** Fill the height of the frame instead of sitting in a fixed-height card.
    *  Set on the full-bleed logs page; the deployment detail page leaves it off
    *  and keeps its card. */
@@ -274,7 +274,7 @@ export function BuildLogStream({
         {/* Every control beside the search input is h-9 — `size="sm"` is h-8,
             which lands a button 4px short of an Input and reads as a broken row. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-          <LogTitleLink title={title} />
+          <PaneTitleLink title={title} />
           <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
             {logs.length === 1 ? "1 line" : `${logs.length} lines`}
             {live && (

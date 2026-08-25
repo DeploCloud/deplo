@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Plug, PlugZap, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
-import { cn } from "@/lib/utils";
+import type { ConsoleControls } from "@/components/console/console-controls";
 
-type Status = "connecting" | "live" | "ended" | "error";
+/** Where the attach stream is. Named for the pane, which renders the dot and
+ *  the label for it — this component has no chrome of its own any more. */
+export type AttachStatus = "connecting" | "live" | "ended" | "error";
 
 /**
  * Interactive `docker attach` to a running container's PID 1, rendered in a real
@@ -24,24 +26,26 @@ export function ContainerAttach({
   appId,
   containerName,
   openStdin,
-  tty,
-  embedded = false,
   apiBase,
+  onStatus,
+  onControls,
 }: {
   appId: string;
   containerName: string;
   openStdin: boolean;
-  tty: boolean;
-  /** Drop the outer border/rounding when nested inside the console chrome. */
-  embedded?: boolean;
   /**
    * Override the attach endpoint — the database console passes
    * `/api/databases/<id>/attach` (same SSE/POST contract). Default: the app
    * route for `appId`.
    */
   apiBase?: string;
+  /** Reported up so the pane's one toolbar carries the state, instead of this
+   *  component growing a second toolbar under it. */
+  onStatus?: (status: AttachStatus) => void;
+  /** Hands the toolbar its Clear / Copy / Download handles once mounted. */
+  onControls?: (controls: ConsoleControls) => void;
 }) {
-  const [status, setStatus] = React.useState<Status>("connecting");
+  const [status, setStatus] = React.useState<AttachStatus>("connecting");
   // Gate the stream on the terminal being mounted + fitted, so the GET can carry
   // the real initial pty size instead of a guess.
   const [ready, setReady] = React.useState(false);
@@ -117,10 +121,29 @@ export function ContainerAttach({
     };
   }, [ready, base, containerName, attempt]);
 
+  // Both callbacks behind refs: a fresh closure each render must not re-run the
+  // mount path (`onReady` fires once) nor retrigger the status effect.
+  const onStatusRef = React.useRef(onStatus);
+  const onControlsRef = React.useRef(onControls);
+  React.useEffect(() => {
+    onStatusRef.current = onStatus;
+    onControlsRef.current = onControls;
+  });
+
+  React.useEffect(() => {
+    onStatusRef.current?.(status);
+  }, [status]);
+
   const onReady = React.useCallback((api: XtermApi) => {
     term.current = api;
     size.current = api.fit();
     setReady(true);
+    // Nothing to repaint on an attach stream — clearing really is just wiping
+    // the screen, and the container keeps writing into it.
+    onControlsRef.current?.({
+      clear: () => api.reset(),
+      text: () => api.getText(),
+    });
   }, []);
 
   // Every keystroke (incl. control sequences) → the container's stdin, raw.
@@ -147,55 +170,9 @@ export function ContainerAttach({
     setAttempt((n) => n + 1);
   }
 
-  const statusLabel: Record<Status, string> = {
-    connecting: "connecting…",
-    live: "attached",
-    ended: "detached",
-    error: "attach failed",
-  };
-
   return (
-    <div
-      className={cn(
-        "overflow-hidden",
-        !embedded && "rounded-xl border border-border",
-      )}
-    >
-      <div className="flex items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
-        {status === "live" ? (
-          <PlugZap className="size-4 text-[var(--success)]" />
-        ) : (
-          <Plug className="size-4 text-muted-foreground" />
-        )}
-        <span className="font-mono text-xs">{containerName}</span>
-        <span
-          className={cn(
-            "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]",
-            status === "live"
-              ? "text-[var(--success)]"
-              : status === "error"
-                ? "text-destructive"
-                : "text-muted-foreground",
-          )}
-        >
-          <span
-            className={cn(
-              "size-1.5 rounded-full",
-              status === "live"
-                ? "animate-pulse bg-[var(--success)]"
-                : status === "error"
-                  ? "bg-destructive"
-                  : "bg-muted-foreground/50",
-            )}
-          />
-          {statusLabel[status]}
-        </span>
-        <span className="ml-auto truncate font-mono text-[11px] text-muted-foreground">
-          {tty ? "tty" : openStdin ? "stdin" : "output-only"} · attach (PID 1)
-        </span>
-      </div>
-
-      <div className="h-[420px] bg-[#0a0a0a] p-2">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 bg-terminal p-2">
         <XtermView
           readOnly={!openStdin}
           onReady={onReady}
@@ -208,8 +185,8 @@ export function ContainerAttach({
       {status === "live" && !openStdin ? (
         <div className="border-t border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
           This container was started without stdin open, so it won&apos;t read
-          input — attach is streaming its live output only. Use the exec console
-          to run commands.
+          input — attach is streaming its live output only. Use the shell to run
+          commands.
         </div>
       ) : null}
 
@@ -224,7 +201,7 @@ export function ContainerAttach({
             size="sm"
             variant="outline"
             onClick={reattach}
-            className="ml-auto h-7"
+            className="ml-auto"
           >
             <RotateCcw className="size-4" />
             Reattach

@@ -3,10 +3,10 @@
 import * as React from "react";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { gqlAction } from "@/lib/graphql-client";
 import type { ActionResult } from "@/lib/result";
 import { LineEditor } from "@/lib/exec-line-editor";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
+import type { ConsoleControls } from "@/components/console/console-controls";
 
 // SGR wrappers — the exec pane colours its own chrome (prompt/banner/errors);
 // command OUTPUT is written verbatim so the container's own ANSI renders.
@@ -30,15 +30,12 @@ const toCrlf = (s: string) => s.replace(/\r?\n/g, "\r\n");
  * banner/prompt are fixed for the life of a mount.
  */
 export function ExecTerminal({
-  appId,
-  containerName,
   prompt,
   banner,
   note,
   exec,
+  onControls,
 }: {
-  appId: string;
-  containerName: string;
   /** e.g. `root@web$` — no trailing space (added with the prompt colour). */
   prompt: string;
   /** System lines printed above the first prompt. */
@@ -46,13 +43,15 @@ export function ExecTerminal({
   /** Late-resolved distroless caveat, appended once when it arrives. */
   note: string | null;
   /**
-   * Override how a line is executed — the database console routes through
-   * `execDatabaseConsole`. Default: the app `execConsole` mutation for
-   * `appId`/`containerName`. Must resolve to the same ActionResult contract.
+   * How a line is executed. The pane owns this — it is what applies the shell
+   * wrapper and picks between the app's `execConsole` and a database's
+   * `execDatabaseConsole` — so this component only has to render the REPL.
    */
-  exec?: (
+  exec: (
     command: string,
   ) => Promise<ActionResult<{ output: string; detach?: boolean }>>;
+  /** Hands the toolbar its Clear / Copy / Download handles once mounted. */
+  onControls?: (controls: ConsoleControls) => void;
 }) {
   const term = React.useRef<XtermApi | null>(null);
   const editor = React.useRef<LineEditor | null>(null);
@@ -87,7 +86,23 @@ export function ExecTerminal({
     );
     writeBanner(api);
     api.focus();
+    // Clear is Ctrl-L, fed through the editor rather than reimplemented: it
+    // wipes the screen AND repaints the prompt with the half-typed line intact,
+    // which a bare `reset()` would swallow.
+    onControlsRef.current?.({
+      clear: () => {
+        if (!busy.current) editor.current?.data("\x0c");
+      },
+      text: () => api.getText(),
+    });
   }
+
+  // Behind a ref so a fresh `onControls` closure each render never re-runs the
+  // mount path — `onReady` fires exactly once per terminal.
+  const onControlsRef = React.useRef(onControls);
+  React.useEffect(() => {
+    onControlsRef.current = onControls;
+  });
 
   // The distroless caveat can land after mount (the shell probe is async).
   // Slot it in above the live prompt, preserving the line being typed.
@@ -108,14 +123,7 @@ export function ExecTerminal({
 
   async function run(command: string) {
     busy.current = true;
-    const res = exec
-      ? await exec(command)
-      : await gqlAction(
-          `mutation($input: ExecConsoleInput!){ execConsole(input: $input) { output detach } }`,
-          { input: { appId, command, containerName } },
-          (d: { execConsole: { output: string; detach?: boolean } }) =>
-            d.execConsole,
-        );
+    const res = await exec(command);
     busy.current = false;
     const a = term.current;
     const ed = editor.current;
@@ -160,8 +168,10 @@ export function ExecTerminal({
   }
 
   return (
-    <>
-      <div className="h-[420px] bg-[#0a0a0a] p-2">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* The terminal takes whatever height the pane has left — the route is
+          full-bleed, so that is floor to ceiling. */}
+      <div className="min-h-0 flex-1 bg-terminal p-2">
         <XtermView
           onReady={onReady}
           onData={onData}
@@ -177,13 +187,13 @@ export function ExecTerminal({
             size="sm"
             variant="outline"
             onClick={newSession}
-            className="ml-auto h-7"
+            className="ml-auto"
           >
             <RotateCcw className="size-4" />
             New session
           </Button>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

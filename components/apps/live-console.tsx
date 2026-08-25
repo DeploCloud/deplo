@@ -2,16 +2,16 @@
 
 import * as React from "react";
 import { Loader2 } from "lucide-react";
-import { gql } from "@/lib/graphql-client";
+import { gql, gqlAction } from "@/lib/graphql-client";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ContainerConsole } from "@/components/apps/container-console";
+import { ConsoleEmpty, ConsolePane } from "@/components/console/console-pane";
 import { NotRunningGraphic } from "@/components/apps/not-running-graphic";
 import { useLiveRunning } from "@/components/apps/app-live-status";
+import type { PaneTitle } from "@/components/shared/pane-title";
 import type { ConsoleInstance } from "@/lib/data/console";
 
 type ConsoleInfo = {
   containerName: string;
-  image: string;
   instances: ConsoleInstance[];
 };
 
@@ -19,7 +19,6 @@ const CONSOLE_INFO_QUERY = /* GraphQL */ `
   query ConsoleInfo($appId: String!) {
     consoleInfo(appId: $appId) {
       containerName
-      image
       running
       instances {
         name
@@ -41,27 +40,31 @@ type ConsoleInfoResponse = {
 };
 
 /**
- * Console page body that follows the app's live running state. When the
- * container is running it shows the terminal; when it stops (live, no reload)
- * it swaps to the "not running" empty state, and back again when it restarts —
- * fetching fresh console info on the transition since a stopped project has
- * none server-rendered.
+ * An App's console, following the app's live running state. When the container
+ * is running it shows the pane; when it stops (live, no reload) it swaps to the
+ * "not running" state, and back again when it restarts — fetching fresh console
+ * info on the transition, since a stopped app has none server-rendered.
+ *
+ * Everything the pane renders is shared with the database console; what is
+ * app-specific and lives here is the live-status source and the shell probe.
  */
 export function LiveConsole({
   appId,
+  title,
   initialInfo,
   initialRunning,
 }: {
   appId: string;
+  title: PaneTitle;
   initialInfo: ConsoleInfo | null;
   initialRunning: boolean;
 }) {
   const running = useLiveRunning(initialRunning);
   // Console info for the *current* running session. Seeded from SSR; re-fetched
-  // whenever the app transitions into the running state (a stopped project
-  // has no info, and a restart may target a fresh container). Display is gated
-  // on `running`, so we never null this on stop — it's simply ignored, which
-  // keeps all state writes inside async callbacks (no synchronous effect churn).
+  // whenever the app transitions into the running state (a stopped app has
+  // none, and a restart may target a fresh container). Display is gated on
+  // `running`, so we never null this on stop — it is simply ignored, which keeps
+  // all state writes inside async callbacks (no synchronous effect churn).
   const [info, setInfo] = React.useState<ConsoleInfo | null>(
     initialRunning ? initialInfo : null,
   );
@@ -77,11 +80,7 @@ export function LiveConsole({
         const ci = data.consoleInfo;
         setInfo(
           ci?.running
-            ? {
-                containerName: ci.containerName,
-                image: ci.image,
-                instances: ci.instances,
-              }
+            ? { containerName: ci.containerName, instances: ci.instances }
             : null,
         );
       })
@@ -91,33 +90,48 @@ export function LiveConsole({
     };
   }, [running, appId]);
 
-  if (running && info) {
-    return (
-      <ContainerConsole
-        appId={appId}
-        containerName={info.containerName}
-        image={info.image}
-        instances={info.instances}
-      />
-    );
-  }
+  // Stable identity: the pane re-probes whenever this changes, so a new closure
+  // per render would put it in a loop.
+  const probeShell = React.useCallback(
+    async (containerName: string) => {
+      const res = await gqlAction(
+        `query($input: ShellLabelInput!){ shellLabel(input: $input) }`,
+        { input: { appId, containerName } },
+        (d: { shellLabel: string | null }) => ({ shell: d.shellLabel }),
+      );
+      return res.ok ? (res.data?.shell ?? null) : null;
+    },
+    [appId],
+  );
 
-  if (loading) {
+  if (running && info && info.instances.length > 0) {
     return (
-      <EmptyState
-        icon={Loader2}
-        iconClassName="animate-spin"
-        title="Connecting to the console"
-        description="The app just started, attaching now."
+      <ConsolePane
+        id={appId}
+        title={title}
+        instances={info.instances}
+        initialName={info.containerName}
+        probeShell={probeShell}
       />
     );
   }
 
   return (
-    <EmptyState
-      graphic={<NotRunningGraphic />}
-      title="App is not running"
-      description="Deploy this app, then come back to open a console in it."
-    />
+    <ConsoleEmpty title={title}>
+      {loading ? (
+        <EmptyState
+          icon={Loader2}
+          iconClassName="animate-spin"
+          title="Connecting to the console"
+          description="The app just started, attaching now."
+        />
+      ) : (
+        <EmptyState
+          graphic={<NotRunningGraphic />}
+          title="App is not running"
+          description="Deploy this app, then come back to open a console in it."
+        />
+      )}
+    </ConsoleEmpty>
   );
 }

@@ -30,7 +30,7 @@ import {
   RUNTIME_LEVELS,
 } from "@/components/logs/log-filters";
 import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
-import { LogTitleLink, type LogTitle } from "@/components/logs/log-title";
+import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import {
   TimelineMenu,
   DEFAULT_TIMELINE,
@@ -150,8 +150,8 @@ export function ContainerLogs({
   /** Why this output might not be the whole story (restart loop, failing
    *  healthcheck, half a stack down). Rendered as a chip in the toolbar. */
   notice?: LogNotice | null;
-  /** What these logs belong to, linked back to its Overview. See LogTitleLink. */
-  title?: LogTitle;
+  /** What these logs belong to, linked back to its Overview. See PaneTitleLink. */
+  title?: PaneTitle;
   /**
    * Override the logs endpoint — the database logs viewer passes
    * `/api/databases/<id>/logs` (same SSE contract). Default: the app route
@@ -536,7 +536,7 @@ export function ContainerLogs({
           button 4px short of an Input, which reads as a broken row. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
         <ScrollText className="size-4 shrink-0 text-muted-foreground" />
-        <LogTitleLink title={title} />
+        <PaneTitleLink title={title} />
         {instances.length > 1 ? (
           <Select value={active.name} onValueChange={switchInstance}>
             <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">

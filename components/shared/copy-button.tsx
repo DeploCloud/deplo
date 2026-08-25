@@ -47,7 +47,9 @@ export function CopyButton({
   size = "icon-sm",
   label,
 }: {
-  value: string;
+  /** The text itself, or a thunk read at click time — a terminal's buffer
+   *  changes on every keystroke, so a snapshot prop would always be stale. */
+  value: string | (() => string);
   className?: string;
   size?: "icon" | "icon-sm" | "sm";
   label?: string;
@@ -55,7 +57,9 @@ export function CopyButton({
   const [copied, setCopied] = React.useState(false);
 
   async function copy() {
-    if (!(await writeClipboard(value))) {
+    if (
+      !(await writeClipboard(typeof value === "function" ? value() : value))
+    ) {
       // Both paths are gone (a hardened browser). Say so — a button that
       // reports nothing reads as "copied" and the value never arrives.
       toast.error("Couldn't copy — select the text and copy it manually");

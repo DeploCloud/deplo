@@ -19,12 +19,16 @@ export interface XtermApi {
   focus: () => void;
   fit: () => { cols: number; rows: number };
   getSize: () => { cols: number; rows: number };
+  /** Everything on screen and in scrollback, as plain text — what the toolbar's
+   *  Copy and Download hand out. Read at click time, never at render: the buffer
+   *  changes on every keystroke and a snapshot prop would always be one behind. */
+  getText: () => string;
 }
 
-// One dark theme for every terminal, tuned to the console pane's near-black
-// background so the widget doesn't read as a lighter box floating on black.
+// The ANSI palette every terminal here wears. `background` is filled in at mount
+// from the --terminal token (see below) rather than repeated as a literal, so
+// the emulator and the Tailwind slab around it can't drift apart.
 const THEME: ITerminalOptions["theme"] = {
-  background: "#0a0a0a",
   foreground: "#e4e4e7", // zinc-200
   cursor: "#22c55e",
   cursorAccent: "#0a0a0a",
@@ -32,6 +36,14 @@ const THEME: ITerminalOptions["theme"] = {
   black: "#18181b",
   brightBlack: "#52525b",
 };
+
+/** The --terminal token's value, resolved off a mounted node. xterm parses
+ *  colours itself and does not understand `var()`, so it needs the literal. */
+function terminalBackground(node: HTMLElement): string {
+  return (
+    getComputedStyle(node).getPropertyValue("--terminal").trim() || "#0a0a0a"
+  );
+}
 
 const FONT_FAMILY =
   'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
@@ -84,7 +96,7 @@ export function XtermView({
       fontSize: 13,
       lineHeight: 1.2,
       scrollback: 5000,
-      theme: THEME,
+      theme: { ...THEME, background: terminalBackground(host) },
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -116,6 +128,15 @@ export function XtermView({
       focus: () => term.focus(),
       fit: doFit,
       getSize: () => ({ cols: term.cols, rows: term.rows }),
+      getText: () => {
+        // xterm has no buffer-to-string API; selecting everything and reading
+        // the selection back is the supported way. The selection is cleared
+        // again straight after, so the flash never outlives the click.
+        term.selectAll();
+        const text = term.getSelection();
+        term.clearSelection();
+        return text.replace(/\s+$/, "");
+      },
     });
 
     return () => {

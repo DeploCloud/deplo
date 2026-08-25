@@ -2,9 +2,7 @@ import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { getConsoleInfo } from "@/lib/data/console";
-import { PageHeader } from "@/components/shared/page-header";
 import { LiveConsole } from "@/components/apps/live-console";
-import { ConsoleWarningGate } from "@/components/apps/console-warning-gate";
 
 export const metadata = { title: "Console" };
 
@@ -19,36 +17,27 @@ export default async function AppConsolePage(
   if (!(await hasAppCapability(project.id, "open_app_console"))) notFound();
 
   // No shell probe here — getConsoleInfo skips it so the console renders
-  // instantly. ContainerConsole resolves the shell label after mount and
-  // appends the distroless notice lazily if the container has no shell.
+  // instantly. The pane resolves the shell label after mount and appends the
+  // distroless notice lazily if the container has no shell.
   const info = await getConsoleInfo(project.id);
 
+  // No title, no description, no padding: this route is full-bleed (see
+  // components/layout/shell-frame.tsx) and the terminal fills the frame. What
+  // the page header used to say is either obvious from the sidebar (which app,
+  // which section) or now sits in the pane's own toolbar — including the app's
+  // name, which is the link back to it.
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Console"
-        description="Run commands in the running container (docker exec)."
+    <div className="flex min-h-0 flex-1 flex-col">
+      <LiveConsole
+        appId={project.id}
+        title={{ label: project.name, href: `/apps/${project.slug}` }}
+        initialInfo={
+          info?.running
+            ? { containerName: info.containerName, instances: info.instances }
+            : null
+        }
+        initialRunning={!!info?.running}
       />
-
-      {/* First visit shows a "know what you're doing" warning; the console
-          (and its live agent stream) only mounts once the user continues. */}
-      <ConsoleWarningGate backHref={`/apps/${project.slug}`}>
-        {/* Follows the app's live running state: the terminal appears/
-            disappears as the container starts/stops, no reload. */}
-        <LiveConsole
-          appId={project.id}
-          initialInfo={
-            info?.running
-              ? {
-                  containerName: info.containerName,
-                  image: info.image,
-                  instances: info.instances,
-                }
-              : null
-          }
-          initialRunning={!!info?.running}
-        />
-      </ConsoleWarningGate>
     </div>
   );
 }

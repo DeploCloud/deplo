@@ -17,14 +17,17 @@ export function DownloadButton({
   size = "icon-sm",
   label,
 }: {
-  value: string;
+  /** The text itself, or a thunk read at click time — a terminal's buffer
+   *  changes on every keystroke, so a snapshot prop would always be stale. */
+  value: string | (() => string);
   filename: string;
   className?: string;
   size?: "icon" | "icon-sm" | "sm";
   label?: string;
 }) {
   function download() {
-    const blob = new Blob([value], { type: "text/plain;charset=utf-8" });
+    const text = typeof value === "function" ? value() : value;
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

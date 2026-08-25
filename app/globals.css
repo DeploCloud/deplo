@@ -38,6 +38,14 @@
   --warning: #a35200;
   --info: #0068d6;
 
+  /* The terminal slab (console + attach panes). Deliberately theme-INDEPENDENT:
+     a terminal is black in both themes, because the ANSI colours an app prints
+     into it are its own and are tuned for a dark background - a light slab makes
+     a container's bright-yellow warning unreadable. Defined here, and read back
+     at runtime by the xterm theme, so the emulator and the Tailwind wrapper
+     around it can never drift to two different blacks. */
+  --terminal: #0a0a0a;
+
   /* Not a state and not a chart slot: the one purely decorative accent, spent by
      the empty-state illustrations that have no status to report. Kept out of the
      chart series on purpose - those five are a categorical set with a fixed slot
@@ -152,6 +160,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-terminal: var(--terminal);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

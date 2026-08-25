@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  *
  * Almost every page is a document that scrolls: the shell is `min-h-screen`, the
  * topbar is sticky, and `main` carries the page padding and the `max-w-345`
- * measure. The log consoles are the exception — they want the whole area to the
+ * measure. The log and console panes are the exception — they want the whole area to the
  * right of the sidebar, floor to ceiling, and a pane can only fill the viewport
  * if some ancestor has a definite height to fill.
  *
@@ -30,6 +30,8 @@ import { cn } from "@/lib/utils";
 const FULL_BLEED = [
   /^\/apps\/[^/]+\/logs\/?$/,
   /^\/storage\/databases\/[^/]+\/logs\/?$/,
+  /^\/apps\/[^/]+\/console\/?$/,
+  /^\/storage\/databases\/[^/]+\/console\/?$/,
 ];
 
 /**

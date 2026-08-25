@@ -13,7 +13,7 @@ import {
   type AppRuntimeView,
 } from "@/components/apps/use-app-runtime";
 import type { LogNotice } from "@/components/logs/log-notice";
-import type { LogTitle } from "@/components/logs/log-title";
+import type { PaneTitle } from "@/components/shared/pane-title";
 import type { ConsoleInstance } from "@/lib/data/console";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
 
@@ -80,7 +80,7 @@ export function LiveLogs({
   appId: string;
   /** The App's name and the way back to its Overview. The full-screen route has
    *  no page title and no app header, so the toolbar carries both. */
-  title: LogTitle;
+  title: PaneTitle;
   initialInstances: ConsoleInstance[];
   initialStreamable: boolean;
   /** The owning host's agent honours a log time window (`logs.timerange`). */
