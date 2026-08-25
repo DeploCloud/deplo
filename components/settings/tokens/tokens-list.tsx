@@ -240,10 +240,10 @@ export function TokensList({
       <ConfirmAction
         open={revoke !== null}
         onOpenChange={(v) => !v && setRevoke(null)}
-        title={revoke ? `Revoke ${revoke.name}?` : "Revoke this token?"}
+        title="Revoke token?"
         description={
           revoke
-            ? revokeDescription(copyFor(revoke))
+            ? `${revoke.name} is deleted. ${revokeDescription(copyFor(revoke))}`
             : "Every client using it loses access immediately, including any deploy hook that sends it. This can't be undone; create a new token if you still need one."
         }
         confirmLabel="Revoke token"

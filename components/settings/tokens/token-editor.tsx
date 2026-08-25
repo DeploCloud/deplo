@@ -522,8 +522,8 @@ export function TokenEditor({
         <ConfirmAction
           open={revokeOpen}
           onOpenChange={setRevokeOpen}
-          title={`Revoke ${token!.name}?`}
-          description={revokeDescription(revokeCopy)}
+          title="Revoke token?"
+          description={`${token!.name} is deleted. ${revokeDescription(revokeCopy)}`}
           confirmLabel="Revoke token"
           successMessage="Token revoked"
           onConfirm={async () => {

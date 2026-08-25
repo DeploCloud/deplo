@@ -99,11 +99,11 @@ export function ConnectedClients({
       <ConfirmAction
         open={revoke !== null}
         onOpenChange={(v) => !v && setRevoke(null)}
-        title={revoke ? `Revoke ${revoke.clientName}?` : "Revoke this client?"}
+        title="Revoke client?"
         // The credential is deleted, so the client stops in every team the same
         // consent approved - said without naming them, which is not this
         // screen's business.
-        description="The credential is deleted: the client loses access immediately, in every team it was connected to, and has to be connected again to come back."
+        description={`${revoke?.clientName ?? "This client"} loses access immediately, in every team it was connected to, and has to be connected again to come back.`}
         confirmLabel="Revoke"
         successMessage="Access revoked"
         optimistic

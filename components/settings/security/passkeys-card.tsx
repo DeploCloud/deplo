@@ -342,8 +342,8 @@ function DeletePasskey({
         if (!next) setPassword("");
         setOpen(next);
       }}
-      title={`Remove ${passkey.name}`}
-      description="That device stops signing you in. The passkey stays on it until you delete it there too."
+      title="Remove passkey?"
+      description={`${passkey.name} stops signing you in. The passkey stays on that device until you delete it there too.`}
       confirmLabel="Remove"
       variant="destructive"
       confirmDisabled={!password}

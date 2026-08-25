@@ -1090,8 +1090,8 @@ function ScheduleRow({
         <ConfirmAction
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
-          title={`Delete ${schedule.name}?`}
-          description="This removes the schedule. Backups it already made are kept."
+          title="Delete backup schedule?"
+          description={`${schedule.name} stops running. Backups it already made are kept.`}
           confirmLabel="Delete schedule"
           successMessage="Backup schedule deleted"
           optimistic

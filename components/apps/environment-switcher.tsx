@@ -330,8 +330,8 @@ export function EnvironmentSwitcher({
       <ConfirmAction
         open={deleteFor != null}
         onOpenChange={(o) => !o && setDeleteFor(null)}
-        title={deleteFor ? `Delete ${deleteFor.name}?` : "Delete environment?"}
-        description="This removes the environment. Its future isolated deploy target and variables go with it. This cannot be undone."
+        title="Delete environment?"
+        description={`Deleting ${deleteFor?.name ?? "this environment"} takes its variables and its isolated deploy target with it. This cannot be undone.`}
         confirmLabel="Delete environment"
         successMessage="Environment deleted"
         optimistic

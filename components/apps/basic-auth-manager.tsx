@@ -197,15 +197,11 @@ export function BasicAuthManager({
       <ConfirmAction
         open={deleting !== null}
         onOpenChange={(v) => !v && setDeleting(null)}
-        title={
-          deleting
-            ? `Delete the “${deleting.username}” login?`
-            : "Delete login?"
-        }
+        title="Delete login?"
         description={
           rows.length === 1
-            ? "This is the last credential — deleting it drops the login prompt entirely, and every domain of this app becomes reachable by anyone within seconds."
-            : "This removes the credential. The login it grants stops working within seconds; the app's other credentials keep working."
+            ? `${deleting?.username ?? "This login"} is the last credential — deleting it drops the login prompt entirely, and every domain of this app becomes reachable by anyone within seconds.`
+            : `${deleting?.username ?? "This login"} stops working within seconds; the app's other credentials keep working.`
         }
         confirmLabel="Delete"
         successMessage="Credential deleted — that login no longer works"

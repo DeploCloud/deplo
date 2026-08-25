@@ -194,8 +194,8 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
                               Sign out
                             </Button>
                           }
-                          title={`Sign out ${s.label}`}
-                          description="That device will have to sign in again. If you do not recognise it, change your password too."
+                          title="Sign out device?"
+                          description={`${s.label} will have to sign in again. If you do not recognise it, change your password too.`}
                           confirmLabel="Sign it out"
                           variant="destructive"
                           optimistic

@@ -603,8 +603,8 @@ export function MemberDetailTabs({
       <ConfirmAction
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
-        title={`Remove @${member.username} from the team?`}
-        description="They lose access to this team's apps and resources right away. Their account, and every other team they are in, is untouched — add them back at any time."
+        title="Remove member?"
+        description={`@${member.username} loses access to this team's apps and resources right away. Their account, and every other team they are in, is untouched — add them back at any time.`}
         confirmLabel="Remove member"
         successMessage="Member removed"
         onConfirm={async () => {

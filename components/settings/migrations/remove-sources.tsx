@@ -181,11 +181,7 @@ export function RemoveMigrationSources() {
                 Remove from Deplo
               </Button>
             }
-            title={
-              one
-                ? `Remove ${names} from Deplo?`
-                : "Remove these machines from Deplo?"
-            }
+            title={one ? "Remove server?" : "Remove servers?"}
             description={`Deplo uninstalls itself from ${names} and stops tracking ${
               one ? "that machine" : "those machines"
             }. Where it cannot reach the host it stops tracking it anyway and leaves you the command below. Any data still there can no longer be copied, so finish importing first.`}

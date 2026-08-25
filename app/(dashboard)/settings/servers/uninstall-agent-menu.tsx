@@ -146,11 +146,11 @@ export function UninstallAgentMenu({
       <ConfirmAction
         open={open}
         onOpenChange={setOpen}
-        title={`Remove ${serverName} from Deplo?`}
+        title="Remove server?"
         description={
           provisioned
-            ? "Deplo uninstalls its agent from that host and stops tracking the machine. If it cannot reach the host, it stops tracking it anyway and gives you the command to run there yourself. Any data still there can no longer be copied, so finish the import first."
-            : "Nothing was installed on this host yet - this only removes it from Deplo."
+            ? `Deplo uninstalls its agent from ${serverName} and stops tracking the machine. If it cannot reach the host, it stops tracking it anyway and gives you the command to run there yourself. Any data still there can no longer be copied, so finish the import first.`
+            : `Nothing was installed on ${serverName} yet - this only removes it from Deplo.`
         }
         confirmLabel="Remove from Deplo"
         onConfirm={remove}

@@ -295,9 +295,10 @@ function CronJobRow({
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete &quot;{job.name}&quot;?</DialogTitle>
+            <DialogTitle>Delete cron job?</DialogTitle>
             <DialogDescription className="mt-1">
-              Its run history goes with it. A run in flight is left to finish.
+              {job.name} goes with its run history. A run in flight is left to
+              finish.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:justify-between">

@@ -28,8 +28,8 @@ export function DeleteDatabaseDialog({
       targetKind="database"
       targetId={databaseId}
       targetName={databaseName}
-      title={`Delete ${databaseName}?`}
-      description="This stops the database and permanently destroys its container, all its data, and every backup it has stored."
+      title="Delete database?"
+      description={`${databaseName} is stopped, and its container, all its data and every backup it has stored are permanently destroyed.`}
       confirmLabel="Delete database"
       successMessage="Database deleted"
       forceRetry={{

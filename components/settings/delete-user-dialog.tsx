@@ -137,11 +137,11 @@ export function DeleteUserDialog({
     <ConfirmAction
       open={open}
       onOpenChange={handleOpenChange}
-      title={`Delete @${username}?`}
+      title="Delete account?"
       description={
         blocked
           ? blocked
-          : "This removes the account for good. It can't be undone, and the person can't be restored — a suspension is the reversible option."
+          : `This removes @${username}'s account for good. It can't be undone, and the person can't be restored — a suspension is the reversible option.`
       }
       confirmLabel="Delete account"
       // The typed username is the last gate: everything below is a checkbox, and

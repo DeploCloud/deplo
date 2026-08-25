@@ -550,8 +550,8 @@ export function AppCard({
       targetKind="app"
       targetId={project.id}
       targetName={project.name}
-      title={`Delete ${project.name}?`}
-      description="This permanently removes the app, its data, deployments, domains, environment variables and every backup it has stored. This action cannot be undone."
+      title="Delete app?"
+      description={`Deleting ${project.name} permanently removes its data, deployments, domains, environment variables and every backup it has stored. This action cannot be undone.`}
       confirmLabel="Delete app"
       successMessage="App deleted"
       deleteMutation={() =>

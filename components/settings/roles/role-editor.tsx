@@ -476,11 +476,11 @@ export function RoleEditor({
           <ConfirmAction
             open={deleteOpen}
             onOpenChange={setDeleteOpen}
-            title={`Delete the ${role!.name} role?`}
+            title="Delete role?"
             description={
               role!.memberCount > 0
-                ? `${role!.memberCount} member${role!.memberCount === 1 ? "" : "s"} still hold this role. Move them to another role first.`
-                : "Nobody holds this role, so nothing changes for your members."
+                ? `${role!.memberCount} member${role!.memberCount === 1 ? "" : "s"} still hold ${role!.name}. Move them to another role first.`
+                : `Nobody holds ${role!.name}, so nothing changes for your members.`
             }
             confirmLabel="Delete"
             confirmDisabled={role!.memberCount > 0}

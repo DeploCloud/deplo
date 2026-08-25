@@ -437,13 +437,13 @@ export function DestinationCard({
       <ConfirmAction
         open={confirmOpen}
         onOpenChange={onConfirmOpenChange}
-        title={`Remove ${dest.name}?`}
+        title="Remove destination?"
         description={
           <span className="flex flex-col gap-2">
             <span>
               {impact && (impact.schedules > 0 || impact.runs > 0)
-                ? `This deletes ${plural(impact.schedules, "backup schedule")} and ${plural(impact.runs, "restore point")}. `
-                : "This deletes the backup schedules and restore points that use it. "}
+                ? `Removing ${dest.name} deletes ${plural(impact.schedules, "backup schedule")} and ${plural(impact.runs, "restore point")}. `
+                : `Removing ${dest.name} deletes the backup schedules and restore points that use it. `}
               {alsoDeleteFiles
                 ? "The backup files are deleted too."
                 : isServer

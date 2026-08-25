@@ -439,10 +439,9 @@ function RemoveCertificateDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            Remove the certificate for {certificate?.subject}?
-          </DialogTitle>
+          <DialogTitle>Remove certificate?</DialogTitle>
           <DialogDescription>
+            The certificate for {certificate?.subject} is removed, and{" "}
             {certificate?.domains.join(", ")} fall back to a free Let&rsquo;s
             Encrypt certificate, which this server requests again once the proxy
             comes back. If those domains cannot be verified over HTTP, they will

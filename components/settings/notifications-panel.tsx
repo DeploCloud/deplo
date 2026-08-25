@@ -500,8 +500,8 @@ export function NotificationsPanel({
       <ConfirmAction
         open={deleting !== null}
         onOpenChange={(v) => !v && setDeleting(null)}
-        title={`Remove ${deleting ? deleting.name || CHANNEL_BRAND[deleting.kind].label : "this channel"}?`}
-        description="It stops receiving alerts, and what it was subscribed to is forgotten."
+        title="Remove channel?"
+        description={`${deleting ? deleting.name || CHANNEL_BRAND[deleting.kind].label : "This channel"} stops receiving alerts, and what it was subscribed to is forgotten.`}
         confirmLabel="Remove"
         successMessage="Channel removed"
         optimistic

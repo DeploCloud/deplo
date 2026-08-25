@@ -519,8 +519,8 @@ export function DomainRow({
         <ConfirmAction
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
-          title={`Remove ${domain.name}?`}
-          description="The domain will stop routing to this app. You can re-add it later."
+          title="Remove domain?"
+          description={`Removing ${domain.name} stops it routing to this app, so nothing answers at that address any more. You can add it back at any time.`}
           confirmLabel="Remove domain"
           successMessage="Domain removed"
           optimistic

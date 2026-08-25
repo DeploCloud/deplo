@@ -248,8 +248,8 @@ export function BackupRow({
         <ConfirmAction
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
-          title={`Delete ${backup.name}?`}
-          description="This removes the backup schedule. Backups it already made are not deleted."
+          title="Delete backup schedule?"
+          description={`${backup.name} stops running. Backups it already made are not deleted.`}
           confirmLabel="Delete schedule"
           successMessage="Backup schedule deleted"
           optimistic
