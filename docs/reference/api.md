@@ -1,7 +1,13 @@
-# Deplo GraphQL API
+# API reference
+
+GraphQL, the REST exceptions, the deploy hook and the MCP server. If you are
+looking for how to create and scope a credential first, read
+[API tokens](../advanced/api-tokens-and-oauth.md).
+
+## GraphQL
 
 Deplo exposes a single GraphQL endpoint that is the canonical way to drive the
-platform — the dashboard UI and any external client (CLI, CI, your own tooling)
+platform - the dashboard UI and any external client (CLI, CI, your own tooling)
 speak the same API.
 
 ```
@@ -29,7 +35,7 @@ If the account has two-factor authentication, `login` returns
 
 ### 2. API token (external clients)
 
-Create a token in **Settings → API tokens**. It is shown **once** — store it
+Create a token in **Settings -> API tokens**. It is shown **once** - store it
 securely. Send it as a bearer token:
 
 ```bash
@@ -39,18 +45,18 @@ curl https://your-host/api/graphql \
   -d '{"query":"{ me { username } apps { name status } }"}'
 ```
 
-A token carries **its own capabilities**, chosen when you create it — the same
+A token carries **its own capabilities**, chosen when you create it - the same
 fine-grained set a Role is built from. Its effective power is the intersection of
 two things: what the token was granted, and what its creator can still do in that
 team, so revoking a person's access also blunts every token they minted. An
 optional **scope** narrows what it reaches, as a tree: whole teams, whole
 projects, whole folders (subfolders included), or individual apps. Ticking a
 node grants everything under it, now and later; ticking nothing means every team
-its creator belongs to. Folders matter here — filing an app into one clears its
+its creator belongs to. Folders matter here - filing an app into one clears its
 project link, so a folder is where most apps actually live, and a project scope
 also covers the folders filed under it. Naming anything below a team narrows the
 token inside that team, and the team-wide permissions it holds (managing
-members, roles, registries, databases) stop applying there — naming several
+members, roles, registries, databases) stop applying there - naming several
 whole teams restricts nothing inside them.
 
 A token is a principal, not a stand-in for the person who minted it, so it never
@@ -58,7 +64,7 @@ reaches their **account**: the signed-in device list (`mySessions`,
 `revokeSession`, `revokeOtherSessions`), the profile (`updateProfile`,
 `updateEmail`, `changePassword`), their passkeys (`myPasskeys`,
 `startPasskeyRegistration`, `deletePasskey`) and the two-factor settings all
-answer `An API token can't access …` however many capabilities the token holds.
+answer `An API token can't access <that resource>` however many capabilities the token holds.
 Those are dashboard actions taken by a person at a keyboard.
 
 A POST must be `Content-Type: application/json`; anything else is refused with
@@ -70,23 +76,23 @@ the token doesn't hold is ignored rather than honoured. `myTeams` lists the ones
 it may switch between. Every query and mutation is then filtered to that team
 automatically.
 
-Settings → API tokens ships templates — Read only, Deploy hook & CI, MCP & AI
-agents, App automation, Root access — or you can start from scratch.
+Settings -> API tokens ships templates - Read only, Deploy hook & CI, MCP & AI
+agents, App automation, Root access - or you can start from scratch.
 
-> **Breaking change:** `createToken` now takes an input object and a permission
-> list: `createToken(input: { name: "ci", capabilities: [deploy_apps, view_logs] })`.
-> There is no default: a token with no capabilities named is view-only. The scope
-> is four optional lists on the same input — `teamIds`, `projectIds`,
-> `folderIds`, `appIds` — and `updateToken` changes a live token's permissions or
-> scope without re-minting it.
+`createToken` takes an input object carrying the permission list:
+`createToken(input: { name: "ci", capabilities: [deploy_apps, view_logs] })`.
+There is no default - a token that names no capabilities is view-only. The scope
+is four optional lists on the same input (`teamIds`, `projectIds`, `folderIds`,
+`appIds`), and `updateToken` changes a live token's permissions or scope without
+re-minting it.
 
 ### 3. OAuth access token (web AI clients)
 
-A web AI client — Claude, ChatGPT — cannot be handed a token by hand, so deplo is
+A web AI client - Claude, ChatGPT - cannot be handed a token by hand, so deplo is
 also an OAuth 2.1 authorization server for them: the client registers itself
 (RFC 7591), the user approves a consent screen, and **that approval mints an
-ordinary API token** (ADR-0022). The `dplo_at_…` access token the client then
-sends is a pointer at that row, so everything under §2 applies to it unchanged —
+ordinary API token** (ADR-0022). The `dplo_at_` access token the client then
+sends is a pointer at that row, so everything under §2 applies to it unchanged -
 same capabilities, same scope, same clamp, same revocation.
 
 ```bash
@@ -97,25 +103,25 @@ curl https://your-host/api/graphql \
 ```
 
 Discovery starts from the MCP endpoint's 401, which carries
-`WWW-Authenticate: Bearer … resource_metadata="…"`; the documents live at
+`WWW-Authenticate: Bearer resource_metadata="<url>"`; the documents live at
 `/.well-known/oauth-protected-resource` and
 `/.well-known/oauth-authorization-server`. Unlike §2, the team is **not** chosen
-with `X-Deplo-Team` — it is fixed at consent time, so the header cannot move a
+with `X-Deplo-Team` - it is fixed at consent time, so the header cannot move a
 connection somewhere else. Connections are listed and revoked under
-**Settings → MCP Server**, and appear in Settings → API tokens marked with the
+**Settings -> MCP Server**, and appear in Settings -> API tokens marked with the
 client's name. One consent can grant several teams, and `revokeToken` ends the
 credential in all of them: the token row, the consent and the refresh token go
 together, so the client is disconnected everywhere and has to be authorized
 again. Any team the connection reaches can call it.
 
 Unauthenticated requests resolve `me` to `null` and are rejected by any field
-that requires a login (`Not authorized to resolve …`).
+that requires a login (`Not authorized to resolve <field>`).
 
 ## Authorization
 
 Fields are gated by the same capability model as the dashboard:
 
-Capabilities are fine-grained — one action each, not bundles — so a role can ship
+Capabilities are fine-grained - one action each, not bundles - so a role can ship
 apps without being able to delete them, or read files without writing them. The
 full list is the `Capability` enum in [`schema.graphql`](../../schema.graphql);
 the ones you will meet most:
@@ -138,8 +144,8 @@ the ones you will meet most:
 | `manage_members` · `manage_roles`                                                                               | who is in the team · what each role grants                                                        |
 | `manage_team` · `delete_team`                                                                                   | team settings · deleting the team                                                                 |
 
-Three names from the old coarse model — `deploy`, `manage_infra` and
-`manage_files` — are still ACCEPTED on input (marked deprecated in the schema):
+Three names from the old coarse model - `deploy`, `manage_infra` and
+`manage_files` - are still ACCEPTED on input (marked deprecated in the schema):
 each expands to exactly the permissions it used to imply, so an existing script
 keeps working unchanged. They are never returned. The other five old names
 (`view`, `manage_domains`, `manage_env`, `manage_members`, `manage_team`) survived
@@ -148,8 +154,8 @@ the split as capabilities in their own right and mean exactly themselves.
 Some queries/mutations require **instance admin** (global): managing all users,
 minting registration links, the per-user admin editor, Docker cleanup
 (`dockerCleanupPolicy`, `dockerCleanupRuns`, `updateDockerCleanupPolicy`,
-`setServerCleanupExcluded`, `runDockerCleanupNow`) — one instance-wide policy over
-hosts every team shares — and the instance's own settings (`instanceSettings`,
+`setServerCleanupExcluded`, `runDockerCleanupNow`) - one instance-wide policy over
+hosts every team shares - and the instance's own settings (`instanceSettings`,
 `setPanelUrl`, `panelAddressImpact`, `panelHttps`, `setPanelHttps`,
 `serverCertificateAccounts`, `setCertificateEmail`):
 the address this Deplo answers on, and the Let's Encrypt account every host's
@@ -185,19 +191,19 @@ therefore not capped per team.
   `databaseConsoleInfo`/`databaseLogsInfo`/`databaseShellLabel`, `domains`, `servers`,
   `serverMetrics`, `appMetrics(appId)`/`databaseMetrics(databaseId)` (live per-container
   resource usage for the Monitoring tab) and their `*MetricsHistory` seeds,
-  `detectRepoFramework(repo, buildMethod, …)` (names the JavaScript framework in a
-  GitHub repository _before_ an App exists for it — what the new-app wizard shows
+  `detectRepoFramework(repo, buildMethod, ...)` (names the JavaScript framework in a
+  GitHub repository _before_ an App exists for it - what the new-app wizard shows
   while you pick a repo; an App carries the same answer on `App.framework`, re-derived
   by every deploy),
   `members`, `teamRoles` (the team's roles and exactly what each grants),
-  `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
-  types are navigable — e.g. `App.deployments`, `App.latestDeployment`.
+  `apiTokens`, `activity`, `me`, `viewerTeam` and more. Object
+  types are navigable - e.g. `App.deployments`, `App.latestDeployment`.
   `apps` and `databases` also take an optional `q`, which keeps only the ones
   whose name, slug or id contains it (case and separators ignored).
 - **`search(q)` is the one query that is NOT scoped to the active team.**
   It answers with the apps and databases matching `q` in every team the caller
-  can reach, each hit carrying the team it lives in — so a client that has an
-  app's name but not its team can find it and then work there — with
+  can reach, each hit carrying the team it lives in - so a client that has an
+  app's name but not its team can find it and then work there - with
   `X-Deplo-Team` for an API token, or the `team` argument of an MCP tool call.
   It is a loop over the ordinary per-team reads, so a team the caller
   cannot enter right now (an unmet two-factor policy, a token scoped elsewhere)
@@ -213,22 +219,22 @@ therefore not capped per team.
   `rotateDatabasePassword`, `execDatabaseConsole`, `setSaveMetrics`
   (the instance-wide "Save metrics" switch, `manage_monitoring`),
   `createToken`, `updateTeam`, `createRole`/`updateRole`/`resetRole`/`deleteRole`
-  (a role edit applies to every member holding it), `login`, `logout`, ….
+  (a role edit applies to every member holding it), `login`, `logout` and more.
   On `updateRole` every optional field means "leave it as it is": omit
   `capabilities`, `requireTwoFactor` or `scope` and they are untouched, so a bare
   rename is a bare rename. Send the field to replace it, or `clearScope: true` to
   make the role reach the whole team again.
   `addExistingMember`/`updateMember` take a `roleId`; the older `role` +
   `capabilities` pair still works and lands on the matching role when there is
-  one — never a role limited to part of the team, since that shape says nothing
+  one - never a role limited to part of the team, since that shape says nothing
   about reach.
 - **Importing from Dokploy** is five mutations plus two queries, all gated on
   `create_projects` and refused to a narrowed principal (an import writes across
   the whole team): `scanDokploy(input)` reads the source instance and returns the
   plan without writing anything, `beginDokployImport(url, orgName)` opens a run,
-  `importDokployProject(input, runId, projectId, …)` imports **one project per
-  call** — that is the unit on purpose, so progress is real and a re-run resumes
-  instead of duplicating — and its optional `serviceIds` narrows that call to
+  `importDokployProject(input, runId, projectId, ...)` imports **one project per
+  call** - that is the unit on purpose, so progress is real and a re-run resumes
+  instead of duplicating - and its optional `serviceIds` narrows that call to
   named services (omit it for all of them); anything left out produces no report
   line, because not picking something is a choice rather than an outcome, and an
   environment nothing was picked from is not created empty.
@@ -259,18 +265,18 @@ therefore not capped per team.
   source** (`addServer(input.importOnly)`, instance admin): `Server.role` reads
   `"import"`, the row is granted to the importing team alone, and the host is
   excluded from every deploy AND build picker, from backup destinations, from the
-  cleanup sweep and from monitoring — it is the other platform's machine, not a
+  cleanup sweep and from monitoring - it is the other platform's machine, not a
   member of the fleet. `setServerRole` refuses that role in both directions;
   re-running the install command is the only way in or out.
   `uninstallServerAgent(id)` (instance admin) ends the migration: it asks that
-  agent to remove itself from the host — systemd unit, binary, state dir, never
-  Docker — and only then forgets the server. `removed: false` means the host still
+  agent to remove itself from the host - systemd unit, binary, state dir, never
+  Docker - and only then forgets the server. `removed: false` means the host still
   has the agent and the row was KEPT; `uninstallCommand` comes back either way,
   because an unreachable or already-de-trusted host will always need the host-side
   path (ADR-0011). It refuses an ordinary server: that removal is `removeServer`,
   which is trust revocation and leaves the host alone.
 - **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and
-  `databaseStatus(id)` — each emits the entity on every state change (initial
+  `databaseStatus(id)` - each emits the entity on every state change (initial
   snapshot, then live), so a client tracks provisioning/start/stop/deploy with
   no polling.
 
@@ -281,11 +287,11 @@ connection string).
 
 **A verdict is a return value, not an error.** Where a mutation asks another
 system whether something works, the answer comes back in the payload and a
-failure resolves normally — `testDestination(id)` returns
+failure resolves normally - `testDestination(id)` returns
 `DestinationTestResult { destination, report }`, and `report.ok` is the verdict
 (`report.error` carries the agent's verbatim message, `report.steps` the probe
 sequence). A client that treats "the request succeeded" as "the destination
-works" will report success over a bucket that just refused it — which is exactly
+works" will report success over a bucket that just refused it - which is exactly
 the bug the old `testS3: S3Destination` shape caused in deplo's own UI.
 `destinationTestReport(id)` reads the stored verdict without re-probing.
 
@@ -316,7 +322,7 @@ mutation {
     input: {
       appId: "prj_123"
       key: "DATABASE_URL"
-      value: "postgres://…"
+      value: "postgres://user:pass@db-orders:5432/orders"
       targets: [production, preview]
       type: secret
     }
@@ -335,7 +341,7 @@ to `plain` would have handed the stored value straight back on the next read.
 Rotating one is delete + create. The reverse (`plain` -> `secret`) is always
 allowed.
 
-Share a variable with several apps at once (a shared variable, linked per app —
+Share a variable with several apps at once (a shared variable, linked per app -
 ADR-0012: the link is what injects it, the scope only suggests):
 
 ```graphql
@@ -381,9 +387,9 @@ A few endpoints stay REST because GraphQL is the wrong transport for them
 | `GET /api/apps/[id]/attach`               | interactive console session                                                                                                        |
 | `GET /api/github/callback`                | GitHub App OAuth callback                                                                                                          |
 | `POST /api/github/webhook`                | GitHub webhook receiver                                                                                                            |
-| `POST /api/git/webhook/[token]`           | push receiver for every other provider — the token in the URL identifies the git connection, which says how to verify the delivery |
-| `POST /api/apps/[id]/deploy-hook/[token]` | deploy hook — a webhook sender posts a URL, it can't compose a query                                                               |
-| `POST /api/mcp`                           | the MCP server — JSON-RPC, not GraphQL (see below)                                                                                 |
+| `POST /api/git/webhook/[token]`           | push receiver for every other provider - the token in the URL identifies the git connection, which says how to verify the delivery |
+| `POST /api/apps/[id]/deploy-hook/[token]` | deploy hook - a webhook sender posts a URL, it can't compose a query                                                               |
+| `POST /api/mcp`                           | the MCP server - JSON-RPC, not GraphQL (see below)                                                                                 |
 
 ### MCP server
 
@@ -393,7 +399,7 @@ everything else, but the spec revision is new and the tool surface will move. It
 tool runs a GraphQL document in-process as the caller's own principal, so every capability
 gate, folder grant, token scope and 2FA policy applies identically.
 
-Authentication is the ordinary **API token** — there is no MCP-specific credential:
+Authentication is the ordinary **API token** - there is no MCP-specific credential:
 
 ```bash
 claude mcp add --transport http deplo https://deplo.example.com/api/mcp \
@@ -405,9 +411,9 @@ The protocol is stateless (no session, no `initialize` handshake), so one endpoi
 **one team**, chosen by `X-Deplo-Team` when the agent is connected; connect a second server to
 work in another team. `tools/list` returns only the tools the token can actually call, so the
 "MCP & AI agents" template shows 34 of the 78. A `403` means the team has
-switched MCP off (Settings → MCP Server, `manage_mcp`); a `429` means the per-token rate limit.
+switched MCP off (Settings -> MCP Server, `manage_mcp`); a `429` means the per-token rate limit.
 
-**No tool can reveal a secret**, whatever capabilities the token holds — `list_env` shows keys
+**No tool can reveal a secret**, whatever capabilities the token holds - `list_env` shows keys
 with masked values and there is no `reveal_env`. Everything else the token's capabilities allow,
 it can do: deplo adds no confirmation step of its own. Destructive tools carry `destructiveHint`
 in `tools/list`, which is what makes an MCP client ask its own user first. Full rationale in
@@ -426,18 +432,25 @@ curl -X POST -H "Authorization: Bearer deplo_your_token" \
 Both secrets are required. The URL's `<token>` says which app (read it back with
 `revealAppDeployHook`, replace it with `rotateAppDeployHook`, switch the hook off entirely
 with `setAppDeployHookEnabled`); the bearer token says who, and must itself HOLD
-`deploy_apps` in that app's team (the **Deploy hook & CI** template is exactly this set) —
+`deploy_apps` in that app's team (the **Deploy hook & CI** template is exactly this set) -
 the deploy runs through exactly the gates the dashboard button does. Answers `200` with the queued deployment:
 
 ```json
 {
-  "deploymentId": "dpl_…",
+  "deploymentId": "dpl_1a2b3c",
   "appId": "prj_123",
   "status": "queued",
-  "url": "https://…"
+  "url": "https://shop.example.com"
 }
 ```
 
-`401` — no/invalid API token. `403` — the hook is switched off, or the token (or the member it
-acts as) may not deploy this app. `404` — no such app, wrong URL token, the app belongs to
+`401` - no/invalid API token. `403` - the hook is switched off, or the token (or the member it
+acts as) may not deploy this app. `404` - no such app, wrong URL token, the app belongs to
 another team, or it is outside the token's scope.
+
+## See also
+
+- [API tokens](../advanced/api-tokens-and-oauth.md) - creating and scoping a credential
+- [MCP server](../advanced/mcp-server.md) - the same gates, for an AI agent
+- [Automatic deployments](../guides/automatic-deployments.md) - the deploy hook in context
+- [Capabilities](capabilities.md)

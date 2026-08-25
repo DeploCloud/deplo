@@ -5,8 +5,10 @@ templates into Docker stacks fronted by Traefik. Read this before writing code, 
 the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root) — authoritative glossary / ubiquitous language. Single-context repo.
-- **`docs/adr/`** — numbered decisions (0001-0024). Contradicting one? Surface it, don't silently override.
-- **`docs/api/graphql.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
+- **`docs/adr/`** — numbered decisions (0001-0025). Contradicting one? Surface it, don't silently override.
+- **`docs/reference/api.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
+- **`docs/README.md`** — the USER manual (getting-started, concepts, guides, advanced,
+  operations, reference, troubleshooting). Written for people using deplo, not for us.
 - **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
