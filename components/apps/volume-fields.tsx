@@ -363,6 +363,7 @@ function MountRow({
                   ))}
                 </span>
               }
+              docs="storage.overview"
             >
               Where should this data live?
             </FieldLabel>
@@ -396,6 +397,7 @@ function MountRow({
               // row would then be nothing at all, and the problem line says so.
               optional={kind === "named" && mount.mountPath.trim() !== ""}
               info={meta.sourceTooltip}
+              docs="storage.source"
               value={sourceValue}
               onChange={setSource}
               placeholder={meta.sourcePlaceholder}
@@ -416,6 +418,7 @@ function MountRow({
                     ? "Where the file appears inside the app, file name included, like /etc/nginx/nginx.conf. deplo can't fill this in for a prebuilt image — the image chose its own working directory — so use the path the app's documentation asks for."
                     : "Where the app finds this storage, as an absolute path like /data. deplo can't fill this in for a prebuilt image — the image chose its own working directory — so use the path its documentation gives for the data you want to keep."
               }
+              docs="storage.mountPath"
               value={mount.mountPath}
               onChange={(value) =>
                 onChange(
@@ -449,6 +452,7 @@ function MountRow({
                 <FieldLabel
                   className="text-xs"
                   info="This app runs several services from its compose file. Only the service you pick can see this data — the other services are untouched."
+                  docs="storage.container"
                 >
                   Which service uses this data?
                 </FieldLabel>
@@ -487,6 +491,7 @@ function MountRow({
                 <FieldLabel
                   className="text-xs"
                   info="Another app, or the server itself, can mount a network disk or a shared folder inside this one. By default this app keeps seeing what was there the moment it started, and never notices the rest."
+                  docs="storage.bindOptions"
                 >
                   What if something is mounted inside this folder?
                 </FieldLabel>
@@ -528,6 +533,7 @@ function MountRow({
                 htmlFor={readOnlyId}
                 className="cursor-pointer text-xs font-normal"
                 info="The app can read this data but never write to it. Handy for a config file you want to stay exactly as you wrote it."
+                docs="storage.bindOptions"
               >
                 Let the app read but not change it (ro)
               </FieldLabel>

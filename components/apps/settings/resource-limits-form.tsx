@@ -269,6 +269,7 @@ export function ResourceLimitsForm({
               value={form.memoryMb}
               onChange={set("memoryMb")}
               info="Hard RAM ceiling. The container is restarted (OOM-killed) if it exceeds this. In MB — 1024 = 1 GB, 2048 = 2 GB."
+              docs="resources.core"
             />
             <LimitField
               label="CPU limit"
@@ -279,6 +280,7 @@ export function ResourceLimitsForm({
               value={form.cpuCores}
               onChange={set("cpuCores")}
               info="Maximum CPU cores. 0.5 = half a core, 2 = two cores. Fractions allowed."
+              docs="resources.core"
             />
           </div>
 
@@ -302,6 +304,7 @@ export function ResourceLimitsForm({
                     value={form.memoryReservationMb}
                     onChange={set("memoryReservationMb")}
                     info="Soft RAM floor the scheduler tries to keep available for this app under contention. Must be ≤ the memory limit."
+                    docs="resources.advanced"
                   />
                   <LimitField
                     label="Swap limit"
@@ -311,6 +314,7 @@ export function ResourceLimitsForm({
                     value={form.swapMb}
                     onChange={set("swapMb")}
                     info="Total memory + swap ceiling. Needs a memory limit set, and must be ≥ it (the difference is how much swap the app may use)."
+                    docs="resources.advanced"
                   />
                 </LimitGroup>
 
@@ -323,6 +327,7 @@ export function ResourceLimitsForm({
                     value={form.cpuShares}
                     onChange={set("cpuShares")}
                     info="Relative CPU weight when the host is busy (default 1024) — 2048 gets twice the share of 1024. Doesn't cap idle-time usage."
+                    docs="resources.advanced"
                   />
                   <LimitField
                     label="CPU pinning"
@@ -331,6 +336,7 @@ export function ResourceLimitsForm({
                     value={form.cpuset}
                     onChange={set("cpuset")}
                     info='Pin the app to specific host cores, e.g. "0", "0,1" or "0-3". Leave empty to run on any core.'
+                    docs="resources.advanced"
                   />
                 </LimitGroup>
 
@@ -343,6 +349,7 @@ export function ResourceLimitsForm({
                     value={form.pidsLimit}
                     onChange={set("pidsLimit")}
                     info="Maximum number of processes/threads the container may spawn — a guard against fork bombs and runaway workers."
+                    docs="resources.advanced"
                   />
                   <LimitField
                     label="Open files"
@@ -352,6 +359,7 @@ export function ResourceLimitsForm({
                     value={form.nofile}
                     onChange={set("nofile")}
                     info="Maximum open file descriptors (ulimit nofile). Raise it for high-connection servers hitting 'too many open files'."
+                    docs="resources.advanced"
                   />
                   <LimitField
                     label="User processes"
@@ -361,6 +369,7 @@ export function ResourceLimitsForm({
                     value={form.nproc}
                     onChange={set("nproc")}
                     info="Per-user process ceiling (ulimit nproc). Usually redundant with the process limit above"
+                    docs="resources.advanced"
                   />
                 </LimitGroup>
 
@@ -373,6 +382,7 @@ export function ResourceLimitsForm({
                     value={form.shmSizeMb}
                     onChange={set("shmSizeMb")}
                     info="Size of /dev/shm (shared-memory segment). Default is 64 MB; raise it for apps that need more (some databases, Chromium/Puppeteer)."
+                    docs="resources.advanced"
                   />
                   <LimitField
                     label="Disk quota"
@@ -382,6 +392,7 @@ export function ResourceLimitsForm({
                     value={form.storageGb}
                     onChange={set("storageGb")}
                     info="⚠ Caps the writable layer, not Volume storage. Needs host support (XFS + pquota or devicemapper) or the deploy is rejected"
+                    docs="resources.advanced"
                   />
                 </LimitGroup>
 
@@ -394,6 +405,7 @@ export function ResourceLimitsForm({
                     value={form.oomScoreAdj}
                     onChange={set("oomScoreAdj")}
                     info="Range −1000…1000. If the host runs out of memory, higher scores are killed first — negative protects this app"
+                    docs="resources.advanced"
                   />
                 </LimitGroup>
               </AccordionContent>

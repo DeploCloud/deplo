@@ -155,7 +155,10 @@ export function BuildOutputCard({
               <div className="grid gap-4 sm:grid-cols-2">
                 {showBuildCommand && (
                   <div className="space-y-2">
-                    <FieldLabel info="Overrides the command that builds your app. Leave blank to let the builder detect it.">
+                    <FieldLabel
+                      info="Overrides the command that builds your app. Leave blank to let the builder detect it."
+                      docs="build.fields"
+                    >
                       Build command
                     </FieldLabel>
                     <Input
@@ -183,6 +186,7 @@ export function BuildOutputCard({
                             : " Leave blank to auto-detect from your project."}
                         </>
                       }
+                      docs="build.fields"
                     >
                       Node.js version
                     </FieldLabel>
@@ -216,7 +220,10 @@ export function BuildOutputCard({
             <div className="grid gap-4 sm:grid-cols-2">
               {showStartCommand && (
                 <div className="space-y-2">
-                  <FieldLabel info="Overrides the command that starts your app inside the container.">
+                  <FieldLabel
+                    info="Overrides the command that starts your app inside the container."
+                    docs="build.fields"
+                  >
                     Start command
                   </FieldLabel>
                   <Input
@@ -230,7 +237,10 @@ export function BuildOutputCard({
                 </div>
               )}
               <div className="space-y-2">
-                <FieldLabel info="The port your app listens on inside the container (Traefik routes here).">
+                <FieldLabel
+                  info="The port your app listens on inside the container (Traefik routes here)."
+                  docs="build.port"
+                >
                   Container port
                 </FieldLabel>
                 <Input

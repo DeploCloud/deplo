@@ -78,6 +78,7 @@ import {
 } from "@/components/apps/git-deploy-options";
 import { uploadArchive } from "@/lib/deploy/upload-client";
 import type { GithubInstallationDTO } from "@/lib/data/github";
+import { DocsLink } from "@/components/ui/docs-link";
 
 export interface WizardServer {
   id: string;
@@ -779,6 +780,7 @@ export function NewAppWizard({
                         <code className="font-mono">:</code> for tags.
                       </>
                     }
+                    docs="deploy.dockerImage"
                   >
                     Docker image
                   </FieldLabel>
@@ -867,7 +869,8 @@ export function NewAppWizard({
               </CardTitle>
               <CardDescription>
                 The stack Deplo will deploy. Edit it directly to customise
-                images, ports, volumes or services before deploying.
+                images, ports, volumes or services before deploying.{" "}
+                <DocsLink topic="compose.overview" />
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -890,7 +893,7 @@ export function NewAppWizard({
                 <CardDescription>
                   Referenced as <code className="font-mono">{"${VAR}"}</code> in
                   the compose file. Generated secrets are prefilled; edit as
-                  needed.
+                  needed. <DocsLink topic="deploy.fromTemplate" />
                 </CardDescription>
               </div>
               <Button

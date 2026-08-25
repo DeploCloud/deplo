@@ -160,6 +160,7 @@ export function GithubRepoPicker({
         <FieldLabel
           className="text-sm font-medium"
           info="The connected GitHub App whose repositories you deploy from. Two Apps on the same account can reach different repositories, so the App is what you pick here. Switch App, connect another, or manage your connected apps."
+          docs="git.githubRepos"
         >
           GitHub App
         </FieldLabel>

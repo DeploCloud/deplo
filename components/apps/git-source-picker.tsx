@@ -155,6 +155,7 @@ export function GitSourcePicker({
         <FieldLabel
           className="text-sm font-medium"
           info="Which credentials Deplo clones with. Pick a connected provider to browse its repositories and get auto-deploy on push; Repository URL clones a public repo with no credentials."
+          docs="git.unlocks"
         >
           Provider
           <Badge variant="info" className="text-[10px] font-normal">
@@ -285,6 +286,7 @@ export function GitSourcePicker({
               <FieldLabel
                 htmlFor={urlFieldId}
                 info="The HTTPS clone URL of the repository."
+                docs="deploy.fromGit"
               >
                 Repository URL
               </FieldLabel>
@@ -299,6 +301,7 @@ export function GitSourcePicker({
               <FieldLabel
                 htmlFor={branchFieldId}
                 info="The branch Deplo clones and deploys."
+                docs="deploy.fromGit"
               >
                 Production Branch
               </FieldLabel>

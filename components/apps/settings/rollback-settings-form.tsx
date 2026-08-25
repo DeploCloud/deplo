@@ -20,6 +20,7 @@ import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { MAX_ROLLBACK_KEEP } from "@/lib/types";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * How many previous deployments this app can be put back on.
@@ -74,7 +75,8 @@ export function RollbackSettingsForm({
             Rollbacks
           </CardTitle>
           <CardDescription>
-            Go back to an earlier deployment in seconds, without rebuilding.
+            Go back to an earlier deployment in seconds, without rebuilding.{" "}
+            <DocsLink topic="releases.rollbacks" />
           </CardDescription>
         </CardHeader>
 
@@ -83,6 +85,7 @@ export function RollbackSettingsForm({
             <FieldLabel
               htmlFor="rollback-keep"
               info="Each one is a copy of the app kept on its server, so more rollbacks means more disk. Older ones are removed after each deploy. 0 keeps none."
+              docs="releases.rollbackRetention"
             >
               Keep
             </FieldLabel>

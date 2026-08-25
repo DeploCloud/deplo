@@ -57,7 +57,10 @@ export function GitDeployOptions({
     <div className="grid gap-4 sm:grid-cols-2">
       {/* Deploy trigger — push to branch vs any new tag. */}
       <div className="space-y-2">
-        <FieldLabel info="When automatic deployments are on, deploy on a push to the branch, or on any new tag.">
+        <FieldLabel
+          info="When automatic deployments are on, deploy on a push to the branch, or on any new tag."
+          docs="releases.trigger"
+        >
           Deploy trigger
         </FieldLabel>
         <Select
@@ -95,6 +98,7 @@ export function GitDeployOptions({
               so their code is there at build time. Leave off if yours has none
             </>
           }
+          docs="releases.submodules"
           infoLabel="What are submodules?"
         >
           Include submodules
@@ -113,7 +117,10 @@ export function GitDeployOptions({
 
       {/* Watch paths — optional path filter for auto-deploys. */}
       <div className="space-y-2 sm:col-span-2">
-        <FieldLabel info="Only auto-deploy when a changed file matches one of these globs (one per line). Leave empty to deploy on any change.">
+        <FieldLabel
+          info="Only auto-deploy when a changed file matches one of these globs (one per line). Leave empty to deploy on any change."
+          docs="releases.watchPaths"
+        >
           Watch paths{" "}
           <span className="font-normal text-muted-foreground">(optional)</span>
         </FieldLabel>

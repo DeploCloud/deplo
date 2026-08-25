@@ -296,6 +296,7 @@ export function RepoBrowser({
             htmlFor={branchFieldId}
             className="text-xs font-medium text-muted-foreground"
             info="The branch Deplo clones and deploys. New pushes to it can trigger a redeploy."
+            docs="deploy.fromGit"
           >
             Branch
           </FieldLabel>
@@ -333,6 +334,7 @@ export function RepoBrowser({
         <FieldLabel
           className="text-sm font-medium"
           info="Search the repositories this credential can reach. Don't see one? Grant it access on your git provider."
+          docs="git.githubRepos"
         >
           Repository
         </FieldLabel>

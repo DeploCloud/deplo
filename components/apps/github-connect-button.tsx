@@ -154,6 +154,7 @@ function GithubOrgDialog({
             <FieldLabel
               htmlFor="github-org"
               info="The name in the organization's address on github.com, like github.com/acme."
+              docs="git.github"
             >
               Organization
             </FieldLabel>

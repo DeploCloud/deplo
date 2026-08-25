@@ -855,6 +855,7 @@ export function DeploymentSettingsForm({
                       green check confirms the image exists.
                     </>
                   }
+                  docs="deploy.dockerImage"
                 >
                   Docker image
                 </FieldLabel>
@@ -872,6 +873,7 @@ export function DeploymentSettingsForm({
                   <FieldLabel
                     className="flex items-center gap-1.5"
                     info="The Compose file defining this stack's services. Deplo builds or pulls each service's image and deploys them together."
+                    docs="compose.overview"
                   >
                     <FileText className="size-3.5" />
                     docker-compose.yml
@@ -892,6 +894,7 @@ export function DeploymentSettingsForm({
               <FieldLabel
                 className="flex items-center gap-1.5"
                 info="The server (host machine) that builds and runs this app."
+                docs="servers.overview"
               >
                 <ServerIcon className="size-3.5" />
                 Server

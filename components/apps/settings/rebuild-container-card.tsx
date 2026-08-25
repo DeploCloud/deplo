@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * Advanced settings: rebuild the container.
@@ -69,7 +70,7 @@ export function RebuildContainerCard({
           until the new build is ready. Use it when the container looks stuck or
           out of sync with its configuration. Cached layers are reused — to
           build from scratch, clear the build cache first (Settings → Deployment
-          → Build &amp; Output → Advanced).
+          → Build &amp; Output → Advanced). <DocsLink topic="deploy.trace" />
         </CardDescription>
       </CardHeader>
       <CardFooter className="justify-end">

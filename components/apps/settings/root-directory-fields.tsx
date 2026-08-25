@@ -22,6 +22,7 @@ export function RootDirectoryFields({
       <FieldLabel
         htmlFor="root-directory"
         info='Sub-folder to build from, e.g. "apps/web" in a monorepo. Leave as ./ to build from the repository root'
+        docs="build.fields"
       >
         Root Directory
       </FieldLabel>

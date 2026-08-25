@@ -475,7 +475,10 @@ export function ShareFolderDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <FieldLabel info="You can only grant capabilities you hold yourself on this folder. View access is always included and can't be removed.">
+                  <FieldLabel
+                    info="You can only grant capabilities you hold yourself on this folder. View access is always included and can't be removed."
+                    docs="roles.folderGrant"
+                  >
                     What can they do?
                   </FieldLabel>
                   {/* `view` is implied, always on — shown as a fixed, disabled row

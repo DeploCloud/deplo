@@ -158,6 +158,7 @@ export function TransferTeamDialog({
               <FieldLabel
                 htmlFor={selectId}
                 info="Only teams you belong to, and where you may deploy, can receive an app."
+                docs="team.overview"
               >
                 Destination team
               </FieldLabel>

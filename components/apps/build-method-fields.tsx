@@ -254,6 +254,7 @@ function MethodSettings({
                   <code className="font-mono">latest</code> or a specific tag.
                 </>
               }
+              docs="build.methods"
             >
               Railpack version
             </FieldLabel>
@@ -335,6 +336,7 @@ function FrameworkField({
             framework&apos;s server binds.
           </>
         }
+        docs="build.methods"
       >
         Framework
       </FieldLabel>
