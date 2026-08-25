@@ -110,6 +110,7 @@ export function PasskeysCard({
           <EmptyState
             icon={Fingerprint}
             title="No passkeys yet"
+            docs="team.passkeys"
             description="Add one and this device signs you in without a password."
           />
         ) : (

@@ -22,7 +22,7 @@ export default async function AppGeneralSettingsPage(
 
   return (
     <section className="space-y-4">
-      <SettingsSection icon={Settings2} title="General" />
+      <SettingsSection icon={Settings2} title="General" docs="build.settings" />
       <CapabilityFieldset cap="configure_apps">
         <GeneralSettingsForm
           appId={project.id}

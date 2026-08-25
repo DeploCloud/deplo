@@ -21,7 +21,11 @@ export function OutsideYourAccess({
 }) {
   return (
     <div className="space-y-6">
-      <PageHeader title={title} description={description} />
+      <PageHeader
+        title={title}
+        description={description}
+        docs="roles.floorCeiling"
+      />
       <EmptyState
         icon={Lock}
         title="Outside your access"

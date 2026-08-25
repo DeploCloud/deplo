@@ -23,6 +23,7 @@ export default async function DatabaseResourcesSettingsPage(
       <SettingsSection
         icon={Cpu}
         title="Resources"
+        docs="resources.overview"
         info="Cap how much RAM, CPU, disk and processes this database may use. Applied on the next redeploy."
       />
       {/* MySQL/MariaDB InnoDB needs headroom — a note so a too-small memory cap

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/shared/empty-state";
+import { DocsLink } from "@/components/ui/docs-link";
 import { CategoryChips } from "@/components/templates/category-chips";
 import { NoResultsGraphic } from "@/components/templates/no-results-graphic";
 import { StoreRailsSkeleton } from "@/components/templates/store-skeleton";
@@ -121,7 +122,7 @@ export function TemplateStore({
           <h1 className="text-2xl font-semibold tracking-tight">Templates</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {templates.length} apps, databases and services, ready to run on
-            your own servers.
+            your own servers. <DocsLink topic="deploy.fromTemplate" />
           </p>
           <TemplateSearchField
             value={q}

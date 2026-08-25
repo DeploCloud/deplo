@@ -25,6 +25,7 @@ export default async function AppCronJobsPage(
       <EmptyState
         icon={Lock}
         title="You cannot manage cron jobs"
+        docs="roles.floorCeiling"
         description={`Ask an admin for the "Manage cron jobs" permission on this app.`}
       />
     );

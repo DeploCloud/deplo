@@ -41,6 +41,7 @@ export default async function SettingsSecurityPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="team.security"
         title="Security"
         description="How this account proves it is you, and where it is signed in."
       />

@@ -10,6 +10,7 @@ export default async function RolesIndexPage() {
     <EmptyState
       icon={ShieldCheck}
       title="Pick a role to see what it grants"
+      docs="roles.overview"
       description={
         canManage
           ? "Every role is on the left. Open one to change its permissions — everyone holding it is updated — or start a new one from scratch or from a role that already exists."

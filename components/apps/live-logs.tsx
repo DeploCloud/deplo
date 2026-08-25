@@ -149,6 +149,7 @@ export function LiveLogs({
           <EmptyState
             graphic={<LogsGraphic />}
             title="No logs yet"
+            docs="logs.overview"
             description={
               unreachable
                 ? "Can't reach the server this app runs on, so there's nothing to stream."

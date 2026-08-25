@@ -47,6 +47,7 @@ export default async function AppAdvancedSettingsPage(
       <SettingsSection
         icon={SlidersHorizontal}
         title="Advanced"
+        docs="build.advanced"
         info="Turn on the advanced features, rebuild the container from scratch, hand the app to another team, or permanently delete it."
       />
 

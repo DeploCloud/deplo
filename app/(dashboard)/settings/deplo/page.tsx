@@ -41,6 +41,7 @@ export default async function DeploSettingsPage() {
        * changed.
        */}
       <PageHeader
+        docs="panel.address"
         title="Deplo"
         description={
           <>

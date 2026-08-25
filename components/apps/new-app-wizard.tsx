@@ -826,6 +826,7 @@ export function NewAppWizard({
               <EmptyState
                 icon={ServerIcon}
                 title="No server connected"
+                docs="servers.add"
                 description="Deplo runs your apps on a server, and none is connected yet."
                 action={
                   <Button asChild>

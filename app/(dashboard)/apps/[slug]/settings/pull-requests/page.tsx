@@ -39,6 +39,7 @@ export default async function AppPullRequestsSettingsPage(
       <SettingsSection
         icon={GitPullRequest}
         title="Pull requests"
+        docs="previews.overview"
         info="Give every open pull request its own deploy, on its own URL, torn down when the pull request closes."
       />
 

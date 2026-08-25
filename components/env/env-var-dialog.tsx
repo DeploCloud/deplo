@@ -569,6 +569,7 @@ function SharedTab({
           <EmptyState
             icon={Share2}
             title="No shared variables"
+            docs="env.shared"
             description="Create shared variables on the Variables page to reuse them across apps."
             className="py-10"
           />

@@ -34,6 +34,7 @@ export default async function DeploymentsPage() {
           <EmptyState
             graphic={<DeploymentGraphic />}
             title="No deployments yet"
+            docs="deploy.trace"
             description="Once you deploy an app, every build will show up here."
           />
         </>

@@ -38,6 +38,7 @@ export default async function DatabaseConnectionSettingsPage(
       <SettingsSection
         icon={Network}
         title="Connection"
+        docs="databases.connect"
         info="Public exposure, the server this database runs on, and password rotation."
       />
       <DatabaseConnectionSettings

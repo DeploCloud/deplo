@@ -32,6 +32,7 @@ export default async function RolesLayout({
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="roles.overview"
         title="Roles"
         description="What a member can do in this team. Assign a role to each member on the Members page."
       />

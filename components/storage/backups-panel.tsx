@@ -304,6 +304,7 @@ export function BackupsPanel({
           <EmptyState
             graphic={<BackupGraphic />}
             title="No backups yet"
+            docs="backups.schedule"
             description="Run a backup or set up a schedule - completed runs and their restore points appear here."
           />
         ) : (

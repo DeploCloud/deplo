@@ -41,7 +41,11 @@ export default async function AppStorageSettingsPage(
 
   return (
     <section className="space-y-4">
-      <SettingsSection icon={HardDrive} title="Storage" />
+      <SettingsSection
+        icon={HardDrive}
+        title="Storage"
+        docs="storage.overview"
+      />
       <CapabilityFieldset cap="configure_apps">
         <StorageSettingsForm
           appId={project.id}

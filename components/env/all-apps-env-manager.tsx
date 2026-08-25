@@ -467,6 +467,7 @@ export function AllAppsEnvManager({
       <EmptyState
         graphic={<AppsGraphic />}
         title="No apps yet"
+        docs="deploy.sources"
         description="Create an app to start adding environment variables."
       />
     );
@@ -477,6 +478,7 @@ export function AllAppsEnvManager({
       <EmptyState
         graphic={<AppVarsGraphic />}
         title="No variables yet"
+        docs="env.allApps"
         description="None of your apps has an environment variable. Open an app to add its first one, or create a shared variable."
         action={
           <Button variant="outline" asChild>

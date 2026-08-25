@@ -32,6 +32,7 @@ export default async function AppEnvPage(
       <EmptyState
         icon={Lock}
         title="No access to environment variables"
+        docs="roles.floorCeiling"
         description="You don't have permission to view this app's environment variables. Ask a team admin for the “Manage env vars” permission."
       />
     );

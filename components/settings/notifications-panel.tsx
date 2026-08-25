@@ -230,6 +230,7 @@ export function NotificationsPanel({
        * in it and only this component can open the modal.
        */}
       <PageHeader
+        docs="notifications.overview"
         title="Notifications"
         description="Pick a channel, then pick what it should tell you about."
         actions={
@@ -260,6 +261,7 @@ export function NotificationsPanel({
               graphic={<NotificationIllustration caption={false} />}
               className="py-12"
               title="No channels yet"
+              docs="notifications.channels"
               description="Add a channel, then pick what it should tell you about."
             />
           ) : (

@@ -137,6 +137,7 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
           <EmptyState
             icon={Monitor}
             title="No signed-in devices"
+            docs="team.sessions"
             description="Nothing currently holds a session for this account."
           />
         ) : (

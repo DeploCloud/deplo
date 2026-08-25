@@ -33,6 +33,7 @@ export default async function AppResourcesSettingsPage(
       <SettingsSection
         icon={Cpu}
         title="Resources"
+        docs="resources.overview"
         info="Cap how much RAM, CPU, disk and processes this app may use. Applied on the next deploy."
       />
       <CapabilityFieldset cap="configure_apps">

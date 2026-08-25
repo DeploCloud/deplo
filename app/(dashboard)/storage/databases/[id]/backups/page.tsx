@@ -27,6 +27,7 @@ export default async function DatabaseBackupsPage(
       <EmptyState
         icon={Lock}
         title="No access to backups"
+        docs="roles.floorCeiling"
         description="You don't have permission to manage this database's backups. Ask a team admin for the “Manage backups” permission."
       />
     );
@@ -58,6 +59,7 @@ export default async function DatabaseBackupsPage(
   return (
     <div className="space-y-5">
       <PageHeader
+        docs="backups.overview"
         title="Backups"
         description="Scheduled backups of this database to a backup destination, and restore."
       />

@@ -63,6 +63,7 @@ export default async function AppPullRequestsPage(
         <EmptyState
           icon={GitPullRequest}
           title="Pull request previews need a GitHub repository"
+          docs="previews.overview"
           description="This app does not deploy from a connected GitHub repository, so Deplo never receives its pull requests."
           action={
             <Button asChild variant="outline" size="sm">
@@ -78,6 +79,7 @@ export default async function AppPullRequestsPage(
         <EmptyState
           icon={GitHubIcon}
           title="This app is not connected to a GitHub App"
+          docs="git.github"
           description="Deplo needs a connected GitHub App to receive pull request events for this repository."
           action={
             <Button asChild variant="outline" size="sm">
@@ -122,6 +124,7 @@ export default async function AppPullRequestsPage(
         <EmptyState
           graphic={<PullRequestGraphic variant="off" />}
           title="Pull request previews are off for this app"
+          docs="previews.turnOn"
           description="Turn them on and every open pull request gets its own deploy with its own URL."
           action={
             <Button asChild variant="outline" size="sm">
@@ -138,6 +141,7 @@ export default async function AppPullRequestsPage(
           <EmptyState
             graphic={<PullRequestGraphic />}
             title="No pull request previews yet"
+            docs="previews.overview"
             description={`Open a pull request against ${view.branch} and Deplo builds it a preview with its own URL, then posts the link on the pull request.`}
           />
         ) : (

@@ -16,12 +16,14 @@ export default async function MonitoringPage() {
     return (
       <div className="space-y-6">
         <PageHeader
+          docs="monitoring.overview"
           title="Monitoring"
           description="Live CPU, memory, disk and network for every host."
         />
         <EmptyState
           icon={Lock}
           title="Outside your access"
+          docs="roles.floorCeiling"
           description="Your role reaches part of this team. The hosts belong to the whole of it."
         />
       </div>
@@ -40,6 +42,7 @@ export default async function MonitoringPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="monitoring.overview"
         title="Monitoring"
         description="Real-time CPU, memory, disk and network across your servers."
       />

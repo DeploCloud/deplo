@@ -156,6 +156,7 @@ export default async function DeploymentDetailPage(
           <EmptyState
             icon={Lock}
             title="No access to logs"
+            docs="roles.floorCeiling"
             description="You don't have permission to read this app's logs. Ask a team admin for the “View logs” permission."
           />
         )}

@@ -374,6 +374,7 @@ export function CronJobsList({
       <EmptyState
         icon={Timer}
         title="Cron jobs are off"
+        docs="cron.turnOn"
         description="Turn them on under Settings → Advanced to schedule a command inside this container."
         action={
           <Button asChild size="sm">
@@ -416,6 +417,7 @@ export function CronJobsList({
         <EmptyState
           graphic={<CronGraphic />}
           title="No cron jobs yet"
+          docs="cron.create"
           description="Schedule a command to run inside this container - a nightly cleanup, a queue worker, a report."
         />
       ) : (

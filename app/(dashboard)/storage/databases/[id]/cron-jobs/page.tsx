@@ -29,6 +29,7 @@ export default async function DatabaseCronJobsPage(
       <EmptyState
         icon={Lock}
         title="You cannot manage cron jobs here"
+        docs="roles.floorCeiling"
         description={`A cron job runs commands inside the database container, so it needs both "Manage cron jobs" and "Open a database's console". Ask a team admin.`}
       />
     );
@@ -38,6 +39,7 @@ export default async function DatabaseCronJobsPage(
   return (
     <div className="space-y-5">
       <PageHeader
+        docs="cron.overview"
         title="Cron jobs"
         description="Commands run inside this database's container on a schedule."
       />

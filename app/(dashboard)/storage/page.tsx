@@ -68,12 +68,14 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     return (
       <div className="space-y-6">
         <PageHeader
+          docs="databases.overview"
           title="Storage"
           description="Databases, backup destinations and backups."
         />
         <EmptyState
           icon={Database}
           title="Outside your access"
+          docs="roles.floorCeiling"
           description="Your role reaches part of this team. Databases and destinations belong to the whole of it."
         />
       </div>
@@ -149,6 +151,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="databases.overview"
         title="Storage"
         description="Managed databases, backup destinations and scheduled backups."
       />
@@ -201,6 +204,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 <EmptyState
                   graphic={<DatabaseGraphic />}
                   title="No databases yet"
+                  docs="databases.overview"
                   // No button: the heading row above carries Create database
                   // already. When the actor cannot create one, say which
                   // permission is missing rather than leaving them guessing.
@@ -254,6 +258,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 <EmptyState
                   graphic={<DestinationGraphic />}
                   title="No backup destinations"
+                  docs="backups.destinations"
                   // No button: the heading row above carries Add destination
                   // already.
                   description={
@@ -322,6 +327,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
             <EmptyState
               graphic={<BackupScheduleGraphic />}
               title="No backups scheduled"
+              docs="backups.schedule"
               description={
                 canManageBackups
                   ? "Schedule automatic backups of your databases and apps."

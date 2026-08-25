@@ -38,6 +38,7 @@ export function MigrationsHistory({
       <EmptyState
         graphic={<MigrationGraphic state="connect" className="h-28" />}
         title="No migrations yet"
+        docs="migration.dokploy"
         description="Once you bring a Dokploy over, every run and its log stay here."
       />
     );

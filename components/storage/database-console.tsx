@@ -57,6 +57,7 @@ export function DatabaseConsole({
         <EmptyState
           icon={Database}
           title="Database is not running"
+          docs="console.overview"
           description="Start the database, then come back to open a console in it."
         />
       </ConsoleEmpty>

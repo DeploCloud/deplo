@@ -23,7 +23,11 @@ export default async function AppAccessSettingsPage(
 
   return (
     <section className="space-y-4">
-      <SettingsSection icon={ShieldCheck} title="Access" />
+      <SettingsSection
+        icon={ShieldCheck}
+        title="Access"
+        docs="domains.overview"
+      />
       {/* Adding a credential closes its dialog immediately and shows the new
           card pulsing in the grid while the routing is applied — the provider
           holds that placeholder, so it has to sit above the manager. */}

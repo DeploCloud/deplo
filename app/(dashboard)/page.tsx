@@ -423,6 +423,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
             <EmptyState
               graphic={<AppsGraphic />}
               title="No apps yet"
+              docs="deploy.sources"
               description={
                 canDeploy
                   ? "Import a Git repository or start from a template to deploy your first app."

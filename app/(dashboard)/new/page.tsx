@@ -28,6 +28,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
       <EmptyState
         icon={Lock}
         title="You can't create apps"
+        docs="roles.floorCeiling"
         description="Ask a team admin for permission to create apps, or pick an app you already have from the overview."
         action={
           <Button asChild size="sm">
@@ -115,6 +116,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
           </Link>
         </Button>
         <PageHeader
+          docs="deploy.sources"
           // Name the variant when the family has more than one, so the last
           // screen before deploying confirms which one the picker sent here.
           title={

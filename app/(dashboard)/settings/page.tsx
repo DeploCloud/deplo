@@ -34,6 +34,7 @@ export default async function SettingsGeneralPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="team.overview"
         title="General"
         description="Your workspace details and appearance."
       />
@@ -71,6 +72,7 @@ export default async function SettingsGeneralPage() {
           <EmptyState
             icon={Lock}
             title="Outside your access"
+            docs="roles.floorCeiling"
             description="Your role reaches part of this team, so its settings aren't yours to see."
           />
         )}

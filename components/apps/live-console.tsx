@@ -121,6 +121,7 @@ export function LiveConsole({
         <EmptyState
           graphic={<NotRunningGraphic />}
           title="App is not running"
+          docs="console.overview"
           description="Deploy this app, then come back to open a console in it."
         />
       )}

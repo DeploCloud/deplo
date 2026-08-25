@@ -186,6 +186,7 @@ export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
         <EmptyState
           graphic={<LogsGraphic />}
           title="No logs to read yet"
+          docs="logs.where"
           description="Deploy an app or create a database, and its logs show up here."
         />
       )}

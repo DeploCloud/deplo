@@ -49,6 +49,7 @@ export default async function TokensPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="tokens.overview"
         title="API tokens"
         description="Tokens that let scripts, CI jobs and other clients call the API. Each one carries its own permissions."
         actions={canManage ? <NewTokenMenu /> : undefined}
@@ -58,6 +59,7 @@ export default async function TokensPage() {
         <EmptyState
           graphic={<TokenGraphic />}
           title="No API tokens yet"
+          docs="tokens.overview"
           description={
             canManage
               ? "A token lets a script, a CI job or an assistant call this team's API. Start from one of our templates and give it only the permissions it needs."

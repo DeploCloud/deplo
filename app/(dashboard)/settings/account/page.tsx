@@ -10,6 +10,7 @@ export default async function SettingsAccountPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="team.security"
         title="Account"
         description="Your personal account details."
       />

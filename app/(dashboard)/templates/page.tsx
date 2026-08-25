@@ -30,7 +30,7 @@ export default async function TemplatesPage(props: PageProps<"/templates">) {
   if (!templates)
     return (
       <div className="space-y-6">
-        <PageHeader title="Templates" />
+        <PageHeader title="Templates" docs="deploy.fromTemplate" />
         <EmptyState
           graphic={<CatalogOfflineGraphic />}
           title="The template catalog is unreachable"

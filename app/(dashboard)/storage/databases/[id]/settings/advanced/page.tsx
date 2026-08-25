@@ -46,6 +46,7 @@ export default async function DatabaseAdvancedSettingsPage(
       <SettingsSection
         icon={SlidersHorizontal}
         title="Advanced"
+        docs="databases.settings"
         info="Turn on the advanced features, override the engine image or command, rebuild the database from scratch, or delete it."
       />
 

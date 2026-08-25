@@ -22,6 +22,7 @@ export default async function SettingsUsersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="instance.users"
         title="Users"
         description="Instance-wide user administration."
       />

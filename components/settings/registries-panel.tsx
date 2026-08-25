@@ -105,6 +105,7 @@ function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="registries.overview"
         title={
           <span className="flex items-center gap-2">
             Registries
@@ -126,6 +127,7 @@ function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
         <EmptyState
           graphic={<RegistryGraphic />}
           title="No registry connected"
+          docs="registries.add"
           description="Connect one and its private images are yours to deploy, with the credentials kept here."
         />
       ) : (

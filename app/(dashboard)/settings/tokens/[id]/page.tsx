@@ -58,6 +58,7 @@ export default async function TokenPage(
           All tokens
         </Link>
         <PageHeader
+          docs="tokens.overview"
           title={token.name}
           description={
             <>

@@ -33,6 +33,7 @@ export default async function MembersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="team.members"
         title="Members"
         description="People who can access this team's apps and resources."
       />

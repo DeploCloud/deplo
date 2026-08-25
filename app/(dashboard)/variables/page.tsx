@@ -38,12 +38,14 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     return (
       <div className="space-y-6">
         <PageHeader
+          docs="env.overview"
           title="Variables"
           description="App & shared environment variables."
         />
         <EmptyState
           icon={Lock}
           title="No access to variables"
+          docs="roles.floorCeiling"
           description="You don't have permission to view environment variables. Ask a team admin for the “Manage env vars” permission."
         />
       </div>
@@ -111,6 +113,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="env.allApps"
         title="Environment Variables"
         description="Per-app variables and reusable shared variables across your workspace."
       />

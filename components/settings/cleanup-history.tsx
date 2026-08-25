@@ -52,6 +52,7 @@ export function CleanupHistory({
           <EmptyState
             icon={History}
             title="No cleanups yet"
+            docs="servers.cleanup"
             description="Runs appear here once the schedule fires or you clean up a server by hand."
           />
         ) : (

@@ -46,6 +46,7 @@ export default async function NewTokenPage(
           All tokens
         </Link>
         <PageHeader
+          docs="tokens.overview"
           title="New API token"
           description={
             preset

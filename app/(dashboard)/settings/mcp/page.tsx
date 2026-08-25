@@ -61,6 +61,7 @@ export default async function McpSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="mcp.overview"
         title={
           <span className="flex items-center gap-2">
             MCP Server

@@ -29,6 +29,7 @@ export default async function AppBackupsPage(
       <EmptyState
         icon={Lock}
         title="No access to backups"
+        docs="roles.floorCeiling"
         description="You don't have permission to manage this app's backups. Ask a team admin for the “Manage backups” permission."
       />
     );
@@ -68,6 +69,7 @@ export default async function AppBackupsPage(
     // serves both, so neither can quietly grow a feature the other lacks.
     <div className="space-y-5">
       <PageHeader
+        docs="backups.overview"
         title="Backups"
         description="Scheduled backups of this app to a backup destination, and restore."
       />

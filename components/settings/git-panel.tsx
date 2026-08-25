@@ -132,6 +132,7 @@ export function GitPanel({
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="git.providers"
         title="Git"
         description="Connect the hosts your code lives on, for imports and auto-deploys."
         actions={
@@ -146,6 +147,7 @@ export function GitPanel({
         <EmptyState
           graphic={<GitGraphic />}
           title="No git host connected"
+          docs="git.providers"
           description="Connect a host and its repositories are yours to import and deploy on every push."
         />
       ) : (

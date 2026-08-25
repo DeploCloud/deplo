@@ -23,6 +23,7 @@ export default async function DatabaseConsolePage(
         <EmptyState
           icon={Lock}
           title="No access to the console"
+          docs="roles.floorCeiling"
           description="You don't have permission to open a console into this database. Ask a team admin for the “Open a database console” permission."
         />
       </div>

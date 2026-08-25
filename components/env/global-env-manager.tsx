@@ -136,6 +136,7 @@ export function GlobalEnvManager({
         <EmptyState
           graphic={<GlobalVarsGraphic />}
           title="No variables yet"
+          docs="env.instanceWide"
           description="Add a variable to inject it into every app of every team."
         />
       ) : shown.length === 0 ? (

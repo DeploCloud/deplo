@@ -53,6 +53,7 @@ export function ConnectedClients({
           <EmptyState
             graphic={<RobotGraphic state="idle" className="h-28" />}
             title="No agents connected"
+            docs="mcp.connect"
             description="Anything you connect from the Connect tab shows up here, with a way to take its access away."
           />
         ) : (

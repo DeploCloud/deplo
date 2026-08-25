@@ -112,6 +112,7 @@ export default async function AppDomainsPage(
             <EmptyState
               graphic={<DomainGraphic />}
               title="No domains"
+              docs="domains.overview"
               description="Add a custom domain to this app."
             />
           }

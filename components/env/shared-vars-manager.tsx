@@ -232,6 +232,7 @@ export function SharedVarsManager({
         <EmptyState
           graphic={<SharedVarsGraphic />}
           title="No shared variables yet"
+          docs="env.shared"
           description="Create a shared variable to reuse it across projects, apps, or the whole team."
         />
       ) : shown.length === 0 ? (

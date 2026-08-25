@@ -94,6 +94,7 @@ export default async function ActivityPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="team.activity"
         title="Activity"
         description="A log of everything happening across your workspace."
       />
@@ -102,6 +103,7 @@ export default async function ActivityPage() {
         <EmptyState
           icon={ActivityIcon}
           title="No activity yet"
+          docs="team.activity"
           description="As you deploy apps, manage databases and invite members, everything will show up here."
         />
       ) : (

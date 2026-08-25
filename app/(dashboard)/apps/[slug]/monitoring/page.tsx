@@ -24,6 +24,7 @@ export default async function AppMonitoringPage(
       <EmptyState
         icon={Lock}
         title="No access to monitoring"
+        docs="roles.floorCeiling"
         description="You don't have permission to see this app's resource usage. Ask a team admin for the “View metrics” permission."
       />
     );
@@ -36,6 +37,7 @@ export default async function AppMonitoringPage(
   return (
     <div className="space-y-5">
       <PageHeader
+        docs="monitoring.overview"
         title="Monitoring"
         description="Real-time CPU, memory, network and disk I/O for this app's containers."
         actions={

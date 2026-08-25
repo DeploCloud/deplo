@@ -175,6 +175,7 @@ export function EnvManager({
         <EmptyState
           graphic={<EnvGraphic />}
           title="No environment variables"
+          docs="env.overview"
           description="Add variables to configure your app - available during builds and at runtime."
         />
       ) : !hasMatches ? (

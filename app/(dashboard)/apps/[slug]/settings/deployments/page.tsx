@@ -51,7 +51,11 @@ export default async function AppDeploymentSettingsPage(
 
   return (
     <section className="space-y-4">
-      <SettingsSection icon={Rocket} title="Deployment" />
+      <SettingsSection
+        icon={Rocket}
+        title="Deployment"
+        docs="releases.autoDeploy"
+      />
       <CapabilityFieldset cap="configure_apps">
         <DeploymentSettingsForm
           appId={project.id}
