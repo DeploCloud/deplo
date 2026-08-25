@@ -428,6 +428,12 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
+    {
+      label: "Domains",
+      href: `${base}/domains`,
+      icon: Globe,
+      tooltip: "Custom domains & routing",
+    },
     // Environment holds sensitive values — only for manage_env holders.
     ...(f.canManageEnv
       ? [
@@ -439,12 +445,6 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
-    {
-      label: "Domains",
-      href: `${base}/domains`,
-      icon: Globe,
-      tooltip: "Custom domains & routing",
-    },
     // Console is an ADVANCED surface — a live shell into the container, reached
     // from Advanced settings. Its chip stays hidden until the user confirms the
     // one-time warning (consoleAcknowledged), and then only while there's a live
