@@ -42,6 +42,7 @@ export function MigrationsTabs({
   servers,
   buildServers,
   runs,
+  resumable,
   isInstanceAdmin,
   canExposePorts,
   viewerName,
@@ -52,6 +53,9 @@ export function MigrationsTabs({
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   runs: ImportRun[];
+  /** The run the wizard opens on: one in flight, or one whose report nobody has
+   *  closed yet. Null for the empty connect form. */
+  resumable: ImportRun | null;
   isInstanceAdmin: boolean;
   canExposePorts: boolean;
   /** Who is looking, matched against a running migration's actor. */
@@ -120,6 +124,7 @@ export function MigrationsTabs({
           isInstanceAdmin={isInstanceAdmin}
           canExposePorts={canExposePorts}
           viewerName={viewerName}
+          resumable={resumable}
           prefill={prefill}
         />
       </TabsContent>

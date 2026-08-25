@@ -869,6 +869,13 @@
       "when": 1784942205006,
       "tag": "0123_migration_runs_in_background",
       "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1784942206006,
+      "tag": "0124_migration_report_seen",
+      "breakpoints": true
     }
   ]
 }

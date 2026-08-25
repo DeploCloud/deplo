@@ -3688,6 +3688,16 @@ export const dokployImports = pgTable(
     phase: text("phase").notNull().default("config"),
     /** Stop is a REQUEST: the thing that stops runs elsewhere and checks between steps. */
     stopRequested: boolean("stop_requested").notNull().default(false),
+    /**
+     * When the person who started it closed its report - and NULL for as long as
+     * they have not.
+     *
+     * It is what makes the wizard a view of the run rather than a memory of one:
+     * the page opens on the run it left, whichever tab that was, until somebody
+     * says they are done with it. Without it, leaving the page mid-migration and
+     * coming back gave an empty connect form while the run was still moving.
+     */
+    reportSeenAt: isoTimestamptz("report_seen_at"),
     /** Liveness of whichever process is driving it; cold means take it over. */
     heartbeatAt: isoTimestamptz("heartbeat_at"),
     runnerOwner: text("runner_owner"),

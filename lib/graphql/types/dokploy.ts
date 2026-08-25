@@ -10,6 +10,7 @@ import {
 import {
   abandonDokployImport,
   activeDokployImportForTeam,
+  dismissDokployReport,
   beginDokployImport,
   type DokployInvite,
   type DokployPlan,
@@ -762,6 +763,17 @@ builder.mutationFields((t) => ({
     description:
       "Leaving the wizard behind: take Deplo's agent back off the machines it registered to read, exactly the way finishing does. No-op while a run is in flight (it owns those agents) and after one whose volume copy failed (the bytes are still over there). Returns how many sources it is removing.",
     resolve: () => abandonDokployImport(),
+  }),
+  dismissDokployReport: t.field({
+    type: "Boolean",
+    authScopes: { capability: "create_projects" },
+    description:
+      '"I am done looking at this run": the migration wizard stops opening on it and shows an empty connect form again. Pressing Finish on the report is what sends it.',
+    args: { runId: t.arg.string({ required: true }) },
+    resolve: async (_r, { runId }) => {
+      await dismissDokployReport(runId);
+      return true;
+    },
   }),
   finishDokployImport: t.field({
     type: "Boolean",

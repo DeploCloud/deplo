@@ -103,6 +103,16 @@ export interface ImportRun {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+  /**
+   * Where the run had got to, as the server last wrote it down. Filled on the
+   * run the wizard OPENS on, so the panel is right on the first paint instead of
+   * waiting for the live feed to connect; the history list leaves them out.
+   */
+  phase?: string;
+  doneSteps?: number;
+  totalSteps?: number;
+  stepLabel?: string | null;
+  lastPath?: string | null;
 }
 
 /** What a revert took back out of Deplo, and what it could not. */

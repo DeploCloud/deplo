@@ -2755,6 +2755,11 @@ type Mutation {
   disableTwoFactor(code: String!, password: String!): Boolean
 
   """
+  "I am done looking at this run": the migration wizard stops opening on it and shows an empty connect form again. Pressing Finish on the report is what sends it.
+  """
+  dismissDokployReport(runId: String!): Boolean
+
+  """
   Stop telling this app that its addresses changed when it was imported: clears `importedFrom` on every one of its domains. Per app on purpose - a migration brings over many, and one blanket dismissal would hide the fact on every app nobody has looked at yet.
   """
   dismissImportedDomains(appId: String!): Boolean

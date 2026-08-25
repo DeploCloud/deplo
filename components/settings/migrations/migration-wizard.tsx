@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
-import { lockPageAround } from "@/lib/page-lock";
 import { formatBuildDuration, timeAgo } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +42,7 @@ import { StepShell } from "./step-shell";
 import { type MigrationProgress } from "./migration-progress";
 import {
   importableOf,
+  type ImportRun,
   type Invite,
   type Placement,
   type Plan,
@@ -213,6 +213,17 @@ const STOP = /* GraphQL */ `
  * `keepalive` rather than through the client. Nothing reads the answer: the
  * decision of what may actually be uninstalled is entirely the server's.
  */
+/**
+ * "I am done with this run": the wizard stops opening on it and gives back an
+ * empty connect form. Everything else on this screen is derived from the run
+ * itself - this is the one thing only a person can say.
+ */
+const DISMISS = /* GraphQL */ `
+  mutation DismissDokployReport($runId: String!) {
+    dismissDokployReport(runId: $runId)
+  }
+`;
+
 const ABANDON = /* GraphQL */ `
   mutation AbandonDokployImport {
     abandonDokployImport
@@ -256,6 +267,30 @@ function dataNote(message: string, outcome: string = "manual"): ReportItem {
   };
 }
 
+/**
+ * The page's snapshot of a run, in the shape the live feed uses, so the panel
+ * can read one field either way. Progress is whatever the server last wrote
+ * down; the feed overwrites it the moment it connects.
+ */
+function asActive(run: ImportRun): ActiveMigration {
+  return {
+    id: run.id,
+    sourceUrl: run.sourceUrl,
+    orgName: run.orgName,
+    actor: run.actor,
+    startedAt: run.startedAt,
+    created: run.created,
+    skipped: run.skipped,
+    failed: run.failed,
+    manual: run.manual,
+    lastPath: run.lastPath ?? null,
+    phase: run.phase ?? "config",
+    doneSteps: run.doneSteps ?? 0,
+    totalSteps: run.totalSteps ?? 0,
+    stepLabel: run.stepLabel ?? null,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -269,6 +304,7 @@ export function MigrationWizard({
   isInstanceAdmin,
   canExposePorts,
   viewerName,
+  resumable,
   prefill,
 }: {
   teamId: string;
@@ -285,6 +321,13 @@ export function MigrationWizard({
    * their wizard back, the second gets the read-only panel.
    */
   viewerName: string;
+  /**
+   * The run this person is in the middle of, read at page load: one still moving,
+   * or one whose report they have not closed yet. It is what makes leaving the
+   * page free - the wizard opens on the run instead of on an empty form, so the
+   * screens come back whichever tab (or device) they come back on.
+   */
+  resumable: ImportRun | null;
   /**
    * An address handed over from the History tab. The nonce is what makes
    * picking the same run twice still land in the field.
@@ -325,6 +368,17 @@ export function MigrationWizard({
     current: "",
   });
   const [items, setItems] = React.useState<ReportItem[]>([]);
+  /**
+   * Where the run stood when this page was rendered, kept until the live feed
+   * connects - a fraction of a second in which the wizard would otherwise paint
+   * the connect form over a migration that is moving.
+   *
+   * Dropped the moment the run is settled (below), so it can never outlive the
+   * thing it is standing in for.
+   */
+  const [snapshot, setSnapshot] = React.useState<ActiveMigration | null>(() =>
+    resumable && resumable.status === "running" ? asActive(resumable) : null,
+  );
   const [runId, setRunId] = React.useState<string | null>(null);
   const [failure, setFailure] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState(false);
@@ -590,6 +644,9 @@ export function MigrationWizard({
    * screen when a migration finished, offering to start the one that had just
    * succeeded.
    */
+  /** Read by `settleFinished`, which must not change identity every time the
+   *  plan does - it is the dependency of an effect that watches the live feed. */
+  const hasPlan = plan != null;
   const settleFinished = React.useCallback(
     async (id: string) => {
       const res = await gqlAction<
@@ -604,8 +661,16 @@ export function MigrationWizard({
       >(RUN_REPORT_QUERY, { id }, (d) => d.dokployImport);
       if (!res.ok || !res.data) return;
       setItems(res.data.items);
+      // Still moving: the live feed owns the screen. Only the arrival path gets
+      // here - the edge below fires when the feed has already gone quiet.
+      if (res.data.status === "running") return;
+      // Whatever the page was rendered with is stale from here on.
+      setSnapshot(null);
       if (res.data.status === "done") {
-        setStep(isInstanceAdmin ? "people" : "done");
+        // Inviting the source's members needs the member list, which came with
+        // the plan and cannot be read back once the run has handed the API key
+        // over. Arriving after the fact therefore goes straight to the report.
+        setStep(isInstanceAdmin && hasPlan ? "people" : "done");
         return;
       }
       // Stopped or failed. Both land on the panel that offers the only two
@@ -613,7 +678,7 @@ export function MigrationWizard({
       if (res.data.error) setFailure(res.data.error);
       else setStopped(true);
     },
-    [isInstanceAdmin],
+    [isInstanceAdmin, hasPlan],
   );
 
   async function loadResumedLog(id: string) {
@@ -627,6 +692,16 @@ export function MigrationWizard({
       return;
     }
     setItems(res.data?.items ?? []);
+  }
+
+  /**
+   * Leaving the report for good. Until this lands, the page opens on this run
+   * every time - which is the whole point on the way IN, and would be a wizard
+   * that cannot be started again on the way out.
+   */
+  async function closeReport() {
+    const id = adoptedId ?? runId;
+    if (id) await gqlAction(DISMISS, { runId: id });
   }
 
   /** Keep what landed and read the report on it. */
@@ -728,21 +803,6 @@ export function MigrationWizard({
   const moving = step === "review" && (running || stopped || failure !== null);
 
   /**
-   * The one state this page may not be walked away from - and it is NOT a run in
-   * flight.
-   *
-   * The run lives in the control plane now, not in this tab: leaving while it
-   * moves costs nothing, the header chip follows it, and coming back re-opens the
-   * same panel with Stop still on it. Holding the whole dashboard hostage for it
-   * was a leftover from the loop that used to run here.
-   *
-   * A run that has STOPPED or failed is different: what came over is sitting
-   * between two platforms and the choice - undo it, or keep it - is on this panel
-   * and nowhere else, so this one still refuses Back and switches the chrome off.
-   */
-  const locked = moving && !running;
-
-  /**
    * Every machine behind that Dokploy answers Deplo - the same condition the
    * install step ends on, hoisted here because the step rail needs it too.
    *
@@ -757,42 +817,11 @@ export function MigrationWizard({
   );
 
   /**
-   * While it is locked, everything else on the page is switched off: the
-   * sidebar, the topbar with its team switcher and account menu, the banners,
-   * the page's own tabs. Not a confirm dialog - switching team is a button, not
-   * a link, and it remounts every page under the layout, so it took the run's
-   * own panel with it without ever looking like navigation.
-   *
-   * Back is refused the same way: the browser gets its entry pushed straight
-   * back and the person gets told what to do instead. Closing the tab is the
-   * one vector left, and that one is the browser's own prompt (the guard
-   * below).
+   * Nothing here holds the page any more, and that is the point: the run is the
+   * control plane's, and every screen this wizard shows is restored from it (see
+   * `resumable`). Switching off the sidebar and refusing Back protected state
+   * that only existed in this tab - state that now outlives the tab entirely.
    */
-  const heldRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    const root = heldRef.current;
-    if (!locked || !root) return;
-    // One spare history entry for Back to land on, pushed once for the whole
-    // window. The state object is Next's, not ours: a sentinel carrying a null
-    // state is one the App Router cannot restore on the way forward again.
-    window.history.pushState(window.history.state, "", window.location.href);
-    return lockPageAround(root);
-  }, [locked]);
-
-  React.useEffect(() => {
-    if (!locked) return;
-    const onPop = () => {
-      // Put the entry back before the browser is done with the gesture, so the
-      // URL never actually changes and nothing under the layout remounts.
-      window.history.pushState(window.history.state, "", window.location.href);
-      toast.warning(
-        "Undo the migration or keep what landed before leaving this page.",
-      );
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, [locked]);
-
   /**
    * A migration this tab is NOT driving - somebody else's, or one this tab
    * started before a reload. The wizard opens on it instead of on an empty
@@ -804,6 +833,30 @@ export function MigrationWizard({
    * this tab holds of its own wins: the driver keeps its panel with Stop on it.
    */
   const watched = useActiveMigration();
+
+  /** The run on screen: the live feed when there is one, the page's own snapshot
+   *  until it arrives. */
+  const feed = watched ?? snapshot;
+
+  /**
+   * Arriving on a run already in progress - or on one whose report nobody has
+   * closed yet - is the SAME screen the person left, not a new kind of screen.
+   *
+   * Once, on mount: take the run's id (every button on the panel is a server call
+   * that needs only that), then ask the server where it actually stands. A run
+   * still moving hands the screen to the live feed; one that has ended lands on
+   * exactly what the tab that started it would be looking at - the report, or the
+   * panel that asks whether to undo it.
+   */
+  const restored = React.useRef(false);
+  React.useEffect(() => {
+    if (restored.current || !resumable) return;
+    restored.current = true;
+    setRunId(resumable.id);
+    setAdoptedId(resumable.id);
+    setStep("review");
+    void settleFinished(resumable.id);
+  }, [resumable, settleFinished]);
 
   // Fires on the edge, not on the state: `watched` is null for most of this
   // component's life, and settling on every render of a page with no migration
@@ -823,7 +876,8 @@ export function MigrationWizard({
    * whole page already is: guessing wrong costs a visible button, never an
    * action somebody was not allowed to take.
    */
-  const mine = watched != null && watched.actor === viewerName;
+  const mine =
+    feed != null && (feed.id === adoptedId || feed.actor === viewerName);
   /**
    * The run this tab started, come back to after a reload (or opened from the
    * header chip). The loop is gone - it held the API key, which is never stored
@@ -832,7 +886,7 @@ export function MigrationWizard({
    * all, rather than a second kind of screen that only watches.
    */
   const resumed =
-    watched != null &&
+    feed != null &&
     mine &&
     !running &&
     !stopped &&
@@ -840,9 +894,10 @@ export function MigrationWizard({
     step !== "done";
   /** The same run once this tab has stopped it: `runId` is set now, so the
    *  panel's second half - remove what came over, or keep it - is the driver's. */
-  const resumedStopped = adoptedId != null && stopped && !running;
+  const resumedStopped =
+    adoptedId != null && !running && (stopped || failure !== null);
   const watching =
-    watched != null &&
+    feed != null &&
     !mine &&
     runId == null &&
     !running &&
@@ -951,14 +1006,14 @@ export function MigrationWizard({
       {step === "done" ? (
         <DoneStep
           items={items}
-          onFinish={() => router.push("/")}
+          onFinish={() => {
+            void closeReport();
+            router.push("/");
+          }}
           isInstanceAdmin={isInstanceAdmin}
         />
       ) : (
-        <div
-          ref={heldRef}
-          className="mx-auto flex w-full flex-col items-center gap-8"
-        >
+        <div className="mx-auto flex w-full flex-col items-center gap-8">
           <MigrationGraphic state={pose} className="h-auto w-full max-w-md" />
 
           {/* One width for every step, and it is the narrow one: a wizard is
@@ -1005,7 +1060,7 @@ export function MigrationWizard({
             </div>
 
             <div>
-              {watching && <WatchingPanel run={watched} />}
+              {watching && <WatchingPanel run={feed} />}
 
               {/* The same panel the driver sees, for the person who started this
                   run and came back to it. Not a second kind of screen: the step
@@ -1013,26 +1068,25 @@ export function MigrationWizard({
               {(resumed || resumedStopped) && (
                 <MovingPanel
                   progress={
-                    watched
+                    feed
                       ? {
-                          done: watched.doneSteps,
-                          total: watched.totalSteps,
-                          current:
-                            watched.stepLabel ?? lastStep(watched.lastPath),
+                          done: feed.doneSteps,
+                          total: feed.totalSteps,
+                          current: feed.stepLabel ?? lastStep(feed.lastPath),
                         }
                       : progress
                   }
                   // Never stalled now: the run is in the control plane, and a
                   // page with no run open shows no panel at all.
                   stalled={false}
-                  startedAt={watched ? Date.parse(watched.startedAt) : null}
+                  startedAt={feed ? Date.parse(feed.startedAt) : null}
                   failure={failure}
                   running={resumed}
                   reverting={reverting}
                   onShowLog={() =>
-                    void loadResumedLog(adoptedId ?? watched?.id ?? "")
+                    void loadResumedLog(adoptedId ?? feed?.id ?? "")
                   }
-                  onStop={() => void stopResumed(watched?.id ?? "")}
+                  onStop={() => void stopResumed(feed?.id ?? "")}
                   onRevert={revertRun}
                   onKeep={keepPartial}
                   canRevert={runId != null}
@@ -1126,10 +1180,10 @@ export function MigrationWizard({
           arrived from the header chip see the same log as the person who started
           it. */}
       <MigrationConsole
-        runId={adoptedId ?? runId ?? watched?.id ?? null}
+        runId={adoptedId ?? runId ?? feed?.id ?? null}
         open={logOpen}
         onOpenChange={setLogOpen}
-        live={watched != null}
+        live={feed != null}
       />
     </>
   );

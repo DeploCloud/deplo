@@ -56,6 +56,8 @@ import {
   abandonDokployImport,
   appendRunItem,
   beginDokployImport,
+  dismissDokployReport,
+  resumableDokployImport,
   dokployMachines,
   setDokployMachineAddress,
   drainMigrationSourceUninstalls,
@@ -1395,6 +1397,67 @@ test("leaving keeps the sources a stopped run is resumed through", async () => {
   assert.ok(
     await asOwner(() => getServerById(id)),
     "re-running is how a stopped migration is resumed, and it needs the agent",
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Coming back to a migration                                          */
+/* ------------------------------------------------------------------ */
+
+test("the wizard opens on the run you left, until you close its report", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+
+  // Leaving the page and coming back is this read: the run, not an empty form.
+  const open = await asOwner(() => resumableDokployImport());
+  assert.equal(open?.id, runId);
+  assert.equal(open?.status, "running");
+  assert.equal(open?.reportSeenAt, null);
+
+  await asOwner(() => finishDokployImport(runId));
+  const finished = await asOwner(() => resumableDokployImport());
+  assert.equal(
+    finished?.id,
+    runId,
+    "a run that ended while you were away still owes you its report",
+  );
+
+  await asOwner(() => dismissDokployReport(runId));
+  assert.equal(
+    await asOwner(() => resumableDokployImport()),
+    null,
+    "the wizard must be startable again once the report is closed",
+  );
+});
+
+test("the run that comes back is yours, and only this team may close it", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await db.execute(
+    `update dokploy_imports set actor_user_id = 'someone_else' where id = '${runId}'`,
+  );
+
+  assert.equal(
+    await asOwner(() => resumableDokployImport()),
+    null,
+    "a teammate's wizard must not open on somebody else's migration - they get the header chip and the watching panel",
+  );
+
+  await assert.rejects(() =>
+    runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+      dismissDokployReport(runId),
+    ),
+  );
+});
+
+test("undoing a migration is being done with it", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  await asOwner(() => revertDokployImport(runId));
+
+  assert.equal(
+    await asOwner(() => resumableDokployImport()),
+    null,
+    "the wizard would open on a run whose work has just been taken back out",
   );
 });
 

@@ -7,7 +7,10 @@ import {
 import { getTeamIdentity } from "@/lib/data/teams";
 import { getCurrentUser } from "@/lib/auth";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
-import { listDokployImports } from "@/lib/data/dokploy-import";
+import {
+  listDokployImports,
+  resumableDokployImport,
+} from "@/lib/data/dokploy-import";
 import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
@@ -37,23 +40,35 @@ export default async function SettingsMigrationsPage() {
       />
     );
 
-  const [team, servers, buildServers, runs, admin, mayExposePorts, viewer] =
-    await Promise.all([
-      getTeamIdentity(),
-      listServerChoices(),
-      // A second, wider list: a build-only host cannot RUN anything, which is
-      // exactly why it belongs in the other column.
-      listBuildServerChoices(),
-      listDokployImports(),
-      isInstanceAdmin(),
-      // A migrated database keeps the host port it had over there, and that is a
-      // published port like any other - so the review only offers to sort one out
-      // for somebody who could publish it.
-      canExposePorts(),
-      // Who is looking, so a migration already in flight can tell the person who
-      // started it apart from a teammate who just walked in on it.
-      getCurrentUser(),
-    ]);
+  const [
+    team,
+    servers,
+    buildServers,
+    runs,
+    resumable,
+    admin,
+    mayExposePorts,
+    viewer,
+  ] = await Promise.all([
+    getTeamIdentity(),
+    listServerChoices(),
+    // A second, wider list: a build-only host cannot RUN anything, which is
+    // exactly why it belongs in the other column.
+    listBuildServerChoices(),
+    listDokployImports(),
+    // The run this person is in the middle of, if any: the wizard opens on it
+    // rather than on an empty form, so leaving the page and coming back gives
+    // back the screen they left. Null is the normal case.
+    resumableDokployImport(),
+    isInstanceAdmin(),
+    // A migrated database keeps the host port it had over there, and that is a
+    // published port like any other - so the review only offers to sort one out
+    // for somebody who could publish it.
+    canExposePorts(),
+    // Who is looking, so a migration already in flight can tell the person who
+    // started it apart from a teammate who just walked in on it.
+    getCurrentUser(),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -73,6 +88,7 @@ export default async function SettingsMigrationsPage() {
         servers={servers}
         buildServers={buildServers}
         runs={runs}
+        resumable={resumable}
         isInstanceAdmin={admin}
         canExposePorts={mayExposePorts}
         viewerName={viewer?.name ?? ""}

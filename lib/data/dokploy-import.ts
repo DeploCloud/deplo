@@ -1,6 +1,16 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  sql,
+} from "drizzle-orm";
 import yaml from "js-yaml";
 
 import { getDb } from "../db/client";
@@ -307,6 +317,9 @@ export interface ImportRunDTO {
   stepLabel: string | null;
   /** Somebody asked it to stop; it notices between steps. */
   stopRequested: boolean;
+  /** When its report was closed by the person who started it. Null while the
+   *  wizard should still open on this run - see the column's own doc. */
+  reportSeenAt: string | null;
   /**
    * The path of the last thing this run touched (`Project / Environment /
    * service`), or null before it has touched anything.
@@ -1124,6 +1137,10 @@ export async function beginDokployImport(input: {
     sourceUrl: normalizeDokployBaseUrl(input.url),
     orgName: input.orgName?.trim() || null,
     actor: user?.name ?? "someone",
+    // The id as well as the display name: it is what says whose wizard opens on
+    // this run again (`resumableDokployImport`), and the runner overwrites it
+    // with the same value when it takes the plan.
+    actorUserId: user?.id ?? null,
     status: "running",
     created: 0,
     skipped: 0,
@@ -3589,10 +3606,11 @@ async function runRevertDokployImport(runId: string): Promise<RevertResultDTO> {
 
   // The run stays in History - what happened is still what happened - but it
   // says out loud that it was taken back out, so nobody reads "12 created" as
-  // twelve apps that exist.
+  // twelve apps that exist. `report_seen_at` goes with it: undoing a migration
+  // IS being done with it, and the wizard must not open on it again.
   await getDb()
     .update(runsTable)
-    .set({ status: "reverted", finishedAt: nowIso() })
+    .set({ status: "reverted", finishedAt: nowIso(), reportSeenAt: nowIso() })
     .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
   publishMigrationChanged();
 
@@ -3617,6 +3635,57 @@ async function environmentIsGone(id: string): Promise<boolean> {
     .from(environmentsTable)
     .where(eq(environmentsTable.id, id));
   return rows.length === 0;
+}
+
+/**
+ * The run the wizard should OPEN on, or null for an empty connect form.
+ *
+ * A migration runs in the control plane, so the page it was started from is one
+ * of the places you can watch it from and not the only one - but every screen
+ * the wizard showed lived in that tab's memory, so leaving and coming back gave
+ * a blank form while the run was still moving, and a run that ended while you
+ * were away lost its report entirely. This is what makes the wizard a VIEW of
+ * the run instead: whichever tab, whichever device, the same screen comes back.
+ *
+ * It is the person's OWN latest run (`actor_user_id`, not the display name) and
+ * it stops coming back the moment they close its report - see
+ * {@link dismissDokployReport}. A teammate's run is not restored here: the live
+ * one already reaches them through the header chip and the watching panel, and a
+ * finished one is somebody else's report to read in History.
+ */
+export async function resumableDokployImport(): Promise<ImportRunDTO | null> {
+  const teamId = await requireActiveTeamId();
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const [row] = await getDb()
+    .select()
+    .from(runsTable)
+    .where(
+      and(
+        eq(runsTable.teamId, teamId),
+        eq(runsTable.actorUserId, user.id),
+        isNull(runsTable.reportSeenAt),
+      ),
+    )
+    .orderBy(desc(runsTable.seq))
+    .limit(1);
+  return row ? toRunDTO(row) : null;
+}
+
+/**
+ * "I am done looking at this run" - the wizard stops opening on it.
+ *
+ * The one piece of the wizard's state that cannot be derived from the run: every
+ * other screen it shows is a function of status, items and progress, but whether
+ * the person has READ the report is only knowable because they said so. Pressing
+ * Finish on the report says it, and so does undoing the migration.
+ */
+export async function dismissDokployReport(runId: string): Promise<void> {
+  const { teamId } = await requireCapability("create_projects");
+  await getDb()
+    .update(runsTable)
+    .set({ reportSeenAt: nowIso() })
+    .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
 }
 
 /**
@@ -3717,6 +3786,7 @@ function toRunDTO(r: typeof runsTable.$inferSelect): ImportRunDTO {
     totalSteps: r.totalSteps,
     stepLabel: r.stepLabel,
     stopRequested: r.stopRequested,
+    reportSeenAt: r.reportSeenAt,
     lastPath: null,
   };
 }
