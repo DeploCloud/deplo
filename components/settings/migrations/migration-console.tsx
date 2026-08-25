@@ -8,6 +8,7 @@ import {
   Copy,
   Search,
   SkipForward,
+  SlidersHorizontal,
   TriangleAlert,
   Info,
   X,
@@ -26,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { gql } from "@/lib/graphql-client";
+import { FacetMenu, type EnvFacet } from "@/components/env/env-filters";
 import type { ReportItem } from "./types";
 
 /**
@@ -93,13 +95,11 @@ const LEVELS = {
     label: "Created",
     icon: Check,
     tone: "text-success",
-    dot: "bg-success",
   },
   skipped: {
     label: "Skipped",
     icon: SkipForward,
     tone: "text-muted-foreground",
-    dot: "bg-muted-foreground",
   },
   // Its own row, not folded into "Needs you": "Deplo has no equivalent for this"
   // is a different sentence from "this came over, go and look at it", and the
@@ -108,19 +108,16 @@ const LEVELS = {
     label: "No equivalent",
     icon: CircleSlash,
     tone: "text-muted-foreground",
-    dot: "bg-border",
   },
   manual: {
     label: "Needs you",
     icon: Info,
     tone: "text-warning",
-    dot: "bg-warning",
   },
   failed: {
     label: "Failed",
     icon: TriangleAlert,
     tone: "text-destructive",
-    dot: "bg-destructive",
   },
 } as const;
 
@@ -130,6 +127,29 @@ type Level = keyof typeof LEVELS;
 function levelOf(outcome: string): Level {
   return outcome in LEVELS ? (outcome as Level) : "manual";
 }
+
+/**
+ * The five outcomes as ONE multi-select menu, not five toggle pills.
+ *
+ * The pills were five buttons wide - half the toolbar - and they were
+ * single-pick: "failed" hid the "needs you" rows you were reading them next to.
+ * `FacetMenu` is the control every other log console in the app already wears
+ * (`components/logs/log-filters.tsx` uses it for levels), checkboxes, per-option
+ * counts and all.
+ */
+const LEVEL_FACET: EnvFacet<ReportItem> = {
+  id: "outcome",
+  label: "Outcome",
+  allLabel: "All outcomes",
+  icon: SlidersHorizontal,
+  options: (Object.keys(LEVELS) as Level[]).map((value) => ({
+    value,
+    label: LEVELS[value].label,
+    // The row reads in its own severity colour, the way the lines below do.
+    labelClassName: LEVELS[value].tone,
+  })),
+  match: (row, value) => levelOf(row.outcome) === value,
+};
 
 /** `2026-08-25T00:14:09.123Z` -> `00:14:09`. Local time, seconds, nothing else. */
 function clock(at: string | null | undefined): string {
@@ -163,7 +183,7 @@ export function MigrationConsole({
   const log = fetched?.runId === runId ? fetched.log : undefined;
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
-  const [only, setOnly] = React.useState<Level | null>(null);
+  const [levels, setLevels] = React.useState<string[]>([]);
   const [follow, setFollow] = React.useState(true);
   const bottom = React.useRef<HTMLDivElement | null>(null);
 
@@ -198,19 +218,27 @@ export function MigrationConsole({
   // every render too, which on a four-hundred-line log while polling is the
   // difference between a console and a stutter.
   const items = React.useMemo(() => log?.items ?? [], [log]);
-  const shown = React.useMemo(() => {
+  // The SEARCH pass on its own: the menu's counts have to say how many rows
+  // picking an outcome would leave, which means every other filter applied and
+  // that one not.
+  const searched = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    return items.filter((i) => {
-      if (only && levelOf(i.outcome) !== only) return false;
-      if (!q) return true;
-      return (
+    if (!q) return items;
+    return items.filter(
+      (i) =>
         i.path.toLowerCase().includes(q) ||
         i.sourceName.toLowerCase().includes(q) ||
         (i.message ?? "").toLowerCase().includes(q) ||
-        i.sourceKind.toLowerCase().includes(q)
-      );
-    });
-  }, [items, query, only]);
+        i.sourceKind.toLowerCase().includes(q),
+    );
+  }, [items, query]);
+  const shown = React.useMemo(
+    () =>
+      levels.length === 0
+        ? searched
+        : searched.filter((i) => levels.includes(levelOf(i.outcome))),
+    [searched, levels],
+  );
 
   // Follow the tail, unless somebody scrolled away from it. Reading line 40 of
   // 300 while the thing yanks itself to the bottom every second is the one way
@@ -223,7 +251,7 @@ export function MigrationConsole({
   // Counted here rather than read off the run: the stored counters fold
   // `unsupported` into `manual` (see `refreshCounts`), so a chip reading them
   // would disagree with the rows its own filter shows.
-  const counts = items.reduce(
+  const counts = searched.reduce(
     (acc, i) => {
       acc[levelOf(i.outcome)] += 1;
       return acc;
@@ -251,7 +279,16 @@ export function MigrationConsole({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] max-w-4xl flex-col gap-3">
+      {/* `selfManaged`: the shell wraps its children in a scrolling GRID, where
+          the log pane's `flex-1` means nothing - so the pane grew with the log
+          and pushed the line count and the buttons down out of reach. This
+          dialog is a flex column that owns its own height: header and toolbar at
+          the top, the pane taking what is left and scrolling inside itself, the
+          footer against the bottom edge and staying there. */}
+      <DialogContent
+        selfManaged
+        className="flex h-[85dvh] max-w-4xl flex-col gap-3"
+      >
         <DialogHeader>
           <DialogTitle>Migration log</DialogTitle>
           <DialogDescription>
@@ -271,22 +308,16 @@ export function MigrationConsole({
               className="pl-8"
             />
           </div>
-          {(Object.keys(LEVELS) as Level[]).map((lv) => {
-            const on = only === lv;
-            return (
-              <Button
-                key={lv}
-                type="button"
-                variant={on ? "secondary" : "outline"}
-                onClick={() => setOnly(on ? null : lv)}
-                className="gap-1.5"
-              >
-                <span className={cn("size-2 rounded-full", LEVELS[lv].dot)} />
-                {LEVELS[lv].label}
-                <span className="text-muted-foreground">{counts[lv]}</span>
-              </Button>
-            );
-          })}
+          {/* Its own width rather than `FacetMenu`'s `flex-1`, which would eat
+              the row it shares with the search box. */}
+          <div className="flex w-44 shrink-0 items-center">
+            <FacetMenu
+              facet={LEVEL_FACET}
+              values={levels}
+              counts={counts}
+              onChange={setLevels}
+            />
+          </div>
           <Button
             type="button"
             variant={follow ? "secondary" : "outline"}
