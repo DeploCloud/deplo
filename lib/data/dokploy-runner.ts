@@ -11,7 +11,7 @@ import {
 import { newId, nowIso } from "../ids";
 import { encryptSecret, decryptSecretOrThrow } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
-import { acquireLease } from "../backups/lease";
+import { acquireLease, releaseLease } from "../backups/lease";
 import { publishMigrationChanged } from "../graphql/pubsub";
 import type { ServicePlacement } from "./dokploy-import";
 import {
@@ -49,7 +49,15 @@ import { listServersForTeam } from "./servers";
 
 /** One lease for every migration on the instance. They are rare and heavy. */
 const LEASE = "dokploy-migration-runner";
-/** A heartbeat older than this is a control plane that died; take the run over. */
+/** A heartbeat older than this is a control plane that died; take the run over.
+ *
+ *  It is the LEASE's staleness too, not only the run's. The lease defaults to two
+ *  hours, which is right for a scheduler that ticks once a minute and wrong here:
+ *  a control plane killed mid-migration held the runner shut for two hours, and
+ *  the only symptom was that nothing moved. Safe to shorten only because the
+ *  lease is now renewed on every beat - the idle tick's and the one that runs
+ *  THROUGH a long step (see {@link advance}), which is what a 900 MB volume copy
+ *  used to look abandoned for. */
 const STALE_MS = 90_000;
 /** How often the tick runs when nothing is going on. */
 const IDLE_TICK_MS = 15_000;
@@ -186,7 +194,7 @@ export async function runMigrationTick(): Promise<void> {
   if (ticking) return;
   ticking = true;
   try {
-    if (!(await acquireLease(LEASE, owner, new Date()))) return;
+    if (!(await acquireLease(LEASE, owner, new Date(), STALE_MS))) return;
     const now = new Date();
     const cold = new Date(now.getTime() - STALE_MS).toISOString();
     const rows = await getDb()
@@ -235,6 +243,18 @@ export function startMigrationRunner(): void {
   void runMigrationTick();
 }
 
+/**
+ * Hand the lease back on SIGTERM/SIGINT, so the next control plane picks the
+ * migration up on its first tick instead of waiting out the staleness window.
+ *
+ * The four schedulers have always done this; the runner was added later and was
+ * not on the list, which is how a restart during a migration became a migration
+ * that stayed still with nothing on screen to say why.
+ */
+export async function releaseMigrationRunnerLease(): Promise<void> {
+  await releaseLease(LEASE, owner);
+}
+
 /** Test seam: stop the timer so a suite does not tick under itself. */
 export function stopMigrationRunner(): void {
   if (timer) clearInterval(timer);
@@ -243,8 +263,13 @@ export function stopMigrationRunner(): void {
 
 type RunRow = typeof runsTable.$inferSelect;
 
-/** Claim the run and keep claiming it: a long step must not look abandoned. */
+/** Claim the run and keep claiming it: a long step must not look abandoned.
+ *
+ *  Both claims, in one call. The lease renewal rides along because the two
+ *  staleness windows have to move together: a run whose heartbeat is fresh while
+ *  its runner's lease has gone stale is a run two control planes would drive. */
 async function beat(runId: string): Promise<void> {
+  await acquireLease(LEASE, owner, new Date(), STALE_MS);
   await getDb()
     .update(runsTable)
     .set({ runnerOwner: owner, heartbeatAt: nowIso() })
@@ -298,9 +323,22 @@ async function advance(row: RunRow): Promise<void> {
   if (!row.actorUserId)
     throw new Error("This run was started before Deplo could resume one.");
   await beat(row.id);
-  await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
-    advanceAsActor(row),
-  );
+  // The steps beat between themselves, and one step can be a 900 MB volume
+  // crossing two hosts - minutes in which nothing beat at all, so the run and
+  // the lease both went cold under a runner that was working perfectly. The
+  // timer is what makes a long step look alive; `ticking` keeps the idle tick
+  // out of here, so nothing else was going to.
+  const heart = setInterval(() => {
+    void beat(row.id).catch(() => {});
+  }, IDLE_TICK_MS);
+  heart.unref?.();
+  try {
+    await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
+      advanceAsActor(row),
+    );
+  } finally {
+    clearInterval(heart);
+  }
 }
 
 async function advanceAsActor(row: RunRow): Promise<void> {

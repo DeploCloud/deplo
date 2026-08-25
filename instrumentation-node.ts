@@ -193,6 +193,16 @@ export async function register(): Promise<void> {
     console.error("[deplo] preview reaper startup failed:", e);
   }
   try {
+    // Live updates reach the OTHER control planes on this database, if there are
+    // any. One connection, and it is what keeps a page attached to this process
+    // honest about work another process is doing - a migration finishing, a
+    // deploy going green - instead of showing the last thing it happened to hear.
+    const { startPubSubBridge } = await import("./lib/graphql/pubsub");
+    startPubSubBridge();
+  } catch (e) {
+    console.error("[deplo] live-update bridge startup failed:", e);
+  }
+  try {
     // The migration runner, and its boot tick is the load-bearing part: a
     // control plane that restarted mid-import is exactly the case this exists
     // for. The run kept its plan, its credential and its place in the list, so
@@ -264,7 +274,7 @@ export async function register(): Promise<void> {
   // to leak; these cannot — and dev HMR re-runs register() on every edit. The two
   // scheduler leases are handed back too, so the NEXT instance's first tick claims
   // them immediately — a lease left behind blocks backups + cleanup for up to the
-  // 2h staleness window. Fire-and-forget (Next's own signal handler owns the
+  // staleness window. Fire-and-forget (Next's own signal handler owns the
   // actual exit); each teardown is guarded so one failure never blocks the others.
   for (const sig of ["SIGTERM", "SIGINT"] as const) {
     process.once(sig, () => {
@@ -284,6 +294,16 @@ export async function register(): Promise<void> {
         .catch(() => {});
       void import("./lib/crons/scheduler")
         .then(({ releaseCronSchedulerLease }) => releaseCronSchedulerLease())
+        .catch(() => {});
+      // Five leases, not four: the migration runner holds one too, and a
+      // migration nobody may drive is worse than a backup nobody may take.
+      void import("./lib/data/dokploy-runner")
+        .then(({ releaseMigrationRunnerLease }) =>
+          releaseMigrationRunnerLease(),
+        )
+        .catch(() => {});
+      void import("./lib/graphql/pubsub")
+        .then(({ stopPubSubBridge }) => stopPubSubBridge())
         .catch(() => {});
     });
   }

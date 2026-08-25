@@ -92,9 +92,18 @@ const g = globalThis as unknown as { [LOCAL_KEY]?: LocalLeases };
 // are separate module registries, so a module-level Map would split the lock.
 const localLeases: LocalLeases = (g[LOCAL_KEY] ??= new Map());
 
-function acquireLocal(name: string, owner: string, now: Date): boolean {
+function acquireLocal(
+  name: string,
+  owner: string,
+  now: Date,
+  staleMs: number,
+): boolean {
   const existing = localLeases.get(name) ?? null;
-  if (!canAcquire(existing, owner, now)) return false;
+  // The window comes from the CALLER, exactly as it does in the SQL above: a
+  // holder that wants a tighter one (the migration runner does) must get the
+  // same answer from both paths, or the fallback tests a rule production is not
+  // running.
+  if (!canAcquire(existing, owner, now, staleMs)) return false;
   localLeases.set(name, { owner, heartbeatAt: now });
   return true;
 }
@@ -171,7 +180,7 @@ export async function acquireLease(
   now: Date = new Date(),
   staleMs: number = LEASE_STALE_MS,
 ): Promise<boolean> {
-  if (!isPostgresEnabled()) return acquireLocal(name, owner, now);
+  if (!isPostgresEnabled()) return acquireLocal(name, owner, now, staleMs);
   try {
     return await acquirePostgres(name, owner, staleMs);
   } catch (e) {
