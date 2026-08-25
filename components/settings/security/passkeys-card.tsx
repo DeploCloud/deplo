@@ -248,6 +248,7 @@ function AddPasskeyDialog({
             <FieldLabel
               htmlFor="passkey-name"
               info="Only you see this. Name it after the device holding it, so you know which one to remove later."
+              docs="team.passkeys"
             >
               Name
             </FieldLabel>

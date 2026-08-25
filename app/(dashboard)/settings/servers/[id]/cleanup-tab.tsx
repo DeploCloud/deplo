@@ -359,6 +359,7 @@ export function ServerCleanupTab({
                 htmlFor="cleanup-enabled"
                 className="cursor-pointer font-normal"
                 info="One schedule for the whole instance, so turning it off here stops the sweep everywhere. To skip only this server, use the switch above."
+                docs="servers.cleanupSettings"
               >
                 Run the cleanup on a schedule (all servers)
               </FieldLabel>
@@ -375,6 +376,7 @@ export function ServerCleanupTab({
                       timezone. <code>0 4 * * *</code> is daily at 04:00 UTC.
                     </>
                   }
+                  docs="servers.cleanupSettings"
                 >
                   Schedule
                 </FieldLabel>
@@ -394,6 +396,7 @@ export function ServerCleanupTab({
                 <FieldLabel
                   htmlFor="cleanup-min-age"
                   info="Caches only: reclaim build cache, dangling images and leaked build volumes older than this. 0 turns the age filter off. App images don't age out, they follow the keep-count next to this."
+                  docs="servers.cleanupScopes"
                 >
                   Minimum age (hours)
                 </FieldLabel>
@@ -412,6 +415,7 @@ export function ServerCleanupTab({
                 <FieldLabel
                   htmlFor="cleanup-keep-images"
                   info="For apps that can't be rolled back: a compose stack, a prebuilt image, a pull request preview. An app Deplo builds keeps what its own Rollbacks setting says instead. A removed image comes back only by rebuilding."
+                  docs="servers.cleanupScopes"
                 >
                   Images kept per app
                 </FieldLabel>
@@ -429,7 +433,10 @@ export function ServerCleanupTab({
             </div>
 
             <div className="space-y-2.5">
-              <FieldLabel info="Scheduled or manual, a sweep reclaims only this list. Containers, data volumes and networks are never pruned.">
+              <FieldLabel
+                info="Scheduled or manual, a sweep reclaims only this list. Containers, data volumes and networks are never pruned."
+                docs="servers.cleanupScopes"
+              >
                 What to reclaim
               </FieldLabel>
               {SCOPES.map((scope) => (

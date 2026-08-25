@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { TwoFactorWizard } from "./two-factor-wizard";
 import { gqlAction } from "@/lib/graphql-client";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * What a member sees instead of the dashboard when a team's (or their role's) 2FA
@@ -55,7 +56,7 @@ export function TwoFactorLockScreen({
           <CardTitle>Two-factor authentication required</CardTitle>
           <CardDescription>
             {reason} requires every member to have a second factor. Add one to
-            continue.
+            continue. <DocsLink topic="team.requireTwoFactor" />
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

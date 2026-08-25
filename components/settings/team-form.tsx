@@ -85,6 +85,7 @@ export function TeamForm({
           <FieldLabel
             htmlFor="team-slug"
             info="URL-safe id used in links and to seed the names of installed app containers. Lowercase letters, numbers and hyphens."
+            docs="team.overview"
           >
             Slug
           </FieldLabel>

@@ -603,6 +603,7 @@ function PortConflictRow({
               htmlFor={portField}
               className="text-xs"
               info="The port on the server clients connect to. Use a free unprivileged port (1024-65535)."
+              docs="databases.hostPort"
             >
               Host port
             </FieldLabel>

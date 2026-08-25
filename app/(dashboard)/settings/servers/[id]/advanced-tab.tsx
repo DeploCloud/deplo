@@ -379,6 +379,7 @@ function ServerClock({
             <FieldLabel
               htmlFor="server-timezone"
               info="The zone this machine reports its own time in. Nothing restarts, and nothing in Deplo moves with it: backups and cleanup run on UTC, and each container keeps the zone from its image."
+              docs="servers.advanced"
             >
               Timezone
             </FieldLabel>
@@ -677,6 +678,7 @@ function TraefikPanel({
                             "Point this domain's DNS at this server first, or the certificate cannot be issued."
                           )
                         }
+                        docs="domains.noDomainYet"
                       >
                         Domain
                       </FieldLabel>
@@ -713,6 +715,7 @@ function TraefikPanel({
                     <FieldLabel
                       htmlFor="traefik-user"
                       info="Anyone with these credentials can see every route and certificate on this server."
+                      docs="servers.advanced"
                     >
                       Username
                     </FieldLabel>
@@ -729,6 +732,7 @@ function TraefikPanel({
                     <FieldLabel
                       htmlFor="traefik-password"
                       info="Stored encrypted and never shown again. Leave blank when editing to keep the current one."
+                      docs="servers.advanced"
                     >
                       Password
                     </FieldLabel>
@@ -1014,6 +1018,7 @@ function ChangeAddress({ server }: { server: ServerSummary }) {
               <FieldLabel
                 htmlFor="server-address"
                 info="IP or DNS name. App URLs follow it immediately; custom domains keep pointing at the old address until you update their DNS records."
+                docs="servers.address"
               >
                 Address
               </FieldLabel>
@@ -1030,6 +1035,7 @@ function ChangeAddress({ server }: { server: ServerSummary }) {
                 <FieldLabel
                   htmlFor="server-agent-port"
                   info="The port the Deplo agent listens on (default 9443). Change it only if you moved the agent."
+                  docs="servers.address"
                 >
                   Agent port
                 </FieldLabel>

@@ -480,6 +480,7 @@ function AccessTab({
               <FieldLabel
                 htmlFor="deploy-concurrency"
                 info="1 means one deploy at a time on this server (the safe default). Two deploys of the same app never run at once regardless of this value."
+                docs="deploy.queue"
               >
                 Concurrent deployments
               </FieldLabel>

@@ -199,6 +199,7 @@ export function RoleEditor({
               <FieldLabel
                 htmlFor="role-name"
                 info="Shown wherever the role is assigned — on the Members page and in the add-member dialog."
+                docs="roles.build"
               >
                 Name
               </FieldLabel>
@@ -216,6 +217,7 @@ export function RoleEditor({
               <FieldLabel
                 htmlFor="role-description"
                 info="One line telling the next admin who this role is for. Optional."
+                docs="roles.build"
               >
                 Description
               </FieldLabel>
@@ -261,6 +263,7 @@ export function RoleEditor({
               disabled={readOnly}
               teamPickable={false}
               info="Where this role can work. Everything is ticked to begin with - untick what its holders should not reach."
+              docs="roles.build"
               emptyNote="This team has nothing to limit a role to yet."
             />
           </CardContent>

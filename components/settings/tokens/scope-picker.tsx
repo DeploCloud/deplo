@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { LogoImage } from "@/components/shared/project-logo";
 import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import { TintedMark } from "@/components/shared/tinted-mark";
 import { cn } from "@/lib/utils";
 import { filterScopeTree } from "@/lib/token-scope-search";
@@ -55,6 +56,7 @@ export function ScopePicker({
   onChange,
   disabled = false,
   info = "What this token can reach. Tick a team for all of it, a project or a folder for everything inside it, or single apps. Tick nothing and it reaches everything you can.",
+  docs = "tokens.scope",
   emptyNote = "You aren't in any team yet, so there is nothing to narrow this token to.",
   notice,
   renderMeta,
@@ -71,6 +73,7 @@ export function ScopePicker({
   teamPickable?: boolean;
   /** The heading's tooltip. */
   info?: React.ReactNode;
+  docs?: DocsTopic;
   /** Shown instead of the tree when there is nothing to pick from. */
   emptyNote?: React.ReactNode;
   /**
@@ -317,7 +320,7 @@ export function ScopePicker({
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
         <h3 className="text-sm font-medium">Access</h3>
-        <InfoTip content={info} docs="tokens.scope" />
+        <InfoTip content={info} docs={docs} />
         {tree.length > 0 && (
           <Button
             type="button"

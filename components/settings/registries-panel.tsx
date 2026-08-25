@@ -290,7 +290,10 @@ function AddRegistryDialog({
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <FieldLabel info="The registry provider. Selecting one sets the default host and a matching username placeholder.">
+                <FieldLabel
+                  info="The registry provider. Selecting one sets the default host and a matching username placeholder."
+                  docs="registries.add"
+                >
                   Type
                 </FieldLabel>
                 <Select
@@ -324,6 +327,7 @@ function AddRegistryDialog({
                       use the selected provider&apos;s default host.
                     </>
                   }
+                  docs="registries.add"
                 >
                   Registry host
                 </FieldLabel>
@@ -336,7 +340,10 @@ function AddRegistryDialog({
               </div>
             </div>
             <div className="space-y-2">
-              <FieldLabel info="The account name used to sign in to the selected registry.">
+              <FieldLabel
+                info="The account name used to sign in to the selected registry."
+                docs="registries.add"
+              >
                 Username
               </FieldLabel>
               <Input

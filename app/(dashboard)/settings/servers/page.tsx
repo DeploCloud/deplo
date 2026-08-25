@@ -415,6 +415,7 @@ export default async function ServersPage(
             the "Add a server" card, which is gone now that Add is a header action. It stays
             on the page (not inside the dialog) so an operator can read it before they click. */}
         <PageHeader
+          docs="servers.overview"
           title={
             <span className="flex items-center gap-2">
               Servers
@@ -447,6 +448,7 @@ export default async function ServersPage(
           <EmptyState
             icon={ServerIcon}
             title="No servers connected"
+            docs="servers.add"
             description="Use Add above to register your first Linux host, then run the one-time install command it gives you on the box."
           />
         ) : (

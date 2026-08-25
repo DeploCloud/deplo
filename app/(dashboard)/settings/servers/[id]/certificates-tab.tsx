@@ -329,6 +329,7 @@ function AddCertificateDialog({
             <FieldLabel
               htmlFor="certificate-pem"
               info="Paste the full chain: your certificate first, then any intermediates your provider gave you. Usually the file named fullchain.pem."
+              docs="certificates.customInstall"
             >
               Certificate
             </FieldLabel>
@@ -348,6 +349,7 @@ function AddCertificateDialog({
             <FieldLabel
               htmlFor="certificate-key"
               info="The key this certificate was issued for. It is sent to the server and can never be read back. A key with a passphrase has to be decrypted first."
+              docs="certificates.customInstall"
             >
               Private key
             </FieldLabel>

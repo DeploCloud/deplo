@@ -461,10 +461,12 @@ export function UserAccountSettings({
                   thing, set on that team&apos;s Members page.
                 </>
               }
+              docs="instance.admin"
             >
               <ToggleRow
                 title="Instance admin"
                 info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold both advanced grants implicitly."
+                docs="instance.admin"
                 checked={admin}
                 disabled={isSelf || ownerFlagsLocked}
                 onChange={setAdmin}
@@ -499,6 +501,7 @@ export function UserAccountSettings({
                     <ToggleRow
                       title="Publish ports"
                       info="Let a compose stack bind a port on the server itself, with a service's ports:. Public domains and routes don't need this."
+                      docs="hostAccess.ports"
                       checked={admin || exposePorts}
                       disabled={admin || ownerLocked}
                       onChange={setExposePorts}
@@ -506,6 +509,7 @@ export function UserAccountSettings({
                     <ToggleRow
                       title="Bind server folders"
                       info="Let this account point an app at a folder that already exists on the server (the Bind kind in an app's Storage settings)."
+                      docs="hostAccess.gated"
                       checked={admin || mountHostVolumes}
                       disabled={admin || ownerLocked}
                       onChange={setMountHostVolumes}
@@ -526,6 +530,7 @@ export function UserAccountSettings({
                 id="reset-pw"
                 label="New password (optional)"
                 info="Leave blank to keep the current password. A new one replaces theirs the moment you save, and nobody is emailed about it, so hand it over yourself."
+                docs="team.password"
                 value={password}
                 onChange={setPassword}
                 disabled={ownerLocked}
@@ -545,6 +550,7 @@ export function UserAccountSettings({
                     <ActionRow
                       title="Reset two-factor"
                       info="For someone who lost their phone and their recovery codes. Their account goes back to password only, and they can set it up again. Nothing else changes: not their password, not their sessions."
+                      docs="team.twoFactor"
                       action={
                         <Button
                           variant="outline"
@@ -567,6 +573,7 @@ export function UserAccountSettings({
                     <ActionRow
                       title="Remove passkeys"
                       info="For someone whose device is gone. Until it is removed, a dead passkey still satisfies their team's two-factor policy, so nobody can tell them to enrol anything. Nothing else changes: not their password, not their sessions."
+                      docs="team.passkeys"
                       action={
                         <Button
                           variant="outline"
@@ -589,6 +596,7 @@ export function UserAccountSettings({
                 title="Danger zone"
                 tone="destructive"
                 info="Unlike everything above, these apply the moment you confirm them — they don't wait for Save changes."
+                docs="instance.users"
               >
                 <ActionRow
                   title={suspended ? "Reactivate account" : "Suspend account"}
@@ -597,6 +605,7 @@ export function UserAccountSettings({
                       ? "Let this person sign in again. Everything they had is still there."
                       : "Signs them out and blocks sign-in. Teams, apps and data are all kept, and you can undo it here at any time."
                   }
+                  docs="instance.users"
                   action={
                     suspended ? (
                       <Button
@@ -625,6 +634,7 @@ export function UserAccountSettings({
                 <ActionRow
                   title="Delete account"
                   info="Permanently removes this person and — if you say so — what they own. There is no undo; suspending is the reversible answer."
+                  docs="instance.users"
                   action={
                     <Button
                       variant="destructive"

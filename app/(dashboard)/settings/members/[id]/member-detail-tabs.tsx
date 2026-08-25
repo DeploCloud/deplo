@@ -387,6 +387,7 @@ export function MemberDetailTabs({
                       ? "Everywhere their role reaches is ticked. Untick what this one person shouldn't touch, or tick something extra to let them in. Everything under a ticked node follows it."
                       : `Set by their role: ${role?.name} is limited to specific environments, which can only be changed on the role.`
                   }
+                  docs="team.limitedAccess"
                   emptyNote="This team has nothing to give access to yet."
                   notice={blockedReason}
                 />

@@ -236,6 +236,7 @@ export function TokenEditor({
               <FieldLabel
                 htmlFor="token-name"
                 info="Shown in this list and in the activity log. Name it after the thing that will use it, so you know what you are revoking later."
+                docs="tokens.overview"
               >
                 Name
               </FieldLabel>
@@ -254,6 +255,7 @@ export function TokenEditor({
               <FieldLabel
                 htmlFor="token-expiry"
                 info="After this, the token stops working everywhere and whatever uses it starts failing. Pick the shortest span the job actually needs."
+                docs="tokens.expiry"
               >
                 Expires
               </FieldLabel>

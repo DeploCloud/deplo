@@ -990,6 +990,7 @@ function ConnectStep({
           <FieldLabel
             htmlFor="dokploy-url"
             info="The address you open Dokploy on. Deplo adds /api. Not the machine's address - the next step asks for that."
+            docs="migration.run"
           >
             Panel address
           </FieldLabel>
@@ -1011,6 +1012,7 @@ function ConnectStep({
           <FieldLabel
             htmlFor="dokploy-key"
             info="In Dokploy: Settings, Profile, API/CLI. Use an owner's or admin's key - a plain member's key is refused on the per-service calls."
+            docs="migration.run"
           >
             API key
           </FieldLabel>
@@ -1039,6 +1041,7 @@ function ConnectStep({
                 host&apos;s own IP.
               </>
             }
+            docs="migration.source"
           >
             <ServerIcon className="size-4 text-muted-foreground" />
             Same machine

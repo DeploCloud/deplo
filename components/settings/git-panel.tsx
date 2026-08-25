@@ -601,6 +601,7 @@ function ConnectDialog({
               <FieldLabel
                 htmlFor="git-base-url"
                 info="The address you open in a browser, not the API address. A bare domain becomes https://."
+                docs="git.connectionType"
               >
                 Address
               </FieldLabel>
@@ -618,6 +619,7 @@ function ConnectDialog({
                 <FieldLabel
                   htmlFor="git-username"
                   info="The account the token belongs to. Leave the suggested value unless your provider says otherwise."
+                  docs="git.connectionType"
                 >
                   Username
                 </FieldLabel>

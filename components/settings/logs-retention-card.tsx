@@ -79,6 +79,7 @@ export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
             <FieldLabel
               htmlFor="log-max-days"
               info="A limit on what can be asked for, not on what a server keeps. Docker rotates a container's logs by size, so an older window can come back empty."
+              docs="logs.retention"
             >
               Maximum range
             </FieldLabel>

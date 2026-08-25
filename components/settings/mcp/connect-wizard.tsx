@@ -393,6 +393,7 @@ function WizardRun({
                   <FieldLabel
                     htmlFor="mcp-token-name"
                     info="How this connection is listed under Manage, and in Settings → API tokens."
+                    docs="mcp.connect"
                   >
                     Name
                   </FieldLabel>
@@ -599,6 +600,7 @@ function WizardRun({
                 <FieldLabel
                   htmlFor="mcp-preset"
                   info="A starting set you can then adjust. Custom appears once the ticks stop matching one."
+                  docs="tokens.capabilities"
                 >
                   Template
                 </FieldLabel>
@@ -666,6 +668,7 @@ function WizardRun({
               selection={scope}
               onChange={setScope}
               info="Where this agent may work. Tick a team for all of it, or narrow it to a project, folder or single apps."
+              docs="tokens.scope"
             />
             <DialogFooter>
               <Button type="submit">Done</Button>
