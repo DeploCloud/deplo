@@ -10,16 +10,6 @@ export type Role = "owner" | "member" | "viewer";
  * A single thing a member is allowed to do within a team — ONE action, never a
  * bundle. A {@link Role} is a named set of these, assigned per member; the labels,
  * descriptions and browse categories live in `lib/capabilities.ts`.
- *
- * These replaced the original eight coarse capabilities (`deploy`,
- * `manage_infra`, …), each of which was really a dozen actions wearing one name —
- * so "can deploy but must not delete" or "can read files but not write them" was
- * unsayable. `LEGACY_CAPABILITY_EXPANSION` (same file) maps every old name to the
- * permissions it used to imply, and is what migration 0056 and the API's
- * back-compat path both read.
- *
- * `view` is the always-on floor: every member of a team holds it, and it is never
- * offered as a toggle.
  */
 export type Capability =
   | "view"
@@ -150,8 +140,7 @@ export interface User {
   /**
    * Global-scoped admin. Instance admins manage all users platform-wide: the
    * Settings → Users list, minting registration links, and the per-user admin
-   * editor. The first account (setup) is an instance admin. Distinct from
-   * per-team capabilities (which only ever scope to one team).
+   * editor.
    */
   isInstanceAdmin?: boolean;
   /**
@@ -160,19 +149,14 @@ export interface User {
    */
   suspended?: boolean;
   /**
-   * Instance-wide grant: may publish container ports declared in a compose
-   * stack — a service's `ports:` (bound to the host) or `expose:`. Orthogonal to
-   * Traefik routing: giving an app a public domain/route does NOT require this
-   * grant. Security-sensitive, so it is opt-in per user (granted from Settings →
-   * Users) rather than implied by a team capability. Instance admins hold it
-   * implicitly.
+   * Instance-wide grant: may publish container ports declared in a compose stack —
+   * a service's `ports:` (bound to the host) or `expose:`. Orthogonal to Traefik
+   * routing: giving an app a public domain/route does NOT require this grant.
    */
   canExposePorts?: boolean;
   /**
    * Instance-wide grant: may bind-mount a real HOST filesystem path into a
-   * container (NOT docker-managed named/anonymous volumes). A host path is a
-   * cross-tenant footgun on the shared docker host, so it is opt-in per user
-   * (granted from Settings → Users). Instance admins hold it implicitly.
+   * container (NOT docker-managed named/anonymous volumes).
    */
   canMountHostVolumes?: boolean;
   avatarColor: string;
@@ -192,11 +176,6 @@ export interface PublicUser {
    * Where this person's picture comes from, already resolved: their uploaded
    * image, else their Gravatar (when the instance allows it), else null for the
    * {@link avatarColor} monogram.
-   *
-   * Always COMPUTED server-side, never a raw column. That is what keeps the
-   * Gravatar switch enforceable in one place, and what keeps an email address out
-   * of every DTO that names a person — the address is hashed into the URL and
-   * never travels itself.
    */
   avatarUrl: string | null;
   /**
@@ -209,9 +188,6 @@ export interface PublicUser {
 
 /**
  * A user's membership of a team — the join row that makes the app multi-tenant.
- * `capabilities` is the *effective* set the member has in that team; on
- * create/invite it is seeded from the role preset (see CAPABILITY_PRESETS) but
- * can then be edited per member. `role` is kept as a human label / default.
  */
 export interface Membership {
   id: ID;
@@ -248,12 +224,9 @@ export interface Invite {
 export type RegistrationLinkStatus = "pending" | "used" | "revoked";
 
 /**
- * A single-use link that lets a new person self-register a brand-new account
- * AND their own team (like the first-run setup, not a team invite). Minted by a
- * member with `manage_members`; only the token hash is stored. Using it creates
- * a User + a Team (the registrant picks a unique team name) + an owner
- * Membership, then signs them in. Distinct from {@link Invite}, which adds
- * someone to an EXISTING team.
+ * A single-use link that lets a new person self-register a brand-new account AND
+ * their own team (like the first-run setup, not a team invite). Minted by a member
+ * with `manage_members`; only the token hash is stored.
  */
 export interface RegistrationLink {
   id: ID;
@@ -278,11 +251,7 @@ export interface Team {
   /**
    * The team's ABSOLUTE owner — the user who originally created the team, the
    * holder of the "crown" (👑). Distinct from the `owner` *role*: a team may have
-   * several owner memberships ("assigned owners"), but exactly one founder. The
-   * founder is immutable and unremovable by anyone (including instance admins);
-   * assigned owners can be managed/removed by any owner. Absent ⇒ a legacy team
-   * not yet backfilled, or one whose founder's account was deleted (`ON DELETE
-   * SET NULL`), leaving it with no protected founder. See `lib/data/members.ts`.
+   * several owner memberships ("assigned owners"), but exactly one founder.
    */
   founderUserId?: ID | null;
   /**
@@ -292,12 +261,8 @@ export interface Team {
    */
   requireTwoFactor?: boolean;
   /**
-   * Team-wide display order of apps in the Overview grid (array of project
-   * ids, first = top-left). A team-level setting, not a per-user preference, so
-   * everyone sees the same arrangement; only an instance admin or a member with
-   * `manage_team` may change it (see `reorderApps`). Absent ⇒ no manual order
-   * yet, fall back to newest-updated-first. Stale/missing ids are tolerated:
-   * `listApps` filters to live apps and appends any not listed here.
+   * Team-wide display order of apps in the Overview grid (array of project ids,
+   * first = top-left).
    */
   appOrder?: ID[];
   /**
@@ -316,11 +281,8 @@ export interface Team {
 }
 
 /**
- * Who a team IS, with none of its settings — what the shell needs to name the
- * team you are working in, on every page.
- *
- * Distinct from {@link Team} on purpose: the full row is a team-wide READ, and a
- * member limited to part of the team is refused it. The topbar is not a setting.
+ * Who a team IS, with none of its settings — what the shell needs to name the team
+ * you are working in, on every page.
  */
 export type TeamIdentity = Pick<Team, "id" | "name" | "slug" | "avatarUrl">;
 
@@ -331,41 +293,29 @@ export interface TeamSummary extends Team {
 }
 
 /**
- * A team-wide grouping of apps shown on the Overview. A project belongs to
- * at most one folder (via {@link App.folderId}); folders themselves NEST via
- * {@link parentId}, forming a tree within the team. Each folder is OWNED by the
- * user who created it (see {@link ownerUserId}) and has its own per-folder
- * permission set; the owner grants other members access. A member with
- * `manage_team` (or an instance admin) sees and manages every folder regardless
- * of ownership. Creating a folder requires the `deploy` capability — the same
- * gate as creating a project.
+ * A team-wide grouping of apps shown on the Overview. A project belongs to at most
+ * one folder (via {@link App.folderId}); folders themselves NEST via {@link
+ * parentId}, forming a tree within the team.
  */
 export interface Folder {
   id: ID;
   teamId: ID;
   name: string;
   /**
-   * Parent folder id for nesting, or null/absent when this folder sits at the
-   * top level. A folder's children are the folders whose `parentId` equals this
-   * folder's id. Cycles (a folder under its own descendant) are rejected at the
-   * move boundary; a `parentId` with no matching folder is tolerated and treated
-   * as top-level.
+   * Parent folder id for nesting, or null/absent when this folder sits at the top
+   * level. A folder's children are the folders whose `parentId` equals this
+   * folder's id.
    */
   parentId?: ID | null;
   /**
    * Optional accent colour for the folder tile on the Overview, stored as a
    * normalised `#rrggbb` hex string. Absent/null ⇒ the default neutral tile.
-   * The readable foreground (icon/label) is DERIVED from it at render time via
-   * {@link readableTextColor}, never stored — so contrast always tracks the
-   * colour and a custom HEX can't end up unreadable.
    */
   color?: string | null;
   /**
    * The folder's OWNER — the user who created it. Null/absent only for legacy
    * folders whose owner could not be backfilled, or after the owner's account is
-   * deleted (the FK is `ON DELETE SET NULL`). The owner holds every capability on
-   * the folder that they hold at the team level, and is the only non-super-user
-   * who may share it. See {@link Folder} for the full ownership model.
+   * deleted (the FK is `ON DELETE SET NULL`).
    */
   ownerUserId?: ID | null;
   /**
@@ -381,12 +331,7 @@ export interface Folder {
 /**
  * A **Project** — the top-level, team-scoped CONTAINER introduced in ADR-0008.
  * Folder-like (owner + per-container grants + colour + team ordering) but it also
- * owns a set of {@link Environment}s (added in a later phase). Folders and
- * Apps live INSIDE a Project via their `projectId`; a Project never nests in
- * another Project (no `parentId`). Projects have no page of their own: they are
- * browsed on the Overview via the `/?project=<id>` drill-in (the old
- * `/projects/<slug>` route only survives as a redirect). NOT the deployable
- * app — that is a {@link App}.
+ * owns a set of {@link Environment}s (added in a later phase).
  */
 export interface Project {
   id: ID;
@@ -407,8 +352,7 @@ export interface Project {
 /**
  * The well-known ROLE of an {@link Environment} — the discriminant that keeps
  * legacy `EnvTarget` resolution and team/instance/shared-env targeting working
- * once environments become customizable. The three seeded defaults map onto the
- * first three; user-created environments are `custom`.
+ * once environments become customizable.
  */
 export type EnvironmentKind =
   "development" | "preview" | "production" | "custom";
@@ -416,9 +360,7 @@ export type EnvironmentKind =
 /**
  * An **Environment** (ADR-0008 Phase 3) — a per-{@link Project}, first-class
  * ISOLATED deploy target. Seeded Development/Preview/Production on Project create;
- * renamable and extensible. Each will (pipeline phase) own its containers, URL(s),
- * git branch, and env vars. NOT the legacy `EnvTarget` enum — that survives only
- * as {@link kind}.
+ * renamable and extensible.
  */
 export interface Environment {
   id: ID;
@@ -439,37 +381,15 @@ export interface Environment {
 }
 
 /**
- * A server's health, as last OBSERVED by a live agent `Hello` probe — not a
- * lifecycle the control plane drives. Read it together with
- * [[Server.statusCheckedAt]]: the value is a timestamped observation (a cache),
- * never a gate. Nothing in the deploy path consults it; the gate there is the
- * mandatory live Hello pre-flight (ADR-0006).
- *
- *  - `provisioning` — no agent has called home yet, so there is nothing to dial.
- *    The prober SKIPS these rows; they are never demoted to offline.
- *  - `online`       — Hello answered and Docker is reachable: the server can deploy.
- *  - `warning`      — Hello answered (the agent is up and trusted) but the host is
- *                     degraded and CANNOT deploy — today that means exactly one
- *                     thing: the Docker daemon is unreachable from the agent.
- *  - `error`        — the peer answered but the exchange is broken: the agent's
- *                     certificate is not the pinned one (trust failure), it speaks
- *                     an unsupported contract version, or it returned an
- *                     application error. The box is up; its agent is wrong.
- *  - `offline`      — nothing answered: connection refused, or no reply within the
- *                     probe deadline (confirmed by a retry before we demote).
+ * A server's health as last OBSERVED by a `Hello` probe - a timestamped cache,
+ * never a gate; the deploy path uses its own live pre-flight (ADR-0006).
+ * `warning` = agent up, Docker unreachable. `error` = agent answered wrong.
  */
 export type ServerStatus =
   "online" | "warning" | "error" | "offline" | "provisioning";
 
 /**
- * The agent trust + reachability material for a server (PLAN Part B). EVERY
- * server — including the host running Deplo — gains it through the call-home
- * bootstrap: the agent (installed on the host via install-agent.sh) generates
- * its own key, the control plane signs its CSR, and the cert's fingerprint is
- * pinned here so the control plane can authenticate that exact agent (and revoke
- * it on removal, P6). Cert material is the pinning identity, not a secret (it is
- * a public certificate), so it is stored as-is; the pre-bootstrap token, which IS
- * secret-shaped, is stored hashed in {@link ServerBootstrap}.
+ * The agent trust + reachability material for a server (PLAN Part B).
  */
 export interface ServerAgent {
   /** The TCP port the agent's gRPC listener is on (default 9443). */
@@ -489,8 +409,7 @@ export interface ServerAgent {
 /**
  * The one-time bootstrap secret for a provisioning server (PLAN P2). Mirrors the
  * registration-link pattern ([[RegistrationLink]]) — only the token's sha256 is
- * stored, never the raw token, and both carry a short automatic expiry. Consumed
- * single-use when the agent calls home.
+ * stored, never the raw token, and both carry a short automatic expiry.
  */
 export interface ServerBootstrap {
   /** sha256 of the raw one-time token; the raw token lives only in the install command. */
@@ -524,44 +443,25 @@ export interface Server {
   memoryUsage: number;
   diskUsage: number;
   /**
-   * Team access scope. `true` (the default a server is born with) means EVERY
-   * team can target this server for its apps/databases — the historical
-   * instance-wide behaviour. `false` restricts it to the teams listed in the
-   * `server_teams` junction (resolved separately; not carried on this object).
-   * Editable post-install from Settings → Servers; gated by `manage_infra`.
+   * Team access scope. `true` (the default a server is born with) means EVERY team
+   * can target this server for its apps/databases — the historical instance-wide
+   * behaviour.
    */
   allTeams: boolean;
   /**
-   * A server bought purely to HOLD BACKUPS: the agent is installed, Docker is
-   * not, and nothing is ever deployed here. Set by the storage-only installer.
-   *
-   * It changes two things and only two: the Docker readiness/health checks are
-   * skipped (a storage box without Docker is healthy, not broken), and the
-   * server is absent from every deploy-target picker while staying available as
-   * a backup destination.
+   * A server bought purely to HOLD BACKUPS: the agent is installed, Docker is not,
+   * and nothing is ever deployed here. Set by the storage-only installer.
    */
   storageOnly: boolean;
   /**
    * A server bought purely to COMPILE: Docker is installed, Traefik is not, and no
-   * app of any team runs here. It builds images for the hosts that do, which receive
-   * them over the image relay.
-   *
-   * The twin of {@link storageOnly} and exclusive with it. It changes two things:
-   * the server drops out of every deploy-target picker (apps and databases alike),
-   * and the Traefik readiness check becomes a skip rather than a warning - a build
-   * server has no proxy by design. Docker is still required.
+   * app of any team runs here. It builds images for the hosts that do, which
+   * receive them over the image relay.
    */
   buildOnly: boolean;
   /**
    * A server registered ONLY to import from another platform - the host the
    * migration reads its volumes from, nothing else.
-   *
-   * The narrowest role, and the only one that is somebody else's machine: out of
-   * every deploy AND build picker, never a backup destination, never swept, not
-   * counted in the fleet. Born only from the import wizard, granted to the team
-   * that ran it, and refused by `setServerRole` in both directions - a box becomes
-   * a real server by having the install command re-run on it, not by a database
-   * write. Finishing the migration uninstalls the agent from the host.
    */
   importOnly: boolean;
   /**
@@ -573,9 +473,6 @@ export interface Server {
   /**
    * Why Deplo could not take its agent off this migration source, after it stopped
    * trying. Empty for every other server and for one it is still working on.
-   *
-   * This is the ONLY state that asks a person for anything: the host refused three
-   * times over several minutes, so the sentence it refused with is what they need.
    */
   uninstallError: string;
   /**
@@ -586,22 +483,13 @@ export interface Server {
   hostArch: string;
   /**
    * How many deployments this server runs concurrently — the per-server slot count
-   * the deploy queue enforces. 1 (the
-   * default a server is born with) = strict serialization: one deploy at a time on
-   * this host, deploys on other servers still run in parallel. A same-app
-   * deploy never overlaps regardless of this value. Editable from Settings →
-   * Servers (instance-admin), clamped to >= 1.
+   * the deploy queue enforces.
    */
   deployConcurrency: number;
   /**
    * The Traefik web panel: the host's own Traefik dashboard, published here.
-   * Absent = off, which is where every server starts.
-   *
-   * The password is deliberately NOT part of this shape. It is stored encrypted
-   * so the htpasswd line can be re-derived when the stack is rewritten, and it
-   * never leaves the data layer — the dashboard exposes every route and
-   * certificate on the host, so its credentials get the same write-only
-   * treatment as any other secret.
+   * Absent = off, which is where every server starts. The password is deliberately
+   * NOT part of this shape.
    */
   traefikDashboard?: { domain: string; username: string };
   createdAt: string;
@@ -623,27 +511,13 @@ export interface Server {
   lastSeenAt?: string;
   /**
    * When [[Server.status]] was last OBSERVED (ISO) — i.e. when a probe classified
-   * and recorded a result, not when the row was last written. Absent until the
-   * first observation, and never fabricated: a probe that times out or is skipped
-   * writes nothing rather than stamping a check it did not perform. (The throttle
-   * lease is a SEPARATE column, `status_probed_at`, precisely so that "we tried"
-   * can advance without "we observed" advancing with it — an inconclusive probe
-   * must never leave a fresh timestamp over a stale status.)
-   *
-   * This is what makes the stored status honest. `status` alone is a value that
-   * was true at SOME point; `status` + this stamp is a claim the UI can qualify
-   * ("Online, checked 12s ago") and — past a staleness window — refuse to paint
-   * at all, falling back to "Unknown" instead of a confident, stale green.
+   * and recorded a result, not when the row was last written.
    */
   statusCheckedAt?: string;
   /**
    * The operator-facing reason behind a non-`online` status ("Docker daemon
    * unreachable — deploys to this server will fail"), from the closed set in
-   * `classifyServerHealth`. Absent when `online` or never probed.
-   *
-   * NEVER a raw agent/gRPC error: those embed the pinned cert fingerprint, the
-   * dial address and other internals. Raw detail goes to the server log; only a
-   * curated string is persisted, and it is instance-admin-scoped in GraphQL.
+   * `classifyServerHealth`.
    */
   statusMessage?: string;
 }
@@ -666,27 +540,14 @@ export type AppStatus =
   | "restoring";
 
 /**
- * Where a project's code/image comes from. Mirrors the choices offered by
- * Coolify / Dokploy / Easypanel. How the code is turned into an image is a
- * separate axis — see BuildConfig.buildMethod (which includes "dockerfile").
- *  - github      a connected GitHub repository (auto-deploy on push)
- *  - git         any public/private Git URL
- *  - docker-image a prebuilt image from a registry (no build step)
- *  - upload      a code archive uploaded from the dashboard
- *  - compose     a multi-service docker-compose stack (template / hand-written)
+ * Where a project's code or image comes from. How it becomes an image is a
+ * separate axis - see BuildConfig.buildMethod.
  */
 export type DeploySource =
   "github" | "git" | "docker-image" | "upload" | "compose";
 
 /**
  * How old a migration run's heartbeat may be before nobody is driving it.
- *
- * Shared, not duplicated: the runner writes the heartbeat on this window
- * (`STALE_MS` in lib/data/dokploy-runner.ts, which imports this) and takes a run
- * over once it is exceeded, and the wizard reads it to decide whether to say
- * "in progress" at all. Two numbers would let the panel claim a run was moving
- * for the whole time the runner already considered it abandoned - which is the
- * exact lie it exists to stop telling.
  */
 export const MIGRATION_HEARTBEAT_STALE_MS = 90_000;
 
@@ -694,8 +555,6 @@ export const MIGRATION_HEARTBEAT_STALE_MS = 90_000;
  * The internal `DeploySource` strings are lowercase and hyphenated
  * ("docker-image"), but the GraphQL `DeploySource` enum exposes uppercase,
  * underscored value *names* (GITHUB, DOCKER_IMAGE …) — GraphQL enum names can't
- * contain hyphens. A wire request must carry the enum *name*, so map the
- * runtime value to its enum name before sending it as a GraphQL variable.
  */
 export function deploySourceEnumName(source: DeploySource): string {
   return source.replace(/-/g, "_").toUpperCase();
@@ -719,10 +578,9 @@ export interface UploadArchive {
 }
 
 /**
- * Which git event drives an automatic deployment when auto-deploy is on:
- *  - push  a push to the repo's tracked `branch` (the historical default)
- *  - tag   any new tag pushed to the repo
- * Absent/`undefined` is treated as "push".
+ * Which git event drives an automatic deployment when auto-deploy is on: - push a
+ * push to the repo's tracked `branch` (the historical default) - tag any new tag
+ * pushed to the repo Absent/`undefined` is treated as "push".
  */
 export type GitTriggerType = "push" | "tag";
 
@@ -741,7 +599,6 @@ export interface GitRepo {
    * For every OTHER host: the {@link GitConnection} whose stored token
    * authenticates the clone and registers the push webhook. Absent for a public
    * repo cloned anonymously — which is what a bare "Repository URL" is.
-   * Mutually exclusive with {@link installationId} in practice.
    */
   connectionId?: string | null;
   /**
@@ -752,8 +609,7 @@ export interface GitRepo {
   /**
    * Optional path globs (one per entry). When set, an automatic deployment only
    * fires if a pushed commit changed a file matching at least one glob; empty ⇒
-   * deploy on any change. Matching is best-effort (fail-open when the delivery
-   * carries no file list, e.g. an annotated-tag push).
+   * deploy on any change.
    */
   watchPaths?: string[];
   /**
@@ -763,15 +619,7 @@ export interface GitRepo {
   submodules?: boolean;
 }
 
-/**
- * How Deplo turns a repository into a runnable image. Mirrors the "build pack"
- * choice in Coolify/Dokploy/Railway. Each method runs entirely inside Docker
- * (the only build tool guaranteed present on the host):
- *  - dockerfile  build straight from a Dockerfile in the repo
- *  - railpack    Railway's BuildKit-based builder (Nixpacks' successor)
- *  - nixpacks    Nixpacks auto-detects and builds an OCI image
- *  - static      serve a directory of files with nginx (optionally SPA)
- */
+/** How Deplo turns a repository into a runnable image. */
 export type BuildMethod = "dockerfile" | "railpack" | "nixpacks" | "static";
 
 /**
@@ -808,8 +656,7 @@ export interface BuildConfig {
   /**
    * Include files OUTSIDE the root directory in the build context. Default true —
    * the whole repository is available to the build (monorepo packages shared
-   * across apps resolve). When false, the build sees only the root-directory
-   * subtree. Physical enforcement of the build context is agent-side.
+   * across apps resolve).
    */
   includeFilesOutsideRoot: boolean;
   /**
@@ -821,17 +668,12 @@ export interface BuildConfig {
   /**
    * Reuse the owning server's Docker layer cache (and the builder's own cache
    * mounts) between this app's builds. Default true — it is what makes a redeploy
-   * of an unchanged app take seconds instead of minutes. False ⇒ every build runs
-   * `docker build --no-cache` with nothing carried over from the last one, which
-   * is the setting for a build that reads "latest" from somewhere and must not be
-   * frozen at whatever it resolved to last week.
+   * of an unchanged app take seconds instead of minutes.
    */
   buildCache: boolean;
   /**
    * Armed by "Clear build cache", consumed by the next build (which then runs
-   * cache-less exactly once). READ-ONLY through the build config: it is set by
-   * `clearAppBuildCache` and cleared by the deploy, never by a build-settings
-   * save.
+   * cache-less exactly once).
    */
   buildCacheClearPending: boolean;
   installCommand: string;
@@ -851,43 +693,12 @@ export interface BuildConfig {
  * How mounts appearing UNDERNEATH a bind mount cross between the server and the
  * container. Bind mounts only (`VolumeMount.type === "host"`); docker rejects a
  * propagation option on a managed volume.
- *
- * Absent is docker's `rprivate` default: the container gets a SNAPSHOT of the
- * submounts that existed the instant it started and never follows them again —
- * so a network disk, a FUSE share or a volume another container mounts inside
- * that folder is invisible, with no error anywhere. That is what these fix:
- *  - "rslave"  — the server's mounts keep showing up inside the app (one-way).
- *  - "rshared" — two-way, so mounts the app makes appear on the server too.
- * Both need the source to be a shared mount on the host (systemd's default), or
- * docker refuses the mount with "not a shared mount".
  */
 export const MOUNT_PROPAGATIONS = ["rslave", "rshared"] as const;
 export type MountPropagation = (typeof MOUNT_PROPAGATIONS)[number];
 
 /**
- * A persistent volume mounted into an app's container. Available to EVERY source:
- * a single-container app (the renderCompose path — github/git/docker-image/upload)
- * mounts it into its one service, a compose-stack app into the service named by
- * `service` (see below). Nobody has to hand-write compose YAML to get persistent
- * storage. Distinct from `App.mounts`, which writes template CONFIG FILES to disk
- * and bind-mounts them (content-bearing); a VolumeMount carries no content — it is
- * data that survives redeploys.
- *
- * Three kinds, discriminated by `type` (absent ⇒ "named", for back-compat):
- *  - "named": a docker-MANAGED volume. The on-host volume name is NOT `name` —
- *    it is namespaced per-project at render time (deplo-<slug>-<name>, see
- *    `hostVolumeName`) so it can never collide with or leak into another team's
- *    project on the shared host (the same isolation reason compose strips
- *    container_name). Deriving from the slug at render time (never storing the
- *    host name) means a rename can't orphan data and `name` stays a label.
- *  - "app": a bind mount of a path INSIDE the project's isolated files dir
- *    (`projectPath`, relative, e.g. "config.toml" or "uploads"). The same
- *    sandbox the `./<x>` compose convention targets; rendered to the absolute
- *    files dir at deploy time. No grant needed — it can't escape the project.
- *  - "host": a bind mount of a real HOST filesystem path (`hostPath`). The host
- *    is docker-only and shared across teams, so a user-typed host path is a
- *    cross-tenant footgun — only users with the `canMountHostVolumes` grant (or
- *    instance admins) may add one. Enforced server-side in setAppVolumes.
+ * A persistent volume mounted into an app's container.
  */
 export interface VolumeMount {
   /**
@@ -917,12 +728,9 @@ export interface VolumeMount {
    */
   hostPath?: string;
   /**
-   * COMPOSE-STACK apps only: the compose service to mount into. Empty/absent ⇒
-   * the stack's default service (the one a domain would route to — a published
-   * port, else the first). A single-container app has exactly one service, so the
-   * field is meaningless there and is always stored NULL. A name that is not in
-   * the compose is a hard deploy error, never a silent remount elsewhere (that
-   * would strand a database's data on the wrong container).
+   * COMPOSE-STACK apps only: the compose service to mount into. Empty/absent ⇒ the
+   * stack's default service (the one a domain would route to — a published port,
+   * else the first).
    */
   service?: string | null;
   /**
@@ -934,26 +742,16 @@ export interface VolumeMount {
   /** Mount read-only (`:ro`). Defaults to false (read-write). */
   readOnly: boolean;
   /**
-   * HOST binds only: whether the mount follows submounts that appear later.
-   * Absent ⇒ docker's `rprivate` default. See {@link MountPropagation}. Dropped
-   * for the other two kinds — a managed volume or a files-dir bind has no
-   * submounts, and docker rejects the option on the former.
+   * HOST binds only: whether the mount follows submounts that appear later. Absent
+   * ⇒ docker's `rprivate` default. See {@link MountPropagation}.
    */
   propagation?: MountPropagation;
 }
 
 /**
- * Per-app resource limits — caps applied to the app's container(s) at deploy
- * time so a runaway app can't starve its neighbours on a shared host. Every
- * field is INDEPENDENTLY optional: `null` ⇒ that dimension is uncapped. An
- * app with no limits at all has `App.resources === null` (assembled from an
- * all-NULL row), so its rendered stack is byte-identical to the historical one.
- *
- * Units are normalized so each stored value is a clean integer: memory in
- * MEBIBYTES, disk in GIBIBYTES, CPU in MILLI-CPUs (`1000` = one core). The
- * mapping to `docker compose up` container keys (the non-swarm form, the only
- * one deplo's agent honors) lives in `lib/deploy/resources.ts`; validation and
- * clamping in `cleanResourceLimits` (`lib/data/apps.ts`).
+ * Per-app resource limits — caps applied to the app's container(s) at deploy time
+ * so a runaway app can't starve its neighbours on a shared host. Every field is
+ * INDEPENDENTLY optional: `null` ⇒ that dimension is uncapped.
  */
 export interface ResourceLimits {
   /** Hard RAM ceiling, MiB → `mem_limit`. The container is OOM-killed above it. */
@@ -975,8 +773,7 @@ export interface ResourceLimits {
   /**
    * Writable-layer disk quota, GiB → `storage_opt.size`. HOST-GATED: only takes
    * effect where the Docker storage driver supports quotas (overlay2 on XFS with
-   * pquota, or devicemapper); on other hosts `compose up` rejects it. Left null
-   * (the default) everywhere unless an operator opts in.
+   * pquota, or devicemapper); on other hosts `compose up` rejects it.
    */
   storageGb: number | null;
   /** Max open file descriptors → `ulimits.nofile` (soft = hard). */
@@ -993,65 +790,44 @@ export interface App {
   slug: string;
   teamId: ID;
   /**
-   * The folder this project lives in on the Overview, or null/absent when it
-   * sits at the top level (ungrouped). Folders are a team-wide, single-level
-   * grouping (see {@link Folder}); a project belongs to at most one. A folderId
-   * with no matching folder is tolerated and treated as ungrouped.
+   * The folder this project lives in on the Overview, or null/absent when it sits
+   * at the top level (ungrouped). Folders are a team-wide, single-level grouping
+   * (see {@link Folder}); a project belongs to at most one.
    */
   folderId?: ID | null;
   /**
-   * The {@link Project} this app belongs to, or null/absent when it sits at
-   * the team top level (ADR-0008, additive). Mutually exclusive with `folderId`
-   * since ADR-0009: an app lives in one place — a folder, or an environment
-   * of a project.
+   * The {@link Project} this app belongs to, or null/absent when it sits at the
+   * team top level (ADR-0008, additive).
    */
   projectId?: ID | null;
   /**
    * The {@link Environment} (of `projectId`'s Project) this app LIVES in —
-   * ADR-0009's membership axis: each environment of a project holds its own
-   * apps, like a sub-folder picked from the project's environment dropdown.
-   * null/absent outside a project. Kept coherent with `projectId` by the data
-   * layer (entering a project defaults to its default environment).
+   * ADR-0009's membership axis: each environment of a project holds its own apps,
+   * like a sub-folder picked from the project's environment dropdown.
    */
   environmentId?: ID | null;
   serverId: ID;
   /**
    * Set on a server MOVE when the OLD server still holds this app's data: the
-   * source host the next successful deploy on `serverId` must copy the data volumes
-   * + files dir FROM (host-to-host). Cleared by that deploy once the copy + old-host
-   * teardown finish. null in the common case (no pending migration). See
-   * migrateWorkloadData / the deploy's post-success migration step.
+   * source host the next successful deploy on `serverId` must copy the data
+   * volumes + files dir FROM (host-to-host).
    */
   migrateFromServerId?: ID | null;
   /**
    * Why this app's data did not arrive, when a migration tried to copy it and
    * could not. Empty string in the common case - every app that was never
    * migrated, and every migration whose copy worked.
-   *
-   * Set means the data volumes are EMPTY or half-written (the copy wipes the
-   * destination before extracting), so every way of starting the workload
-   * refuses while it is: deploying onto it is how the loss becomes permanent.
-   * Cleared by a copy that works, or by someone accepting the loss.
    */
   dataCopyError: string;
   /**
    * The migration still creating this app, or null - which is every app that is
    * not arriving right now.
-   *
-   * While it is set the app belongs to that run: every mutation refuses, and the
-   * UI draws it pulsing rather than as something to click. Cleared the moment
-   * the run leaves `running`, by any door.
    */
   migrationRunId: ID | null;
   /**
    * Which server BUILDS this app's image, when that is not `serverId`. null is
    * "Automatic": a build-only server if the fleet has one this team can reach and
-   * its arch matches, otherwise build where the app runs. Pinning `serverId` itself
-   * is how "always build on this app's own server" is said.
-   *
-   * Only meaningful for a source Deplo BUILDS (git / upload). A compose stack has no
-   * single image to move and a `docker-image` source builds nothing, so both ignore
-   * it entirely.
+   * its arch matches, otherwise build where the app runs.
    */
   buildServerId?: ID | null;
   /**
@@ -1067,29 +843,15 @@ export interface App {
    */
   logo: string | null;
   /**
-   * The JavaScript framework Deplo recognised in this app's own source — a
-   * {@link FrameworkId} from `lib/apps/framework-catalog.ts` ("nextjs",
-   * "astro", …), or null when none was found or the build method isn't one of
-   * the auto-detecting builders (Nixpacks / Railpack), the only ones this
-   * applies to.
-   *
-   * DERIVED: every deploy re-detects and overwrites it. Typed as the id rather
-   * than the definition so the stored value stays a plain string;
-   * `frameworkById` resolves it to a name + default port on both sides.
-   *
-   * This is what Deplo READ, not necessarily what the app IS — see
-   * {@link App.frameworkOverride}, which wins when set.
+   * The JavaScript framework Deplo recognised in this app's own source — a {@link
+   * FrameworkId} from `lib/apps/framework-catalog.ts` ("nextjs", "astro", …), or
+   * null when none was found or the build method isn't one of the auto-detecting
    */
   framework: FrameworkId | null;
   /**
    * The framework the user picked because detection got it wrong, or null (the
    * default) to trust detection. Read as `frameworkOverride ?? framework`
    * everywhere the app's framework is shown or used.
-   *
-   * Deliberately NOT folded into `framework`: the deploy keeps overwriting that
-   * one unconditionally, so a shared column would lose the choice on the next
-   * push — and the UI could no longer say "we detected Next.js" next to the
-   * Vite the user chose.
    */
   frameworkOverride: FrameworkId | null;
   /** How this project is deployed (git, docker image, dockerfile, upload). */
@@ -1113,10 +875,8 @@ export interface App {
   mounts?: { filePath: string; content: string }[] | null;
   /**
    * User-managed persistent volumes for the SINGLE-CONTAINER deploy path
-   * (renderCompose) — docker-managed named volumes and (for privileged users)
-   * host bind mounts. null/absent for compose-stack apps and apps that
-   * never added one — so renderCompose emits no `volumes:` keys and the stack
-   * stays byte-identical (no reroute churn). See {@link VolumeMount}.
+   * (renderCompose) — docker-managed named volumes and (for privileged users) host
+   * bind mounts.
    */
   volumes?: VolumeMount[] | null;
   build: BuildConfig;
@@ -1124,45 +884,28 @@ export interface App {
   status: AppStatus;
   autoDeploy: boolean;
   /**
-   * Pull request previews are ON for this app. The one preview setting that
-   * belongs on the App itself rather than behind `previewSettings()`: the
-   * sidebar decides whether to offer the Pull requests page from it, and the
-   * layout already has the row in hand. Everything else about previews stays in
-   * that one read seam.
+   * Pull request previews are ON for this app.
    */
   previewEnabled: boolean;
   /**
    * Cron jobs are ON for this app - same reason `previewEnabled` rides the App:
    * the sidebar decides whether to offer the Cron jobs page from it, and the
-   * layout already has the row in hand. Everything else about cron jobs lives in
-   * `lib/data/crons.ts`.
+   * layout already has the row in hand.
    */
   cronEnabled: boolean;
   /**
    * Whether this app's deploy hook — the URL that triggers a production deploy
-   * from outside the dashboard — answers at all. On by default; the endpoint is
-   * bearer-gated regardless (see `lib/data/deploy-hook.ts`), so this is the kill
-   * switch, not the lock. The hook's secret URL segment is deliberately NOT part
-   * of this type: it is decrypted only by that module, behind its own gate.
+   * from outside the dashboard — answers at all.
    */
   deployHookEnabled: boolean;
   /**
-   * Extra flags this app appends to the `docker compose up` that brings it up,
-   * as the operator typed them (`"--pull always --scale web=3"`), or null for
-   * the untouched command — which is every app that never opened the setting.
-   *
-   * Additive, never a replacement: deplo keeps choosing the project name, the
-   * stack file and the env-file, and the flags that would change them are
-   * refused. See {@link lib/deploy/compose-args.ts}.
+   * Extra flags this app appends to the `docker compose up` that brings it up, as
+   * the operator typed them (`"--pull always --scale web=3"`), or null for the
+   * untouched command — which is every app that never opened the setting.
    */
   composeUpArgs: string | null;
   /**
    * How many previous deployments this app can be rolled back to (default 3).
-   *
-   * A retention number, not a toggle: it is what keeps that many of this app's
-   * built images alive on its server, so `0` means there is nothing to go back to
-   * and the Rollback action disappears. Only a source Deplo builds accrues
-   * rollbacks - a compose stack has no single image to re-run.
    */
   rollbackKeep: number;
   /**
@@ -1172,13 +915,8 @@ export interface App {
   resources: ResourceLimits | null;
   latestDeploymentId: ID | null;
   /**
-   * When someone confirmed this app's deletion, or null (every app that is not
-   * on its way out). Set before the teardown and cleared only by the row
-   * disappearing, so it is the one flag that says "this app is gone, the host
-   * just hasn't caught up yet".
-   *
-   * Treat it as gone: every gate refuses a stamped app, its pages 404, and no
-   * user-facing list returns it (`listApps` filters on this).
+   * When someone confirmed this app's deletion, or null (every app that is not on
+   * its way out).
    */
   deletingAt?: string | null;
   createdAt: string;
@@ -1187,11 +925,6 @@ export interface App {
 
 /**
  * How many previous deployments a new app can be rolled back to.
- *
- * Three, not zero: the feature exists so that a bad deploy is undoable, and a
- * default of zero would mean every app only becomes undoable once someone has
- * found the setting - which is the same as not shipping it. It costs three extra
- * images per app on the host, which is the honest price of being able to go back.
  */
 export const DEFAULT_ROLLBACK_KEEP = 3;
 
@@ -1202,12 +935,7 @@ export const MAX_ROLLBACK_KEEP = 20;
 
 /**
  * How far back the log viewer's time range reaches out of the box, in days, and
- * the ceiling an instance admin may raise it to.
- *
- * A bound on what may be ASKED for. Docker rotates its json-file logs by SIZE,
- * so nothing here makes the host actually hold that much; 90 is where asking
- * stops being a question anyone can answer, and 1 is the floor because the
- * picker's fixed rows already reach a day.
+ * the ceiling an instance admin may raise it to. A bound on what may be ASKED for.
  */
 export const DEFAULT_LOG_RANGE_DAYS = 7;
 export const MAX_LOG_RANGE_DAYS = 90;
@@ -1226,9 +954,7 @@ export interface Deployment {
   /**
    * The host-side KEY this deploy owns: the container `deplo-<key>`, the stack
    * file `<key>.yml`, the files dir `files/<key>`, the named volumes
-   * `deplo-<key>-<name>` and every agent RPC. For production it IS the app slug;
-   * for a pull request preview it is `<slug>__pr-<n>`. See
-   * {@link ../deploy/deploy-key}.
+   * `deplo-<key>-<name>` and every agent RPC.
    */
   deployKey: string;
   /** The pull request preview this deploy belongs to, or null for production. */
@@ -1237,20 +963,15 @@ export interface Deployment {
    *  "PR #42" after the preview row is reaped. Null for production. */
   prNumber: number | null;
   /**
-   * The server this deploy runs on. Denormalized so the queue can drain
-   * per-server without an apps join — and load-bearing beyond that, because a
-   * pull request preview may be pinned to a different machine than production.
-   * The row, never the app, is the authority on where a deploy went. Nullable
-   * only for rows that predate the column; every write since sets it.
+   * The server this deploy runs on. Denormalized so the queue can drain per-server
+   * without an apps join — and load-bearing beyond that, because a pull request
+   * preview may be pinned to a different machine than production.
    */
   serverId: ID | null;
   /**
    * The server this deploy BUILT on, when that was not `serverId`. null is the
    * ordinary case, "built where it runs", and is also what every row that predates
-   * build servers holds. Denormalized and FK-less like `serverId`: the queue drains
-   * on it (the builder's lane is the one that matters, because the build is the
-   * cost), and it is the audit answer to where this app's source and secrets went -
-   * which must not vanish when someone decommissions a builder.
+   * build servers holds.
    */
   buildServerId: ID | null;
   commitSha: string;
@@ -1267,17 +988,14 @@ export interface Deployment {
   buildDurationMs: number | null;
   /**
    * Replace the running containers even if the rendered stack is unchanged
-   * (`compose up --force-recreate`). Set only by "Rebuild container" — every
-   * other deploy leaves it false, so an unchanged reroute still causes no
-   * restart.
+   * (`compose up --force-recreate`). Set only by "Rebuild container" — every other
+   * deploy leaves it false, so an unchanged reroute still causes no restart.
    */
   forceRecreate: boolean;
   /**
    * The image tag this deploy rendered into its stack and the agent ran. Set only
    * where Deplo BUILT it (git, upload) - `deplo/<deployKey>:<id[0:12]}`, living on
-   * the owning server. Null for a compose stack (no single image) and for a
-   * prebuilt `docker-image` source (a mutable registry tag, nothing pinned), so a
-   * non-null value is exactly "there is an image of ours to go back to".
+   * the owning server.
    */
   imageRef: string | null;
   /** Set when this deploy is a ROLLBACK: the deployment whose image it re-ran.
@@ -1287,9 +1005,7 @@ export interface Deployment {
   creator: string;
   /**
    * The account behind {@link creator}, when there is one. Free text is what the
-   * row shows; this is what lets it show a face. NULL for a webhook push (whose
-   * creator is a GitHub login, not a deplo account) and for every row written
-   * before it existed — both of which render the bare string.
+   * row shows; this is what lets it show a face.
    */
   creatorUserId: ID | null;
   /** That person, resolved for display. A DECORATION the list batch-resolves. */
@@ -1313,9 +1029,7 @@ export const ALL_ENV_TARGETS: EnvTarget[] = ["production", "preview"];
 
 /**
  * Keep only valid targets, deduped and in canonical order; fall back to every
- * target if none survive. The UI no longer offers a target picker (an App
- * belongs to exactly ONE Environment — the production/preview axis is a legacy
- * storage detail), so a write that names no target means "every runtime".
+ * target if none survive.
  */
 export function sanitizeTargets(targets: EnvTarget[]): EnvTarget[] {
   const kept = ALL_ENV_TARGETS.filter((t) => targets.includes(t));
@@ -1324,13 +1038,6 @@ export function sanitizeTargets(targets: EnvTarget[]): EnvTarget[] {
 
 /**
  * The refusal every env layer raises when a write would touch a SECRET row.
- *
- * A secret is write-only: its `type` column is the sole authority for whether a
- * DTO decrypts the value, so a mutation that rewrote `type` from caller input
- * (which every upsert used to do) handed the plaintext back to anyone holding
- * `manage_env`, with no `reveal_secrets` in sight. Immutability is what closes
- * it: create it, delete it, never edit it. Promotion `plain` -> `secret` stays
- * open, because hardening is never the thing you gate.
  */
 export const secretImmutable = (key: string) =>
   `${key} is a secret and cannot be edited. Delete it and add it again.`;
@@ -2337,10 +2044,9 @@ export interface NotificationChannelInput extends Omit<
 }
 
 /**
- * A GitHub App connected to this Deplo instance, created through GitHub's App
- * Manifest flow (one click  no manual copy/paste of ids and keys, the way
- * Dokploy/Coolify do it). The private key and secrets are encrypted at rest and
- * never leave the server; the dashboard only ever sees the public fields.
+ * A GitHub App connected to this instance, created through GitHub's App Manifest
+ * flow - one click, no hand-copied ids and keys. The private key and secrets are
+ * encrypted at rest; the dashboard only ever sees the public fields.
  */
 export interface GithubApp {
   id: ID;
