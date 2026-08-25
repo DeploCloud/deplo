@@ -2,8 +2,10 @@ import "server-only";
 
 import { asc, eq } from "drizzle-orm";
 
+import { stripAnsi } from "../ansi";
 import { getDb } from "../db/client";
 import { deploymentLogs } from "../db/schema/control-plane";
+import { detectLogLevel } from "../log-level-detect";
 import { assembleLogLine, logLineToRow } from "./app-graph-rows";
 import type { LogLine } from "../types";
 
@@ -282,9 +284,38 @@ export async function clearDeploymentLogs(depId: string): Promise<void> {
 }
 
 /**
+ * `info` on a build line means "nobody said" — so read it, exactly like a
+ * runtime line.
+ *
+ * The agent forwards the builder's output verbatim and stamps EVERY line of it
+ * `info`: buildkit's progress, nixpacks', the compose run's. Only the lines
+ * deplo itself writes into the sink carry a real level (`command` for the shell
+ * line it ran, `success` for "Deployment ready at …", `error` for
+ * "docker build failed"). The build pane trusted all of it as authored, so a
+ * build that ended in `error: script "build" exited with code 1` printed that
+ * line in neutral grey while the runtime pane, which classifies, would have
+ * painted it red.
+ *
+ * Same evidence-only rules as the live pane ({@link detectLogLevel}) and the
+ * same input contract: ANSI stripped for the READ, never for the stored text —
+ * the rows render those escapes as colors. A level the producer did state is
+ * never second-guessed, and a line the detector can't place stays `info`.
+ */
+function classifyUnstated(line: LogLine): LogLine {
+  if (line.level !== "info") return line;
+  const level = detectLogLevel(stripAnsi(line.text));
+  return level === "info" ? line : { ...line, level };
+}
+
+/**
  * Read a deployment's logs in order. Flushes any pending buffer first so an
  * in-progress build's just-emitted lines are included, then SELECTs by the
  * `id` identity (reproduces enqueue/Array.push order).
+ *
+ * Levels are settled HERE rather than at write time so the reading applies to
+ * every build already stored, and so one pass covers every consumer of a build
+ * log at once: the console's colors, its level filter and counts, copy/download,
+ * and the GraphQL/MCP clients.
  */
 export async function loadDeploymentLogs(depId: string): Promise<LogLine[]> {
   await finalizeDeploymentLogs(depId);
@@ -293,7 +324,7 @@ export async function loadDeploymentLogs(depId: string): Promise<LogLine[]> {
     .from(deploymentLogs)
     .where(eq(deploymentLogs.deploymentId, depId))
     .orderBy(asc(deploymentLogs.id));
-  return rows.map(assembleLogLine);
+  return rows.map((row) => classifyUnstated(assembleLogLine(row)));
 }
 
 /** Test-only: clear all in-memory buffers (so cases don't leak timers/chains). */

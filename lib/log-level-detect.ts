@@ -2,8 +2,10 @@ import type { LogLevel } from "./types";
 
 /**
  * Level detection for RAW log lines that arrive without a level tag — a
- * container's stdout/stderr from `docker logs -f`. Build logs don't come here:
- * their producer stamps a {@link LogLevel} already.
+ * container's stdout/stderr from `docker logs -f`, and a build's output, which
+ * the agent forwards verbatim under a blanket `info` (only the lines deplo
+ * itself writes into a build's sink carry an authored level, so `loadDeploymentLogs`
+ * re-reads the rest through here).
  *
  * The rule this file exists to enforce: **colour only on evidence, never on a
  * guess.** The previous version, like Dokploy's and Coolify's, ran a cascade of

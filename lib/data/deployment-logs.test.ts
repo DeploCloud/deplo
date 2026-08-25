@@ -266,3 +266,39 @@ test("the per-line and per-deployment log caps hold, and a read can't reset the 
     __resetLogCapsForTest();
   }
 });
+
+test("an unstated build line is classified on read; an authored level is not", async () => {
+  // The agent stamps the builder's whole output `info`, so the level that
+  // matters is the one the line's TEXT states. Deplo's own sink lines already
+  // carry a level and must survive untouched.
+  appendLog(
+    "dpl_1",
+    line('#14 4.914 error: script "build" exited with code 1'),
+  );
+  appendLog("dpl_1", line("#14 DONE 4.9s"));
+  appendLog("dpl_1", {
+    ts: "2026-01-01T00:00:00.000Z",
+    level: "command",
+    text: "docker compose up -d",
+  });
+  appendLog("dpl_1", {
+    ts: "2026-01-01T00:00:00.000Z",
+    // A line the producer DID call info, whose text a keyword scanner would
+    // have painted: it stays neutral, because nothing states a level.
+    level: "info",
+    text: "no errors found",
+  });
+
+  const logs = await loadDeploymentLogs("dpl_1");
+  assert.deepEqual(
+    logs.map((l) => l.level),
+    ["error", "info", "command", "info"],
+  );
+  // The stored rows keep what the producer said — the reading is on the way out.
+  const rows = await db
+    .select()
+    .from(deploymentLogs)
+    .where(eq(deploymentLogs.deploymentId, "dpl_1"))
+    .orderBy(asc(deploymentLogs.id));
+  assert.equal(rows[0]!.level, "info");
+});

@@ -232,8 +232,12 @@ export function BuildLogStream({
     setFollow(atBottom);
   }
 
-  // Search + level filter. A build log's level is AUTHORED by the producer, so
-  // every level including `command` is real here and worth offering.
+  // Search + level filter. `command` only ever appears in a build log — deplo
+  // writes it for the shell line it ran — so this facet offers it and the live
+  // pane's doesn't. The other levels are settled server-side
+  // (`loadDeploymentLogs`): the agent stamps the builder's whole output `info`,
+  // so an unstated line is classified there before it reaches this list, and
+  // the counts here follow.
   const filters = useLogFilters(logs, BUILD_LEVELS);
 
   // Copy/download text is de-ANSI'd: the stored lines keep their escapes (the
