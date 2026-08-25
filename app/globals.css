@@ -32,7 +32,7 @@
   --accent-foreground: #18181b;
 
   --destructive: #ef3e3e;
-  --destructive-foreground: #fafafa;
+  --destructive-foreground: #ffffff;
 
   --success: #00794d;
   --warning: #a35200;
@@ -116,7 +116,7 @@
   --accent-foreground: #ededed;
 
   --destructive: #ff4242;
-  --destructive-foreground: #0a0a0a;
+  --destructive-foreground: #ffffff;
 
   --success: #50e3c2;
   --warning: #f5a623;
@@ -191,6 +191,18 @@
      3 columns at 1920px-wide (Full HD) screens and up; below that they stay at
      2 columns, then 1 on mobile. 120rem = 1920px at the 16px root font size. */
   --breakpoint-3xl: 120rem;
+}
+
+/* Unlayered on purpose: a `text-sm` utility carries its own line-height and
+   would win inside @layer base. A `leading-*` on the element still wins. */
+p:not([class*="leading-"]) {
+  line-height: 1.6;
+}
+
+/* Inverted modal: the slab is the page black, so the secondary button takes the
+   grey the slab used to be and lifts off it. */
+[role="dialog"] [data-variant="outline"] {
+  background-color: var(--card);
 }
 
 @layer base {
