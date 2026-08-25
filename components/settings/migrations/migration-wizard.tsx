@@ -38,11 +38,9 @@ import { MigrationReportDialog, RUN_REPORT_QUERY } from "./migration-report";
 import { RemoveMigrationSources } from "./remove-sources";
 import { ReviewStep } from "./review-step";
 import { PeopleStep } from "./people-step";
+import { MigrationConsole } from "./migration-console";
 import { StepShell } from "./step-shell";
-import {
-  MigrationLogDialog,
-  type MigrationProgress,
-} from "./migration-progress";
+import { type MigrationProgress } from "./migration-progress";
 import {
   importableOf,
   type Invite,
@@ -102,6 +100,27 @@ function stepsFor(canInvite: boolean): WizardStep<StepId>[] {
 
 /** Dokploy's own host has no server row over there; it is the empty id. */
 const OWN_HOST = "";
+
+/**
+ * The whole migration, in one call. It returns when the PLAN is durable, not
+ * when the work is done - everything after that happens in the control plane,
+ * which is what lets this page be closed.
+ */
+const START = /* GraphQL */ `
+  mutation StartDokployImport(
+    $input: DokployConnectInput!
+    $orgName: String
+    $targets: [DokployRunTargetInput!]!
+    $servers: [DokployServerChoiceInput!]
+  ) {
+    startDokployImport(
+      input: $input
+      orgName: $orgName
+      targets: $targets
+      servers: $servers
+    )
+  }
+`;
 
 /**
  * The tail of a run item's path - `Backups / production / jellyfin` becomes
@@ -169,114 +188,6 @@ const SCAN = /* GraphQL */ `
   }
 `;
 
-const BEGIN = /* GraphQL */ `
-  mutation BeginDokployImport($url: String!, $orgName: String) {
-    beginDokployImport(url: $url, orgName: $orgName)
-  }
-`;
-
-const IMPORT_PROJECT = /* GraphQL */ `
-  mutation ImportDokployProject(
-    $input: DokployConnectInput!
-    $runId: String!
-    $projectId: String!
-    $servers: [DokployServerChoiceInput!]
-    $serviceIds: [String!]
-    $placements: [DokployPlacementInput!]
-  ) {
-    importDokployProject(
-      input: $input
-      runId: $runId
-      projectId: $projectId
-      servers: $servers
-      serviceIds: $serviceIds
-      placements: $placements
-    ) {
-      projectName
-      created
-      skipped
-      failed
-      manual
-      items {
-        path
-        sourceKind
-        sourceName
-        outcome
-        targetKind
-        targetId
-        message
-      }
-    }
-  }
-`;
-
-const PLAN_DATA = /* GraphQL */ `
-  mutation PlanDokployData($input: DokployConnectInput!, $runId: String!) {
-    planDokployDataMove(input: $input, runId: $runId) {
-      path
-      sourceKind
-      sourceId
-      sourceName
-      sourceServerId
-      targetKind
-      targetName
-      running
-      sourceReachable
-      volumes {
-        sourceVolume
-      }
-      notes
-    }
-  }
-`;
-
-/**
- * The last word on "can Deplo reach that machine", asked again the moment before
- * anything is created.
- *
- * The install step already answered it, but that answer has an age: somebody
- * fills in the review, goes for coffee, and presses Start on a host that dropped
- * off ten minutes ago. Everything after this point either creates something here
- * or stops something over there, and the first one is the cheapest thing in the
- * whole run to get wrong.
- */
-const CHECK_HEALTH = /* GraphQL */ `
-  mutation CheckMigrationMachine($id: String!) {
-    checkServerHealth(id: $id, force: true) {
-      id
-      status
-      statusMessage
-    }
-  }
-`;
-
-const MOVE_DATA = /* GraphQL */ `
-  mutation MoveDokployData(
-    $input: DokployConnectInput!
-    $runId: String!
-    $sourceKind: String!
-    $sourceId: String!
-  ) {
-    moveDokployServiceData(
-      input: $input
-      runId: $runId
-      sourceKind: $sourceKind
-      sourceId: $sourceId
-    ) {
-      moved
-      failed
-      notes
-      sourceGone
-    }
-  }
-`;
-
-const STOP = /* GraphQL */ `
-  mutation StopDokployImport($runId: String!) {
-    stopDokployImport(runId: $runId)
-  }
-`;
-
 const REVERT = /* GraphQL */ `
   mutation RevertDokployImport($runId: String!) {
     revertDokployImport(runId: $runId) {
@@ -290,9 +201,21 @@ const REVERT = /* GraphQL */ `
   }
 `;
 
-const FINISH = /* GraphQL */ `
-  mutation FinishDokployImport($runId: String!) {
-    finishDokployImport(runId: $runId)
+const STOP = /* GraphQL */ `
+  mutation StopDokployImport($runId: String!) {
+    stopDokployImport(runId: $runId)
+  }
+`;
+
+/**
+ * Sent on the way out of an unfinished wizard - from a click on the sidebar and
+ * from the tab closing alike, which is why it is fired as a bare `fetch` with
+ * `keepalive` rather than through the client. Nothing reads the answer: the
+ * decision of what may actually be uninstalled is entirely the server's.
+ */
+const ABANDON = /* GraphQL */ `
+  mutation AbandonDokployImport {
+    abandonDokployImport
   }
 `;
 
@@ -313,29 +236,6 @@ const MINT_LINK = /* GraphQL */ `
     mintRegistrationLink(input: $input)
   }
 `;
-
-/** What `planDokployDataMove` answers, trimmed to what the copy loop reads. */
-interface DataService {
-  path: string;
-  sourceKind: string;
-  sourceId: string;
-  sourceName: string;
-  sourceServerId: string;
-  /** Whether the machine holding this data answers Deplo. See the guard below. */
-  sourceReachable: boolean;
-  volumes: { sourceVolume: string }[];
-  /** Why a volume could not be paired, or why this host cannot be read at all.
-   *  Shown, never swallowed: it is the line that says what will NOT come over. */
-  notes: string[];
-}
-
-interface MoveResult {
-  moved: number;
-  failed: number;
-  notes: string[];
-  /** The machine went away mid-copy. Everything after it is on that machine. */
-  sourceGone: boolean;
-}
 
 /**
  * A copy's line in the same report the rest of the import writes to.
@@ -427,14 +327,6 @@ export function MigrationWizard({
   const [items, setItems] = React.useState<ReportItem[]>([]);
   const [runId, setRunId] = React.useState<string | null>(null);
   const [failure, setFailure] = React.useState<string | null>(null);
-  /**
-   * When THIS tab started driving, in epoch ms - the clock's zero.
-   *
-   * Not the run's `startedAt`: that survives a reload and the loop does not, so
-   * timing a dead loop against it would count a lunch break as work. Null on a
-   * resumed run for the same reason, which is what turns the estimate off.
-   */
-  const [runStartedAt, setRunStartedAt] = React.useState<number | null>(null);
   const [running, setRunning] = React.useState(false);
   /**
    * Somebody pressed Stop. A ref, not state: the loop below reads it between
@@ -553,19 +445,34 @@ export function MigrationWizard({
 
   /* ---- the move itself ---------------------------------------------- */
 
+  /**
+   * Hand the whole thing to the control plane and stop being the driver.
+   *
+   * This used to BE the migration: a loop of mutations in a browser tab, which
+   * is why closing the tab killed it. Now it writes the plan down once and
+   * returns; the runner finishes the job under the identity of whoever pressed
+   * the button, and this page - or any other page, or no page at all - just
+   * watches.
+   */
   async function runImport() {
-    // The guard that does not depend on the rendering being right: the review
-    // is replaced by the moving panel while this runs, but a stray second call
-    // would start a second run over the same projects.
     if (!plan || running) return;
-    const targets = plan.projects
-      .map((p) => ({
-        project: p,
-        serviceIds: importableOf(p)
-          .filter((s) => chosen.has(s.sourceId))
-          .map((s) => s.sourceId),
-      }))
-      .filter((t) => t.serviceIds.length > 0);
+    const targets = plan.projects.flatMap((p) =>
+      importableOf(p)
+        .filter((svc) => chosen.has(svc.sourceId))
+        .map((svc) => ({
+          projectId: p.sourceId,
+          projectName: p.name,
+          serviceId: svc.sourceId,
+          serverId: placements[svc.sourceId]?.serverId ?? null,
+          buildServerId: placements[svc.sourceId]?.buildServerId ?? null,
+          // Absent, null and a number are three different instructions - see the
+          // input's own description. Spread so an untouched service stays absent.
+          ...(placements[svc.sourceId] &&
+          "exposedPort" in placements[svc.sourceId]!
+            ? { exposedPort: placements[svc.sourceId]!.exposedPort }
+            : {}),
+        })),
+    );
     if (targets.length === 0) {
       setFailure("Nothing is selected, so there is nothing to migrate.");
       return;
@@ -573,328 +480,37 @@ export function MigrationWizard({
 
     setItems([]);
     setFailure(null);
-    cancelled.current = false;
     setStopped(false);
-    setRunStartedAt(Date.now());
     setRunning(true);
-
-    // ---- the last check before anything exists ----------------------
-    // The install step answered this, and that answer has an age: the review
-    // takes as long as it takes, and a host can drop off while somebody reads
-    // it. Everything past this line either creates something here or stops
-    // something over there, so it is asked once more while a refusal is still
-    // free.
-    setProgress({ done: 0, total: 0, current: "Checking the machines" });
-    for (const m of plan.servers) {
-      if (cancelled.current) return;
-      if (!m.deploServerId) {
-        setFailure(
-          `Deplo has no agent on ${m.name}. Go back to Install and connect it.`,
-        );
-        return;
-      }
-      const health = await gqlAction<
-        { checkServerHealth: { status: string; statusMessage: string | null } },
-        { status: string; statusMessage: string | null }
-      >(CHECK_HEALTH, { id: m.deploServerId }, (d) => d.checkServerHealth);
-      if (!health.ok) {
-        setFailure(`Could not check ${m.name}: ${health.error}`);
-        return;
-      }
-      if (health.data?.status !== "online") {
-        setFailure(
-          `${m.name} is not answering: ${health.data?.statusMessage ?? "no answer"}. Nothing was created. Fix it under Install and start again.`,
-        );
-        return;
-      }
+    const res = await gqlAction<{ startDokployImport: string }, string>(
+      START,
+      {
+        input: connectInput,
+        orgName: plan.orgName,
+        targets,
+        servers: Object.entries(serverMap)
+          .filter(([, to]) => to)
+          .map(([from, to]) => ({ from, to })),
+      },
+      (d) => d.startDokployImport,
+    );
+    setRunning(false);
+    if (!res.ok) {
+      setFailure(res.error);
+      return;
     }
-
-    setProgress({
-      done: 0,
-      total: targets.length,
-      current: targets[0].project.name,
-    });
-
-    // Visible to the `finally` below, which has to close the row when somebody
-    // stops the run - `openRunId` inside the try is not in scope there.
-    let openRun: string | null = null;
-    /**
-     * Set by every failing exit, and read by the `finally`.
-     *
-     * A run that fails leaves its row `running` otherwise, so the header chip
-     * tells the whole team a migration is in flight until somebody starts
-     * another one and `beginDokployImport` closes it as interrupted. One stray
-     * exit was survivable; this function now has nine of them.
-     */
-    let died = false;
-    const die = (why: string) => {
-      died = true;
-      setFailure(why);
-    };
-    try {
-      const begun = await gqlAction<{ beginDokployImport: string }, string>(
-        BEGIN,
-        { url, orgName: plan.orgName },
-        (d) => d.beginDokployImport,
-      );
-      if (!begun.ok) {
-        die(begun.error);
-        return;
-      }
-      if (!begun.data) {
-        die("Deplo could not open an import run.");
-        return;
-      }
-      const openRunId = begun.data;
-      openRun = openRunId;
-      setRunId(openRunId);
-
-      const serverChoices = Object.entries(serverMap)
-        .filter(([, to]) => to)
-        .map(([from, to]) => ({ from, to }));
-
-      // A project call that THROWS is not a project that had a problem: the
-      // resolver catches those one by one and reports them as items. It means
-      // the whole call failed - the key was revoked, the panel went down, the
-      // run stopped being ours - and every project after it is about to fail the
-      // same way. Two in a row is the line: one is a hiccup, two is the
-      // situation, and grinding through eight of them to arrive at a report
-      // where nothing came across is the thing this run must never do.
-      let inARow = 0;
-      let created = 0;
-
-      for (const [i, target] of targets.entries()) {
-        // Between projects, never mid-request: a call already sent is finishing
-        // on the server whatever this tab does, and abandoning its answer would
-        // leave a project created here with no line in the report - the one
-        // thing a revert reads to know what to take back out.
-        if (cancelled.current) return;
-        setProgress({
-          done: i,
-          total: targets.length,
-          current: target.project.name,
-        });
-        const res = await gqlAction<
-          { importDokployProject: { items: ReportItem[] } },
-          { items: ReportItem[] }
-        >(
-          IMPORT_PROJECT,
-          {
-            input: connectInput,
-            runId: openRunId,
-            projectId: target.project.sourceId,
-            servers: serverChoices,
-            serviceIds: target.serviceIds,
-            placements: target.serviceIds
-              .filter((id) => placements[id])
-              .map((id) => ({ serviceId: id, ...placements[id] })),
-          },
-          (d) => d.importDokployProject,
-        );
-        // One project failing does not abandon the others, and above all does not
-        // skip the DATA phase: the projects that did land are already created here
-        // and stopped over there, and leaving them without their data is the worse
-        // half-finished state.
-        if (!res.ok) {
-          setItems((prev) => [
-            ...prev,
-            {
-              path: target.project.name,
-              sourceKind: "project",
-              sourceName: target.project.name,
-              outcome: "failed",
-              targetKind: null,
-              targetId: null,
-              message: res.error,
-            },
-          ]);
-          if (++inARow >= 2) {
-            die(
-              `Two projects in a row failed the same way, so Deplo stopped. Last error: ${res.error}`,
-            );
-            return;
-          }
-          continue;
-        }
-        inARow = 0;
-        const landed = res.data?.items ?? [];
-        created += landed.filter((it) => it.outcome === "created").length;
-        setItems((prev) => [...prev, ...landed]);
-      }
-
-      // Nothing at all came across. The data phase would copy into nothing and
-      // the wizard would land on Done with confetti over an empty report, which
-      // is the worst ending this screen has.
-      if (created === 0) {
-        die(
-          "Nothing came across, so Deplo stopped before touching any data. The report says what refused.",
-        );
-        return;
-      }
-
-      // ---- the data ------------------------------------------------
-      // The configuration is here; now the bytes. Read both sides once, then
-      // copy every service that actually has a volume - the ones with none (a
-      // git-built app, usually) have nothing to do here.
-      if (cancelled.current) return;
-      setProgress({
-        done: targets.length,
-        total: targets.length,
-        current: "Reading the volumes",
-      });
-      const dataPlan = await gqlAction<
-        { planDokployDataMove: DataService[] },
-        DataService[]
-      >(
-        PLAN_DATA,
-        { input: connectInput, runId: openRunId },
-        (d) => d.planDokployDataMove,
-      );
-      // Not a note and not an empty list. Failing to READ what data exists is
-      // indistinguishable, from here, from there being none - and treating it as
-      // none copied nothing, finished clean, and left every app that just landed
-      // with an empty volume and a green tick over it.
-      if (!dataPlan.ok) {
-        setItems((prev) => [
-          ...prev,
-          dataNote(
-            "Could not read what data is on Dokploy: " + dataPlan.error,
-            "failed",
-          ),
-        ]);
-        die(
-          `Deplo could not read what data is on Dokploy, so it copied none of it: ${dataPlan.error}`,
-        );
-        return;
-      }
-      const planned = dataPlan.data ?? [];
-      // Every reason a service will not have its data copied is SAID. These notes
-      // are the whole value of the report - "no volume of this app mounts that
-      // path", "Deplo has no agent on that machine" - and they used to be fetched
-      // and dropped on the floor, which is how a migration reads as complete while
-      // leaving data behind.
-      for (const d of planned)
-        for (const note of d.notes)
-          setItems((prev) => [...prev, dataNote(`${d.sourceName}: ${note}`)]);
-      const movable = planned.filter((d) => d.volumes.length > 0);
-
-      // ---- one machine, one refusal --------------------------------
-      // A source that does not answer is not a per-service failure: the cause is a
-      // MACHINE, and copying every other service off it would produce the same red
-      // line once per service while the first one that mattered scrolled away. It
-      // is also the only moment halting is free - `moveDokployServiceData` stops
-      // the service on Dokploy before it dials, so past this point a refusal
-      // always leaves something down. Nothing has been stopped yet, so stop here.
-      const unreachable = movable.filter((d) => !d.sourceReachable);
-      if (unreachable.length > 0) {
-        const names = [
-          ...new Set(
-            unreachable.map(
-              (d) =>
-                plan.servers.find((m) => m.sourceId === d.sourceServerId)
-                  ?.name ?? "that machine",
-            ),
-          ),
-        ];
-        die(
-          `Deplo cannot reach the agent on ${names.join(", ")}, so no data was copied and nothing was stopped on Dokploy. Open the agent's port on it, or correct its address under Install, then start the migration again - what is already here will be skipped.`,
-        );
-        return;
-      }
-
-      for (const [i, d] of movable.entries()) {
-        if (cancelled.current) return;
-        setProgress({
-          done: i,
-          total: movable.length,
-          current: `Copying ${d.sourceName}`,
-        });
-        const res = await gqlAction<
-          { moveDokployServiceData: MoveResult },
-          MoveResult
-        >(
-          MOVE_DATA,
-          {
-            input: connectInput,
-            runId: openRunId,
-            sourceKind: d.sourceKind,
-            sourceId: d.sourceId,
-          },
-          (d2) => d2.moveDokployServiceData,
-        );
-        // One failed VOLUME never stops the rest: the others are already stopped
-        // on Dokploy, and leaving them half-moved is worse than finishing the
-        // list.
-        setItems((prev) => [
-          ...prev,
-          res.ok
-            ? dataNote(
-                `${d.sourceName}: ${res.data?.moved ?? 0} volume(s) copied` +
-                  ((res.data?.failed ?? 0) > 0
-                    ? `, ${res.data!.failed} failed`
-                    : ""),
-                (res.data?.failed ?? 0) > 0 ? "failed" : "created",
-              )
-            : dataNote(`${d.sourceName}: ${res.error}`, "failed"),
-        ]);
-
-        // A failed MACHINE stops everything, and the difference is the whole
-        // point. Every service still on the list lives on the host that just
-        // went away, and each one gets STOPPED on Dokploy before its copy is
-        // attempted - so carrying on would take a whole organisation down on
-        // both sides and hand back a report where nothing came across. One
-        // broken host, one refusal.
-        if (res.ok && res.data?.sourceGone) {
-          die(
-            `Lost the connection to the machine ${d.sourceName}'s data is on. Stopped there, and nothing after it was touched.`,
-          );
-          return;
-        }
-      }
-
-      setProgress({ done: movable.length, total: movable.length, current: "" });
-      // Closing the run also takes Deplo's agent back off the source machines.
-      // A failure here leaves the run open and the agents installed, which is
-      // the one thing nobody discovers on their own.
-      const finished = await gqlAction(FINISH, { runId: openRunId });
-      if (!finished.ok) {
-        die(
-          `Everything came across, but Deplo could not close the run: ${finished.error}`,
-        );
-        return;
-      }
-      router.refresh();
-    } finally {
-      setRunning(false);
-      // Every early return above lands here: a failure, or a Stop. The wizard
-      // stays on this panel either way, because that is where the way out of a
-      // half-finished migration is - and the ROW is closed either way, or the
-      // header chip tells the whole team a migration is in flight until somebody
-      // starts another one and `beginDokployImport` cleans it up. NOT
-      // `finishDokployImport`: that also takes the agents off the source
-      // machines, and re-running is how a stopped migration is resumed.
-      if (openRun && (died || cancelled.current))
-        await gqlAction(STOP, { runId: openRun });
-      if (cancelled.current) {
-        setStopped(true);
-        router.refresh();
-      }
+    if (!res.data) {
+      setFailure("Deplo could not start the migration.");
+      return;
     }
-
-    // Only the happy path gets here.
-    setLogOpen(false);
-    setStep(isInstanceAdmin ? "people" : "done");
+    // From here the live feed is the truth, for this tab and every other one.
+    setRunId(res.data);
+    setAdoptedId(res.data);
+    // The key is the control plane's now, and this tab has no further use for
+    // it. Holding it after handing it over is a copy nobody remembers exists.
+    setApiKey("");
   }
 
-  /**
-   * Take the half-finished migration back out.
-   *
-   * The whole point is that it is not the person's job to work out what landed:
-   * the run wrote a line for every object it created, and the server walks that
-   * ledger backwards. What it cannot remove - a database whose host will not
-   * confirm the volume is gone, a kind this actor may not delete - comes back
-   * named, rather than as a silent partial success.
-   */
   async function revertRun() {
     if (!runId)
       return { ok: false as const, error: "There is no run to undo." };
@@ -965,6 +581,41 @@ export function MigrationWizard({
   }
 
   /** The log of a run this tab did not start: read off its own ledger. */
+  /**
+   * The run ended somewhere else - in the control plane, which is where it runs
+   * now - so this tab has to find out how.
+   *
+   * `watched` going from a run to null IS the signal: the live feed only ever
+   * carries a RUNNING one. Without this the wizard fell back to the review
+   * screen when a migration finished, offering to start the one that had just
+   * succeeded.
+   */
+  const settleFinished = React.useCallback(
+    async (id: string) => {
+      const res = await gqlAction<
+        {
+          dokployImport: {
+            status: string;
+            error: string | null;
+            items: ReportItem[];
+          } | null;
+        },
+        { status: string; error: string | null; items: ReportItem[] } | null
+      >(RUN_REPORT_QUERY, { id }, (d) => d.dokployImport);
+      if (!res.ok || !res.data) return;
+      setItems(res.data.items);
+      if (res.data.status === "done") {
+        setStep(isInstanceAdmin ? "people" : "done");
+        return;
+      }
+      // Stopped or failed. Both land on the panel that offers the only two
+      // things left: take it back out, or keep it and read the report.
+      if (res.data.error) setFailure(res.data.error);
+      else setStopped(true);
+    },
+    [isInstanceAdmin],
+  );
+
   async function loadResumedLog(id: string) {
     setLogOpen(true);
     const res = await gqlAction<
@@ -1068,17 +719,28 @@ export function MigrationWizard({
   /* ---- render ------------------------------------------------------ */
 
   /**
-   * The migration owns the screen. True from the first project moved until the
-   * run is resolved one way or the other - a stopped or failed one included,
-   * because that is half of somebody's platform sitting between two places and
-   * "Undo the migration" lives on this panel and nowhere else.
-   *
-   * It is exactly the window in which the moving panel is up - the step
-   * included, because keeping a half-finished run carries its failure over to
-   * the report, and a page that never let go of the lock would be the worst
-   * possible place to end a migration.
+   * The panel, not the tree: the review step is showing a run rather than a plan.
+   * True from the first project moved until the run is resolved one way or the
+   * other - a stopped or failed one included, because that is half of somebody's
+   * platform sitting between two places and "Undo the migration" lives on this
+   * panel and nowhere else.
    */
   const moving = step === "review" && (running || stopped || failure !== null);
+
+  /**
+   * The one state this page may not be walked away from - and it is NOT a run in
+   * flight.
+   *
+   * The run lives in the control plane now, not in this tab: leaving while it
+   * moves costs nothing, the header chip follows it, and coming back re-opens the
+   * same panel with Stop still on it. Holding the whole dashboard hostage for it
+   * was a leftover from the loop that used to run here.
+   *
+   * A run that has STOPPED or failed is different: what came over is sitting
+   * between two platforms and the choice - undo it, or keep it - is on this panel
+   * and nowhere else, so this one still refuses Back and switches the chrome off.
+   */
+  const locked = moving && !running;
 
   /**
    * Every machine behind that Dokploy answers Deplo - the same condition the
@@ -1095,11 +757,11 @@ export function MigrationWizard({
   );
 
   /**
-   * While it does, everything else on the page is switched off: the sidebar,
-   * the topbar with its team switcher and account menu, the banners, the
-   * page's own tabs. Not a confirm dialog - switching team is a button, not a
-   * link, and it remounts every page under the layout, so it took the running
-   * migration with it without ever looking like navigation.
+   * While it is locked, everything else on the page is switched off: the
+   * sidebar, the topbar with its team switcher and account menu, the banners,
+   * the page's own tabs. Not a confirm dialog - switching team is a button, not
+   * a link, and it remounts every page under the layout, so it took the run's
+   * own panel with it without ever looking like navigation.
    *
    * Back is refused the same way: the browser gets its entry pushed straight
    * back and the person gets told what to do instead. Closing the tab is the
@@ -1109,29 +771,27 @@ export function MigrationWizard({
   const heldRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     const root = heldRef.current;
-    if (!moving || !root) return;
+    if (!locked || !root) return;
     // One spare history entry for Back to land on, pushed once for the whole
     // window. The state object is Next's, not ours: a sentinel carrying a null
     // state is one the App Router cannot restore on the way forward again.
     window.history.pushState(window.history.state, "", window.location.href);
     return lockPageAround(root);
-  }, [moving]);
+  }, [locked]);
 
   React.useEffect(() => {
-    if (!moving) return;
+    if (!locked) return;
     const onPop = () => {
       // Put the entry back before the browser is done with the gesture, so the
       // URL never actually changes and nothing under the layout remounts.
       window.history.pushState(window.history.state, "", window.location.href);
       toast.warning(
-        running
-          ? "The migration is still running. Stop it first if you need to leave."
-          : "Undo the migration or keep what landed before leaving this page.",
+        "Undo the migration or keep what landed before leaving this page.",
       );
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [moving, running]);
+  }, [locked]);
 
   /**
    * A migration this tab is NOT driving - somebody else's, or one this tab
@@ -1144,6 +804,18 @@ export function MigrationWizard({
    * this tab holds of its own wins: the driver keeps its panel with Stop on it.
    */
   const watched = useActiveMigration();
+
+  // Fires on the edge, not on the state: `watched` is null for most of this
+  // component's life, and settling on every render of a page with no migration
+  // would query the server forever.
+  const wasWatching = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const now = watched?.id ?? null;
+    const before = wasWatching.current;
+    wasWatching.current = now;
+    if (before && !now && before === (adoptedId ?? runId))
+      void settleFinished(before);
+  }, [watched, adoptedId, runId, settleFinished]);
   /**
    * Whether the run in flight is THIS person's. `actor` is a display name rather
    * than an id, which is as much as the run row carries - and it is enough here,
@@ -1162,7 +834,6 @@ export function MigrationWizard({
   const resumed =
     watched != null &&
     mine &&
-    runId == null &&
     !running &&
     !stopped &&
     failure === null &&
@@ -1195,30 +866,74 @@ export function MigrationWizard({
             ? "install"
             : "connect";
 
+  /** A run somebody started, driven from here or merely watched. */
+  const inFlight = running || takenOver;
+
   // Armed from the moment there is something to lose. Not from mount: a page
   // somebody opened to look at should not argue with them on the way out. Not
   // after Finish either - by then the migration is over and every link on the
-  // report is somewhere you are meant to go.
+  // report is somewhere you are meant to go. And NOT while a run is in flight:
+  // the control plane is driving it, leaving is free, and asking "are you sure"
+  // about something that costs nothing teaches people to click through the one
+  // that does.
   const guarded =
     step !== "done" &&
+    !inFlight &&
     (plan != null || url.trim() !== "" || apiKey.trim() !== "");
+
+  /**
+   * Leaving with a plan and no run gives the source machines their machine back.
+   *
+   * The install step put Deplo's agent on each of them - somebody else's hosts,
+   * for the length of one migration - and nothing else was ever going to take it
+   * off: only a FINISHED run did that, so an abandoned wizard left an agent
+   * running and a "Migration source" in Settings that outlived the plan it was
+   * for. The server decides what is safe to remove (a run in flight owns its
+   * agents; a failed volume copy keeps them); this only says "I left".
+   *
+   * The ref is what makes both exits read the same answer: React's cleanup for a
+   * click on the sidebar, `pagehide` for the tab closing. `keepalive` because the
+   * second one is a request outliving its document, and `persisted` because a
+   * page going into the back/forward cache has not been left at all.
+   */
+  const abandonRef = React.useRef(false);
+  // No dependency array on purpose: this is the "latest value" of a flag the
+  // listeners below read long after the render that produced it.
+  React.useEffect(() => {
+    abandonRef.current = guarded && plan != null;
+  });
+  React.useEffect(() => {
+    const abandon = () => {
+      if (!abandonRef.current) return;
+      abandonRef.current = false;
+      void fetch("/api/graphql", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: ABANDON }),
+        credentials: "same-origin",
+        keepalive: true,
+      }).catch(() => {});
+    };
+    const onPageHide = (e: PageTransitionEvent) => {
+      if (!e.persisted) abandon();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      abandon();
+    };
+  }, []);
 
   return (
     <>
       {/* The soft half, for a plan somebody spent ten minutes choosing: a
-          confirm on the way out. Once the run STARTS there is nothing to
-          confirm - `moving` above switches the rest of the page off outright,
-          and all this still carries is the browser's own close-tab prompt. */}
+          confirm on the way out, saying what leaving actually costs. Once the run
+          STARTS there is nothing to confirm - the control plane owns it, and this
+          page is one of the places you can watch it from, not the only one. */}
       <UnsavedChangesGuard
         when={guarded}
-        title={
-          running ? "The migration is still running" : "Leave the migration?"
-        }
-        description={
-          running
-            ? "Deplo is moving your projects right now. Leaving this page stops it part-way, with some services already stopped on Dokploy."
-            : "Nothing here is saved yet. If you leave now you have to connect and choose all over again."
-        }
+        title="Leave the migration?"
+        description="Deplo takes its agent back off the machines it installed one on, and forgets them. Coming back means connecting and setting those machines up again."
         confirmLabel="Leave anyway"
         cancelLabel="Stay on this page"
       />
@@ -1298,32 +1013,19 @@ export function MigrationWizard({
               {(resumed || resumedStopped) && (
                 <MovingPanel
                   progress={
-                    resumed && watched
+                    watched
                       ? {
-                          done:
-                            watched.created +
-                            watched.skipped +
-                            watched.failed +
-                            watched.manual,
-                          // No denominator from out here: the plan that knew how
-                          // many projects there were died with the tab. The bar
-                          // sweeps instead of filling, which is honest.
-                          total: 0,
-                          // The last row the run wrote, which the server keeps.
-                          // It used to be the ORGANISATION's name here, which is
-                          // the one thing on the screen that never changes: a
-                          // reload turned "Copying jellyfin" into "My
-                          // Organization" and the panel stopped saying anything
-                          // at all about where the run had got to.
-                          current: lastStep(watched.lastPath),
+                          done: watched.doneSteps,
+                          total: watched.totalSteps,
+                          current:
+                            watched.stepLabel ?? lastStep(watched.lastPath),
                         }
                       : progress
                   }
-                  // The loop lived in the tab, and a reload took it. Nothing is
-                  // driving this run any more, so the panel must not spin as if
-                  // something were - it says so, and offers the way out.
-                  stalled={resumed}
-                  startedAt={null}
+                  // Never stalled now: the run is in the control plane, and a
+                  // page with no run open shows no panel at all.
+                  stalled={false}
+                  startedAt={watched ? Date.parse(watched.startedAt) : null}
                   failure={failure}
                   running={resumed}
                   reverting={reverting}
@@ -1371,7 +1073,7 @@ export function MigrationWizard({
                   <MovingPanel
                     progress={progress}
                     stalled={false}
-                    startedAt={runStartedAt}
+                    startedAt={null}
                     failure={failure}
                     running={running}
                     reverting={reverting}
@@ -1419,14 +1121,15 @@ export function MigrationWizard({
         </div>
       )}
 
-      {/* The detail, for whoever wants it. Never in the way. */}
-      <MigrationLogDialog
+      {/* Line by line, while it happens. Reads the run from the server rather
+          than this tab's memory of it, which is what lets somebody who has just
+          arrived from the header chip see the same log as the person who started
+          it. */}
+      <MigrationConsole
+        runId={adoptedId ?? runId ?? watched?.id ?? null}
         open={logOpen}
         onOpenChange={setLogOpen}
-        progress={progress}
-        items={items}
-        failure={failure}
-        running={running}
+        live={watched != null}
       />
     </>
   );
@@ -1697,7 +1400,7 @@ function MovingPanel({
         title={failure ? "The migration stopped" : "You stopped the migration"}
         lead={
           failure ??
-          "Whatever had already come over is here, and Dokploy is not serving it any more."
+          "Whatever came over is here, and Dokploy is not serving it any more."
         }
       >
         <div className="flex flex-wrap items-center gap-2">
@@ -1746,7 +1449,7 @@ function MovingPanel({
       lead={
         stalled
           ? "Nothing is moving: the tab driving it is gone. Stop it and start again - what is already here is skipped."
-          : "Creating your projects and copying their data across. Stay on this page."
+          : "Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
       }
     >
       <div className="space-y-2">

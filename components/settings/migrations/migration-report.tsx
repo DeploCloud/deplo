@@ -33,6 +33,8 @@ export const RUN_REPORT_QUERY = /* GraphQL */ `
   query MigrationRunReport($id: String!) {
     dokployImport(id: $id) {
       id
+      status
+      error
       items {
         path
         sourceKind

@@ -78,6 +78,8 @@ export interface ReportItem {
   targetKind: string | null;
   targetId: string | null;
   message: string | null;
+  /** When it happened. Null on rows written before the report became a log. */
+  at?: string | null;
 }
 
 export interface Invite {
