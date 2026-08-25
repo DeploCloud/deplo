@@ -5,6 +5,7 @@ import { listDeployments } from "@/lib/data/deployments";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
+import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { DeploymentsTable } from "@/components/apps/deployments-table";
 
@@ -52,11 +53,21 @@ export default async function AppDeploymentsPage(
     </div>
   );
 
+  const gear = (
+    <SettingsShortcut
+      href={`/apps/${slug}/settings/deployments`}
+      label="Deployment settings"
+    />
+  );
+
   return (
     <div className="space-y-4">
       {deployments.length === 0 ? (
         <>
-          {header}
+          <div className="flex items-center justify-between gap-3">
+            {header}
+            {gear}
+          </div>
           <EmptyState
             graphic={<DeploymentGraphic />}
             title="No deployments yet"
@@ -66,6 +77,7 @@ export default async function AppDeploymentsPage(
       ) : (
         <DeploymentsTable
           header={header}
+          actions={gear}
           canManage={canManage}
           canRollbackApps={canRollback || isAdmin}
           scopeAppId={project.id}

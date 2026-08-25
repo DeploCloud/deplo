@@ -39,7 +39,7 @@ export default async function AppCronJobsPage(
       jobs={view.jobs}
       services={view.services}
       canManage
-      settingsHref={`/apps/${slug}/settings/advanced`}
+      settingsHref={`/apps/${slug}/settings/advanced#cron-jobs`}
     />
   );
 }

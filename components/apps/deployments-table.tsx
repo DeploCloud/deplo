@@ -281,6 +281,7 @@ export interface DeploymentRow {
 export function DeploymentsTable({
   deployments,
   header,
+  actions,
   showApp = false,
   showServer = false,
   scopeAppId,
@@ -291,6 +292,9 @@ export function DeploymentsTable({
   /** Title/subtitle block rendered on the left of the header row, opposite the
    *  bulk-action buttons. Plain markup — passed straight through from the RSC page. */
   header?: React.ReactNode;
+  /** Rendered first in the header row's right-hand cluster, before the bulk
+   *  actions — an app's page puts its settings shortcut there. */
+  actions?: React.ReactNode;
   /** Show the owning-app column (the global page). Off on an app's page. */
   showApp?: boolean;
   /** Show the owning-server column + Server/App filters (the global page). */
@@ -746,14 +750,15 @@ export function DeploymentsTable({
 
   return (
     <div className="space-y-4">
-      {/* Header: title/subtitle on the left, bulk-action buttons on the right
-          (justify-between). The buttons are hidden when the caller can't manage. */}
-      {(header || canManage) && (
+      {/* Header: title/subtitle on the left, `actions` then the bulk-action
+          buttons on the right. The buttons are hidden when the caller can't manage. */}
+      {(header || actions || canManage) && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">{header}</div>
-          {canManage && (
+          {(actions || canManage) && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {inProgressCount > 0 && (
+              {actions}
+              {canManage && inProgressCount > 0 && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -766,7 +771,7 @@ export function DeploymentsTable({
                   </span>
                 </Button>
               )}
-              {selectableIds.length > 0 && (
+              {canManage && selectableIds.length > 0 && (
                 <Button
                   variant="outline"
                   size="sm"

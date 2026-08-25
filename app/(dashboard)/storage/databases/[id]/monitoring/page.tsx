@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases";
 import { getDatabaseMetricsHistory } from "@/lib/data/container-metrics";
 import { PageHeader } from "@/components/shared/page-header";
+import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { ContainerMonitoringDashboard } from "@/components/monitoring/container-monitoring-dashboard";
 
 export const metadata = { title: "Monitoring" };
@@ -22,6 +23,12 @@ export default async function DatabaseMonitoringPage(
       <PageHeader
         title="Monitoring"
         description="Real-time CPU, memory, network and disk I/O for this database's container."
+        actions={
+          <SettingsShortcut
+            href={`/storage/databases/${db.id}/settings/resources`}
+            label="Resource limits"
+          />
+        }
       />
       <ContainerMonitoringDashboard
         kind="database"

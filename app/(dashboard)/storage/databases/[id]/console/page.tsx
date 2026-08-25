@@ -37,7 +37,11 @@ export default async function DatabaseConsolePage(
     <div className="flex min-h-0 flex-1 flex-col">
       <DatabaseConsole
         id={db.id}
-        title={{ label: db.name, href: `/storage/databases/${db.id}` }}
+        title={{
+          label: db.name,
+          href: `/storage/databases/${db.id}`,
+          settingsHref: `/storage/databases/${db.id}/settings/advanced`,
+        }}
         status={db.status}
         instances={info?.instances ?? []}
       />

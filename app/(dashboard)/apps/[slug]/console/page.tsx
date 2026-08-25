@@ -27,7 +27,11 @@ export default async function AppConsolePage(
     <div className="flex min-h-0 flex-1 flex-col">
       <LiveConsole
         appId={project.id}
-        title={{ label: project.name, href: `/apps/${project.slug}` }}
+        title={{
+          label: project.name,
+          href: `/apps/${project.slug}`,
+          settingsHref: `/apps/${project.slug}/settings/advanced`,
+        }}
         initialInfo={
           info?.running
             ? { containerName: info.containerName, instances: info.instances }

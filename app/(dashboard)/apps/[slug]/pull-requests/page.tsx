@@ -7,6 +7,7 @@ import { listAppPreviews } from "@/lib/data/previews";
 import { hasCapability } from "@/lib/membership";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { EmptyState } from "@/components/shared/empty-state";
+import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { Button } from "@/components/ui/button";
 import { DeployPullRequestDialog } from "@/components/apps/previews/deploy-pull-request-dialog";
 import { PreviewsTable } from "@/components/apps/previews/previews-table";
@@ -49,7 +50,13 @@ export default async function AppPullRequestsPage(
             and its own URL.
           </p>
         </div>
-        {deployButton}
+        <div className="flex shrink-0 items-center gap-2">
+          <SettingsShortcut
+            href={`/apps/${slug}/settings/pull-requests`}
+            label="Pull request settings"
+          />
+          {deployButton}
+        </div>
       </div>
 
       {view.unavailable === "not-github" && (

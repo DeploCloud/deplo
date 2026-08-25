@@ -4,6 +4,7 @@ import { getDatabase } from "@/lib/data/databases";
 import { titleCase, truncate } from "@/lib/utils";
 import { DB_NAMES } from "@/components/storage/db-engines";
 import { DatabaseLogo } from "@/components/storage/database-logo";
+import { LogoEditLink } from "@/components/shared/logo-edit-link";
 import {
   DatabaseLiveStatusProvider,
   type LiveDatabase,
@@ -60,7 +61,12 @@ export default async function DatabaseLayout(
         header={
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <DatabaseLogo type={db.type} logo={db.logo} size={44} />
+              <LogoEditLink
+                href={`/storage/databases/${db.id}/settings`}
+                label="General settings"
+              >
+                <DatabaseLogo type={db.type} logo={db.logo} size={44} />
+              </LogoEditLink>
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-semibold tracking-tight">

@@ -9,6 +9,7 @@ import { AppCapabilitiesProvider } from "@/components/apps/app-capabilities";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
+import { LogoEditLink } from "@/components/shared/logo-edit-link";
 import { RedeployButton } from "@/components/apps/redeploy-button";
 import { AppControls } from "@/components/apps/app-controls";
 import { AppStatusBadge } from "@/components/apps/app-status-dot";
@@ -76,7 +77,12 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
             <div>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <AppLogo logo={project.logo} size={44} />
+                  <LogoEditLink
+                    href={`/apps/${slug}/settings`}
+                    label="General settings"
+                  >
+                    <AppLogo logo={project.logo} size={44} />
+                  </LogoEditLink>
                   <div>
                     <div className="flex items-center gap-2">
                       <h1 className="text-xl font-semibold tracking-tight">

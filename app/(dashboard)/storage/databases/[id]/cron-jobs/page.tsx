@@ -48,7 +48,7 @@ export default async function DatabaseCronJobsPage(
         jobs={view.jobs}
         services={view.services}
         canManage
-        settingsHref={`/storage/databases/${db.id}/settings/advanced`}
+        settingsHref={`/storage/databases/${db.id}/settings/advanced#cron-jobs`}
       />
     </div>
   );

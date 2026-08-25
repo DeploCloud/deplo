@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps";
 import { appFilesExist } from "@/lib/data/app-files";
 import { PageHeader } from "@/components/shared/page-header";
+import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { FileExplorer } from "@/components/apps/file-explorer";
 
 export const metadata = { title: "App Files" };
@@ -22,6 +23,12 @@ export default async function AppFilesPage(
       <PageHeader
         title="Files"
         description="Browse and edit this app's files directory."
+        actions={
+          <SettingsShortcut
+            href={`/apps/${slug}/settings/storage`}
+            label="Storage settings"
+          />
+        }
       />
       <FileExplorer appId={project.id} />
     </div>

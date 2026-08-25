@@ -61,7 +61,7 @@ export function CronSettingsForm({
   const noun = targetKind === "app" ? "this app" : "this database";
 
   return (
-    <div className="rounded-lg border p-4">
+    <div id="cron-jobs" className="scroll-mt-20 rounded-lg border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-56 flex-1 space-y-1">
           <p className="flex items-center gap-2 text-sm font-medium">

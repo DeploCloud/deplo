@@ -5,6 +5,7 @@ import { getAppMetricsHistory } from "@/lib/data/container-metrics";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { ContainerMonitoringDashboard } from "@/components/monitoring/container-monitoring-dashboard";
 
 export const metadata = { title: "Monitoring" };
@@ -37,6 +38,12 @@ export default async function AppMonitoringPage(
       <PageHeader
         title="Monitoring"
         description="Real-time CPU, memory, network and disk I/O for this app's containers."
+        actions={
+          <SettingsShortcut
+            href={`/apps/${slug}/settings/resources`}
+            label="Resource limits"
+          />
+        }
       />
       <ContainerMonitoringDashboard
         kind="app"
