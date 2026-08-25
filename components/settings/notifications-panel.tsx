@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Plus, Send, Trash2 } from "lucide-react";
+import { Bell, ChevronLeft, Plus, Send, Trash2 } from "lucide-react";
 
 import { AlertPicker } from "@/components/settings/alert-picker";
 import {
@@ -446,6 +446,23 @@ export function NotificationsPanel({
 
             <DialogFooter className="items-center gap-1.5 border-t border-border p-4 sm:justify-between">
               <div className="flex flex-wrap items-center gap-1.5">
+                {/* Only in the add flow: picking a kind replaced the picker
+                    with this form, so there is a screen to go back to. An
+                    existing channel was opened straight from the grid. */}
+                {draft && !editingId && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDraft(null);
+                      setSecrets({});
+                    }}
+                  >
+                    <ChevronLeft className="size-3.5" />
+                    Back
+                  </Button>
+                )}
                 {/* A test dials whatever the SERVER has stored, so it is only
                     offered once there IS something stored and nothing is
                     pending on top of it. */}
