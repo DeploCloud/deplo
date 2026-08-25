@@ -224,7 +224,9 @@ test("a connection is scoped to EXACTLY the active team, whoever the approver is
 
 test("no approval on file mints nothing", async () => {
   // The hole this closes: the mint used to answer to a `client_id` and a session and
-  // nothing else, so a link to `/oauth/consent?
+  // nothing else, so a link to `/oauth/consent?client_id=<mine>` was enough to make
+  // somebody with the capabilities click Authorize and mint a live API token bound to
+  // a client they had never heard of.
   await pg.query(`delete from oauth_consent`);
   await assert.rejects(
     as(OWNER, () =>

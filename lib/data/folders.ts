@@ -55,9 +55,8 @@ function summarizeFolder(
 
 /**
  * The id of `folderId` plus every folder nested anywhere beneath it (its whole
- * subtree). Used to reject a move that would put a folder under its own
- * descendant — which would orphan a cycle out of the tree. Pure over the given
- * folder list.
+ * subtree). Used to reject a move that would put a folder under its own descendant
+ * — which would orphan a cycle out of the tree.
  */
 export function descendantFolderIds(
   folderId: string,
@@ -83,11 +82,8 @@ export function descendantFolderIds(
 }
 
 /**
- * Roll DIRECT per-folder app counts up the folder tree so each folder's
- * total covers its WHOLE subtree — itself plus every folder nested anywhere
- * beneath it. Cycle-safe (a stale cycle's members are each credited once) and
- * pure over the given folder list; a dangling `parentId` just ends the walk
- * (the same "treated as top-level" tolerance as the rest of the tree code).
+ * Roll DIRECT per-folder app counts up the folder tree so each folder's total
+ * covers its WHOLE subtree — itself plus every folder nested anywhere beneath it.
  */
 export function rollUpAppCounts(
   folders: Pick<Folder, "id" | "parentId">[],
@@ -121,10 +117,9 @@ async function teamFoldersWithCounts(teamId: string): Promise<{
     .from(foldersTable)
     .where(eq(foldersTable.teamId, teamId));
   const folders = folderRows.map(assembleFolder);
-  // App counts: GROUP BY folder_id over the team's apps, then rolled up
-  // the tree so a folder's count covers its whole subtree — the Overview shows
-  // one level at a time, so a parent tile saying "0 apps" over populated
-  // subfolders would read as empty.
+  // App counts: GROUP BY folder_id over the team's apps, then rolled up the tree so a
+  // folder's count covers its whole subtree — the Overview shows one level at a time,
+  // so a parent tile saying "0 apps" over populated subfolders would read as empty.
   const projRows = await getDb()
     .select({ folderId: appsTable.folderId })
     .from(appsTable)
@@ -166,9 +161,8 @@ export const listFolders = cache(async function listFolders(): Promise<
   const seen = granted.filter((f) => inFolderScope(f.id));
   // Recompute subfolderCount over the VISIBLE set so a folder doesn't disclose the
   // existence of child folders the caller can't see (child folders carry their own
-  // independent ownership/grants). appCount stays team-scoped — a folder's
-  // apps (including the subtree roll-up) are part of what any folder-viewer
-  // works with. Super-users (visible === "all") keep the full team counts.
+  // independent ownership/grants). appCount stays team-scoped — a folder's apps
+  // (including the subtree roll-up) are part of what any folder-viewer works with.
   const shownSubfolderCounts =
     visible === "all"
       ? subfolderCounts
@@ -211,11 +205,10 @@ export function cleanName(name: string): string {
 }
 
 /**
- * Reconcile a client-supplied display order against the authoritative id set:
- * keep the requested ids that are valid (dropping unknown/duplicate ones, in
- * order), then append any authoritative id the client omitted (preserving its
- * existing position) so the stored order is always total and self-healing. Pure;
- * shared by `reorderFolders` and exercised directly in tests.
+ * Reconcile a client-supplied display order against the authoritative id set: keep
+ * the requested ids that are valid (dropping unknown/duplicate ones, in order),
+ * then append any authoritative id the client omitted (preserving its existing
+ * position) so the stored order is always total and self-healing.
  */
 export function mergeOrder(orderedIds: string[], allIds: string[]): string[] {
   const valid = new Set(allIds);
@@ -420,15 +413,7 @@ export async function moveFolder(
 }
 
 /**
- * Delete a folder. By default nothing inside is deleted: its apps and its CHILD
- * folders are re-parented to the deleted folder's own parent (so a nested
- * subtree stays intact one level up). The team_folder_order row CASCADEs on the
- * delete.
- *
- * `deleteApps` is the opt-in the delete dialog offers: every app in the folder's
- * whole subtree is stopped and deleted with it, gated per app on `delete_apps`
- * (so one app the caller may not delete refuses the lot). The CHILD FOLDERS
- * still fall back to the parent - the option deletes apps, not structure.
+ * Delete a folder.
  */
 export async function deleteFolder(
   id: string,
@@ -438,10 +423,9 @@ export async function deleteFolder(
     id,
     "delete_folders",
   );
-  // Before the folder row goes, while its apps still resolve THROUGH it
-  // (ADR-0016) and their gate is the one the folder's own grants decide.
-  // Imported lazily: apps.ts imports this module, so a static import would close
-  // the cycle.
+  // Before the folder row goes, while its apps still resolve THROUGH it (ADR-0016)
+  // and their gate is the one the folder's own grants decide. Imported lazily:
+  // apps.ts imports this module, so a static import would close the cycle.
   if (opts.deleteApps) {
     const { deleteAppsIn } = await import("./apps");
     await deleteAppsIn({ folderId: id });
@@ -486,9 +470,8 @@ export async function moveAppToFolder(
 ): Promise<void> {
   // The SOURCE gate, and the only one that covers every placement: the ladder
   // resolves the app through its folder chain, its project, then the membership
-  // (ADR-0016), so this is the folder-source check it replaces AND the one an
-  // app inside a project never had. Without it, team-wide `move_apps` was enough
-  // to pull any project app into a folder the mover controls.
+  // (ADR-0016), so this is the folder-source check it replaces AND the one an app
+  // inside a project never had.
   const { teamId } = await requireAppCapability(appId, "move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const proj = await getDb()
@@ -575,9 +558,7 @@ export async function moveAppsToFolder(
     .map((p) => p.id);
   if (toMove.length === 0) return 0;
   // The same source gate as the single move, batched: `move_apps` ON EACH APP,
-  // resolved through its own folder chain and project. It used to check the
-  // distinct source FOLDERS, which left every app inside a project ungated on
-  // this path too. One resolution for the selection, not one per app.
+  // resolved through its own folder chain and project.
   const reach = await appCapabilitiesForTeam(
     teamId,
     owned
@@ -617,10 +598,7 @@ export async function moveAppsToFolder(
 }
 
 /**
- * Persist the team-wide order of folders in the Overview grid. Same total-and-
- * self-healing contract as `reorderApps`: ids are sanitised to the caller's
- * own team folders, any omitted team folder is appended, and the
- * `team_folder_order` junction is rewritten over the survivors.
+ * Persist the team-wide order of folders in the Overview grid.
  */
 export async function reorderFolders(orderedIds: string[]): Promise<void> {
   // The Overview folder order is a single TEAM-WIDE setting (like reorderApps),

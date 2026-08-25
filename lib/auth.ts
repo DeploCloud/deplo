@@ -48,13 +48,6 @@ import { assertPasswordNotPwned } from "./pwned-password";
 /**
  * WHICH authority vouched for a password account - `account.issuer`, required
  * since Better Auth 1.7.0, which keys an account on `(issuer, accountId)`.
- *
- * Taken from the library rather than written out, because the sign-in path
- * compares it EXACTLY: a row spelled any other way is a credential that stops
- * matching at login while looking perfectly correct in the table. Every hand-
- * written `account` INSERT in deplo (here, the admin reset, the recover script,
- * the test seeder) has to carry it, since `disableSignUp: true` means Better
- * Auth never writes that row itself.
  */
 const CREDENTIAL_ISSUER = createLocalAccountIssuer("credential");
 
@@ -131,20 +124,8 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
 }
 
 /**
- * Validate-free user insert shared by {@link createAccountWithTeam} and
- * {@link createAccountWithTeams}. Assumes the caller already normalized +
- * validated username/name/email/password. Runs INSIDE the caller's transaction:
- * re-checks username/email uniqueness against live rows (the unique indexes are
- * the race backstop), assigns the deterministic avatar color from the in-tx user
- * count, hashes the password and inserts the user row. Inserts NO team or
- * membership — the caller wires those up.
- *
- * Also writes the Better Auth `account` row that holds the credential: since
- * migration 0055 `account.password` is the only stored copy, and Better Auth is
- * configured with `disableSignUp: true` precisely so account creation stays here
- * (it cannot fill deplo's NOT NULL `username`/`role`/`avatar_color`). The hash
- * format is deplo's own scrypt, which Better Auth verifies via the `password`
- * option in [./auth/better-auth.ts](./auth/better-auth.ts).
+ * Validate-free user insert shared by {@link createAccountWithTeam} and {@link
+ * createAccountWithTeams}.
  */
 async function insertUserCore(
   tx: DbTx,
@@ -207,24 +188,8 @@ async function insertUserCore(
 
 /**
  * Create a brand-new account AND its own team in one transaction, returning the
- * new user + team. Shared by first-run setup and the register link (public
- * signup was removed — accounts after the first require an invite). The
- * registrant is the OWNER of their team. Validates the username +
- * team name and enforces global uniqueness of both. Does NOT set cookies — the
- * caller signs the user in (so this stays usable from non-request contexts).
- *
- * `opts.guard` runs INSIDE the same `db.transaction` that persists the new
- * account, BEFORE any insert. The register-link flow uses it to consume the
- * single-use token atomically with creation via a conditional `UPDATE …
- * RETURNING` — if it throws (the loser of a concurrent double-submit updates 0
- * rows), the whole transaction rolls back, closing the check-create-consume
- * TOCTOU where a concurrent double-submit could mint two accounts from one link.
- * `opts.isInstanceAdmin` marks the account a global admin (the very first
- * account, or an admin-minted one if you choose). `opts.isInstanceOwner` also
- * claims the instance-owner crown for it — first-run setup only, written in this
- * same transaction so an instance is never briefly unowned (see
- * lib/data/instance-owner.ts for what the crown protects against). The insert is
- * `ON CONFLICT DO NOTHING`: once claimed, ownership moves only by transfer.
+ * new user + team. Shared by first-run setup and the register link (public signup
+ * was removed — accounts after the first require an invite).
  */
 export async function createAccountWithTeam(
   input: {
@@ -263,11 +228,9 @@ export async function createAccountWithTeam(
 
   const now = new Date().toISOString();
 
-  // The optional token consume + all uniqueness re-checks + the writes happen in
-  // ONE db.transaction, so the whole critical section is atomic against
-  // concurrent requests. The UNIQUE(lower(email))/UNIQUE(username)/UNIQUE(slug)
-  // indexes backstop the in-tx checks; the registration-link consume (guard) is
-  // a conditional UPDATE that matches at most once.
+  // The optional token consume + all uniqueness re-checks + the writes happen in ONE
+  // db.transaction, so the whole critical section is atomic against concurrent
+  // requests.
   const result = await getDb().transaction(async (tx) => {
     if (opts.guard) await opts.guard(tx); // e.g. consume the registration token
 
@@ -277,19 +240,8 @@ export async function createAccountWithTeam(
       { isInstanceAdmin: opts.isInstanceAdmin, userRole: "owner" },
     );
 
-    // The crown, claimed in the same transaction as the account it belongs to.
-    // Written here rather than through lib/data/instance-owner.ts to keep auth.ts
-    // free of a lib/data import (that module reads back through this one).
-    //
-    // This is ALSO the atomic first-run guard. completeSetup's user-count check
-    // runs outside this transaction, so two concurrent first-run calls can both
-    // pass it; they then serialize on THIS singleton row (the second blocks on
-    // the first's lock, then sees the owner already set). The claim is an UPDATE
-    // guarded on `owner_user_id IS NULL` — not DO NOTHING on the PK, because the
-    // row may already exist for a non-ownership reason (panel address, VAPID
-    // keys) and DO NOTHING would then leave the instance unowned. The loser
-    // claims 0 rows and throws, rolling back its whole account + team insert, so
-    // exactly one fully-privileged owner admin can ever be minted at setup.
+    // The crown, claimed in the same transaction as the account it belongs to. This is
+    // ALSO the atomic first-run guard.
     if (opts.isInstanceOwner) {
       const claimed = await tx
         .insert(instanceSettingsTable)
@@ -356,24 +308,16 @@ export async function createAccountWithTeam(
 
     return { user, team };
   });
-  // Team ordering (project/folder) is now the `team_app_order` /
-  // `team_folder_order` junctions (cut-set c) — a brand-new team simply has no
-  // order rows yet and `listApps`/`listFolders` fall back to newest-first.
-  // The old JSONB team-order stub bridge is retired.
+  // Team ordering (project/folder) is now the `team_app_order` / `team_folder_order`
+  // junctions (cut-set c) — a brand-new team simply has no order rows yet and
+  // `listApps`/`listFolders` fall back to newest-first.
   return result;
 }
 
 /**
- * Create a brand-new account that JOINS one or more EXISTING teams as a member
- * (it owns none). Powers the `existing_teams` registration mode. `assignments`
- * is the validated per-team role + capabilities baked into the link. Like
- * {@link createAccountWithTeam}, an optional `opts.guard` (token consume) runs
- * INSIDE the same transaction, so check-create-consume stays one atomic critical
- * section. Assignments are re-resolved against live teams inside the tx (a team
- * may be deleted between minting and registration): missing teams are dropped,
- * and it throws if none remain (the guard then rolls back, leaving the link
- * unspent). Returns the user + the team to activate (the first surviving
- * assignment). Does NOT set cookies — the caller signs the user in.
+ * Create a brand-new account that JOINS one or more EXISTING teams as a member (it
+ * owns none). `assignments` is the validated per-team role + capabilities baked
+ * into the link.
  */
 export async function createAccountWithTeams(
   input: { username: string; name: string; email: string; password: string },
@@ -437,20 +381,8 @@ export async function createAccountWithTeams(
 }
 
 /**
- * The headers for a Better Auth server call: this request's session metadata
- * (user agent + IP chain) plus its current cookies.
- *
- * The cookie half comes from the cookie STORE and not from the raw request
- * headers, because the store reflects writes made EARLIER IN THE SAME REQUEST —
- * so a `getCurrentUser()` immediately after `login()` sees the session that was
- * just minted. The metadata half is what lets Better Auth stamp a new session
- * row with the device that created it; see
- * [./auth/request-headers.ts](./auth/request-headers.ts) for why the set is
- * exactly what it is.
- *
- * Outside a request scope (a script, or `node --test`) both halves degrade to
- * empty. That keeps a READ from failing a call that never needed cookies — a
- * cookie WRITE still throws, which is correct, because that one does.
+ * The headers for a Better Auth server call: this request's session metadata (user
+ * agent + IP chain) plus its current cookies.
  */
 export async function authHeaders(): Promise<Headers> {
   let request: Headers | null = null;
@@ -473,27 +405,8 @@ export async function authHeaders(): Promise<Headers> {
 }
 
 /**
- * Re-issue the cookies Better Auth just wrote, without `Secure`, when this
- * request did not arrive over https.
- *
- * The panel answers on two addresses at once: its own, usually https, and its
- * server's `http://<ip>:3000`, the way back in when the domain breaks. Better
- * Auth decides `Secure` (and the `__Secure-` name prefix) ONCE, when the
- * instance is built from the panel's address - there is no per-request path - so
- * on the panel's IP address the browser silently drops the session cookie and
- * two-factor challenge cookie. Signing in reports success and the panel stays
- * logged out, which makes the rescue address useless in exactly the situation it
- * exists for.
- *
- * So the cookies are rewritten after the fact, in the same request: Next's
- * cookie store reflects writes made earlier in it (see `authHeaders` above), and
- * `authRequestHeaders` offers Better Auth both names on the way back in, so the
- * session still resolves. Only the session cookie keeps an explicit lifetime -
- * everything else Better Auth writes here is a short-lived challenge, and a
- * browser-session cookie is the safer default for those.
- *
- * A no-op on the canonical address, and a no-op on an instance that is already
- * http: both paths leave the cookies exactly as Better Auth wrote them.
+ * Re-issue the cookies Better Auth just wrote, without `Secure`, when this request
+ * did not arrive over https.
  */
 async function keepAuthCookiesUsableOverHttp(): Promise<void> {
   if (!cookiesAreSecure()) return;
@@ -517,11 +430,6 @@ async function keepAuthCookiesUsableOverHttp(): Promise<void> {
 
 /**
  * This request's Better Auth session, resolved AT MOST ONCE.
- *
- * `getCurrentUser` and `currentSessionId` both need it and each `cache()`s only
- * its own return value, so a page that renders both (Settings → Security) paid
- * for two `getSession` round trips. Null for a bearer-token request, which
- * carries no session, and outside a request scope.
  */
 const currentSession = cache(async () => {
   if (currentIdentity()) return null;
@@ -534,12 +442,6 @@ const currentSession = cache(async () => {
 
 /**
  * Resolve the current user from the Better Auth session (ADR-0014).
- * Cached per-request so it can be called from many places cheaply.
- * Returns null when unauthenticated. Never throws.
- *
- * The session only establishes WHICH account is calling; `suspended` and every
- * deplo-side field still come from a fresh `users` read, so suspending an account
- * takes effect on the next request rather than at the next session refresh.
  */
 export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   // A bearer-token request (the public GraphQL API) supplies its principal via
@@ -561,11 +463,6 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
 
 /**
  * The id of the session row this request is authenticated by, or null.
- *
- * Null for a bearer-token request (which carries no session) and for anything
- * running outside a request scope. Exists so the signed-in-devices list can mark
- * "this device" and refuse to revoke the session doing the revoking — the raw
- * session TOKEN never leaves the server for that comparison.
  */
 export const currentSessionId = cache(async (): Promise<string | null> => {
   // An identity that names its session wins: see `RequestIdentity.sessionId`.
@@ -602,10 +499,8 @@ export async function assertUser(): Promise<PublicUser> {
 
 /**
  * Verify a user's OWN password — the re-auth step in front of every sensitive
- * account action (change email / change password / transfer ownership / enable
- * or disable 2FA). Reads `account.password`, which since 0055 is the only stored
- * credential. Returns false for an account with no credential row rather than
- * throwing, so a caller can treat "wrong password" and "no password" alike.
+ * account action (change email / change password / transfer ownership / enable or
+ * disable 2FA).
  */
 export async function verifyUserPassword(
   userId: string,
@@ -658,9 +553,7 @@ export async function setUserPassword(
 
 /**
  * Delete every Better Auth session row for a user — the replacement for the old
- * `token_version` bump. Called on password change (other sessions), admin reset,
- * suspension, and 2FA enrolment. The caller's own session survives only if Better
- * Auth re-issues it; when in doubt, sign the initiator back in explicitly.
+ * `token_version` bump.
  */
 export async function revokeAllSessions(userId: string): Promise<void> {
   const auth = getAuth();
@@ -677,16 +570,8 @@ export interface LoginResult {
 }
 
 /**
- * Sign in with email + password (Better Auth, ADR-0014).
- *
- * When the account has 2FA enabled, Better Auth's twoFactor plugin answers with
- * `twoFactorRedirect` and sets its own short-lived challenge cookie INSTEAD of a
- * session — so `requiresTwoFactor` here means "correct password, not signed in
- * yet". The caller must then send a code to `verifyTwoFactorCode`.
- *
- * User enumeration: Better Auth returns the same INVALID_EMAIL_OR_PASSWORD for an
- * unknown email and a wrong password, and the custom scrypt `verify` runs on a
- * dummy hash when no account matches, so both the message and the work are equal.
+ * Sign in with email + password (Better Auth, ADR-0014). The caller must then send
+ * a code to `verifyTwoFactorCode`.
  */
 export async function login(
   email: string,
@@ -703,14 +588,9 @@ export async function login(
     // either the session cookie or the challenge cookie, and on the IP
     // address both need declassifying for the browser to keep them.
     await keepAuthCookiesUsableOverHttp();
-    // Suspension is enforced only NOW, after the password verified — so "this
-    // account has been suspended" is revealed only to someone who proved the
-    // credential, never as a pre-auth existence oracle. A wrong password lands in
-    // the catch below with the same generic message and the same scrypt work as
-    // an unknown email, so the suspended and non-existent cases are now
-    // indistinguishable to an attacker. getCurrentUser blocks a suspended session
-    // on every request regardless; revoke the row Better Auth just minted so a
-    // suspended account is never left holding a usable one.
+    // Suspension is enforced only NOW, after the password verified — so "this account
+    // has been suspended" is revealed only to someone who proved the credential, never
+    // as a pre-auth existence oracle.
     const account = (
       await getDb()
         .select({ id: usersTable.id, suspended: usersTable.suspended })
@@ -722,24 +602,15 @@ export async function login(
       await revokeAllSessions(account.id).catch(() => {});
       return { ok: false, error: "This account has been suspended" };
     }
-    // The credential was just proven, so this is the one moment the plaintext
-    // and the identity are both in hand - the only place a hash written at an
-    // older, weaker cost can be replaced without asking anyone to reset
-    // anything. Best-effort: a failure here must never turn a successful login
-    // into an error.
-    //
-    // BEFORE the two-factor branch, not after: reaching a challenge means the
-    // password half already succeeded, and returning first would have left every
-    // 2FA account - the ones most worth strengthening - on the old cost forever.
+    // The credential was just proven, so this is the one moment the plaintext and the
+    // identity are both in hand - the only place a hash written at an older, weaker
+    // cost can be replaced without asking anyone to reset anything.
     void upgradePasswordHash(normalized, password);
     if (res && "twoFactorRedirect" in res && res.twoFactorRedirect)
       return { ok: false, requiresTwoFactor: true };
     return { ok: true };
   } catch (e) {
     // ONLY a genuine credential rejection becomes "Invalid email or password".
-    // Anything else (database down, cookie store unavailable, misconfiguration)
-    // is rethrown: reporting an outage as a wrong password sends the user to
-    // reset a password that was never the problem, and hides the real fault.
     if (isCredentialRejection(e))
       return { ok: false, error: "Invalid email or password" };
     throw e;
@@ -748,17 +619,8 @@ export async function login(
 
 /**
  * Re-hash a just-proven password when the stored one was made with a weaker
- * setting than {@link hashPassword} now uses.
- *
- * Silent and best-effort by design. Nobody asked for this, it changes nothing
- * the user can see, and the login it rides on has already succeeded - so every
- * failure path here (the row moved, the database blipped) ends in a shrug and
- * the old hash surviving until the next sign-in. What it must never do is make
- * a correct password look wrong.
- *
- * Scoped to the `credential` provider row: a social/OIDC account has no password
- * to upgrade, and matching on the user alone would rewrite the wrong row the day
- * a second provider exists.
+ * setting than {@link hashPassword} now uses. What it must never do is make a
+ * correct password look wrong.
  */
 async function upgradePasswordHash(
   normalizedEmail: string,
@@ -781,10 +643,9 @@ async function upgradePasswordHash(
     const fresh = await hashPassword(password);
     await getDb()
       .update(accountTable)
-      // The old hash is part of the WHERE: between the read above and this
-      // write the user may have changed their password in another tab, and
-      // overwriting THAT with a re-hash of the old one would silently restore a
-      // credential they had just replaced.
+      // The old hash is part of the WHERE: between the read above and this write the user
+      // may have changed their password in another tab, and overwriting THAT with a
+      // re-hash of the old one would silently restore a credential they had just
       .set({ password: fresh, updatedAt: new Date() })
       .where(
         and(
@@ -810,9 +671,7 @@ function isCredentialRejection(e: unknown): boolean {
 
 /**
  * Finish a login that stopped at `requiresTwoFactor`, with a TOTP code or one of
- * the account's single-use backup codes. The challenge cookie Better Auth set
- * during `login` is what ties this call to that attempt, so it is only valid for
- * a few minutes and only from the same client.
+ * the account's single-use backup codes.
  */
 export async function verifyTwoFactorCode(
   code: string,
@@ -837,21 +696,9 @@ export async function verifyTwoFactorCode(
 
 /**
  * The options the browser hands to `navigator.credentials.get` to sign in.
- *
- * Unauthenticated on purpose - this is the start of a login. The plugin answers
- * with a discoverable-credential challenge (no `allowCredentials`), which is why
- * signing in never asks for an email: the browser offers the passkeys it holds
- * for this origin and the person picks one.
- *
- * The challenge itself is a `verification` row pointed at by a short-lived
- * signed cookie, consumed on first use - nothing about it is held client-side,
- * exactly like the two-factor challenge.
  */
 export async function passkeyChallenge(): Promise<unknown> {
-  // Refused up front on an instance that cannot have passkeys at all. Without
-  // this the ceremony still starts and dies inside the browser with a message
-  // about origins, which reads to the person as the button doing nothing - and
-  // the login page has no other way to learn the instance's address.
+  // Refused up front on an instance that cannot have passkeys at all.
   if (!passkeyRelyingParty())
     throw new Error(
       "Passkeys need this panel to be reachable at its own https address.",
@@ -863,23 +710,6 @@ export async function passkeyChallenge(): Promise<unknown> {
 
 /**
  * Mark a session as opened by a WebAuthn ceremony.
- *
- * This is what lets a team's two-factor mandate be judged on what was PRESENTED
- * rather than on what the account owns (ADR-0024 §3). Two callers, and both are
- * the same proof: verifying an assertion, and registering a passkey - the second
- * one matters, because it is what turns the lock screen into a way out for
- * somebody who signed in with their password and needs to add a second factor
- * from the device in front of them.
- *
- * Scoped by OWNER as well as by id, the house rule for any row-targeting write:
- * both callers already know whose session it is, and an id belonging to somebody
- * else must hit zero rows rather than hand another account a second factor it
- * never presented. Nothing passes a caller-supplied id today - this is what
- * keeps that true the day something does.
- *
- * Best-effort. A stamp that fails leaves the session looking like a password
- * one, which is the safe direction: the person is asked for a second factor
- * rather than credited with one they did not present.
  */
 export async function markSessionAuthMethod(
   sessionId: string,
@@ -899,11 +729,8 @@ export async function markSessionAuthMethod(
 }
 
 /**
- * The newest session on an account, for the one caller that has just revoked
- * every other one and needs to find the replacement it minted.
- *
- * Named for that caller and nobody else: "newest" is only unambiguous because
- * `changePassword` deleted the rest microseconds ago. Anywhere else, an account
+ * The newest session on an account, for the one caller that has just revoked every
+ * other one and needs to find the replacement it minted. Anywhere else, an account
  * has several sessions and this would be a guess.
  */
 export async function replacementSessionIdFor(
@@ -919,15 +746,8 @@ export async function replacementSessionIdFor(
 }
 
 /**
- * How the CURRENT request's session proved itself, or null when the question
- * does not apply.
- *
- * Null for a bearer token, for a background job and for anything outside a
- * request scope - none of those is a browser sign-in, so "which factor did you
- * present" has no answer, and the caller falls back to the account-level rule.
- * Null ALSO for an ordinary password session, which is the point.
- *
- * Request-cached: the mandate gate asks on every capability check.
+ * How the CURRENT request's session proved itself, or null when the question does
+ * not apply. Request-cached: the mandate gate asks on every capability check.
  */
 export const currentSessionAuthMethod = cache(
   async (): Promise<string | null> => {
@@ -944,14 +764,6 @@ export const currentSessionAuthMethod = cache(
 
 /**
  * Finish a passkey sign-in with what the authenticator produced.
- *
- * The session and its cookie are already written by the time this returns -
- * the plugin mints them the moment the assertion verifies. So the suspension
- * check can only happen AFTER: the identity is not known until the credential
- * resolves to a row, which is the opposite order from `login()`, where the email
- * names the account up front. A suspended account that gets this far is signed
- * straight back out, and `getCurrentUser()` would refuse it anyway - the revoke
- * is belt to that brace, so a live session row is never left behind.
  */
 export async function verifyPasskeyLogin(
   response: unknown,
@@ -967,11 +779,8 @@ export async function verifyPasskeyLogin(
     await markSessionAuthMethod(res.session.id, res.user.id, "passkey");
   } catch (e) {
     // The plugin's own copy is the useful one here ("Passkey not found",
-    // "Authentication failed", or the user-verification refusal deplo adds) -
-    // but ONLY its copy. A Better Auth rejection carries `body.code`; anything
-    // without one is the database being down or a misconfiguration, and putting
-    // a Postgres error on the sign-in page tells an anonymous visitor about the
-    // inside of the instance while telling the person nothing they can act on.
+    // "Authentication failed", or the user-verification refusal deplo adds) - but ONLY
+    // its copy.
     const fromAuth = Boolean(
       (e as { body?: { code?: string } } | null)?.body?.code,
     );
@@ -992,10 +801,7 @@ export async function verifyPasskeyLogin(
 
 /**
  * First-run setup: create the workspace (team) and the owner account, then sign
- * the owner in. Refuses to run once any account exists. NO server is seeded — the
- * operator adds the host running Deplo (and any others) through the normal "Add
- * server" flow and runs the install command on each box, so every server is a
- * bootstrapped, pinned agent uniformly (the host running Deplo included).
+ * the owner in.
  */
 export async function completeSetup(input: {
   username: string;
@@ -1012,10 +818,7 @@ export async function completeSetup(input: {
   let user: User;
   let team: Team;
   try {
-    // First account + its team, with all the username/team-name validation. The
-    // very first account is the instance admin AND the instance owner — the crown
-    // that no other admin can demote, suspend or password-reset (see
-    // lib/data/instance-owner.ts). Claimed in the same transaction as the account.
+    // First account + its team, with all the username/team-name validation.
     ({ user, team } = await createAccountWithTeam(
       {
         username: input.username,
@@ -1038,13 +841,9 @@ export async function completeSetup(input: {
 }
 
 /**
- * Sign a freshly created account in and make a team active — the tail of setup
- * and of the registration-link flow.
- *
- * Takes the credential rather than a user id because Better Auth mints sessions
- * through `signInEmail`; the account was created microseconds ago in the same
- * request, so the caller always has the plaintext. A brand-new account can never
- * have 2FA, so there is no challenge branch to handle here.
+ * Sign a freshly created account in and make a team active — the tail of setup and
+ * of the registration-link flow. A brand-new account can never have 2FA, so there
+ * is no challenge branch to handle here.
  */
 export async function startSessionFor(
   email: string,
@@ -1065,10 +864,7 @@ export async function startSessionFor(
 }
 
 /**
- * Switch the active-team cookie for the already-signed-in user. Used when an
- * existing, logged-in user accepts an invite (the membership was just created
- * in the same request, so we write the cookie directly rather than round-trip
- * the membership validation, which may read a stale per-request cache).
+ * Switch the active-team cookie for the already-signed-in user.
  */
 export async function setActiveTeamForCurrentUser(
   teamId: string,
@@ -1078,10 +874,8 @@ export async function setActiveTeamForCurrentUser(
 
 /**
  * Sign out: delete the session ROW (so the token is dead everywhere, not merely
- * forgotten by this browser) and clear both cookies. Better Auth clears its own
- * cookie via the `nextCookies` hook; `deplo_team` is deplo's, so it is cleared
- * here. Best-effort on the Better Auth side — a failed revoke must still let the
- * browser drop its cookies.
+ * forgotten by this browser) and clear both cookies. Best-effort on the Better
+ * Auth side — a failed revoke must still let the browser drop its cookies.
  */
 export async function logout() {
   const auth = getAuth();

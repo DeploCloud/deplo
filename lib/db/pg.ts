@@ -9,33 +9,13 @@ import {
 } from "./timestamp-parser";
 
 /**
- * PostgreSQL connection pool.
- *
- * Postgres is the ONE control-plane backend: `DEPLO_DATABASE_URL` (or the
- * standard `DATABASE_URL`) is REQUIRED for any real run. There is no file-based
- * fallback — the app fails fast at startup if no connection string is set (see
- * the module-load guard below).
- *
- * The sole exception is the `node --test` runner: with no database configured
- * the data-layer tests inject a pglite client (`__setTestDb`) and seed the
- * relational tables directly, so they run without provisioning Postgres. See
- * {@link isTestEnv}.
+ * PostgreSQL connection pool. There is no file-based fallback — the app fails fast
+ * at startup if no connection string is set (see the module-load guard below).
  */
 
 /**
  * Install the canonical-ISO timestamp parser as a process-global node-postgres
- * type override (relational-store PLAN §1). `pg.types.setTypeParser` is global
- * across every Pool/Client in the process, so a RAW `pool.query(...)` of a
- * `timestamptz`/`timestamp` column reads back as a lexicographically-sortable
- * `T…Z` string.
- *
- * NOTE: this covers the RAW-query path only (`lease.ts`'s `scheduler_lease`
- * INSERT/DELETE). It does NOT cover reads through the Drizzle client: Drizzle
- * installs a per-query parser override that returns the timestamp OIDs unchanged,
- * bypassing this global. The relational `*_at` columns are canonicalised instead
- * by the `isoTimestamptz` custom type ([./schema/columns.ts](./schema/columns.ts)),
- * which reuses this same `isoTimestampParser` at the ORM codec layer — so the two
- * regimes share one helper and can't drift (see `timestamp-parser.ts`).
+ * type override (relational-store PLAN §1).
  */
 pgTypes.setTypeParser(TIMESTAMPTZ_OID, isoTimestampParser);
 pgTypes.setTypeParser(TIMESTAMP_OID, isoTimestampParser);
@@ -52,21 +32,15 @@ export function isPostgresEnabled(): boolean {
 
 /**
  * True when running under `node --test`. The runner spawns each test file in a
- * worker that sets `NODE_TEST_CONTEXT` ("child-v8"/"child"), which production
- * and `next` builds never set. Used to allow the in-memory-only test fallback
- * exclusively in tests, so a missing `DEPLO_DATABASE_URL` is a hard error
- * everywhere else.
+ * worker that sets `NODE_TEST_CONTEXT` ("child-v8"/"child"), which production and
+ * `next` builds never set.
  */
 export function isTestEnv(): boolean {
   return Boolean(process.env.NODE_TEST_CONTEXT);
 }
 
-// Fail fast at module load: a real run with no database is a misconfiguration,
-// not a silent fall-through to ephemeral in-memory data. `pg.ts` is imported
-// early on every server entry path (the Drizzle client, the lease, the data
-// layer), so this fires at boot — well before `getPool()` would throw lazily on
-// the first query. The `node --test` runner is the one exception (it injects a
-// pglite client and never configures `DEPLO_DATABASE_URL`).
+// Fail fast at module load: a real run with no database is a misconfiguration, not
+// a silent fall-through to ephemeral in-memory data.
 if (!isPostgresEnabled() && !isTestEnv()) {
   throw new Error(
     "DEPLO_DATABASE_URL is required. Deplo uses PostgreSQL as its only " +

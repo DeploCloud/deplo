@@ -17,6 +17,7 @@ export const RoleEnum = builder.enumType("Role", {
  * Every capability, plus the eight coarse names they replaced — kept as DEPRECATED
  * input aliases so a script written against the old API keeps working: each still
  * expands to exactly the permissions it used to imply (`cleanCapabilities` /
+ * `sanitizeCapabilities` do the expanding).
  */
 export const CapabilityEnum = builder.enumType("Capability", {
   values: Object.fromEntries([

@@ -86,8 +86,7 @@ function isPrivateAddress(addr: string): boolean {
 }
 
 /**
- * SSRF guard for every outbound registry fetch. the 169.254.169.254 cloud-metadata
- * IP), and ULA ranges — both as IP literals and after resolving the hostname.
+ * SSRF guard for every outbound registry fetch.
  */
 async function isPublicHttpsUrl(url: string): Promise<boolean> {
   let parsed: URL;

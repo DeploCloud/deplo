@@ -31,6 +31,9 @@ import {
  * Domain DNS auto-check semantics: adding (and renaming) a domain checks its DNS
  * at write time so a pre-pointed host is born routable with zero manual steps, an
  * unresolvable host reads `pending` (not the accusatory `misconfigured`, reserved
+ * for DNS that resolves to the WRONG address), and `verifyDomain` reports
+ * `statusChanged` so the resolver can skip the routing re-apply on the no-change
+ * checks the domains page runs on its interval.
  */
 
 const SERVER_IP = "10.0.0.1"; // seedServer's ip — the classify target

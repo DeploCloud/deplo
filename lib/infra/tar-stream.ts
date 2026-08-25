@@ -2,23 +2,6 @@
  * A minimal, streaming TAR reader — enough to pull ONE named entry out of an
  * archive that arrives as a sequence of chunks, without ever holding the whole
  * archive (or any entry we don't want) in memory.
- *
- * It exists for the agent's `ExportFiles` stream: an app's files dir on its
- * owning host is only readable as a gzipped tar (the file RPCs hand back text
- * and refuse binary), and favicon detection needs the raw bytes of exactly one
- * small file inside it. Consuming that stream lazily is the whole point — the
- * caller `break`s out of the iteration the moment its entry arrives, which
- * cancels the RPC and stops the agent mid-tar instead of shipping the rest of a
- * potentially huge directory.
- *
- * Pure (no `server-only`, no gRPC, no fs) so the parser is unit-tested against
- * hand-built archives; the gunzip + the agent stream live in the caller.
- *
- * Understood on purpose: ustar `prefix` split names, GNU long names (`L`) and
- * PAX `path=` overrides (`x`) — Go's `archive/tar` (what the agent writes with)
- * emits PAX records for any path over 100 bytes, which a static site's assets
- * reach easily. Not understood, and skipped rather than guessed at: sparse
- * files, hard/sym links, devices, directories.
  */
 
 const BLOCK_SIZE = 512;
@@ -129,9 +112,7 @@ function readString(block: Buffer, start: number, length: number): string {
 }
 
 /**
- * Read a numeric header field. Octal is the ustar encoding; a leading 0x80 is
- * GNU's base-256 form for values that don't fit (only ever seen on sizes far
- * past anything we buffer). Returns -1 for a field we can't trust — the caller
+ * Read a numeric header field. Returns -1 for a field we can't trust — the caller
  * treats that as a corrupt archive rather than guessing a length.
  */
 function readNumber(block: Buffer, start: number, length: number): number {
@@ -158,10 +139,8 @@ function isZeroBlock(block: Buffer): boolean {
 }
 
 /**
- * Validate a header block's checksum: the sum of its bytes with the checksum
- * field itself read as spaces. This is what stops a desynchronised stream from
- * being parsed as garbage (and a garbage `size` from steering the state machine
- * into the weeds) — on a mismatch the caller stops reading.
+ * Validate a header block's checksum: the sum of its bytes with the checksum field
+ * itself read as spaces.
  */
 function checksumOk(block: Buffer): boolean {
   const stored = readNumber(block, 148, 8);
@@ -191,10 +170,7 @@ function parseHeader(block: Buffer): RawHeader | null {
 }
 
 /**
- * The `path=` override out of a PAX record blob, or null when absent. Records
- * are `"<len> <key>=<value>\n"` where `<len>` counts BYTES including itself —
- * so the scan walks the buffer, never the decoded string (a path with any
- * non-ASCII byte would otherwise slice at the wrong place).
+ * The `path=` override out of a PAX record blob, or null when absent.
  */
 function paxPath(data: Buffer): string | null {
   let offset = 0;
@@ -239,11 +215,8 @@ function isRegularFile(type: string): boolean {
 }
 
 /**
- * Iterate the regular-file entries of a tar stream, buffering only the entries
- * the `read` predicate accepts. Ends cleanly at the archive's zero-block
- * terminator, at `maxScanBytes`, or on a corrupt header — a truncated or
- * unparsable stream yields what it read so far rather than throwing, because
- * every caller of this is best-effort.
+ * Iterate the regular-file entries of a tar stream, buffering only the entries the
+ * `read` predicate accepts.
  */
 export async function* tarEntries(
   chunks: AsyncIterable<Uint8Array>,
@@ -363,9 +336,7 @@ export interface ReadTarEntryOptions {
 
 /**
  * Pull ONE named entry's bytes out of a tar stream, or null when it isn't there
- * (or is bigger than `maxEntryBytes`, or the scan budget ran out first). Returns
- * as soon as the entry is complete, which ends the iteration of `chunks` — for a
- * gRPC-backed stream that cancels the call and stops the producer.
+ * (or is bigger than `maxEntryBytes`, or the scan budget ran out first).
  */
 export async function readTarEntry(
   chunks: AsyncIterable<Uint8Array>,

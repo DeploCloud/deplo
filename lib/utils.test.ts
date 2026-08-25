@@ -113,7 +113,9 @@ test("readableTextColor returns a valid foreground for every curated folder colo
 
 test("cn keeps a breakpoint-scoped size when a call site overrides the base one", () => {
   // CardTitle ships "text-base lg:text-lg" and ~55 call sites still pass their own
-  // "text-base".
+  // "text-base". tailwind-merge keys the font-size group on the modifier, so the bare
+  // one is replaced and the lg: one survives - which is the ONLY reason every card
+  // title grows on a wide screen without touching 55 files.
   const merged = cn(
     "text-base leading-none font-semibold tracking-tight lg:text-lg",
     "flex w-fit items-center gap-2 text-base",
@@ -176,7 +178,9 @@ test("only a row that claims a GitHub App it lacks is flagged", () => {
 
 /**
  * `safeReturnPath` is what stands between "come back where you were" and an open
- * redirect: the return address arrives from the browser (a `?
+ * redirect: the return address arrives from the browser (a `?next=`, a `returnTo`
+ * argument), so anything that could leave the app has to answer `null` rather than
+ * being trusted because it was signed later.
  */
 test("safeReturnPath keeps in-app paths and refuses anything that leaves the app", () => {
   for (const ok of [

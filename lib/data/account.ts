@@ -20,12 +20,8 @@ import { rateLimit } from "../security";
 import { isValidAvatarValue } from "../apps/avatar-shared";
 
 /**
- * The current user's own account.
- *
- * Every function here is USER-scoped: no team, and therefore no capability to
- * gate on. `requirePersonalSession` is what keeps an API token out — the account
- * belongs to the person, not to a credential they minted. The password re-check
- * on the two sensitive ones is a second factor, not the boundary.
+ * The current user's own account. Every function here is USER-scoped: no team, and
+ * therefore no capability to gate on.
  */
 
 /** Update the current user's display name. */
@@ -44,17 +40,6 @@ export async function updateProfile(input: { name: string }): Promise<void> {
 
 /**
  * Set or clear the current user's profile picture.
- *
- * No capability and no password re-check: it is a picture, not a credential, and
- * the only person who can reach this is the account's owner in a real session
- * (`requirePersonalSession` keeps API tokens out, like everything else here).
- *
- * `null` or an empty string removes it, which falls the avatar back to their
- * Gravatar (when the instance allows it) and then to their monogram. The value is
- * a base64 image data-URI; the browser downscales to 256x256 and re-encodes to
- * WebP before sending, but that is a convenience and never a guarantee, so
- * `isValidAvatarValue` — grammar, MIME and size — is the whole server-side trust
- * boundary.
  */
 export async function updateMyAvatar(image: string | null): Promise<void> {
   requirePersonalSession("your account settings");
@@ -71,11 +56,12 @@ export async function updateMyAvatar(image: string | null): Promise<void> {
 }
 
 /** Change the current user's email, after re-checking their password. */
-/** Rate-limited current-password re-auth for a settings change — the same budget
- *  as the 2FA step-up (two-factor.ts `stepUpPassword`), so a stolen LIVE session
- *  can't brute-force the current password to escalate to a durable takeover (a
- *  successful change-password logs the real owner out). Not reachable by an API
- *  token — `requirePersonalSession` already blocks those at each caller. */
+/**
+ * Rate-limited current-password re-auth for a settings change — the same budget as
+ * the 2FA step-up (two-factor.ts `stepUpPassword`), so a stolen LIVE session can't
+ * brute-force the current password to escalate to a durable takeover (a successful
+ * change-password logs the real owner out).
+ */
 const REAUTH_LIMIT = { limit: 6, windowMs: 5 * 60_000 };
 async function assertCurrentPassword(
   userId: string,
@@ -125,21 +111,18 @@ export async function changePassword(input: {
   // locally, without a round trip to an outside API that changes nothing.
   await assertPasswordNotPwned(input.newPassword);
   await setUserPassword(user.id, input.newPassword);
-  // Read BEFORE the revoke: the replacement session below is minted from a
-  // password, so without carrying this over, changing your password would
-  // silently demote a passkey session to a password one - and an account whose
-  // team requires two factors would meet the lock screen for no reason it could
-  // see. Changing a password does not undo the ceremony that opened the browser
-  // session, so the standing travels with it (ADR-0024 §3).
+  // Read BEFORE the revoke: the replacement session below is minted from a password,
+  // so without carrying this over, changing your password would silently demote a
+  // passkey session to a password one - and an account whose team requires two
+  // factors would meet the lock screen for no reason it could see.
   const wasPasskeySession = (await currentSessionAuthMethod()) === "passkey";
   // Revoke every outstanding session: a changed password must log out anyone
   // holding a stolen/old cookie. That includes the initiator's own, so sign them
   // straight back in with the password they just chose.
   await revokeAllSessions(user.id);
-  // Best-effort: outside a request scope (tests) or on any failure the change
-  // still stands and the initiator simply re-authenticates with the new password
-  // — a safe fallback, never a leak. No team id is passed, so the existing
-  // `deplo_team` cookie survives.
+  // Best-effort: outside a request scope (tests) or on any failure the change still
+  // stands and the initiator simply re-authenticates with the new password — a safe
+  // fallback, never a leak.
   try {
     await startSessionFor(user.email, input.newPassword);
     if (wasPasskeySession) {

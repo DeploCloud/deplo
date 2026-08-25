@@ -2,31 +2,14 @@ import { publicBaseUrl } from "@/lib/public-url";
 
 /**
  * The OAuth discovery surface, written down ONCE.
- *
- * Three places have to agree on these strings: the `WWW-Authenticate` challenge
- * `/api/mcp` sends on a 401, the route that serves the document that challenge
- * points at, and the `validAudiences` the token endpoint checks a client's
- * `resource` parameter against. When they disagree the failure is silent — a
- * client discovers an address that 404s, or every token exchange answers
- * "requested resource invalid" while the rest of the instance looks healthy.
- *
- * RFC 9728 puts protected-resource metadata at the SITE ROOT, with the resource's
- * own path appended (`/.well-known/oauth-protected-resource/api/mcp`), not under
- * the authorization server's base path. Better Auth serves its own copies under
- * `/api/auth/…`, which no MCP client probes; the routes under `app/.well-known/`
- * are the ones that count.
  */
 
 /** The MCP endpoint's path. The OAuth *resource* is this, absolute. */
 export const MCP_RESOURCE_PATH = "/api/mcp";
 
 /**
- * Prefixes on the issued OAuth credentials.
- *
- * They must NOT begin with `deplo_`: `authenticateToken` branches on that exact
- * literal to decide which lookup to run, and two credential families answering
- * to one prefix is how a refresh token ends up being tried as an API token. The
- * prefix is stripped by the plugin before hashing, so it is never stored.
+ * Prefixes on the issued OAuth credentials. The prefix is stripped by the plugin
+ * before hashing, so it is never stored.
  */
 export const OAUTH_ACCESS_TOKEN_PREFIX = "dplo_at_";
 export const OAUTH_REFRESH_TOKEN_PREFIX = "dplo_rt_";
@@ -37,17 +20,6 @@ export const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
 
 /**
  * Better Auth's base path — and therefore the authorization server's ISSUER.
- *
- * This is the string every discovery document has to agree on. Better Auth
- * builds its issuer as `<origin><basePath>`, so it is `https://host/api/auth`
- * and NOT the bare origin. Advertising the origin instead is not a cosmetic
- * slip: RFC 8414 §3.3 requires a client to check that the `issuer` it reads
- * back equals the identifier it built the discovery URL from, so a conformant
- * client refuses the mismatch outright and a lenient one connects by luck.
- *
- * An issuer WITH a path also moves where its metadata lives: RFC 8414 inserts
- * the path after the well-known segment, so the document must be served at
- * `/.well-known/oauth-authorization-server/api/auth` as well as at the root.
  */
 export const AUTH_BASE_PATH = "/api/auth";
 
@@ -106,12 +78,9 @@ export function protectedResourceMetadata(): ProtectedResourceMetadata | null {
 }
 
 /**
- * Headers every discovery document and the MCP endpoint itself answer with.
- *
- * `*` with no `Allow-Credentials`, deliberately: these endpoints are bearer-only
- * and have no cookie path, so reflecting an origin would buy nothing and open a
- * door. `expose-headers` is what lets a browser-based client read the challenge
- * and start discovery at all — without it the header is invisible to `fetch`.
+ * Headers every discovery document and the MCP endpoint itself answer with. `*`
+ * with no `Allow-Credentials`, deliberately: these endpoints are bearer-only and
+ * have no cookie path, so reflecting an origin would buy nothing and open a door.
  */
 export const OAUTH_CORS_HEADERS: Record<string, string> = {
   "access-control-allow-origin": "*",

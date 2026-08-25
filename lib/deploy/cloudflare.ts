@@ -1,43 +1,14 @@
 /**
- * Cloudflare-awareness for the domain DNS check.
- *
- * A domain proxied through Cloudflare's "orange-cloud" no longer resolves (via
- * its public A records) to the origin server's IP — it resolves to one of
- * Cloudflare's shared anycast addresses, so a bare "does an A record equal this
- * server's IP?" check reads every proxied domain as misconfigured, the
- * correctly-configured ones included. This module supplies the two pure
- * primitives the check needs to tell those apart: membership in Cloudflare's
- * published IP ranges, and the three-way classification of a resolved A-record
- * set.
- *
- * What this CANNOT do is a property of DNS, not a gap to be filled later: those
- * anycast addresses are IDENTICAL for every proxied domain on the internet, so
- * public DNS can prove a domain is proxied and NOTHING about where Cloudflare
- * forwards it afterwards — that origin lives in the zone's private
- * configuration. `cloudflare` therefore means "plausible but unverified", never
- * "confirmed": the domain may just as well be forwarded to somebody else's
- * server. Proving the rest needs a reachability probe (fetch the host and look
- * for a per-server fingerprint), which is a separate feature; until it exists,
- * every layer above must present this status as an open question — see
- * {@link classifyDomainDns}.
- *
- * Pure and dependency-free (no `node:dns`, no `server-only`) so the DNS-resolving
- * caller stays the only I/O boundary and the classification is unit-testable
- * without a network. (The two imports below are TYPE-only — erased at compile,
- * so nothing runtime comes with them.)
+ * Cloudflare-awareness for the domain DNS check. `cloudflare` therefore means
+ * "plausible but unverified", never "confirmed": the domain may just as well be
+ * forwarded to somebody else's server.
  */
 
 import type { CertProvider, DomainStatus } from "../types";
 
 /**
  * Cloudflare's published proxy **IPv4** ranges — the anycast addresses a domain
- * resolves to while proxied through Cloudflare. Mirrors
- * https://www.cloudflare.com/ips-v4/ (JSON at https://api.cloudflare.com/client/v4/ips).
- *
- * Hard-coded rather than fetched at runtime: the set is small, has been stable
- * for years, and Cloudflare commits to announcing any change well in advance —
- * so baking it in keeps the DNS check deterministic and free of an outbound
- * dependency on every verify. If Cloudflare ever adds a range, update this list.
+ * resolves to while proxied through Cloudflare.
  */
 export const CLOUDFLARE_IPV4_RANGES = [
   "173.245.48.0/20",
@@ -58,10 +29,7 @@ export const CLOUDFLARE_IPV4_RANGES = [
 ] as const;
 
 /**
- * Cloudflare's published proxy **IPv6** ranges. Mirrors
- * https://www.cloudflare.com/ips-v6/. The domain check resolves IPv4 (A records)
- * today, so these are only exercised when {@link isCloudflareIp} is handed an
- * IPv6 literal, but they keep the membership test complete for future AAAA use.
+ * Cloudflare's published proxy **IPv6** ranges.
  */
 export const CLOUDFLARE_IPV6_RANGES = [
   "2400:cb00::/32",
@@ -145,10 +113,8 @@ function inV6Cidr(ipInt: bigint, cidr: string): boolean {
 
 /**
  * True iff `ip` (an IPv4 dotted-quad or IPv6 literal) belongs to one of
- * Cloudflare's published proxy ranges — i.e. the address is a Cloudflare edge,
- * so a domain resolving to it is sitting behind the orange-cloud proxy rather
- * than pointing straight at an origin. A malformed / unparseable address is not
- * a Cloudflare IP (returns false).
+ * Cloudflare's published proxy ranges — i.e. the address is a Cloudflare edge, so
+ * a domain resolving to it is sitting behind the orange-cloud proxy rather than
  */
 export function isCloudflareIp(ip: string): boolean {
   if (ip.includes(":")) {
@@ -167,30 +133,7 @@ export type DomainDnsClass = "valid" | "cloudflare" | "misconfigured";
 /**
  * Classify a domain's resolved A records against the `target` server IP it must
  * point at — the CORE of the DNS check, kept pure so it is exhaustively testable
- * without a live resolver:
- *
- *   - `valid`         an A record points straight at this server. Traefik gets
- *                     the request directly and issues its own certificate. (The
- *                     long-standing check — unchanged for direct/grey-cloud DNS.)
- *   - `cloudflare`    no record points here, but a resolved address is a
- *                     Cloudflare edge IP: the domain is proxied through
- *                     Cloudflare, which INTENTIONALLY hides the origin behind its
- *                     anycast IPs. UNVERIFIED — deliberately its own status
- *                     rather than either neighbour: the DNS is delegated exactly
- *                     as a working proxied setup looks, so calling it
- *                     "misconfigured" would flash red at users who did
- *                     everything right; but the anycast IPs are the same for
- *                     every proxied domain alive, so nothing here shows that
- *                     Cloudflare forwards to THIS server, and calling it `valid`
- *                     would claim a fact we cannot see. It exists to stop a
- *                     correct setup reading as broken — not to certify a
- *                     possibly-wrong one as working.
- *   - `misconfigured` no record points here and none is a Cloudflare edge: the
- *                     domain resolves nowhere useful (NXDOMAIN / empty ⇒ `[]`) or
- *                     to some unrelated address, so it genuinely isn't set up.
- *
- * A direct hit wins over the Cloudflare check: if the server's own IP is among
- * the records the domain is reachable directly regardless of any other record.
+ * without a live resolver: - `valid` an A record points straight at this server.
  */
 export function classifyDomainDns(
   resolvedIps: string[],
@@ -205,28 +148,6 @@ export function classifyDomainDns(
  * The certificate provider a domain carries once a DNS check has settled its
  * status — the ONE place the "proxied ⇒ Cloudflare issues the certificate" rule
  * lives, so adding, verifying and renaming a domain all reach the same answer.
- *
- * A domain behind the orange-cloud is served to the public BY Cloudflare, which
- * terminates TLS at its edge and presents its own certificate: the visitor gets
- * HTTPS whatever the origin does. Leaving such a domain on `none` — the
- * born-with default — therefore produced a row that contradicted itself: an
- * "HTTP" badge and an `http://` link for a site every browser loads over HTTPS,
- * and a router parked on `web` (:80) even though the row's own advice (and
- * Cloudflare's) is SSL/TLS **Full**, which dials the origin on :443. Selecting
- * `cloudflare` settles both at once — the router moves to `websecure` and every
- * URL deplo prints says `https` — with no trip into Advanced settings.
- *
- * Deliberately ONE-WAY, and only out of `none`:
- *   - `letsencrypt` is never touched. That is an explicit request for the origin
- *     to hold its own certificate, which stays a legitimate choice behind a proxy.
- *   - a domain that STOPS being proxied KEEPS `cloudflare`, because that provider
- *     is equally the expert choice for a grey-clouded domain (DNS-01 through
- *     Cloudflare's API); flipping it back to `none` would silently strip TLS from
- *     a working origin. The user changes it from the Edit dialog like any other
- *     setting — this rule only ever picks the first value, never overrules one.
- *
- * An ABSENT provider (a row written before the field existed, which the deploy
- * edge reads as `letsencrypt`) is likewise left alone.
  */
 export function certProviderForDns<T extends CertProvider | undefined>(
   status: DomainStatus,

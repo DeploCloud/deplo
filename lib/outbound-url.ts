@@ -4,31 +4,10 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
 /**
- * The SSRF guard for every user-supplied URL Deplo dials itself: an S3 endpoint,
- * a Discord/Slack/generic webhook, a git connection's base URL.
- *
- * The list is exhaustive on purpose - a dialer that is not on it is a hole, and
- * the git base URL was exactly that for as long as it was missing: the control
- * plane proved the token against it, listed repositories through it and
- * registered a webhook on it, while surfacing the provider's own response body
- * in its error message. That last part is what made it worse than the usual
- * blind case. Before adding an outbound `fetch` anywhere, put its address
- * through here first.
- *
- * THE ONE EXEMPTION, named so the list stays honest: `probePanel` in
- * `lib/data/instance-settings.ts` dials the panel's OWN address to prove a new
- * one answers before the old one is given up. That address is legitimately
- * private on plenty of installs, so this guard would refuse the very operator it
- * exists for. It is instance-admin gated at the dialer instead - the same
- * trade `allowPrivateEndpoint` makes for an S3 endpoint and a git base URL.
- * Anything else that is not on this list is a hole, not a second exemption.
- *
- * A LEAF module on purpose. It used to live in `lib/data/s3.ts`, which records
- * activity - and once the activity log started raising alerts, every alert
- * channel importing the guard closed a require cycle
- * (activity -> dispatch -> channels -> s3 -> activity). Nothing here imports
- * anything but node's resolver, so there is no cycle left to reason about.
- * `lib/data/s3.ts` re-exports it, so its own callers and tests are unchanged.
+ * The SSRF guard for every user-supplied URL Deplo dials itself. A dialer not on
+ * the list is a hole, so put a new outbound `fetch` through here first. ONE
+ * exemption exists: `probePanel` dials the panel's own (often private) address
+ * and is instance-admin gated instead. There is no second one.
  */
 
 /**
@@ -50,24 +29,9 @@ export function __resetDnsLookupForTest(): void {
 }
 
 /**
- * Guard a user-supplied outbound URL (S3 endpoint, notification webhook)
- * against SSRF: the control plane dials the webhooks itself and the agents dial
- * the endpoint, so it must be http(s) and must never aim INSIDE the deployment.
- * Literal loopback, RFC1918, CGNAT, link-local (incl. the cloud metadata IP
- * 169.254.169.254) and IPv6 loopback/link-local/ULA hosts are rejected.
- * (WHATWG URL canonicalizes octal/hex/decimal IPv4 forms, so `0177.0.0.1` lands
- * on the dotted-decimal checks below.)
- *
- * A HOSTNAME is resolved and every address it answers with runs through the same
- * check — otherwise the guard only stopped the naive spelling of the attack, and
- * `http://internal.example.com/` walked straight past it into the control
- * plane's own network. That is also why the callers dial with
- * `redirect: "manual"`: a 302 is the other way out of a checked URL.
- *
- * The ceiling this does NOT reach is a rebinding race — the name is resolved
- * here and again by the dial, and only pinning the address through to the socket
- * closes that. A name that fails to resolve is left alone: the dial will fail
- * too, and refusing to SAVE a webhook because DNS blipped is a worse trade.
+ * Guard a user-supplied outbound URL (S3 endpoint, notification webhook) against
+ * SSRF: the control plane dials the webhooks itself and the agents dial the
+ * endpoint, so it must be http(s) and must never aim INSIDE the deployment.
  */
 export async function assertSafeOutboundUrl(
   raw: string,
@@ -91,10 +55,9 @@ export async function assertSafeOutboundUrl(
 }
 
 /**
- * The same guard for a destination that is a bare HOST rather than a URL — an
- * SMTP server, which nodemailer dials by `host` + `port` and which therefore
- * never goes near {@link assertSafeOutboundUrl}. Same rules, same message, so
- * the one notification channel that is not a URL is not the one exception.
+ * The same guard for a destination that is a bare HOST rather than a URL — an SMTP
+ * server, which nodemailer dials by `host` + `port` and which therefore never goes
+ * near {@link assertSafeOutboundUrl}.
  */
 export async function assertSafeOutboundHost(
   raw: string,
@@ -114,8 +77,7 @@ export async function assertSafeOutboundHost(
   if (isInternalHost(host)) refuse();
   // An IPv6 LITERAL is its own answer (no DNS), but isInternalHost only reads the
   // compressed form, so an un-compressed spelling (`0:0:0:0:0:0:0:1`, a padded
-  // loopback, an expanded v4-mapped address) sails past it. Canonicalize through
-  // WHATWG URL — which compresses IPv6 — and re-check the result before trusting.
+  // loopback, an expanded v4-mapped address) sails past it.
   if (isIP(host) === 6) {
     // Strip a zone id (`::1%eth0`) before canonicalizing: WHATWG URL THROWS on
     // one, and a throw used to fall through to "allowed" — an internal literal
@@ -145,11 +107,7 @@ export async function assertSafeOutboundHost(
     }
     return;
   }
-  // A canonical dotted-quad is its own answer (isInternalHost already ran). A
-  // NON-canonical numeric IPv4 (`2130706433`, `127.1`, `0177.0.0.1`,
-  // `2852039166` = 169.254.169.254) is NOT a literal isInternalHost can read, so
-  // it falls through to dnsLookup and is judged on the address
-  // getaddrinfo(inet_aton) canonicalizes it to.
+  // A canonical dotted-quad is its own answer (isInternalHost already ran).
   if (isIP(host) === 4) return;
   let addresses: { address: string }[];
   try {

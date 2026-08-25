@@ -13,17 +13,6 @@ import { users } from "./control-plane";
 
 /**
  * Better Auth tables (session / account / verification / two_factor).
- *
- * Better Auth owns these via its Drizzle adapter. There is deliberately NO `user`
- * table here: since migration 0055 the control-plane `users` table IS Better Auth's
- * `user` model, remapped with `user: { modelName: "users" }` in
- * [../../auth/better-auth.ts](../../auth/better-auth.ts). That keeps `users.id` the
- * one identity every control-plane FK already points at, instead of standing up a
- * second user table to reconcile (ADR-0014).
- *
- * Timestamps here stay plain `timestamp` to match Better Auth's own column types
- * (and the already-applied baseline migration 0000); they are auth bookkeeping,
- * not the control-plane `*_at` columns that the lexicographic-sort modules read.
  */
 
 export const session = pgTable("session", {
@@ -37,18 +26,8 @@ export const session = pgTable("session", {
   userAgent: text("user_agent"),
   /**
    * deplo's own column, invisible to Better Auth: WHAT this session presented.
-   *
-   * `"passkey"` means the session was opened by a WebAuthn ceremony the
-   * authenticator marked user-verified - possession plus inherence, so two
-   * factors - or by registering a passkey on this device, which is the same
-   * proof. NULL is everything else, password sign-ins included, and is never
-   * treated as a second factor.
-   *
-   * It exists so a team's two-factor mandate can be judged on what was actually
-   * presented rather than on what the account merely owns. Without it the only
-   * way to stop one factor clearing a two-factor policy was to refuse the
-   * password entirely, which took away ADR-0014 §4's promise that a blocked
-   * member can still reach their own settings and unblock themselves.
+   * NULL is everything else, password sign-ins included, and is never treated as a
+   * second factor.
    */
   authMethod: text("auth_method"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -65,14 +44,7 @@ export const account = pgTable("account", {
   /**
    * WHICH authority vouched for `accountId` - new and REQUIRED since Better Auth
    * 1.7.0, which keys an account on `(issuer, accountId)` rather than on
-   * `providerId` alone. Two upstreams can hand out the same subject id, and
-   * before this a second one could land on the first one's row.
-   *
-   * The value is the library's own, not a string of ours: `local:credential` for
-   * a password (`createLocalAccountIssuer`), `local:oauth:<id>` for a social
-   * provider. The sign-in path compares it EXACTLY, so a row with the wrong
-   * issuer is a credential that silently stops matching - which is why migration
-   * 0115 backfills every existing row rather than defaulting the column.
+   * `providerId` alone.
    */
   issuer: text("issuer").notNull(),
   accessToken: text("access_token"),
@@ -99,11 +71,7 @@ export const verification = pgTable("verification", {
 });
 
 /**
- * The `twoFactor` plugin's table. `secret` and `backupCodes` are BOTH ciphertext,
- * encrypted by the plugin with the Better Auth secret (which deplo derives from
- * `DEPLO_SECRET`) — never project either into a DTO, exactly like the `*_enc`
- * columns. `failedVerificationCount`/`lockedUntil` are the plugin's own brute-force
- * lockout, which is why nothing in deplo counts TOTP attempts by hand.
+ * The `twoFactor` plugin's table.
  */
 export const twoFactor = pgTable(
   "two_factor",
@@ -156,9 +124,8 @@ export const passkey = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     // UNIQUE, not merely indexed as the plugin's own schema declares it: the
-    // authentication path resolves a credential with `findOne({credentialID})`,
-    // so a duplicate would make WHICH account a passkey signs in depend on row
-    // order. The database is the right place to make that impossible.
+    // authentication path resolves a credential with `findOne({credentialID})`, so a
+    // duplicate would make WHICH account a passkey signs in depend on row order.
     credentialID: text("credential_id").notNull().unique(),
     counter: integer("counter").notNull(),
     deviceType: text("device_type").notNull(),
@@ -169,18 +136,6 @@ export const passkey = pgTable(
     /**
      * deplo's own column, invisible to the plugin: the rpID this credential was
      * minted for, stamped right after registration.
-     *
-     * WebAuthn welds a credential to one hostname and the browser will not offer
-     * it anywhere else. Without recording which one, a panel that moves to a new
-     * address would leave every passkey unusable while they all still LOOK like
-     * a valid second factor - and an account whose two-factor policy rested on
-     * one would be refused its password and unable to complete the ceremony.
-     * That is a lockout with no way out but the database.
-     *
-     * NULL means "minted before this column existed", and it is deliberately
-     * treated as NOT satisfying the mandate: the safe direction is the one where
-     * the person is asked for another second factor, not the one where they are
-     * locked out.
      */
     rpId: text("rp_id"),
   },
@@ -191,29 +146,6 @@ export const passkey = pgTable(
  * The `@better-auth/oauth-provider` plugin's four tables — deplo as an OAuth 2.1
  * authorization server, so claude.ai and ChatGPT can connect to `/api/mcp` (they
  * cannot be handed a bearer token by hand the way a terminal agent can).
- *
- * These are LIBRARY-OWNED, like the four above: the plugin writes and reads every
- * row, and the JS property names below are its field names verbatim — the Drizzle
- * adapter resolves a model field by looking up `schema[modelName][field]`, so
- * renaming one here breaks the adapter, not just a query. Only the SQL column
- * names are ours.
- *
- * Two deliberate exemptions from `AGENTS.md` → "Persistence", both forced and both
- * scoped to these four tables:
- *
- *  - **`text[]` instead of a junction table.** The adapter sets
- *    `supportsArrays: true` for Postgres and hands Drizzle a raw JS array, so a
- *    normalized child table cannot be written by it at all.
- *  - **One `jsonb` column** (`oauth_client.metadata`), for the same reason
- *    (`supportsJSON: true`). It holds RFC 7591 registration metadata deplo never
- *    reads, queries or indexes.
- *
- * Neither is control-plane state. Nothing outside the plugin writes these tables,
- * and the rule they bend stays in force everywhere else.
- *
- * Access and refresh tokens are stored **hashed with deplo's own `sha256Hex`**
- * (wired through `storeTokens` in [../../auth/better-auth.ts]) — the same digest
- * `api_tokens.token_hash` uses. A row here is never a usable credential.
  */
 export const oauthClient = pgTable(
   "oauth_client",
@@ -251,14 +183,8 @@ export const oauthClient = pgTable(
     /**
      * RFC 7591 `application_type` - `web` or `native`, and the ONLY thing that
      * decides which redirect URIs are legal (1.7.0: web needs HTTPS on a
-     * non-loopback host, native takes a claimed HTTPS URL, an exact loopback, or
-     * a reverse-domain private-use scheme).
-     *
-     * It replaced the 1.6 pair `type` + `public`, and the replacement is not a
-     * rename: whether a client is CONFIDENTIAL is now read from
-     * `tokenEndpointAuthMethod` alone (`none` = public), so deriving this column
-     * from the old `public` flag would conflate two unrelated questions. 0116
-     * therefore maps `type` across by value and never consults `public`.
+     * non-loopback host, native takes a claimed HTTPS URL, an exact loopback, or a
+     * reverse-domain private-use scheme).
      */
     applicationType: text("application_type"),
     grantTypes: text("grant_types").array(),
@@ -345,10 +271,7 @@ export const oauthRefreshToken = pgTable(
 );
 
 /**
- * An opaque access token. This is the credential an AI client actually presents
- * to `/api/mcp`; `lib/data/tokens.ts` resolves it to the `api_tokens` row the
- * consent screen minted, and every gate from there is the one a `deplo_` token
- * already goes through.
+ * An opaque access token.
  */
 export const oauthAccessToken = pgTable(
   "oauth_access_token",
@@ -413,22 +336,10 @@ export const oauthConsent = pgTable(
 );
 
 /**
- * A protected resource the authorization server issues access tokens FOR -
- * RFC 8707's `resource` parameter, promoted in 1.7.0 from a config array
- * (`validAudiences`) to a persisted row with its own token policy.
- *
- * deplo seeds exactly ONE: `<public base>/api/mcp`. That is not a simplification
- * to revisit later, it is the security posture. GHSA-p2fr-6hmx-4528 (moderate,
- * every 1.6.x) was unbound resource indicators - the plugin validated `resource`
- * but did not BIND it to the grant, so with two or more valid audiences a client
- * could obtain a token aimed at a resource server it was never authorized for.
- * 1.7.0 binds it (see `resources` on the token rows); one live resource keeps the
- * blast radius at zero regardless.
- *
- * A panel that changes address gets a NEW identifier, and the old row is
- * DISABLED rather than deleted (`reconcileOAuthResources` in
- * ../../auth/oauth-resources.ts) - the audit answer to "which audience was valid
- * in March" has to survive, but only one may be requestable at a time.
+ * A protected resource the authorization server issues access tokens FOR - RFC
+ * 8707's `resource` parameter, promoted in 1.7.0 from a config array
+ * (`validAudiences`) to a persisted row with its own token policy. deplo seeds
+ * exactly ONE: `<public base>/api/mcp`.
  */
 export const oauthResource = pgTable("oauth_resource", {
   id: text("id").primaryKey(),
@@ -453,13 +364,10 @@ export const oauthResource = pgTable("oauth_resource", {
 
 /**
  * Which clients may request which resources - `enforcePerClientResources` is ON
- * (1.7.0's default), so a client with no row here can request nothing.
- *
- * deplo's registration is open by necessity (claude.ai and ChatGPT cannot
- * pre-register), so every client that self-registers is linked to the one MCP
- * resource automatically via `clientRegistrationDefaultResources`. Without that
- * link the token exchange fails with "requested resource invalid" while
- * registration and consent both look perfectly healthy.
+ * (1.7.0's default), so a client with no row here can request nothing. deplo's
+ * registration is open by necessity (claude.ai and ChatGPT cannot pre-register),
+ * so every client that self-registers is linked to the one MCP resource
+ * automatically via `clientRegistrationDefaultResources`.
  */
 export const oauthClientResource = pgTable(
   "oauth_client_resource",
@@ -489,11 +397,6 @@ export const oauthClientResource = pgTable(
 /**
  * The replay cache for `private_key_jwt` client assertions: one row per `jti`,
  * kept until the assertion would have expired anyway.
- *
- * Empty on every deplo instance - no client here authenticates with a signed
- * assertion. It exists because the Drizzle adapter resolves a model to
- * `schema[modelName]`, so a table the plugin declares and deplo omits is not an
- * unused table, it is a crash the first time anything touches that path.
  */
 export const oauthClientAssertion = pgTable("oauth_client_assertion", {
   /** The assertion's `jti` verbatim - the id IS the thing being deduplicated. */

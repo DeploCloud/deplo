@@ -33,13 +33,8 @@ import { randomBytes } from "node:crypto";
 
 /**
  * Git connections - a team's stored credentials for every git host that is not
- * GitHub. The security boundary for the feature: every read filters by the
- * active team, every mutation is `manage_git`-gated (the same Capability that
- * connects a GitHub App), and the token never leaves this module in clear except
- * towards the provider itself or the clone edge.
- *
- * There is deliberately NO reveal path. A connection's token is write-only like
- * every other secret in Deplo: you can replace it, never read it back.
+ * GitHub. A connection's token is write-only like every other secret in Deplo: you
+ * can replace it, never read it back.
  */
 
 /** A connection as the UI sees it: no token, plus what depends on it. */
@@ -76,10 +71,6 @@ function toDTO(
 
 /**
  * The active team's connections, newest first.
- *
- * Not `requireTeamWide`-gated, matching `listGithubInstallations`: a member who
- * only reaches one project still has to pick a credential when configuring that
- * project's app, and the list carries no secret and no cross-team row.
  */
 export async function listGitConnections(): Promise<GitConnectionDTO[]> {
   const teamId = await requireActiveTeamId();
@@ -101,11 +92,8 @@ export async function listGitConnections(): Promise<GitConnectionDTO[]> {
 }
 
 /**
- * A connection's decrypted credentials. INTERNAL and deliberately NOT
- * team-scoped: its two callers are the clone edge and the inbound webhook, both
- * of which run outside a user session, and both reach it only through an id that
- * was written under a team-scoped, capability-gated mutation. Never expose it
- * through GraphQL, and never return it to a client.
+ * A connection's decrypted credentials. Never expose it through GraphQL, and never
+ * return it to a client.
  */
 export async function readGitCredential(
   connectionId: string,
@@ -123,11 +111,8 @@ export async function readGitCredential(
     baseUrl: row.baseUrl,
     username: row.username,
     // Strict on the token: it authenticates a clone and every provider call, so
-    // decrypting to "" turned a key mismatch into the provider's own "bad
-    // credentials" - sending whoever hit it to rotate a token that was never
-    // the problem. The webhook secret stays best-effort: it is only ever
-    // compared against an inbound signature, and a comparison that cannot
-    // succeed is already the correct outcome.
+    // decrypting to "" turned a key mismatch into the provider's own "bad credentials"
+    // - sending whoever hit it to rotate a token that was never the problem.
     token: decryptSecretOrThrow(row.tokenEnc, "This git connection's token"),
     webhookSecret: decryptSecret(row.webhookSecretEnc),
     teamId: row.teamId,
@@ -169,10 +154,7 @@ async function requireOwnCredential(
 /* ------------------------------------------------------------------ */
 
 /**
- * Where a provider posts its push deliveries for this connection. Built from
- * DEPLO_PUBLIC_URL and never from a request header: the URL is stored on the
- * provider's side, so a host guessed from one browser request would keep firing
- * at the wrong address forever.
+ * Where a provider posts its push deliveries for this connection.
  */
 export function gitWebhookUrl(webhookToken: string): string {
   const base = resolveManifestBaseUrl();
@@ -210,20 +192,9 @@ export interface ConnectGitProviderInput {
 }
 
 /**
- * Normalise a user-typed host into an origin: https by default, no trailing
- * slash, no path, no embedded credentials - and, unless this connection was
- * deliberately allowed to, not an address inside the deployment.
- *
- * The SSRF guard matters more here than the shape rules do. The control plane
- * dials this origin ITSELF (proving the token below, listing repositories,
- * registering the push webhook) and `lib/git/providers.ts` surfaces the
- * provider's own response body in its error message, so an unguarded base URL is
- * not a blind request - `http://169.254.169.254/...` would have come back readable
- * to whoever typed it. `manage_git` is a low bar for that.
- *
- * `allowHttp` because a self-hosted Gitea on a LAN is commonly fronted without
- * TLS, exactly as a self-hosted MinIO is; `allowPrivate` is the instance-admin
- * escape its caller gates, mirroring `backup_destinations`.
+ * Normalise a user-typed host into an origin: https by default, no trailing slash,
+ * no path, no embedded credentials - and, unless this connection was deliberately
+ * allowed to, not an address inside the deployment.
  */
 async function cleanBaseUrl(
   raw: string,
@@ -250,10 +221,6 @@ async function cleanBaseUrl(
 
 /**
  * Connect a git provider: prove the token works, then store it encrypted.
- *
- * Proving it first is the whole point of the round trip - a typo'd token that is
- * only discovered at the next deploy is a broken deploy plus a mystery, while a
- * failure here is one error message next to the field that caused it.
  */
 export async function connectGitProvider(
   input: ConnectGitProviderInput,
@@ -387,10 +354,7 @@ async function appCountFor(id: string, teamId: string): Promise<number> {
 }
 
 /**
- * Disconnect a provider. Apps that cloned through it are unlinked in the same
- * transaction and their auto-deploy is turned off: without the token they can
- * neither clone a private repo nor receive a delivery, and an app that silently
- * stops deploying is worse than one that says so.
+ * Disconnect a provider.
  */
 export async function removeGitConnection(id: string): Promise<number> {
   const { teamId } = await requireCapability("manage_git");
@@ -554,12 +518,6 @@ const NOT_APPLICABLE: GitWebhookStatus = {
 
 /**
  * Register our push webhook on the repository, if it is not already there.
- *
- * Called after the source is saved, never inside its transaction: this makes an
- * HTTP call to a third party, and holding a row lock across someone else's
- * network is how a save ends up taking thirty seconds. Failure is reported, not
- * thrown - a token without the webhook scope should still save a working
- * repository, with the address to paste shown next to it.
  */
 export async function syncAppWebhook(
   repo: GitRepo | null,

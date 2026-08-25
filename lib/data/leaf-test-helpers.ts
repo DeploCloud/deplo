@@ -9,19 +9,9 @@ import type { TestDb } from "../db/test-harness";
 import type { Capability, Role } from "../types";
 
 /**
- * Shared seeding for the leaf cut-set data-layer tests (relational-store PLAN
- * Step 2). The whole control plane is relational now (Step 6 deleted the JSONB
- * `read`/`mutate`): `requireActiveTeamId`/`requireCapability`/`getCurrentUser`
- * read pglite, and a `requireCapability`-gated leaf function resolves its
- * NOT-NULL `team_id`/`user_id` FKs against the seeded `teams`/`users`. So this
- * seeds ONLY the relational identity tables — there is no JSONB store left to
- * reset.
- *
- * The caller drives the data functions inside `runWithIdentity({userId, teamId})`
- * so the cookie-free principal/team is visible without a request scope.
- *
- * Not named `*.test.ts` so the `node --test` glob skips it (a helper, like
- * `test-harness.ts`).
+ * Shared seeding for the leaf cut-set data-layer tests (relational-store PLAN Step
+ * 2). So this seeds ONLY the relational identity tables — there is no JSONB store
+ * left to reset.
  */
 
 export const TEAM_A = "team_a";
@@ -34,10 +24,7 @@ interface SeedTeam {
   id: string;
   slug: string;
   /**
-   * Whether this team allows AI agents over MCP. Defaults to TRUE here and
-   * FALSE in production (migration 0106): a suite that exercises the MCP door
-   * is not a suite about the kill switch, and every one of those tests would
-   * otherwise open by turning the same switch on.
+   * Whether this team allows AI agents over MCP.
    */
   mcpEnabled?: boolean;
 }

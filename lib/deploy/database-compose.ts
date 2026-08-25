@@ -1,18 +1,12 @@
 /**
  * docker-compose generation for databases.
- * Deplo turns a database request into a compose service wired to the shared
- * `deplo` Docker network. Databases are NOT publicly routed (no Traefik labels);
- * apps are rendered by the deploy engine (`build.ts` renderCompose), not here.
  */
 import { deploLabels } from "./compose-stack";
 import { renderResourceLimitsYaml } from "./resources";
 import type { DatabaseType, ResourceLimits } from "../types";
 
 /**
- * Derived engine image per type+version. Exported so display surfaces (console
- * info, the image-settings form) can show the effective image when no
- * `customImage` override is set — always via `effectiveDatabaseImage`, never by
- * re-deriving inline.
+ * Derived engine image per type+version.
  */
 export const DB_IMAGES: Record<DatabaseType, (v: string) => string> = {
   postgres: (v) => `postgres:${v}-alpine`,
@@ -38,13 +32,8 @@ const DB_REPOS: Record<DatabaseType, string> = {
 };
 
 /**
- * Is `image` the engine's official image at some tag or digest?
- *
- * Matters because an import pins the source's exact image (a Postgres cluster
- * copied off another platform must be reopened by the SAME libc — musl orders
- * text differently from glibc, which silently invalidates every btree index on a
- * text column), so `customImage` is now the NORMAL case, not an exotic one. A
- * pinned `postgres:18` still ships `pg_isready`, so it must keep a real probe.
+ * Is `image` the engine's official image at some tag or digest? A pinned
+ * `postgres:18` still ships `pg_isready`, so it must keep a real probe.
  */
 export function isOfficialEngineImage(
   type: DatabaseType,
@@ -72,17 +61,7 @@ const DB_PORTS: Record<DatabaseType, number> = {
 };
 
 /**
- * The in-container path each engine's image actually writes its data to. The
- * named data volume MUST mount here or the data is not persisted (it lives in
- * the container's ephemeral layer and is lost on recreation) — and a backup
- * restore that writes to the engine's real data dir would land outside the
- * volume. These are the official images' documented data dirs:
- *  - postgres  /var/lib/postgresql/data
- *  - mysql     /var/lib/mysql
- *  - mariadb   /var/lib/mysql   (mariadb image reuses the mysql layout)
- *  - mongodb   /data/db
- *  - redis     /data
- *  - clickhouse /var/lib/clickhouse
+ * The in-container path each engine's image actually writes its data to.
  */
 export const DB_DATA_DIRS: Record<DatabaseType, string> = {
   postgres: "/var/lib/postgresql/data",
@@ -106,21 +85,8 @@ export function effectiveDatabaseImage(d: {
 
 /**
  * Real per-engine liveness probes (replacing the historical no-op `exit 0`), so
- * the runtime "healthy/unhealthy" the agent reports reflects the ENGINE, not
- * just the process. Each is chosen to avoid embedding the password literally:
- *  - postgres    pg_isready authenticates nothing — it only asks "accepting
- *                connections?" (identifiers are sanitized, safe to embed).
- *  - mysql       mysqladmin ping as root; the password rides as the container's
- *                own $MYSQL_ROOT_PASSWORD env ($$ = compose-interpolation escape).
- *  - mariadb     the official image's healthcheck.sh (the entrypoint creates a
- *                dedicated healthcheck user + config on first init). A volume
- *                initialized by a pre-2022 image lacks that user — the container
- *                then shows "unhealthy" but keeps running (restart is unchanged).
- *  - mongodb     `ping` is one of the commands mongod allows unauthenticated.
- *  - redis       redis-cli exits 0 whenever the server RESPONDS (even NOAUTH),
- *                non-zero when unreachable — a liveness probe that keeps working
- *                whatever a custom command does to `--requirepass`.
- *  - clickhouse  the unauthenticated HTTP /ping endpoint (image ships wget).
+ * the runtime "healthy/unhealthy" the agent reports reflects the ENGINE, not just
+ * the process.
  */
 const DB_HEALTHCHECKS: Record<
   DatabaseType,
@@ -138,13 +104,7 @@ const DB_HEALTHCHECKS: Record<
 /**
  * mysql/mariadb env. The official images ALWAYS need a root password
  * (`*_ROOT_PASSWORD`) and treat `*_USER`/`*_PASSWORD` as an OPTIONAL additional
- * non-root user granted all privileges on `*_DATABASE` only. They REJECT
- * `*_USER=root`. So we emit the extra user only when a non-root username was
- * chosen; otherwise `root` IS the login and its password is the connection-string
- * password. Either way root's password == the connection-string password, which
- * is load-bearing: the backup dump execs as root (a scoped MYSQL_USER lacks the
- * global grants `mysqldump --databases` needs) and reads that same password from
- * the connection string. See `lib/data/backups.ts` `dumpUserFor`.
+ * non-root user granted all privileges on `*_DATABASE` only.
  */
 function mysqlEnv(
   prefix: "MYSQL" | "MARIADB",
@@ -166,10 +126,6 @@ export function generateDatabaseCompose(input: {
   name: string;
   /**
    * The database row id (`db_…`), stamped as `deplo.project` on the container.
-   * Load-bearing: the agent label-checks `deplo.project=<id>` on every container
-   * RPC (listInstances / exec / attach / followLogs), so without these labels
-   * the DB container is invisible to logs, the terminal, and the runtime poll.
-   * A pre-labels container becomes visible on its next reroute ("Redeploy").
    */
   databaseId: string;
   type: DatabaseType;
@@ -184,15 +140,11 @@ export function generateDatabaseCompose(input: {
   /**
    * The logical database to create on first init (`POSTGRES_DB`, `MYSQL_DATABASE`,
    * `CLICKHOUSE_DB`). This MUST match the connection-string path segment and the
-   * backup dump target or a backup silently dumps a non-existent database. Inert
-   * for redis and mongodb (mongo creates DBs lazily on first write).
+   * backup dump target or a backup silently dumps a non-existent database.
    */
   dbName: string;
   /**
-   * The HOST port to publish the engine on. When set, the compose maps
-   * `hostPort:<engine-port>` so external clients reach the DB on the host's
-   * `hostPort` (which the control plane validated is free on that host). Omitted
-   * => the DB is NOT publicly published (internal `deplo`-network access only).
+   * The HOST port to publish the engine on.
    */
   hostPort?: number;
   /** Per-database resource limits; null/absent ⇒ no limit keys are rendered. */
@@ -206,10 +158,8 @@ export function generateDatabaseCompose(input: {
    */
   customCommand?: string | null;
   /**
-   * Expert override: the engine's own config files, already written to
-   * `filesDir` by the agent. Each renders as a bind of one FILE — never a
-   * directory — so `/etc/postgresql.conf` can be replaced without hiding
-   * whatever else the image keeps in `/etc`.
+   * Expert override: the engine's own config files, already written to `filesDir`
+   * by the agent.
    */
   mounts?: { filePath: string; mountPath: string }[] | null;
   /**
@@ -237,13 +187,7 @@ export function generateDatabaseCompose(input: {
   });
 
   const envByType: Record<DatabaseType, string[]> = {
-    // PGDATA is REQUIRED, not cosmetic. From 18 the official image defaults it to
-    // `/var/lib/postgresql/<major>/docker` and its entrypoint HARD-FAILS ("unused
-    // mount/volume") the moment `/var/lib/postgresql/data` is a mount point - which
-    // is exactly what the volume below is - so a default Postgres 18 could not boot
-    // at all, imported or brand new. Pinning it to the path we actually mount is a
-    // no-op on <= 17 (that was already the default) and keeps the cluster inside the
-    // named volume rather than the image's own anonymous one.
+    // PGDATA is REQUIRED, not cosmetic.
     postgres: [
       `POSTGRES_USER=${username}`,
       `POSTGRES_PASSWORD=${password}`,
@@ -257,11 +201,8 @@ export function generateDatabaseCompose(input: {
       `MONGO_INITDB_ROOT_PASSWORD=${password}`,
     ],
     redis: [],
-    // CLICKHOUSE_DB creates the logical database at provision time, like
-    // POSTGRES_DB / MYSQL_DATABASE above. Without it the image only has the
-    // built-in `default` DB, so the connection string's database — and every
-    // backup that dumps it — would target a database that never exists (a silent
-    // empty backup + no-op restore).
+    // CLICKHOUSE_DB creates the logical database at provision time, like POSTGRES_DB /
+    // MYSQL_DATABASE above.
     clickhouse: [
       `CLICKHOUSE_USER=${username}`,
       `CLICKHOUSE_PASSWORD=${password}`,
@@ -285,10 +226,7 @@ export function generateDatabaseCompose(input: {
       envLines.map((l) => `      - ${l}`).join("\n") +
       "\n"
     : "";
-  // Publish the engine port on the chosen HOST port when exposed. Bind to 0.0.0.0
-  // explicitly so the mapping is reachable off-host regardless of the daemon's
-  // default publish address (some hosts default published ports to 127.0.0.1,
-  // which would make "expose publicly" only reachable from the host itself).
+  // Publish the engine port on the chosen HOST port when exposed.
   const ports = hostPort
     ? `    ports:\n      - "0.0.0.0:${hostPort}:${port}"\n`
     : "";
@@ -298,17 +236,9 @@ export function generateDatabaseCompose(input: {
   // Same fragment renderer as the single-image app path — empty limits render
   // nothing, so a database that never set a limit keeps its historical bytes.
   const resources = renderResourceLimitsYaml(input.resources, 4);
-  // The engine probe assumes the engine's official image; under a FOREIGN
-  // customImage the tooling may not exist, so fall back to the historical no-op
-  // rather than flagging a healthy container "unhealthy" forever. An override
-  // that is still the official image at another tag (what an import pins) keeps
-  // the real probe — otherwise every imported database would report health it
-  // never checked.
-  // The config files, as extra mount lines under the data volume. The source is
-  // the file the agent wrote next to the stack, the target the path the row
-  // names, and both are JSON-encoded into a `- "src:dst"` scalar: a path is
-  // user-typed, and a stray quote or newline must escape the string rather than
-  // grow the service a key of its own.
+  // The engine probe assumes the engine's official image; under a FOREIGN customImage
+  // the tooling may not exist, so fall back to the historical no-op rather than
+  // flagging a healthy container "unhealthy" forever.
   const configMounts = (input.mounts ?? [])
     .map((m) => {
       const source = `${(input.filesDir ?? "").replace(/\/+$/, "")}/${m.filePath}`;
@@ -351,23 +281,7 @@ networks:
 }
 
 /**
- * Build the (unencrypted) connection string for a managed database. The single
- * source of truth for the string's shape, shared by `createDatabase` (initial
- * provision) and `updateDatabase` (re-derived when exposure toggles the host/port).
- * Keeping it here — not duplicated at each call site — stops the two paths from
- * drifting on scheme, path segment, or the mongo authSource.
- *
- * `host`/`port` are already reachability-resolved by the caller: the internal
- * service DNS name + engine port when unexposed, the server's reachable host +
- * published host port when exposed.
- *
- * The credential is PERCENT-ENCODED, and that is load-bearing rather than tidy:
- * `parseConnectionPassword` has always decoded on the way out, so the encode was
- * the missing half, and without it every password holding a URL delimiter had to
- * be refused outright. That refusal reached somewhere it does badly - an IMPORT
- * from another platform, where the password is not ours to choose. A rotated one
- * there leaves the database holding the OLD platform's users and Deplo holding a
- * credential that opens nothing.
+ * Build the (unencrypted) connection string for a managed database.
  */
 export function buildConnectionString(a: {
   type: DatabaseType;
@@ -402,12 +316,7 @@ export function buildConnectionString(a: {
 }
 
 /**
- * Recover the engine password embedded in a connection string. Every form
- * {@link buildConnectionString} emits carries it as the URL password
- * (`scheme://user:<pw>@host`), so a URL parse is the single source. Returns ""
- * when absent or unparseable rather than throwing. Shared with the backups module
- * (the dump password) and `updateDatabase` (which re-derives the string around the
- * unchanged, create-only password).
+ * Recover the engine password embedded in a connection string.
  */
 export function parseConnectionPassword(conn: string): string {
   try {

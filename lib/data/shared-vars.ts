@@ -38,13 +38,7 @@ import type { SharedVarEntry } from "../deploy/env-resolve";
 /**
  * Unified SHARED variables (ADR-0010, opt-in per ADR-0012) — one individual
  * variable owned by a team, the replacement for shared-env groups,
- * environment-scoped vars, and team-global vars. A shared var carries
- * AVAILABILITY scopes (team-wide / environment[] / project[] whitelist) that say
- * which apps it is offered to, but it only ever INJECTS through an explicit
- * per-app link — nothing is added to an app the developer didn't opt into.
- * Deploy precedence is resolved in lib/deploy/env-resolve.ts. Values are
- * encryptSecret at rest and only decrypt at the deploy edge or on an explicit
- * `manage_env`-gated reveal.
+ * environment-scoped vars, and team-global vars.
  */
 
 const MASK = "••••••••••••";
@@ -251,15 +245,10 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
 }
 
 /**
- * A shared var as seen from ONE app: whether the app has opted into it
- * (`linked` — the ONLY thing that makes it inject, ADR-0012), and whether an
- * availability scope offers it here (`inScope` + `scope`, the "suggested"
- * signal the Add-variable modal shows).
- *
- * The VALUE reads exactly as it does on the Variables page (`listSharedVars`): a
- * plain value is decrypted for a `manage_env` holder, a secret comes through as
- * the MASK. An app's own table shows the variables its next deploy will get, and a
- * shared one it can't read at all is a hole in that picture.
+ * A shared var as seen from ONE app: whether the app has opted into it (`linked` —
+ * the ONLY thing that makes it inject, ADR-0012), and whether an availability
+ * scope offers it here (`inScope` + `scope`, the "suggested" signal the
+ * Add-variable modal shows).
  */
 export interface AppSharedVarDTO {
   id: string;
@@ -280,29 +269,12 @@ export interface AppSharedVarDTO {
 }
 
 /**
- * EVERY shared var of the team, as seen from one app: its opt-in state
- * (`linked`) and whether a scope suggests it here (`inScope`/`scope`).
- *
- * The full team set is returned — not just the in-scope ones — because scopes
- * are suggestions, not gates (ADR-0012): any team shared var can be opted into
- * from any app. Filtering to in-scope vars would strand a link-only var the
- * moment its last link is removed, and would hide everything from a top-level
- * app (no project/environment).
- *
- * …for a caller who reaches the whole team. A NARROWED one gets only the vars
- * that pertain to this app — linked here, or suggested by a project or
- * environment it lives in. `manage_env` survives the project clamp on purpose
- * (it is what makes an app's own variables editable inside a scope), so without
- * this the team's entire shared catalogue was one in-scope app away: every key
- * by name, and the plaintext of every non-secret one, since only `secret` rows
- * are masked below. The five sibling functions all refuse a narrowed caller
- * outright; this one can't, because it IS the page inside their scope.
+ * EVERY shared var of the team, as seen from one app: its opt-in state (`linked`)
+ * and whether a scope suggests it here (`inScope`/`scope`).
  */
 /**
  * Whether one shared var pertains to one app: linked to it, or suggested by a
- * project or environment the app lives in. A `teamWide` var is deliberately NOT
- * reachable this way — team-wide is the whole team, which is exactly what a
- * narrowed scope excludes, and `listSharedVars` already refuses it outright.
+ * project or environment the app lives in.
  */
 function reachableFromApp(
   v: { appIds: string[]; projectIds: string[]; environmentIds: string[] },
@@ -389,8 +361,7 @@ export interface AppliedSharedVarDTO {
 /**
  * Every (app, shared var) pair that currently injects — i.e. every per-app LINK
  * (ADR-0012: only an explicit opt-in injects) — across the team: the read-only
- * "shared" rows on the aggregate App tab. One pass over the team's shared vars
- * (no per-app query fan-out).
+ * "shared" rows on the aggregate App tab.
  */
 export async function listAppliedSharedVarsByApp(): Promise<
   AppliedSharedVarDTO[]
@@ -401,9 +372,8 @@ export async function listAppliedSharedVarsByApp(): Promise<
   // One identity query for every card on the page.
   const authors = await loadUserIdentities(authorIds(vars));
   // Node scope, mirroring `listAllAppEnv`: a link into an app the caller can't
-  // `manage_env` is dropped instead of surfacing that app's applied rows through
-  // the aggregate tab (its card is filtered out there too). Asked per app in one
-  // batch, because since ADR-0016 the answer can differ app by app.
+  // `manage_env` is dropped instead of surfacing that app's applied rows through the
+  // aggregate tab (its card is filtered out there too).
   const linkedAppIds = [...new Set(vars.flatMap((v) => v.appIds))];
   const appRows = linkedAppIds.length
     ? await getDb()
@@ -512,9 +482,6 @@ async function replaceAppLinks(
 
 /**
  * The var's current per-app links (empty for a var that doesn't exist yet).
- * Joined to the var's team: a var id from ANOTHER team must read as "no links",
- * or the reach check below turns into a 1-bit oracle on a foreign var (it runs
- * before the in-transaction ownership probe).
  */
 async function currentAppLinks(
   teamId: string,
@@ -543,27 +510,22 @@ export async function saveSharedVar(input: {
   environmentIds: string[];
   projectIds: string[];
   /**
-   * The per-app links, as a whole set. OMITTED means "leave the links alone" —
-   * that is what keeps the app-side toggle (setSharedVarAppLink) and the link-only
-   * vars migration 0027 produced intact when the shared-var dialog saves a var it
-   * never asked about apps for.
+   * The per-app links, as a whole set.
    */
   appIds?: string[];
 }): Promise<string> {
   // A team-wide var is injected into every app in the team at the highest deploy
   // precedence, so authoring one from a project-scoped token would be that token
-  // setting variables on apps outside its own boundary. The per-app toggle
-  // (`setSharedVarAppLink`) stays open — it names one app and is gated on it.
+  // setting variables on apps outside its own boundary.
   await requireTeamWide("shared variables");
   const { teamId, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
-  // An omitted target set defaults to every runtime on INSERT, but on UPDATE it
-  // means "leave the stored targets alone" (null below) — the dialogs no longer
-  // ask, and silently widening a legacy production-only secret would leak it
-  // into runtimes it was never meant to reach. Only an explicit non-empty set
-  // replaces them.
+  // An omitted target set defaults to every runtime on INSERT, but on UPDATE it means
+  // "leave the stored targets alone" (null below) — the dialogs no longer ask, and
+  // silently widening a legacy production-only secret would leak it into runtimes it
+  // was never meant to reach.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
 
   // Keep only environments/projects/apps that belong to the active team.
@@ -578,12 +540,10 @@ export async function saveSharedVar(input: {
   const teamWide = Boolean(input.teamWide);
   const storedLinks = await currentAppLinks(teamId, input.id);
 
-  // Both halves of the whole-set link replace are folder-gated writes, exactly
-  // like setSharedVarAppLink: ADDING a link injects this var into the app at the
-  // HIGHEST deploy precedence (lib/deploy/env-resolve.ts), REMOVING one strips a
-  // variable off the app's next deploy. Team-level `manage_env` is not enough for
-  // an app that lives under a folder. Untouched links aren't re-authorized — the
-  // save doesn't change what they reach.
+  // Both halves of the whole-set link replace are folder-gated writes, exactly like
+  // setSharedVarAppLink: ADDING a link injects this var into the app at the HIGHEST
+  // deploy precedence (lib/deploy/env-resolve.ts), REMOVING one strips a variable off
+  // the app's next deploy.
   if (appIds) {
     const incoming = new Set(appIds);
     const changed = [
@@ -595,11 +555,7 @@ export async function saveSharedVar(input: {
   }
 
   // A shared var must be shared WITH something: offered through ≥1 availability
-  // scope, or linked to ≥1 app. Links count — that is exactly the shape migration
-  // 0027 gives every var exploded out of a legacy shared GROUP (links, no scopes),
-  // and rejecting it would make every migrated group variable permanently
-  // unsavable. When the caller sends `appIds` it OWNS the link set, so only the
-  // incoming set counts — the stored links are about to be replaced by it.
+  // scope, or linked to ≥1 app.
   const reachesByLink = appIds ? appIds.length > 0 : storedLinks.length > 0;
   if (
     !teamWide &&
@@ -627,12 +583,7 @@ export async function saveSharedVar(input: {
         .where(and(eq(varsTable.id, input.id), eq(varsTable.teamId, teamId)))
         .limit(1);
       if (!existing[0]) throw new Error("Variable not found");
-      // A secret's VALUE, KEY and TYPE are frozen; WHO it reaches is not. Changing
-      // the sharing of an existing secret is the one edit that neither reads it
-      // back nor could ever expose it, and forbidding it would mean deleting and
-      // retyping a credential every time a new app needs it. Anything else is
-      // refused whatever the client sends: `type` used to be written straight from
-      // the input, and with the mask round-trip that handed back the plaintext.
+      // A secret's VALUE, KEY and TYPE are frozen; WHO it reaches is not.
       if (existing[0].type === "secret") {
         const frozen =
           key !== existing[0].key || input.type !== "secret" || !keepValue;
@@ -690,10 +641,7 @@ export async function saveSharedVar(input: {
 
 /**
  * The write-side twin of the filter in {@link listSharedVarsForApp}: may a
- * narrowed caller name this variable from this app at all? Loads the team's
- * shared vars rather than the one row, so the two answers come from the same
- * predicate — a mutation that ran a second, subtly different rule is how the
- * list and the link end up disagreeing.
+ * narrowed caller name this variable from this app at all?
  */
 async function linkableFromApp(
   varId: string,
@@ -735,11 +683,8 @@ export async function setSharedVarAppLink(
     .where(and(eq(varsTable.id, varId), eq(varsTable.teamId, teamId)))
     .limit(1);
   if (!v[0]) throw new Error("Variable not found");
-  // Belonging to the team is not enough for a NARROWED caller. A link injects
-  // the value at the highest precedence of the deploy edge, into an app they
-  // hold a console and logs on — so linking a team-wide variable would be a way
-  // to read one, and the masking on every list would mean nothing. Same
-  // message as an unknown id: a scope must never say which ids exist.
+  // Belonging to the team is not enough for a NARROWED caller. Same message as an
+  // unknown id: a scope must never say which ids exist.
   if (
     !(await reachesWholeTeam()) &&
     !(await linkableFromApp(varId, appId, teamId))
@@ -847,11 +792,9 @@ async function filterTeamApps(
 /* ------------------------------------------------------------------ */
 
 /**
- * The shared-var entries that inject into one app for the deploy-time merge:
- * ONLY the vars the app is explicitly linked to (ADR-0012 — availability scopes
- * never inject). Entries are sorted `created_at ASC` so a key collision between
- * two linked vars resolves to the later var. Returns encrypted entries; the
- * caller decrypts at the edge.
+ * The shared-var entries that inject into one app for the deploy-time merge: ONLY
+ * the vars the app is explicitly linked to (ADR-0012 — availability scopes never
+ * inject).
  */
 export async function loadSharedVarsForApp(
   appId: string,
@@ -871,10 +814,9 @@ export async function loadSharedVarsForApp(
       id: varsTable.id,
       key: varsTable.key,
       valueEnc: varsTable.valueEnc,
-      // `plain` | `secret`, and it has to travel with the entry: the fork-preview
-      // drop in lib/deploy/build.ts asks every layer the same question, and a
-      // column left out of this projection answered "not a secret" for a team's
-      // whole shared-variable set.
+      // `plain` | `secret`, and it has to travel with the entry: the fork-preview drop in
+      // lib/deploy/build.ts asks every layer the same question, and a column left out of
+      // this projection answered "not a secret" for a team's whole shared-variable set.
       type: varsTable.type,
       createdAt: varsTable.createdAt,
     })

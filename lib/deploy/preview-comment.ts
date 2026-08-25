@@ -11,16 +11,9 @@ import { githubFullName } from "../github/repo-id";
 import { PUBLIC_URL_PLACEHOLDER, resolveManifestBaseUrl } from "../public-url";
 
 /**
- * The ONE comment Deplo keeps on a pull request, edited in place.
- *
- * A pull request with twenty pushes must still have one Deplo comment, not
- * twenty — so the comment id is stored on the preview row and every later
- * transition is a `PATCH`. The marker line is first so the comment stays
- * findable even if someone edits around it.
- *
- * NOTHING here may fail a deploy. Every call is fire-and-forget: a missing
- * permission, a rate limit or a deleted comment is a warning in the log, and the
- * Pull requests page is where the user learns their GitHub App needs updating.
+ * The ONE comment Deplo keeps on a pull request, edited in place. A pull request
+ * with twenty pushes must still have one Deplo comment, not twenty — so the
+ * comment id is stored on the preview row and every later transition is a `PATCH`.
  */
 
 const MARKER = "<!-- deplo-preview -->";
@@ -83,11 +76,7 @@ export function previewCommentBody(input: {
 }
 
 /**
- * Push the current state of a preview onto its pull request. Reads everything it
- * needs from the row, so callers just say "this changed".
- *
- * Store-direct and session-free: the deploy engine, the webhook and the reaper
- * all call it with no request identity.
+ * Push the current state of a preview onto its pull request.
  */
 export async function syncPreviewComment(
   previewId: string,
@@ -101,11 +90,8 @@ export async function syncPreviewComment(
       .limit(1);
     const p = rows[0];
     if (!p) return;
-    // The app can turn the comment off. It needs `pull_requests: write` on the
-    // GitHub App, so an instance that will not grant that permission would
-    // otherwise collect a 403 on every deploy — silent by contract, but still a
-    // request that was never going to land. One guard here covers every caller:
-    // the deploy outcome, the open, the sync and the teardown.
+    // The app can turn the comment off. One guard here covers every caller: the deploy
+    // outcome, the open, the sync and the teardown.
     if (!(await previewSettings(p.appId))?.comment) return;
     const app = await loadAppGraph(p.appId);
     const installationId = app?.repo?.installationId;

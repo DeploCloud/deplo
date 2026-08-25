@@ -20,6 +20,7 @@ import type { DatabaseDTO } from "@/lib/data/databases";
  * The database's Danger Zone — two destructive actions, each behind a typed
  * confirmation: - Rebuild: wipe the data volume and re-provision a fresh, empty
  * database from the current settings (same engine/version/credentials — the
+ * connection string keeps working).
  */
 export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
   const router = useRouter();

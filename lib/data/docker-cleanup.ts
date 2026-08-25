@@ -30,40 +30,16 @@ import { previewDeployKey } from "../deploy/deploy-key";
 import { MAX_ROLLBACK_KEEP } from "../types";
 
 /**
- * Docker cleanup — reclaiming disk on a server's host.
- *
- * The shape here follows two decisions that are easy to mistake for accidents:
- *
- *  - The SCHEDULE is instance-wide (one {@link dockerCleanupPolicy} singleton) and a
- *    host opts OUT via {@link dockerCleanupExcludedServers}. There is exactly one
- *    schedule to reason about, and a newly added server cannot silently go un-swept.
- *  - The gate is INSTANCE-ADMIN, like every other server-level operation in
- *    `servers.ts` (add, remove, update the agent, re-team). The policy is one
- *    instance-wide row and a sweep deletes on hosts shared by every team, so a
- *    per-team capability was the wrong shape: `manage_infra` in one team is not
- *    authority over another team's host. Servers are cross-team infra, so the
- *    policy and the run history are NOT team-scoped either — the `teamId` we
- *    resolve alongside the gate is used only to attribute the activity row.
- *  - A sweep is a BACKGROUND job, not a request. {@link runCleanupNow} returns as
- *    soon as the `running` row exists and lets the host work detached; the run
- *    row IS the progress indicator, and every change to it is published on
- *    `cleanupRunsChanged` so the settings page follows it live. Nobody waits on a
- *    `docker rmi` sweep with a spinner, and closing the page cannot cancel it.
- *
- * WHAT gets deleted is not decided here. The control plane owns the scope SET; the
- * agent owns the deletion, allow-listed (never `system`/`container`/`volume`/`network
- * prune`), because on a Deplo host a STOPPED app is a live app and a dangling volume
- * may hold user data. This module never touches a Docker socket (ADR-0006).
+ * Docker cleanup — reclaiming disk on a server's host. There is exactly one
+ * schedule to reason about, and a newly added server cannot silently go un-swept.
+ * This module never touches a Docker socket (ADR-0006).
  */
 
 /** The singleton policy row's PK — see the `docker_cleanup_policy` table comment. */
 const POLICY_ID = "default";
 
 /**
- * The four scopes that exist, in display order. An ALLOW-LIST and CLOSED: it mirrors
- * the agent's `CleanupScope` proto enum one-for-one, and container/volume/network/
- * `system` prune are deliberately absent. Adding an entry here without the agent
- * knowing it means the agent refuses the scope — it decides, not us.
+ * The four scopes that exist, in display order.
  */
 export const CLEANUP_SCOPES = [
   "build_cache",
@@ -132,28 +108,14 @@ export interface CleanupRunDTO {
 const DEFAULT_SCHEDULE = "0 4 * * *";
 /**
  * A day — and it gates only the CACHE scopes (build cache, dangling images, orphan
- * buildkit volumes). App images are count-based (`keepImagesPerApp` + the agent's
- * fixed 1h deploy grace) and ignore this on agents ≥ 1.12.
- *
- * It was a week (168h), and that default was the root cause of a recurring disk
- * saturation: a host that redeploys many times a day fills in hours, so nothing
- * ever aged into eligibility and every sweep "succeeded" with 0 bytes. Anything a
- * live build still wants is hours old at most; a week protects nothing real.
- * Migration 0040 moves stored policies still on the old default to this one.
+ * buildkit volumes).
  */
 const DEFAULT_MIN_AGE_HOURS = 24;
 const DEFAULT_KEEP_IMAGES_PER_APP = 1;
 
 /**
- * The scopes a never-configured instance reclaims: ALL of them, and the schedule ships
- * ENABLED (see {@link loadPolicy}). Both flipped by an explicit owner decision
- * (2026-07): disk hygiene is the platform's job — a full disk blocks every build, and
- * "the operator must remember to turn the janitor on" is exactly the kind of manual
- * step the north star forbids. `unused_app_images` is included because its guardrails
- * make the worst case a rebuild of an OLD version, never a stranded app:
- * `keepImagesPerApp` always keeps the newest image(s), and an image any container —
- * running or stopped — references is never a candidate. An operator who wants the
- * conservative set unchecks it once; the saved row wins from then on.
+ * The scopes a never-configured instance reclaims: ALL of them, and the schedule
+ * ships ENABLED (see {@link loadPolicy}).
  */
 const DEFAULT_SCOPES: CleanupScopeId[] = [...CLEANUP_SCOPES];
 
@@ -161,11 +123,8 @@ const MIN_AGE_HOURS_MAX = 8760; // a year
 const KEEP_IMAGES_MAX = 20;
 
 /**
- * Retention: how many runs PER SERVER the history keeps — the newest
- * `3 × serverCount` rows overall. At the default daily cadence that is about three
- * days of logs, which is all the history is for ("did last night's sweep work, and
- * the two before it?"); it is also the default page {@link listCleanupRuns} shows,
- * so what the UI lists and what the store keeps are the same number by construction.
+ * Retention: how many runs PER SERVER the history keeps — the newest `3 ×
+ * serverCount` rows overall.
  */
 const RUNS_KEPT_PER_SERVER = 3;
 const MAX_RUN_LIMIT = 100;
@@ -232,12 +191,9 @@ const WIRE_TO_SCOPE = new Map<CleanupScope, CleanupScopeId>(
 );
 
 /**
- * Map the agent's per-scope results back to our ids, DEDUPED and with any scope we do
- * not recognise dropped (a newer agent could answer with an enum value this control
- * plane predates). Both guards protect the SAME thing: `(run_id, scope)` is the run
- * items' PK, and a duplicate or an unmappable scope would roll back the terminal
- * transaction — leaving the run stuck `running` forever, which is a worse lie than a
- * missing line in the breakdown.
+ * Map the agent's per-scope results back to our ids, DEDUPED and with any scope we
+ * do not recognise dropped (a newer agent could answer with an enum value this
+ * control plane predates).
  */
 function toRunItems(results: CleanupScopeResult[]): CleanupRunItem[] {
   const byScope = new Map<CleanupScopeId, CleanupRunItem>();
@@ -267,13 +223,9 @@ function toRunItems(results: CleanupScopeResult[]): CleanupRunItem[] {
 /* Reads                                                               */
 /* ------------------------------------------------------------------ */
 
-/** Assemble the policy from its row + junctions. A MISSING row is legal: the instance
- *  has never configured cleanup, and reads as the DEFAULTS — which since 2026-07 are
- *  "enabled, daily at 04:00 UTC, every scope": a fresh install sweeps its hosts without
- *  anyone finding the settings page first. The scheduler reads through this same path,
- *  so the default is live behavior, not just what the form shows. An instance that
- *  SAVED a policy (row present) always reads its own row — an operator's explicit
- *  disable survives every upgrade. */
+/**
+ * Assemble the policy from its row + junctions.
+ */
 async function loadPolicy(): Promise<CleanupPolicy> {
   const db = getDb();
   const [rows, scopeRows, excludedRows] = await Promise.all([
@@ -321,22 +273,16 @@ export async function getCleanupPolicy(): Promise<CleanupPolicy> {
 }
 
 /**
- * The policy, read WITHOUT a session — for the scheduler tick, which has no request
- * context to gate against (no cookies, no active team). This is not a hole in the
- * instance-admin gate: the tick takes no caller input, returns nothing to a client, and
- * its authority is the enabled policy row itself (written earlier by an instance admin)
- * plus the cross-process lease it already holds. Every USER-facing read of the policy
- * goes through {@link getCleanupPolicy}, which gates.
+ * The policy, read WITHOUT a session — for the scheduler tick, which has no
+ * request context to gate against (no cookies, no active team).
  */
 export async function loadCleanupPolicyForScheduler(): Promise<CleanupPolicy> {
   return loadPolicy();
 }
 
 /**
- * The servers with a sweep already in flight — session-free, for the same reason as
- * {@link loadCleanupPolicyForScheduler}. The scheduler skips these: two concurrent
- * `docker rmi` sweeps on one host would race each other's candidate lists, and a run
- * that stacks on a stuck one would never be visible as the pile-up it is.
+ * The servers with a sweep already in flight — session-free, for the same reason
+ * as {@link loadCleanupPolicyForScheduler}.
  */
 export async function listServersWithCleanupRunning(): Promise<string[]> {
   const rows = await getDb()
@@ -362,12 +308,6 @@ async function runHistoryCap(): Promise<number> {
  * Cleanup history, newest first. NOT team-scoped — servers are the one shared
  * cross-team resource, so a run belongs to a host, not to a team; the gate is
  * instance-admin, checked here.
- *
- * The default page is the retention cap itself (3 × the server count) — asking for
- * "the history" answers with everything retention keeps.
- *
- * `seq` breaks same-millisecond ties so the listing is a total order (two servers swept
- * by one tick start in the same millisecond routinely).
  */
 export async function listCleanupRuns(
   filter: { serverId?: string; limit?: number } = {},
@@ -377,13 +317,8 @@ export async function listCleanupRuns(
 }
 
 /**
- * The history, read WITHOUT a session — for the live subscription's generator, which
- * re-reads it on every published change. Session-free by necessity, not by choice: a
- * subscription's async iterator runs AFTER the HTTP handler returned its streaming
- * response, so `cookies()` is no longer callable and {@link requireInstanceAdmin}
- * would throw on the second tick. The gate has already been applied — the field's
- * `instanceAdmin` scope is evaluated when the subscription is opened, in request
- * scope — and this read takes no caller input beyond that.
+ * The history, read WITHOUT a session — for the live subscription's generator,
+ * which re-reads it on every published change.
  */
 export async function listCleanupRunsForSubscriber(): Promise<CleanupRunDTO[]> {
   return loadRuns({});
@@ -449,21 +384,9 @@ function orderItems(items: CleanupRunItem[]): CleanupRunItem[] {
 }
 
 /**
- * Retention: trim the run history to {@link runHistoryCap} — the newest
- * `3 × serverCount` rows — deleting the older TERMINAL rows (their per-scope items go
- * with them via the FK CASCADE). Two rules make this safe rather than merely tidy:
- *
- *  - `running` rows are NEVER deleted, whatever their age: the scheduler's
- *    never-stack-sweeps check and the boot reconcile both read them, and the reconcile
- *    is the one thing allowed to settle a stranded one — retention silently removing
- *    it would un-stick that server by lying instead.
- *  - It runs inside the executor after every sweep (manual and scheduled alike), so
- *    the table is bounded by construction — not by a janitor someone must remember to
- *    schedule for the janitor.
- *
- * Session-free on purpose: its callers are already gated (`runCleanupNow`) or
- * lease-held (the scheduler tick). Exported for tests. Returns how many rows it
- * removed.
+ * Retention: trim the run history to {@link runHistoryCap} — the newest `3 ×
+ * serverCount` rows — deleting the older TERMINAL rows (their per-scope items go
+ * with them via the FK CASCADE).
  */
 export async function pruneCleanupRunHistory(): Promise<number> {
   const db = getDb();
@@ -496,17 +419,9 @@ export async function pruneCleanupRunHistory(): Promise<number> {
 /* ------------------------------------------------------------------ */
 
 /**
- * Save the instance-wide policy: the singleton row + a whole-set replace of its scopes
- * (and of the exclusion list, when one is sent) in ONE transaction, so a save is never
- * half-applied — a policy that kept a scope the operator just unchecked would delete
- * things they refused.
- *
- * The cron is REJECTED, not repaired, when it does not parse: `cronMatches` treats an
- * unparseable expression as "never matches" (it must, or one bad row would crash the
- * tick), so an accepted-but-unparseable schedule is a cleanup that silently never runs
- * while the UI says it is enabled. That is the one failure this feature cannot have.
- * The numeric bounds, by contrast, are CLAMPED: there is no dangerous value of
- * "keep N images", only an unhelpful one.
+ * Save the instance-wide policy: the singleton row + a whole-set replace of its
+ * scopes (and of the exclusion list, when one is sent) in ONE transaction, so a
+ * save is never half-applied — a policy that kept a scope the operator just
  */
 export async function updateCleanupPolicy(
   input: UpdateCleanupPolicyInput,
@@ -617,11 +532,6 @@ export async function updateCleanupPolicy(
 
 /**
  * Include ONE server in the scheduled sweep, or leave it out.
- *
- * The whole-policy save above can carry the exclusion list too, but a per-host
- * page must not send it: it would rewrite every OTHER host's membership from a
- * snapshot taken when the tab was opened, so two admins on two server pages
- * would silently undo each other. This writes the one row it is about.
  */
 export async function setServerCleanupExcluded(
   serverId: string,
@@ -662,14 +572,7 @@ export async function setServerCleanupExcluded(
 
 /**
  * The executor's FIRST half: put the sweep on the record as `running`, before a
- * single byte is asked of the host. Shaped like `executeBackup`'s opening, for the
- * reason its rule (a) names — a sweep that could not even start (an unprovisioned
- * host, an agent offline or too old) must still land as a `failed` run, and it can
- * only do that if the row already exists when the dial throws.
- *
- * It is also what makes "Clean up now" instant: this is the only part the clicking
- * admin waits for — one short INSERT — and the returned `running` DTO is what the UI
- * paints while {@link finishCleanupRun} works the host in the background.
+ * single byte is asked of the host.
  */
 async function beginCleanupRun(args: {
   serverId: string;
@@ -716,20 +619,8 @@ async function beginCleanupRun(args: {
 }
 
 /**
- * The executor's SECOND half — the slow one: dial the host, then settle the run row
- * that {@link beginCleanupRun} already wrote. Two rules shape it, both inherited from
- * `executeBackup`:
- *
- *  (b) The gRPC call runs BETWEEN the two short transactions, never inside one: a
- *      cleanup can take half an hour, and holding a pooled connection + row locks
- *      across it would starve the pool.
- *  (c) `recordActivity` runs OUTSIDE any transaction (its own connection; it deadlocks
- *      pglite otherwise) and is fire-and-forget.
- *
- * NEVER throws. It is called detached (a manual sweep) or from a tick that has nobody
- * to tell, so a thrown error would have no caller left to catch it — the failure's
- * home is the run row's `error`, which the history renders verbatim and the live
- * subscription pushes to whoever is watching. Returns the settled run either way.
+ * The executor's SECOND half — the slow one: dial the host, then settle the run
+ * row that {@link beginCleanupRun} already wrote. NEVER throws.
  */
 async function finishCleanupRun(args: {
   runId: string;
@@ -762,10 +653,7 @@ async function finishCleanupRun(args: {
       // Per-app retention wins over the instance number wherever an app names one
       // - that is what keeps its rollbacks alive. See rollbackKeepBySlug.
       keepPerSlug: await rollbackKeepBySlug(serverId),
-      // What `leftover_app_files` judges a directory against. Sent whenever the
-      // scope is on; an agent too old for it has both dropped for it
-      // (`dropUnsupportedScopes`), and an empty list makes the agent skip rather
-      // than guess.
+      // What `leftover_app_files` judges a directory against.
       liveSlugs: policy.scopes.includes("leftover_app_files")
         ? await liveStackSlugs()
         : [],
@@ -779,8 +667,7 @@ async function finishCleanupRun(args: {
   } catch (e) {
     // Every failure funnels here: unknown/unprovisioned server, AgentUnreachableError,
     // AgentCleanupUnsupportedError ("update the agent on this server"), a docker error
-    // the agent reported. runAgentCleanup has already mapped UNIMPLEMENTED, so the
-    // message is the one the UI should show.
+    // the agent reported.
     failure = e instanceof Error ? e.message : String(e);
   }
 
@@ -868,9 +755,8 @@ async function finishCleanupRun(args: {
   }
 
   // LAST, after the row, its items and the retention pass are all settled: whoever is
-  // watching re-reads a consistent history, and the row they were watching spin is the
-  // one that just changed. Publishing earlier would race the reader against our own
-  // pruner.
+  // watching re-reads a consistent history, and the row they were watching spin is
+  // the one that just changed.
   publishCleanupRunsChanged();
   return finished;
 }
@@ -880,20 +766,14 @@ async function finishCleanupRun(args: {
 /* ------------------------------------------------------------------ */
 
 /**
- * The manual sweeps still working their host, runId → the promise that settles them.
- * The DURABLE record of an in-flight sweep is the `running` run row (that is what
- * {@link listServersWithCleanupRunning}, the scheduler and the boot reconcile read);
- * this map exists only so a caller in the same process can WAIT for one — which in
- * practice means the tests, since a detached sweep is exactly the thing no request
- * waits on.
+ * The manual sweeps still working their host, runId → the promise that settles
+ * them.
  */
 const detachedSweeps = new Map<string, Promise<void>>();
 
 /**
- * Run the slow half detached: nobody awaits it, so the HTTP request that started the
- * sweep has already answered. Failures cannot propagate to a caller that is gone —
- * they are already on the run row (rendered verbatim in the history and pushed live),
- * so here they are only logged for the server's own operator.
+ * Run the slow half detached: nobody awaits it, so the HTTP request that started
+ * the sweep has already answered.
  */
 function detachSweep(runId: string, work: Promise<CleanupRunDTO>): void {
   const tracked = work
@@ -919,10 +799,9 @@ function detachSweep(runId: string, work: Promise<CleanupRunDTO>): void {
 }
 
 /**
- * Test-only: wait for every detached sweep this process started. Production code must
- * never call it — the whole point of a detached sweep is that no request waits on one.
- * Loops because settling a sweep can start nothing new, but a test may have kicked off
- * several and one can finish while another is still dialling.
+ * Test-only: wait for every detached sweep this process started. Production code
+ * must never call it — the whole point of a detached sweep is that no request
+ * waits on one.
  */
 export async function __settleCleanupSweeps(): Promise<void> {
   while (detachedSweeps.size > 0) {
@@ -935,22 +814,7 @@ export async function __settleCleanupSweeps(): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 /**
- * START a sweep of one server NOW, with the instance policy's scopes. Interactive and
- * deliberately per-server: it ignores {@link dockerCleanupExcludedServers}, because an
- * operator standing in front of the button has already made the decision that list
- * exists to encode, and it runs whether or not the SCHEDULE is enabled.
- *
- * RETURNS AS SOON AS THE RUN IS ON THE RECORD — it does not wait for the host. A
- * `docker rmi` sweep of a full disk is minutes of work, and the honest UI for minutes
- * of work is a live row in the history, not a spinner that holds a click hostage and
- * throws its result away the moment the admin navigates elsewhere. The returned run is
- * `running`; the sweep goes on regardless of what the browser does next, and every
- * transition is published on `cleanupRunsChanged`.
- *
- * So the only failures it THROWS are the ones that happen before any host was touched
- * — not an admin, unknown server, nothing selected to reclaim, a sweep already running
- * there. Everything the host can fail at (unreachable, unprovisioned, an agent too old)
- * lands in the run row's `error` instead, where it survives the page being closed.
+ * START a sweep of one server NOW, with the instance policy's scopes.
  */
 export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   await requireInstanceAdmin();
@@ -958,15 +822,13 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   // UNSCOPED resolve, and correct now that the gate is instance-admin: this page
-  // lists every host (a server reserved for another team fills the same disk), and
-  // an instance admin already administers all of them. It was team-scoped while a
-  // per-team `manage_infra` could reach here — that was the escalation to block.
+  // lists every host (a server reserved for another team fills the same disk), and an
+  // instance admin already administers all of them.
   const server = await getServerById(serverId);
   if (!server) throw new Error("Server not found");
-  // Same refusal the scheduler makes, and it has to be here too: this is the
-  // MANUAL sweep, reachable from the API and from MCP, and reclaiming disk on a
-  // migration source would delete the other platform's images while it is running
-  // on them.
+  // Same refusal the scheduler makes, and it has to be here too: this is the MANUAL
+  // sweep, reachable from the API and from MCP, and reclaiming disk on a migration
+  // source would delete the other platform's images while it is running on them.
   if (server.importOnly)
     throw new Error(
       `${server.name} is a migration source - Deplo does not reclaim disk on a ` +
@@ -984,8 +846,6 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   // The same never-stack-sweeps rule the scheduler follows, and it matters more now
   // that the button answers instantly: two concurrent `docker rmi` sweeps would race
   // each other's candidate lists, and a second click is far likelier when the first
-  // one no longer blocks. The check is against the durable `running` rows, so it also
-  // holds across control-plane instances.
   if ((await listServersWithCleanupRunning()).includes(serverId)) {
     throw new Error(`A cleanup is already running on ${server.name}`);
   }
@@ -1011,15 +871,9 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
 }
 
 /**
- * The session-free twin of {@link runCleanupNow}, for the scheduler tick. There is no
- * request context to gate on: the tick has already claimed the cross-process lease and
- * read the enabled policy straight off the store, so its authority is that policy row
- * (written earlier by an instance admin) and a synthetic "Scheduler" actor.
- *
- * AWAITED, unlike the manual sweep: the tick drains its due hosts one at a time on
- * purpose (one host's docker at a time, and the lease is renewed between them), so
- * here the caller genuinely is the thing that must wait. NEVER throws — the failure is
- * already on the run row, and one unreachable host must not abort the rest of the tick.
+ * The session-free twin of {@link runCleanupNow}, for the scheduler tick. NEVER
+ * throws — the failure is already on the run row, and one unreachable host must
+ * not abort the rest of the tick.
  */
 export async function runScheduledCleanup(
   serverId: string,
@@ -1058,10 +912,6 @@ const deploySweepInFlight = new Set<string>();
  * Snapshot of {@link deploySweepInFlight}, for the scheduler's never-stack-sweeps
  * check: the deploy-time sweep writes NO run row on purpose, so without this
  * in-process signal a tick could start a scheduled sweep on a host whose images a
- * deploy-sweep is mid-`rmi` on — harmless on disk (the agent skips a failed rmi and
- * moves on) but it would land a cosmetic error line in the run history. In-memory is
- * the right scope: the deploy queue and the scheduler run in the same process, and
- * on a horizontally-scaled control plane the lease already serializes the ticks.
  */
 export function serversWithDeploySweepInFlight(): string[] {
   return [...deploySweepInFlight];
@@ -1069,31 +919,8 @@ export function serversWithDeploySweepInFlight(): string[] {
 
 /**
  * How many app images each app on `serverId` must keep - its rollback depth plus
- * the one that is live.
- *
- * The `+ 1` is the whole arithmetic of the feature: "keep 3 rollbacks" means three
- * builds you can go BACK to, and the build currently running is not one of them.
- * An app at 0 lands on 1, which is also the floor the agent enforces anyway (a
- * stopped app must stay startable without a rebuild).
- *
- * Keyed by SLUG, because the host groups its images by the `deplo.slug` label. A
- * pull request preview stacks under `<slug>__pr-<n>` and is deliberately absent: a
- * preview is torn down with its pull request and is not a rollback target, so it
- * keeps falling back to the instance-wide scalar.
- *
- * ONLY apps that can actually be rolled back are named. A compose stack cannot be
- * (each service brings its own image, so there is no single one to re-run) and a
- * prebuilt `docker-image` source pins nothing - naming either would hold four
- * images per service on the host in exchange for a button that is never offered.
- * They fall back to the instance scalar, exactly as before the feature existed.
- *
- * Not team-scoped, and it must not be: a server is shared cross-team infra and one
- * sweep covers every app on it. This is a HOST fact, assembled behind the
- * instance-admin gate the policy already sits behind.
- *
- * Exported for tests. The `+ 1` is the whole arithmetic of the feature and it is
- * off-by-one bait: get it wrong and every app silently keeps one rollback fewer
- * than its setting promises, which nobody notices until they need the oldest one.
+ * the one that is live. An app at 0 lands on 1, which is also the floor the agent
+ * enforces anyway (a stopped app must stay startable without a rebuild).
  */
 export async function rollbackKeepBySlug(
   serverId: string,
@@ -1112,10 +939,7 @@ export async function rollbackKeepBySlug(
   const out: Record<string, number> = {};
   for (const r of rows) {
     if (!appBuildsItsOwnImage({ ...r, repo: r.repoUrl })) continue;
-    // Clamped at BOTH ends, not just the floor. The setter already bounds what it
-    // writes, but the column carries no CHECK, and the wire field is an int32 - a
-    // value that got in some other way would not fail loudly here, it would
-    // overflow on the way to the agent.
+    // Clamped at BOTH ends, not just the floor.
     out[r.slug] = Math.min(
       MAX_ROLLBACK_KEEP + 1,
       Math.max(1, Math.trunc(r.keep) + 1),
@@ -1125,26 +949,9 @@ export async function rollbackKeepBySlug(
 }
 
 /**
- * Every stack slug this Deplo still knows about — the proof
- * `leftover_app_files` rests on, and the one list that decides whether a
- * directory on a host is somebody's configuration or litter.
- *
- * Three sources, and all three are load-bearing: an App's `slug`, the deploy key
- * of each pull request PREVIEW (`<slug>__pr-<n>`, a stack of its own with its own
- * files directory) and a database's `host` (`db-<name>`, the slug its stack is
- * rerouted under). Miss one and the sweep deletes a live stack's config files.
- *
- * INSTANCE-WIDE, deliberately: filtering by `server_id` would be tighter and
- * wrong, because a stack MOVING between hosts is written on the destination
- * before the row points there and torn down on the source after - a per-host list
- * would call its files leftover in exactly that window. It is not team-scoped
- * either, for the same reason `rollbackKeepBySlug` is not: a host is cross-team
- * infra and this is assembled behind the instance-admin gate the policy sits
- * behind.
- *
- * Exported for tests: an empty answer makes the agent SKIP the scope, so the one
- * failure that matters (a query that silently returns nothing) is safe by
- * construction - but a MISSING KIND is not, and that is what a test pins.
+ * Every stack slug this Deplo still knows about — the proof `leftover_app_files`
+ * rests on, and the one list that decides whether a directory on a host is
+ * somebody's configuration or litter.
  */
 export async function liveStackSlugs(): Promise<string[]> {
   const db = getDb();
@@ -1165,26 +972,8 @@ export async function liveStackSlugs(): Promise<string[]> {
 
 /**
  * Remove the superseded app images a deploy just left behind on `serverId` — the
- * deploy-time half of app-image retention. The nightly sweep alone cannot keep a
- * fast-iterating host inside its disk: a day of redeploys at 1-2GB per image
- * accumulates tens of GB BETWEEN ticks (measured: 24 superseded images / 39GB in
- * 30h on one host), so the moment that mints a new image is the moment the old
- * ones beyond `keepImagesPerApp` must go.
- *
- * Scope is `unused_app_images` ONLY — the cache scopes stay on the schedule where
- * their age filter belongs. The operator's controls are respected: the scope
- * being unchecked in the policy turns this off, and an excluded server is skipped
- * (exclusion means "hands off this host's Docker", and nobody is standing in
- * front of a button here — unlike {@link runCleanupNow}, which ignores the list).
- *
- * Writes NO run row and NO activity: this is deploy hygiene, as much a part of
- * the deploy as removing the old container — recording ~26 rows/day per busy app
- * would evict the real history (capped at 3×servers) and spam the feed. The
- * deploy log carries the outcome instead (the caller logs what we return).
- *
- * Session-free and NEVER throws: it runs after the deploy already succeeded, and
- * a failed sweep must not fail a shipped deploy. Returns the freed bytes (0 when
- * skipped or failed) so the deploy log can mention it.
+ * deploy-time half of app-image retention. Scope is `unused_app_images` ONLY — the
+ * cache scopes stay on the schedule where their age filter belongs.
  */
 export async function sweepSupersededAppImages(
   serverId: string,
@@ -1205,10 +994,9 @@ export async function sweepSupersededAppImages(
       // (count-based retention + their fixed deploy grace decide).
       minAgeHours: policy.minAgeHours,
       keepImagesPerApp: policy.keepImagesPerApp,
-      // THE sweep that decides whether a rollback is possible: this one runs right
-      // after the deploy that superseded the previous image, so if it reads the
-      // instance scalar instead of the app's own depth, the rollback target is gone
-      // before anybody could have asked for it.
+      // THE sweep that decides whether a rollback is possible: this one runs right after
+      // the deploy that superseded the previous image, so if it reads the instance scalar
+      // instead of the app's own depth, the rollback target is gone before anybody could
       keepPerSlug: await rollbackKeepBySlug(serverId),
       // Images only here: the files sweep belongs on the schedule, where an app
       // deleted an hour ago is already past its grace window.
@@ -1232,20 +1020,9 @@ export async function sweepSupersededAppImages(
 }
 
 /**
- * Settle cleanup runs orphaned by a control-plane restart — the cleanup analogue of
- * `reconcileInFlightBackupRuns`. A run is persisted `running` before a call that can
- * take half an hour and is only flipped at the terminal transaction; if the process
- * dies in between, the row is stuck `running` forever — and the scheduler's
- * never-stack-runs check would then skip that server for good.
- *
- * Run once at boot (instrumentation.ts) and safe to call again: it only touches runs
- * older than {@link CLEANUP_ORPHAN_AFTER_MS}, so it can never race a live sweep. One
- * statement, so no transaction — unlike the backup reconcile there is no denormalized
- * `lastStatus` to settle alongside (the policy deliberately carries none: the runs ARE
- * the source of truth, so they cannot drift from themselves).
- *
- * Session-free by construction: a boot hook has no user to gate. It takes no input and
- * only settles rows that are already stranded.
+ * Settle cleanup runs orphaned by a control-plane restart — the cleanup analogue
+ * of `reconcileInFlightBackupRuns`. Session-free by construction: a boot hook has
+ * no user to gate.
  */
 export async function reconcileInFlightCleanupRuns(): Promise<number> {
   const cutoffIso = new Date(

@@ -1,51 +1,23 @@
 "use client";
 
 /**
- * Client-side watchdog for the connection to the web server hosting the panel.
- *
- * The in-memory state deliberately LATCHES: once the server is marked
- * unreachable it never flips back to "connected" on its own. Recovery always
- * goes through a full page reload — never an in-place un-latch — because a
- * reload is what guarantees a clean slate: dropped SSE subscriptions
- * resubscribe and any stale in-memory data is re-read from the server.
- *
- * That reload is no longer purely manual, though. While disconnected, the
- * ServerConnectionGuard notification both probes for the server's return
- * (`probeServerReachable`, the auto-reconnect loop) and reloads the moment it
- * answers, on top of still offering a manual "Retry now" button. The
- * notification doesn't lock the page — it only pauses navigation to other
- * routes, since a dead connection can't load one anyway.
- *
- * Detection has two feeds:
- *  - a periodic heartbeat (driven by ServerConnectionGuard) calling
- *    `checkServerConnection`;
- *  - data-layer clients calling `reportServerUnreachable` the moment a
- *    same-origin request fails at the network level, so the UI locks
- *    immediately instead of waiting for the next heartbeat tick.
- *
- * A single failed ping is never trusted: the check retries once after a short
- * delay so a transient blip doesn't freeze the whole panel.
+ * Client-side watchdog for the connection to the web server hosting the panel. The
+ * in-memory state deliberately LATCHES: once the server is marked unreachable it
+ * never flips back to "connected" on its own.
  */
 
 export type ServerConnectionState = "connected" | "disconnected";
 
 /**
- * The ONE user-facing sentence for anything the panel refuses (or loses)
- * because the web server can't be reached. Every client that talks to the
- * server surfaces this instead of the raw failure — "Failed to fetch", or the
- * `Unexpected token '<', "<!DOCTYPE "… is not valid JSON` that a reverse
- * proxy's HTML error page produces when it lands where JSON was expected.
- * Neither means anything to a user, and both look like a bug in deplo.
+ * The ONE user-facing sentence for anything the panel refuses (or loses) because
+ * the web server can't be reached.
  */
 export const SERVER_UNREACHABLE_MESSAGE =
   "Can’t reach the server — navigation and actions are paused until the connection is back.";
 
 /**
  * Thrown in place of whatever low-level failure actually happened when a
- * same-origin request dies because the server is gone. Carries
- * `SERVER_UNREACHABLE_MESSAGE`, so every call site that already renders
- * `error.message` / `res.error` in a toast shows the custom copy with no
- * change of its own.
+ * same-origin request dies because the server is gone.
  */
 export class ServerUnreachableError extends Error {
   constructor(message: string = SERVER_UNREACHABLE_MESSAGE) {
@@ -75,9 +47,7 @@ export function getServerConnectionSnapshot(): ServerConnectionState {
 
 /**
  * True once the state has latched — i.e. the notification is up, navigation is
- * paused, and any request a client fires can only fail. Clients check this
- * BEFORE hitting the network so a click lands on the custom message instead of
- * a five-second timeout followed by a raw parse error.
+ * paused, and any request a client fires can only fail.
  */
 export function isServerDisconnected(): boolean {
   return state === "disconnected";
@@ -133,10 +103,7 @@ export function checkServerConnection(): Promise<void> {
 
 /**
  * Single reachability probe for the auto-reconnect loop the guard runs while
- * locked. Unlike `checkServerConnection` this neither retries nor latches the
- * state: a lone success is enough of a signal for the caller (the overlay) to
- * reload the page, and the freshly-loaded panel re-verifies the connection from
- * scratch — so a server that answered one probe then flapped is caught again.
+ * locked.
  */
 export function probeServerReachable(): Promise<boolean> {
   return ping();
@@ -155,10 +122,8 @@ export function reportServerUnreachable(): void {
 }
 
 /**
- * Test-only: wait out any check still in flight — so its delayed second ping
- * can't latch a LATER test — then drop the latch, leaving a clean "connected"
- * module. Never called by the app: the app's only way back to "connected" is a
- * full reload.
+ * Test-only: wait out any check still in flight — so its delayed second ping can't
+ * latch a LATER test — then drop the latch, leaving a clean "connected" module.
  */
 export async function __resetServerConnectionForTests(): Promise<void> {
   // A check's `finally` can chain one more (the recheck), so drain until none.

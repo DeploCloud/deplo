@@ -25,20 +25,7 @@ import type {
 /**
  * The ONE relational-rows ↔ domain-objects mapping for the backups tables
  * (relational-store PLAN §3 cut-set (d) / §2 the data aggregate): `databases`,
- * `backup_destination`, `backups`, `backup_runs`. Every reader and writer in the data
- * layer (`lib/data/{databases,s3,backups}.ts`) goes through here, so reads and
- * writes can't drift on how a row folds into a domain object — the same anti-drift
- * seam `app-graph-rows.ts` is for the project graph and `infra-rows.ts` is for
- * the infrastructure tables.
- *
- * Pure — no `server-only`, no store, no db handle — so a `server-only` module can
- * import it freely. These four collections are FLAT (no nested
- * objects, lists, or junctions), so each mapping is a column↔field rename; the
- * load-bearing detail is the `seq` asymmetry: `BackupRun` (the domain type) has no
- * `seq`, but `backup_runs` carries a DB-generated `bigint identity seq` (PLAN §5).
- * {@link backupRunToRow} therefore NEVER writes `seq` (the DB assigns it in
- * insertion order); {@link assembleBackupRun} drops it (the domain object never
- * carries it — retention reads it via a dedicated projection, not the DTO).
+ * `backup_destination`, `backups`, `backup_runs`.
  */
 
 export type DatabaseRow = InferSelectModel<typeof databases>;
@@ -94,11 +81,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
 }
 
 /**
- * Reassemble a `databases` row into a {@link Database}.
- *
- * `mounts` comes from the child table and is NOT on the row, so it is a
- * parameter: a caller that did not read the children passes nothing and gets an
- * empty list, which is what almost every database has. The one caller that must
+ * Reassemble a `databases` row into a {@link Database}. The one caller that must
  * pass them is the one whose result is rendered into a stack.
  */
 export function assembleDatabase(
@@ -140,11 +123,6 @@ export function assembleDatabase(
 
 /**
  * Explode a {@link BackupDestination} into its `backup_destination` row.
- *
- * The kind-specific halves stay NULL rather than empty-string: the DB CHECK
- * (`backup_destination_kind_shape`) reads them, so an `s3` row carrying a stray
- * `""` server id, or a `server` row with an empty bucket, would be rejected at
- * write time — which is exactly what should happen.
  */
 export function destinationToRow(
   d: BackupDestination,
@@ -265,9 +243,7 @@ export function assembleBackup(row: BackupRow): Backup {
 /* ------------------------------------------------------------------ */
 
 /**
- * Explode a {@link BackupRun} into its `backup_runs` row. NEVER writes `seq` — it
- * is a `bigint identity` the DB assigns in insertion order (PLAN §5), so a copy /
- * insert in source-array order reproduces the run history's order. (`seq` is
+ * Explode a {@link BackupRun} into its `backup_runs` row. (`seq` is
  * `generatedAlwaysAsIdentity`, so even passing it would be rejected.)
  */
 export function backupRunToRow(r: BackupRun): BackupRunInsert {

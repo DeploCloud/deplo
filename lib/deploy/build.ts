@@ -122,24 +122,16 @@ import { mountOptions, parseMountPropagation } from "../apps/volume-model";
 
 /**
  * The owning server id for a DEPLOY KEY's app — its lifecycle verbs run on that
- * server's agent (every app is agent-backed now, the host running Deplo
- * included). Null for an unknown key / an app whose server row is missing.
- *
- * The key → app resolution is STRUCTURAL, not a query: a slug is `[a-z0-9-]`, so
- * everything before the first `__` is the app slug and nothing else can be. That
- * is why a pull request preview needs no extra column, index or join to find its
- * host — and why every existing caller, which passes a bare slug, is unaffected.
+ * server's agent (every app is agent-backed now, the host running Deplo included).
  */
 async function owningServerIdForDeployKey(
   deployKey: string,
 ): Promise<string | null> {
   const p = await loadAppGraphBySlug(appSlugFromDeployKey(deployKey));
   if (!p) return null;
-  // A preview may be pinned to a machine of its own: `startDeployment` sends it
-  // to `preview_server_id ?? server_id`, so every lifecycle verb has to read the
-  // same column. Reading only `server_id` dialed the PRODUCTION host, where
-  // `compose down` on a project that isn't there succeeds, so the teardown
-  // stamped `torn_down_at` while the stack lived on forever on the preview host.
+  // A preview may be pinned to a machine of its own: `startDeployment` sends it to
+  // `preview_server_id ?? server_id`, so every lifecycle verb has to read the same
+  // column.
   let serverId = p.serverId;
   if (prNumberFromDeployKey(deployKey) !== null) {
     const rows = await getDb()
@@ -165,10 +157,7 @@ function log(depId: string, level: LogLine["level"], text: string): void {
 }
 
 /**
- * Patch a deployment row. Returns whether a row was written. With
- * `onlyIfNotCanceled`, the UPDATE is a compare-and-swap (`... AND status <>
- * 'canceled'`) so it never clobbers a "Stop build" that landed first — the caller
- * uses the `false` return to settle the app instead of the outcome.
+ * Patch a deployment row.
  */
 async function setDep(
   depId: string,
@@ -210,12 +199,6 @@ async function setDep(
 
 /**
  * What a running deploy writes its LIVE state onto.
- *
- * A production deploy owns the App's own `status` / `production_url`. A pull
- * request preview owns its `app_previews` row instead and must never write to
- * the App: doing so would turn the production app's badge orange for somebody
- * else's pull request, and would repoint the app at a host the reaper deletes
- * when that pull request closes.
  */
 type DeployTarget = {
   appId: string;
@@ -229,11 +212,8 @@ type DeployTarget = {
 );
 
 /**
- * The bits of a pull request preview a running deploy needs: the host it routes
- * on and the certificate provider that host was minted with. Store-direct (no
- * auth) like the rest of this module — the deploy engine runs with no session.
- * Null when the row is gone (the pull request closed mid-build), which the
- * caller treats as "deploy as production would", never as a crash.
+ * The bits of a pull request preview a running deploy needs: the host it routes on
+ * and the certificate provider that host was minted with.
  */
 async function loadPreviewForDeploy(previewId: string): Promise<{
   id: string;
@@ -315,10 +295,6 @@ async function setDeployState(
 
 /**
  * A user "Stop build" won: log it and settle the app to `idle` ("Stopped").
- * The build job is fire-and-forget with no agent-side abort, so a build already
- * running on the host may finish in the background — its container is left as-is
- * (a later Start/Redeploy reconciles it); we only guarantee its result is never
- * deployed and never overwrites the `canceled` deployment status.
  */
 async function markStopped(depId: string, target: DeployTarget): Promise<void> {
   log(
@@ -326,11 +302,7 @@ async function markStopped(depId: string, target: DeployTarget): Promise<void> {
     "warn",
     "Build stopped by user — result discarded. A build already running on the host may finish in the background; its output is not deployed.",
   );
-  // Settle ONLY if this canceled deploy is still its owner's current one. A
-  // newer deploy may have superseded it while this stale job wound down (or since
-  // the cancel already settled the owner) — settling then would clobber the
-  // newer build's "building"/"queued" back to idle. Scoped UPDATE → 0 rows when
-  // superseded, so the newer deploy keeps ownership of the status.
+  // Settle ONLY if this canceled deploy is still its owner's current one.
   const settled =
     target.kind === "preview"
       ? await getDb()
@@ -358,13 +330,7 @@ async function markStopped(depId: string, target: DeployTarget): Promise<void> {
 
 /**
  * Atomically write a deployment's terminal outcome UNLESS a "Stop build" already
- * claimed the row. `cancelDeployment` flips the row to `canceled` on another
- * connection while this job keeps running; the write is a compare-and-swap
- * (setDep `onlyIfNotCanceled`), so a cancel that landed at ANY point before it
- * wins — 0 rows match, the deployment stays `canceled`, and the app settles
- * to `idle`. Returns true when the outcome was applied (the caller may then run
- * its success side effects — the ready log, the data-migration hook), false when
- * the cancel won and the caller must skip them.
+ * claimed the row.
  */
 async function commitOutcome(
   depId: string,
@@ -381,13 +347,10 @@ async function commitOutcome(
     return false;
   }
   await setDeployState(target, appPatch);
-  // Every terminal outcome of every deploy funnels through here, so this one
-  // hook covers success, build failure, an unreachable agent, an agent too old
-  // and a thrown error, on both the single-image and the compose path — and,
-  // since previews share the path, a pull request build too. A preview reuses
-  // the SAME alert keys as production rather than minting its own: what a
-  // subscriber wants to know is "a build of this app failed", and the pull
-  // request number in the title is what tells the two apart.
+  // Every terminal outcome of every deploy funnels through here, so this one hook
+  // covers success, build failure, an unreachable agent, an agent too old and a
+  // thrown error, on both the single-image and the compose path — and, since previews
+  // share the path, a pull request build too.
   const ok = depPatch.status === "ready";
   const what =
     target.kind === "preview"
@@ -426,9 +389,8 @@ async function commitOutcome(
 /**
  * Deploy-time image retention: drop the superseded images beyond the policy's
  * keep-count on this deploy's server NOW, not at the next nightly sweep — a
- * fast-iterating app mints gigabytes of tagged-but-dead images between ticks
- * (see {@link sweepSupersededAppImages}). Runs after the deploy is already
- * `ready`; never throws, and only speaks up in the log when it freed something.
+ * fast-iterating app mints gigabytes of tagged-but-dead images between ticks (see
+ * {@link sweepSupersededAppImages}).
  */
 async function sweepAfterDeploy(
   depId: string,
@@ -464,11 +426,8 @@ async function settleIfCanceled(
 }
 
 /**
- * Whether this build reads the owning server's build cache, and the line the
- * build log opens with when it doesn't. Two ways to end up cache-less: the app's
- * Build cache setting is off (every build), or a manual "Clear build cache" armed
- * the one-shot (this build only). Saying WHICH in the log matters — "why did my
- * deploy take four minutes" has two different answers.
+ * Whether this build reads the owning server's build cache, and the line the build
+ * log opens with when it doesn't.
  */
 export function noCacheForDeploy(build: {
   buildCache: boolean;
@@ -503,12 +462,8 @@ export async function consumeCacheClear(appId: string): Promise<void> {
 }
 
 /**
- * Set an auto-detected logo ONLY when the app has none yet — a conditional
- * `WHERE logo IS NULL` UPDATE. The NULL guard is the guarantee that a template
- * default (a `/templates/...` value) or any logo the user set/cleared is never
- * clobbered by detection. No-op on a null/empty logo. (Inlined here rather than
- * importing data/apps' applyAutoLogoIfUnset to avoid a build↔apps import
- * cycle.)
+ * Set an auto-detected logo ONLY when the app has none yet — a conditional `WHERE
+ * logo IS NULL` UPDATE.
  */
 async function setLogoIfUnset(
   appId: string,
@@ -525,10 +480,8 @@ async function setLogoIfUnset(
 
 /**
  * Auto-detect a display logo from the source tree the deploy just extracted (an
- * upload build) and set it when the app has none yet. Scanning reuses the
- * tree already on disk (no second extraction of an attacker-controlled archive)
- * and runs inside the one-deploy-at-a-time flow, so it's serialized and
- * deploy-gated. Best-effort — never fails or delays the deploy.
+ * upload build) and set it when the app has none yet. Best-effort — never fails or
+ * delays the deploy.
  */
 async function autoDetectLogoFromTree(
   appId: string,
@@ -545,14 +498,9 @@ async function autoDetectLogoFromTree(
 }
 
 /**
- * Auto-detect a display logo from a GitHub repo's own files via the API and set
- * it when the app has none yet. GitHub repos are cloned on the AGENT, so the
- * control plane can't scan a local tree — it reads the repo over the API here,
- * on every deploy (guarded by the caller's null check, so once a logo exists no
- * API call is made). This is what makes a github/git app get an icon at all,
- * and covers apps created before the feature (they pick one up on redeploy).
- * FIRE-AND-FORGET: a GitHub round-trip must never delay or hang the deploy; the
- * logo lands a moment later and pushes to live subscribers.
+ * Auto-detect a display logo from a GitHub repo's own files via the API and set it
+ * when the app has none yet. This is what makes a github/git app get an icon at
+ * all, and covers apps created before the feature (they pick one up on redeploy).
  */
 function autoDetectRepoLogo(
   appId: string,
@@ -567,16 +515,9 @@ function autoDetectRepoLogo(
 }
 
 /**
- * Store the framework recognised in an app's source. Unlike the logo's
- * NULL-guarded write, this OVERWRITES: nobody picks this value, so the newest
- * read of the source is by definition the truthful one — including a null, which
- * is how an app that moved to a Dockerfile, a prebuilt image or a different
- * framework stops advertising the old one.
- *
- * The unchanged case is a ZERO-ROW update, so a live subscriber is only nudged
- * when the answer actually changed. Clearing is spelled `is not null` rather than
- * `is distinct from <null>` — the same split `updateAppLogo` makes — because an
- * untyped NULL parameter is not something to hand Postgres.
+ * Store the framework recognised in an app's source. Clearing is spelled `is not
+ * null` rather than `is distinct from <null>` — the same split `updateAppLogo`
+ * makes — because an untyped NULL parameter is not something to hand Postgres.
  */
 async function setFramework(
   appId: string,
@@ -601,8 +542,6 @@ async function setFramework(
  * Whether THIS deploy can recognise a framework at all: only the auto-detecting
  * builders (Nixpacks / Railpack — the one gate, shared with the API and the UI)
  * and only for a source whose files Deplo can read (a repo, an uploaded archive).
- * Everything else — a compose stack, a prebuilt image, a hand-written Dockerfile —
- * is the user having already said exactly how the app is built.
  */
 function canRecognizeFramework(app: {
   source: string;
@@ -613,10 +552,7 @@ function canRecognizeFramework(app: {
 }
 
 /**
- * Recognise the framework in a GitHub repo and store it. Reads the repo over the
- * API (the tree is cloned on the agent, never here), so it is FIRE-AND-FORGET
- * like the logo arm: a GitHub round-trip must not delay a deploy, and the badge
- * lands a moment later on live subscribers.
+ * Recognise the framework in a GitHub repo and store it.
  */
 function autoDetectRepoFramework(
   appId: string,
@@ -629,10 +565,8 @@ function autoDetectRepoFramework(
 }
 
 /**
- * Recognise the framework in the tree this deploy just extracted (the upload
- * arm) and store it. Reuses the tree already on disk — one directory read plus
- * the manifest — so it is awaited rather than detached, and never re-extracts an
- * attacker-controlled archive.
+ * Recognise the framework in the tree this deploy just extracted (the upload arm)
+ * and store it.
  */
 async function autoDetectFrameworkFromTree(
   appId: string,
@@ -649,28 +583,15 @@ async function autoDetectFrameworkFromTree(
 /**
  * When to re-ask a freshly deployed app for its icon. `compose up` returns once
  * the containers are RUNNING, which is well before an app is SERVING: a database
- * migration, a first-boot setup, a JIT warm-up all sit between the two. Asking
- * once would mean most compose apps never get an icon until some later redeploy
- * happened to catch them awake.
- *
- * Cumulative ~50s after the deploy, which covers the ordinary boot of the apps
- * people actually deploy this way. Each attempt is one HTTP GET on the host, and
- * only for an app that still has no logo — an app that got one on the first try
- * (or never gets one) costs nothing more.
+ * migration, a first-boot setup, a JIT warm-up all sit between the two.
  */
 const ICON_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
 
 /**
- * Auto-detect a display logo for a COMPOSE STACK on its owning host: the app's
- * own files first, then — the case that covers most compose apps — the icon the
+ * Auto-detect a display logo for a COMPOSE STACK on its owning host: the app's own
+ * files first, then — the case that covers most compose apps — the icon the
  * running app SERVES, since a stack of prebuilt images keeps its favicon inside
  * the image where no file walk can reach it.
- *
- * Runs AFTER the agent deploy, so the mount files are on disk and the stack is
- * up before anything is read, and FIRE-AND-FORGET like the repo arm: an agent
- * round trip must never delay a deploy, and the logo pushes to live subscribers
- * a moment later. Guarded on the app having no logo yet, so a template default
- * is kept and an app that already has an icon costs zero RPCs per deploy.
  */
 function autoDetectComposeLogo(
   appId: string,
@@ -716,10 +637,9 @@ interface PreviewEnvContext {
 }
 
 /**
- * The `DEPLO_*` variables a preview's containers get for free — enough for an
- * app to know it is a preview and to build absolute self-links (an OAuth
- * callback, a canonical URL) without the user configuring anything per pull
- * request. Injected BELOW the user's own vars, so any key they set wins.
+ * The `DEPLO_*` variables a preview's containers get for free — enough for an app
+ * to know it is a preview and to build absolute self-links (an OAuth callback, a
+ * canonical URL) without the user configuring anything per pull request.
  */
 function previewEnvExtras(ctx: PreviewEnvContext): Record<string, string> {
   return {
@@ -734,15 +654,8 @@ function previewEnvExtras(ctx: PreviewEnvContext): Record<string, string> {
 
 /**
  * Decrypted env for the stack being deployed: the app's own vars targeting this
- * runtime, plus every shared var the app opted into (linked) that also targets
- * it, plus instance globals. Selection lives in the shared `resolveEnvEntries`
- * seam; we only decrypt here.
- *
- * For a PREVIEW the seam also folds the app's preview-only overrides on top
- * (highest precedence), and this function adds the `DEPLO_*` context vars. A
- * preview of a FORK additionally drops every `secret`-typed entry: the pull
- * request's code is attacker-authored, and a preview must not be the way this
- * app's credentials leave the box. Plain values still flow, so most apps boot.
+ * runtime, plus every shared var the app opted into (linked) that also targets it,
+ * plus instance globals.
  */
 async function appEnv(
   appId: string,
@@ -774,12 +687,8 @@ async function appEnv(
     keep(instanceGlobals),
     keep(previewOverrides),
   )) {
-    // STRICT at the deploy edge. This is the value that becomes the container's
-    // environment, and `decryptSecret`'s "" would have handed the app a blank
-    // DATABASE_URL or API key and let it boot - a production incident that
-    // looks like an application bug and nothing in deplo would have said a
-    // word. Refusing to deploy is the only honest answer to a secret we cannot
-    // read.
+    // STRICT at the deploy edge. Refusing to deploy is the only honest answer to a
+    // secret we cannot read.
     out[e.key] = decryptSecretOrThrow(e.valueEnc, `The variable ${e.key}`);
   }
   return out;
@@ -807,14 +716,8 @@ async function loadPreviewEnvOverrides(
 
 /**
  * The NAMES of the env vars a production deploy resolves for a project — exactly
- * the keys `appEnv` would carry (same selection seam), but WITHOUT decrypting
- * any value. These are injected into a compose stack's `environment:` as bare
- * `- KEY` pass-throughs (`buildComposeStack`'s `envKeys`): a settings var reaches
- * the containers without the user hand-writing it, while the VALUE still rides
- * the `--env-file`. Deriving the keys from the same resolver guarantees we only
- * ever inject a key the env-file actually supplies (shared vars + instance
- * globals included), so an injected pass-through can never reference an undefined
- * var.
+ * the keys `appEnv` would carry (same selection seam), but WITHOUT decrypting any
+ * value.
  */
 async function appEnvKeys(
   appId: string,
@@ -865,33 +768,21 @@ export function renderCompose(opts: {
   appId: string;
   /**
    * The stack's DEPLOY KEY — what the files dir, the named volumes and the
-   * `deplo.slug` label are named after. Equal to the app slug for a production
-   * deploy (so the render stays byte-identical), `<slug>__pr-<n>` for a pull
-   * request preview. See {@link ./deploy-key}.
+   * `deplo.slug` label are named after.
    */
   deployKey: string;
   /**
    * What the `deplo.project` label carries — the value the telemetry stream
-   * buckets container stats by. Defaults to `appId`. A pull request preview
-   * passes its OWN id instead, which is what keeps its containers out of the
-   * App's live status, monitoring charts and console instance list; the owning
-   * app stays discoverable on the host through the extra `deplo.app` label
-   * emitted only in that case.
+   * buckets container stats by.
    */
   trackingId?: string;
   /** Public hostnames + per-domain port overrides, primary first. */
   routes: RoutableDomain[];
   env: Record<string, string>;
   /**
-   * User-managed volumes. A "named" volume (default) gets a top-level `volumes:`
-   * entry whose host name is namespaced per-project via `hostVolumeName`; a
-   * "service" bind renders its `projectPath` resolved against the project's
-   * isolated files dir; a "host" bind mount renders its `hostPath` directly as
-   * the source. Only NAMED volumes get a top-level entry — "service" and "host"
-   * are bind mounts (absolute source) and get none. Empty/absent (and no NAMED
-   * volumes) ⇒ NO `volumes:` keys are emitted, keeping the output byte-identical
-   * to the long-standing stack so a reroute of an unchanged routing set never
-   * restarts the container.
+   * User-managed volumes. Empty/absent (and no NAMED volumes) ⇒ NO `volumes:` keys
+   * are emitted, keeping the output byte-identical to the long-standing stack so a
+   * reroute of an unchanged routing set never restarts the container.
    */
   volumes?: {
     type?: "named" | "app" | "host";
@@ -904,29 +795,16 @@ export function renderCompose(opts: {
     propagation?: MountPropagation;
   }[];
   /**
-   * Whether to inject `PORT=<port>` into the container env. True for sources
-   * Deplo BUILDS (git/upload/dockerfile) — 12-factor apps bind
-   * to $PORT, so we tell the container where Traefik forwards. FALSE for a
-   * prebuilt docker image: that image is deployed as-is and its author already
-   * chose where it listens; injecting PORT silently overrides that listen
-   * address (e.g. an image that binds :8080 gets forced onto :3000). The routing
-   * target is unaffected — it comes from the Ports/Domains routing model
-   * (`expose.port`/per-domain `route.port`), not from this env var.
+   * Whether to inject `PORT=<port>` into the container env.
    */
   injectPort?: boolean;
   /**
    * App-wide HTTP Basic Auth htpasswd users (`user:$2b$…,user2:…`, raw
-   * single-`$`). When non-empty, a generated `basicauth` middleware is defined
-   * and prepended to every router's chain so ALL hostnames are gated. Empty/
-   * absent ⇒ no middleware (byte-identical to a project without basic auth). The
-   * `$`→`$$` compose escaping happens inside the router grammar.
+   * single-`$`).
    */
   basicAuthUsers?: string;
   /**
-   * Per-app resource caps (RAM/CPU/PIDs/…). Rendered as the `docker compose up`
-   * container keys (`mem_limit`/`cpus`/…) via `renderResourceLimitsYaml`. Null/
-   * absent (no limits) ⇒ NO keys are emitted, keeping the stack byte-identical
-   * to the historical no-limits output (the reroute contract).
+   * Per-app resource caps (RAM/CPU/PIDs/…).
    */
   resources?: ResourceLimits | null;
 }): string {
@@ -940,11 +818,7 @@ export function renderCompose(opts: {
   // stays isolated (never resolved against the stack dir by docker).
   const filesDir = stackFilesDir(deployKey);
   // Default PORT to the project's default container port so 12-factor apps
-  // (buildpacks, Nixpacks, Railpack) bind where Traefik forwards. A user-set
-  // PORT wins. Per-domain port overrides only change Traefik's target, not the
-  // single PORT the container is told to listen on. Skipped entirely for a
-  // prebuilt image (injectPort=false): it deploys as-is and owns its own listen
-  // address — see the injectPort docs above.
+  // (buildpacks, Nixpacks, Railpack) bind where Traefik forwards.
   const env = injectPort
     ? { PORT: String(port), ...opts.env }
     : { ...opts.env };
@@ -952,11 +826,9 @@ export function renderCompose(opts: {
   // port. The global web->websecure redirect is configured on the proxy, so no
   // per-router middleware is needed here.
   const labels = [
-    // Single-image production flavour: per-port grouping under the bare baseKey,
-    // the explicit `.service` label only when there's more than one router, and
-    // no `traefik.docker.network` label (the stack joins only `deplo`). This is
-    // the long-standing output — kept byte-identical so a reroute of an
-    // unchanged routing set never restarts the container.
+    // Single-image production flavour: per-port grouping under the bare baseKey, the
+    // explicit `.service` label only when there's more than one router, and no
+    // `traefik.docker.network` label (the stack joins only `deplo`).
     ...traefikRouterLabels({
       baseKey: name,
       routes,
@@ -980,11 +852,7 @@ export function renderCompose(opts: {
     ...(trackingId === appId ? [] : [`deplo.app=${appId}`]),
   ];
   // Each label is emitted as a JSON-encoded (⇒ valid YAML) double-quoted scalar
-  // rather than a raw `"${l}"`. For every label the corpus actually produces
-  // (no embedded quotes/newlines/backslashes) JSON.stringify yields byte-identical
-  // output — so the reroute contract holds — but a user-controlled label value
-  // (a Traefik middleware name, a basic-auth username) carrying a `"` or newline
-  // is escaped instead of breaking out of the scalar and injecting service keys.
+  // rather than a raw `"${l}"`.
   const labelsYaml = labels
     .map((l) => `      - ${JSON.stringify(l)}`)
     .join("\n");
@@ -995,14 +863,8 @@ export function renderCompose(opts: {
         .join("\n") +
       "\n"
     : "";
-  // Two volume fragments, each exactly "" when there are no volumes so the
-  // generated stack stays byte-identical to the no-volumes baseline (the reroute
-  // contract). A NAMED volume's service source is its docker alias and also gets
-  // a top-level entry pinning the per-project host name (namespaced so it can't
-  // collide with another team's on the shared daemon); compose creates it on
-  // first up and reuses it across redeploys. A HOST bind mount's source IS the
-  // host path and gets NO top-level entry (docker treats a "/"-prefixed source
-  // as a bind, not a named volume).
+  // Two volume fragments, each exactly "" when there are no volumes so the generated
+  // stack stays byte-identical to the no-volumes baseline (the reroute contract).
   const appVolsYaml = vols.length
     ? "    volumes:\n" +
       vols
@@ -1055,22 +917,12 @@ export function isInFlightStatus(s: Deployment["status"]): boolean {
 
 /**
  * Reconcile deployments orphaned by a control-plane restart (PLAN D5, Part-A
- * half). A deploy is fire-and-forget in Part A: its `runDeployment` job lives
- * only in the process that started it, so a restart mid-build leaves the row
- * stuck in `queued`/`building` forever with no job to finish it. On boot we mark
- * every such row `error` (and settle its project off `building`/`queued`),
- * cleanly, rather than letting a stale "building" lie indefinitely. Real
- * reconnection/replay — keeping the agent's build alive across a restart — is
- * Part B; Part A just refuses to leave a hung deploy that lies.
- *
- * Idempotent and safe to run once at startup. Returns the number reconciled.
+ * half).
  */
 export async function reconcileInFlightDeployments(): Promise<number> {
   const db = getDb();
   // Orphaned BUILDING deploys: the fire-and-forget job died with the process and
-  // there is no agent-side abort, so the row would lie "building" forever. Mark
-  // them error and settle their app off the transient build state. (Scoped to
-  // `building` only now — queued rows are handled durably below.)
+  // there is no agent-side abort, so the row would lie "building" forever.
   const orphaned = await db
     .select({
       id: deploymentsTable.id,
@@ -1125,11 +977,7 @@ export async function reconcileInFlightDeployments(): Promise<number> {
     );
   }
   // QUEUED deploys are DURABLE across a restart: no build ever started, so nothing
-  // was lost. This function deliberately leaves them `queued` (their app stays
-  // "queued"); boot RE-DRAINS them via the per-server queue in `instrumentation.ts`
-  // (`startDeployQueue`, chained AFTER this reconcile so it never dispatches
-  // alongside a not-yet-errored orphan). Kept out of here so the reconcile stays a
-  // pure DB settle with no live build dispatch.
+  // was lost.
   return orphaned.length;
 }
 
@@ -1152,10 +1000,7 @@ export async function startDeployment(
      */
     forceRecreate?: boolean;
     /**
-     * The pull request preview this build belongs to. Present ⇒ the deploy is a
-     * PREVIEW: it takes the preview's deploy key, host and certificate provider,
-     * and it writes its progress onto the `app_previews` row instead of onto the
-     * App. Absent ⇒ the long-standing production behaviour, unchanged.
+     * The pull request preview this build belongs to.
      */
     preview?: {
       id: string;
@@ -1172,15 +1017,6 @@ export async function startDeployment(
      * This build is a ROLLBACK to a deployment that already succeeded: it re-runs
      * that build's image instead of producing a new one, so there is no clone, no
      * build and no pull - seconds instead of minutes.
-     *
-     * The caller (`rollbackDeployment` in lib/data/deployments.ts) has already
-     * proved the target is eligible; everything needed to run it travels here, so
-     * the queued job never has to re-read the source row.
-     *
-     * Only the IMAGE goes back. The stack is re-rendered from the app's CURRENT
-     * variables, domains, volumes and resource limits, exactly like any other
-     * deploy - rolling a password back because the code rolled back is not
-     * something anyone asked for.
      */
     rollback?: {
       /** The deployment being returned to (recorded as `rollback_of`). */
@@ -1199,13 +1035,9 @@ export async function startDeployment(
   const project = await loadAppGraph(appId);
   if (!project) throw new Error("App not found");
   const preview = opts.preview ?? null;
-  // Data a migration could not copy is a refusal, not a warning: the volumes it
-  // names are empty or half-written, and deploying onto them is what turns a
-  // failed copy into permanent loss. Here because this is the ONLY function that
-  // starts a deployment - the hook, the git webhook, MCP, a rollback and a bulk
-  // redeploy all arrive through it, so the refusal cannot be walked around.
-  // A PREVIEW is exempt: it is a stack of its own with its own volumes, and the
-  // pull request is not what lost the data.
+  // Data a migration could not copy is a refusal, not a warning: the volumes it names
+  // are empty or half-written, and deploying onto them is what turns a failed copy
+  // into permanent loss.
   if (!preview) assertDataCopyIntact(project.name, project.dataCopyError);
   // Still being created by a migration. Here as well as in the capability gate,
   // because the git webhook reaches this function with no gate at all: a push
@@ -1224,18 +1056,10 @@ export async function startDeployment(
   }
   const branch = opts.branch ?? project.repo?.branch ?? "main";
   // Production routes through the project's EXISTING registered primary domain
-  // (created once at project creation). It is NOT resurrected here: a project
-  // whose domains were all deleted deploys with NO domain and NO URL — the
-  // container runs but is unrouted until the user adds a domain back. A preview
-  // brings its own host, minted once when the pull request opened so the URL
-  // already commented on it keeps working across rebuilds.
+  // (created once at project creation).
   const primaryRow = preview ? null : await primaryDomainRow(appId);
   const domain = preview ? preview.host : (primaryRow?.name ?? "");
-  // No production domain ⇒ no canonical URL. The deployment record's `url` is a
-  // plain string (informational), so it carries "" when unrouted; the project's
-  // `productionUrl` is nullable and gets a real null below. The scheme follows
-  // the certificate provider in force — a cert-less (`none`) host is served
-  // plain-HTTP, which is exactly what a nip.io preview host is.
+  // No production domain ⇒ no canonical URL.
   const scheme = preview
     ? domainScheme({ certProvider: preview.certProvider })
     : primaryRow
@@ -1275,12 +1099,6 @@ export async function startDeployment(
     rollbackOf: rollback?.deploymentId ?? null,
     creator: opts.creator,
     // WHO `creator` names, when it names somebody with an account here.
-    //
-    // Resolved from the string rather than threaded through all seven callers:
-    // `resolveActorUserId` already exists for the activity trail and does exactly
-    // this, and it answers null in precisely the cases that should stay
-    // unattributed — a GitHub webhook push (no session, and the creator is a
-    // GitHub login) and any background run with no request behind it.
     creatorUserId: await resolveActorUserId(opts.creator),
     creatorUser: null,
     serverId: preview?.serverId || project.serverId,
@@ -1288,17 +1106,11 @@ export async function startDeployment(
     buildServerId: null,
   };
 
-  // Insert the deployment, then point its OWNER at it (latestDeployment +
-  // queued). A fresh build starts from an empty log stream (drain-then-DELETE).
-  // `serverId` is denormalized onto the row so the deploy queue can drain
-  // per-server without a apps join — and, since previews may be pointed at a
-  // different machine than production, it is the ONLY authority on where this
-  // deploy runs. Everything downstream reads the row, never the app.
+  // Insert the deployment, then point its OWNER at it (latestDeployment + queued).
+  // Everything downstream reads the row, never the app.
   const deployServerId = preview?.serverId || project.serverId;
   // Which host COMPILES this one, decided here and written down for the same reason
-  // `serverId` is: from this point everything reads the row. A rollback re-runs an
-  // image that already exists on the target, so it never wants a builder - asking
-  // for one would burn a queue slot on a machine with nothing to do.
+  // `serverId` is: from this point everything reads the row.
   const buildServerId = rollback
     ? null
     : await resolveBuildServerFor(project, deployServerId, depId);
@@ -1311,10 +1123,7 @@ export async function startDeployment(
     });
   await clearDeploymentLogs(depId);
   if (preview) {
-    // A preview NEVER touches the App's row. Writing `apps.status` here would
-    // turn the production app's badge orange for somebody else's pull request,
-    // and writing `latest_deployment_id`/`production_url` would repoint the app
-    // at a host the reaper deletes when the PR closes.
+    // A preview NEVER touches the App's row.
     await getDb()
       .update(appPreviewsTable)
       .set({
@@ -1357,14 +1166,8 @@ export async function startDeployment(
   );
 
   // Supersede: a newer trigger for the SAME STACK wins, so cancel any of its
-  // still-QUEUED deploys that haven't started yet (nothing was built — safe to
-  // drop) EXCEPT the one just inserted. A deploy already `building` is untouched:
-  // the new one simply queues behind it. This is the Coolify "skip a duplicate
-  // commit" behavior, done by collapsing the older queued rows so a webhook burst
-  // (or an impatient redeploy) doesn't rebuild the same tree N times.
-  //
-  // Scoped to the DEPLOY KEY, not the app: a push to pull request #42 must not
-  // cancel #43's queued build, and neither may cancel a queued production deploy.
+  // still-QUEUED deploys that haven't started yet (nothing was built — safe to drop)
+  // EXCEPT the one just inserted.
   await getDb()
     .update(deploymentsTable)
     .set({ status: "canceled" })
@@ -1382,11 +1185,9 @@ export async function startDeployment(
   // update without a reload.
   publishAppChanged(appId);
 
-  // Hand the queued deploy to the per-server queue instead of firing it inline:
-  // it starts once its OWNING server has a free slot (default 1) and no other
-  // deploy of this app is in flight. Deploys on OTHER servers run in parallel.
-  // Returns immediately — the standalone Node server keeps the event loop alive
-  // and the queue runs the build in the background (see lib/deploy/deploy-queue).
+  // Hand the queued deploy to the per-server queue instead of firing it inline: it
+  // starts once its OWNING server has a free slot (default 1) and no other deploy of
+  // this app is in flight.
   enqueueDeployment({ depId, serverId: deployServerId, appId, buildServerId });
   return depId;
 }
@@ -1394,9 +1195,7 @@ export async function startDeployment(
 /**
  * Run a queued deployment to completion for the deploy queue, flushing a clean
  * terminal error if `runDeployment`'s pre-try setup throws (it finalizes its own
- * logs in a finally otherwise). Resolves — never rejects — when the deploy has
- * fully settled, so the queue can free the server slot in its `finally`. A cancel
- * that raced a pre-try failure wins: the CAS keeps the row `canceled`.
+ * logs in a finally otherwise).
  */
 export async function runDeploymentGuarded(depId: string): Promise<void> {
   try {
@@ -1410,11 +1209,7 @@ export async function runDeploymentGuarded(depId: string): Promise<void> {
 
 /**
  * Render the single-image (or compose) stack and stream it through the OWNING
- * agent. Returns "agent" when the agent fully built + ran the deploy, "failed"
- * when it reported a build failure OR was unreachable — there is no in-process
- * fallback, so an unavailable agent is a hard deploy failure (P5), never a silent
- * local rebuild. This is the single choke point: every deploy flows agent →
- * control plane → pubsub.
+ * agent.
  */
 /** The agent attempt's outcome + any commit sha the agent resolved (git source). */
 interface AgentAttempt {
@@ -1433,10 +1228,7 @@ function planBuilds(plan: AgentBuildPlan): boolean {
 
 /**
  * The build server for a deploy about to be queued, or null for "build where it
- * runs". Never throws: a fleet with no builder, an unresolvable target row, or any
- * failure of the lookup itself all mean the same thing - deploy the way Deplo did
- * before build servers existed. Choosing where to compile must not be able to stop
- * an app from shipping.
+ * runs". Choosing where to compile must not be able to stop an app from shipping.
  */
 async function resolveBuildServerFor(
   project: { teamId: string; serverId: string; buildServerId?: string | null },
@@ -1463,13 +1255,8 @@ async function resolveBuildServerFor(
 
 /**
  * The one line the deploy log gets about where this app compiled, derived from the
- * row rather than re-run - the decision was made at enqueue time and the row is the
- * authority on it, exactly as it is for `serverId`.
- *
- * Silent for the ordinary "built where it runs", because narrating the default on
- * every deploy is noise that teaches people to skip the log. Loud when the app names
- * a build server and did not get it: the setting still says that machine, and the
- * deploy quietly did something else.
+ * row rather than re-run - the decision was made at enqueue time and the row is
+ * the authority on it, exactly as it is for `serverId`.
  */
 async function explainBuildServer(
   project: { serverId: string; buildServerId?: string | null },
@@ -1506,14 +1293,8 @@ async function explainBuildServer(
 
 /**
  * Whether an error means "that host did not answer / cannot do this", across BOTH
- * classes that mean it.
- *
- * They are unrelated types and the difference is not visible at the call site:
- * `agentPreflight` rejects with `AgentUnreachableError` (the dial or the Hello
- * failed), while `runAgentDeploy` raises `AgentUnavailableError` for its own
- * refusals (no Docker, too old for a capability) and for a dead deploy stream.
- * Matching only the second is how a fallback that exists precisely for "the build
- * server is down" ends up never firing for it.
+ * classes that mean it. Matching only the second is how a fallback that exists
+ * precisely for "the build server is down" ends up never firing for it.
  */
 function agentIsDown(e: unknown): boolean {
   return (
@@ -1523,12 +1304,6 @@ function agentIsDown(e: unknown): boolean {
 
 /**
  * What the deploy log is allowed to say about a host that did not answer.
- *
- * A raw gRPC transport error embeds the dial address (`10.x.x.x:9443`) and can
- * carry the pinned cert fingerprint - the same reason `READINESS_MESSAGES` is a
- * closed set and `LogsFailure` is four words. A deploy log is read by any member
- * with `view_logs`, which is a lower bar than the fleet page, so the raw text goes
- * to `console.error` and the reader gets this.
  */
 function agentDownReason(e: unknown): string {
   if (e instanceof AgentUnavailableError) {
@@ -1537,8 +1312,7 @@ function agentDownReason(e: unknown): string {
   }
   // A TRUST failure is not a dead host: the peer answered, it just is not the agent
   // Deplo pinned (or it rejected our client cert). Saying "it did not answer" would
-  // send someone to check whether the box is up, which is the one thing that is
-  // fine. `trust` is captured at the dial, the only place that can tell them apart.
+  // send someone to check whether the box is up, which is the one thing that is fine.
   if (e instanceof AgentUnreachableError && e.trust) {
     return "its certificate is not the one Deplo trusts - reissue its install command";
   }
@@ -1548,18 +1322,6 @@ function agentDownReason(e: unknown): string {
 /**
  * The build half of a split deploy: compile on the build server, then stream the
  * image to the host that will run it.
- *
- * Three outcomes, and the difference between them is the whole design:
- *
- *  - `built` - the image is on the target and the caller releases it exactly as a
- *    rollback does.
- *  - `fallback` - the build server could not be reached AT ALL, and this app allows
- *    building on its own server. Nothing was built anywhere, so the caller simply
- *    proceeds with the original plan. Deliberately narrow: it fires on an
- *    unreachable agent, never on a build that ran and FAILED (rebuilding that
- *    elsewhere would fail identically) and never on a transfer that broke halfway
- *    (the build server has already done the expensive part).
- *  - `failed` - everything else, with the reason already in the deploy log.
  */
 async function buildOnBuildServer(opts: {
   depId: string;
@@ -1587,10 +1349,8 @@ async function buildOnBuildServer(opts: {
       slug: opts.project.deployKey,
       appId: opts.project.id,
       imageRef: opts.imageRef,
-      // The builder writes no stack and starts nothing, so the rendered compose is
-      // inert there. It still rides along: the request shape is the same one every
-      // deploy sends, and an empty `composeYaml` is what the agent rejects as a
-      // malformed request.
+      // The builder writes no stack and starts nothing, so the rendered compose is inert
+      // there.
       composeYaml: opts.composeYaml,
       env: opts.env,
       plan: opts.plan,
@@ -1706,13 +1466,8 @@ async function tryAgent(opts: {
   /** Build on the target instead when the build server cannot be reached. */
   buildFallbackLocal?: boolean;
 }): Promise<AgentAttempt> {
-  // Serialize the agent bring-up against deleteApp/deleteApps on the app's
-  // lifecycle lock (the same mutex the databases use for provision/delete). Two
-  // races this closes: (1) a delete that COMPLETED while this build ran already
-  // tore down the stack and dropped the row — re-check under the lock and abort
-  // rather than `compose up` an orphan the control plane no longer tracks; (2) a
-  // delete arriving DURING the bring-up waits on the lock, then tears down a
-  // fully-created stack (no untracked leftover).
+  // Serialize the agent bring-up against deleteApp/deleteApps on the app's lifecycle
+  // lock (the same mutex the databases use for provision/delete).
   return withKeyedLock(`app-lifecycle:${opts.project.id}`, async () => {
     const stillExists = await getDb()
       .select({ id: appsTable.id })
@@ -1781,11 +1536,8 @@ async function tryAgent(opts: {
       };
     } catch (e) {
       if (agentIsDown(e)) {
-        // No in-process build path to fall back to: surface the unreachable agent
-        // as a clear deploy failure (P5 - no hung deploys). Both error classes,
-        // because `agentPreflight` and the deploy stream raise different ones and
-        // only matching the second sent an unreachable host to the outer handler,
-        // which logs the raw gRPC text - dial address included.
+        // No in-process build path to fall back to: surface the unreachable agent as a
+        // clear deploy failure (P5 - no hung deploys).
         console.error(`[deplo] agent ${opts.serverId} unavailable:`, e);
         log(opts.depId, "error", `Agent unavailable: ${agentDownReason(e)}`);
         return { outcome: "failed", commitSha: "" };
@@ -1804,10 +1556,7 @@ async function runDeployment(depId: string): Promise<void> {
     await setDep(depId, { status: "error" }, { onlyIfNotCanceled: true });
     return;
   }
-  // THE stack this deploy owns. Production's key is the bare app slug, so every
-  // name below (container, stack file, files dir, volumes, router baseKey) is
-  // byte-identical to what it has always been; a pull request preview's key is
-  // `<slug>__pr-<n>`, which is what keeps it off the production stack entirely.
+  // THE stack this deploy owns.
   const deployKey = dep.deployKey || project.slug;
   const preview = dep.previewId
     ? await loadPreviewForDeploy(dep.previewId)
@@ -1817,22 +1566,15 @@ async function runDeployment(depId: string): Promise<void> {
   // the row is what the queue already drained on.
   const runServerId = dep.serverId || project.serverId;
   const target = targetFor(dep, project);
-  // The `deplo.project` label value: an App id for production, the PREVIEW's own
-  // id for a preview. The telemetry stream buckets container stats by this label,
-  // so it is what keeps a preview's containers out of the App's live status,
-  // monitoring charts and console instance list.
+  // The `deplo.project` label value: an App id for production, the PREVIEW's own id
+  // for a preview.
   const trackingId = preview ? preview.id : project.id;
-  // Production routes through the project's EXISTING registered primary domain
-  // (never resurrected — see startDeployment). When the project has no domain,
-  // `domain` is "" and the deploy proceeds UNROUTED (the build still runs; the
-  // container just gets `traefik.enable=false`). A preview uses the host minted
-  // when its pull request opened.
+  // Production routes through the project's EXISTING registered primary domain (never
+  // resurrected — see startDeployment).
   const domain = preview ? preview.host : await primaryDomainName(project.id);
-  // Production routes to every verified domain (primary first); a preview uses
-  // only its own host (which is never a registered `domains` row — that would
-  // leak it into the PRODUCTION router set and into the per-team certificate
-  // quota). Empty when the project has no domain — the renderers emit no router
-  // (traefik.enable=false).
+  // Production routes to every verified domain (primary first); a preview uses only
+  // its own host (which is never a registered `domains` row — that would leak it into
+  // the PRODUCTION router set and into the per-team certificate quota).
   const routeDomains = await routableForDeploy(
     project.id,
     dep.environment,
@@ -1841,16 +1583,9 @@ async function runDeployment(depId: string): Promise<void> {
     preview ? await previewRouteTarget(project, preview.port) : undefined,
   );
 
-  // Claim the deploy: queued -> building, but ONLY while it is still queued. A
-  // "Stop build" that landed in the brief queued window (this job runs several
-  // awaits above before it gets here) already flipped the row to `canceled`; this
-  // conditional write then matches 0 rows, and we settle + bail instead of
-  // clobbering the cancel with `building`. The terminal commitOutcome CAS only
-  // covers a cancel that arrives DURING the build — this covers the window before
-  // it starts.
-  // `startedAt` is stamped with the SAME `started` instant the final
-  // `buildDurationMs` is measured against (not `now()`), so the timer the UI
-  // ticks and the duration eventually written can't disagree.
+  // Claim the deploy: queued -> building, but ONLY while it is still queued. The
+  // terminal commitOutcome CAS only covers a cancel that arrives DURING the build —
+  // this covers the window before it starts.
   const claimed = await getDb()
     .update(deploymentsTable)
     .set({ status: "building", startedAt: new Date(started).toISOString() })
@@ -1870,53 +1605,28 @@ async function runDeployment(depId: string): Promise<void> {
   await setDeployState(target, { status: "building" });
 
   try {
-    // Nothing host-local happens here any more, and that is the point: this was
-    // the LAST live line in the control plane that reached a Docker socket
-    // (ADR-0006 says there should be none). It was also redundant — the agent
-    // opens every deploy with `dockercli.EnsureNetwork(ctx, "deplo")` on the host
-    // that actually runs the stack (deplo-agent internal/server/deploy.go), which
-    // is the only host where the network has to exist. The `mkdir(STACK_DIR)`
-    // beside it was vestigial too: STACK_DIR is only ever used here to COMPUTE
-    // paths (`<STACK_DIR>/files/<key>`) that are rendered into compose YAML and
-    // resolved on the agent's filesystem, never written to on this side.
-    //
-    // Keeping either one cost the control-plane container a read-write
-    // `/var/run/docker.sock` mount, which is root on the host for a process that
-    // also serves the public panel. Deleting them is what lets install.sh drop it.
+    // Nothing host-local happens here any more, and that is the point: this was the
+    // LAST live line in the control plane that reached a Docker socket (ADR-0006 says
+    // there should be none).
 
-    // The agent now runs EVERY build method (Dockerfile family + the heavy
-    // builders static/nixpacks/buildpacks/railpack, ported to deplo-agent). The
-    // only gate left is per-server: is THIS server's agent new enough to carry the
-    // method's capability? That check is below (after the compose branch), keyed on
-    // agentCapabilityForMethod. A compose stack is NOT a single-image build — it
-    // never consults project.build — so it is handled by its own branch first and
-    // is exempt from the build-method capability gate.
+    // The agent now runs EVERY build method (Dockerfile family + the heavy builders
+    // static/nixpacks/buildpacks/railpack, ported to deplo-agent). That check is below
+    // (after the compose branch), keyed on agentCapabilityForMethod.
 
-    // Freshness for THIS deploy: whether it may read the server's build cache
-    // (the app's Build cache setting, plus any armed one-shot clear), and whether
-    // the containers must be replaced even when the rendered stack is identical
-    // ("Rebuild container"). Resolved once, here, so every source arm below ships
-    // the agent the same decision.
+    // Freshness for THIS deploy: whether it may read the server's build cache (the
+    // app's Build cache setting, plus any armed one-shot clear), and whether the
+    // containers must be replaced even when the rendered stack is identical ("Rebuild
+    // container").
     const { noCache, reason: noCacheReason } = noCacheForDeploy(project.build);
     const forceRecreate = dep.forceRecreate;
 
-    // Multi-service compose / one-click template deploy: deploy the project's
-    // own compose stack, wired to Traefik on the generated domain. The compose
-    // interpolates its ${VARS} from an env-file we write alongside it. Selecting
-    // any other source (git, docker-image, …) switches away from the stack even
-    // though the compose is kept for switching back; `source` is authoritative.
-    // Legacy template apps predate the `compose` source, so fall back to the
-    // old heuristic for them (compose present, no repo/image). An "upload" source
-    // is explicit and must build the archive, so the heuristic never claims it —
-    // even if a stale compose lingers from a previous source. See usesComposeStack.
+    // Multi-service compose / one-click template deploy: deploy the project's own
+    // compose stack, wired to Traefik on the generated domain.
     const hasCompose = Boolean(project.compose && project.compose.trim());
     const useCompose = usesComposeStack(project);
-    // A ROLLBACK must never reach the compose branch. It would bring the CURRENT
-    // stack up, settle `ready`, and leave a row that says it went back to an old
-    // commit - success reported for something that did not happen. The data layer
-    // refuses to create such a row (an app is only rollback-able while it still
-    // builds its own image), so this is the second lock on the one failure mode
-    // here that is silent rather than loud.
+    // A ROLLBACK must never reach the compose branch. It would bring the CURRENT stack
+    // up, settle `ready`, and leave a row that says it went back to an old commit -
+    // success reported for something that did not happen.
     if (useCompose && dep.rollbackOf) {
       log(
         depId,
@@ -1941,10 +1651,8 @@ async function runDeployment(depId: string): Promise<void> {
         target,
         domain,
         forceRecreate,
-        // Compose stacks route via their own service/port model (expose/exposes
-        // + host pins). Per-domain ports don't apply, but a domain CAN pick a
-        // service and/or a path prefix — pass the full routes so those become
-        // per-route routers (the bare hostnames still drive the default expose).
+        // Compose stacks route via their own service/port model (expose/exposes + host
+        // pins).
         domains: routeDomains.map((d) => d.name),
         domainRoutes: routeDomains,
         environment: dep.environment,
@@ -1966,15 +1674,9 @@ async function runDeployment(depId: string): Promise<void> {
         ...composeOpts,
         serverId: runServerId,
       });
-      // Auto-set the display logo when the app has none yet — the compose-stack
-      // arm of the same detection git/upload apps get. It reads the app's own
-      // files AND, since a stack of prebuilt images keeps its favicon inside the
-      // image, the icon the running app serves. `domain` is the primary host, so
-      // the probe reaches the app exactly where Traefik does.
-      //
-      // PRODUCTION ONLY: this writes the APP's logo. A pull request's branch must
-      // never repaint the app's badge — its icon may be a work in progress, and
-      // whichever preview built last would win.
+      // Auto-set the display logo when the app has none yet — the compose-stack arm of
+      // the same detection git/upload apps get. PRODUCTION ONLY: this writes the APP's
+      // logo.
       if (!preview) {
         autoDetectComposeLogo(
           project.id,
@@ -1989,18 +1691,13 @@ async function runDeployment(depId: string): Promise<void> {
 
     let imageRef: string;
     let commitSha = "";
-    // Set by the agent path when it fully built + ran this deploy. "failed" means
-    // the agent reported a real build failure or was unreachable; "agent" means it
-    // succeeded. Every deploy goes through the agent now — there is no in-process
-    // build/run path — so this is always set by the time we settle.
+    // Set by the agent path when it fully built + ran this deploy.
     let agentOutcome: "agent" | "failed" | null = null;
     const serverId = runServerId;
 
-    // Where this deploy COMPILES, read off the row for the same reason `serverId`
-    // is: the choice was made when the deploy was queued and the row is what the
-    // queue already drained on. Spread into the two arms that actually build; the
-    // rollback and prebuilt-image arms never compile anything, so a build server
-    // would have nothing to do for them.
+    // Where this deploy COMPILES, read off the row for the same reason `serverId` is:
+    // the choice was made when the deploy was queued and the row is what the queue
+    // already drained on.
     const targetServer = await getServerById(serverId);
     const buildServer = dep.buildServerId
       ? await getServerById(dep.buildServerId)
@@ -2016,18 +1713,9 @@ async function runDeployment(depId: string): Promise<void> {
       if (line) log(depId, line.level, line.text);
     }
 
-    // Per-server build-method capability gate. A heavy method (static/nixpacks/
-    // buildpacks/railpack) needs the matching capability on THIS server's agent; an
-    // older agent would accept the Deploy and only fail deep in its switch with an
-    // opaque error. Gate on the advertised capability and fail with an actionable
-    // "update the agent" message instead (mirrors the compose.multi gate + P5's
-    // fail-fast-on-an-incapable-agent discipline). The Dockerfile family + a
-    // prebuilt image need no heavy capability, so the check is skipped for them.
-    //
-    // A ROLLBACK is exempt: it runs an image that already exists on this host and
-    // never invokes a builder, so gating it on the app's CURRENT build method
-    // would refuse a perfectly runnable image because of how the next build would
-    // be made.
+    // Per-server build-method capability gate. Gate on the advertised capability and
+    // fail with an actionable "update the agent" message instead (mirrors the
+    // compose.multi gate + P5's fail-fast-on-an-incapable-agent discipline).
     const requiredCapability = dep.rollbackOf
       ? null
       : agentCapabilityForMethod(project.build);
@@ -2055,10 +1743,7 @@ async function runDeployment(depId: string): Promise<void> {
           return;
         }
       } catch (e) {
-        // An unreachable BUILD SERVER is not decided here. This is only a
-        // capability probe; the fallback policy (build on the app's own server, or
-        // fail) lives at the one place that actually attempts the build, and
-        // duplicating it here would give the same situation two different answers.
+        // An unreachable BUILD SERVER is not decided here.
         if (!dep.buildServerId) {
           log(
             depId,
@@ -2118,10 +1803,9 @@ async function runDeployment(depId: string): Promise<void> {
       return { composeYaml, env };
     };
 
-    // For a BUILT source (git/upload): resolve the build dir (one
-    // shared rootDirectory containment), then ship the materialised tree to the
-    // owning agent, which builds + runs it. The agent is the only execution path —
-    // an unreachable agent is a hard deploy failure (P5), never a local fallback.
+    // For a BUILT source (git/upload): resolve the build dir (one shared rootDirectory
+    // containment), then ship the materialised tree to the owning agent, which builds +
+    // runs it.
     const buildAndMaybeAgent = async (treeOpts: {
       workDir: string;
       root: string;
@@ -2161,30 +1845,18 @@ async function runDeployment(depId: string): Promise<void> {
       agentOutcome = outcome === "agent" ? "agent" : "failed";
     };
 
-    // Framework recognition is per-deploy and self-correcting. The arms below
-    // set what they find; this clears what an app can no longer have — it moved
-    // to a Dockerfile, a prebuilt image or a compose stack — so the badge never
-    // outlives the build method that earned it.
+    // Framework recognition is per-deploy and self-correcting.
     if (!canRecognizeFramework(project)) void setFramework(project.id, null);
 
     // Decide which source this deployment builds from (see planDeploySource).
-    // Each arm materialises a tree (or pulls an image) then funnels through the
-    // shared buildImageFromTree, so the rootDirectory containment + build
-    // dispatch live in one place.
-    //
-    // A ROLLBACK short-circuits that choice: it re-runs an image a previous build
-    // of this app already produced, so the app's source is irrelevant - there is
-    // nothing to clone, nothing to build, nothing to pull. It is a plan kind of its
-    // own rather than a branch around the switch so it settles through the same
-    // `tryAgent` → `commitOutcome` path as every other deploy.
     const plan: SourcePlan | { kind: "rollback"; image: string; of: string } =
       dep.rollbackOf && dep.imageRef
         ? { kind: "rollback", image: dep.imageRef, of: dep.rollbackOf }
         : planDeploySource(project);
-    // A cache-less build is minutes slower than a cached one, so say why before
-    // the log fills with build output — and spend the one-shot clear here, where
-    // a build is genuinely about to run (a prebuilt image never builds, so its
-    // deploy must not swallow the clear the user armed for the next real build).
+    // A cache-less build is minutes slower than a cached one, so say why before the log
+    // fills with build output — and spend the one-shot clear here, where a build is
+    // genuinely about to run (a prebuilt image never builds, so its deploy must not
+    // swallow the clear the user armed for the next real build).
     if (noCache && (plan.kind === "git" || plan.kind === "upload")) {
       log(depId, "info", noCacheReason);
       if (project.build.buildCacheClearPending)
@@ -2192,22 +1864,9 @@ async function runDeployment(depId: string): Promise<void> {
     }
     switch (plan.kind) {
       case "rollback": {
-        // Re-run an image THIS app already built. No clone, no build, no pull -
-        // the agent writes the stack and brings it up, which is why a rollback
-        // takes seconds where the deploy that produced this image took minutes.
-        //
-        // The stack is still rendered from the app AS IT IS NOW (renderStack reads
-        // current variables, domains, volumes and resource limits). Only the image
-        // comes from the past: rolling a password back because the code rolled
-        // back is not something anyone asked for.
-        //
-        // Nothing pre-flights whether the image is still on the host - no RPC can
-        // ask. Retention is what keeps it there (`apps.rollback_keep`, enforced
-        // host-side by the per-slug map the cleanup sweep sends) and the caller has
-        // already refused a target outside that window. If it is gone anyway,
-        // `compose up` says so in the host's own words and this deploy fails with
-        // the RUNNING CONTAINER UNTOUCHED - compose resolves images before it
-        // replaces anything.
+        // Re-run an image THIS app already built. Only the image comes from the past:
+        // rolling a password back because the code rolled back is not something anyone
+        // asked for.
         imageRef = plan.image;
         log(
           depId,
@@ -2255,10 +1914,9 @@ async function runDeployment(depId: string): Promise<void> {
       }
       case "git": {
         const repo = plan.repo;
-        // Auto-set the display logo from a favicon/icon in the repo (via the
-        // GitHub API — the tree is cloned on the agent, not here) when the
-        // app has none yet. Fire-and-forget so a GitHub round-trip never
-        // delays the deploy.
+        // Auto-set the display logo from a favicon/icon in the repo (via the GitHub API —
+        // the tree is cloned on the agent, not here) when the app has none yet.
+        // Fire-and-forget so a GitHub round-trip never delays the deploy.
         autoDetectRepoLogo(
           project.id,
           project.logo,
@@ -2275,41 +1933,19 @@ async function runDeployment(depId: string): Promise<void> {
             project.build.rootDirectory,
           );
         }
-        // The OWNING AGENT clones the repo itself (PLAN Part B, D3), the host
-        // running Deplo included, so the whole tree never crosses the wire — only
-        // the descriptor does. The control plane resolves the authenticated clone
-        // URL (short-lived token baked in for private GitHub) and hands the agent
-        // the branch + subdir; the agent reports back the commit sha it checked out.
-        //
-        // NOTE: `repo.submodules` is persisted + surfaced in the UI, but taking
-        // effect requires the agent to clone with --recurse-submodules — a new
-        // field on the GitSource proto the agent decodes. Until the agent carries
-        // it, the stored preference is a no-op here (the clone descriptor below has
-        // no submodules flag to forward).
-        //
-        // A pull request preview from a FORK clones the FORK, from its own
-        // address and with no credential of ours (see `forkCloneUrl`). Every
-        // other deploy - production, and a preview of a branch in the app's own
-        // repository - is unchanged and still clones the app's repo.
+        // The OWNING AGENT clones the repo itself (PLAN Part B, D3), the host running Deplo
+        // included, so the whole tree never crosses the wire — only the descriptor does.
         const forkUrl = preview?.isFork
           ? forkCloneUrl(repo.url, preview.headCloneUrl)
           : null;
-        // Say WHY the clone is about to fail, before it does. The agent reports
-        // back only `git clone failed: exit status 128` - it forwards no git
-        // stderr - so the build log has never been able to name a cause, and a
-        // repo the credential cannot reach looked identical to a broken build.
-        // Fails OPEN: only an explicit 401/403/404 stops the deploy, a slow or
-        // unhappy provider does not (see `repoCloneRefusal`). A fork preview
-        // clones the FORK anonymously by design, so it is exempt.
+        // Say WHY the clone is about to fail, before it does.
         if (!forkUrl) {
           const refusal = await repoCloneRefusal(repo);
           if (refusal) throw new Error(refusal);
         }
         const cloneUrl = forkUrl ?? (await resolveCloneUrl(repo));
-        // One tag per deployment, and the agent builds under exactly this string -
-        // it resolves the commit sha but never retags with it. Recorded on the row
-        // so a later ROLLBACK can re-run this image without deriving the convention
-        // (which would answer wrongly for an app that has since changed source).
+        // One tag per deployment, and the agent builds under exactly this string - it
+        // resolves the commit sha but never retags with it.
         imageRef = deployImageRef(deployKey, depId);
         await setDep(depId, { imageRef });
         const { composeYaml, env } = await renderStack(imageRef);
@@ -2351,11 +1987,10 @@ async function runDeployment(depId: string): Promise<void> {
         break;
       }
       case "upload": {
-        // Uploaded archive: extract into a temp dir, then build through the same
-        // path as a git clone. extractArchive rejects any symlink in the archive
-        // (so none can be followed out of the temp dir) and may return a subdir
-        // (a tarball wrapped in one top-level folder). Upload historically does
-        // NOT hard-fail an explicit-but-missing rootDirectory.
+        // Uploaded archive: extract into a temp dir, then build through the same path as a
+        // git clone. extractArchive rejects any symlink in the archive (so none can be
+        // followed out of the temp dir) and may return a subdir (a tarball wrapped in one
+        // top-level folder).
         const upload = plan.upload;
         const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
         try {
@@ -2433,13 +2068,9 @@ async function runDeployment(depId: string): Promise<void> {
             ? `Deployment ready at ${dep.url}`
             : "Deployment ready (no domain — add one to route traffic)",
         );
-        // If this PRODUCTION deploy landed on a NEW server after a move, copy the
-        // data across now that the fresh stack + empty volumes exist on the new
-        // host. Gated on production: a PREVIEW deploy runs on an ephemeral
-        // host/stack and must never consume the migration marker or tear down the
-        // old production host. No-ops when there's no pending migration. Errors are
-        // surfaced into the deploy log but never fail the (already-successful)
-        // deploy.
+        // If this PRODUCTION deploy landed on a NEW server after a move, copy the data
+        // across now that the fresh stack + empty volumes exist on the new host. Errors are
+        // surfaced into the deploy log but never fail the (already-successful) deploy.
         if (dep.environment === "production") {
           await completePendingAppMigration(project.id, (level, text) =>
             log(depId, level, text),
@@ -2472,9 +2103,9 @@ async function runDeployment(depId: string): Promise<void> {
     );
   } finally {
     // GUARANTEED final flush (PLAN §6 Decision 18): every deploy end/error path —
-    // success, build failure, agent-unavailable, a thrown error, or an early
-    // return inside the try — persists the buffered build logs before the
-    // fire-and-forget job exits, instead of relying on the periodic timer.
+    // success, build failure, agent-unavailable, a thrown error, or an early return
+    // inside the try — persists the buffered build logs before the fire-and-forget job
+    // exits, instead of relying on the periodic timer.
     await finalizeDeploymentLogs(depId);
   }
 }
@@ -2524,9 +2155,7 @@ interface ComposeStackOpts {
   started: number;
   /**
    * Recreate the stack's containers even when the rendered YAML is unchanged
-   * ("Rebuild container"). A compose stack is precisely the case where `up -d`
-   * would otherwise do nothing at all: its images are prebuilt, so nothing about
-   * the stack moves between two deploys of the same configuration.
+   * ("Rebuild container").
    */
   forceRecreate: boolean;
 }
@@ -2534,11 +2163,8 @@ interface ComposeStackOpts {
 /**
  * The host directory a project's compose stack reads its template config files
  * (mounts) from. buildComposeStack rewrites every `./<x>` bind source to
- * `<filesDir>/<x>`, so this path is baked into the rendered YAML — and MUST be
- * the same on whichever host runs the stack. The agent's default stack dir is
- * `/data/stacks` too (agent/main.go), so `<STACK_DIR>/files/<key>` resolves
- * identically on the master and on a remote agent; the agent writes the mount
- * files there before bringing the stack up.
+ * `<filesDir>/<x>`, so this path is baked into the rendered YAML — and MUST be the
+ * same on whichever host runs the stack.
  */
 function composeFilesDir(deployKey: string): string {
   return stackFilesDir(deployKey);
@@ -2546,10 +2172,7 @@ function composeFilesDir(deployKey: string): string {
 
 /**
  * Register the extra hostnames a multi-domain template exposes and render the
- * project's compose stack to deployable YAML. Shared by the master path (which
- * then `compose up`s locally) and the remote/agent path (which ships the YAML to
- * the agent) so both deploy a byte-identical stack. Returns the rendered YAML and
- * the files dir the stack's mounts resolve to.
+ * project's compose stack to deployable YAML.
  */
 async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   stackYaml: string;
@@ -2557,11 +2180,9 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
 }> {
   const { project, name, deployKey, trackingId, domainRoutes } = opts;
 
-  // A multi-domain template's extra hostnames are registered ONCE at project
-  // creation (createApp), NOT here — a deploy never creates domain rows, so
-  // an extra domain the user deletes is never resurrected on the next deploy.
-  // Routing reads the stored, valid domain set (routableForDeploy), independent
-  // of any row this used to create.
+  // A multi-domain template's extra hostnames are registered ONCE at project creation
+  // (createApp), NOT here — a deploy never creates domain rows, so an extra domain
+  // the user deletes is never resurrected on the next deploy.
 
   const filesDir = composeFilesDir(deployKey);
   const basicAuthUsers = await basicAuthUsersValue(project.id);
@@ -2600,17 +2221,14 @@ async function finishComposeStack(
   const { depId, project, domain, environment, started, target } = opts;
   const buildDurationMs = Date.now() - started;
   // No domain ⇒ no URL: the stack ran but is unrouted until a domain is added.
-  // The scheme follows the domain's rendered route — a cert-less (`none`) host
-  // routes without TLS and is reachable over plain HTTP only. A domain with no
-  // route in this deploy (or a preview's defaultRoute) keeps https.
   const domainRoute = opts.domainRoutes.find((r) => r.name === domain);
   const url = domain
     ? `${domainRoute && !domainRoute.tls ? "http" : "https"}://${domain}`
     : "";
-  // commitOutcome honors a "Stop build" pressed while the stack came up (covers
-  // every finishComposeStack caller: success, agent-too-old, unreachable-agent):
-  // its CAS keeps the row `canceled` and settles the app to idle, and the
-  // follow-up logs run ONLY when the outcome actually applied.
+  // commitOutcome honors a "Stop build" pressed while the stack came up (covers every
+  // finishComposeStack caller: success, agent-too-old, unreachable-agent): its CAS
+  // keeps the row `canceled` and settles the app to idle, and the follow-up logs run
+  // ONLY when the outcome actually applied.
   if (running) {
     const applied = await commitOutcome(
       depId,
@@ -2659,13 +2277,7 @@ async function finishComposeStack(
 
 /**
  * Deploy a multi-service compose stack via the owning server's agent (the host
- * running Deplo included). The control plane stays the source of truth: it
- * renders the stack YAML (prepareComposeStack) and decrypts the env, then hands
- * the agent a self-contained DeployRequest — the agent writes the mount files +
- * env-file on the owning host and `compose up`s there. There is no local
- * fallback, so an unreachable agent is a hard failure (P5). The agent reports
- * `ready` once the stack is running (it waits by the deplo.slug label, since a
- * multi-service stack's containers are compose-prefixed, not named deplo-<slug>).
+ * running Deplo included).
  */
 async function deployComposeStackViaAgent(
   opts: ComposeStackOpts & { serverId: string },
@@ -2673,11 +2285,8 @@ async function deployComposeStackViaAgent(
   const { depId, project, deployKey, serverId } = opts;
 
   // A multi-service compose stack is a distinct source kind (SOURCE_KIND_COMPOSE).
-  // The contract version is additive (still V1), so an OLD agent would accept the
-  // Deploy call and only fail deep in its switch with "unknown source kind" — a
-  // confusing error. Gate on the advertised capability instead and fail with an
-  // actionable message (the operator must update the agent). Mirrors P5's
-  // fail-fast-on-an-incapable-agent discipline.
+  // Gate on the advertised capability instead and fail with an actionable message
+  // (the operator must update the agent).
   try {
     const hello = await agentPreflight(serverId);
     if (!hello.capabilities.includes("deploy.compose.multi")) {
@@ -2729,38 +2338,13 @@ async function deployComposeStackViaAgent(
 }
 
 /**
- * Hostnames to bake into a deploy's Traefik rule. Production routes to every
- * verified domain (primary first) so a later primary-switch / new domain takes
- * effect via a reroute; a preview routes only to its own host (which is
- * deliberately NOT a registered `domains` row — one there would be picked up by
- * `routableRoutes` and baked into the PRODUCTION router's rule, and would count
- * against the per-team certificate quota). The pending primary is included as a
- * fallback when the project has a registered-but-not-yet-`valid` domain (e.g.
- * the auto domain on a brand-new project). When `primary` is "" the project has
- * NO domain at all (all deleted, never resurrected): production returns NO
- * routes, so the deploy proceeds unrouted (`traefik.enable=false`) instead of
- * baking an empty rule.
+ * Hostnames to bake into a deploy's Traefik rule.
  */
 
 /**
- * Which compose service a PREVIEW's router forwards to, and on which port.
- *
- * A preview host is never a `domains` row, so it carries no service of its own —
- * and `buildComposeStack` skips every route that names none. Without this a
- * compose app's preview built, started, and answered nobody: containers up, no
- * Traefik router, 404 at the URL posted on the pull request.
- *
- * Resolution, in the order that keeps a preview honest:
- *  1. the app's PRIMARY domain's service — a preview should front whatever
- *     production fronts, and the domains table is authoritative once it exists;
- *  2. `detectDefaultApp`, the same heuristic that seeded that domain in the
- *     first place, for an app whose domains were all deleted;
- *  3. null — a single-image stack, where there is one container and the
- *     renderer needs no name for it.
- *
- * The port prefers the preview's own (frozen at creation from `preview_port`),
- * then the primary domain's override, then the compose heuristic. Null lets the
- * renderer fall back to the app's build port, which is the common case.
+ * Which compose service a PREVIEW's router forwards to, and on which port. A
+ * preview host is never a `domains` row, so it carries no service of its own — and
+ * `buildComposeStack` skips every route that names none.
  */
 async function previewRouteTarget(
   project: App,
@@ -2786,22 +2370,11 @@ async function routableForDeploy(
   environment: DeploymentEnvironment,
   primary: string,
   /**
-   * The preview host's certificate provider. `none` (the nip.io default) routes
-   * plain HTTP on `web`. Passing it is what stopped previews asking Let's
-   * Encrypt for a certificate on a *.nip.io host — one registered domain whose
-   * issuance budget is shared with the entire internet, so the request fails and
-   * Traefik falls back to its self-signed default.
+   * The preview host's certificate provider.
    */
   previewCertProvider?: CertProvider,
   /**
    * The compose SERVICE a preview's router forwards to, and the port to use.
-   *
-   * A single-image stack has one container and needs neither: the renderer wires
-   * the only thing there is. A compose stack has many, and `buildComposeStack`
-   * SKIPS any route that does not name one — so a preview built without this
-   * emitted no Traefik router at all, and the containers came up perfectly and
-   * answered nobody. Resolved from the app's own primary domain so a preview
-   * fronts whatever production fronts.
    */
   previewTarget?: { service: string | null; port: number | null },
 ): Promise<RoutableDomain[]> {
@@ -2820,39 +2393,16 @@ async function routableForDeploy(
   }
   const [valid, fallback] = await Promise.all([
     routableRoutes(appId),
-    // The primary's STORED row, verified or not. It is what the fallback route is
-    // built from when the host hasn't passed its DNS check yet, so an unverified
-    // primary is still routed with its own path/port/TLS instead of being
-    // flattened to whole-host defaults.
+    // The primary's STORED row, verified or not.
     pendingPrimaryRoute(appId, primary),
   ]);
   return orderDeployRoutes(valid, primary, fallback);
 }
 
 /**
- * Put the canonical primary host first and keep EVERY other routable row.
- *
- * Pure (the DB read is the caller's) so the ordering contract is directly
- * testable. The subtle part is what "the primary" means once paths exist: a path
- * lets several rows share ONE hostname — uniqueness is on `(name, path)`, not on
- * `name` — so `app.com` and `app.com` + `/api` are two different routes and
- * `app.com/api` is the entire point of the feature. Dropping "every row whose
- * name equals the primary's" therefore deleted the `/api` row from the deploy and
- * the path silently did nothing; the primary row is excluded by IDENTITY instead.
- *
- * When no valid row carries the primary's name we still route it, so a brand-new
- * app whose domain hasn't passed its DNS check yet answers on it. `fallback` is
- * that host's STORED row (see `pendingPrimaryRoute`) and is preferred, because it
- * carries the row's real path/strip/port/TLS; only a hostname with no row at all
- * degrades to a synthetic {@link defaultRoute}, which routes the whole host on the
- * defaults. Building that fallback from `defaultRoute` unconditionally is what
- * used to drop an unverified primary's `pathPrefix` on the floor.
- *
- * The fallback is only reached when nothing in `valid` is named `primary`, so it
- * can never duplicate a real row. An empty `primary` with no valid rows means the
- * app has no domain at all (all deleted, never resurrected): NO routes, so the
- * deploy goes out unrouted (`traefik.enable=false`) rather than baking an empty
- * rule.
+ * Put the canonical primary host first and keep EVERY other routable row. The
+ * fallback is only reached when nothing in `valid` is named `primary`, so it can
+ * never duplicate a real row.
  */
 export function orderDeployRoutes(
   valid: RoutableDomain[],
@@ -2913,11 +2463,7 @@ function readStackEnvFromYaml(
 /**
  * The named volumes baked into a single-image stack file, read back so a reroute
  * preserves the mounts the container is ACTUALLY running with — never pulling a
- * pending (unsaved-to-stack) volume edit off the project. Mirrors
- * `readStackImage`/`readStackEnv`, keeping a reroute a pure routing change.
- * Parses each `- alias:/path[:ro]` service entry; the host name (top-level
- * `volumes.<alias>.name`) is irrelevant here — renderCompose re-derives it from
- * the slug. Key-indexed via yaml.load; do NOT refactor to positional parsing.
+ * pending (unsaved-to-stack) volume edit off the project.
  */
 /** The shape `renderCompose` accepts and `parseStackVolumes` reconstructs. */
 type StackVolume = {
@@ -2942,12 +2488,7 @@ function readStackVolumesFromYaml(
 }
 
 /**
- * The pure parser behind `readStackVolumes` (no fs) — exported for tests. Reads
- * the service `volumes:` lines back into the same shape `renderCompose` emitted,
- * so a reroute re-renders byte-identically. An absolute source under the
- * project's files dir (`<STACK_DIR>/files/<slug>/<rel>`) round-trips as a
- * "service" mount; any other absolute source is a HOST bind mount (`type:
- * "host"` with its `hostPath`); anything else is a docker-named volume alias.
+ * The pure parser behind `readStackVolumes` (no fs) — exported for tests.
  */
 export function parseStackVolumes(
   yamlText: string,
@@ -3000,47 +2541,24 @@ export function parseStackVolumes(
 }
 
 /**
- * Re-apply a project's Traefik routing to its already-running stack, instantly
- * and without rebuilding. The router's `Host()` rule is baked into the
- * container's labels at deploy time, so switching the primary domain (or adding
- * / removing / verifying one) otherwise needs a full redeploy. This re-renders
- * the on-disk stack file with the project's current verified domains (primary
- * first) and runs `docker compose up -d`, which recreates only the routed
- * service in place; Traefik's Docker provider picks up the new labels within a
- * second or two. No image build, no git clone, no env regeneration.
- *
- * Returns a short status the caller surfaces to the user:
- *  - "rerouted"   — routing was re-applied to the running container
- *  - "unchanged"  — labels already matched; nothing to do (no restart)
- *  - "deferred"   — saved, but routing applies on the next deploy/start because
- *                   the project isn't currently active (idle/building/error) or
- *                   was never deployed; the stack file is still updated so the
- *                   correct labels are in place when it next comes up
- *
- * Throws only on an actual docker failure for an active project, so the caller's
- * toast reflects success/failure. Never starts a stopped (idle) project and
- * never races a deploy in progress (it re-renders the file but skips docker).
+ * Re-apply a project's Traefik routing to its already-running stack, instantly and
+ * without rebuilding. Never starts a stopped (idle) project and never races a
+ * deploy in progress (it re-renders the file but skips docker).
  */
 export async function rerouteApp(
   appId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
   const project = await loadAppGraph(appId);
   if (!project) return "deferred";
-  // Reroute is PRODUCTION-only: it re-labels the App's own stack. A pull request
-  // preview routes to exactly one host, minted once and never changed, so there
-  // is nothing for it to reroute — and its stack must never be re-rendered from
-  // the App's current domain set.
+  // Reroute is PRODUCTION-only: it re-labels the App's own stack.
   const deployKey = project.slug;
   const name = stackName(deployKey);
   const serverId = await owningServerIdForDeployKey(deployKey);
   if (!serverId) return "deferred"; // no owning agent (server removed); nothing to do
 
-  // Route exactly what a production DEPLOY would: every valid domain (primary
-  // first) PLUS the pending primary as a fallback. Using routableForDeploy (not
-  // bare routableRoutes) is what lets a freshly-ADDED primary domain take effect
-  // on a Reload without a full redeploy — its row may not be `valid` yet, but the
-  // deploy would still route it, so Reload must too. Empty ⇒ the project has no
-  // domain at all (never resurrected): nothing to write, leave it deferred.
+  // Route exactly what a production DEPLOY would: every valid domain (primary first)
+  // PLUS the pending primary as a fallback. Empty ⇒ the project has no domain at all
+  // (never resurrected): nothing to write, leave it deferred.
   const primary = await primaryDomainName(appId);
   const routes = await routableForDeploy(appId, "production", primary);
   if (routes.length === 0) return "deferred"; // never write an empty Host() rule
@@ -3072,14 +2590,13 @@ export async function rerouteApp(
         filesDir: composeFilesDir(deployKey),
         basicAuthUsers: await basicAuthUsersValue(appId),
         // Inject the current settings env-var names so a reroute keeps the same
-        // pass-throughs a deploy would render — the env-file (sent below) still
-        // carries the values. The no-op guard in mergeEnvironment means a reroute
-        // that adds no new key re-renders byte-identically (no needless restart).
+        // pass-throughs a deploy would render — the env-file (sent below) still carries the
+        // values.
         envKeys: await appEnvKeys(appId),
-        // The stack's volumes must be re-rendered too: omitting them here would
-        // make a domain-only reroute silently UNMOUNT the app's storage (unlike
-        // the single-image branch below, a compose stack is re-rendered from the
-        // app, not read back from the running stack file).
+        // The stack's volumes must be re-rendered too: omitting them here would make a
+        // domain-only reroute silently UNMOUNT the app's storage (unlike the single-image
+        // branch below, a compose stack is re-rendered from the app, not read back from the
+        // running stack file).
         volumes: project.volumes,
       });
       mounts = (project.mounts ?? []).map((m) => ({
@@ -3122,10 +2639,7 @@ export async function rerouteApp(
 
     // Only an active project may be recreated. Recreating an idle (deliberately
     // stopped) project would silently restart it; recreating mid-deploy races the
-    // deploy on the same compose project. For those, the agent still rewrites the
-    // file (so the labels apply on next start/deploy) but does not bring it up.
-    // We model that here by writing the file via a reroute only when active; for
-    // non-active we defer (the next deploy/start renders + applies anyway).
+    // deploy on the same compose project.
     if (project.status !== "active") return "deferred";
 
     // For a single-image stack the env is baked into the YAML, so send no env-file
@@ -3149,18 +2663,8 @@ export async function rerouteApp(
 }
 
 /**
- * Render the full Deplo-generated stack for a project, for read-only display
- * (the "View full compose" button). This is the augmented YAML — Traefik +
- * deplo labels, the injected `deplo` network, absolute file-mount paths — i.e.
- * what `docker compose` actually runs, as opposed to the clean compose the user
- * authored and sees in the editor.
- *
- * Compose stacks are rendered live from the saved compose + current routable
- * domains, so the preview matches the NEXT deploy/reroute even before the
- * project is deployed. Single-image / built apps keep their image ref and
- * env only in the on-disk stack file (not on the project), so those are read
- * back from `/data/stacks/<slug>.yml`; that file exists only after a first
- * deploy. Returns `null` when there's nothing to show yet.
+ * Render the full Deplo-generated stack for a project, for read-only display (the
+ * "View full compose" button).
  */
 export async function renderAppStack(appId: string): Promise<string | null> {
   const project = await loadAppGraph(appId);
@@ -3171,11 +2675,8 @@ export async function renderAppStack(appId: string): Promise<string | null> {
 
   const hasCompose = Boolean(project.compose && project.compose.trim());
   if (usesComposeStack(project) && hasCompose) {
-    // Mirror the deploy/reroute call exactly so the preview is byte-faithful to
-    // what would be written. The `domains` table is the sole routing source. A
-    // never-deployed compose project still previews: fall back to ALL of the
-    // project's domains (not just `valid` ones) so the preview isn't empty before
-    // any domain is verified.
+    // Mirror the deploy/reroute call exactly so the preview is byte-faithful to what
+    // would be written.
     const routes = await routableRoutes(appId);
     const domainRoutes: RoutableDomain[] = routes.length
       ? routes
@@ -3218,10 +2719,9 @@ export async function renderAppStack(appId: string): Promise<string | null> {
 }
 
 /**
- * Stop a project's stack via the owning server's agent StopStack (PLAN Part C).
- * The stack lives on the agent's daemon, the host running Deplo included. An
+ * Stop a project's stack via the owning server's agent StopStack (PLAN Part C). An
  * unreachable agent throws (the caller surfaces it; a stop must not silently
- * no-op). A no-op when the project/server is gone.
+ * no-op).
  */
 export async function stopContainer(deployKey: string): Promise<void> {
   const serverId = await owningServerIdForDeployKey(deployKey);
@@ -3249,10 +2749,7 @@ export async function startContainer(deployKey: string): Promise<void> {
 }
 
 /**
- * Stop and remove a project's stack via the owning agent's DestroyStack. The
- * stack file, env file, and files dir live on the AGENT's disk (its DestroyStack
- * owns their teardown), the host running Deplo included. An unreachable agent
- * throws so the caller can warn about manual cleanup (P6 spirit).
+ * Stop and remove a project's stack via the owning agent's DestroyStack.
  */
 export async function destroyStack(
   deployKey: string,
@@ -3262,12 +2759,8 @@ export async function destroyStack(
   if (!serverId) return;
   const conn = await connectAgent(serverId);
   try {
-    // `removeVolumes` is left UNSET for an App: its named volumes hold the user's
-    // data and must survive a teardown they can undo. A pull request preview
-    // passes true — a per-pull-request volume was created by, and only by, that
-    // preview, nobody ever asked to keep its contents, and nothing would ever
-    // point at it again. Leaving them behind is one orphaned volume set per
-    // closed pull request, forever, that no cleanup scope can reclaim.
+    // `removeVolumes` is left UNSET for an App: its named volumes hold the user's data
+    // and must survive a teardown they can undo.
     const r = await conn.destroyStack(deployKey, opts.removeVolumes);
     if (!r.ok) throw new Error(r.error || "agent failed to destroy the stack");
   } finally {

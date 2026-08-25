@@ -24,15 +24,6 @@ import { mapLimit } from "../utils";
 
 /**
  * The lifecycle of a **pull request preview** — open, sync, close, tear down.
- *
- * SESSION-FREE ON PURPOSE. Its three callers all run with no request identity:
- * the GitHub webhook (an inbound POST from GitHub), the reaper (a scheduler
- * tick) and the gated data layer in [previews](../data/previews.ts), which does
- * the `requireCapability` work before delegating here. A `requireCapability`
- * call inside this module would make every webhook delivery throw and be
- * silently dropped — the exact failure `runScheduledCleanup` is written to
- * avoid. Team scoping therefore happens in the CALLER; everything here is
- * store-direct and takes ids it has already been told are legitimate.
  */
 
 /** How many previews one app may have open at once when it sets no limit. */
@@ -98,19 +89,9 @@ export interface OpenOrSyncResult {
 }
 
 /**
- * Open (or refresh) the preview for one pull request and start its build.
- *
- * Everything runs under a per-pull-request lock: GitHub can deliver `opened`
- * and `synchronize` back to back, and two concurrent inserts would race the
- * `app_previews_app_pr_uq` constraint. The unique index is still the backstop —
- * the lock is only in-process.
- *
- * On INSERT the deploy key and host are minted; on UPDATE they are deliberately
- * left alone. The URL has already been commented on the pull request, so
- * regenerating it on every push would strand the link somebody is testing.
- *
- * `actor` names who caused it (a GitHub login for a webhook, a member's name for
- * a manual deploy) and is recorded on the deployment, never used for authority.
+ * Open (or refresh) the preview for one pull request and start its build. The URL
+ * has already been commented on the pull request, so regenerating it on every push
+ * would strand the link somebody is testing.
  */
 export async function openOrSyncPreview(
   appId: string,
@@ -159,14 +140,7 @@ export async function openOrSyncPreview(
         refusal: { kind: "fork-denied" },
       };
     }
-    // Per COMMIT, not per pull request. A maintainer approving what they read
-    // must not also be approving every commit pushed to that branch afterwards:
-    // "open something harmless, get it approved, then push the payload" is the
-    // whole shape of the attack, and the fork's code runs on the operator's host
-    // on the shared `deplo` network. The stored `approved_sha` is what says WHAT
-    // was reviewed, so it is what the question is asked against. `allow` is the
-    // opt-out for a team that has decided its forks are trusted, and a manual
-    // deploy (`opts.approve`) is a person approving THIS head as they click.
+    // Per COMMIT, not per pull request.
     const approved =
       !pr.isFork ||
       policy === "allow" ||
@@ -175,11 +149,8 @@ export async function openOrSyncPreview(
 
     const now = nowIso();
     let previewId = existing?.id ?? null;
-    // An evicted preview keeps taking pull request updates — its title, head SHA
-    // and state stay honest in the list — but a push does NOT rebuild it. Only a
-    // person clicking Redeploy does. Otherwise, with N active pull requests under
-    // a cap of N, every commit would evict a sibling and the app would spend all
-    // day building previews nobody asked for.
+    // An evicted preview keeps taking pull request updates — its title, head SHA and
+    // state stay honest in the list — but a push does NOT rebuild it.
     const evictedAndUnasked = existing?.status === "evicted" && !opts.manual;
     if (existing) {
       await getDb()
@@ -212,16 +183,9 @@ export async function openOrSyncPreview(
         })
         .where(eq(appPreviewsTable.id, existing.id));
     } else {
-      // At the cap, the NEW preview wins and the least recently active one is
-      // torn down. An existing preview's own next push never evicts anything —
-      // it already holds its slot.
-      //
-      // ONLY when this preview is actually going to build. An unapproved fork
-      // is recorded so a maintainer can see and approve it, but it clones
-      // nothing and runs nothing — evicting a live preview to seat it would let
-      // any stranger opening a pull request knock the team's own previews over,
-      // and put nothing in their place. It takes a slot when it is approved,
-      // through the same path every other build takes.
+      // At the cap, the NEW preview wins and the least recently active one is torn down.
+      // An existing preview's own next push never evicts anything — it already holds its
+      // slot. ONLY when this preview is actually going to build.
       if (approved && (await countOpenPreviews(appId)) >= settings.maxActive) {
         await evictToFit(appId, settings.maxActive);
       }
@@ -268,22 +232,13 @@ export async function openOrSyncPreview(
         });
     }
 
-    // The cap has to be settled PER APP, not per pull request: the lock this
-    // function runs under is keyed `appId:prNumber`, so two PRs opened together
-    // took DIFFERENT locks, both read the same under-cap count above, neither
-    // evicted, and both took a slot — leaving the app over the limit it set (extra
-    // containers, and one Docker network each on a host that has ~31). Re-fit
-    // AFTER the insert, inside a per-app section: `evictToFit` drops oldest-first,
-    // so the racing newcomers survive and the count comes back to the cap. Cheap
-    // when nothing raced (a count that is already at the cap evicts nothing).
+    // The cap has to be settled PER APP, not per pull request: the lock this function
+    // runs under is keyed `appId:prNumber`, so two PRs opened together took DIFFERENT
+    // locks, both read the same under-cap count above, neither evicted, and both took a
     if (approved)
       await withKeyedLock(`preview-cap:${appId}`, () =>
-        // `+ 1` because evictToFit makes room FOR a preview about to be inserted
-        // (it evicts `count - keep + 1`). Here the row already exists, so the
-        // budget it must fit into is `maxActive` rows INCLUDING it: passing
-        // `maxActive + 1` evicts exactly the overshoot — nothing in the common
-        // case, and oldest-first (so the racing newcomers survive) when two PRs
-        // both slipped through the pre-insert check under different PR locks.
+        // `+ 1` because evictToFit makes room FOR a preview about to be inserted (it evicts
+        // `count - keep + 1`).
         evictToFit(appId, settings.maxActive + 1),
       );
 
@@ -326,12 +281,9 @@ export async function deployPreviewRow(
     .limit(1);
   const p = row[0];
   if (!p) return null;
-  // A preview that holds no slot is about to start holding one, so it claims
-  // its place exactly like a new preview would — otherwise reviving an evicted
-  // one, or approving a fork that has been sitting blocked, would silently put
-  // the app over the limit it set. This lives HERE rather than in the webhook
-  // path because every way in — Redeploy, approving a fork, the manual pull
-  // request picker — comes through this function.
+  // A preview that holds no slot is about to start holding one, so it claims its
+  // place exactly like a new preview would — otherwise reviving an evicted one, or
+  // approving a fork that has been sitting blocked, would silently put the app over
   if ((SLOTLESS as readonly string[]).includes(p.status)) {
     const settings = await previewSettings(p.appId);
     const max = settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT;
@@ -365,14 +317,8 @@ export async function deployPreviewRow(
 }
 
 /**
- * Close a preview: stop accepting builds for it, cancel anything still queued,
- * and tear the stack down. Idempotent — a second call on an already-closed,
- * already-torn-down preview does nothing and reports success.
- *
- * The row is NOT deleted. `torn_down_at IS NULL` is the reaper's retry
- * predicate, and stamping it is the only proof the stack really went away; a
- * delete here would silently leak a container and a volume set the moment an
- * agent happened to be unreachable.
+ * Close a preview: stop accepting builds for it, cancel anything still queued, and
+ * tear the stack down.
  */
 export async function closePreview(
   previewId: string,
@@ -421,14 +367,9 @@ export async function closePreview(
 }
 
 /**
- * Destroy a preview's stack on its host and stamp `torn_down_at` on success.
- * Never throws: an unreachable agent leaves the stamp NULL so the reaper picks
- * the row up again, which is the whole reason the row outlives the close.
- *
- * `removeVolumes` is TRUE here, unlike an App teardown. A preview's volumes were
- * created by, and only by, that preview; nobody asked to keep their contents and
- * nothing would ever point at them again. Left behind they are one orphaned
- * volume set per closed pull request, forever, that no cleanup scope reclaims.
+ * Destroy a preview's stack on its host and stamp `torn_down_at` on success. A
+ * preview's volumes were created by, and only by, that preview; nobody asked to
+ * keep their contents and nothing would ever point at them again.
  */
 export async function teardownPreviewStack(p: {
   id: string;
@@ -448,9 +389,8 @@ export async function teardownPreviewStack(p: {
 
 /**
  * Tear down every preview stack of an app, for the paths that delete the app
- * itself. MUST run before the app row goes: the FK cascade drops the preview
- * rows, and with them the only record that those containers and volumes exist.
- * Called INSIDE the app's lifecycle lock so it can't race a preview build.
+ * itself. MUST run before the app row goes: the FK cascade drops the preview rows,
+ * and with them the only record that those containers and volumes exist.
  */
 export async function destroyPreviewsForApp(appId: string): Promise<void> {
   const rows = await getDb()
@@ -472,11 +412,9 @@ export async function destroyPreviewsForApp(appId: string): Promise<void> {
         isNull(appPreviewsTable.tornDownAt),
       ),
     );
-  // The queue, not `teardownPreviewStack`: these rows are about to CASCADE away
-  // with the app, so the stamp they retry on is gone in a moment and nothing
-  // would ever name these containers again. `deplo.project` on a preview carries
-  // the PREVIEW's own id (see build.ts `trackingId`), which is what lets a retry
-  // days later tell this stack apart from anything that took the key since.
+  // The queue, not `teardownPreviewStack`: these rows are about to CASCADE away with
+  // the app, so the stamp they retry on is gone in a moment and nothing would ever
+  // name these containers again.
   await mapLimit(rows, 4, async (r) => {
     await teardownOrQueue({
       serverId: r.serverId,
@@ -538,11 +476,8 @@ export async function previewSettings(appId: string): Promise<{
     ttlDays: r.ttlDays && r.ttlDays > 0 ? r.ttlDays : PREVIEW_TTL_DAYS_DEFAULT,
     forkPolicy: forkPolicyOf(r.forkPolicy),
     serverId: r.serverId,
-    // Coerced, not merely read: a nip.io host cannot hold a certificate, so
-    // without a base domain the answer is no whatever the column says. Enforcing
-    // it HERE rather than in the form means an app that had HTTPS on and then
-    // cleared its domain degrades to plain HTTP instead of minting previews that
-    // greet every reviewer with a browser warning.
+    // Coerced, not merely read: a nip.io host cannot hold a certificate, so without a
+    // base domain the answer is no whatever the column says.
     https: Boolean(r.https) && Boolean(r.baseDomain?.trim()),
     autoDeploy: r.autoDeploy,
     port: r.port && r.port > 0 ? r.port : null,
@@ -553,10 +488,7 @@ export async function previewSettings(appId: string): Promise<{
 }
 
 /**
- * Split the stored newline list into the labels a pull request may match.
- *
- * Tolerant on purpose — the field is a textarea a human types into, so blank
- * lines and stray whitespace are theirs to leave, not errors to report. Matching
+ * Split the stored newline list into the labels a pull request may match. Matching
  * is case-insensitive because GitHub labels are, and lower-casing here means the
  * comparison site never has to remember.
  */
@@ -574,9 +506,7 @@ export function parseRequiredLabels(raw: string | null | undefined): string[] {
 
 /**
  * The statuses that hold NO slot against the cap, because neither has a stack:
- * `blocked` was never cloned or built, `evicted` had its stack removed. One
- * constant so the counter, the eviction and the revive can never disagree about
- * what "live" means.
+ * `blocked` was never cloned or built, `evicted` had its stack removed.
  */
 const SLOTLESS = ["blocked", "evicted"] as const;
 
@@ -598,19 +528,7 @@ async function countOpenPreviews(appId: string): Promise<number> {
 
 /**
  * Make room for one more preview by tearing down the least recently active ones
- * until the app is back under `keep`. Returns how many were evicted.
- *
- * "Keep at most N" is meant literally, so the cap EVICTS rather than refusing —
- * but it evicts by `last_activity_at`, never by pull request age: the pull
- * request everyone is reviewing is usually the oldest one open, and killing it
- * to make room for a drive-by typo fix is precisely backwards.
- *
- * The row survives at `status = 'evicted'` with `state` still `open`. It keeps
- * its deploy key and host, so a later Redeploy revives the SAME URL. Nothing
- * revives it automatically — see {@link openOrSyncPreview}, where a webhook push
- * onto an evicted row deliberately refuses. Without that asymmetry, N active
- * pull requests under a cap of N would evict each other on every commit, a full
- * build burned per cycle.
+ * until the app is back under `keep`.
  */
 async function evictToFit(appId: string, keep: number): Promise<number> {
   const victims = await getDb()
@@ -663,12 +581,8 @@ async function loadPreviewRow(
 }
 
 /**
- * Previews the reaper should act on, in two disjoint sets:
- *  - `retry`  — closed but never verifiably torn down (the agent was down).
- *  - `expired` — open, and idle for longer than the app's TTL.
- *
- * Both are plain state queries, which is why this scheduler needs no catch-up
- * window: a tick that never ran simply leaves the rows to the next one.
+ * Previews the reaper should act on, in two disjoint sets: - `retry` — closed but
+ * never verifiably torn down (the agent was down).
  */
 export async function previewsDueForReaping(
   now: Date,

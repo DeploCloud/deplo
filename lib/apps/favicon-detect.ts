@@ -30,34 +30,15 @@ import { isValidLogoValue, MAX_LOGO_BYTES } from "./logo-shared";
 import type { GitRepo, UploadArchive } from "../types";
 
 /**
- * Auto-detect an app's display logo from an icon/favicon shipped in its OWN
- * source files, returning a storable base64 data-URI (or null when none is
- * found). The pick + ranking is the pure {@link file://./favicon-shared.ts}
- * logic; this module is the server-only I/O around it — reading the file list
- * and the chosen icon's bytes — for each source kind:
- *
- *  - GitHub repos are cloned on the deploy AGENT, so the control plane never has
- *    the tree on disk; it reads the repo through the GitHub API (git tree +
- *    blob) instead — works for private (installation token) and public repos.
- *  - Uploaded archives live on the control plane, so we extract to a temp dir
- *    and scan the files (reusing extractArchive's symlink-reject guard).
- *  - A COMPOSE STACK has neither, so it is read on its own host through that
- *    server's agent, in two passes: the files dir it bind-mounts from, and then
- *    — the case that actually covers most compose apps — the icon the RUNNING
- *    app serves, since a stack of prebuilt images keeps its favicon inside the
- *    image where no file walk can reach it. See {@link file://./favicon-agent.ts}.
- *
- * Every entry point is best-effort and non-throwing: detection is a cosmetic
- * nicety layered on deploy, never a reason to fail one.
+ * Auto-detect an app's display logo from an icon/favicon shipped in its OWN source
+ * files, returning a storable base64 data-URI (or null when none is found).
  */
 
-/** Turn chosen icon bytes into a validated `data:` logo URI, or null if the
- * bytes are empty / over the cap / an unsupported type. The final
- * `isValidLogoValue` gate is what every storer already trusts.
- *
- * `mime` is passed when the SOURCE knew the type — a served icon, whose bytes
- * were sniffed — and beats the extension, which a served URL may not even have
- * (`/icon?v=2`). A file on disk has only its name, so it falls back to that. */
+/**
+ * Turn chosen icon bytes into a validated `data:` logo URI, or null if the bytes
+ * are empty / over the cap / an unsupported type. The final `isValidLogoValue`
+ * gate is what every storer already trusts.
+ */
 function toLogoDataUri(
   bytes: Buffer,
   path: string,
@@ -71,12 +52,7 @@ function toLogoDataUri(
 }
 
 /**
- * Detect an icon in a GitHub repo via the API. Works for a GitHub App import
- * (`source: "github"`, private repos use the installation token) AND a plain
- * github.com URL (`source: "git"`, read unauthenticated). `repo.branch` empty ⇒
- * the default branch ("HEAD"). `rootDirectory` biases the pick toward the
- * sub-app a monorepo builds from. Null for non-GitHub repos (GitLab / Bitbucket
- * / other git hosts have no tree-read path from the control plane).
+ * Detect an icon in a GitHub repo via the API.
  */
 export async function detectGithubFavicon(
   repo: GitRepo,
@@ -140,25 +116,17 @@ export async function detectConnectionFavicon(
 }
 
 // The extracted tree is fully attacker-controlled (an uploaded archive), so the
-// walk is hard-bounded on every axis a crafted tree could blow up — never
-// unbounded work regardless of how many dirs/files the archive packs:
-//  - MAX_DIRS_WALKED   directories OPENED across the whole walk
-//  - MAX_PENDING_DIRS  un-opened dirs held on the DFS stack (memory)
-//  - MAX_ENTRIES_PER_DIR entries scanned within any ONE directory (a hostile
-//    single mega-directory can't force an unbounded scan)
-//  - MAX_CANDIDATES    icon candidates collected before we stop early
-// Directories are STREAMED with opendir (not readdir), so a directory holding
-// millions of entries is read incrementally instead of materialising every
-// Dirent in memory at once.
+// walk is hard-bounded on every axis a crafted tree could blow up — never unbounded
+// work regardless of how many dirs/files the archive packs: - MAX_DIRS_WALKED
 const MAX_DIRS_WALKED = 4000;
 const MAX_PENDING_DIRS = 8000;
 const MAX_ENTRIES_PER_DIR = 50_000;
 const MAX_CANDIDATES = 64; // far more than any real app ships; we only need the best
 
-/** Collect icon-candidate files (relative path + size) from an extracted tree,
+/**
+ * Collect icon-candidate files (relative path + size) from an extracted tree,
  * pruning dependency/build dirs during descent and never following symlinks.
- * Hard-bounded (see the caps above) so a hostile archive can't exhaust memory
- * or the event loop; only real icon-named candidates are stat'd/collected. */
+ */
 async function collectTreeCandidates(root: string): Promise<FaviconFile[]> {
   const out: FaviconFile[] = [];
   const stack: string[] = [""]; // dirs relative to root; "" is the root itself
@@ -195,11 +163,8 @@ async function collectTreeCandidates(root: string): Promise<FaviconFile[]> {
           stack.push(childRel);
         }
       } else if (e.isFile()) {
-        // Only stat REAL icon candidates so `out` and the syscall count stay
-        // small even for huge trees. The stat gives the true size so the byte
-        // cap is applied by the ranker BEFORE we ever read a file — a
-        // decompression-bombed `favicon.svg` is filtered out, never read into
-        // memory. An unstatable entry is skipped.
+        // Only stat REAL icon candidates so `out` and the syscall count stay small even for
+        // huge trees.
         if (scoreFaviconPath(childRel) === null) continue;
         const size = await stat(join(root, childRel))
           .then((s) => s.size)
@@ -233,12 +198,8 @@ export async function detectTreeFavicon(
 }
 
 /**
- * Detect an icon in a stored upload archive: extract to a throwaway temp dir,
- * scan it, and clean up. The archive is fully attacker-controlled, so we lean
- * on extractArchive's symlink rejection + traversal guards + the bounded walk;
- * any extract failure just yields null (no icon). Used on demand by the manual
- * "Detect from source" action — the automatic upload path scans the tree the
- * DEPLOY already extracted (no second extraction), see the deploy engine.
+ * Detect an icon in a stored upload archive: extract to a throwaway temp dir, scan
+ * it, and clean up.
  */
 export async function detectUploadFavicon(
   archive: UploadArchive,
@@ -258,9 +219,8 @@ export async function detectUploadFavicon(
 
 /**
  * Detect an icon in an app's files dir on its OWNING SERVER — the compose-stack
- * arm, where "the app's own files" is the `<stacks>/files/<slug>` tree its
- * `./x` bind mounts resolve into. The walk + the read go through that server's
- * agent; only the ranking and this data-URI wrap are control-plane logic.
+ * arm, where "the app's own files" is the `<stacks>/files/<slug>` tree its `./x`
+ * bind mounts resolve into.
  */
 export async function detectAppFilesFavicon(
   serverId: string,
@@ -271,10 +231,8 @@ export async function detectAppFilesFavicon(
 }
 
 /**
- * Detect the icon a RUNNING compose app serves, by asking the app for it
- * through its owning server's agent. This is what makes icon detection work for
- * a compose stack at all in the ordinary case: such an app runs prebuilt images,
- * so its favicon is inside the image and no file walk can ever see it.
+ * Detect the icon a RUNNING compose app serves, by asking the app for it through
+ * its owning server's agent.
  */
 export async function detectServedAppFavicon(
   serverId: string,
@@ -285,13 +243,7 @@ export async function detectServedAppFavicon(
 }
 
 /**
- * The whole compose-stack arm: the app's own files first, then the icon it
- * serves.
- *
- * Files first because that read is cheap, works on a stopped app, and is the
- * right answer when the stack serves a site the user put there — the icon is
- * literally theirs. The served read is the fallback that covers everything else,
- * which in practice is most compose apps.
+ * The whole compose-stack arm: the app's own files first, then the icon it serves.
  */
 export async function detectComposeAppFavicon(
   serverId: string,
@@ -336,16 +288,8 @@ export function appIconProbeTarget(
 
 /**
  * Detect a logo from whichever files an app actually owns — the on-demand entry
- * point behind the settings "Detect from source" action (the deploy hooks call
- * the arm their source already resolved). WHICH pile of files that is comes from
- * the shared {@link faviconSourceKind}, so the UI's "can this be detected?" gate
- * and this dispatch can never disagree. Null when there is nothing to scan (a
- * prebuilt docker image, a non-GitHub git URL, or an upload with no archive).
- *
- * `routes`/`primaryHost` are the app's routed domains, needed only by the
- * compose arm to reach the running app the way Traefik does. Omitting them still
- * detects a compose app's icon — the target falls back to the compose file's own
- * default service — it just can't send the app its own hostname.
+ * point behind the settings "Detect from source" action (the deploy hooks call the
+ * arm their source already resolved). gate and this dispatch can never disagree.
  */
 export async function detectAppFavicon(
   project: FaviconDetectApp,

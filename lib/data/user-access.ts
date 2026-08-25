@@ -42,32 +42,8 @@ import { nodeCapabilitiesFor, withView } from "./node-access";
 import type { Activity, AlertKey, Capability, Membership } from "../types";
 
 /**
- * Instance-admin administration of ONE person's access across the whole
- * instance — the server half of Settings → Users → a user.
- *
- * Everything here is `requireInstanceAdmin()`, never `requireCapability`: an
- * admin answering "who can touch Prod?" is by definition editing teams they may
- * not belong to, and until now the only answer was "ask whoever runs that team".
- * That is exactly the shape the mission rules out.
- *
- * It does NOT relax any team-internal rule. The three guards that make team
- * membership safe are reused verbatim from `lib/data/members.ts` — the founder's
- * crown is immutable, the instance owner's row is closed to everyone but
- * themselves, and `assertAdminCoverage` keeps a team from losing its last member
- * who can administer it. `updateMember` itself is untouched.
- *
- * Two modes per team (ADR-0016):
- *  - **role** — the membership points at a `team_roles` row and follows it, as
- *    it always has;
- *  - **granular** — the nodes on the membership ARE this person's reach: they
- *    touch those projects, folders and apps and nothing else, with the
- *    capability set each node carries. Their role stays on the row as the base
- *    the admin started from (and as what they fall back to), which is why the
- *    member page can still show it and put them back on it.
- *
- * Either mode can also carry the member's OWN capability set
- * (`memberships.custom_capabilities`), which is what lets one person hold more
- * or less than everyone else with the same role without editing the role.
+ * Instance-admin administration of ONE person's access across the whole instance —
+ * the server half of Settings → Users → a user.
  */
 
 /** One node an access set is attached to. */
@@ -266,14 +242,8 @@ async function nodeGrantsFor(
 
 /**
  * The scope tree rooted at the TARGET's teams — the same picker the token editor
- * draws, built from someone else's memberships. Instance admin only.
- *
- * `asCaller` is what keeps the tree honest about private folders. Skipping it is
- * defensible for an instance admin, who already sees every folder in every team;
- * it would not be for anyone else, because the tree names folders and the apps
- * inside them, which is precisely what a private folder exists to withhold. The
- * flag is therefore derived here rather than passed in, so a second caller
- * cannot arrive with it set.
+ * draws, built from someone else's memberships. The flag is therefore derived here
+ * rather than passed in, so a second caller cannot arrive with it set.
  */
 export async function listUserAccessTree(
   userId: string,
@@ -288,12 +258,6 @@ export async function listUserAccessTree(
 
 /**
  * One member's access in the ACTIVE team, for the team-side member page.
- *
- * Gated on `manage_members` rather than on membership, unlike the roster: the
- * node list names folders, and a folder is private to its owner and grantees
- * (ADR-0016). Rendering a teammate's access read-only to everybody would hand
- * every member the NAME of every private folder anyone was ever shared into,
- * which is exactly what the privacy rule withholds.
  */
 export async function getMemberAccess(
   userId: string,
@@ -329,11 +293,8 @@ export async function listUserActivity(
 /* ------------------------------------------------------------------ */
 
 /**
- * Set one person's access in one team: their base role, whether per-node
- * overrides apply, and the overrides themselves. Instance admin only.
- *
- * Whole-set replace in one transaction — the node rows the caller doesn't send
- * are gone when it returns, so the page never has to reason about a partial save.
+ * Set one person's access in one team: their base role, whether per-node overrides
+ * apply, and the overrides themselves.
  */
 export async function setUserTeamAccess(input: {
   userId: string;
@@ -350,18 +311,8 @@ export async function setUserTeamAccess(input: {
 }
 
 /**
- * The same write, for a team administering its OWN member: `manage_members`,
- * and the team comes from the actor rather than from the input.
- *
- * That is the whole difference, and it is the reason this is a second door
- * instead of a looser gate on the one above. `setUserTeamAccess` takes a
- * `teamId` because cross-team administration is its entire purpose; the moment a
- * team-scoped capability could reach it with an id of its choosing, the admin of
- * team A would be rewriting memberships in team B.
- *
- * Everything past the gate is shared, guards included: the founder's crown, the
- * instance owner's row, the self-edit refusal, the last-administrator check and
- * the granter bound on every node.
+ * The same write, for a team administering its OWN member: `manage_members`, and
+ * the team comes from the actor rather than from the input.
  */
 export async function setMemberAccess(input: {
   userId: string;
@@ -395,12 +346,7 @@ async function writeAccess(
     capabilities?: Capability[];
   },
   /**
-   * The ACTOR's own membership, on the team-side door. Null on the
-   * instance-admin one, which is exempt by definition.
-   *
-   * Without it, `manage_members` alone assigned ANY role — including Owner, to
-   * somebody else, above the actor's own rank. `updateMember` has refused that
-   * for as long as it has existed; this door reached the same table and did not.
+   * The ACTOR's own membership, on the team-side door.
    */
   actor: Membership | null,
 ): Promise<void> {
@@ -486,15 +432,8 @@ async function writeAccess(
 }
 
 /**
- * The set that lands in `membership_capabilities` — the member's own when the
- * page sent one, the role's otherwise.
- *
- * Bounded by {@link NODE_GRANTABLE_CAPABILITIES} the moment the member does not
- * reach the whole team, for the same reason a scoped ROLE is bounded by
- * `effectiveRoleCapabilities`: `holdsManageTeam` reads this junction unclamped,
- * so leaving `manage_team` on somebody limited to one folder would resolve them
- * as a super-user over every folder in the team. The member page mutes exactly
- * this set, so the picker and the save agree on what a tick still means.
+ * The set that lands in `membership_capabilities` — the member's own when the page
+ * sent one, the role's otherwise.
  */
 function memberCapabilities(
   assignment: { capabilities: Capability[]; scoped: boolean },
@@ -592,10 +531,7 @@ export async function removeUserFromTeam(input: {
 type Tx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
 
 /**
- * The membership row, if this admin may touch it. Two accounts are closed:
- * the team's FOUNDER (the crown is immutable to everyone, instance admins
- * included — same rule `updateMember` enforces) and the INSTANCE OWNER, whose
- * row only they may change (`lib/data/instance-owner.ts`).
+ * The membership row, if this admin may touch it.
  */
 async function requireEditableMembership(
   tx: Tx,
@@ -603,12 +539,9 @@ async function requireEditableMembership(
   teamId: string,
   actingUserId: string,
 ): Promise<{ id: string }> {
-  // Nobody edits their own access here, rank and instance-admin flag included.
-  // This function writes reach as well as capabilities, and the one thing a
-  // boundary must never be is self-serve: an actor who could widen themselves
-  // has no boundary. `updateMember` has always refused a non-owner self-edit;
-  // this refuses everyone, because there is no version of "widening yourself"
-  // that a rank makes legitimate.
+  // Nobody edits their own access here, rank and instance-admin flag included. This
+  // function writes reach as well as capabilities, and the one thing a boundary must
+  // never be is self-serve: an actor who could widen themselves has no boundary.
   if (userId === actingUserId) {
     throw new Error("You can't change your own access. Ask another admin.");
   }
@@ -646,16 +579,9 @@ interface ResolvedGrant {
 }
 
 /**
- * Check every ticked node really belongs to `teamId`, that the ACTOR can reach
- * it and holds there what they are handing out, and bound each set to
- * {@link NODE_GRANTABLE_CAPABILITIES}. Refuses loudly rather than silently
- * dropping, so an admin is told why `manage_members` isn't on offer per node.
- *
- * The granter bound is the same one `setFolderGrant` applies, and ADR-0016 calls
- * it "what keeps the model safe": without it, holding the single capability that
- * opens this function is enough to hand a confederate `reveal_secrets` and
- * `open_app_console` on a private folder the granter cannot even see. An
- * instance admin resolves everything on every node, so for them it is a no-op.
+ * Check every ticked node really belongs to `teamId`, that the ACTOR can reach it
+ * and holds there what they are handing out, and bound each set to {@link
+ * NODE_GRANTABLE_CAPABILITIES}.
  */
 async function resolveGrants(
   teamId: string,
@@ -693,12 +619,10 @@ async function resolveGrants(
         throw new Error("One of those isn't in this team any more");
       }
       for (const id of new Set(ids)) {
-        // The team is an ARGUMENT, not the cookie's active team: this door is
-        // cross-team by design (an admin answering "who can touch Prod?" is
-        // editing teams they may not belong to), and the request-scoped twin
-        // answers `[]` for every node outside the team being acted in.
-        // Resolved BEFORE any transaction opens: it queries on its own
-        // connection, and under pglite that would hang against an open one.
+        // The team is an ARGUMENT, not the cookie's active team: this door is cross-team by
+        // design (an admin answering "who can touch Prod?" is editing teams they may not
+        // belong to), and the request-scoped twin answers `[]` for every node outside the
+        // team being acted in.
         const mine = await nodeCapabilitiesFor(actingUserId, teamId, {
           kind,
           id,
@@ -765,10 +689,7 @@ export async function clearNodeGrants(
 }
 
 /**
- * Write the resolved node grants. `view` is never stored: it is implied for
- * anyone who can reach a node at all, and a row holding only `view` would be
- * indistinguishable from no grant — which is what makes "has rows" mean "says
- * something" in `lib/data/node-access.ts`.
+ * Write the resolved node grants.
  */
 async function writeNodeGrants(
   tx: Tx,
@@ -804,14 +725,7 @@ async function writeNodeGrants(
 /**
  * Log the change in the AFFECTED team's Activity, so "who can do what, and who
  * changed it" is answerable from the UI — including by people who can't see
- * Settings → Users. Runs OUTSIDE the transaction (own connection).
- *
- * It RAISES the matching alert too. This is the second door into a team's
- * membership — Settings → Users, the instance-wide one — and it used to write
- * the trail and stay silent, so `member_joined` / `member_removed` /
- * `member_access_changed` fired for the team's own Members tab and for nothing
- * that came through here. A switch that promises an alert has to deliver it
- * through every door, or it is a switch that promises silence.
+ * Settings → Users.
  */
 async function recordUserAccess(
   userId: string,

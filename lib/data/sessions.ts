@@ -8,31 +8,8 @@ import { requirePersonalSession } from "../auth/request-context";
 import { describeUserAgent, type DeviceKind } from "../user-agent";
 
 /**
- * The devices signed in to the current account — Settings → Security.
- *
- * USER-scoped, not team-scoped: a session belongs to a person, not to a team, so
- * everything here gates on `assertUser()` and resolves rows through that user's
- * id. It is the one part of the data layer where `requireActiveTeamId` would be
- * the wrong boundary, and using it would be a real bug: a member locked out of
- * their team by its 2FA policy must still be able to see and kill their own
- * sessions.
- *
- * Everything goes through Better Auth's `internalAdapter` rather than raw SQL on
- * the `session` table. Direct deletes work today and would keep working right up
- * until someone enables `secondaryStorage` or `session.cookieCache`, at which
- * point a "revoked" session would quietly stay alive in Redis or in a signed
- * cookie until it expired — a security feature that silently stops working is
- * worse than one that was never built. The adapter owns those paths.
- *
- * The hard rule on top of that: **`session.token` never leaves this module.**
- * It is not a hash or an identifier, it is the credential itself — the value
- * inside the cookie. The DTO carries `id`, which is inert, and the token is
- * looked up server-side only when something is about to be deleted.
- *
- * And the second hard rule: **an API token reaches none of it.** With no team to
- * scope by and no capability to gate on, `assertUser()` alone would let any
- * bearer credential its holder ever minted enumerate their devices and sign them
- * out — see {@link requirePersonalSession}.
+ * The devices signed in to the current account — Settings → Security. The hard
+ * rule on top of that: **`session.token` never leaves this module.
  */
 
 export interface UserSessionDTO {
@@ -44,11 +21,8 @@ export interface UserSessionDTO {
   device: DeviceKind;
   ipAddress: string | null;
   /**
-   * When Better Auth last refreshed this session, which is as close to "last
-   * used" as the row gets. Accurate to `updateAge` (15 minutes, set in
-   * lib/auth/better-auth.ts) — at the library default of a day it was off by up
-   * to 24 hours, which made the column useless for the one question it answers:
-   * is this session still in use, or is it stale enough to sign out?
+   * When Better Auth last refreshed this session, which is as close to "last used"
+   * as the row gets.
    */
   lastSeenAt: string;
   createdAt: string;
@@ -74,10 +48,6 @@ async function liveSessions(userId: string) {
 
 /**
  * Every live session of the current user, most recently seen first.
- *
- * Expired rows are filtered out rather than shown greyed: Better Auth deletes
- * them lazily, so the table would otherwise fill with sessions that already
- * cannot sign anyone in, and offering a "revoke" button for those is theatre.
  */
 export const listMySessions = cache(async (): Promise<UserSessionDTO[]> => {
   requirePersonalSession("your signed-in devices");
@@ -101,12 +71,8 @@ export const listMySessions = cache(async (): Promise<UserSessionDTO[]> => {
 });
 
 /**
- * End one session by id.
- *
- * The id is resolved WITHIN the caller's own session list, so an id belonging to
- * somebody else is simply not found — the ownership check is structural rather
- * than a WHERE clause someone can forget. It reports the same "no longer signed
- * in" as an id that never existed, so the caller learns nothing either way.
+ * End one session by id. It reports the same "no longer signed in" as an id that
+ * never existed, so the caller learns nothing either way.
  */
 export async function revokeSession(id: string): Promise<void> {
   requirePersonalSession("your signed-in devices");
@@ -124,14 +90,6 @@ export async function revokeSession(id: string): Promise<void> {
 /**
  * End every session except the one making the request, and report how many live
  * ones went.
- *
- * The panic button: it is what someone reaches for after losing a laptop, so it
- * must not also sign THEM out and leave them unable to change their password.
- *
- * A bearer caller has no current session, so "all except the current one" would
- * have meant ALL of them — a stolen CI token could lock its owner out of their
- * own instance on demand. It is refused instead: this is a dashboard action, and
- * the person taking it is at a keyboard.
  */
 export async function revokeOtherSessions(): Promise<number> {
   requirePersonalSession("your signed-in devices");

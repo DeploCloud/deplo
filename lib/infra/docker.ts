@@ -6,17 +6,13 @@ import {
   type ChildProcessWithoutNullStreams,
 } from "node:child_process";
 // node-pty is a native module; it stays out of the bundle via
-// serverExternalPackages (next.config.ts) and is rebuilt for the runtime
-// (Node + musl) in the Dockerfile. Imported lazily inside attachContainerPty so
-// a missing/broken native build can't crash unrelated docker helpers at import.
+// serverExternalPackages (next.config.ts) and is rebuilt for the runtime (Node +
+// musl) in the Dockerfile.
 import type { IPty } from "node-pty";
 
 /**
- * Real Docker client. Shells out to the `docker` CLI against the mounted
- * /var/run/docker.sock. No shell is used (execFile), so arguments are safe from
- * injection. Every helper throws on non-zero exit; callers decide how to
- * surface failures. This module never fabricates data — if Docker is
- * unavailable the calls reject.
+ * Real Docker client. This module never fabricates data — if Docker is unavailable
+ * the calls reject.
  */
 
 export interface ExecResult {
@@ -34,9 +30,7 @@ interface RunOpts {
   /**
    * Resolve (instead of reject) when the process exits with a non-zero *exit
    * code*. Spawn failures and timeouts — which produce no numeric exit code,
-   * meaning the process never ran — still reject. Used by `execInContainer` so
-   * a console can show a guest command's stderr instead of treating its
-   * non-zero exit as an infrastructure error.
+   * meaning the process never ran — still reject.
    */
   noThrow?: boolean;
 }
@@ -242,12 +236,9 @@ export async function containerLogs(
 }
 
 /**
- * Whether `docker exec` failed at the docker/OCI runtime level — the command
- * never ran inside the container — as opposed to the guest command running and
- * exiting non-zero. Discriminates on STDERR TEXT, not exit code: on modern
- * Docker (27.x) docker-level failures land on exit 1/126 and the guest shell
- * also emits 126/127, so the code is ambiguous. The phrases below are emitted
- * by docker/the OCI runtime and never by an in-container shell.
+ * Whether `docker exec` failed at the docker/OCI runtime level — the command never
+ * ran inside the container — as opposed to the guest command running and exiting
+ * non-zero.
  */
 const DOCKER_LEVEL_STDERR =
   /(?:OCI runtime|unable to start container process|executable file not found in \$PATH|Error response from daemon|No such container|is not running|is paused|Cannot connect to the Docker daemon|cannot exec in a stopped|container .* is (?:not running|paused|restarting)|chdir to cwd .* set in config\.json failed)/m;
@@ -265,10 +256,9 @@ export interface ContainerExecResult extends ExecResult {
   rawMode: boolean;
 }
 
-// Shell candidates, most-common first. `probe` is a zero-side-effect no-op
-// (`-c :`); `run` is the argv prefix used for real commands. A login shell
-// (`-lc`) is used to run commands (loads PATH/profile) but NOT to probe (a
-// failing profile would perturb the probe's exit code).
+// Shell candidates, most-common first. A login shell (`-lc`) is used to run
+// commands (loads PATH/profile) but NOT to probe (a failing profile would perturb
+// the probe's exit code).
 const SHELL_CANDIDATES: { probe: string[]; run: string[] }[] = [
   { probe: ["sh", "-c", ":"], run: ["sh", "-lc"] },
   { probe: ["bash", "-c", ":"], run: ["bash", "-lc"] },
@@ -283,10 +273,8 @@ const shellCache = new Map<
 >();
 
 /**
- * Determine how to run commands in a container: via a detected shell, or raw
- * argv when the image has none (distroless/scratch). Probed once per container
- * and cached (keyed by name; re-probes when the image changes or the TTL
- * lapses). A redeploy yields a new container name, so the cache self-expires.
+ * Determine how to run commands in a container: via a detected shell, or raw argv
+ * when the image has none (distroless/scratch).
  */
 async function resolveShellPlan(
   name: string,
@@ -363,13 +351,9 @@ export function splitArgv(s: string): string[] {
 }
 
 /**
- * Run a command inside a container (real `docker exec`). Detects the image's
- * shell once and runs through it (full shell semantics: pipes, globbing); when
- * the image has no shell (distroless), falls back to raw argv exec — the first
- * word is the binary, the rest literal args — and flags `rawMode`. Resolves
- * with the guest exit code/stderr instead of throwing on a non-zero exit, so a
- * REPL can render failures. Only docker-level failures (spawn error, timeout,
- * daemon unreachable — no numeric exit code) reject.
+ * Run a command inside a container (real `docker exec`). Only docker-level
+ * failures (spawn error, timeout, daemon unreachable — no numeric exit code)
+ * reject.
  */
 export async function execInContainer(
   nameOrId: string,
@@ -396,9 +380,7 @@ export async function execInContainer(
 
 /**
  * Effective user + working dir from container metadata, via `docker inspect`
- * (needs no shell, so works on distroless). Both are frequently empty in image
- * config — Docker's defaults are root and "/", rendered truthfully as such.
- * Never throws: returns those defaults on any failure.
+ * (needs no shell, so works on distroless).
  */
 export async function inspectRuntime(
   name: string,
@@ -416,13 +398,8 @@ export async function inspectRuntime(
 }
 
 /**
- * Whether a container was started with an attachable stdin / a TTY allocated,
- * from `docker inspect`. `docker attach` always streams PID 1's output, but the
- * main process only *reads* forwarded keystrokes when it was started with stdin
- * open (`OpenStdin`); a TTY (`Tty`) means it expects raw, character-at-a-time
- * input (and control chars like Ctrl-C reach it as signals). The attach UI uses
- * these to decide whether to offer an input line and how to send it. Never
- * throws: reports both false on any failure (output-only attach still works).
+ * Whether a container was started with an attachable stdin / a TTY allocated, from
+ * `docker inspect`.
  */
 export async function inspectStdio(
   name: string,
@@ -443,21 +420,13 @@ export async function inspectStdio(
 }
 
 /**
- * Transport-agnostic handle over a live `docker attach`. Two backings exist —
- * a piped child process (tty:false containers) and a pseudo-terminal (tty:true
- * containers, which the docker CLI refuses to attach to unless its own stdin is
- * a real TTY). The session layer only ever uses these three members, so it
- * doesn't care which backing produced the handle.
+ * Transport-agnostic handle over a live `docker attach`.
  */
 export interface AttachHandle {
   /** Subscribe to merged container output; returns an unsubscribe fn. */
   onData(cb: (chunk: Buffer) => void): () => void;
   /**
    * Run `cb` once when the attach client exits (container stop / detach).
-   * `error` is set only when the stream died on a FAILURE (the agent refused the
-   * container, the host went away) rather than ending cleanly — the difference
-   * between "the container stopped, that's all it had to say" and "we never got
-   * to read anything", which the viewer must not present as the same thing.
    */
   onExit(cb: (error?: string) => void): void;
   /** Send raw bytes to the container's stdin (best-effort; no-op once closed). */
@@ -473,21 +442,14 @@ export interface AttachHandle {
 }
 
 /**
- * `--sig-proxy=false` is the safety guard shared by both attach backings:
- * killing our local `docker attach` (detach / browser disconnect) never
- * forwards a signal to the container, so the app keeps running. Ctrl-C is only
- * meaningful when the container has a TTY, in which case the literal \x03 byte
- * the caller writes reaches the app as SIGINT — the genuine, opt-in
- * "interactive" behaviour, distinct from us accidentally signalling it on
- * disconnect.
+ * `--sig-proxy=false` is the safety guard shared by both attach backings: killing
+ * our local `docker attach` (detach / browser disconnect) never forwards a signal
+ * to the container, so the app keeps running.
  */
 const ATTACH_ARGS = (name: string) => ["attach", "--sig-proxy=false", name];
 
 /**
- * Pipe-backed attach for containers WITHOUT a TTY (Tty:false). The docker CLI
- * is happy to attach over plain pipes here. stdout/stderr are merged into the
- * one output stream; stdin forwards keystrokes (the app reads them only if it
- * was started with stdin open — see inspectStdio).
+ * Pipe-backed attach for containers WITHOUT a TTY (Tty:false).
  */
 export function attachContainer(name: string): AttachHandle {
   const child = spawn("docker", ATTACH_ARGS(name), {
@@ -533,14 +495,7 @@ export function attachContainer(name: string): AttachHandle {
 
 /**
  * Stream a container's live runtime logs (`docker logs -f`) as an output-only
- * AttachHandle, so the logs viewer reuses the same session/SSE plumbing as
- * attach. Unlike attach this never touches PID 1's stdin — `write` is a no-op
- * and there is no `--sig-proxy` concern — so detaching/closing the viewer only
- * kills our local `docker logs` client, never the container.
- *
- * `--tail` seeds the stream with the last N lines (a snapshot of recent output)
- * before `-f` follows new lines live. Works on stopped containers too: the tail
- * is delivered and the follow ends when there is nothing more to stream.
+ * AttachHandle, so the logs viewer reuses the same session/SSE plumbing as attach.
  */
 export function followLogs(name: string, tail = 500): AttachHandle {
   const child = spawn("docker", ["logs", "-f", "--tail", String(tail), name], {
@@ -575,15 +530,7 @@ export function followLogs(name: string, tail = 500): AttachHandle {
 }
 
 /**
- * PTY-backed attach for containers WITH a TTY (Tty:true). `docker attach`
- * refuses such a container unless ITS OWN stdin is a terminal, printing
- * "the input device is not a TTY" and exiting — which is exactly what the
- * dashboard hit, because Node's spawn gives the child a pipe, not a PTY. Running
- * the CLI inside a pseudo-terminal gives docker the real TTY it demands, so
- * keystrokes, Ctrl-C and ANSI rendering all work like a local `docker attach`.
- *
- * node-pty merges stdout+stderr into one data stream (a TTY has no separate
- * stderr fd), which is correct for a tty:true container anyway.
+ * PTY-backed attach for containers WITH a TTY (Tty:true).
  */
 export function attachContainerPty(name: string): AttachHandle {
   // Lazy require: keep the native module off the import path of every docker

@@ -1,9 +1,6 @@
 /**
  * The curated accent colours offered for a folder tile, alongside a free-form
- * custom HEX. Values are Tailwind's 500-weight swatches so a chosen folder reads
- * as part of the same palette as the rest of the dashboard. The readable
- * foreground for each is derived at render time (see `readableTextColor`), never
- * stored, so the list is purely the background choices.
+ * custom HEX.
  */
 export interface FolderColor {
   /** Human label shown as the swatch's tooltip / aria-label. */

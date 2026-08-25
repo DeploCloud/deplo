@@ -2,9 +2,7 @@ import type { GitTriggerType } from "@/lib/types";
 
 /**
  * Pure, side-effect-free helpers the GitHub push webhook uses to decide whether a
- * verified delivery should auto-deploy a given app. Extracted from the route
- * handler so the trigger-type + watch-path logic is unit-testable without HTTP,
- * signatures, or a database.
+ * verified delivery should auto-deploy a given app.
  */
 
 /** The parts of an inbound GitHub `push` delivery the trigger decision needs. */
@@ -39,10 +37,10 @@ export interface RepoTriggerConfig {
   skipUnchanged?: boolean;
 }
 
-/** Normalise a rootDirectory to a clean forward-slash relative path with no
- *  leading `./` or `/`; `""`/`"."`/unset all collapse to `"."` (the repo root).
- *  Inlined (rather than importing `normalizeRootRel` from `source.ts`) to keep
- *  this module dependency-free — `source.ts` pulls in `node:fs`/`node:path`. */
+/**
+ * Normalise a rootDirectory to a clean forward-slash relative path with no leading
+ * `./` or `/`; `""`/`"."`/unset all collapse to `"."` (the repo root).
+ */
 function normalizeRoot(rootDirectory: string | null | undefined): string {
   return (rootDirectory || ".").replace(/\\/g, "/").replace(/^\.?\/?/, "");
 }
@@ -119,14 +117,8 @@ export function shouldAutoDeploy(
     return ev.changedPaths.some((f) => pathMatchesAnyGlob(f, cfg.watchPaths));
   }
 
-  // "Skip when the root directory is untouched" — like an implicit watch path of
-  // the root directory. Only gates when the option is on, an explicit root dir is
-  // set, and we actually have a file list (a fileless delivery falls open, same
-  // contract as the watch-path filter). A path INSIDE the root dir keeps it.
-  //
-  // Reached only when no EXPLICIT watch-path allowlist matched above (that branch
-  // early-returns): a user who authored watch paths has taken direct control of
-  // path filtering, so their allowlist wins over this root-directory heuristic.
+  // "Skip when the root directory is untouched" — like an implicit watch path of the
+  // root directory.
   if (cfg.skipUnchanged && ev.changedPaths.length > 0) {
     const root = normalizeRoot(cfg.rootDirectory);
     if (root && root !== ".") {
@@ -150,10 +142,6 @@ function normalizePath(p: string): string {
 
 /**
  * Match a single (already-normalised) path against one glob.
- *  - A pattern with no wildcard is a literal file OR directory-prefix match
- *    ("src" matches "src" and "src/app.ts").
- *  - Otherwise `**` matches across `/`, `*` matches within a segment, `?` matches
- *    one non-`/` char. All other characters are matched literally.
  */
 export function pathMatchesGlob(path: string, glob: string): boolean {
   if (!glob) return false;

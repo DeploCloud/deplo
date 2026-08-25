@@ -19,30 +19,8 @@ import { recordActivity } from "./activity";
 import { stepUpPassword } from "./two-factor";
 
 /**
- * The account's passkeys - Settings -> Security.
- *
- * USER-scoped, never team-scoped, for the same reason `lib/data/sessions.ts` is:
- * a credential belongs to a person. Everything here resolves through
- * `assertUser()` and refuses an API token ({@link requirePersonalSession}) - a
- * bearer credential should not be able to mint the credential that replaces the
- * password, and "add a passkey" is not a thing a CI job does.
- *
- * **Only the two registration steps go through the plugin; everything else is
- * Drizzle.** Registration must stay on the endpoints, because that is where the
- * single-use challenge is consumed and the assertion verified - nothing here
- * could reimplement it safely. The rest is row work with an ownership check, and
- * doing it locally buys two things the endpoints cannot: the "is this your last
- * second factor" guard shares ONE transaction with the delete it guards (routed
- * through the plugin, that check would race its own delete), and the read is a
- * four-column projection, so `public_key` never enters this process's memory.
- * This is not the `lib/data/sessions.ts` rule being ignored - that rule exists
- * because a raw session delete stops revoking anything the day someone turns on
- * `secondaryStorage`, and a passkey row has no such second home.
- *
- * Step-up is the PASSWORD, shared with two-factor: `stepUpPassword` and its
- * per-account limiter are imported rather than re-created, so six wrong guesses
- * buy the same pause whichever credential the person is changing. Adding or
- * removing one needs it; renaming does not - a label is not a credential.
+ * The account's passkeys - Settings -> Security. USER-scoped, never team-scoped,
+ * for the same reason `lib/data/sessions.ts` is: a credential belongs to a person.
  */
 
 /** More than this and the list stops being something a person can read. */
@@ -56,9 +34,7 @@ export interface PasskeyDTO {
   createdAt: string | null;
   /**
    * False for a credential minted for a DIFFERENT panel address (or before deplo
-   * recorded which). The browser will not offer it here, so it is dead weight -
-   * listed anyway, because the only thing to do with it is remove it, and a row
-   * that vanished silently would be a credential nobody can account for.
+   * recorded which).
    */
   usableHere: boolean;
 }
@@ -94,12 +70,6 @@ export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
 /**
  * Begin registration: the creation options the browser hands to
  * `navigator.credentials.create`.
- *
- * The label is NOT passed as `query.name` even though the plugin accepts it
- * there - that value becomes the WebAuthn `userName`, i.e. what the
- * authenticator displays as the ACCOUNT ("Chrome on macOS" would then be the
- * name of the account, not of the key). The label rides
- * {@link finishPasskeyRegistration} instead.
  */
 export async function startPasskeyRegistration(
   password: string,
@@ -123,25 +93,9 @@ export async function startPasskeyRegistration(
 }
 
 /**
- * Finish registration with what the authenticator produced.
- *
- * No second password prompt: the challenge this response answers was minted by
- * {@link startPasskeyRegistration} moments ago behind that exact check, is bound
- * to a cookie, expires in five minutes and is consumed on first use - the same
- * argument `confirmTwoFactorEnrolment` makes for the second half of enrolment.
- *
- * Two stamps follow, and both are best-effort. The rpID goes on the credential,
- * because the plugin does not record it and a passkey whose hostname is unknown
- * cannot be told apart from one that still works. The SESSION is marked as
- * passkey-authenticated, because registering one is a user-verified ceremony on
- * the device holding this session - the same proof a sign-in gives. That second
- * stamp is what turns the two-factor lock screen into a way out: somebody who
- * signed in with their password, met a mandate they cannot satisfy, and added a
- * passkey right there is unblocked by the act of adding it, rather than being
- * told to sign out and come back.
- *
- * A failed stamp leaves the safe state in both cases: an unstamped credential
- * reads as "not usable here", and an unstamped session reads as a password one.
+ * Finish registration with what the authenticator produced. The rpID goes on the
+ * credential, because the plugin does not record it and a passkey whose hostname
+ * is unknown cannot be told apart from one that still works.
  */
 export async function finishPasskeyRegistration(input: {
   response: unknown;
@@ -175,10 +129,7 @@ export async function finishPasskeyRegistration(input: {
 }
 
 /**
- * Relabel a passkey. No step-up: a label is not a credential.
- *
- * The ownership check is deplo's own even though the plugin's `updatePasskey`
- * carries one. Defense in depth is the house rule, and this is the only gate
+ * Relabel a passkey. Defense in depth is the house rule, and this is the only gate
  * standing between one account and another's row - leaving it to a library
  * middleware means the boundary moves whenever that library does.
  */
@@ -200,19 +151,9 @@ export async function renamePasskey(input: {
 }
 
 /**
- * Remove a passkey.
- *
- * The mandate guard is the unasked-for consequence of a passkey counting as two
- * factors: for an account with no TOTP, the LAST usable passkey is the only
- * thing satisfying its team's policy, and deleting it would lock the person out
- * of that team with one click and no warning. Checked server-side, like
- * `disableTwoFactor` - the button being disabled in the card is cosmetic.
- *
- * The count and the delete share a transaction, with the account's rows locked
- * `FOR UPDATE`: two "remove" clicks racing each other would otherwise both see
- * two passkeys, both pass the guard, and both delete. The mandate itself is
- * resolved BEFORE the transaction opens, because it queries on its own
- * connection and doing that inside one deadlocks the pglite test harness.
+ * Remove a passkey. The count and the delete share a transaction, with the
+ * account's rows locked `FOR UPDATE`: two "remove" clicks racing each other would
+ * otherwise both see two passkeys, both pass the guard, and both delete.
  */
 export async function deletePasskey(input: {
   id: string;
@@ -269,15 +210,6 @@ async function countMyPasskeys(userId: string): Promise<number> {
 
 /**
  * File an account-security event in every team the person belongs to.
- *
- * Activity is team-scoped (`listActivity` filters on `teamId`), and a passkey is
- * not - but "somebody welded a new permanent credential onto an account with
- * access to our fleet" is exactly the question a company has to be able to
- * answer in the UI. So the row is written per team rather than once and nowhere.
- *
- * `teamId` is passed explicitly for the same reason: left null, `recordActivity`
- * falls back to the first team by creation order, which for an account-level
- * event means filing it under a team the person may not even be in.
  */
 async function announce(
   userId: string,

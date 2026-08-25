@@ -96,10 +96,7 @@ export interface MemberDTO {
   /** The assigned role's name, or null when the member holds a custom set. */
   roleName: string | null;
   /**
-   * Their role reaches only part of the team. Shown on the card, because "what
-   * can this person do" is answered half by the permission count beside it and
-   * half by this: a member with every permission and a scope touches less than
-   * one with two permissions and none.
+   * Their role reaches only part of the team.
    */
   roleScoped: boolean;
   capabilities: Capability[];
@@ -107,25 +104,15 @@ export interface MemberDTO {
    * How their access compares with the role they hold: `less` when an admin took
    * something away from this one person, `more` when they were given something
    * extra, `null` when they are exactly their role — which is almost everybody.
-   *
-   * Shown as a chip on the tile and on their page, because "same role, different
-   * access" is otherwise invisible until you open the editor and compare by eye.
    */
   accessDelta: "less" | "more" | null;
   /**
    * True for the team's ABSOLUTE owner — the founder who created the team (the
-   * "crown" 👑). Derived from `teams.founder_user_id`, NOT from the role: a
-   * member can hold the `owner` role without being the founder (an "assigned
-   * owner"). The founder is immutable and unremovable; an assigned owner can be
-   * managed/removed by any owner. Exactly one member per team has this true
-   * (zero only on a legacy team whose founder account was deleted).
+   * "crown" 👑).
    */
   isPrimaryOwner: boolean;
   /**
-   * True if this user is a global instance admin. Surfaced here purely so the
-   * member list can mark them with a badge (🛡️) — it grants NO extra authority
-   * inside the team (instance-admin power stays global and orthogonal to the
-   * team capability model).
+   * True if this user is a global instance admin.
    */
   isInstanceAdmin: boolean;
   avatarColor: string;
@@ -218,8 +205,7 @@ export interface RegistrationLinkDTO {
   /**
    * The link can still be read back with {@link revealRegistrationLink} — it is
    * pending, unexpired, and was minted after the token started being stored
-   * encrypted. False ⇒ the UI offers no reveal at all rather than a button that
-   * only errors.
+   * encrypted.
    */
   canReveal: boolean;
   /**
@@ -239,11 +225,7 @@ export interface RegistrationLinkInfo {
 }
 
 /**
- * The username to attribute an audit entry to. The actor is ALWAYS the current
- * request's user (every caller derives the acting membership from
- * `requireCapability`/`requireInstanceAdmin`), so this resolves it through the
- * relational, React-cached `getCurrentUser()` rather than a now-stale JSONB scan
- * (relational-store PLAN cut-set (b): identity is relational).
+ * The username to attribute an audit entry to.
  */
 async function actorUsername(): Promise<string> {
   return (await getCurrentUser())?.username ?? "an admin";
@@ -339,12 +321,8 @@ export async function listMembers(): Promise<MemberDTO[]> {
 }
 
 /**
- * Each member's access measured against the role they hold, for the chip on
- * their tile.
- *
- * Costs NOTHING on a team where nobody has been personalised, which is the
- * normal state: only the memberships that carry their own set or their own nodes
- * make it ask anything, and a team with none of them returns here empty.
+ * Each member's access measured against the role they hold, for the chip on their
+ * tile.
  */
 async function memberDeltas(
   db: ReturnType<typeof getDb>,
@@ -366,9 +344,7 @@ async function memberDeltas(
     rows.map((r) => r.userId),
   );
   // A membership with no role has nothing to differ FROM: it is the legacy
-  // hand-picked set, which the roster already names "Custom". Everyone else is
-  // asked only when something about them is not the role: their own set, their
-  // own reach, or a folder somebody shared with them.
+  // hand-picked set, which the roster already names "Custom".
   const personalised = rows.filter(
     (r) =>
       r.roleId != null &&
@@ -483,11 +459,9 @@ async function memberNodeIds(
 }
 
 /**
- * The user id of a team's founder (absolute owner / "crown"), or null if the
- * team predates the column and was never backfilled, or its founder's account
- * was deleted. Read straight from `teams.founder_user_id` — the single source of
- * truth for the absolute-owner distinction. Accepts the live db or a tx so the
- * mutation paths can read it under the same transaction as their guards.
+ * The user id of a team's founder (absolute owner / "crown"), or null if the team
+ * predates the column and was never backfilled, or its founder's account was
+ * deleted.
  */
 export async function teamFounderUserId(
   db: ReturnType<typeof getDb> | DbTx,
@@ -502,25 +476,8 @@ export async function teamFounderUserId(
 }
 
 /**
- * List registered users available to add to the active team, matching on
- * USERNAME (and display name) only — emails are never searched or returned.
- * Excludes users already in the team. Each result carries the user's home-team
- * name so two identical display names stay distinguishable without exposing an
- * email.
- *
- * WHO IS OFFERED is bounded, because this is the one read in the data layer that
- * would otherwise cross tenants: `manage_members` is a TEAM capability, and one
- * team's admin has no business enumerating the whole instance's roster — on a
- * shared install that is every other customer's staff list, and it is the
- * assumption "the operator and the end user are the same person" that the
- * managed-service rule forbids.
- *
- * So the picker offers the people the actor ALREADY works with — anyone in
- * another of their own teams — which is who "add a colleague" means in practice,
- * and keeps it populated with no query at all. Anyone else is reachable only by
- * typing their EXACT username, which you can only do if you already know it.
- * An instance admin keeps the full roster: they administer every account from
- * Settings → Users regardless, so hiding it here would buy nothing.
+ * List registered users available to add to the active team, matching on USERNAME
+ * (and display name) only — emails are never searched or returned.
  */
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   const teamId = await requireActiveTeamId();
@@ -632,15 +589,8 @@ interface ResolvedAssignment {
 }
 
 /**
- * Resolve either shape of a member assignment:
- *
- *  - `roleId` — the current path: the member gets EXACTLY that role's
- *    capabilities. A non-owner who doesn't hold all of them is refused outright
- *    rather than handed a silently weakened copy, so "holds role X" always means
- *    "can do what X says".
- *  - `role` + `capabilities` — the legacy path kept for the public API and the
- *    registration links: a rank plus a hand-picked set, clamped to the actor's own
- *    capabilities as before. It still lands on a real role when the set matches one.
+ * Resolve either shape of a member assignment: - `roleId` — the current path: the
+ * member gets EXACTLY that role's capabilities.
  */
 async function resolveAssignment(
   db: ReturnType<typeof getDb> | DbTx,
@@ -668,14 +618,7 @@ async function resolveAssignment(
   const raw = cleanCapabilities(input.capabilities, input.role);
   // A caller can only hand out capabilities they hold THEMSELVES — bounding the
   // assignment to the actor's own caps (same clamp as folder grants) closes the
-  // escalation where a plain `manage_members` holder mints a member with
-  // capabilities above their own.
-  //
-  // The bound is the actor's capabilities, never their rank: an API token's
-  // clamp narrows a membership's capabilities but not its `role`, so exempting
-  // rank `owner` let an owner's `manage_members`-only token hand a member every
-  // capability there is. A real owner holds them all, so the bound is a no-op
-  // for them. Mirrors `withinActor` in lib/data/roles.ts.
+  // escalation where a plain `manage_members` holder mints a member with capabilities
   const caps = withView(boundedBy(raw, actor.capabilities));
   const matched = await matchTeamRole(db, teamId, input.role, caps);
   return {
@@ -784,12 +727,8 @@ export async function addExistingMember(input: {
 /* Membership edits                                                    */
 /* ------------------------------------------------------------------ */
 
-// Administrative capabilities a team must never be left with zero holders of,
-// or it locks itself out of member/team management irrecoverably.
-// `manage_roles` joined the list when the coarse `manage_members` split in two:
-// a team with nobody who can edit a role can no longer change what any of its
-// roles grant, which is the same irrecoverable corner. Kept in step with
-// `CRITICAL` in lib/data/roles.ts, which guards the role-edit side of it.
+// Administrative capabilities a team must never be left with zero holders of, or it
+// locks itself out of member/team management irrecoverably.
 const CRITICAL_CAPABILITIES: Capability[] = [
   "manage_members",
   "manage_roles",
@@ -802,17 +741,9 @@ const CRITICAL_LABEL: Record<string, string> = {
 };
 
 /**
- * Assert that, after the proposed change to `targetUserId`'s membership, the
- * team still has at least one holder of each critical admin capability — under a
+ * Assert that, after the proposed change to `targetUserId`'s membership, the team
+ * still has at least one holder of each critical admin capability — under a
  * `SELECT … FOR UPDATE` lock over the holder set so two concurrent demotions
- * serialize (relational-store PLAN §4 "count-invariants"). A lost-update race
- * that READ COMMITTED alone would let through (both demotions see the other's
- * row still valid, both commit → zero holders) is blocked: the second demotion
- * waits on the lock, then re-evaluates against the post-commit holder set.
- *
- * `nextCaps` is the target's capabilities after the change, or null if the
- * target is being removed entirely. MUST run inside the caller's `db.transaction`
- * so the lock is held until commit.
  */
 export async function assertAdminCoverage(
   tx: DbTx,
@@ -914,11 +845,7 @@ export async function updateMember(input: {
       .insert(membershipCapabilitiesTable)
       .values(caps.map((c) => ({ membershipId: m.id, capability: c })));
   });
-  // Outside the transaction, per the recordActivity rule (own connection). The
-  // ONE write that changes what a person may do had no trail and raised no
-  // alert at all: editing a ROLE was logged (`roles.ts`) and so was granting
-  // access from Settings → Users, but assigning a member their role from the
-  // team's own Members tab went through silently.
+  // Outside the transaction, per the recordActivity rule (own connection).
   await recordActivity(
     "member",
     `Set @${await usernameOf(input.userId)}'s access to ${
@@ -1054,10 +981,8 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
 }
 
 /**
- * Full detail for one user, for the admin editor: teams & roles, account
- * metadata and the email (admin-only — never in lists/search). Instance-admin
- * only. Deliberately no activity feed: the editor is where an admin changes what
- * an account may do, and `/activity` is where the log is read.
+ * Full detail for one user, for the admin editor: teams & roles, account metadata
+ * and the email (admin-only — never in lists/search).
  */
 export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
   await requireInstanceAdmin();
@@ -1123,20 +1048,8 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
 }
 
 /**
- * Edit a user's global-scoped attributes: instance-admin flag, suspended
- * status, and an optional admin password reset. Instance-admin only.
- *
- * Guards against locking the platform out of administration: the last instance
- * admin cannot demote or suspend themselves, and you cannot remove the final
- * admin via any single edit. The active-admin count-invariant is a lost-update
- * race (relational-store PLAN §4), so the candidate admin set is locked with
- * `SELECT … FOR UPDATE` inside the transaction — two concurrent demotions
- * serialize and the second re-evaluates against the post-commit count.
- *
- * That invariant alone does NOT stop a takeover, which is what the instance-owner
- * guards below are for: it only requires one active admin to survive, and the
- * attacking admin is that survivor. The owner's row is therefore closed to every
- * other admin outright (see lib/data/instance-owner.ts).
+ * Edit a user's global-scoped attributes: instance-admin flag, suspended status,
+ * and an optional admin password reset.
  */
 export async function updateUserAdmin(input: {
   userId: string;
@@ -1168,13 +1081,7 @@ export async function updateUserAdmin(input: {
     // vetoes so a concurrent transferInstanceOwner can't slip between the two.
     const ownerUserId = await instanceOwnerUserId(tx);
 
-    // NOBODY edits the owner's row but the owner. Not "cannot demote" — cannot
-    // touch: demote, suspend and password-reset are three routes to the same
-    // takeover (the last-admin invariant is satisfied by the attacker themselves,
-    // and a reset hash hands over the account outright), and there is no benign
-    // edit left once those are gone — the owner is an admin, so the two grant
-    // flags are already implied for them (see hasGrant in membership.ts). One
-    // rule, no partial states, and a UI message a non-expert can act on.
+    // NOBODY edits the owner's row but the owner.
     if (
       ownerUserId !== null &&
       input.userId === ownerUserId &&
@@ -1184,10 +1091,8 @@ export async function updateUserAdmin(input: {
         "Only the instance owner can edit the instance owner's account",
       );
 
-    // The owner can't uncrown themselves by dropping their own admin flag — the
-    // same rule the team founder has (a founder cannot be demoted even by
-    // themselves). Ownership leaves only through transferInstanceOwner, which
-    // hands it to a named successor instead of leaving the instance unowned.
+    // The owner can't uncrown themselves by dropping their own admin flag — the same
+    // rule the team founder has (a founder cannot be demoted even by themselves).
     if (input.userId === ownerUserId && !input.isInstanceAdmin)
       throw new Error(
         "The instance owner is always an instance admin. Transfer ownership first.",
@@ -1198,9 +1103,7 @@ export async function updateUserAdmin(input: {
       throw new Error("You can't suspend your own account");
 
     // Lockout guard: the instance must always retain at least one ACTIVE
-    // (non-suspended) instance admin. Lock the candidate set — every current
-    // admin PLUS the target (the target may be a *promotion* not yet in the
-    // admin set) — and count active admins as they WOULD be after this edit.
+    // (non-suspended) instance admin.
     const candidates = await tx
       .select({
         id: usersTable.id,
@@ -1242,10 +1145,8 @@ export async function updateUserAdmin(input: {
     if (newPassword) await setUserPassword(input.userId, newPassword, tx);
   });
 
-  // An admin password reset also revokes the target's outstanding sessions: they
-  // no longer control the credential, so any live cookie of theirs must die.
-  // Deliberately AFTER the transaction — the session rows are Better Auth's and
-  // deleting them is not something to roll back if the tx later fails.
+  // An admin password reset also revokes the target's outstanding sessions: they no
+  // longer control the credential, so any live cookie of theirs must die.
   if (newPassword) await revokeAllSessions(input.userId);
 
   const target = (
@@ -1263,14 +1164,9 @@ export async function updateUserAdmin(input: {
 }
 
 /**
- * The trail for an INSTANCE-wide action on one account.
- *
- * An instance admin editing an account is not acting inside a team, so there is
- * no active team to attribute it to — and letting `recordActivity` fall back to
- * the oldest team put one tenant's member changes in a stranger's Activity feed
- * (and in their alert channels). It belongs to every team that account is a
- * member of, once each; an account in no team writes nothing, because there is
- * no trail it belongs in.
+ * The trail for an INSTANCE-wide action on one account. It belongs to every team
+ * that account is a member of, once each; an account in no team writes nothing,
+ * because there is no trail it belongs in.
  */
 async function recordForEveryTeamOf(
   userId: string,
@@ -1293,28 +1189,15 @@ async function recordForEveryTeamOf(
 }
 
 /**
- * Clear a user's two-factor enrolment. Instance admin only.
- *
- * The backstop for the one thing requiring a code to turn 2FA off takes away:
- * before it, someone who lost their phone could still disable 2FA with their
- * password, and now they cannot. Without an admin able to undo it, the only
- * remaining fix for a lost phone AND lost recovery codes would be a hand-written
- * DELETE against `two_factor` — which is exactly the "drop to a shell" that
- * deplo exists to not require.
- *
- * It does NOT touch the password or any session, so it is not a takeover route:
- * the account is left protected by its password, in the state it was in before
- * anyone enrolled. The instance owner's row is off limits to everyone but the
- * owner, the same rule `updateUserAdmin` applies and for the same reason.
+ * Clear a user's two-factor enrolment. The backstop for the one thing requiring a
+ * code to turn 2FA off takes away: before it, someone who lost their phone could
+ * still disable 2FA with their password, and now they cannot.
  */
 export async function resetUserTwoFactor(userId: string): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
-  // Never your own. Not a courtesy rule: this path asks for no code, so a
-  // self-reset would be the password-only disable that lib/data/two-factor.ts
-  // exists to forbid, reopened for anyone with the admin flag. It costs nothing
-  // in recovery either — reaching this screen at all means signing in, which
-  // means already passing the 2FA you would be trying to escape.
-  //
+  // Never your own. Not a courtesy rule: this path asks for no code, so a self-reset
+  // would be the password-only disable that lib/data/two-factor.ts exists to forbid,
+  // reopened for anyone with the admin flag.
   // ponytail: an instance whose ONLY admin loses both their phone and all ten
   // recovery codes has no way back in short of the database. Recovery codes are
   // downloadable at enrolment and the disable path accepts one, so a break-glass
@@ -1361,21 +1244,7 @@ export async function resetUserTwoFactor(userId: string): Promise<void> {
 }
 
 /**
- * Remove every passkey from a user's account. Instance admin only.
- *
- * The same backstop as {@link resetUserTwoFactor}, for the same failure: a
- * device that is gone. A dead passkey is not merely clutter in the list - while
- * it exists it satisfies the account's two-factor mandate, so a member whose
- * only passkey was on a lost laptop reads as protected and cannot be told to
- * enrol anything. Clearing it puts the account back under the policy, which is
- * the honest state.
- *
- * A SEPARATE control from the 2FA reset, not a side effect of it: an admin
- * clearing a lost authenticator app has no business taking away a passkey that
- * still works, and the two devices are lost independently.
- *
- * Not a takeover route: the password is untouched and no session is minted. The
- * instance owner's row is off limits to everyone but the owner.
+ * Remove every passkey from a user's account.
  */
 export async function resetUserPasskeys(userId: string): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
@@ -1429,14 +1298,8 @@ export interface MintRegistrationResult {
 const MAX_REGISTRATION_TEAMS = 50;
 
 /**
- * Mint a single-use registration link. Instance-admin only.
- *
- * `own_team` (default): the registrant names and owns a fresh team at
- * registration — the historical behavior. `existing_teams`: the admin
- * pre-assigns the registrant to one or more existing teams (with a role +
- * capabilities each); the registrant is NOT asked for a team name and joins
- * those teams as a member. The choice is baked into the link via its `mode` +
- * `registration_link_teams` rows and cannot be changed by the registrant.
+ * Mint a single-use registration link. The choice is baked into the link via its
+ * `mode` + `registration_link_teams` rows and cannot be changed by the registrant.
  */
 export async function mintRegistrationLink(input: {
   mode: RegistrationMode;
@@ -1475,10 +1338,6 @@ export async function mintRegistrationLink(input: {
     if (assignments.length > MAX_REGISTRATION_TEAMS)
       throw new Error("Too many teams selected");
     // A new user joins existing teams as member/viewer ONLY — never as an owner.
-    // The UI restricts this, but the role arrives from the client, so the server
-    // must enforce it too: granting the owner role is an escalation reserved for
-    // an existing owner of the team (see addExistingMember/updateMember), not
-    // something an admin pre-bakes into a self-service registration link.
     for (const a of assignments) {
       if (a.role !== "member" && a.role !== "viewer")
         throw new Error(
@@ -1486,9 +1345,7 @@ export async function mintRegistrationLink(input: {
         );
     }
     // The minting admin may only place a new user into teams THEY belong to — an
-    // instance admin is NOT implicitly a member of every team. The dialog only
-    // lists the viewer's teams, but the ids arrive from the client, so enforce
-    // it server-side (membership also implies the team still exists).
+    // instance admin is NOT implicitly a member of every team.
     const me = await getCurrentUser();
     if (!me) throw new Error("Not authenticated");
     const myTeamRows = await getDb()
@@ -1610,12 +1467,8 @@ async function publicBaseUrl(): Promise<string> {
 
 /**
  * Read a pending registration link back, in full, so the admin who minted it can
- * hand it over again — the alternative was minting a second link because the
- * first one got lost between the clipboard and the chat window.
- *
- * The checks run BEFORE the token is decrypted, so a spent link says why instead
- * of leaking that it still exists in readable form. Instance-admin only, like
- * every other operation on a link.
+ * hand it over again — the alternative was minting a second link because the first
+ * one got lost between the clipboard and the chat window.
  */
 export async function revealRegistrationLink(id: string): Promise<string> {
   await requireInstanceAdmin();
@@ -1694,8 +1547,7 @@ export async function isRegistrationTokenValid(
 /**
  * Public, display-only view of a registration link for the /register page: is it
  * usable, which mode, and (for `existing_teams`) the names of the teams the
- * registrant will join. No secrets. An `existing_teams` link whose teams were
- * all deleted reports `valid: false` — there is nothing left to join.
+ * registrant will join.
  */
 export async function getRegistrationLinkInfo(
   rawToken: string,
@@ -1734,10 +1586,8 @@ export async function getRegistrationLinkInfo(
 }
 
 /**
- * The per-team role + capability assignments baked into a pending
- * `existing_teams` link, resolved against teams that still exist. Used by the
- * register-through-link flow to seed the new account's memberships. Returns []
- * if the token is not a pending link (or all its teams are gone).
+ * The per-team role + capability assignments baked into a pending `existing_teams`
+ * link, resolved against teams that still exist.
  */
 export async function getRegistrationLinkAssignments(
   rawToken: string,
@@ -1798,12 +1648,7 @@ export async function getRegistrationLinkAssignments(
 /**
  * Consume a registration link inside the SAME `db.transaction` that creates the
  * account+team (via createAccountWithTeam's `guard`), so check-create-consume is
- * one atomic critical section (relational-store PLAN §1/§3). A single-use link
- * is consumed by a conditional `UPDATE … WHERE status='pending' AND
- * expires_at>=now() RETURNING`: a concurrent double-submit has both transactions
- * attempt it; the conditional matches exactly once, so the loser updates 0 rows
- * and throws here — its whole account+team insert rolls back. This replaces the
- * synchronous-mutate atomicity that closed the TOCTOU before the migration.
+ * one atomic critical section (relational-store PLAN §1/§3).
  */
 export async function consumeRegistrationLink(
   tx: DbTx,

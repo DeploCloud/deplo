@@ -35,17 +35,9 @@ import { removeUploads } from "../deploy/upload";
 
 /**
  * Deleting a team is the one action that outranks `manage_team`: it implicitly
- * removes every membership INCLUDING the founder's, so letting any assigned
- * owner fire it would sidestep the "founder is unremovable" invariant
- * (lib/data/members.ts). Hence the tighter gate: the founder ("crown") holding
- * `delete_team`, an instance admin (who must still be a MEMBER — the delete
- * operates on the active team, and a team can only be active for its members),
- * or — on a legacy team whose founder column was never backfilled / whose
- * founder account is gone — any owner holding `delete_team`.
- *
- * Lives in its own module (not teams.ts) because the teardown pulls in the
- * app-graph loader and the agent client; teams.ts stays a light identity
- * module that the layout imports on every request.
+ * removes every membership INCLUDING the founder's, so letting any assigned owner
+ * fire it would sidestep the "founder is unremovable" invariant
+ * (lib/data/members.ts).
  */
 
 interface DeleteTeamContext {
@@ -59,10 +51,10 @@ interface DeleteTeamContext {
 
 async function deleteTeamContext(): Promise<DeleteTeamContext> {
   const { userId, teamId, membership } = await requireMembership();
-  // Fail CLOSED on a rescoped bearer token: when a token's team no longer
-  // matches the resolved active team, getActiveTeamId has silently fallen back
-  // to the principal's first team (a stale token kept by a team the user left
-  // must never be able to destroy a DIFFERENT team the user founded).
+  // Fail CLOSED on a rescoped bearer token: when a token's team no longer matches the
+  // resolved active team, getActiveTeamId has silently fallen back to the principal's
+  // first team (a stale token kept by a team the user left must never be able to
+  // destroy a DIFFERENT team the user founded).
   const override = currentIdentity();
   if (override && override.teamId !== teamId) {
     throw new Error(
@@ -76,12 +68,10 @@ async function deleteTeamContext(): Promise<DeleteTeamContext> {
     .limit(1);
   if (!rows[0]) throw new Error("No team");
   const founderId = rows[0].founderUserId;
-  // Two independent gates, and both matter for a BEARER TOKEN:
-  //  - `isInstanceAdmin()` (not the stored flag) because instance-admin is
-  //    opt-in per token — a plain token minted by an admin is not an admin;
-  //  - `delete_team` because being the founder says WHO you are, not what the
-  //    credential in hand may do. Without it a Read-only token minted by the
-  //    founder could destroy the team.
+  // Two independent gates, and both matter for a BEARER TOKEN: - `isInstanceAdmin()`
+  // (not the stored flag) because instance-admin is opt-in per token — a plain token
+  // minted by an admin is not an admin; - `delete_team` because being the founder
+  // says WHO you are, not what the credential in hand may do.
   const allowed =
     (await isInstanceAdmin()) ||
     ((founderId ? userId === founderId : membership.role === "owner") &&
@@ -115,26 +105,19 @@ export async function canDeleteTeam(): Promise<{
 export interface TeardownPlan {
   /** Structural: an assembled App (lib/types.ts) satisfies it, and so does a bare row. */
   services: { id: string; slug: string; serverId: string }[];
-  /** Live pull request preview stacks, snapshotted the same way: each is its own
-   *  container + volume set under `deplo-<slug>__pr-<n>`, invisible to the app's
-   *  own teardown. Absent ⇒ nothing to sweep (a team with no previews). `id` is
-   *  the preview's own id, which is what its containers carry as `deplo.project`. */
+  /**
+   * Live pull request preview stacks, snapshotted the same way: each is its own
+   * container + volume set under `deplo-<slug>__pr-<n>`, invisible to the app's
+   * own teardown.
+   */
   previewStacks?: { id: string; deployKey: string; serverId: string }[];
   databases: { id: string; host: string; serverId: string }[];
   /** Frozen slugs of the team's installed plugins (containers on the Deplo host). */
   appSlugs: string[];
   /**
-   * The team's backup destinations WITH their decrypted credentials, frozen
-   * before the cascade takes the rows away - the same reason `services` and
-   * `databases` are frozen. Without them the artifacts survive with nothing left
-   * anywhere that can name them: the destination row is gone, so is every run,
-   * and the orphan sweep looks for runs whose TARGET vanished, not for runs that
-   * vanished themselves. A bucket quietly keeping a deleted team's dumps, each
-   * carrying its apps' decrypted env, is the worst of the leftovers.
-   *
-   * A team-wide `deplo/<teamId>/` prefix is the one prefix delete that is safe:
-   * the team segment is in it, so it cannot reach another team's artifacts, and
-   * two destinations of THIS team sharing one folder are both going anyway.
+   * The team's backup destinations WITH their decrypted credentials, frozen before
+   * the cascade takes the rows away - the same reason `services` and `databases`
+   * are frozen.
    */
   backupSweeps?: {
     creds: DestinationWithSecrets;
@@ -146,18 +129,9 @@ export interface TeardownPlan {
 /**
  * Best-effort teardown of every stack the deleted team owned, DETACHED from the
  * request: the mutation already deleted the rows and responded (a team-wide
- * fan-out can run for minutes — one hung agent holds a 3-minute deadline — and
- * a synchronous teardown would blow past proxy timeouts, surfacing a false
- * failure for a delete that succeeded). Everything here works from the
- * pre-delete snapshot and never reads the cascaded tables.
- *
- * Every stack is written to the TEARDOWN QUEUE first, in one statement, before
- * the first dial: the team's rows are already gone, so those entries are the only
- * record left anywhere that these containers exist, and the fan-out can run for
- * minutes at three minutes a head. An unreachable host therefore costs a retry,
- * not a pile nobody can name. The queue also dials by the snapshot's `serverId`,
- * which is what this path always needed - `teardownApp()` re-resolves the owning
- * server from rows that no longer exist.
+ * fan-out can run for minutes — one hung agent holds a 3-minute deadline — and a
+ * synchronous teardown would blow past proxy timeouts, surfacing a false failure
+ * for a delete that succeeded).
  */
 export function teardownTeamResources(
   plan: TeardownPlan,
@@ -186,10 +160,9 @@ export function teardownTeamResources(
       }
     });
 
-    // Volumes go with every one of these: deleting a team deletes the team, and
-    // leaving its apps' data behind meant an unreclaimable pile on every host it
-    // ever deployed to, with not a single row left that could name it. `teamId`
-    // is null throughout - the feed those lines would land in is gone too.
+    // Volumes go with every one of these: deleting a team deletes the team, and leaving
+    // its apps' data behind meant an unreclaimable pile on every host it ever deployed
+    // to, with not a single row left that could name it.
     const previews: TeardownEntry[] = (plan.previewStacks ?? []).map((p) => ({
       serverId: p.serverId,
       deployKey: p.deployKey,
@@ -246,19 +219,7 @@ export function teardownTeamResources(
 }
 
 /**
- * Permanently delete a team. `teamId` must equal the ACTIVE team — the client
- * echoes back the id of the team the user actually confirmed, so a mid-flight
- * active-team change in another tab fails closed instead of deleting whatever
- * team the cookie resolves to at execution time.
- *
- * Removes the team row in ONE delete — the FK CASCADEs drop everything
- * team-scoped: memberships, invites, folders, projects (+ environments),
- * apps (+ deployments, env vars, domains…), databases, backup schedules
- * AND run history, backup destinations, installed plugins, tokens, activities. The
- * stack teardown (apps, databases including data volumes, installed plugins)
- * continues in the background from a pre-delete
- * snapshot. Backup ARTIFACTS already written — to a bucket or to a server's disk
- * — are kept; only the records go.
+ * Permanently delete a team.
  */
 export async function deleteTeam(teamId: string): Promise<void> {
   const ctx = await deleteTeamContext();
@@ -277,10 +238,9 @@ export async function deleteTeam(teamId: string): Promise<void> {
     );
 
   const db = getDb();
-  // Serialize the guard + delete per USER: two concurrent deletes of the
-  // caller's two teams would each see the other team still alive and strand
-  // the caller with zero teams — exactly what the only-team guard exists to
-  // prevent. The lock scope stays tight (no agent I/O inside).
+  // Serialize the guard + delete per USER: two concurrent deletes of the caller's two
+  // teams would each see the other team still alive and strand the caller with zero
+  // teams — exactly what the only-team guard exists to prevent.
   const plan = await withKeyedLock(
     `team-delete:${ctx.userId}`,
     async (): Promise<TeardownPlan | null> => {
@@ -292,10 +252,10 @@ export async function deleteTeam(teamId: string): Promise<void> {
           "You can't delete your only team — create another team first",
         );
 
-      // Snapshot the teardown targets IMMEDIATELY before the delete, so
-      // apps/databases created while this request was in flight are still
-      // caught (rows born after this point are lost to the cascade, but the
-      // window is now milliseconds, not the length of the agent fan-out).
+      // Snapshot the teardown targets IMMEDIATELY before the delete, so apps/databases
+      // created while this request was in flight are still caught (rows born after this
+      // point are lost to the cascade, but the window is now milliseconds, not the length
+      // of the agent fan-out).
       const services = await loadAppsByTeam(ctx.teamId);
       // Live pull request preview stacks: each is its own container + volume set
       // under `deplo-<slug>__pr-<n>`, and the cascade below drops the only rows
@@ -396,10 +356,7 @@ export async function deleteTeam(teamId: string): Promise<void> {
   if (plan) teardownTeamResources(plan);
 
   // Point the active-team cookie at one of the caller's remaining teams (the
-  // only-team guard ensures there is one). Best-effort: outside a request's
-  // cookie scope (bearer-token API calls, tests) this throws, and the stale
-  // cookie self-heals anyway — getActiveTeamId validates it against the
-  // caller's memberships and falls back to their first team.
+  // only-team guard ensures there is one).
   const remaining = await teamsForUser(ctx.userId);
   if (remaining[0]) await setActiveTeam(remaining[0].id).catch(() => {});
 }

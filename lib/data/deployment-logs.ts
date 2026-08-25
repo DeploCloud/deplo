@@ -11,30 +11,8 @@ import type { LogLine } from "../types";
 
 /**
  * Buffered writer for `deployment_logs` (relational-store PLAN §6 Decision 18).
- *
- * `build.ts`'s `log()` pushes ONE `LogLine` per call and a verbose docker build
- * emits thousands. Inserting per line would be a round-trip storm; a JSONB array
- * would reintroduce the whole-document write-amplification this migration kills.
- * So lines are enqueued into an in-memory per-deployment buffer (a SYNCHRONOUS,
- * fire-and-forget enqueue, so `log()` stays a `void` sink usable as a callback
- * prop), and flushed in the background as one multi-row `INSERT` per flush, on a
- * short timer or when the buffer fills.
- *
- * Guarantees:
- *  - **Serialized per `deployment_id`.** Each deployment's flush chains off its
- *    own promise, so two flushes for one deployment never interleave (and the
- *    DB-generated `id` reproduces enqueue order). Different deployments flush
- *    concurrently.
- *  - **Guaranteed final flush.** {@link finalizeDeploymentLogs} drains and awaits
- *    the buffer on deploy end/error; crash-loss is mitigated by
- *    `reconcileInFlightDeployments` marking orphaned deploys `error` at boot.
- *  - **Drain-then-DELETE can't be resurrected.** {@link clearDeploymentLogs}
- *    bumps a per-deployment EPOCH and deletes; a late flush carrying the old
- *    epoch is dropped, so a cleared deployment never gets stale lines re-inserted
- *    (PLAN §6 "a late flush can't resurrect cleared lines").
- *
- * Pinned on `globalThis` (the same RSC/route-handler module-registry split reason
- * as `client.ts`/`store.ts`) so one process has ONE buffer, not two.
+ * Inserting per line would be a round-trip storm; a JSONB array would reintroduce
+ * the whole-document write-amplification this migration kills.
  */
 
 const FLUSH_MS = 250;
@@ -43,30 +21,14 @@ const MAX_BUFFER = 200;
 /**
  * Backstop against unbounded growth while the DB flush keeps FAILING: the failed
  * batch stays at the buffer head for an in-order retry, but a persistent outage
- * under a verbose build would otherwise buffer the whole log forever. Cap the
- * retained head, dropping oldest first (the same drop-from-the-front shape as
- * container-history's HARD_CAP) — the tail is what the operator still gets when
- * the DB comes back; the hole is the loss "best-effort" always meant.
+ * under a verbose build would otherwise buffer the whole log forever.
  */
 const MAX_RETAINED = 2_000;
 
 /**
- * The bounds on what ONE deployment may persist, because the build's output is
- * the tenant's to write and `deployment_logs` lives in the CONTROL PLANE's
- * database — shared by every team, the rate limiter and every session. A build
- * that prints forever (`RUN yes`) would otherwise write rows until the disk
- * filled, and nothing prunes them: `clearDeploymentLogs` only fires on a
- * same-deployment rebuild or the app/deployment delete cascade.
- *
- * Cron output already has exactly this ceiling (`CRON_OUTPUT_TAIL_BYTES`, kept
- * control-plane-side "because the ceiling is a contract an agent could regress
- * on"); deploy logs had neither half.
- *
- * A line longer than the cap keeps its HEAD (where a compiler/stack-trace says
- * what happened) and is marked; past the row ceiling the deployment keeps its
- * first lines (the build's start, which is what a failure is read from) and one
- * final marker line, then stops persisting. Nothing throws and no deploy fails —
- * losing log tail is not worth a failed deployment.
+ * The bounds on what ONE deployment may persist, because the build's output is the
+ * tenant's to write and `deployment_logs` lives in the CONTROL PLANE's database —
+ * shared by every team, the rate limiter and every session.
  */
 let MAX_LINE_CHARS = 4_000;
 let MAX_LINES_PER_DEPLOYMENT = 20_000;
@@ -81,12 +43,7 @@ export function __resetLogCapsForTest(): void {
   MAX_LINE_CHARS = 4_000;
 }
 /**
- * How many deployments' budgets to remember. The counter can NOT live on the
- * evictable buffer (`loadDeploymentLogs` → `finalizeDeploymentLogs` → `evictIfIdle`
- * runs on any READ, so a reader opening the Logs page mid-build would hand the
- * build a fresh budget), so it is kept beside it and pruned by AGE instead:
- * `Map` iterates in insertion order, and a deployment old enough to fall off this
- * window has long since stopped appending.
+ * How many deployments' budgets to remember.
  */
 const MAX_TRACKED_BUDGETS = 5_000;
 
@@ -104,15 +61,8 @@ interface LogState {
   buffers: Map<string, DeploymentBuffer>;
   /**
    * Lines ENQUEUED per deployment since its last clear — the budget the
-   * per-deployment ceiling spends.
-   *
-   * Deliberately NOT a field on DeploymentBuffer: a buffer is EVICTED whenever it
-   * falls idle (`evictIfIdle`, reached from `finalizeDeploymentLogs` — which
-   * `loadDeploymentLogs` calls, so ANY reader opening the Logs page mid-build
-   * evicts it). A counter living there would reset on every such read and the
-   * ceiling would be bypassable at will. Cleared explicitly by
-   * `clearDeploymentLogs` (a fresh build starts a fresh budget) and by
-   * `forgetDeploymentLogBudget` when the deployment's rows are deleted.
+   * per-deployment ceiling spends. A counter living there would reset on every
+   * such read and the ceiling would be bypassable at will.
    */
   enqueued: Map<string, number>;
 }
@@ -134,10 +84,9 @@ function bufferFor(depId: string): DeploymentBuffer {
 }
 
 /**
- * Enqueue one log line for a deployment (SYNCHRONOUS, fire-and-forget). Schedules
- * a background flush (or flushes immediately when the buffer is full). Never
- * throws into the caller — a flush failure is swallowed (logs are best-effort;
- * the deploy must not fail because a log line couldn't persist).
+ * Enqueue one log line for a deployment (SYNCHRONOUS, fire-and-forget). Never
+ * throws into the caller — a flush failure is swallowed (logs are best-effort; the
+ * deploy must not fail because a log line couldn't persist).
  */
 export function appendLog(depId: string, line: LogLine): void {
   const b = bufferFor(depId);
@@ -187,14 +136,9 @@ function scheduleFlush(depId: string, immediate: boolean): Promise<void> {
     b.timer = null;
   }
   if (b.lines.length === 0) return b.chain;
-  // Capture the epoch so a clear that fires before this flush commits drops it.
-  // The lines are NOT drained synchronously — the chained callback reads the
-  // buffer HEAD at run time and only REMOVES it on a successful insert. New lines
-  // always append to the tail, so the head is always the oldest unflushed lines:
-  // this preserves enqueue order even when a flush fails and a later flush
-  // retries (a drain-and-unshift-on-failure would invert order across two failed
-  // batches). The chain serializes per deployment, so two flush callbacks never
-  // read the buffer concurrently.
+  // Capture the epoch so a clear that fires before this flush commits drops it. The
+  // chain serializes per deployment, so two flush callbacks never read the buffer
+  // concurrently.
   const epochAtDrain = b.epoch;
   b.chain = b.chain.then(async () => {
     const buf = bufferFor(depId);
@@ -207,10 +151,9 @@ function scheduleFlush(depId: string, immediate: boolean): Promise<void> {
       await getDb()
         .insert(deploymentLogs)
         .values(batch.map((line) => logLineToRow(depId, line)));
-      // Remove exactly the lines we wrote (the head), leaving any appended while
-      // the insert was in flight for the next flush. Re-check the epoch: a clear
-      // that landed mid-insert already emptied the buffer, so removing here would
-      // drop fresh lines.
+      // Remove exactly the lines we wrote (the head), leaving any appended while the
+      // insert was in flight for the next flush. Re-check the epoch: a clear that landed
+      // mid-insert already emptied the buffer, so removing here would drop fresh lines.
       if (bufferFor(depId).epoch === epochAtDrain) {
         bufferFor(depId).lines.splice(0, batch.length);
       }
@@ -233,14 +176,9 @@ function scheduleFlush(depId: string, immediate: boolean): Promise<void> {
 }
 
 /**
- * Drop a deployment's buffer entry once it holds nothing — the missing half of
- * the Map's lifecycle (the same deletion-forgets shape as container-history's
- * prune; activity re-creates). Without it every deployment ever appended — or
- * merely READ, since {@link bufferFor} mints on access — keeps a permanent
- * entry. Guarded against the append race: an entry that re-acquired lines or a
- * timer since its final flush stays for the next flush to drain. Any chained
- * flush callback has settled before this runs (the callers await the chain
- * first), so no in-flight epoch can be orphaned.
+ * Drop a deployment's buffer entry once it holds nothing — the missing half of the
+ * Map's lifecycle (the same deletion-forgets shape as container-history's prune;
+ * activity re-creates).
  */
 function evictIfIdle(depId: string): void {
   const s = state();
@@ -284,22 +222,9 @@ export async function clearDeploymentLogs(depId: string): Promise<void> {
 }
 
 /**
- * `info` on a build line means "nobody said" — so read it, exactly like a
- * runtime line.
- *
- * The agent forwards the builder's output verbatim and stamps EVERY line of it
- * `info`: buildkit's progress, nixpacks', the compose run's. Only the lines
- * deplo itself writes into the sink carry a real level (`command` for the shell
- * line it ran, `success` for "Deployment ready at …", `error` for
- * "docker build failed"). The build pane trusted all of it as authored, so a
- * build that ended in `error: script "build" exited with code 1` printed that
- * line in neutral grey while the runtime pane, which classifies, would have
- * painted it red.
- *
- * Same evidence-only rules as the live pane ({@link detectLogLevel}) and the
- * same input contract: ANSI stripped for the READ, never for the stored text —
- * the rows render those escapes as colors. A level the producer did state is
- * never second-guessed, and a line the detector can't place stays `info`.
+ * `info` on a build line means "nobody said" — so read it, exactly like a runtime
+ * line. A level the producer did state is never second-guessed, and a line the
+ * detector can't place stays `info`.
  */
 function classifyUnstated(line: LogLine): LogLine {
   if (line.level !== "info") return line;
@@ -309,13 +234,8 @@ function classifyUnstated(line: LogLine): LogLine {
 
 /**
  * Read a deployment's logs in order. Flushes any pending buffer first so an
- * in-progress build's just-emitted lines are included, then SELECTs by the
- * `id` identity (reproduces enqueue/Array.push order).
- *
- * Levels are settled HERE rather than at write time so the reading applies to
- * every build already stored, and so one pass covers every consumer of a build
- * log at once: the console's colors, its level filter and counts, copy/download,
- * and the GraphQL/MCP clients.
+ * in-progress build's just-emitted lines are included, then SELECTs by the `id`
+ * identity (reproduces enqueue/Array.push order).
  */
 export async function loadDeploymentLogs(depId: string): Promise<LogLine[]> {
   await finalizeDeploymentLogs(depId);

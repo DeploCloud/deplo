@@ -20,6 +20,8 @@ import { runWithIdentity } from "../auth/request-context";
  * Scheduler-tick tests for the Docker cleanup loop — the sibling of
  * `lib/backups/scheduler.test.ts`, and shaped like it: these exercise the
  * ORCHESTRATION (due selection, the exclusion list, the per-minute dedup guard,
+ * the never-stack-runs check, the cross-process lease) and NOT a real `docker`
+ * sweep.
  */
 
 let db: TestDb;

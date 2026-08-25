@@ -33,18 +33,8 @@ import { assertContainerNotMigrating } from "./migration-guard";
 import type { Project, AppStatus } from "../types";
 
 /**
- * The Project data layer (ADR-0008, remodeled per ADR-0009). A Project is a
- * top-level, team-scoped ADVANCED FOLDER whose contents live per Environment:
- * an app inside a project belongs to exactly one of its environments
- * (`apps.environment_id`; `project_id` is the derived project link).
- * Folders never live inside projects. This module mirrors `folders.ts`:
- * team-wide ordering (`team_project_order`), a `deploy`-gated CRUD, and a
- * delete that RE-PARENTS contents to the top level rather than cascading.
- *
- * NOTE (Phase 2a): visibility is team-wide (any member who can view the team sees
- * every project). The per-project owner+grants model (cloning
- * `folder-access.ts` onto `project_grants`) is a follow-up; `owner_user_id` is
- * recorded now so it can back that model without a migration.
+ * The Project data layer (ADR-0008, remodeled per ADR-0009). Folders never live
+ * inside projects.
  */
 
 export interface ProjectSummary extends Project {
@@ -142,12 +132,9 @@ async function counts(teamId: string): Promise<{
   for (const r of folderRows)
     if (r.projectId)
       folders.set(r.projectId, (folders.get(r.projectId) ?? 0) + 1);
-  // An app counts toward a project either DIRECTLY (its own `project_id` —
-  // the ADR-0009 per-environment membership) or through a LEGACY
-  // folder-in-project row: filing into a folder clears the app's own
-  // project link, so an app anywhere inside a project-filed folder subtree
-  // is credited by walking its folder's parent chain to the nearest
-  // project-linked ancestor (cycle-safe, like the folder tree walks).
+  // An app counts toward a project either DIRECTLY (its own `project_id` — the
+  // ADR-0009 per-environment membership) or through a LEGACY folder-in-project row:
+  // filing into a folder clears the app's own project link, so an app anywhere inside
   const folderById = new Map(folderRows.map((r) => [r.id, r] as const));
   const projectOfFolder = (folderId: string): string | null => {
     const seen = new Set<string>();
@@ -233,10 +220,6 @@ export const listProjects = cache(async function listProjects(): Promise<
 
 /**
  * A container's directly-contained folders and apps (for the detail page).
- * Per-ROW scope filtered, not only at the project level: a member on a limited
- * role, or a narrowed token, sees only the folders/apps it reaches — so a
- * principal scoped to a single app in the project can't enumerate its siblings
- * or read a private folder's name.
  */
 export async function projectContents(projectId: string): Promise<{
   folders: { id: string; name: string; color: string | null }[];
@@ -443,15 +426,7 @@ export async function setProjectColor(
 }
 
 /**
- * Delete a container. By default nothing inside is deleted: its folders and apps
- * fall back to the team top level (`project_id = NULL`, the FK default). The
- * `team_project_order` row CASCADEs on the delete.
- *
- * `deleteApps` is the opt-in the delete dialog offers: every app the container
- * counts - its own, in every environment, plus anything in a folder filed under
- * it - is stopped and deleted with it, gated per app on `delete_apps` (so one
- * app the caller may not delete refuses the lot). The FOLDERS still fall back to
- * the top level - the option deletes apps, not structure.
+ * Delete a container.
  */
 export async function deleteProject(
   id: string,
@@ -551,9 +526,8 @@ export async function defaultEnvironmentFor(
 
 /**
  * Move an app into a project — landing in the project's DEFAULT environment
- * (ADR-0009: a project's contents live per environment) — or back to the top
- * level (`null`). Entering a project also leaves any folder (one home only).
- * No-op when already in that project.
+ * (ADR-0009: a project's contents live per environment) — or back to the top level
+ * (`null`).
  */
 export async function moveAppToProject(
   appId: string,
@@ -574,16 +548,8 @@ export async function moveAppToProject(
   )[0];
   if (!s) throw new Error("App not found");
   if ((s.projectId ?? null) === projectId) return;
-  // The destination, BOTH branches. `null` is the team top level, which sits
-  // inside no container and so inside no scope — a limited role moving its app
-  // there orphaned it out of everyone's reach, and that branch had no check at
-  // all. Hoisted out of the `if` for that reason; the named-project branch keeps
-  // its own team + token checks below.
-  //
-  // Two messages, because they answer different questions. A named project is
-  // "not found", so refusing never confirms which ids exist; the top level has
-  // no id to confirm, and telling someone their app would leave their own reach
-  // is both safe and the only thing that explains the refusal.
+  // The destination, BOTH branches. Two messages, because they answer different
+  // questions.
   if (
     !appInScope(await currentMemberScope(), {
       id: appId,
@@ -612,12 +578,9 @@ export async function moveAppToProject(
         )
         .limit(1)
     )[0];
-    // The DESTINATION, which was only ever checked against the team: a caller
-    // who reaches part of the team could file an app it controls into a project
-    // outside its own scope. Same message as an unknown id, so no id is
-    // confirmed by refusing. The role's reach was checked above, for both
-    // branches and with the stricter predicate; what is left here is the team
-    // and the API token.
+    // The DESTINATION, which was only ever checked against the team: a caller who
+    // reaches part of the team could file an app it controls into a project outside its
+    // own scope.
     if (!p || !inProjectScope(projectId)) throw new Error("Project not found");
     const env = await defaultEnvironmentFor(projectId);
     environmentId = env?.id ?? null;
@@ -680,19 +643,8 @@ export async function moveAppToEnvironment(
       .where(eq(environmentsTable.id, environmentId))
       .limit(1)
   )[0];
-  // The DESTINATION, asked the way the app itself would be asked if it already
-  // lived there — `appInScope`, not `projectInScope`.
-  //
-  // `projectInScope` accepts `appProjectIds`, the set `loadRoleScope` fills
-  // purely so a named node's CONTAINER stays navigable. So a role limited to one
-  // environment reached every OTHER environment of the same project as a move
-  // destination, and moving its own app there made the app vanish: out of reach
-  // for every holder of the role, the mover included. `createApp` refuses the
-  // identical destination for the identical principal (`resolveNewAppPlacement`
-  // uses `appInScope`), so create and move disagreed about the same pair of ids.
-  //
-  // A project-scoped role still moves freely between the environments of a
-  // ticked project: `appInScope` matches on `projectIds` there.
+  // The DESTINATION, asked the way the app itself would be asked if it already lived
+  // there — `appInScope`, not `projectInScope`.
   if (
     !env ||
     env.teamId !== teamId ||

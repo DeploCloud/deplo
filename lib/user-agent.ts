@@ -1,20 +1,7 @@
 /**
  * Turn a `User-Agent` string into something a person recognises as their own
- * device — "Chrome on macOS", "Safari on iPhone" — for the signed-in-devices
- * table in Settings → Security.
- *
- * Pure and dependency-free so `bun run test` can drive the whole corpus. A UA
- * parser is worth testing rather than eyeballing for one reason: the strings
- * deliberately LIE about each other for backwards compatibility. Edge claims to
- * be Chrome AND Safari, Chrome claims to be Safari, Opera and Samsung Internet
- * both claim to be Chrome, and every one of them claims to be Mozilla. So the
- * checks below are ORDERED most-specific first, and that order is the whole
- * algorithm — reorder two lines and every Edge session in the table starts
- * reading as Chrome.
- *
- * Deliberately no version numbers. They are the churny part of UA parsing and
- * add nothing to "is this device mine?", which is what this table answers; the
- * IP and last-seen columns are what tell two Chrome sessions apart.
+ * device — "Chrome on macOS", "Safari on iPhone" — for the signed-in-devices table
+ * in Settings → Security.
  */
 
 export type DeviceKind = "desktop" | "mobile" | "tablet" | "unknown";
@@ -42,10 +29,7 @@ const BROWSERS: [RegExp, string][] = [
   [/\bFirefox\/|\bFxiOS\//, "Firefox"],
   // Chrome on iOS is "CriOS"; it is still Chrome to the person reading the row.
   [/\bCriOS\//, "Chrome"],
-  // Puppeteer/Playwright. Named rather than folded into Chrome, and matched
-  // before it: `\bChrome\/` does NOT match "HeadlessChrome/" (no word boundary
-  // after "Headless"), so without this line an automated client fell through to
-  // the Safari rule and appeared in the list as a browser nobody was using.
+  // Puppeteer/Playwright.
   [/\bHeadlessChrome\//, "Headless Chrome"],
   [/\bChrome\/|\bChromium\//, "Chrome"],
   // Last of the browsers: everything above also ships "Safari/" in its UA.

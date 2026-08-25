@@ -12,19 +12,6 @@ import {
  * Cross-host data migration for a server MOVE — the shared relay that both the
  * database move (a single data volume) and the app move (N data volumes + the
  * files dir) build on.
- *
- * Docker named volumes and an app's files dir are host-local, and the agent
- * trust model is strictly star (an agent can neither dial nor trust a peer), so the
- * bytes RELAY through the control plane: the SOURCE agent streams a gzipped tar out
- * (exportVolume / exportFiles), and those chunks feed straight into the DESTINATION
- * agent's importVolume / importFiles (wipe-first, overwriting whatever the freshly-
- * provisioned stack initialised). No S3 hop, no agent↔agent link, no full-archive
- * buffering in the control plane.
- *
- * BOTH stacks must be STOPPED before any copy runs — the destination so nothing
- * writes under the untar, the source so its on-disk state can't change mid-read (a
- * consistent copy). That quiescing is the CALLER's responsibility (it also owns the
- * provision/teardown ordering + rollback); this module is only the byte relay.
  */
 
 /** Stop a stack on a specific server, throwing on failure (a move can't proceed if
@@ -56,12 +43,11 @@ export async function startStackOn(
   }
 }
 
-/** Destroy a stack on a specific server, throwing on failure. `removeVolumes`
- *  (default true) also reclaims the stack's named volumes — used to tear down the
- *  OLD host after a verified copy, or to roll back a half-built NEW stack. Pass
- *  false to leave the volumes intact (a plain `down`) when the data must be
- *  recoverable — e.g. tearing down an old host we BELIEVE is stateless, where a
- *  mis-enumeration should orphan the volume rather than destroy it. */
+/**
+ * Destroy a stack on a specific server, throwing on failure. `removeVolumes`
+ * (default true) also reclaims the stack's named volumes — used to tear down the
+ * OLD host after a verified copy, or to roll back a half-built NEW stack.
+ */
 export async function destroyStackOn(
   serverId: string,
   slug: string,
@@ -78,20 +64,16 @@ export async function destroyStackOn(
 
 /**
  * Attribute a copy RPC rejection to the side that failed. The export (source) or
- * the import (destination) can reject; an UNIMPLEMENTED (agent too old) is mapped to
- * a clear "update the agent on the <side> server" error. A non-UNIMPLEMENTED error
- * passes through unchanged either way — we just prefer the source attribution when
- * the error is ambiguous, since the source export is what starts the stream.
+ * the import (destination) can reject; an UNIMPLEMENTED (agent too old) is mapped
+ * to a clear "update the agent on the <side> server" error.
  */
 function attributeCopyError(e: unknown, what?: string): Error {
   const asSource = mapVolumeCopyUnsupported(e, "source");
   if (asSource.constructor.name === "AgentVolumeCopyUnsupportedError")
     return asSource;
   // A source that is not there is the agent doing its job (it refuses rather than
-  // creating an empty volume and calling it a copy) — but it reached the report as
-  // `5 NOT_FOUND: … docker: Error response from daemon`, which reads like a broken
-  // platform rather than like "nothing ever wrote there". Wording stays neutral:
-  // this path serves a server move as well as an import.
+  // creating an empty volume and calling it a copy) — but it reached the report as `5
+  // NOT_FOUND: … docker: Error response from daemon`, which reads like a broken
   if (what && isNotFound(e))
     return new Error(
       `${what} is not on that machine, so nothing was copied. A service that has never run has no data volume yet.`,
@@ -108,17 +90,12 @@ function isNotFound(e: unknown): boolean {
 
 /**
  * A gzipped tar of an EMPTY directory is about 45 bytes — a header, two zero
- * blocks and the gzip trailer. Nothing that holds a byte of real data compresses
- * to anything near this, so a whole export that ends under the ceiling carried
- * nothing, whatever the RPC said.
+ * blocks and the gzip trailer.
  */
 const EMPTY_ARCHIVE_CEILING = 512;
 
 /**
- * What a copy actually moved. `empty` is the source having had NOTHING to give -
- * told apart from a failure on purpose, because the two want opposite handling:
- * a failure is reported and rolled back, an empty source is a volume nobody ever
- * wrote to and the honest answer is to leave the destination alone.
+ * What a copy actually moved.
  */
 export interface VolumeCopyResult {
   /** Compressed bytes relayed through the control plane. */
@@ -131,26 +108,15 @@ export interface VolumeCopyResult {
 
 /**
  * Called with each chunk's size as it crosses, for a caller that wants to SAY so
- * while it happens.
- *
- * A migration's data phase writes no line until a whole service is copied, which
- * on a 15 GB volume is hours of a screen that looks hung. The relay is the only
- * place that knows the bytes are moving, so it is the only place that can say it.
- * Deliberately sync and deliberately ignored on throw: a progress line must never
- * be able to fail a copy.
+ * while it happens. Deliberately sync and deliberately ignored on throw: a
+ * progress line must never be able to fail a copy.
  */
 export type OnBytes = (chunkBytes: number) => void;
 
 /**
- * A copy somebody cancelled, told apart from a copy that broke.
- *
- * Stopping a migration means undoing it whole, and nothing can be deleted while
- * bytes are still landing in it. A between-steps check cannot deliver that: one
- * step is one service, and one service can be an hour of a 15 GB volume - which
- * is how a stopped run went on copying for an hour into apps the undo had
- * already removed. So the stream itself is interruptible, and this is the shape
- * the interruption takes: never a `failed` line in the report, because nothing
- * failed.
+ * A copy somebody cancelled, told apart from a copy that broke. So the stream
+ * itself is interruptible, and this is the shape the interruption takes: never a
+ * `failed` line in the report, because nothing failed.
  */
 export class CopyAbortedError extends Error {
   constructor() {
@@ -182,15 +148,6 @@ function report(onBytes: OnBytes | undefined, chunkBytes: number): void {
 
 /**
  * Prove the source volume has content BEFORE the destination is touched.
- *
- * `docker run -v <name>:/v` CREATES the named volume when it is missing, so an
- * export of a volume that is not on that host exits 0 with an empty archive - and
- * `ImportVolume` wipes the target before the first frame arrives. That pair turned
- * a wrong source host into total data loss reported as a successful copy (every
- * Dokploy import did exactly this until August 2026). An agent new enough to answer
- * NOT_FOUND refuses first; this probe is what makes the control plane safe on the
- * agents already out there, and it costs one chunk: read until the archive proves
- * itself, then cancel the stream (streamEvents cancels the call on early return).
  */
 async function sourceHasData(
   source: AgentConnection,
@@ -206,18 +163,7 @@ async function sourceHasData(
 
 /**
  * Copy ONE named Docker volume from `source` to `dest` (both already-open agent
- * connections), overwriting the destination volume. Throws on any failure so the
- * caller can roll the move back.
- *
- * Answers how much it moved rather than nothing at all: a copy that reports success
- * having relayed zero bytes is indistinguishable from one that worked, and that is
- * the shape every silent data loss in this path has taken. The destination is not
- * opened at all until the source has proven it has something to send.
- *
- * `targetName` defaults to the same name, which is what a server MOVE wants: the
- * same stack, re-provisioned on another host, names its volumes identically. It is
- * spelled out only when the two sides genuinely differ — importing a volume from
- * ANOTHER platform, whose naming is not ours (lib/data/dokploy-data.ts).
+ * connections), overwriting the destination volume.
  */
 export async function copyVolumeBetween(
   source: AgentConnection,
@@ -301,15 +247,6 @@ export async function copyVolumeBetween(
 /**
  * Copy one HOST DIRECTORY from `source` to `dest` — the bind-mount half of a
  * migration from a platform that keeps service data in a plain directory.
- *
- * Same contract as {@link copyVolumeBetween}, for the same reasons: the source is
- * proven to hold something before the destination is opened, the bytes are counted
- * and hashed, and an empty source is answered rather than performed. The agent
- * refuses a directory that is not there instead of creating one, so `empty` here
- * genuinely means "that directory holds nothing".
- *
- * The CALLER owns the authorization: this reads and writes arbitrary host paths, so
- * it belongs behind instance admin plus the host-volumes grant.
  */
 export async function copyHostPathBetween(
   source: AgentConnection,
@@ -382,10 +319,8 @@ export async function copyHostPathBetween(
 }
 
 /**
- * Copy an app's files dir (a host directory, not a Docker volume) from `source`
- * to `dest`, overwriting the destination. Throws on failure. An app with no files
- * dir on the source streams an empty archive, which just clears the destination dir
- * — a harmless no-op for a move.
+ * Copy an app's files dir (a host directory, not a Docker volume) from `source` to
+ * `dest`, overwriting the destination.
  */
 export async function copyFilesBetween(
   source: AgentConnection,
@@ -408,11 +343,6 @@ export async function copyFilesBetween(
  * Copy a BUILT IMAGE from the server that compiled it to the server that will run
  * it - the build-server relay, and the third use of this module's one idea: agents
  * cannot dial each other, so the bytes pass through the control plane.
- *
- * `removeAfter` is true for every caller today. A build server holds no artifacts;
- * the image is a courier and the BuildKit cache is what makes the next build fast,
- * and that is untouched. Throws on failure so the deploy fails BEFORE the target's
- * stack is rewritten, leaving whatever was running still running.
  */
 export async function copyImageBetween(
   source: AgentConnection,
@@ -438,14 +368,8 @@ export async function copyImageBetween(
 
 /**
  * Migrate a workload's full on-host state from one server to another: every named
- * volume (in order) and, optionally, the files dir. Opens ONE connection to each
- * host and reuses it for the whole set (an app can have several volumes). Throws
- * on the first failure so the caller can roll back — nothing here mutates control-
- * plane state, only agent-side data.
- *
- * `volumeNames` are the FULL host-side Docker volume names (already resolved by the
- * caller — dbVolumeHostName for a DB, buildProjectDescriptor for an app). The
- * caller must have STOPPED both stacks first (see the module comment).
+ * volume (in order) and, optionally, the files dir. The caller must have STOPPED
+ * both stacks first (see the module comment).
  */
 export async function migrateWorkloadData(
   fromServerId: string,

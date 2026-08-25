@@ -37,20 +37,7 @@ import {
 
 /**
  * The READ seam for the project graph (relational-store PLAN §6 "Reads /
- * performance — batch-load is mandatory"). Because §1 removed JSONB, every
- * project read JOINs its 5–6 child tables; over the old in-memory cache these
- * fan-outs were free, but async they become real round-trips. So the data layer
- * NEVER loads children per-project in a loop — it goes through here:
- *
- *  - {@link loadAppGraph} — ONE project + all its children in a bounded query
- *    set (the aggregate loader routed from runDeployment / renderAppStack /
- *    getAppById / the GraphQL detail resolver).
- *  - {@link loadAppsByTeam} / {@link loadAppsByIds} — N apps with all
- *    children batch-loaded by a single `inArray` per child table (so a list of N
- *    apps is a BOUNDED number of queries, not N×6).
- *
- * A `DbReader` is `getDb()` or a `tx`, so a transaction can read through the same
- * assembler it later writes through (no second connection, consistent snapshot).
+ * performance — batch-load is mandatory").
  */
 type DbReader = ReturnType<typeof getDb> | DbTx;
 
@@ -164,9 +151,8 @@ export async function loadAppsByIds(
 
 /**
  * The per-team data `summarize` needs as a PURE function (PLAN §6 "`summarize()`
- * is N+1"): the latest deployment per project (one query) and the domain count
- * per project (one GROUP BY) — so a list of N apps costs a bounded number of
- * queries instead of N×2. Keyed by project id.
+ * is N+1"): the latest deployment per project (one query) and the domain count per
+ * project (one GROUP BY) — so a list of N apps costs a bounded number of queries
  */
 export interface SummaryPreload {
   latestDeployments: Map<string, Deployment>;
@@ -378,9 +364,6 @@ export async function loadEnvVar(
 
 /**
  * Insert {@link EnvVar}s + their target junction rows (one multi-row insert each).
- * The shared write seam `createApp` / `setAppEnv` / `upsertEnv` use so the
- * env-var → row mapping (and the targets junction) lives in one place. Pass a `tx`
- * so it joins the caller's transaction.
  */
 export async function insertEnvVars(
   db: DbReader,
@@ -400,25 +383,6 @@ export async function insertEnvVars(
  * The scope predicate for any query over `apps`, or undefined when the caller
  * isn't narrowed below the whole of its active team (every browser request, an
  * unrestricted token, and a token holding this team wholly).
- *
- * An API token can be limited to whole Projects and to individual Apps, and
- * "limited" means it cannot READ the rest either — so the predicate belongs in
- * the ownership gates below and in every team-wide app query, not in a second
- * gate beside them. Pure and synchronous: the scope rides on the request
- * identity, so this is safe inside a transaction and inside a subscription tick.
- *
- * Ids from the token's OTHER teams can sit harmlessly in the predicate: every
- * caller ANDs it with `apps.team_id`, so they can never match.
- *
- * An app lives in exactly ONE place — a folder, a project, or the team top level
- * (filing it into a folder clears its project link) — so the three clauses are
- * alternatives. An app at the top level is in no container at all and is reached
- * only by naming it: fail-closed, and it keeps a scope from widening the moment
- * someone drags an app out of a folder.
- *
- * `folderIds` arrives already flattened (the ticked folders' whole subtrees, plus
- * every folder filed under a ticked project), so this stays one `IN` and no tree
- * walk happens per query.
  */
 export function appScopeWhere(): SQL | undefined {
   const scope = narrowedScope();
@@ -437,13 +401,8 @@ export function appScopeWhere(): SQL | undefined {
 }
 
 /**
- * Load a project only if it belongs to `teamId` (the standard ownership gate as
- * a single call): the full assembled {@link App} or null when absent / not
- * owned. The relational replacement for the old
- * `read().apps.find(p => p.id === id && p.teamId === teamId)`.
- *
- * Also enforces the caller's project scope, so all ~50 call sites of the two
- * gates close at once and keep the "App not found" copy they already had.
+ * Load a project only if it belongs to `teamId` (the standard ownership gate as a
+ * single call): the full assembled {@link App} or null when absent / not owned.
  */
 export async function loadTeamApp(
   appId: string,

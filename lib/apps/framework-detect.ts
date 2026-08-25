@@ -1,13 +1,7 @@
 /**
  * Pure framework recognition: given the files at an app's build root and its
- * parsed `package.json`, name the framework from the
- * {@link file://./framework-catalog.ts} registry.
- *
- * Everything here is a total function over data — no I/O, no fetch, no fs — so
- * the server arms ({@link file://./framework-source.ts}) differ only in how they
- * obtain the two inputs, and the whole rule set is testable without a repo, a
- * network or a database. Same split as favicon detection (`favicon-shared` ranks,
- * `favicon-detect` reads).
+ * parsed `package.json`, name the framework from the {@link
+ * file://./framework-catalog.ts} registry.
  */
 import { FRAMEWORKS, type FrameworkId } from "./framework-catalog";
 
@@ -40,8 +34,6 @@ export function parsePackageManifest(text: string): PackageManifest | null {
  * The DIRECT dependency names declared by a manifest — `dependencies` plus
  * `devDependencies`, which is where a framework always sits (Vite, Astro and
  * SvelteKit live in devDependencies; Next and Express in dependencies).
- * Transitive packages are deliberately invisible: an app that merely pulls
- * `express` in through something else is not an Express app.
  */
 export function declaredDependencies(
   manifest: PackageManifest | null | undefined,
@@ -56,14 +48,7 @@ export function declaredDependencies(
 
 /**
  * The file names sitting DIRECTLY in the build root, taken from a repo-root
- * relative path list (a recursive git tree, a directory walk). `rootRel` is the
- * app's rootDirectory in normalised form ("" or "." for the repo root) — in a
- * monorepo the framework is whatever lives in the sub-app being built, not
- * whatever the top of the repo happens to contain.
- *
- * Only the immediate children survive: a `next.config.js` three directories down
- * says nothing about the app Deplo is deploying. Returned lowercase, matching how
- * the catalog spells its markers.
+ * relative path list (a recursive git tree, a directory walk).
  */
 export function rootFileNames(
   paths: readonly string[],
@@ -92,12 +77,6 @@ export function rootFileNames(
  * matches (not a JavaScript app, or a repo with no manifest at all — a Go or
  * Python service builds perfectly well through the same builders, it just has no
  * JS framework to name).
- *
- * A framework matches on EITHER signal — a declared dependency or a config file
- * at the root — because each one alone is conclusive in practice and neither is
- * always present (`sveltekit` ships no distinctive file; a bare `astro.config.mjs`
- * is unmistakable). The first match in {@link FRAMEWORKS} order wins, which is
- * what keeps a Next.js app from being reported as React.
  */
 export function detectFramework(
   rootFiles: readonly string[],

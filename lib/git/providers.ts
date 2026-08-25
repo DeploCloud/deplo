@@ -51,9 +51,9 @@ export interface ParsedPush {
 }
 
 /**
- * The outcome of checking a delivery's authenticity. Only Bitbucket does this, and
- * only when no secret is configured on its side; the unguessable token in the
- * delivery URL is then the shared secret, exactly like the deploy hook's.
+ * The outcome of checking a delivery's authenticity. - `ok` the signature (or
+ * shared token) matched - `bad` a signature was present and did NOT match: drop
+ * it, 401 - `unsigned` the provider sent nothing to verify.
  */
 export type VerifyResult = "ok" | "bad" | "unsigned";
 
@@ -219,8 +219,8 @@ async function json<T>(
 
 /**
  * Constant-time compare of two same-purpose strings. An EMPTY expectation never
- * matches, whatever arrives. secret`; this is the same refusal, for the providers
- * that share this helper.
+ * matches, whatever arrives. GitHub's own route already refuses on `!secret`; this
+ * is the same refusal, for the providers that share this helper.
  */
 function sameSecret(a: string, b: string): boolean {
   if (!a || !b) return false;

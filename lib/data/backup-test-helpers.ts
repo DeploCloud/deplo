@@ -19,16 +19,7 @@ import { SERVER_1 } from "./app-graph-test-helpers";
 
 /**
  * Shared seeding for the backups cut-set (d) data-layer + scheduler tests
- * (relational-store PLAN Step 5). The four collections are RELATIONAL: the data
- * layer + the scheduler read pglite. So this seeds `databases` / `backup_destination`
- * / `backups` / `backup_runs` directly, the same way `app-graph-test-helpers`
- * seeds the project graph.
- *
- * Pair with `seedIdentity` (every row's `team_id` FK) + `seedServer` (a database's
- * `server_id` RESTRICT FK), and drive the data functions inside
- * `runWithIdentity({ userId, teamId })`.
- *
- * Not named `*.test.ts` so the `node --test` glob skips it (a helper).
+ * (relational-store PLAN Step 5).
  */
 
 const T0 = "2026-01-01T00:00:00.000Z";
@@ -39,16 +30,8 @@ export const TRUNCATE_BACKUPS = `truncate table
   restart identity cascade;`;
 
 /**
- * Wait for every floated `provisionDatabase` to finish.
- *
- * `createDatabase` returns before its container exists - provisioning is a
- * `void`ed promise on purpose, so the caller is not held for a docker round-trip
- * - which in a test means work that outlives the test that started it. Once the
- * harness has torn the pglite database down, that work asks a `getDb()` which is
- * no longer pointed anywhere and the whole FILE fails with an unhandled
- * rejection about DEPLO_DATABASE_URL, naming a test that passed.
- *
- * Call it before truncating and before closing: it drains what is in flight.
+ * Wait for every floated `provisionDatabase` to finish. Call it before truncating
+ * and before closing: it drains what is in flight.
  */
 export async function settleProvisioning(db: TestDb): Promise<void> {
   for (let i = 0; i < 400; i++) {
@@ -151,10 +134,7 @@ export interface SeedDestinationOpts {
 }
 
 /**
- * Seed one backup destination. `s3` by default (with real encrypted access /
- * secret keys); `kind: "server"` seeds a folder destination with a real-shaped
- * age keypair, so the DB CHECK on the kind's columns is exercised rather than
- * worked around.
+ * Seed one backup destination.
  */
 export async function seedDestination(
   db: TestDb,

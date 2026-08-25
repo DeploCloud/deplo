@@ -6,29 +6,9 @@ import {
 } from "../types";
 
 /**
- * The pure model behind the Storage settings editor: what the three kinds of
- * mount ARE in the UI's words, and the one validator both the editor's inline
- * lint and the save-time check run. No React, so it unit-tests directly (the
- * same split as `resource-limits-model` / `breadcrumb-model`).
- *
- * NAMING — the UI says **Volume**, **File**, **Bind**; the STORED discriminants
- * stay `"named"`, `"app"`, `"host"` forever. "Named volume" / "App file" /
- * "Host path" were the old labels and nobody could tell what a "named volume"
- * was, which is exactly the Docker vocabulary deplo exists to keep off the
- * screen. Renaming the stored values would have been a migration for a caption,
- * so the mapping lives here and nowhere else.
- *
- * Only the SOURCE of an entry is ever really required. Where it lands inside the
- * container is derived when deplo can derive it honestly — see
- * {@link derivedMountPath}, the reason "Path inside the app" is an optional field
- * for every app deplo builds.
- *
- * The RULES are shared with the server on purpose: `validateVolumes`
- * (lib/data/apps.ts) imports {@link RESERVED_MOUNT_PREFIXES} and
- * {@link VOLUME_NAME_RE} from here, so the editor cannot accept something the
- * writer will reject, and neither can drift from the other. Wording differs by
- * design — the server's messages are API errors, the ones here are what a user
- * reads while typing.
+ * The pure model behind the Storage settings editor: what the three kinds of mount
+ * ARE in the UI's words, and the one validator both the editor's inline lint and
+ * the save-time check run.
  */
 
 /** The stored discriminant. NEVER renamed — see the module note. */
@@ -61,11 +41,7 @@ export interface VolumeKindMeta {
   /** Badge tone for the collapsed row's identity chip and the picker cards. */
   chip: "secondary" | "outline" | "warning";
   /**
-   * Volume only: what the derived on-host name row is called. Null ⇒ no target
-   * row. File and Bind get none on purpose — their target would just echo back
-   * the path the user typed one line above, and a File's real absolute source
-   * (`<stacks>/files/<slug>/…`) is not knowable client-side, so printing one
-   * would be an invention.
+   * Volume only: what the derived on-host name row is called.
    */
   targetLabel: string | null;
 }
@@ -120,19 +96,8 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
 };
 
 /**
- * Switch a row's kind, KEEPING each kind's own source value.
- *
- * Preserving is safe because nothing but the selected kind's field can ever
- * leave: the editor renders only that field, the readout only describes that
- * kind, and both the save payload and the dirty key are type-gated (a `name`
- * typed for a Volume is not sent for a Bind row — see `storage-settings-form`).
- * Given that, preserving beats clearing: a non-expert who clicks the wrong card
- * undoes it with one click instead of retyping.
- *
- * The no-op guard is load-bearing, not a micro-optimisation. A saved Volume row
- * comes back with `type` ABSENT (the back-compat default), so re-picking Volume
- * would write `type: "named"` and arm the unsaved-changes guard over a change
- * nobody made.
+ * Switch a row's kind, KEEPING each kind's own source value. The no-op guard is
+ * load-bearing, not a micro-optimisation.
  */
 export function switchKind(v: VolumeMount, kind: VolumeKind): VolumeMount {
   if (kind === kindOf(v)) return v;
@@ -141,13 +106,7 @@ export function switchKind(v: VolumeMount, kind: VolumeKind): VolumeMount {
 
 /**
  * Where a BUILT app's code runs inside its container, so the editor can tell the
- * user what `./uploads` in their code is called here. deplo's generated
- * Dockerfile sets `WORKDIR /app` (or `/app/<root directory>`) — see
- * `lib/deploy/dockerfile.ts` — and the buildpack images (Nixpacks, Railpack) use
- * `/app` too, so for anything deplo builds this is a fact, not a guess.
- *
- * Null for a prebuilt `docker-image` app: that image chose its own working
- * directory and deplo has no way to know it, so the editor must not invent one.
+ * user what `./uploads` in their code is called here.
  */
 export function containerWorkdir(
   source: string,
@@ -189,23 +148,7 @@ export const RESERVED_MOUNT_PREFIXES = [
 
 /**
  * Whether this KIND of entry may not take `mountPath`, because the runtime owns
- * it. The list above is the same for both answers; what differs is how much of
- * it a kind is allowed near.
- *
- * A **Volume** or a **Bind** puts a whole DIRECTORY over the target, so a
- * reserved path and everything under it stay off limits: replacing `/etc` or
- * `/etc/nginx` hides the image's own files there and the container comes up
- * broken.
- *
- * A **File** is ONE file, and putting one file inside a system directory is how
- * containers have been configured since containers existed -
- * `/etc/nginx/nginx.conf`, `/usr/share/nginx/html/index.html`,
- * `/etc/php/conf.d/uploads.ini`. Refusing those refuses the commonest reason a
- * File entry exists at all (and it is what a Dokploy import of a prebuilt image
- * is almost always made of), so a File is refused only AT the reserved path
- * itself - nothing may be mounted as `/etc`. Nothing escapes either way: a
- * File's source is a file deplo wrote inside the app's own files dir, and the
- * target is inside the app's own container.
+ * it.
  */
 export function reservedMountPath(
   mountPath: string,
@@ -223,14 +166,7 @@ export const VOLUME_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 export const VOLUME_NAME_MAX = 40;
 
 /**
- * The `:`-suffixed options a `- source:target` mount line ends with. The ONE
- * place that spells them: both renderers (`renderCompose` for a single-container
- * app, the compose-stack merge for a stack) and the reroute's reader go through
- * here, so a bind can never be written one way and read back another.
- *
- * Empty string when there is nothing to add, so a plain read-write mount renders
- * byte-identically to before (the reroute contract — a changed line restarts the
- * container).
+ * The `:`-suffixed options a `- source:target` mount line ends with.
  */
 export function mountOptions(m: {
   readOnly?: boolean | null;
@@ -250,11 +186,8 @@ export function parseMountPropagation(
 
 /**
  * The one normaliser for a File entry's path in this app's Files: trimmed, the
- * optional `./` marker dropped (the same prefix the compose convention uses),
- * no trailing slash. The editor, the dirty key, the content read and the save
- * all key off this, so a path typed as `./conf/app.toml` is the same file as
- * `conf/app.toml` everywhere instead of only after a round trip. The server's
- * `validateVolumes` normalises identically.
+ * optional `./` marker dropped (the same prefix the compose convention uses), no
+ * trailing slash.
  */
 export function normalizeFilesPath(path: string | null | undefined): string {
   return (path ?? "")
@@ -272,9 +205,6 @@ function lastSegment(path: string): string {
 
 /**
  * The file name a mount path ends in — `/etc/nginx/nginx.conf` → `nginx.conf`.
- * The editor offers this as the path in Files while the user has not written one
- * of their own, so the commonest File entry (one file, same name both sides) is
- * one field instead of two. Empty when the path has no last segment yet.
  */
 export function filesPathFromMountPath(mountPath: string): string {
   return lastSegment(mountPath);
@@ -283,23 +213,6 @@ export function filesPathFromMountPath(mountPath: string): string {
 /**
  * Where a row lands inside the container when the user does not say — the reason
  * "Path inside the app" is not a field you must fill.
- *
- * The rule is one sentence: **leave it empty and deplo puts the storage in the
- * app's own folder, named after whatever you gave it.** A File kept in Files at
- * `conf/app.toml` appears at `<workdir>/conf/app.toml`, the same layout it had in
- * the repo; a Volume named `uploads` at `<workdir>/uploads`, which is what
- * `./uploads` in the code already means; a Bind of `/srv/media` at
- * `<workdir>/media`.
- *
- * Offered ONLY when deplo built the app, because only then is the working
- * directory a fact ({@link containerWorkdir}) instead of a guess. A prebuilt
- * image or a compose service picked its own, and mounting at an invented path is
- * the failure that never announces itself: the app keeps writing where it always
- * did, the disk stays empty, and the data is gone at the next deploy. There the
- * field is required, and the editor says why.
- *
- * Returns "" when there is nothing to derive from (no working directory, or no
- * source to name it after) — the caller then has to ask.
  */
 export function derivedMountPath(
   v: VolumeMount,
@@ -313,20 +226,16 @@ export function derivedMountPath(
       : kind === "host"
         ? lastSegment((v.hostPath ?? "").trim())
         : // As typed, NOT case-folded: a path inside a Linux container is
-          // case-sensitive, so a Volume named `Uploads` has to land on
-          // `/app/Uploads` — the folder the code writes to. Only the docker
-          // volume name is lowercased (`hostVolumeName`), and that is a
-          // different string entirely.
+          // case-sensitive, so a Volume named `Uploads` has to land on `/app/Uploads` — the
+          // folder the code writes to.
           (v.name ?? "").trim();
   if (!rel) return "";
   return `${workdir.replace(/\/+$/, "")}/${rel.replace(/^\/+/, "")}`;
 }
 
 /**
- * The path this row will really mount at: what the user typed, or else
- * {@link derivedMountPath}. Every reader goes through this — the validator, the
- * readout, the collapsed line, the dirty key and the save payload — so the path
- * shown as a placeholder is the very one that gets stored.
+ * The path this row will really mount at: what the user typed, or else {@link
+ * derivedMountPath}.
  */
 export function effectiveMountPath(
   v: VolumeMount,
@@ -350,14 +259,7 @@ export function deriveVolumeName(mountPath: string): string {
 }
 
 /**
- * Which field of a row is wrong, and what to say about it. Null ⇒ the row is
- * fine. Mirrors the server's rules exactly (it shares the constants above); the
- * copy is what the user reads next to the input as they type, so it names the
- * field by its UI label rather than its wire name.
- *
- * `field` lets the editor ring the offending input instead of only printing a
- * message — the old form's first feedback was a toast on save, which meant
- * typing a bad path and finding out three clicks later.
+ * Which field of a row is wrong, and what to say about it.
  */
 export interface VolumeProblem {
   field: "source" | "mountPath";
@@ -370,10 +272,9 @@ export function volumeProblem(
 ): VolumeProblem | null {
   const kind = kindOf(v);
 
-  // The SOURCE is checked first, and not only because the form asks for it
-  // first: with a known working directory it is also what the path inside the
-  // app is derived from, so a row with neither has a missing source, not a
-  // missing path.
+  // The SOURCE is checked first, and not only because the form asks for it first:
+  // with a known working directory it is also what the path inside the app is derived
+  // from, so a row with neither has a missing source, not a missing path.
   if (kind === "host") {
     const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
     if (!hostPath)
@@ -469,9 +370,8 @@ export function volumeProblem(
 
 /**
  * The problem the SET has, which no single row can see: two mounts at the same
- * path in the same container, or two managed volumes sharing a name (their
- * on-host name would collide). Keyed per compose service, because two services
- * of one stack each mounting their own `/data` is normal.
+ * path in the same container, or two managed volumes sharing a name (their on-host
+ * name would collide).
  */
 export function volumeSetProblem(
   volumes: VolumeMount[],
@@ -540,13 +440,6 @@ export function volumeReadout(
       return "Shares a folder that already exists on the server.";
     // Stated only when it is ON: the default (a snapshot of what was mounted at
     // startup) is what every other kind does too, so saying it would be noise.
-    //
-    // The second clause is the one thing about this pair nobody could guess, and
-    // it is verified against docker, not assumed: a filesystem that ARRIVES
-    // through the propagation brings its OWN mount options, so `:ro` covers this
-    // folder and not what later appears inside it. Ticking both and reading
-    // "can read but not change it" would otherwise leave someone certain they
-    // had locked down exactly the part that is still writable.
     const follows =
       v.propagation === "rslave"
         ? " Anything mounted inside it later shows up too."

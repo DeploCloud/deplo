@@ -29,9 +29,7 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
 
 /**
  * The same feed narrowed to what ONE person did — the Activity tab of a member's
- * page. Same gate and same scope as {@link listActivity}, deliberately: "what has
- * this member been doing" is the team's trail read through one actor, not a
- * softer question, and served by `activities_actor_created_idx`.
+ * page.
  */
 export async function listActivityByActor(
   userId: string,
@@ -78,15 +76,6 @@ async function queryActivity(
 /**
  * The scope predicate for the audit feed, or undefined for a caller who reaches
  * the whole team.
- *
- * The trail is where "who did what" is answered, so a limited principal sees the
- * events of the apps they reach and NOTHING else — team-level rows included
- * (`app_id IS NULL`: member added, role edited, token minted), which are the
- * team's own history rather than any app's.
- *
- * Async because a person's reach lives in the database, and it asks about both:
- * a token narrows through `appScopeWhere`, a role through its own id list, and
- * the two compose as a conjunction.
  */
 async function scopedActivityWhere(): Promise<SQL | undefined> {
   const roleScope = await currentMemberScope();
@@ -120,23 +109,9 @@ async function scopedActivityWhere(): Promise<SQL | undefined> {
 }
 
 /**
- * Internal: record an event. Caller is expected to be authorized already.
- *
- * The owning team is derived: from the project's `teamId` when a `appId` is
- * given, else from the explicit `teamId` argument (used by project-less member /
- * team events). When neither resolves — e.g. a background deploy with no request
- * context — it falls back to the first team so the row is never written team-less
- * (which would make it invisible to every team).
- *
- * The actor's user id is resolved HERE (no caller passes it), so the log can render
- * a real identity for a human actor while `actor` stays free text.
- *
- * `alert` is the optional sixth argument: a call site that is also worth PUSHING
- * to the team names its alert key here, and the dispatch happens once, in this
- * function, on the team it already resolved. Naming the key at the call site
- * rather than classifying `message` is deliberate — `type: "member"` covers
- * everything from a role edit to a Traefik restart, and matching on free text
- * would be a guess that breaks the first time somebody rewords a string.
+ * Internal: record an event. When neither resolves — e.g. a background deploy with
+ * no request context — it falls back to the first team so the row is never written
+ * team-less (which would make it invisible to every team).
  */
 export async function recordActivity(
   type: ActivityType,
@@ -148,17 +123,6 @@ export async function recordActivity(
 ): Promise<void> {
   // Best-effort (PLAN §1(c): an audit-log insert must NEVER roll back the user's
   // action — it stays a standalone, non-transactional, fire-and-forget insert).
-  // Awaiting it keeps the write inside the request's lifecycle (no floated query
-  // that could outlive a DB connection); any failure is swallowed so the caller's
-  // action still succeeds.
-  //
-  // Swallowed, but no longer lost quietly: see {@link insertActivityRow} for the
-  // retry, and {@link flushDroppedMarker} for why a gap in the trail has to be
-  // legible in the trail itself rather than only in the process's stderr.
-  // Whether the row actually landed. Read by the catch below so that a failure
-  // AFTER the insert - the alert dispatch, say - is not counted as a lost
-  // entry: a marker claiming something was dropped when it was written is a
-  // false alarm in the one place that has to be believable.
   let written = false;
   try {
     const db = getDb();
@@ -167,10 +131,8 @@ export async function recordActivity(
       const { loadAppGraph } = await import("./app-graph-load");
       resolved = (await loadAppGraph(appId))?.teamId ?? null;
     }
-    // Last-resort fallback so a row is never written team-less (invisible to
-    // every team) — the first team by creation order. A team_id is NOT NULL +
-    // FK, so an empty string would FK-violate; if there is genuinely no team yet
-    // the insert is skipped (nothing could meaningfully own the activity).
+    // Last-resort fallback so a row is never written team-less (invisible to every
+    // team) — the first team by creation order.
     if (!resolved) {
       const firstTeam = await db
         .select({ id: teams.id })
@@ -214,30 +176,16 @@ export async function recordActivity(
 }
 
 /**
- * How many entries this process failed to write.
- *
- * An audit trail that can lose rows without saying so is not an audit trail: the
- * question a company actually asks it ("who did this, and when") is answered by
- * ABSENCE as much as by presence, and an absence with no marker reads as "nobody
- * did anything". A `console.error` on a self-hosted box is not an answer -
- * nobody is tailing that log, and the person who needs to know is looking at the
- * Activity page.
- *
- * Process-global rather than per-team on purpose: a failure can happen before
- * the team is even resolved, so there is frequently no team to attribute it to.
- * The marker therefore says what is true - this instance dropped entries -
- * rather than claiming which team's they were.
+ * How many entries this process failed to write. Process-global rather than
+ * per-team on purpose: a failure can happen before the team is even resolved, so
+ * there is frequently no team to attribute it to.
  */
 let droppedEntries = 0;
 
 /**
- * Insert the row, with ONE retry.
- *
- * The overwhelming cause of a lost entry is transient: a pool timeout, a
- * connection recycled underneath the write, a database restarted while a deploy
- * was finishing. One retry a moment later converts most of those into a row that
- * is simply there. More than one would start to matter to the request the caller
- * is still inside, and the marker below covers what retrying cannot.
+ * Insert the row, with ONE retry. More than one would start to matter to the
+ * request the caller is still inside, and the marker below covers what retrying
+ * cannot.
  */
 async function insertActivityRow(activity: Activity): Promise<void> {
   try {
@@ -251,12 +199,8 @@ async function insertActivityRow(activity: Activity): Promise<void> {
 }
 
 /**
- * Leave a legible hole where the lost entries were.
- *
- * Runs on the next SUCCESSFUL write, which is the first moment we know the
- * database is answering again. Its own failure is swallowed and the count kept:
- * the marker is worth retrying forever, and losing the count would be losing the
- * only record that anything was lost at all.
+ * Leave a legible hole where the lost entries were. Runs on the next SUCCESSFUL
+ * write, which is the first moment we know the database is answering again.
  */
 async function flushDroppedMarker(teamId: string): Promise<void> {
   if (droppedEntries === 0) return;
@@ -287,10 +231,7 @@ async function flushDroppedMarker(teamId: string): Promise<void> {
 }
 
 /**
- * The human behind an `actor` string, or null. Best-effort by design:
- *  - outside a request (a background deploy, a webhook) there is no current user;
- *  - a NON-HUMAN actor ("system" / "github") must never be attributed to whoever
- *    happens to be logged in, so the string has to match the user it names.
+ * The human behind an `actor` string, or null.
  */
 export async function resolveActorUserId(
   actor: string,

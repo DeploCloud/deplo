@@ -163,11 +163,17 @@ function guardMatches(url: string): boolean {
   return /__AGENT_URL.*AMD64__/.test(url);
 }
 
+/* ------------------------------------------------------------------ */
+/* The Docker address-pool step                                        */
+/* ------------------------------------------------------------------ */
+
 /**
- * The address-pool step. All three invariants fail SILENTLY if broken: the step
- * must run before anything allocates a subnet, the base must be chosen against
- * the host's routes (never 10.0.0.0/8), and both installers must carry it alike.
+ * Docker's default pools cap a host at ~31 networks and Deplo takes one PER APP,
+ * so both installers widen the pool. The step must run before ANYTHING allocates a
+ * subnet. The base must be CHOSEN against the host's routes. - PARITY.
  */
+
+/** The address-pool block, comments and indentation stripped, for comparison. */
 /**
  * Where the installer INVOKES the pool step. Matched by regex rather than by the
  * literal "\nconfigure_docker_address_pools\n": install-agent.sh wraps the call in

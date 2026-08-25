@@ -33,18 +33,8 @@ import type {
 
 /**
  * The ONE place that maps the app-graph relational rows ↔ the domain objects
- * (`App`, `Domain`, `EnvVar`, `Deployment`, `Folder`)
- * (relational-store PLAN cut-set (c), §1 "No JSONB anywhere — total
- * normalization"). Every reader (the read path) and writer (insert / update) in
- * the data layer goes through here, so reads and writes can never drift on how a
- * project's 5–6 child tables fold into one object — the same anti-drift rationale
- * as `infra-rows.ts` for the infrastructure tables.
- *
- * `assemble*` turns a parent row + its (already-loaded) child rows into a domain
- * object; `*ToRows` turns a domain object into the flat row + ordered child rows
- * an insert needs. Both halves are PURE — no DB, no store — so the assembler runs
- * in the row-batch-loader and the write path alike. The child rows arrive
- * pre-grouped by the caller (the loader batch-loads with a single `inArray`).
+ * (`App`, `Domain`, `EnvVar`, `Deployment`, `Folder`) (relational-store PLAN
+ * cut-set (c), §1 "No JSONB anywhere — total normalization").
  */
 
 /* ------------------------------------------------------------------ */
@@ -101,9 +91,6 @@ export function assembleBuild(
   ms: AppBuildMethodSettingsRow | null,
 ): BuildConfig {
   // Legacy rows may still hold the removed "heroku"/"paketo" build methods.
-  // Surface them as "nixpacks" — the same remap normalizeBuildConfig applies on
-  // the deploy path — so the settings UI shows a valid, selected method (and a
-  // re-save can't persist a method the picker no longer offers).
   const rawMethod = build.buildMethod;
   const buildMethod =
     rawMethod === "heroku" || rawMethod === "paketo" ? "nixpacks" : rawMethod;
@@ -125,10 +112,7 @@ export function assembleBuild(
 }
 
 /**
- * Reassemble {@link BuildMethodSettings} from its 1-to-1 row. Every column is
- * nullable (each settings field is optional); a NULL column ⇒ the key is ABSENT
- * (not `undefined`-valued) so the object round-trips byte-identically and the
- * exhaustive `satisfies` guard below catches a forgotten field.
+ * Reassemble {@link BuildMethodSettings} from its 1-to-1 row.
  */
 export function assembleMethodSettings(
   ms: AppBuildMethodSettingsRow | null,
@@ -148,10 +132,7 @@ export function assembleMethodSettings(
 }
 
 /**
- * Fold a project's flat row + its child rows into a {@link App}. A
- * NULL/absent optional column becomes the long-standing null/absent shape. The
- * caller has already applied the read-time normalizers (this is the post-
- * normalize shape), so no further migration runs here.
+ * Fold a project's flat row + its child rows into a {@link App}.
  */
 export function assembleApp(row: AppRow, children: AppChildRows): App {
   if (!children.build)
@@ -226,10 +207,10 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
 }
 
 /**
- * The camelCase drizzle properties of the flat `resource_*` columns — the block
- * is declared identically on `apps` AND `databases`, so both row shapes satisfy
- * this structurally and share the one mapping below (exported for
- * `backup-rows.ts`, the databases anti-drift twin of this module).
+ * The camelCase drizzle properties of the flat `resource_*` columns — the block is
+ * declared identically on `apps` AND `databases`, so both row shapes satisfy this
+ * structurally and share the one mapping below (exported for `backup-rows.ts`, the
+ * databases anti-drift twin of this module).
  */
 export interface ResourceLimitsRowColumns {
   resourceMemLimitMb: number | null;
@@ -250,8 +231,7 @@ export interface ResourceLimitsRowColumns {
  * Fold the flat `resource_*` columns into a {@link ResourceLimits}, or null when
  * EVERY column is NULL (no limits set) — the same null-when-absent shape
  * `assembleRepo`/`assembleUpload` use, so an app that never set a limit
- * round-trips to `resources: null` and renders a byte-identical stack. Each
- * present column passes through as-is (an independently-optional cap).
+ * round-trips to `resources: null` and renders a byte-identical stack.
  */
 export function assembleResources(
   row: ResourceLimitsRowColumns,
@@ -377,11 +357,8 @@ export interface AppRowSet {
 }
 
 /**
- * The flat `resource_*` columns for a {@link ResourceLimits} (null ⇒ every
- * column NULL, i.e. no limits). Spread into the `apps` row by {@link appToRow}
- * (and into the `databases` row by `databaseToRow`) and reused by both
- * resource-limits setters so the domain→column mapping lives in exactly one
- * place (the same single-source discipline as `buildToRow`).
+ * The flat `resource_*` columns for a {@link ResourceLimits} (null ⇒ every column
+ * NULL, i.e. no limits).
  */
 export function resourceLimitsToRow(
   r: ResourceLimits | null,
@@ -481,10 +458,7 @@ export function buildToRow(appId: string, b: BuildConfig): AppBuildInsert {
 }
 
 /**
- * The 1-to-1 `app_build_method_settings` row. Each {@link BuildMethodSettings}
- * field maps to one nullable column; the `satisfies` guard makes a newly-added
- * settings field a COMPILE error here (so it can't be silently dropped — the
- * element-granular reconcile counts on exhaustive coverage, PLAN §7).
+ * The 1-to-1 `app_build_method_settings` row.
  */
 export function methodSettingsToRow(
   appId: string,

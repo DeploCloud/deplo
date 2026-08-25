@@ -47,21 +47,9 @@ import {
 } from "../types";
 
 /**
- * Team roles — the named capability sets a member is assigned.
- *
- * A role is the SOURCE of a member's capabilities, never a second copy of them:
- * `membership_capabilities` stays the effective set every authorization check in
- * the codebase reads, and every write here re-syncs it for the role's members
- * inside the same transaction. Nothing in the enforcement path had to learn what
- * a role is.
- *
- * Three built-ins (`builtinKey`) are seeded per team by {@link ensureTeamRoles},
- * lazily and idempotently, so a team created by any path — the setup wizard,
- * `createTeam`, a test seeder — has them on first read. They can be renamed and
- * re-scoped and then reset to their shipped default; they can never be deleted.
- * The `owner` built-in is the one exception: it always grants everything, because
- * the founder's rank is immutable by rule and a team that edits its own Owner
- * role into a corner has no way back.
+ * Team roles — the named capability sets a member is assigned. They can be renamed
+ * and re-scoped and then reset to their shipped default; they can never be
+ * deleted.
  */
 
 /** A team role as shown in Settings → Team → Roles. */
@@ -112,19 +100,7 @@ const CRITICAL: { cap: Capability; label: string }[] = [
 
 /**
  * Make sure a team has its three built-in roles, and adopt the memberships that
- * belong to one. Idempotent, cheap (two indexed SELECTs on the steady state) and
- * safe to call from any read path — it is what makes every team-creation path
- * (the setup wizard, `createTeam`, a registration link, a test seeder) end up
- * with roles without any of them having to know roles exist.
- *
- * Adoption is deliberately conservative: a membership picks up a built-in only
- * when its rank AND its exact capability set already match that role's preset.
- * Anything else keeps `role_id` NULL ("Custom"), which is the truth — a
- * hand-picked set that belongs to no role. Nobody's effective capabilities change
- * here, in either direction.
- *
- * Returns built-in key → role id, so a caller creating a membership in the same
- * transaction can assign one straight away.
+ * belong to one.
  */
 export async function ensureTeamRoles(
   db: Db,
@@ -175,9 +151,9 @@ export async function ensureTeamRoles(
 
 /**
  * Point role-less memberships at the built-in of their rank when they already
- * grant exactly what it grants TODAY (the team's live role, not the shipped
- * preset — a team that re-scoped its Member role must not have strangers adopted
- * into it). Only ever changes `role_id`; capabilities are read, never written.
+ * grant exactly what it grants TODAY (the team's live role, not the shipped preset
+ * — a team that re-scoped its Member role must not have strangers adopted into
+ * it).
  */
 async function adoptMatchingMemberships(
   db: Db,
@@ -207,10 +183,9 @@ async function adoptMatchingMemberships(
     list.push(r.capability as Capability);
     capsByRole.set(r.roleId, list);
   }
-  // Which of those built-ins are LIMITED: adoption compares against the
-  // effective set, so a hand-picked superset never gets adopted into a scoped
-  // role and quietly inherits its reach while keeping the capabilities the clamp
-  // exists to remove.
+  // Which of those built-ins are LIMITED: adoption compares against the effective
+  // set, so a hand-picked superset never gets adopted into a scoped role and quietly
+  // inherits its reach while keeping the capabilities the clamp exists to remove.
   const scopedRoles = new Set(
     roleIds.length
       ? (
@@ -342,12 +317,7 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
       capabilities,
       requireTwoFactor: r.requireTwoFactor ?? false,
       memberCount: countByRole.get(r.id) ?? 0,
-      // Both axes, not just power. No shipped default is limited or mandates
-      // 2FA, so either flag being on IS the difference — and a re-scope leaves
-      // `team_role_capabilities` untouched, so comparing capabilities alone read
-      // a built-in limited to one project as pristine: no "Edited" badge, the
-      // full pre-clamp permission count in the rail, and no "Reset to default"
-      // on the one role that most needs the way back.
+      // Both axes, not just power.
       modified: builtinKey
         ? r.scoped ||
           (r.requireTwoFactor ?? false) ||
@@ -371,11 +341,8 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
 }
 
 /**
- * One role of the active team, or null when the id belongs to another team (or
- * to nothing) — the role editor page's loader. Reads through {@link listRoles} so
- * the DTO, the member count and the "modified" verdict are computed in exactly
- * one place; the team has at most a few dozen roles, so the extra rows cost
- * nothing next to a second set of near-identical queries that could drift.
+ * One role of the active team, or null when the id belongs to another team (or to
+ * nothing) — the role editor page's loader.
  */
 export async function getRole(id: string): Promise<TeamRoleDTO | null> {
   return (await listRoles()).find((r) => r.id === id) ?? null;
@@ -426,25 +393,8 @@ export async function roleAssignment(
 
 /**
  * What a role's capabilities MEAN once its reach is taken into account — the set
- * that lands in `membership_capabilities`, which is what every authorization
- * check reads.
- *
- * A scoped role is clamped to {@link PROJECT_SCOPED_CAPABILITIES}, exactly as a
- * narrowed API token is (`clampToToken`), and that single line is what makes the
- * rest of the model hold:
- *
- *  - `requireCapability("manage_members")` is a plain read of the member's
- *    stored set, so without the clamp a scoped role would still administer the
- *    whole team through every team-wide gate;
- *  - `assertTeamAdminCoverage` counts holders of the critical capabilities off
- *    the same junction, so the clamp is also what stops a team from scoping its
- *    way into having no administrator while the counter reports green;
- *  - `holdsManageTeam` reads that junction unclamped, so this is what keeps a
- *    scoped member from resolving as a folder super-user.
- *
- * The AUTHORED set stays in `team_role_capabilities` untouched: it is what the
- * role editor shows (struck through, for the ones a scope silences), and it is
- * what comes back if the scope is ever widened.
+ * that lands in `membership_capabilities`, which is what every authorization check
+ * reads.
  */
 export function effectiveRoleCapabilities(
   authored: Capability[],
@@ -457,9 +407,7 @@ export function effectiveRoleCapabilities(
 
 /**
  * The role a hand-supplied capability set corresponds to exactly, or null when it
- * matches none. Lets the legacy `role` + `capabilities` write path (the public
- * API, registration links) still land on a real role instead of showing up as a
- * "Custom" membership nobody chose.
+ * matches none.
  */
 export async function matchTeamRole(
   db: Db,
@@ -495,14 +443,7 @@ export async function matchTeamRole(
     list.push(r.capability as Capability);
     capsByRole.set(r.roleId, list);
   }
-  // A SCOPED role is never a candidate, whatever it grants. This shape is
-  // rank + capabilities and says nothing about REACH, so landing on a limited
-  // role would silently hand the membership a boundary the caller never asked
-  // for — and matching on the effective set below makes a scoped role the
-  // LIKELIEST match for a short list, because the clamp is what shortened it.
-  // Dropped before the rank split rather than after: a built-in can be scoped
-  // too (only Owner is locked), so filtering the fallback group alone still let
-  // a limited built-in Member win on rank.
+  // A SCOPED role is never a candidate, whatever it grants.
   const candidates = rows.filter((r) => !r.scoped);
   // Prefer the built-in named by the rank, so an owner/member/viewer set lands on
   // the role the caller meant even if a custom role happens to grant the same.
@@ -510,12 +451,7 @@ export async function matchTeamRole(
     ...candidates.filter((r) => r.builtinKey === rank),
     ...candidates.filter((r) => r.builtinKey !== rank),
   ];
-  // Compared against the EFFECTIVE set, never the authored one. A scoped role's
-  // holders store a clamped set, so matching a hand-picked superset against the
-  // authored list handed that membership the role's name AND its scope while
-  // keeping every team-wide capability the clamp exists to remove. Falling
-  // through to null is the honest answer: a set that is not what the role gives
-  // is a Custom membership, unrestricted, which is what it always was.
+  // Compared against the EFFECTIVE set, never the authored one.
   const match = ordered.find((r) =>
     sameCapabilities(
       effectiveRoleCapabilities(capsByRole.get(r.id) ?? [], r.scoped),
@@ -649,15 +585,9 @@ type ResolvedScope = {
 };
 
 /**
- * Validate a scope against the team and against the ACTOR's own reach.
- *
- * Two rules, both the same one `withinActor` applies to capabilities: you can
- * only hand out a corner you can reach yourself, and you can only leave a role
- * unrestricted if you are unrestricted. Otherwise an admin whose own role is
- * limited could mint an unrestricted one and step out through it.
- *
- * A node the actor cannot reach answers as one that isn't in the team: a refusal
- * must never confirm which private folders exist.
+ * Validate a scope against the team and against the ACTOR's own reach. A node the
+ * actor cannot reach answers as one that isn't in the team: a refusal must never
+ * confirm which private folders exist.
  */
 async function resolveRoleScope(
   teamId: string,
@@ -794,20 +724,9 @@ async function writeRoleScope(
 }
 
 /**
- * Re-write the effective capabilities of every member holding this role — bar
- * the ones whose set is their OWN (`memberships.custom_capabilities`, written by
- * the member page when an admin gave one person more or less than the role).
- *
- * Skipping them is what makes a per-member adjustment survive: without it,
- * renaming a role handed back every permission an admin had taken away from
- * somebody, silently and at the worst possible moment. They rejoin the role the
- * moment their set is put back to it, which is the member page's own "same as
- * their role" state.
- *
- * Takes the AUTHORED set plus the role's reach and clamps here, rather than
- * trusting each caller to have done it: `membership_capabilities` is what every
- * authorization check reads, so a call site that forgot would hand a limited
- * role the whole team.
+ * Re-write the effective capabilities of every member holding this role — bar the
+ * ones whose set is their OWN (`memberships.custom_capabilities`, written by the
+ * member page when an admin gave one person more or less than the role).
  */
 async function syncMembersOfRole(
   tx: DbTx,
@@ -909,26 +828,10 @@ function sanitizeCapabilities(caps: Capability[] | undefined): Capability[] {
 }
 
 /**
- * A caller can only put capabilities they hold THEMSELVES into a role (or an
- * API token) — without it, a plain `manage_members` holder could author an
+ * A caller can only put capabilities they hold THEMSELVES into a role (or an API
+ * token) — without it, a plain `manage_members` holder could author an
  * all-powerful role and hand it out, and a `manage_tokens` holder could mint a
- * token more powerful than themselves. Unlike the member-level clamp this
- * REFUSES rather than silently dropping: an editor that saves fewer permissions
- * than were ticked, with no explanation, is how an admin ends up believing a
- * role grants something it doesn't.
- *
- * The bound is the actor's CAPABILITIES, never their rank. `memberships.role` is
- * only a rank, and it is the one part of a membership the API-token clamp does
- * not narrow — so exempting rank `owner` here meant an owner's token restricted
- * to `manage_tokens` could mint an all-powerful successor, and one restricted to
- * `manage_roles` could re-scope the role every member already holds. A real
- * owner holds all forty-one capabilities, so the bound costs them nothing; what
- * it costs is that escalation. Same reason the assignment path in
- * `lib/data/members.ts` dropped its own rank exemption.
- *
- * Shared with `lib/data/tokens.ts` — `subject` only names the thing in the
- * error, the rule is identical. It also carries `sanitizeCapabilities` along, so
- * a retired coarse name arriving from an API client expands on both paths.
+ * token more powerful than themselves.
  */
 export function withinActor(
   caps: Capability[] | undefined,
@@ -969,10 +872,7 @@ async function actorUsername(): Promise<string> {
 
 /**
  * Refuse to put a 2FA mandate on a role the actor HOLDS while the actor has no
- * second factor. They would be answering their own next request with a refusal —
- * survivable in the dashboard (the lock screen offers enrolment) but a dead end
- * over the bearer API, where the token that made the change is the token the
- * change kills.
+ * second factor.
  */
 async function assertActorCanMandateTwoFactor(
   userId: string,
@@ -1087,14 +987,8 @@ export async function updateRole(input: {
     await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
-  // ABSENT MEANS "LEAVE IT ALONE" on every optional axis, which `scope` below
-  // already got right and these two did not. Both are optional in TypeScript and
-  // in the SDL (`UpdateRoleInput.capabilities`, `.requireTwoFactor`), so an API
-  // client sending only `{ id, name }` to rename a role stripped every holder to
-  // `view` (`withinActor(undefined)` sanitizes to `[]`, then `withView`) and
-  // lifted the role's 2FA mandate. The browser always sends both, so this was
-  // reachable only from a client — which is exactly who reads the SDL and
-  // believes the `?`.
+  // ABSENT MEANS "LEAVE IT ALONE" on every optional axis, which `scope` below already
+  // got right and these two did not.
   const current = await roleInTeam(getDb(), teamId, input.id);
   const capabilities =
     input.capabilities === undefined
@@ -1127,9 +1021,9 @@ export async function updateRole(input: {
       );
     if (scope !== undefined) await writeRoleScope(tx, role.id, scope);
     // Re-read under the lock rather than trusting the pre-transaction read: the
-    // authored set is what the members sync from, and a scope-only edit still
-    // has to re-sync (the clamp keys on `scoped`, so the same authored list
-    // confers a different effective one).
+    // authored set is what the members sync from, and a scope-only edit still has to
+    // re-sync (the clamp keys on `scoped`, so the same authored list confers a
+    // different effective one).
     const authored =
       capabilities ??
       (
@@ -1147,10 +1041,10 @@ export async function updateRole(input: {
         .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
     }
     await syncMembersOfRole(tx, teamId, role.id, authored, scoped);
-    // Runs AFTER the sync, and now catches a second way to lose the last
-    // administrator: scoping a role clamps its team-wide capabilities away, so
-    // "the team must keep one member who can manage members" is a question a
-    // reach change asks just as much as a capability change does.
+    // Runs AFTER the sync, and now catches a second way to lose the last administrator:
+    // scoping a role clamps its team-wide capabilities away, so "the team must keep one
+    // member who can manage members" is a question a reach change asks just as much as
+    // a capability change does.
     await assertTeamAdminCoverage(tx, teamId);
   });
   await recordActivity(
@@ -1167,10 +1061,8 @@ export async function updateRole(input: {
 export async function resetRole(id: string): Promise<void> {
   const { teamId, userId, membership } =
     await requireCapability("manage_roles");
-  // A reset restores the shipped default, and no shipped default is limited —
-  // so it CLEARS the scope, which makes it a widening. An actor whose own role
-  // reaches part of the team must not be able to perform it: the reset button
-  // would be the one-click way out of their own boundary.
+  // A reset restores the shipped default, and no shipped default is limited — so it
+  // CLEARS the scope, which makes it a widening.
   if (await memberScopeFor(userId, teamId))
     throw new Error(
       "Your own role reaches part of this team, so you can't reset a role to full access.",
@@ -1185,10 +1077,7 @@ export async function resetRole(id: string): Promise<void> {
       );
     const defaults = ROLE_DEFAULTS[key];
     name = defaults.name;
-    // Bounded exactly like authoring the same role by hand (`updateRole`). A
-    // reset rewrites the capabilities of everyone holding the role — the actor
-    // included — so without this a `manage_roles` holder whose own role had been
-    // narrowed could widen it back to the shipped preset in one call.
+    // Bounded exactly like authoring the same role by hand (`updateRole`).
     const capabilities = withinActor(capabilitiesForRole(key), membership);
     await assertNameFree(tx, teamId, defaults.name, role.id);
     await lockTeamMemberships(tx, teamId);

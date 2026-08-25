@@ -138,6 +138,7 @@ async function applyRouting(appId: string): Promise<void> {
     // The row is already committed, so a failed reroute is NOT "the save failed": say
     // exactly what happened and how to retry, or the user is left believing a
     // credential is guarding an app that is still open (or that a deleted one is gone
+    // while the login still works).
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(
       `Saved, but applying it to the running app failed: ${msg}. ` +

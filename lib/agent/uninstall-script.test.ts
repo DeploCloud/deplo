@@ -8,6 +8,7 @@ import { uninstallCommand } from "./bootstrap";
  * The uninstaller is the ONLY thing that can remove Deplo's footprint from a host
  * (removal in the dashboard revokes trust and forgets the row - it cannot, and no
  * longer claims to, touch the box; and nothing at all can remove the control
+ * plane, which is the panel doing the removing).
  */
 
 test("the uninstall command is a copy-and-run one-liner that only asks for --yes", () => {

@@ -963,6 +963,8 @@ test("buildComposeStack: a route that asked for a certificate still gets one", (
  * `network_mode` and `networks` are mutually exclusive in Compose, and the failure
  * is not local to the service: `docker compose up` refuses the WHOLE project
  * ("service X declares mutually exclusive `network_mode` and `networks`: invalid
+ * compose project"), so one host-network container would stop every other service
+ * in the stack from starting.
  */
 test("a network_mode service is left alone: no networks key, no router", () => {
   const doc = buildDoc(

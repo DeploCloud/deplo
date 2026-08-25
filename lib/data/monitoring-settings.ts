@@ -53,10 +53,7 @@ export async function getMonitoringSettings(): Promise<MonitoringSettings> {
 
 /**
  * The live dashboard poll asks "is saving on?" once per second per viewer; memoise
- * the boolean briefly so that question doesn't add a SELECT to every poll. A write
- * through {@link setSaveMetrics} busts it in-process; another module graph (or a
- * second control-plane instance) converges within the TTL — for a switch whose
- * effect is "does the buffer keep growing", seconds of staleness are harmless.
+ * the boolean briefly so that question doesn't add a SELECT to every poll.
  */
 const MEMO_TTL_MS = 10_000;
 let memo: { value: boolean; at: number } | null = null;

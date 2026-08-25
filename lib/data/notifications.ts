@@ -41,16 +41,8 @@ import type {
 } from "../types";
 
 /**
- * Notification channels: N configured destinations per team, any kind
- * repeatable, each with its own alert selection.
- *
- * Two storage rules carry the whole feature. A CHANNEL is one flat row
- * (`notification_channels`), because a channel is a fixed set of named
- * heterogeneous fields. Its subscribed ALERTS are a list, so they live one level
- * down in `notification_alerts` keyed on the instance — where an ABSENT row
- * means "never decided" and falls back to `ALERT_META[key].defaultOn`. That one
- * fallback does double duty: a new alert key ships with no backfill, and a
- * brand-new channel starts on the catalog defaults with nothing written.
+ * Notification channels: N configured destinations per team, any kind repeatable,
+ * each with its own alert selection.
  */
 
 type ChannelRow = InferSelectModel<typeof notificationChannels>;
@@ -78,10 +70,7 @@ async function channelRow(
 }
 
 /**
- * What each of these channels is subscribed to. A `(channel, key)` with no row
- * has never been decided about, so it falls back to the catalog default — which
- * is what makes a brand-new channel start on `DEFAULT_ALERTS` with nothing
- * seeded, and what lets a new alert key reach every channel with no backfill.
+ * What each of these channels is subscribed to.
  */
 async function alertsForChannels(
   ids: string[],
@@ -135,13 +124,9 @@ function rowToInstance(
 }
 
 /**
- * Every configured destination of the active team, oldest first.
- *
- * Gated on `manage_notifications` and not on the `view` floor, because a channel
- * row IS a credential: a Discord/Slack/Teams/Mattermost/Lark webhook URL is a
- * bearer token in URL form, and anybody holding one can post into the team's
- * room as Deplo. There is no masked variant to fall back to — the edit modal
- * needs the real address — so the read carries the same gate as the write.
+ * Every configured destination of the active team, oldest first. There is no
+ * masked variant to fall back to — the edit modal needs the real address — so the
+ * read carries the same gate as the write.
  */
 export async function listNotificationChannels(): Promise<
   NotificationChannelInstance[]
@@ -178,17 +163,9 @@ const port = (v: unknown): number => {
 };
 
 /**
- * Coerce whatever arrived over the `JSON` scalar into one real channel.
- *
- * The mutation's argument is an opaque scalar, so anything at all can be sent —
- * this is a trust boundary, and every field is defaulted rather than trusted.
- * Unknown alert keys are dropped BY CONSTRUCTION, not by a validation step
- * somebody could skip: the list is built by filtering `ALL_ALERTS`, never by
- * reading the input's own array.
- *
- * The `kind` is the one thing that THROWS rather than coercing. A save is for
- * one instance, so silently turning an unknown kind into a Discord would create
- * a channel nobody asked for.
+ * Coerce whatever arrived over the `JSON` scalar into one real channel. A save is
+ * for one instance, so silently turning an unknown kind into a Discord would
+ * create a channel nobody asked for.
  */
 export function parseChannelInput(raw: unknown): NotificationChannelInput {
   const i = (raw ?? {}) as Partial<NotificationChannelInput>;
@@ -246,10 +223,8 @@ export async function saveNotificationChannel(
   const teamId = (await requireCapability("manage_notifications")).teamId;
   const next = parseChannelInput(raw);
 
-  // Dialed FROM the control plane by a background loop with no user behind it,
-  // so reject private/internal targets before they are ever persisted. Checked
-  // again at the dial in `sendToChannel`: a row can predate the guard, and a 302
-  // is the other way out of a checked URL.
+  // Dialed FROM the control plane by a background loop with no user behind it, so
+  // reject private/internal targets before they are ever persisted.
   const label = URL_LABEL[next.kind];
   if (label && next.url) await assertSafeOutboundUrl(next.url, label);
   // SMTP is a bare host rather than a URL, so it takes the HOST form of the same
@@ -258,20 +233,15 @@ export async function saveNotificationChannel(
   if (next.kind === "email" && next.emailProvider === "smtp" && next.smtpHost)
     await assertSafeOutboundHost(next.smtpHost, "SMTP host");
 
-  // Read the stored ciphertext BEFORE the transaction (a query on its own
-  // connection inside one deadlocks the test harness) — an empty secret means
-  // "keep the stored one", so an edit that only moves the channel's NAME must
-  // not require retyping the password.
+  // Read the stored ciphertext BEFORE the transaction (a query on its own connection
+  // inside one deadlocks the test harness) — an empty secret means "keep the stored
+  // one", so an edit that only moves the channel's NAME must not require retyping the
   const prev = id ? await channelRow(teamId, id) : null;
   if (id && !prev) throw new Error("Channel not found");
   if (!prev) await assertRoomForOneMore(teamId);
 
-  // A stored credential is kept only while the destination it was typed for is
-  // the same one. Editing just the URL or the SMTP host, leaving the secret
-  // blank, would otherwise FORWARD the stored token to whoever owns the new
-  // address — a `manage_notifications` holder who cannot read the secret can
-  // still have it delivered to a host they control (Gotify's `X-Gotify-Key`,
-  // ntfy's bearer, the SMTP AUTH password). So the save is refused instead.
+  // A stored credential is kept only while the destination it was typed for is the
+  // same one.
   if (
     prev &&
     prev.secretEnc &&
@@ -328,11 +298,6 @@ export async function saveNotificationChannel(
 
 /**
  * How many destinations one team may configure.
- *
- * Every alert fans out to all of them, so an unbounded list is an unbounded
- * outbound multiplier on one team's say-so. Well past what a real team wires up
- * (two rooms, an inbox and a webhook is a busy team) and low enough that the
- * fan-out stays a handful of POSTs.
  */
 const MAX_CHANNELS_PER_TEAM = 25;
 
@@ -367,13 +332,9 @@ export async function deleteNotificationChannel(id: string): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 /**
- * The dial for ONE channel, or the message the user needs to finish setting it
- * up. The dispatcher drops the strings; the Test button throws them. ONE switch,
- * so "configured enough to send" is defined exactly once and two copies of it
- * can never drift apart.
- *
- * `userId` is only for browser push: a test goes to the CALLER's own devices, a
- * real alert to the whole team's.
+ * The dial for ONE channel, or the message the user needs to finish setting it up.
+ * ONE switch, so "configured enough to send" is defined exactly once and two
+ * copies of it can never drift apart.
  */
 function channelFor(row: ChannelRow, userId?: string): AlertChannel | string {
   // Validated against ALL_CHANNELS on the way in (`parseChannelInput`).
@@ -478,21 +439,9 @@ function emailChannelFor(row: ChannelRow): AlertChannel | string {
 }
 
 /**
- * The configured channels that want `key`, resolved WITHOUT a request.
- *
- * Deliberately ungated and `teamId`-by-parameter, like `recordServerHealth` and
- * `executeBackup`: most alerts are raised by a deploy runner, a scheduler tick
- * or a telemetry stream, none of which has an active team or a user. It is
- * INTERNAL — never exported through GraphQL, never called from a resolver;
- * `listNotificationChannels()` stays the only request-facing read, with both
- * gates on it.
- *
- * The alert filter runs on the ROW, before it becomes an `AlertChannel`: the
- * decision belongs to the INSTANCE, and two Discord rooms with different
- * selections are the whole point. Filtering after the flattening would have to
- * key on `kind`, which is the same answer for both of them.
- *
- * Returns plaintext credentials, so it must never reach a DTO.
+ * The configured channels that want `key`, resolved WITHOUT a request. Filtering
+ * after the flattening would have to key on `kind`, which is the same answer for
+ * both of them. Returns plaintext credentials, so it must never reach a DTO.
  */
 export async function channelsForAlert(
   teamId: string,
@@ -584,15 +533,9 @@ export async function getWebPushPublicKey(): Promise<string> {
 }
 
 /**
- * Opt this browser in. Gated on being a member of the active team, NOT on
- * `manage_notifications`: subscribing your own device is your own business, the
- * same way revoking your own session is.
- *
- * The endpoint is a URL the CALLER supplies and the control plane later dials
- * from a background loop with nobody behind it — the same shape as a webhook,
- * and so it takes the same guard. Skipping it made this the one place where the
- * lowest privilege in the product could aim a control-plane request at the
- * inside of its own network.
+ * Opt this browser in. The endpoint is a URL the CALLER supplies and the control
+ * plane later dials from a background loop with nobody behind it — the same shape
+ * as a webhook, and so it takes the same guard.
  */
 export async function subscribeWebPush(
   sub: PushSubscriptionInput,
@@ -607,10 +550,7 @@ export async function subscribeWebPush(
 }
 
 /**
- * How many browsers one person may register per team. Every team alert POSTs to
- * each of them, so this is the per-member half of the same fan-out bound
- * {@link MAX_CHANNELS_PER_TEAM} puts on the team. Nobody carries ten devices; a
- * list that grows past this is a list being used for something else.
+ * How many browsers one person may register per team.
  */
 const MAX_DEVICES_PER_USER = 10;
 

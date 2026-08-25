@@ -1,13 +1,6 @@
 /**
- * Minimal ANSI → styled-segment parser for rendering raw terminal output
- * (e.g. a container's stdout/stderr from `docker attach`) in the browser.
- *
- * Handles SGR (Select Graphic Rendition, `ESC[…m`) color/style codes and
- * strips every other CSI/OSC/control sequence so cursor moves, clears and
- * title-sets don't render as literal `[2K`-style garbage. It is intentionally
- * NOT a terminal emulator — there is no grid, no cursor addressing, no
- * scrollback rewrite. Output is append-only text, which is what a log/attach
- * pane wants.
+ * Minimal ANSI → styled-segment parser for rendering raw terminal output (e.g. a
+ * container's stdout/stderr from `docker attach`) in the browser.
  */
 
 export interface AnsiSegment {
@@ -98,10 +91,7 @@ function applySgr(state: SgrState, params: number[]): void {
 
 const CSI_OR_OSC = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const SGR = /^\x1b\[([0-9;]*)m$/;
-// Stray single control chars to drop (keep \n and \t). Includes \r (\x0d):
-// terminal apps emit it for in-place line rewrites we can't honor in an
-// append-only pane, so dropping it avoids the cursor "snapping back" and
-// overprinting that would look like a phantom blank gap.
+// Stray single control chars to drop (keep \n and \t).
 const STRAY = /[\x00-\x08\x0b-\x1f\x7f]/g;
 
 /**

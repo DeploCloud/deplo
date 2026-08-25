@@ -180,6 +180,7 @@ export function ContainerLogs({
   // Incremental parse state for `publishLines`: the exact buffer the last pass saw,
   // how far into it complete lines were parsed, and those parsed lines — so a new
   // chunk parses only the appended tail instead of re-splitting the whole buffer
+  // (O(n²) across a chatty stream).
   const parseRef = React.useRef<{
     text: string;
     parsedTo: number;
@@ -419,9 +420,6 @@ export function ContainerLogs({
   // nothing here can infer it, so offering it would be a permanently empty row.
   const filters = useLogFilters(lines, RUNTIME_LEVELS);
 
-  // Copy/download hand off PLAIN text — pasting `\x1b[33m` into an editor or a bug
-  // report is exactly the garbage the pane itself no longer shows — and they hand off
-  // what is ON SCREEN, filters applied.
   const plainOutput = React.useMemo(
     () =>
       filters.shown

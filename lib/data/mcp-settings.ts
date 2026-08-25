@@ -14,16 +14,6 @@ import { recordActivity } from "./activity";
 
 /**
  * The active team's MCP policy — the one switch on Settings → MCP Server.
- *
- * There is deliberately nothing else here. What an agent may DO is the token's
- * Capabilities and nothing on top (ADR-0015, ADR-0021): a second permission
- * system beside them could only ever drift from them. This switch answers a
- * different question — whether a company allows AI agents at all — which no
- * per-token setting can express.
- *
- * Deliberately NOT part of the `Team` DTO either: `getTeam()` is read on every
- * dashboard page, and this is read in exactly two places — the settings page,
- * and `/api/mcp` before it dispatches a single tool.
  */
 export interface McpSettings {
   /** Whether this team's API tokens may drive it over `/api/mcp`. */
@@ -32,12 +22,6 @@ export interface McpSettings {
 
 /**
  * Read the active team's MCP policy.
- *
- * NOT gated on `manage_mcp`: `/api/mcp` itself has to read this on every request,
- * as whatever principal the token carries, and a token that may deploy an app has
- * no business also holding the capability that governs the switch. The capability
- * guards CHANGING the policy ({@link setMcpSettings}) and the settings page that
- * shows it, not the endpoint's own read of its own kill switch.
  */
 export const getMcpSettings = cache(async (): Promise<McpSettings> => {
   const teamId = await requireActiveTeamId();

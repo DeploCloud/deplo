@@ -1,11 +1,5 @@
 /**
- * Hand-rolled TAR builders for tests. Named `*-test-helpers.ts` so the test
- * runner's `*.test.ts` glob doesn't try to execute it.
- *
- * Building archives byte by byte (rather than shelling out to `tar`) is the
- * point: the parser in {@link file://./tar-stream.ts} is then pinned against the
- * FORMAT — ustar prefixes, PAX records, padding — and not against whichever tar
- * the machine happens to ship.
+ * Hand-rolled TAR builders for tests.
  */
 
 const BLOCK = 512;

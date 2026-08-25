@@ -1,36 +1,9 @@
 import type { AppStatus } from "@/lib/types";
 
 /**
- * The status the UI actually renders, which is NOT the status we store.
- *
- * `apps.status` records the last thing the control plane was ASKED to do (deploy,
- * start, stop) — it is intent. A container that crash-loops five seconds after a
- * successful deploy leaves the row saying "active" forever, which is how an app in
- * a restart loop came to be reported as "Online". The runtime probe
- * (lib/data/console.ts getAppRuntime) reads what the host actually has; this
- * function folds the two into the one word we show.
- *
- * This is one of the TWO halves that keep the stored status honest, and they are
- * split by direction:
- *
- *  - DOWNWARD (here, live, never persisted). Only `active` is a claim ABOUT the
- *    host, so only `active` is worth contradicting — see the short-circuit below.
- *  - UPWARD (lib/data/app-status-reconcile.ts, persisted). `error` is terminal and
- *    self-sealing: this fold cannot clear it, and the runtime probe that would
- *    refute it is itself gated on `status === "active"`. So an App whose deploy
- *    failed while its previous stack kept serving stayed red forever. The
- *    telemetry stream now corrects that ONE transition (`error` -> `active`) on
- *    the row itself, which is also what fixes the readers that never had a live
- *    path at all (the Overview grid reads `apps.status` raw).
- *
- * The extra states beyond AppStatus are all runtime facts, never persisted:
- *  - `restarting` — docker is restart-looping the container (it keeps dying)
- *  - `degraded`   — part of a compose stack is up, part is not
- *  - `unhealthy`  — running, but failing its own healthcheck
- *  - `down`       — we believe the app is deployed and up, and nothing is running
- *
- * One more is a CONTROL-PLANE fact rather than a runtime one:
- *  - `not_deployed` — nothing was ever built for this app, so it has never run.
+ * The status the UI actually renders, which is NOT the status we store. This is
+ * one of the TWO halves that keep the stored status honest, and they are split by
+ * direction: - DOWNWARD (here, live, never persisted).
  */
 export type DisplayStatus =
   AppStatus | "restarting" | "degraded" | "unhealthy" | "down" | "not_deployed";
@@ -53,10 +26,8 @@ export function displayStatus(
   /** This app has no deployment at all — see {@link DisplayStatus}. */
   neverDeployed?: boolean,
 ): DisplayStatus {
-  // Never built, so never running: "Stopped" would claim somebody stopped it,
-  // and the only control that makes sense is a first deploy. This is where a
-  // bulk import lands every app it creates (`createApp` with `deploy: false`),
-  // and where an app created by someone without `deploy_apps` lands too.
+  // Never built, so never running: "Stopped" would claim somebody stopped it, and the
+  // only control that makes sense is a first deploy.
   if (neverDeployed && status === "idle") return "not_deployed";
 
   // No probe, or the agent never answered: we do NOT know what the host is
@@ -64,10 +35,9 @@ export function displayStatus(
   // an unreachable agent would trade one lie for another.
   if (!runtime || runtime.unreachable) return status;
 
-  // Every other status is a control-plane fact the host cannot contradict: an
-  // app mid-build has no container yet, a stopped one is meant to have none, a
-  // failed deploy already says so. Only "active" is a claim ABOUT the host, and
-  // only that claim is worth checking.
+  // Every other status is a control-plane fact the host cannot contradict: an app
+  // mid-build has no container yet, a stopped one is meant to have none, a failed
+  // deploy already says so.
   if (status !== "active") return status;
 
   // A crash loop outranks everything: it is the loudest thing the host can be

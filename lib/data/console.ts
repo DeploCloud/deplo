@@ -18,11 +18,7 @@ import { logMaxDays } from "./instance-settings";
 import type { App, Server } from "../types";
 
 /**
- * Resolve a project's owning server. Every console/logs surface routes to the
- * agent that owns the project's host (PLAN Part C) — there is no direct-Docker
- * path anymore; the host running Deplo is reached through its agent like any
- * other. An unknown serverId resolves to undefined and the agent dial then fails
- * clearly as unreachable.
+ * Resolve a project's owning server.
  */
 async function serverOf(p: App): Promise<Server | undefined> {
   return (await getServerById(p.serverId)) ?? undefined;
@@ -99,12 +95,8 @@ export function containerName(p: App, deployKey: string = p.slug): string {
 }
 
 /**
- * Every attachable container for a project, default (exposed/running) first —
- * via the owning agent's ListInstances (ordering applied agent-side). There is
- * DELIBERATELY no synthetic fallback: fabricating a container for a host we can't
- * reach would be a "status that lies". An unreachable agent throws
- * {@link AgentUnreachableError} (the caller surfaces a clear error), and a
- * reachable host with no containers truthfully returns [].
+ * Every attachable container for a project, default (exposed/running) first — via
+ * the owning agent's ListInstances (ordering applied agent-side).
  */
 export async function listInstances(p: App): Promise<ConsoleInstance[]> {
   // The "exposed" service to flag for ordering now comes from the project's
@@ -124,13 +116,8 @@ export async function listInstances(p: App): Promise<ConsoleInstance[]> {
 
 /**
  * Default-target order for a stack: the app's OWN service first, then the
- * Traefik-exposed one, then whatever is running, then alphabetically.
- *
- * Running is deliberately the LAST tiebreak, not the first. The agent orders
- * running containers ahead of stopped ones, which picks the wrong default in the
- * exact case that matters most: a crash-looping app whose Postgres sidecar is
- * healthy would default the console and the log viewer to Postgres, hiding the
- * one container whose output explains the crash.
+ * Traefik-exposed one, then whatever is running, then alphabetically. Running is
+ * deliberately the LAST tiebreak, not the first.
  */
 function orderInstances(
   p: App,
@@ -146,31 +133,22 @@ function orderInstances(
 }
 
 /**
- * Container discovery without the shell probe. `getAttachInfo` adds the
- * `shellLabel` probe on top (≤4 `docker exec` calls into the container), which
- * is only needed by the console's "no shell" banner. The Logs page needs just
- * the instance list + running flag, so it uses this lighter call and avoids
- * those exec probes on its render path.
+ * Container discovery without the shell probe.
  */
 export interface LogsInfo {
   /** At least one container of the app is in docker state "running". */
   running: boolean;
   /**
    * A real container exists on the host, so `docker logs` has output to stream —
-   * whether it is running, restarting or long dead. The viewer attaches on THIS,
-   * never on `running`: a crash-looping container is precisely the one whose logs
-   * you need, and gating the stream on "running" is what hid them.
+   * whether it is running, restarting or long dead.
    */
   streamable: boolean;
   /** The agent could not be reached: the list below is a placeholder, not truth. */
   unreachable: boolean;
   instances: ConsoleInstance[];
   /**
-   * The owning host's agent can narrow a log stream by time
-   * (`logs.timerange`). False on an older agent, which streams fine but only
-   * `--tail` — so the viewer greys the time-range control out instead of
-   * offering a window the host will silently ignore. A SOFT gate: never a
-   * reason to withhold the logs themselves.
+   * The owning host's agent can narrow a log stream by time (`logs.timerange`). A
+   * SOFT gate: never a reason to withhold the logs themselves.
    */
   supportsTimeline: boolean;
   /** The instance's ceiling on that time range, in days. Read here so the logs
@@ -181,10 +159,7 @@ export interface LogsInfo {
 /**
  * A single honest placeholder instance for the console/logs PAGE render when the
  * real list can't be obtained: a remote whose agent is unreachable, or a reachable
- * remote with zero containers (which returns []). It renders the conventional name
- * with running:false — never fabricating a "running" container — so the page loads
- * and shows "not running / unreachable" instead of 500ing. The OPERATIONAL paths
- * (exec/attach/logs streams) still fail clearly; this is display-only.
+ * remote with zero containers (which returns []).
  */
 function displayFallback(p: App): ConsoleInstance {
   return {
@@ -207,8 +182,6 @@ function displayFallback(p: App): ConsoleInstance {
 /**
  * listInstances for a page render: never throws, never empty — degrades to a
  * single honest, not-running placeholder so the console/logs page always loads.
- * `real` says whether the containers are the host's truth or that placeholder, so
- * callers can tell "nothing to stream from" apart from "a container is down".
  */
 async function listInstancesForDisplay(p: App): Promise<{
   instances: ConsoleInstance[];
@@ -265,8 +238,7 @@ export interface RuntimeContainer {
   /**
    * The raw docker state — "running" | "restarting" | "exited" | "created" |
    * "paused" | "dead", or "" when the owning agent is too old to report it (it
-   * only answers a running/not-running boolean). Never guess it: "" means
-   * unknown, and the UI must say "not running", not invent a reason.
+   * only answers a running/not-running boolean).
    */
   state: string;
   /** "healthy" | "unhealthy" | "starting", or "" for an image with no healthcheck. */
@@ -281,7 +253,6 @@ export interface RuntimeContainer {
  * What an app's containers are ACTUALLY doing on the host, read live from the
  * owning agent — as opposed to `apps.status`, which only records the last thing
  * the control plane asked for (deploy / start / stop) and therefore keeps
- * reporting "active" for an app that has been crash-looping since the deploy.
  */
 export interface AppRuntime {
   /** Containers that exist for this app, in any state. 0 = the stack is gone. */
@@ -297,11 +268,6 @@ export interface AppRuntime {
   unhealthy: number;
   /**
    * Services the app declares that have NO container on the host at all.
-   *
-   * The counts above can only see containers that exist, so a service whose
-   * container was never created (or was removed) is invisible to them: an app
-   * whose only broken container is gone reads as "everything that exists is
-   * running", which is how a stack missing its main service still showed Online.
    */
   missing: string[];
   containers: RuntimeContainer[];
@@ -312,8 +278,7 @@ export interface AppRuntime {
 /**
  * The live runtime probe is polled (the app header, the logs page) and several
  * clients can watch the same app at once, so hold each answer briefly to keep a
- * burst of pollers down to one round trip per app. Short enough that a container
- * dying still surfaces within a poll tick.
+ * burst of pollers down to one round trip per app.
  */
 const RUNTIME_TTL_MS = 3_000;
 const runtimeCache = new Map<string, { at: number; value: AppRuntime }>();
@@ -346,13 +311,9 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
       await conn.listInstances(p.id, p.slug, exposeService),
     );
 
-    // The agent reports each container's raw docker state. An agent older than
-    // that field sends "" — and then a restarting container is indistinguishable
-    // from a dead one, because all we have is a bool. For a SINGLE-IMAGE app we
-    // can still recover the truth: its container is `deplo-<slug>`, which the
-    // older Inspect RPC resolves by name and answers with the raw state. A
-    // compose stack's containers (`deplo-<slug>-<service>-N`) are not addressable
-    // that way, so against an old agent they stay honestly unknown.
+    // The agent reports each container's raw docker state. An agent older than that
+    // field sends "" — and then a restarting container is indistinguishable from a dead
+    // one, because all we have is a bool.
     let legacySoloState = "";
     const agentReportsState = instances.some((i) => i.state !== "");
     if (
@@ -416,10 +377,9 @@ function unknownRuntime(): AppRuntime {
 }
 
 /**
- * Console attach info WITHOUT the shell probe. Like `getAttachInfo` but omits
- * the `shellLabel` step (≤4 `docker exec` probes), so the console page renders
- * immediately. The client fetches the shell label after mount via
- * `shellLabelAction` and appends the distroless notice lazily if needed.
+ * Console attach info WITHOUT the shell probe. The client fetches the shell label
+ * after mount via `shellLabelAction` and appends the distroless notice lazily if
+ * needed.
  */
 export interface ConsoleInfo {
   containerName: string;
@@ -446,11 +406,9 @@ export async function getConsoleInfo(
 }
 
 /**
- * Probe the default (running) container's shell label on demand. Authorised
- * like a read of the project's console; returns "raw exec (no shell)" when the
- * container has no shell or isn't running. Backed by the same 5-minute per-
- * container cache as `getAttachInfo`'s probe, so the first call after a deploy
- * pays the probe and later calls are instant.
+ * Probe the default (running) container's shell label on demand. Backed by the
+ * same 5-minute per- container cache as `getAttachInfo`'s probe, so the first call
+ * after a deploy pays the probe and later calls are instant.
  */
 export async function getShellLabel(
   appId: string,
@@ -514,10 +472,9 @@ async function probeShellLabel(
 }
 
 /**
- * Authorise an attach request and resolve the real container to attach to.
- * Returns the chosen running instance, or a discriminated failure the route can
- * map to a status code. Never trusts a raw container name from the client — the
- * target must belong to this project (same guard as execInContainer).
+ * Authorise an attach request and resolve the real container to attach to. Never
+ * trusts a raw container name from the client — the target must belong to this
+ * project (same guard as execInContainer).
  */
 export async function resolveAttachTarget(
   appId: string,
@@ -555,11 +512,8 @@ export async function resolveAttachTarget(
 }
 
 /**
- * Authorise a logs request and resolve the real container to stream. Like
- * resolveAttachTarget but does NOT refuse a stopped container — `docker logs`
- * still returns a stopped container's recorded output, so the viewer can show
- * the tail of a crashed/exited container. The target must belong to this
- * project; an unknown raw name from the client is rejected.
+ * Authorise a logs request and resolve the real container to stream. The target
+ * must belong to this project; an unknown raw name from the client is rejected.
  */
 export async function resolveLogsTarget(
   appId: string,
@@ -588,12 +542,9 @@ export async function resolveLogsTarget(
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  // Default to the app's own container (orderInstances puts it first), NOT to
-  // "the first one that happens to be running": when the app is crash-looping,
-  // the only running container in the stack is a sidecar, and defaulting to it
-  // streams Postgres' logs to someone trying to read their app's stack trace.
-  // A stopped / restarting container still has logs — `docker logs` reads the
-  // json file, which outlives the process.
+  // Default to the app's own container (orderInstances puts it first), NOT to "the
+  // first one that happens to be running": when the app is crash-looping, the only
+  // running container in the stack is a sidecar, and defaulting to it streams
   const pick = target ? instances.find((i) => i.name === target) : instances[0];
   if (!pick) return { ok: false, reason: "no-instance" };
   return { ok: true, instance: pick, server: await serverOf(p) };
@@ -631,10 +582,8 @@ export async function execInContainer(
     const res = await execOnAgent(p, pick.name, command, pick.image);
 
     // Docker/OCI-level failure: `docker exec` couldn't run the command at all
-    // (container stopped/removed, daemon error, or the exec target binary is
-    // missing — e.g. no shell in a distroless image). The exit code can't tell
-    // these from a guest non-zero exit (both land on 126 on modern Docker), so
-    // classify on the docker/OCI-owned stderr text instead.
+    // (container stopped/removed, daemon error, or the exec target binary is missing —
+    // e.g. no shell in a distroless image).
     if (isDockerLevelStderr(res.stderr)) {
       const reason =
         res.stderr.trim() || `docker exec failed (exit ${res.code})`;

@@ -3,40 +3,15 @@ import type { ClientReadableStream } from "@grpc/grpc-js";
 /**
  * The two stream bridges the agent client is built on, kept OUT of
  * `agent-client.ts` on purpose.
- *
- * They are pure plumbing over a grpc-js stream — no Postgres, no PKI, no server
- * lookup — and `agent-client` is none of those things: importing it pulls in the
- * data layer and opens a connection pool, which is enough to keep a test
- * process's event loop alive forever. A bridge whose whole job is backpressure
- * deserves a test that runs in a few milliseconds and exits.
  */
 
 /** How the agent's own error shape is normalised. Injected so this module keeps
  *  no dependency on the client's error hierarchy. */
 type Normalise = (err: unknown) => Error;
 
-/** Bridge a grpc server-stream into a backpressured async generator. Generic
- *  over the event type so the deploy/reattach streams AND the
- *  backup/restore streams (same one-request-many-events shape) reuse it. A
- *  transport-down error is normalised so consumers catch AgentUnreachableError.
- *
- *  `maxQueued` bounds the buffer for a stream that runs for HOURS. The default
- *  (0, unbounded) is right for the finite deploy/backup streams, where every
- *  event is a log line the operator must eventually see and dropping one loses
- *  information permanently. It is wrong for telemetry: if a consumer stalls,
- *  an unbounded queue grows without limit, and the samples it accumulates are
- *  worthless by the time they drain — a metrics point that arrives a minute
- *  late is not late data, it is wrong data. So a bounded queue DROPS THE
- *  OLDEST rather than pausing the producer or growing.
- *
- *  `pauseAbove` is the third mode, and the only correct one for a stream whose
- *  events carry BYTES rather than log lines: dropping a chunk corrupts the
- *  artifact, and buffering without limit puts the whole transfer in the control
- *  plane's heap — a multi-GB volume or backup relayed from a fast host to a slow
- *  one would OOM the control plane, and neither of the other two modes prevents
- *  it. Above the bound the underlying stream is PAUSED, so backpressure reaches
- *  the agent through the gRPC flow-control window and the producer slows down
- *  instead of us growing. Set it on EVERY data-carrying stream. */
+/**
+ * Bridge a grpc server-stream into a backpressured async generator.
+ */
 export async function* streamEvents<E>(
   stream: ClientReadableStream<E>,
   opts: { maxQueued?: number; pauseAbove?: number; normalise?: Normalise } = {},
@@ -99,17 +74,6 @@ export async function* streamEvents<E>(
 /**
  * Pump a header frame then a stream of byte frames into a client-streaming (or
  * bidi) call, honouring write backpressure.
- *
- * Four RPCs need exactly this — ImportVolume, ImportFiles, WriteStoreFile and
- * RestoreFrom — and the two subtleties are why it is one function rather than
- * four copies:
- *
- *  - `write()` returning false means the socket is full, and the pump must
- *    await `"drain"`. Both listeners are removed on settle: a bare `once()` per
- *    chunk leaves the loser registered, leaking one listener + closure per
- *    backpressured frame for the life of a multi-GB transfer.
- *  - A throw mid-pump CANCELS the call, so the agent's untar/write sees the
- *    break instead of committing a truncated artifact.
  */
 export function pumpClientStream<T>(
   call: {

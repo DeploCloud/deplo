@@ -1,11 +1,7 @@
 /**
- * The account-password policy, in one place, shared VERBATIM by the browser
- * (the live strength meter) and the server (the real gate). Deliberately
- * import-free so it runs in both: no "server-only", no node builtins.
- *
- * The server is authoritative: `assertPasswordPolicy` below is called by every
- * path that writes a credential. What the meter renders is the same list, so
- * the two can never disagree.
+ * The account-password policy, in one place, shared VERBATIM by the browser (the
+ * live strength meter) and the server (the real gate). What the meter renders is
+ * the same list, so the two can never disagree.
  */
 
 export const PASSWORD_MIN_LENGTH = 8;

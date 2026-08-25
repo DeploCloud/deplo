@@ -14,21 +14,8 @@ import { requireCapability } from "../membership";
 import { requireAppCapability } from "./node-access";
 
 /**
- * The one column that says "this workload's data did not arrive", and the
- * refusal every way of starting it goes through.
- *
- * A cross-host copy is wipe-first: the destination volume is emptied before the
- * tar is extracted into it, so a copy that dies mid-stream does not leave the old
- * contents behind - it leaves nothing, or half of something. That is worse than a
- * copy that never started, and it does not look like a failure from the outside:
- * a database engine handed an empty data directory INITIALISES a new one, and an
- * app that version-checks a file on disk decides it is a fresh install. Both write
- * over the place the real data was meant to be, and both report success.
- *
- * So the message is kept on the row, and Deploy, Start, Restart and Redeploy all
- * refuse while it is there. The refusal is not a permission and not an error the
- * platform can resolve on its own: it is a decision waiting for the person who
- * ran the migration, and it names both ways out.
+ * The one column that says "this workload's data did not arrive", and the refusal
+ * every way of starting it goes through.
  */
 
 /** What a refused start says, everywhere it is refused. */
@@ -48,12 +35,9 @@ export function assertDataCopyIntact(
 export type DataCopyTarget = { kind: "app" | "database"; id: string };
 
 /**
- * Record why a copy did not land, on the row itself.
- *
- * Called by the import's copy step, which is already gated - this is the tail of
- * an action someone was allowed to take, not an action of its own. It never
- * throws: a marker that could not be written must not turn one failed volume into
- * a failed import, and the report line is written either way.
+ * Record why a copy did not land, on the row itself. It never throws: a marker
+ * that could not be written must not turn one failed volume into a failed import,
+ * and the report line is written either way.
  */
 export async function markDataCopyFailed(
   target: DataCopyTarget,
@@ -103,13 +87,6 @@ export async function clearDataCopyError(
 /**
  * "Deploy anyway": the owner accepts starting without the data that did not
  * arrive, and the block goes.
- *
- * It has to exist. The alternative is an app that can never be deployed again
- * because the machine it was migrated from has since been turned off - which is
- * the normal end of a migration. The capability is the one that would have
- * deployed it anyway, the choice goes in the Activity trail with the reason it
- * overrode, and the marker is cleared team-scoped like every other row-targeting
- * write.
  */
 export async function acceptDataCopyLoss(
   target: DataCopyTarget,

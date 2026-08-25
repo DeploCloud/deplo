@@ -6,14 +6,8 @@ import { gql, GraphQLRequestError } from "./graphql-client";
 
 /**
  * Run a GraphQL mutation from a client component, with the ergonomics the old
- * server-action call sites had: a pending flag, an error string, and an
- * automatic RSC refresh (the GraphQL equivalent of the action's
- * `revalidatePath`). `run` resolves to the mutation data on success or `null`
- * on error (the error is also surfaced via the returned `error` string), so a
- * caller can branch without a try/catch.
- *
- *   const { run, pending, error } = useGraphqlMutation<{ redeploy: { id: string } }>(REDEPLOY);
- *   await run({ appId });   // refreshes the page tree on success
+ * server-action call sites had: a pending flag, an error string, and an automatic
+ * RSC refresh (the GraphQL equivalent of the action's `revalidatePath`).
  */
 export function useGraphqlMutation<TData = unknown>(
   query: string,

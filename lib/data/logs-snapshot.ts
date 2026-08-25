@@ -7,23 +7,6 @@ import { resolveDatabaseLogsTarget } from "./database-console";
 
 /**
  * A one-shot read of a container's recent output.
- *
- * The dashboard tails logs over SSE (`/api/apps/[id]/logs`), which is cookie-only
- * and therefore unreachable by an API token — so before this, `view_logs` bought
- * a bearer client the container LIST and nothing to read from it. A stream is
- * also the wrong shape for a caller that wants an answer and not a subscription:
- * an MCP tool call is one request in, one result out.
- *
- * So this opens the same `FollowLogs` backing the SSE route uses, drains the tail
- * burst the agent sends on connect, and hangs up. The stream stays open only long
- * enough for that burst to arrive; anything the container prints afterwards is a
- * later call's problem, which is exactly what "snapshot" means.
- *
- * THREE CEILINGS, all of them deliberate — an agent's context window is the
- * scarce resource here, and a 50 MB log firehose helps nobody:
- *  - `tail` lines requested of the agent (capped at MAX_LINES);
- *  - MAX_BYTES of decoded output, after which we stop reading and mark it;
- *  - QUIET_MS with no new bytes ends the read, and HARD_MS ends it regardless.
  */
 
 const MAX_LINES = 500;
@@ -145,9 +128,7 @@ function clampLines(lines: number | undefined): number {
 
 /**
  * The resolver answers with a reason rather than throwing, because its other
- * caller is an SSE route mapping reasons to status codes. Here the caller is a
- * tool handler, so the reason becomes the sentence the model reads — and every
- * one of them has to say what to do next, not just what went wrong.
+ * caller is an SSE route mapping reasons to status codes.
  */
 function logsFailure(reason: string): string {
   switch (reason) {

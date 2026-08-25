@@ -13,31 +13,9 @@ import { userHasPasskey } from "../passkey-policy";
 import { rateLimit } from "../security";
 
 /**
- * Turning two-factor on, off, and minting fresh recovery codes.
- *
- * This module exists because Better Auth's twoFactor plugin gates all three on
- * the PASSWORD alone, and the endpoints are closed to the network for exactly
- * that reason (`twoFactorGate` in lib/auth/better-auth.ts). Password-only is one
- * factor below the bar the account itself set: someone holding a stolen session
- * and a phished password could turn 2FA off, or re-run `/two-factor/enable` to
- * swap the secret for one of their own, or quietly mint themselves ten recovery
- * codes while the account still reads "protected".
- *
- * An API token reaches none of it either ({@link requirePersonalSession}): the
- * password re-check already stopped a token from completing any of these, but a
- * credential should not be able to burn an account's step-up rate limit, and the
- * account's own second factor is not a thing a CI job administers.
- *
- * So every state change here is PASSWORD + a live second factor, which is what
- * Google, GitHub and AWS all do for the same operations, and what NIST SP
- * 800-63B means by unbinding an authenticator at the account's own assurance
- * level. The one exception is first enrolment: there is no second factor to ask
- * for yet, and adding one is not a downgrade.
- *
- * The second factor may be a TOTP code OR a recovery code. That is not a
- * convenience: TOTP-only would mean a lost phone leaves 2FA welded on with no
- * way out, and the way out must not be a SQL prompt. `resetTwoFactorForUser`
- * (lib/data/members.ts) is the instance-admin backstop for losing both.
+ * Turning two-factor on, off, and minting fresh recovery codes. The one exception
+ * is first enrolment: there is no second factor to ask for yet, and adding one is
+ * not a downgrade.
  */
 
 /** How many password/code attempts one account gets before it has to wait. */
@@ -51,11 +29,6 @@ export interface TwoFactorEnrolment {
 
 /**
  * Confirm the password half of a step-up, and return the account it belongs to.
- *
- * Rate limited per ACCOUNT rather than per IP: the thing being guessed is one
- * account's password, and an attacker rotating addresses is the normal case. The
- * limiter is deliberately shared by the password and the code, so six wrong
- * guesses of either kind buys the same pause.
  */
 export async function stepUpPassword(password: string) {
   const user = await assertUser();
@@ -69,12 +42,6 @@ export async function stepUpPassword(password: string) {
 
 /**
  * Confirm the second-factor half.
- *
- * The KIND is derived, not asked: a TOTP code is six digits and a recovery code
- * never is (Better Auth mints them as `xxxxx-xxxxx`), so one field can take
- * either and the person reaching for a recovery code after losing their phone
- * does not first have to find a toggle. A recovery code is consumed by the
- * plugin on success, so this is called only once the action is going to happen.
  */
 export async function stepUpCode(code: string) {
   const value = code.trim();
@@ -88,12 +55,6 @@ export async function stepUpCode(code: string) {
 
 /**
  * Begin enrolment: mint a TOTP secret and a set of recovery codes.
- *
- * Nothing is switched on yet — `confirmTwoFactorEnrolment` does that once the
- * app has proved it can produce a code. Refused outright when 2FA is already on,
- * because the plugin's `enable` DELETES the existing secret before writing the
- * new one: allowing it here would hand back a re-enrolment path that skips the
- * code the disable path insists on.
  */
 export async function startTwoFactorEnrolment(
   password: string,
@@ -104,14 +65,9 @@ export async function startTwoFactorEnrolment(
     throw new Error(
       "Two-factor is already on for this account. Turn it off first to set up a new device.",
     );
-  // `method` is explicit, and the narrowing below is not ceremony. Since Better
-  // Auth 1.7.0 this endpoint answers a DISCRIMINATED union: OTP enrolment
-  // returns `{ method: "otp" }` with no secret at all, because the code is
-  // mailed rather than shown. deplo enrols an authenticator app, which needs the
-  // `otpauth://` URI to draw a QR - so it asks for TOTP by name and refuses
-  // anything else rather than reading `totpURI` off a shape that does not have
-  // one. ("totp" is also the plugin's default; naming it is what keeps a future
-  // default flip from silently emptying the enrolment wizard.)
+  // `method` is explicit, and the narrowing below is not ceremony. ("totp" is also
+  // the plugin's default; naming it is what keeps a future default flip from silently
+  // emptying the enrolment wizard.)
   const res = await requireAuth().api.enableTwoFactor({
     body: { password, method: "totp" },
     headers: await authHeaders(),
@@ -124,11 +80,9 @@ export async function startTwoFactorEnrolment(
 }
 
 /**
- * Finish enrolment with the first code the authenticator app produces.
- *
- * No password: it was taken at the start of the wizard, and the pending secret
- * is worthless to anyone who cannot read a code off it. Better Auth flips
- * `twoFactorEnabled` and re-issues the session as part of verifying.
+ * Finish enrolment with the first code the authenticator app produces. No
+ * password: it was taken at the start of the wizard, and the pending secret is
+ * worthless to anyone who cannot read a code off it.
  */
 export async function confirmTwoFactorEnrolment(code: string): Promise<void> {
   requirePersonalSession("two-factor settings");
@@ -140,17 +94,8 @@ export async function confirmTwoFactorEnrolment(code: string): Promise<void> {
 }
 
 /**
- * Turn two-factor off.
- *
- * The team/role mandate is checked SERVER-SIDE here and not only in the card:
- * the button being disabled is cosmetic, and a policy that only holds in the UI
- * is not a policy. Checked before the code is verified so a refusal never burns
- * one of the user's recovery codes.
- *
- * A passkey satisfies the same mandate (ADR-0024), so holding one is what makes
- * this allowed under a policy that would otherwise weld the authenticator app
- * on. Without that exception the rule would be true in the gate and false here,
- * which reads to the person as the policy having no way out.
+ * Turn two-factor off. Checked before the code is verified so a refusal never
+ * burns one of the user's recovery codes.
  */
 export async function disableTwoFactor(input: {
   password: string;
@@ -174,10 +119,6 @@ export async function disableTwoFactor(input: {
 
 /**
  * Replace the recovery codes with a fresh set, returned once.
- *
- * The quiet one, and the reason this module exists: it leaves 2FA switched on
- * and the account looking untouched, so it is the change an attacker would most
- * like to make with a password alone.
  */
 export async function regenerateRecoveryCodes(input: {
   password: string;

@@ -19,30 +19,6 @@ import { requireAppCapability } from "./node-access";
 
 /**
  * The per-app DEPLOY HOOK: one URL that triggers a production deployment.
- *
- * deplo deploys on push already — but only from the GitHub App, the single
- * provider it receives webhooks from. A raw Git URL on GitLab, an uploaded
- * archive, a compose stack, a CI job that just pushed a new image: none of them
- * can say "deploy now" without a person opening the dashboard. This is that
- * missing verb, and it is deliberately the only one the hook has.
- *
- * TWO independent secrets have to line up, which is what makes a link safe to
- * paste into a CI config or another vendor's webhook box:
- *
- *  1. the URL's last segment — random, per app, rotatable here, stored AES-GCM
- *     encrypted (reversible on purpose: an operator must be able to read their
- *     own link back, so a one-way hash would force a rotation every time someone
- *     asked "what was that URL again?");
- *  2. an API token (`Authorization: Bearer deplo_…`, minted in Settings → API
- *     tokens) that resolves to a real member holding `deploy_apps` in the app's
- *     team — see `app/api/apps/[id]/deploy-hook/[token]/route.ts`.
- *
- * So a leaked URL alone deploys nothing, and revoking one API token kills every
- * hook call made with it, across every app, at once. `deploy_hook_enabled` is the
- * per-app kill switch on top of that.
- *
- * Everything here is gated on `configure_apps` — the same capability that owns
- * deploy-on-push and the rest of an app's deployment settings.
  */
 
 /** Where an app's hook lives, minus the secret segment. Public by itself. */
@@ -53,8 +29,7 @@ async function hookPrefix(appId: string): Promise<string> {
 /**
  * This instance's public base URL: the address an admin set in Settings → Deplo,
  * otherwise the `DEPLO_PUBLIC_URL` it was installed with, otherwise the request's
- * own host. A hook URL is copied into someone else's CI, so it has to spell the
- * address this instance actually answers on today, not the one it was born with.
+ * own host.
  */
 async function baseUrl(): Promise<string> {
   return instancePublicBaseUrl();
@@ -64,10 +39,6 @@ async function baseUrl(): Promise<string> {
  * The masked hook URL for the settings page — the real link with its secret
  * segment replaced by dots, so the page can show the SHAPE of the URL (and which
  * app it points at) without the token ever reaching a browser that only asked to
- * render the page. Uncovering it is {@link revealDeployHook}, one deliberate call.
- *
- * Read-only and non-secret, so it carries no capability gate of its own: the
- * settings page it feeds is already behind the app's own read gate.
  */
 export async function deployHookUrlMasked(appId: string): Promise<string> {
   return `${await hookPrefix(appId)}••••••••••••`;
@@ -75,10 +46,6 @@ export async function deployHookUrlMasked(appId: string): Promise<string> {
 
 /**
  * The app's real hook URL, minting the token on first use.
- *
- * Lazy minting is what keeps this additive: no existing app grew a live
- * credential the day the feature shipped, and one is created only when someone
- * with `configure_apps` deliberately opens the hook.
  */
 export async function revealDeployHook(appId: string): Promise<string> {
   const { membership } = await requireAppCapability(appId, "configure_apps");
@@ -157,15 +124,9 @@ export async function setDeployHookEnabled(
 export type DeployHookRejection = "not-found" | "disabled" | "bad-token";
 
 /**
- * Check a hook call's URL token against the stored one.
- *
- * The AUTHENTICATOR, not a gated read — like `authenticateToken` for bearer
- * tokens, it runs before any identity exists and therefore takes no capability.
- * It answers one question: does this URL segment belong to this app, and is the
- * hook open? WHO may deploy is decided after, by the bearer token the caller
- * also has to present (the route re-enters the normal gates through
- * `runWithIdentity` + `redeploy`, so the team scope, the folder gate, the
- * capability and the 2FA policy all apply unchanged).
+ * Check a hook call's URL token against the stored one. The AUTHENTICATOR, not a
+ * gated read — like `authenticateToken` for bearer tokens, it runs before any
+ * identity exists and therefore takes no capability.
  */
 export async function verifyDeployHookToken(
   appId: string,
@@ -196,12 +157,6 @@ export async function verifyDeployHookToken(
 /**
  * The team that owns an app, by id — un-gated on purpose, and deliberately kept
  * beside the other pre-identity helper in this file.
- *
- * A bearer token's scope can span teams, so the deploy-hook route has to say
- * WHICH team the call is about before it can resolve the token to an identity;
- * the app in the URL is the answer. It returns nothing to the caller — every
- * gate downstream still runs as the token — so an unknown id just yields null
- * and the token falls back to the first team in its scope.
  */
 export async function owningTeamId(appId: string): Promise<string | null> {
   const rows = await getDb()

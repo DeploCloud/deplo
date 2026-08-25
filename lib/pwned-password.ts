@@ -6,29 +6,7 @@ import { isTestEnv } from "./db/pg";
 
 /**
  * Refuse a password that appears in the Have I Been Pwned breach corpus.
- *
- * The same check Better Auth's `haveIBeenPwned` plugin performs - that plugin IS
- * mounted (lib/auth/better-auth.ts) and covers its own `/api/auth/*` endpoints -
- * repeated here because deplo never writes a credential through those endpoints.
- * First-run setup, the registration link, the account settings, the admin reset,
- * basic auth, the Traefik panel and a database's engine password all go through
- * `lib/data`, and the plugin only fires on a Better Auth request path. Both
- * surfaces raise the same sentence, so a password refused in one place reads
- * identically in the other.
- *
  * K-ANONYMITY: only the first five hex characters of the SHA-1 leave the box.
- * The API answers with every suffix sharing that prefix (~800 of them) and the
- * comparison happens here, so neither the password nor a full hash of it is ever
- * sent anywhere. `Add-Padding` pads the answer to a fixed-ish size, so its length
- * tells an observer nothing either; the decoy lines it adds carry a count of 0,
- * which is why the count is parsed rather than the suffix matched alone.
- *
- * FAILS OPEN, deliberately, and this is the part not to "fix" later. A
- * self-hosted instance may have no egress at all, and the very first password
- * anyone types is the one that creates the instance owner: a check that turns
- * "api.pwnedpasswords.com is unreachable" into "you cannot finish setup" bricks
- * first run over an advisory signal. Same trade the rate limiter takes in
- * lib/security.ts. Only a CONFIRMED hit refuses.
  */
 
 const RANGE_API = "https://api.pwnedpasswords.com/range/";

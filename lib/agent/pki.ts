@@ -12,21 +12,7 @@ import { agentCaSeed } from "../crypto";
 
 /**
  * The agent mTLS PKI — the trust layer behind the second system boundary (the
- * control plane <-> server-agent RPC; see ADR-0006, PLAN P4). The control plane
- * IS the certificate authority: its CA private key is derived deterministically
- * from `DEPLO_SECRET` ({@link agentCaSeed}), so the same CA is reconstructed on
- * every restart with **no stored CA key** and no external CA. From that one root
- * we mint:
- *   - the agent's SERVER cert (the gRPC listener presents it),
- *   - the control plane's CLIENT cert (it presents this when it dials an agent).
- * Both are signed by the CA; each side pins the CA and requires the other to
- * present a CA-signed cert (mutual TLS). One trust model for the local agent
- * today and remote agents later.
- *
- * Ed25519 throughout: the CA key is a deterministic Ed25519 key built from the
- * 32-byte seed (Ed25519 needs only a seed, no point math), and Ed25519 X.509 is
- * validated identically by Node's TLS stack and Go's crypto/x509 — verified
- * cross-language. Leaf keys are random per issuance.
+ * control plane <-> server-agent RPC; see ADR-0006, PLAN P4).
  */
 
 const crypto = webcrypto;
@@ -37,11 +23,9 @@ const EKU_SERVER_AUTH = "1.3.6.1.5.5.7.3.1";
 const EKU_CLIENT_AUTH = "1.3.6.1.5.5.7.3.2";
 
 /**
- * Fixed PKCS#8 prefix for an Ed25519 private key: the DER header up to the
- * 32-byte raw seed (`SEQ{ INTEGER 0, SEQ{ OID 1.3.101.112 }, OCTET STRING{
- * OCTET STRING(32) } }`). Appending the seed yields a valid PKCS#8 key — the
- * one piece of ASN.1 we hand-assemble, so a CA key is a pure function of the
- * seed with no randomness.
+ * Fixed PKCS#8 prefix for an Ed25519 private key: the DER header up to the 32-byte
+ * raw seed (`SEQ{ INTEGER 0, SEQ{ OID 1.3.101.112 }, OCTET STRING{ OCTET
+ * STRING(32) } }`).
  */
 const ED25519_PKCS8_PREFIX = Buffer.from(
   "302e020100300506032b657004220420",
@@ -138,21 +122,14 @@ export interface CertBundle {
 type SanEntry = { type: "dns"; value: string } | { type: "ip"; value: string };
 
 /**
- * The validity window for every minted leaf — server, client, or CSR-signed
- * agent cert: one year. Re-minted each install/dial cycle for the local agent;
- * for a remote agent the cert is stored in the Server row and the agent re-runs
- * the bootstrap to renew (or the control plane re-issues). Shared so the
- * "leaves live a year" rule is stated once.
+ * The validity window for every minted leaf — server, client, or CSR-signed agent
+ * cert: one year.
  */
 const LEAF_LIFETIME_MS = 365 * 24 * 3600_000;
 
 /**
- * The shared certificate-issuance core. Builds a CA-signed leaf around a public
- * key — either one we generate here (local agent / control-plane client, where
- * we also return the private key) or one parsed from an agent's CSR (remote
- * bootstrap, where the private key never leaves the agent). `keyPem` in the
- * returned bundle is "" when the public key came from outside (we never had the
- * private half). Pure crypto, no I/O.
+ * The shared certificate-issuance core. `keyPem` in the returned bundle is "" when
+ * the public key came from outside (we never had the private half).
  */
 async function issueCertFor(
   publicKey: CryptoKey,
@@ -197,10 +174,7 @@ async function issueLeaf(
 }
 
 /**
- * Mint the AGENT's server certificate. `hosts` are the names/IPs the control
- * plane may dial the agent by and become the cert's SANs (TLS verifies the
- * dialed host against them). For the local agent this is `localhost` +
- * `127.0.0.1`; for a remote agent it is the server's IP/host.
+ * Mint the AGENT's server certificate.
  */
 export async function issueAgentServerCert(
   hosts: string[],
@@ -224,9 +198,9 @@ export async function issueControlPlaneClientCert(): Promise<CertBundle> {
 
 /**
  * The result of signing a remote agent's CSR during call-home bootstrap: the
- * agent's signed SERVER cert, the pinned CA, and the cert's fingerprint (which
- * the control plane stores in the Server row to authenticate — and later revoke
- * — this exact agent).
+ * agent's signed SERVER cert, the pinned CA, and the cert's fingerprint (which the
+ * control plane stores in the Server row to authenticate — and later revoke — this
+ * exact agent).
  */
 export interface SignedAgentCert {
   /** The agent's signed leaf certificate, PEM. */
@@ -240,18 +214,7 @@ export interface SignedAgentCert {
 /**
  * THE TRUST-DIRECTION INVERSION (PLAN P1-P4). In Part A the control plane minted
  * the agent's cert AND its key and wrote both to the agent's disk — possible only
- * because the agent was local. A REMOTE agent's private key must never leave the
- * remote, so the agent generates its own key pair, sends us a PKCS#10 CSR during
- * call-home, and we sign it here: the CA (derived from `DEPLO_SECRET`) issues a
- * server cert around the CSR's public key. We return the cert + CA + the cert's
- * fingerprint; the private key stays on the agent the whole time.
- *
- * `hosts` are the names/IPs the control plane will dial the agent by (its public
- * IP/host) and become the cert SANs — NOT taken from the CSR (a peer must not
- * choose its own SANs; the control plane decides who it will trust to answer for
- * which address). The CSR is verified (self-signature) before signing so a
- * malformed/forged request is rejected, but its only trusted contribution is the
- * public key.
+ * because the agent was local.
  */
 export async function signAgentCsr(
   csrPem: string,
@@ -279,15 +242,7 @@ export async function signAgentCsr(
 }
 
 /**
- * The sha256(DER) fingerprint of a PEM certificate, lowercase hex. This is the
- * pinning identity used in BOTH directions of the agent trust model:
- *   - the control plane stores an agent cert's fingerprint in the Server row to
- *     authenticate that exact agent and revoke it on removal (P6);
- *   - the agent is handed the control plane's cert fingerprint in the bootstrap
- *     command and trusts the control plane iff the presented cert matches it
- *     (P3 — primary trust on IP-only deployments).
- * Computed from the DER bytes so it matches `openssl x509 -fingerprint -sha256`
- * and Go's crypto/sha256 over the same DER — verified cross-language.
+ * The sha256(DER) fingerprint of a PEM certificate, lowercase hex.
  */
 export async function certFingerprint(certPem: string): Promise<string> {
   const der = new x509.X509Certificate(certPem).rawData;
@@ -296,10 +251,9 @@ export async function certFingerprint(certPem: string): Promise<string> {
 }
 
 /**
- * IPv4 literal matcher. Exported so the dial path (agent-client) classifies a
- * host the SAME way SAN generation does here — an IP literal gets an `ip` SAN
- * and, because TLS SNI forbids IP servernames, is verified via a DNS SAN at dial
- * time. Keeping one regex keeps those two decisions in lockstep.
+ * IPv4 literal matcher. Exported so the dial path (agent-client) classifies a host
+ * the SAME way SAN generation does here — an IP literal gets an `ip` SAN and,
+ * because TLS SNI forbids IP servernames, is verified via a DNS SAN at dial time.
  */
 export const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 

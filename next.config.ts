@@ -1,16 +1,8 @@
 import type { NextConfig } from "next";
 
 /**
- * Security headers here are defense-in-depth and cover responses the proxy
- * matcher skips (API routes, static assets). The per-request CSP nonce is set
- * in proxy.ts.
- *
- * `Strict-Transport-Security` is deliberately NOT in this list: it must only be
- * sent when the instance is really served over TLS, and that is a RUNTIME fact
- * (the panel's address is editable in Settings), not something this file can
- * know at build time. It already lives in proxy.ts, behind the same `isHttps`
- * check that gates `upgrade-insecure-requests`. Proxy-only is enough - the
- * header is remembered per origin, and every navigation goes through the proxy.
+ * Security headers here are defense-in-depth and cover responses the proxy matcher
+ * skips (API routes, static assets).
  */
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -27,14 +19,6 @@ const securityHeaders = [
 
 /**
  * Hostnames allowed to reach the dev server's dev-only resources.
- *
- * `next dev` binds to localhost and treats requests forwarded under any other
- * hostname (e.g. the dashboard reached via a domain through a reverse proxy) as
- * cross-origin, blocking its dev resources (/_next/webpack-hmr, the HMR runtime)
- * and so preventing the client from hydrating. We derive the hostname from
- * DEPLO_PUBLIC_URL — the same env var the app already uses for its public URL —
- * so the proxied domain works without hardcoding it. Empty (no extra origins)
- * when unset/unparseable. Has no effect on production builds.
  */
 function devOrigins(): string[] {
   const raw = process.env.DEPLO_PUBLIC_URL?.trim();
@@ -69,12 +53,7 @@ const nextConfig: NextConfig = {
   ],
   // sharp (lib/templates/logo-color.ts) resolves its own `.node` from a literal
   // require the tracer can follow — but that binary then dlopens libvips from a
-  // SIBLING package, and a dlopen is invisible to file tracing. The Dockerfile
-  // already documents this exact failure for node-pty. Name the musl artefacts
-  // explicitly or the standalone image ships a sharp that cannot load: the
-  // runner is node:22-alpine, and the builder (glibc) installs both libc
-  // variants, so they are present at trace time. Loading is guarded anyway —
-  // a sharp that will not open costs the template tints and nothing else.
+  // SIBLING package, and a dlopen is invisible to file tracing.
   outputFileTracingIncludes: {
     "/templates": [
       "./node_modules/@img/sharp-linuxmusl-x64/**",

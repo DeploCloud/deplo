@@ -1,18 +1,6 @@
 /**
  * Schedules the way a person states them — "every day at 03:00" — with cron kept
  * as the *storage* format, not the *input* format.
- *
- * Cron is what the scheduler evaluates (`lib/backups/cron.ts`) and what the
- * database column holds, so nothing here changes the wire format: this module is
- * the two-way translation between a 5-field expression and the handful of shapes
- * a picker can offer. `partsFromCron` recognises an expression the UI can render
- * as controls; `cronFromParts` emits the canonical expression for those controls;
- * `describeCron` says out loud what an expression does. An expression outside
- * that vocabulary (comma lists, ranges, month restrictions) is not an error — it
- * simply falls through to `null`, and the caller keeps showing the raw text.
- *
- * Pure and dependency-free (no `server-only`), because both the client picker and
- * the server-side validation import it.
  */
 
 import { parseCron } from "./backups/cron";
@@ -104,10 +92,7 @@ const WEEKDAY_SHORT: readonly string[] = [
 ];
 
 /**
- * Highest day-of-month a monthly schedule may pick. 29–31 are deliberately NOT
- * offered: cron simply skips a month that has no such day, so "every month on
- * the 31st" would silently not run in February — the one failure a scheduled
- * backup cannot have.
+ * Highest day-of-month a monthly schedule may pick.
  */
 export const MAX_MONTH_DAY = 28;
 
@@ -235,17 +220,8 @@ function ordinal(day: number): string {
 const FIXED_LABELS = new Map(SCHEDULE_OPTIONS.map((o) => [o.mode, o.label]));
 
 /**
- * Say what an expression does in one phrase — "Every week on Sunday at 03:00
- * UTC" — or null when it isn't one of the shapes the picker knows. Null means
- * "show the raw cron instead", not "invalid": validity is `isValidSchedule`.
- *
- * `compact` trades the sentence for a table cell's worth of room ("Weekly, Wed
- * 03:00 UTC") — same facts, no filler words.
- *
- * `timeZone` names the zone the expression is read in. It defaults to UTC, which
- * is what backups and docker cleanup are evaluated in; a cron job carries its own
- * zone, and saying "03:00 UTC" for a schedule that fires at 03:00 in Rome would
- * be a plain lie.
+ * Say what an expression does in one phrase — "Every week on Sunday at 03:00 UTC"
+ * — or null when it isn't one of the shapes the picker knows.
  */
 export function describeCron(
   cron: string,
@@ -274,11 +250,7 @@ export function describeCron(
 }
 
 /**
- * Would the scheduler ever fire this expression? An unparseable cron is treated
- * as "never matches" by design (one bad row must not crash the tick), so an
- * accepted-but-unparseable schedule is a job that silently never runs while the
- * UI claims it is enabled — hence both the picker and the data layer reject it up
- * front.
+ * Would the scheduler ever fire this expression?
  */
 export function isValidSchedule(cron: string): boolean {
   return parseCron(cron) !== null;

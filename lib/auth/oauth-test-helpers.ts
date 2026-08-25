@@ -3,37 +3,20 @@ import { createHash, randomBytes } from "node:crypto";
 import { requireAuth } from "./better-auth";
 
 /**
- * Drive the REAL OAuth flow in-process, through Better Auth's own handler.
- *
- * Named to dodge the `*.test.ts` glob. Nothing here fakes a token: register →
- * sign in → authorize → consent → exchange, exactly as claude.ai would, so the
- * strings these return are the ones a client would actually present. That
- * matters most for one contract that is invisible until it breaks — the plugin
- * strips its prefix BEFORE hashing, so `authenticateToken` must hash the bare
- * secret. A hand-inserted row would agree with whatever the code does and prove
- * nothing.
- *
- * Every helper returns raw strings so a test can deliberately misuse them: send
- * the refresh token as a bearer, replay a code, redeem against a different
- * redirect.
+ * Drive the REAL OAuth flow in-process, through Better Auth's own handler. A
+ * hand-inserted row would agree with whatever the code does and prove nothing.
  */
 
 /**
  * Requests are addressed to the instance's OWN public URL, not to localhost.
- *
- * Better Auth refuses a cookie-carrying POST from an origin that is not its
- * `baseURL` — which is the CSRF defence the consent screen relies on, so a test
- * that hit `http://localhost` would be proving the refusal rather than the flow.
  */
 function base(): string {
   return process.env.DEPLO_PUBLIC_URL ?? "http://localhost";
 }
 
 /**
- * Every POST carries `Origin`, because Better Auth refuses a cookie-carrying
- * POST without one (`MISSING_OR_NULL_ORIGIN`) — the browser-side CSRF defence.
- * deplo's own consent call reaches the endpoint IN-PROCESS, where there is no
- * request and so no origin check; a browser sends this header for real.
+ * Every POST carries `Origin`, because Better Auth refuses a cookie-carrying POST
+ * without one (`MISSING_OR_NULL_ORIGIN`) — the browser-side CSRF defence.
  */
 function call(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
@@ -57,12 +40,6 @@ export interface RegisteredClient {
 
 /**
  * The status a SUCCESSFUL dynamic registration answers with.
- *
- * RFC 7591 §3.2.1 says 201 Created, and Better Auth 1.7.0 started saying it -
- * 1.6.x answered 200. Named rather than written out at each call site because
- * the refusal assertions below have to be able to tell success from failure by
- * CLASS: `notEqual(status, 200)` passed for both once the success code moved,
- * which is a security guard that quietly stops guarding.
  */
 export const REGISTRATION_CREATED = 201;
 
@@ -87,19 +64,9 @@ export async function registerClient(
 }
 
 /**
- * Mint the session cookie a signed-in browser would then send.
- *
- * IN-PROCESS, not over HTTP, because that is what deplo itself does: the browser
- * signs in through the GraphQL `login` mutation, which calls `signInEmail`
- * exactly like this. `/sign-in/email` is closed to the network on purpose
- * (`deploOwnedGate` in ./better-auth.ts) - the plugin's endpoint skips the
- * per-account rate limit, the `failed_logins` alert and the suspension check -
- * so a helper that POSTed to it was testing a door that is now shut, and would
- * have been the only thing keeping it open.
- *
- * The rest of the flow below stays over HTTP: authorize, consent and the token
- * exchange are genuinely browser and client traffic, and that is the point of
- * this file.
+ * Mint the session cookie a signed-in browser would then send. IN-PROCESS, not
+ * over HTTP, because that is what deplo itself does: the browser signs in through
+ * the GraphQL `login` mutation, which calls `signInEmail` exactly like this.
  */
 export async function signIn(email: string, password: string): Promise<string> {
   const res = (await requireAuth().api.signInEmail({

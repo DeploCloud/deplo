@@ -4,10 +4,6 @@ import type { ResourceLimits } from "../types";
  * The pure data model behind the Resources settings form — the string ⇄ number
  * mapping, dirty-key serialization, and quick-pick presets, with NO React so it
  * unit-tests directly (the same split as `volumesKey` / `breadcrumb-model`).
- * The form component is a thin view over this.
- *
- * Every field is a STRING (""=unset) so inputs bind directly; CPU is shown in
- * whole cores but stored/sent as milli-CPUs (1000 = one core).
  */
 export interface ResourceLimitsForm {
   memoryMb: string;

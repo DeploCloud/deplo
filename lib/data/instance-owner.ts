@@ -17,22 +17,6 @@ import { recordActivity } from "./activity";
 /**
  * The instance owner — the instance-level twin of a team's founder "crown"
  * (`teams.founder_user_id`), stored on the `instance_settings` singleton.
- *
- * WHY THIS EXISTS. `is_instance_admin` is a flat boolean and `updateUserAdmin`
- * lets any admin write it on any OTHER admin; the only guard is "at least one
- * ACTIVE admin must remain", which the actor satisfies by being that admin. So
- * one admin you promoted could demote every peer, suspend them out of login and
- * reset their password hash — the first account included, which had no special
- * protection at all. With no user-deletion path and no self-service password
- * reset anywhere in the product, the victim's only way back was hand-written SQL.
- *
- * The rule, matching the team founder exactly: the owner is immutable to every
- * hand but their own. No other admin may demote, suspend or password-reset them,
- * and they cannot clear their own admin flag either. Not a dead end — the crown
- * TRANSFERS, but only by the person wearing it ({@link transferInstanceOwner}).
- *
- * The guards themselves live in `members.ts` next to the writes they constrain;
- * this module owns the row, the reads, and the transfer.
  */
 
 /** The singleton row's fixed PK, like `monitoring_settings` / the cleanup policy. */
@@ -41,12 +25,7 @@ const SETTINGS_ID = "default";
 /**
  * The owning user's id, or null when the instance is unowned (no row yet — a
  * pre-0038 instance that never replayed the backfill, or one with no admin to
- * backfill from). Internal: NO auth gate, because every guard that consumes it
- * runs before the caller's own gate has decided anything.
- *
- * Takes an optional `tx` so the guards in `updateUserAdmin` can read the owner
- * inside the same transaction (and under the same row locks) as the write they
- * are vetting, rather than racing a concurrent transfer.
+ * backfill from).
  */
 export async function instanceOwnerUserId(tx?: DbTx): Promise<string | null> {
   const db = tx ?? getDb();
@@ -76,9 +55,7 @@ export async function viewerIsInstanceOwner(): Promise<boolean> {
 
 /**
  * Claim the instance for `userId` at first-run setup. Called INSIDE the setup
- * transaction, so an instance is never briefly unowned. Idempotent by PK: if a
- * row somehow exists, setup is not the thing allowed to overwrite it —
- * {@link transferInstanceOwner} is.
+ * transaction, so an instance is never briefly unowned.
  */
 export async function claimInstanceOwner(
   tx: DbTx,
@@ -87,11 +64,9 @@ export async function claimInstanceOwner(
   await tx
     .insert(instanceSettings)
     .values({ id: SETTINGS_ID, ownerUserId: userId, updatedAt: nowIso() })
-    // An UPDATE guarded on `owner_user_id IS NULL`, not DO NOTHING: the row can
-    // already exist for a reason that has nothing to do with ownership (the
-    // panel address, the VAPID keypair), and "do nothing" would then leave the
-    // instance permanently unowned with no error anywhere. The guard keeps the
-    // original promise — an existing owner is never overwritten.
+    // An UPDATE guarded on `owner_user_id IS NULL`, not DO NOTHING: the row can already
+    // exist for a reason that has nothing to do with ownership (the panel address, the
+    // VAPID keypair), and "do nothing" would then leave the instance permanently
     .onConflictDoUpdate({
       target: instanceSettings.id,
       set: { ownerUserId: userId, updatedAt: nowIso() },
@@ -100,19 +75,9 @@ export async function claimInstanceOwner(
 }
 
 /**
- * Hand the crown to another user. The ONLY way `owner_user_id` ever changes
- * after setup, and the one thing here the owner alone may do — an instance admin
- * calling this is rejected even though they pass {@link requireInstanceAdmin}.
- *
- * Requires the caller's own password. This is the single most destructive action
- * in the product (it is irreversible from the loser's side: the new owner may
- * immediately demote the old one), and the session cookie alone is a weaker
- * assertion than we want standing behind it — a borrowed laptop should not be
- * able to give the instance away.
- *
- * The target must be an ACTIVE instance admin: handing the crown to a suspended
- * account, or to a non-admin who would then lack the flag the owner is defined to
- * imply, both land the instance somewhere the invariants don't describe.
+ * Hand the crown to another user. The ONLY way `owner_user_id` ever changes after
+ * setup, and the one thing here the owner alone may do — an instance admin calling
+ * this is rejected even though they pass {@link requireInstanceAdmin}.
  */
 export async function transferInstanceOwner(input: {
   userId: string;
@@ -120,10 +85,8 @@ export async function transferInstanceOwner(input: {
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
   const actor = await assertUser();
-  // The password check below is a re-auth, and this is the highest-value one in
-  // the product: on success the instance changes hands. A stolen live session
-  // must not get unlimited guesses at it, exactly as the 2FA step-up and the
-  // account-settings re-auth are bounded. Same per-account key/budget as those.
+  // The password check below is a re-auth, and this is the highest-value one in the
+  // product: on success the instance changes hands.
   const limit = await rateLimit(`account-reauth:${actingUserId}`, {
     limit: 6,
     windowMs: 5 * 60_000,

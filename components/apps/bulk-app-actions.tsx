@@ -78,6 +78,7 @@ const plural = (n: number) => `${n} app${n === 1 ? "" : "s"}`;
  * The "Actions" submenu shared by the folder and project ⋯ menus: one action for
  * every app inside, confirmed once and run server-side (one mutation, not one call
  * per app - the ids are resolved there, so a nested folder or a second environment
+ * can't be missed).
  */
 export function useBulkAppActions({
   scope,

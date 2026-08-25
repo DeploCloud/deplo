@@ -64,6 +64,7 @@ const ALL = "__all__";
  * Anything inside a row that owns its own click: links (commit sha, the App name,
  * the row's action buttons), the selection checkbox (`role=checkbox`), and any
  * cell explicitly opted out with `data-no-row-nav` (the checkbox cell, whose
+ * padding is aimed at while selecting).
  */
 const ROW_NAV_EXEMPT =
   'a, button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-no-row-nav]';

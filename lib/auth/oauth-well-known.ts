@@ -11,16 +11,8 @@ import {
 } from "@/lib/auth/oauth-metadata";
 
 /**
- * The discovery documents, served from the SITE ROOT.
- *
- * Better Auth mounts its own copies under `/api/auth/.well-known/…` because that
- * is its base path. No MCP client looks there: RFC 8414 and RFC 9728 both put
- * these at the root. The four thin routes under `app/.well-known/` delegate here
- * so the shape is written once.
- *
- * All of them are PUBLIC and must stay reachable without a cookie — see the
- * `.well-known` exclusion in `proxy.ts`, without which every probe is a 302 to
- * `/login` and nothing about this feature works.
+ * The discovery documents, served from the SITE ROOT. Better Auth mounts its own
+ * copies under `/api/auth/.well-known/…` because that is its base path.
  */
 
 function json(body: unknown, status = 200): Response {

@@ -446,6 +446,7 @@ function SelectionActionBar({
  * The card wrapper used when reorder is off (filtering, or no capability): the
  * same selection surface {@link SortableCard} provides — the marquee's
  * `data-card-id` target, the highlight, and modifier-click instead of navigation —
+ * without dnd-kit.
  */
 function SelectableCard({
   id,

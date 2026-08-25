@@ -1,34 +1,6 @@
 /**
  * The DEPLOY KEY: the one string every host-side artifact of a deploy is named
  * after.
- *
- * The container `deplo-<key>`, the on-disk stack file `<key>.yml`, the files dir
- * `files/<key>`, the named volumes `deplo-<key>-<name>`, the Traefik
- * router/service `baseKey` `deplo-<key>`, and every `slug`-shaped agent RPC all
- * take THIS, not `apps.slug`. For a plain production deploy the key IS the app
- * slug, which is why introducing it changed nothing that was already running.
- *
- * The scheme, chosen for ZERO churn to existing stacks:
- *   - production (and the **default** environment, seeded: Production) keeps the
- *     **bare** slug, so every already-running container / stack file / volume /
- *     certificate is byte-identical and untouched;
- *   - every other deploy target gets `<slug>__<suffix>`, using the SAME `__`
- *     separator [routing.ts](./routing.ts) already relies on. Because a slug is
- *     `[a-z0-9-]` (it can never contain `__`), `deplo-<slug>__<suffix>` can never
- *     byte-collide with another app's bare `deplo-<otherslug>` — the exact
- *     guarantee the routing layer engineers for its `__<port>` suffixes.
- *
- * Two suffix families exist, and they are deliberately disjoint:
- *   - `pr-<n>` — a **pull request preview** (ADR-0014), the live consumer.
- *   - `<envSlug>` — a per-Environment deploy target (ADR-0008 Phase 3b), still
- *     unbuilt. `PREVIEW_SUFFIX_RE` is what keeps an environment from ever being
- *     slugged `pr-42` and colliding with a preview of the same app.
- *
- * An App with NO environment (top-level / not in a container — the legacy,
- * additive-adoption case) passes `null` and keeps the bare slug.
- *
- * Pure on purpose (no store, no docker, no `server-only`): its interface IS its
- * test surface, exactly like [ports.ts](./ports.ts) and [env-resolve.ts](./env-resolve.ts).
  */
 
 /** The fields this module reads from an Environment. A full `Environment` satisfies it. */
@@ -82,13 +54,6 @@ export function stackName(deployKey: string): string {
 /**
  * The HOST directory a stack's own files live in: its config files, and every
  * `./<x>` bind a compose stack writes.
- *
- * Baked into rendered YAML, so it MUST resolve to the same path on whichever
- * host runs the stack — the agent's default stack dir is `/data/stacks` too
- * (agent/main.go), and the agent writes the files there before bringing the
- * stack up. It is also the directory the agent's teardown sweeps and its
- * leftover-files cleanup judges, which is why the derivation lives beside the
- * key rather than in whichever renderer needed it first.
  */
 export function stackFilesDir(deployKey: string): string {
   const dataDir = process.env.DEPLO_DATA_DIR || "/data";
@@ -97,14 +62,6 @@ export function stackFilesDir(deployKey: string): string {
 
 /**
  * The image tag one deploy of a BUILT source lands on: `deplo/<key>:<id[0:12]}`.
- *
- * Unique per deployment - nothing is ever overwritten, which is what makes a
- * previous deploy re-runnable without a rebuild. The agent tags with exactly this
- * string (it never derives one of its own) and the rendered compose references it,
- * so the three have to agree; this function is where they do.
- *
- * Only a source Deplo BUILDS gets one. A prebuilt `docker-image` source runs the
- * registry ref the user gave it, and a compose stack has no single image at all.
  */
 export function deployImageRef(
   deployKey: string,
@@ -116,8 +73,7 @@ export function deployImageRef(
 /**
  * The owning app's slug for any deploy key — structural, not a query. A slug is
  * `[a-z0-9-]`, so everything before the FIRST `__` is the slug and nothing else
- * can be. This is what lets a preview key resolve back to its app with no extra
- * column, index or join.
+ * can be.
  */
 export function appSlugFromDeployKey(deployKey: string): string {
   const at = deployKey.indexOf(SEP);

@@ -12,18 +12,13 @@ import {
 } from "node:crypto";
 // Pure JS, no native binding: it has to load on the musl runtime image without a
 // rebuild step, which is the same constraint that keeps node-pty and sharp in
-// `serverExternalPackages`. Node ships no bcrypt, and Traefik's htpasswd reader
-// takes bcrypt, MD5 or SHA1 - so this is the one place a dependency buys a real
-// algorithm rather than saving a few lines.
+// `serverExternalPackages`.
 import { hash as bcryptHash } from "bcryptjs";
 
 /**
- * Central secret material.
- * In production set DEPLO_SECRET to a long random string (>= 32 chars).
- * Production refuses to boot without it (mirroring the `DEPLO_DATABASE_URL`
- * guard in lib/db/pg.ts) — silently deriving every key from a public constant
- * would make all secrets, sessions and the agent CA forgeable. A dev/test
- * fallback keeps the app runnable locally.
+ * Central secret material. Production refuses to boot without it (mirroring the
+ * `DEPLO_DATABASE_URL` guard in lib/db/pg.ts) — silently deriving every key from a
+ * public constant would make all secrets, sessions and the agent CA forgeable.
  */
 function rootSecret(): string {
   const s = process.env.DEPLO_SECRET;
@@ -39,14 +34,9 @@ function rootSecret(): string {
 }
 
 /**
- * Derive a 32-byte key for a given purpose from the root secret.
- *
- * `scryptSync` is a deliberately-slow KDF; deriving the same purpose key on
- * every call dominated hot paths that touch many secrets (e.g. decrypting
- * every env var to render the Variables page). The root secret is fixed for
- * the process lifetime, so the derived key is stable too — memoize per purpose.
- * Keyed by `rootSecret()` as well so a mid-process secret change (tests) still
- * derives fresh material rather than serving a stale key.
+ * Derive a 32-byte key for a given purpose from the root secret. The root secret
+ * is fixed for the process lifetime, so the derived key is stable too — memoize
+ * per purpose.
  */
 const keyCache = new Map<string, Buffer>();
 export function deriveKey(purpose: string): Buffer {
@@ -64,22 +54,8 @@ export function deriveKey(purpose: string): Buffer {
 /* ------------------------------------------------------------------ */
 
 /**
- * The scrypt work factor NEW hashes are made with.
- *
- * Raising these is a one-line change BECAUSE every hash carries the parameters
- * it was produced with (see the format below). The original format did not:
- * `scrypt$<salt>$<hash>` said nothing about cost, so verification had to assume
- * node's defaults forever, and the work factor was frozen at N=16384 for the
- * life of the product - there was no way to strengthen it that did not
- * invalidate every existing password at once.
- *
- * N=65536 rather than the 2^17 OWASP names first, deliberately. Memory is
- * `128 * N * r` ≈ 64 MiB per hash here, against 128 MiB at 2^17, and this runs
- * on whatever box the operator self-hosts on. Async scrypt executes on libuv's
- * threadpool (4 by default), so the real ceiling is ~4 concurrent hashes: 256
- * MiB and ~180ms each at this setting, versus 512 MiB at 2^17. Four times the
- * old cost, bounded memory, and the number is now a knob rather than a
- * one-way door.
+ * The scrypt work factor NEW hashes are made with. N=65536 rather than the 2^17
+ * OWASP names first, deliberately.
  */
 const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1 } as const;
 /** Node caps scrypt memory at 32 MiB by default, well under `128 * N * r`. */
@@ -115,13 +91,6 @@ function scryptAsync(
 
 /**
  * Hash a password: `scrypt$<N>$<r>$<p>$<salt-hex>$<hash-hex>`.
- *
- * Async, not sync, and that is a security property rather than a style
- * preference: `scryptSync` at this cost blocks the event loop for ~180ms per
- * call, so the rate limiter's own allowance (30 login attempts per address per
- * minute) would have been enough to stall the whole control plane. The async
- * form runs on the threadpool, which also bounds how many can be in flight -
- * see {@link SCRYPT_PARAMS}.
  */
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
@@ -137,11 +106,7 @@ export async function hashPassword(password: string): Promise<string> {
 
 /**
  * Split a stored hash into its parameters, salt and digest, accepting BOTH
- * formats. Null when it is neither.
- *
- * The legacy shape has three fields and the current one six, so the field count
- * is the discriminator - no version byte to keep in sync, and no ambiguity: a
- * hex salt can never be mistaken for a decimal cost.
+ * formats.
  */
 function parseStoredPassword(
   stored: string,
@@ -189,16 +154,6 @@ export async function verifyPassword(
 /**
  * Whether a stored hash was made with a WEAKER setting than the current one, and
  * should therefore be replaced.
- *
- * Only the caller that just saw the plaintext can act on this - the login path -
- * which is why it is a separate predicate rather than an extra return value on
- * {@link verifyPassword}: everything else that verifies a password (the
- * step-up prompt before a destructive action, the recover script) has no
- * business rewriting the credential.
- *
- * Compares the WORK, not the tuple: `N * r * p` is what an attacker pays, so a
- * hash written at a higher cost by a future release is never downgraded by an
- * older binary that happens to run afterwards.
  */
 export function passwordNeedsRehash(stored: string): boolean {
   const parsed = parseStoredPassword(stored);
@@ -208,16 +163,9 @@ export function passwordNeedsRehash(stored: string): boolean {
 }
 
 /**
- * Deterministic 32-byte seed for the agent mTLS CA (PLAN P4 / ADR-0006). The
- * control plane is the CA for the agent PKI; its private key is DERIVED from
- * `DEPLO_SECRET` via this dedicated purpose — one cryptographic source of truth
- * for both secret encryption and the agent PKI, so there is no second critical
- * secret to store or rotate independently. Stable for the process/secret
- * lifetime (memoized in `deriveKey`), so the CA is reconstructed identically on
- * every restart with no stored CA key. **Known debt (P4): rotating
- * `DEPLO_SECRET` re-mints the CA and invalidates every issued agent cert —
- * rotation means re-provisioning every agent.** The seed never leaves the
- * server; only minted certificates (and the agent's leaf key) cross the wire.
+ * Deterministic 32-byte seed for the agent mTLS CA (PLAN P4 / ADR-0006). Stable
+ * for the process/secret lifetime (memoized in `deriveKey`), so the CA is
+ * reconstructed identically on every restart with no stored CA key.
  */
 export function agentCaSeed(): Buffer {
   return deriveKey("agent-mtls-ca");
@@ -235,30 +183,8 @@ export function agentCaSeed(): Buffer {
 const HTPASSWD_COST = 10;
 
 /**
- * Produce a `user:hash` htpasswd line for Traefik's `basicauth` middleware.
- *
- * **bcrypt**, not the Apache MD5 (`$apr1$`) this used to emit. Traefik's
- * `go-htpasswd` accepts bcrypt, MD5 and SHA1, and apr1 is 1000 rounds of MD5 —
- * a few seconds a hash on a GPU. That matters because the hash does not stay
- * in the database: it is written into the proxy's compose file ON THE HOST and,
- * for the panel's own credential, read back into the control plane with the rest
- * of the stack. A credential that leaks with the file should still cost
- * something to break.
- *
- * ASYNC, for the same reason {@link hashPassword} is: this runs on the deploy
- * render path, once per basic-auth user, and a synchronous bcrypt would hold the
- * event loop for the whole stack.
- *
- * The caller is responsible for any compose-level `$`→`$$` escaping — the hash
- * contains literal `$` separators that docker-compose treats as variable
- * interpolation, so a YAML-embedded label must double them. The returned string
- * here is the RAW htpasswd line (single `$`), so it is correct for an env-file /
- * dynamic-config consumer; the renderer escapes it for the label form.
- *
- * Nothing verifies these hashes on this side, so there is no legacy format to
- * keep reading: every one of them is re-derived from the stored plaintext on the
- * next render (apr1 salted randomly per render too), and Traefik verifies both
- * schemes regardless.
+ * Produce a `user:hash` htpasswd line for Traefik's `basicauth` middleware. A
+ * credential that leaks with the file should still cost something to break.
  */
 export async function htpasswdLine(
   username: string,
@@ -283,21 +209,8 @@ export function encryptSecret(plaintext: string): string {
 }
 
 /**
- * Open a ciphertext, saying WHETHER it opened as well as what came out.
- *
- * The distinction is the whole point. {@link decryptSecret} answers `""` both
- * for "this secret is the empty string" and for "this ciphertext could not be
- * opened", and almost every caller reads that as "nothing is set" - so a
- * `DEPLO_SECRET` that no longer matches degrades into an app deployed with
- * blank credentials, a backup destination that looks unconfigured, and a
- * restore that would try to read an encrypted artifact as plaintext. All of it
- * silent, and none of it distinguishable from the operator simply not having
- * filled the field in.
- *
- * A guess cannot recover the difference either: an empty value has a perfectly
- * valid, non-empty ciphertext, so "plaintext is empty but ciphertext was not"
- * is a heuristic that fires on a legitimately blank environment variable. Only
- * the decrypt itself knows, which is why the answer is reported from here.
+ * Open a ciphertext, saying WHETHER it opened as well as what came out. Only the
+ * decrypt itself knows, which is why the answer is reported from here.
  */
 export function tryDecryptSecret(
   payload: string,
@@ -323,13 +236,9 @@ export function tryDecryptSecret(
 }
 
 /**
- * Open a ciphertext, or `""` if it will not open.
- *
- * The lossy form, kept because most callers genuinely do want a best-effort
- * read (a masked display, an optional field). Anywhere a wrong answer is
- * ACTED on - credentials handed to an agent, a token sent to a provider, a key
- * that decides whether an artifact is encrypted - use
- * {@link decryptSecretOrThrow} instead, and let the failure be loud.
+ * Open a ciphertext, or `""` if it will not open. The lossy form, kept because
+ * most callers genuinely do want a best-effort read (a masked display, an optional
+ * field).
  */
 export function decryptSecret(payload: string): string {
   const res = tryDecryptSecret(payload);
@@ -338,13 +247,6 @@ export function decryptSecret(payload: string): string {
 
 /**
  * {@link decryptSecret} for the call sites where `""` is not an answer.
- *
- * `what` names the thing in the operator's language, because there is exactly
- * one cause worth reporting and it is not a bug: the value was sealed under a
- * different `DEPLO_SECRET` than the one this process booted with. There is no
- * key versioning to fall back through, so the honest message says what is
- * unreadable and why, rather than surfacing whatever confusing downstream error
- * an empty credential would have produced three layers later.
  */
 export function decryptSecretOrThrow(payload: string, what: string): string {
   const res = tryDecryptSecret(payload);

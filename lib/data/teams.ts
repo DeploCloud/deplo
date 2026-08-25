@@ -59,17 +59,8 @@ function rowToTeam(t: {
 }
 
 /**
- * Who the active team IS: its id, name and slug, and nothing else.
- *
- * Split from {@link getTeam} because the dashboard layout reads it on EVERY
- * page — the topbar names the team you are working in — while `getTeam` is a
- * team-wide read that a limited member is refused. Without the split, the one
- * `requireTeamWide` in `getTeam` took down every page under `(dashboard)` for
- * them: the layout's `try` catches only `TwoFactorRequiredError`, so it would
- * have surfaced as the error boundary on a perfectly healthy page.
- *
- * Nothing here is a setting, so nothing here needs the gate. A member of the
- * team may always know which team they are in.
+ * Who the active team IS: its id, name and slug, and nothing else. Nothing here is
+ * a setting, so nothing here needs the gate.
  */
 export async function getTeamIdentity(): Promise<
   Pick<Team, "id" | "name" | "slug" | "avatarUrl">
@@ -127,9 +118,6 @@ export async function listMyTeams(): Promise<
   if (teams.length === 0) return [];
 
   // The current user's role per team + each team's member count, in two queries.
-  // `switcherPosition` rides along on a query that already runs: their own
-  // arrangement of the switcher, which is why it is read per USER and not once
-  // per team.
   const mine = await db
     .select({
       teamId: membershipsTable.teamId,
@@ -172,9 +160,7 @@ export async function listMyTeams(): Promise<
 
 /**
  * Every team in the instance for the instance-admin registration-link picker
- * (assign a new user to existing teams). Gated by `requireInstanceAdmin` rather
- * than `manage_infra` — registering users is an instance-admin power, not a
- * per-team capability. Returns id/name/… only, no membership. Ordered by name.
+ * (assign a new user to existing teams).
  */
 export async function listAllTeamsForAdmin(): Promise<Team[]> {
   await requireInstanceAdmin();
@@ -254,21 +240,9 @@ export async function updateTeam(input: {
 }
 
 /**
- * Set or clear the active team's picture.
- *
- * `manage_team`, the same gate that renames the team — because it IS the same
- * action: changing how the team presents itself. Splitting it into its own
- * Capability would put a row in the catalogue that nobody would ever grant on its
- * own.
- *
- * `null` or an empty string removes it. The value is a base64 image data-URI (the
- * browser downscales and re-encodes before sending, but that is a convenience,
- * never a guarantee) and `isValidAvatarValue` is the whole server-side trust
- * boundary: grammar, MIME and size.
- *
- * The UPDATE is scoped by id AND team so a cross-team id hits zero rows, and it
- * is conditional on the value actually differing, so re-picking the same picture
- * writes nothing and records nothing.
+ * Set or clear the active team's picture. `manage_team`, the same gate that
+ * renames the team — because it IS the same action: changing how the team presents
+ * itself.
  */
 export async function updateTeamAvatar(image: string | null): Promise<Team> {
   const { teamId } = await requireCapability("manage_team");
@@ -308,17 +282,9 @@ export async function updateTeamAvatar(image: string | null): Promise<Team> {
 }
 
 /**
- * This person's arrangement of the topbar team switcher.
- *
- * NOT capability-gated, and deliberately: it is nobody's team setting, it is
- * where YOUR list puts things. `requirePersonalSession` is the gate that matters
- * — an API token has no switcher and no business rewriting somebody's.
- *
- * Sanitising follows `reorderApps`: keep only ids the user is actually a member
- * of, drop duplicates, then append every membership the client left out so a
- * stale tab cannot silently unposition a team. Ids the user is not in are
- * ignored rather than refused — the client is describing its own list, and a team
- * they just left is a race, not an attack.
+ * This person's arrangement of the topbar team switcher. `requirePersonalSession`
+ * is the gate that matters — an API token has no switcher and no business
+ * rewriting somebody's.
  */
 export async function reorderMyTeams(orderedIds: string[]): Promise<void> {
   const user = await assertUser();

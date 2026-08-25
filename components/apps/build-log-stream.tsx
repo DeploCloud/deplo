@@ -99,7 +99,10 @@ export function BuildLogStream({
   // Last status we pushed to the server-rendered parts of the page.
   const lastSyncedStatus = React.useRef<DeploymentStatus>(initialStatus);
 
-  // Stop the build you're watching.
+  // Stop the build you're watching. cancelDeployment flips the row to `canceled`; the
+  // next log poll (below) picks that up, `live` goes false, and this button
+  // disappears on its own. router.refresh() re-renders the server card's status
+  // badge, which doesn't share this component's polled state.
   function stopBuild() {
     startStop(async () => {
       const res = await gqlAction<{ cancelDeployment: boolean }, boolean>(
@@ -193,8 +196,6 @@ export function BuildLogStream({
   // Search + level filter.
   const filters = useLogFilters(logs, BUILD_LEVELS);
 
-  // Copy/download text is de-ANSI'd: the stored lines keep their escapes (the rows
-  // render them as colors), but pasted text should never carry `\x1b[33m`.
   const logText = React.useMemo(
     () =>
       filters.shown

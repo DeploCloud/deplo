@@ -42,17 +42,6 @@ import { requireAppCapability } from "./node-access";
 /**
  * The gated surface for **cron jobs** - the security boundary the UI and GraphQL
  * go through.
- *
- * The mechanics live one layer down in [runner](../crons/runner.ts), which is
- * deliberately session-free so the scheduler can call it at 03:00 with no request
- * identity. Everything here does the capability + team + folder work FIRST and
- * only then delegates, exactly like the preview mutations do.
- *
- * TWO GATES ON A DATABASE JOB, and the second is not belt-and-braces. One
- * `manage_crons` governs both target kinds (a person who schedules commands
- * schedules commands), and it is seeded from EITHER console capability - so
- * without the extra `open_database_console` check here, holding app-console
- * access alone would reach inside every database on the instance. See ADR-0018.
  */
 
 /** Longest a single attempt may run. Anything longer is a service, not a job. */
@@ -233,9 +222,6 @@ async function gateDatabase(databaseId: string) {
 
 /**
  * The gate for an existing job, resolved through whichever target it hangs off.
- * Also reports the TARGET's master switch, which several callers need - running
- * a job by hand on a target where cron jobs are switched off would drive a hole
- * straight through the opt-in.
  */
 async function gateJob(
   jobId: string,
@@ -351,11 +337,8 @@ function buildPatch(
     }
     patch.keepRuns = Math.trunc(input.keepRuns);
   }
-  // `workdir` and `user` ride to the agent as structured fields and end up as
-  // `docker exec --workdir/--user` arguments. Running a command in this container
-  // IS the feature, so neither is a privilege boundary — but the control plane is
-  // the only thing that validates what the agent is handed, so constrain them to
-  // the shapes docker accepts rather than forwarding whatever was typed.
+  // `workdir` and `user` ride to the agent as structured fields and end up as `docker
+  // exec --workdir/--user` arguments.
   if (input.workdir !== undefined) {
     const workdir = (input.workdir ?? "").trim();
     if (workdir && !/^\/[\w./@+-]*$/.test(workdir))
@@ -568,11 +551,7 @@ export function cronDstWarning(
 /* ------------------------------------------------------------------ */
 
 /**
- * Turn cron jobs on or off for one target. The switch is the opt-in AND the pause
- * button: turning it off stops the schedule and keeps every job.
- *
- * Runs already in flight are deliberately left alone - the command is executing
- * on the host, and killing it halfway is a worse surprise than letting it finish.
+ * Turn cron jobs on or off for one target.
  */
 export async function setCronEnabled(
   targetKind: CronTargetKind,
@@ -667,10 +646,8 @@ export async function createCronJob(
         updatedAt: now,
       });
   } catch (e) {
-    // The unique index is the real check; catching it here turns a Postgres
-    // constraint string into the sentence the form should show. The constraint
-    // name lives on the driver error's `cause`, not on the message Drizzle
-    // wraps it in, so match the whole chain.
+    // The unique index is the real check; catching it here turns a Postgres constraint
+    // string into the sentence the form should show.
     if (/cron_jobs_(app|database)_name_uq/.test(errorChainText(e))) {
       throw new Error(`A cron job called "${patch.name}" already exists here`);
     }
@@ -757,12 +734,9 @@ export async function deleteCronJob(jobId: string): Promise<void> {
 }
 
 /**
- * Run a job now, outside its schedule.
- *
- * Honours the target's master switch: it means "no cron job runs here", and the
- * UI hides this page when it is off - so an API caller must not be the one
- * exception. The job's own `overlap` is honoured too, one layer down in
- * {@link runJobNow}, which answers with a `skipped` run rather than an error.
+ * Run a job now, outside its schedule. Honours the target's master switch: it
+ * means "no cron job runs here", and the UI hides this page when it is off - so an
+ * API caller must not be the one exception.
  */
 export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
   const { job, teamId, targetEnabled } = await gateJob(jobId);

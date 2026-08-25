@@ -18,27 +18,7 @@ import type {
 /**
  * The ONE relational-rows ↔ domain-objects mapping for the infra/integrations
  * tables (relational-store PLAN Step 6 cut-set (e)): `servers`, `github_apps`,
- * `github_installation`, `activities`. Every reader and writer in
- * the data layer (`lib/data/{servers,github,activity}.ts`,
- * `lib/github/app.ts`) goes through here, so reads and writes can't drift on how a
- * row folds into a domain object — the same anti-drift seam `backup-rows.ts` is
- * for the backups tables, `app-graph-rows.ts` for the project graph, and
- * `backup-rows.ts` for the backup tables.
- *
- * Pure — no `server-only`, no store, no db handle — so a `server-only` module can
- * import it freely. Load-bearing details:
- *
- *  - **`servers` flattens two nested objects.** `ServerAgent` (present once
- *    provisioned) → `agent_*` columns, `ServerBootstrap` (present only while
- *    provisioning) → `bootstrap_*` columns. The columns are nullable; a NULL
- *    `agent_port` means "no agent yet", so {@link assembleServer} rebuilds the
- *    nested object iff its discriminant column is present. (`agentToRow` is the
- *    exact mapping the old `server-row.ts` mirror bridge wrote — that bridge is
- *    retired now that `servers` is relational-authoritative.)
- *  - **`activities` has a `seq` asymmetry.** `Activity` (the domain type) has no
- *    `seq`, but `activities` carries a DB-generated `bigint identity seq` (PLAN
- *    §5). {@link activityToRow} never writes it; {@link assembleActivity} drops it.
- *    A copy/insert in source-array order reproduces insertion order.
+ * `github_installation`, `activities`.
  */
 
 export type ServerRow = InferSelectModel<typeof servers>;
@@ -57,13 +37,7 @@ export type ActivityInsert = InferInsertModel<typeof activities>;
 /* ------------------------------------------------------------------ */
 
 /**
- * Which {@link Server} fields are folded into which `servers` columns. Unlike the
- * flat collections, this mapping flattens TWO nested objects (`agent`/`bootstrap`)
- * onto the row, so a `satisfies Record<keyof Server, …>` on the RETURN can't
- * express exhaustiveness (the row keys are not the `Server` keys). This explicit
- * `Record<keyof Server, true>` is the exhaustiveness guard instead: adding a new
- * `Server` field is a compile error here until it is consciously handled in
- * {@link serverToRow} (and the column or its flattening added below).
+ * Which {@link Server} fields are folded into which `servers` columns.
  */
 const SERVER_FIELDS = {
   id: true,
@@ -120,9 +94,8 @@ export function serverToRow(s: Server): ServerInsert {
     buildOnly: s.buildOnly,
     importOnly: s.importOnly,
     // The retry state itself (attempts, next_at, run_id) is written by targeted
-    // UPDATEs, never from a DTO round trip - a full row write from a shape that
-    // cannot carry it would reset the ladder on every unrelated save. Same rule
-    // the Traefik dashboard password follows above.
+    // UPDATEs, never from a DTO round trip - a full row write from a shape that cannot
+    // carry it would reset the ladder on every unrelated save.
     uninstallError: s.uninstallError,
     hostArch: s.hostArch,
     deployConcurrency: s.deployConcurrency,
@@ -140,10 +113,8 @@ export function serverToRow(s: Server): ServerInsert {
     // distinct, honest state the UI renders as "Unknown", so neither is defaulted.
     statusCheckedAt: s.statusCheckedAt ?? null,
     statusMessage: s.statusMessage ?? null,
-    // The dashboard's domain + username round-trip; the password does NOT, and
-    // this must never learn to write it. It is set only by
-    // setServerTraefikDashboard, which encrypts it in a targeted UPDATE — a full
-    // row write from a DTO that cannot carry the secret would erase it.
+    // The dashboard's domain + username round-trip; the password does NOT, and this
+    // must never learn to write it.
     traefikDashboardDomain: s.traefikDashboard?.domain ?? null,
     traefikDashboardUser: s.traefikDashboard?.username ?? null,
     createdAt: s.createdAt,
@@ -152,9 +123,7 @@ export function serverToRow(s: Server): ServerInsert {
 
 /**
  * Reassemble a `servers` row into a {@link Server}, rebuilding the nested
- * `agent`/`bootstrap` objects from their flattened columns. The discriminant for
- * "is there an agent" is `agent_port` (NULL while provisioning); for "is there a
- * pending bootstrap" it is `bootstrap_token_hash` (NULL once provisioned).
+ * `agent`/`bootstrap` objects from their flattened columns.
  */
 export function assembleServer(row: ServerRow): Server {
   const server: Server = {

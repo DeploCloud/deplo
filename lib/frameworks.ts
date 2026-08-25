@@ -1,20 +1,11 @@
 /**
- * Build-config seeding. Pure and isomorphic: used both in the
- * new-project wizard (client) and on the server when a deployment is created.
- *
- * Framework presets were removed (ADR: the build methods auto-detect the stack),
- * so this module no longer detects frameworks — it just seeds a default
- * BuildConfig.
+ * Build-config seeding.
  */
 import type { BuildConfig } from "./types";
 
 /**
- * Default Node.js MAJOR the auto-detecting Node builders (Nixpacks / Railpack)
- * pin when the user pinned nothing. Without a pin these builders fall back to
- * their own built-in default — historically an old line (Nixpacks selected
- * Node 18) — so Deplo forces a current major instead. A bare major, as the
- * builders expect (`NIXPACKS_NODE_VERSION` / `RAILPACK_NODE_VERSION`). Isomorphic
- * so the build settings UI can show the same default it will actually build with.
+ * Default Node.js MAJOR the auto-detecting Node builders (Nixpacks / Railpack) pin
+ * when the user pinned nothing.
  */
 export const DEFAULT_NODE_MAJOR = "24";
 
@@ -28,10 +19,7 @@ export function usesDefaultNodeMajor(
 }
 
 /**
- * Build a full {@link BuildConfig} from optional overrides. Defaults to the
- * zero-config Nixpacks builder with empty commands (the builders auto-detect the
- * language and build steps); the caller overrides `buildMethod`, `methodSettings`
- * and `port` from the UI.
+ * Build a full {@link BuildConfig} from optional overrides.
  */
 export function buildConfigFor(
   overrides: Partial<BuildConfig> = {},
@@ -61,10 +49,9 @@ export function buildConfigFor(
 }
 
 /**
- * Backfill build-method fields on a BuildConfig read from the store. Apps
- * created before build methods existed have no `buildMethod`/`methodSettings`;
- * seed sane defaults so old apps keep deploying and the settings form
- * renders. Pure and idempotent — safe to call on every read.
+ * Backfill build-method fields on a BuildConfig read from the store. Apps created
+ * before build methods existed have no `buildMethod`/`methodSettings`; seed sane
+ * defaults so old apps keep deploying and the settings form renders.
  */
 export function normalizeBuildConfig(build: BuildConfig): BuildConfig {
   // Migrate the legacy `nodeVersion` field to the language-neutral

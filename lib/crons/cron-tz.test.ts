@@ -120,8 +120,7 @@ test("fall back: an hour-pinned job matches twice but dedupes to one fire", () =
 
 test("fall back: an interval job keeps all 24 hours of fires", () => {
   // The same day is 25 real hours long, and "every 5 minutes" means every five
-  // minutes. Keyed on the wall clock this would collapse to 12 fires in the repeated
-  // hour; keyed on the instant it stays at 24.
+  // minutes.
   const inRepeat = firesAt(
     "*/5 * * * *",
     "Europe/Rome",

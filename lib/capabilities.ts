@@ -2,19 +2,8 @@ import type { Capability } from "./types";
 import { ALL_CAPABILITIES } from "./types";
 
 /**
- * The capability catalog — one entry per thing a member can be allowed to do,
- * plus the categories the role editor browses them by.
- *
- * Deliberately FINE-GRAINED. A permission here names a single action ("delete
- * apps", "create databases", "restore a backup"), never a bundle: role design is
- * an advanced surface, and an admin who wants a role that deploys but cannot
- * delete, or reads files but cannot write them, must be able to say exactly that.
- * The categories below are for FINDING a permission (with the search box), not for
- * granting one — there is no category-level grant.
- *
- * No server-only or request-context imports: the role editor is a client
- * component and reads this catalog directly. The authorization helpers live in
- * `lib/membership.ts`.
+ * The capability catalog — one entry per thing a member can be allowed to do, plus
+ * the categories the role editor browses them by.
  */
 
 /** How a permission is shown in the role editor. */
@@ -222,10 +211,9 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     description:
       "Permanently delete a single backup, removing the file it was restored from.",
     keywords: "remove artifact purge prune erase restore point",
-    // The only verb here that destroys data with no way back and no warning
-    // further down: the artifact is the last copy of what an app or database
-    // looked like at that moment, and deleting it can silently leave a target
-    // with no restore point at all.
+    // The only verb here that destroys data with no way back and no warning further
+    // down: the artifact is the last copy of what an app or database looked like at
+    // that moment, and deleting it can silently leave a target with no restore point at
     sensitive: true,
   },
   manage_backup_destinations: {
@@ -235,10 +223,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords:
       "bucket s3 server disk storage remote credentials minio garage path recovery key",
     // Sensitive, and not because connecting a bucket is dangerous: this is the
-    // capability that hands over the recovery key, which decrypts EVERY artifact
-    // at a destination - including backups of apps the holder has no grant on.
-    // That is strictly more reach than `restore_backups`, which is marked, and
-    // it was reading as a settings chore.
+    // capability that hands over the recovery key, which decrypts EVERY artifact at a
+    // destination - including backups of apps the holder has no grant on.
     sensitive: true,
   },
 
@@ -262,11 +248,9 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   manage_mcp: {
     label: "Manage MCP access",
-    // The old wording promised a second half — "and whether they must ask
-    // before destructive actions" — that migration 0100 removed: that switch
-    // was a second permission system beside Capabilities, and a permission
-    // description naming a control that no longer exists is worse than a short
-    // one. What an agent may DO is its token's Capabilities and nothing here.
+    // The old wording promised a second half — "and whether they must ask before
+    // destructive actions" — that migration 0100 removed: that switch was a second
+    // permission system beside Capabilities, and a permission description naming a
     description:
       "Decide whether AI agents may drive this team, and approve the web apps that connect to it.",
     keywords: "mcp ai agent assistant llm claude cursor copilot chatgpt gemini",
@@ -328,12 +312,9 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
 };
 
 /**
- * The role editor's browse order. Every optional capability appears in exactly
- * one category; `view` is the always-on floor and is in none of them.
- *
- * A category is a place to LOOK, not a thing to grant — there is no
- * category-level switch, because a permission that can only be handed out as
- * part of a bundle isn't a permission, it's a bundle.
+ * The role editor's browse order. A category is a place to LOOK, not a thing to
+ * grant — there is no category-level switch, because a permission that can only be
+ * handed out as part of a bundle isn't a permission, it's a bundle.
  */
 export const CAPABILITY_CATEGORIES: {
   key: string;
@@ -435,16 +416,7 @@ export const CAPABILITY_CATEGORIES: {
 ];
 
 /**
- * What each capability of the ORIGINAL eight expands to. The coarse eight were
- * bundles; every one of them is now several named permissions, and this is the
- * one place that says which. Used by
- *
- *  - migration 0056, to expand the stored rows of every membership, role, folder
- *    grant and registration link without changing what anybody can do, and
- *  - {@link expandLegacyCapabilities}, so an API client (or a saved script) that
- *    still sends `deploy` keeps meaning exactly what it used to mean.
- *
- * `view` maps to the read-only permissions that used to ride along with it.
+ * What each capability of the ORIGINAL eight expands to.
  */
 export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   view: ["view", "view_logs", "view_metrics", "view_activity"],
@@ -453,8 +425,7 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "deploy_apps",
     // Anyone the coarse `deploy` covered could already ship any commit they liked,
     // reverting one included - so going back to a build that already shipped is
-    // strictly less power than they had. Withholding it here would take something
-    // away from an API client that has been sending `deploy` for a year.
+    // strictly less power than they had.
     "rollback_apps",
     "control_apps",
     "configure_apps",
@@ -462,10 +433,8 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "move_apps",
     "open_app_console",
     "manage_previews",
-    // Under `deploy` and not `manage_infra` because that is where
-    // `open_app_console` already sits, and a cron job is the same power on a
-    // timer. An API client still sending the retired coarse name gets exactly
-    // what it always implied.
+    // Under `deploy` and not `manage_infra` because that is where `open_app_console`
+    // already sits, and a cron job is the same power on a timer.
     "manage_crons",
     "create_folders",
     "organize_folders",
@@ -486,10 +455,9 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "open_database_console",
     "manage_backups",
     "restore_backups",
-    // Under `manage_infra` because `delete_databases` already is, and that is
-    // the verb the backfill seeds this one from: deleting a database ALREADY
-    // sweeps every artifact it has. An API client still sending the retired
-    // coarse name gets exactly what it always implied.
+    // Under `manage_infra` because `delete_databases` already is, and that is the verb
+    // the backfill seeds this one from: deleting a database ALREADY sweeps every
+    // artifact it has.
     "delete_backups",
     "manage_backup_destinations",
     "manage_registries",
@@ -505,9 +473,7 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   manage_members: ["manage_members", "manage_roles"],
   manage_team: ["manage_team", "delete_team"],
   // `manage_s3` was renamed to `manage_backup_destinations` when a destination
-  // stopped necessarily being S3 (migration 0083). Same single power, so this is
-  // a 1:1 alias rather than an expansion — it keeps an API token minted before
-  // the rename working, exactly like the coarse names above.
+  // stopped necessarily being S3 (migration 0083).
   manage_s3: ["manage_backup_destinations"],
 };
 
@@ -525,17 +491,6 @@ export const RETIRED_CAPABILITY_NAMES = LEGACY_CAPABILITY_NAMES.filter(
 /**
  * Normalise a capability list that may still use one of the RETIRED names
  * (`deploy`, `manage_files`, `manage_infra`), dropping anything unrecognised.
- *
- * A name that is still a capability today means EXACTLY itself — `manage_env` is
- * `manage_env`, not `manage_env` + `reveal_secrets`, and `view` is the floor and
- * nothing more. Only names with no current meaning are expanded, which is what
- * keeps this safe on the hot path: the role editor sends `view` with every save,
- * and a helper that quietly inflated it would grant permissions nobody ticked.
- *
- * (The MIGRATION's mapping is the richer {@link LEGACY_CAPABILITY_EXPANSION} —
- * there the question is "what did this stored row already imply", so `view` does
- * carry the read-only permissions it used to include. Different question,
- * deliberately different answer.)
  */
 export function expandLegacyCapabilities(caps: string[]): Capability[] {
   const out = new Set<Capability>();

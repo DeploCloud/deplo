@@ -21,10 +21,8 @@ export interface UpdateInfo {
 }
 
 /**
- * Ask GitHub for the latest published release of the Deplo repository and
- * compare it with the running version. Network/API failures degrade
- * gracefully to "no update" with an `error` note; a repo with no releases yet
- * (404) is treated as up to date. Cached for an hour to respect rate limits.
+ * Ask GitHub for the latest published release of the Deplo repository and compare
+ * it with the running version.
  */
 export async function getUpdateInfo(): Promise<UpdateInfo> {
   const base: UpdateInfo = {
@@ -82,14 +80,8 @@ export async function getUpdateInfo(): Promise<UpdateInfo> {
 }
 
 /**
- * Re-resolve the latest agent release from GitHub, bypassing the in-process
- * cache, and return the version the fleet is now expected to run.
- *
- * Gated here rather than in the resolver, like every other instance-admin
- * action: the field's `authScopes` reads `viewer.isInstanceAdmin`, which is the
- * PERSON behind the request - an API token they minted is only an instance
- * admin if it was given that switch, and only `requireInstanceAdmin` knows the
- * difference.
+ * Re-resolve the latest agent release from GitHub, bypassing the in-process cache,
+ * and return the version the fleet is now expected to run.
  */
 export async function refreshAgentVersion(): Promise<string> {
   await requireInstanceAdmin();

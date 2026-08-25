@@ -1,15 +1,5 @@
 /**
  * Recovering from a tab that outlived the build it was loaded from.
- *
- * Every deplo update replaces the hashed JavaScript chunks on disk. A dashboard
- * left open across that update still asks for the OLD filenames, so the next
- * navigation that needs a not-yet-loaded chunk gets a 404 and the bundler throws
- * a `ChunkLoadError` — which an error boundary would otherwise show as
- * "Something went wrong" on a page that is perfectly healthy. The page is not
- * broken; the tab is stale, and one reload fixes it.
- *
- * No imports and no browser globals at module scope: the error boundaries that
- * use this can be rendered on the server too.
  */
 
 /** Bundler/browser wordings for "the JS file I asked for isn't there". */

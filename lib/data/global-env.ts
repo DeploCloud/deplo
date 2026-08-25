@@ -23,15 +23,7 @@ import type {
 
 /**
  * INSTANCE-global environment variables — variables injected into every app of
- * every team, managed by an instance admin (gated instance admin). Storage
- * mirrors `env_vars` (a value_enc + a targets junction) but with no team scope.
- * The deploy merge in lib/deploy/env-resolve.ts layers these UNDER every other
- * source (they are the broadest default), so any more-specific scope wins on a
- * key collision. Encryption is identical to app env (encryptSecret at rest;
- * decrypt only at the deploy edge or on explicit reveal).
- *
- * NOTE: team-global vars used to live here too; they are now team-wide shared
- * vars in lib/data/shared-vars.ts (ADR-0010).
+ * every team, managed by an instance admin (gated instance admin).
  */
 
 const MASK = "••••••••••••";
@@ -119,11 +111,7 @@ export interface GlobalEnvEntry {
   valueEnc: string;
   targets: EnvTarget[];
   /**
-   * `plain` | `secret`. Projected because the fork-preview drop in
-   * `lib/deploy/build.ts` reads it: an instance-global secret reaches EVERY app
-   * of EVERY team, so it is the last value that should ride into a container
-   * running a stranger's pull request. Leaving it off the entry made that filter
-   * a no-op for this whole layer.
+   * `plain` | `secret`.
    */
   type: "plain" | "secret";
 }
@@ -131,8 +119,7 @@ export interface GlobalEnvEntry {
 /**
  * The instance-global entries that apply to every app, for the deploy-time merge.
  * NO auth gate — it runs inside the deploy engine, which has already authorized
- * the deploy. Returns encrypted entries; the caller decrypts at the edge. (These
- * are app-independent — every app of every team inherits them.)
+ * the deploy.
  */
 export async function loadInstanceEnv(): Promise<GlobalEnvEntry[]> {
   const instance = await loadInstanceVars();
@@ -184,10 +171,7 @@ export async function upsertInstanceEnv(input: {
       .where(eq(instVars.key, key))
       .limit(1);
     if (existing.length > 0) {
-      // Same rule as every other env layer: a secret is frozen. An instance admin
-      // could always read one back, so this is not what stops them — it is what
-      // stops the type column from being the one thing standing between a
-      // `manage_env` member and a plaintext an admin pasted for every team.
+      // Same rule as every other env layer: a secret is frozen.
       if (existing[0]!.type === "secret") throw new Error(secretImmutable(key));
       const id = existing[0]!.id;
       await tx

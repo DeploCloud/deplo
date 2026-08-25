@@ -14,20 +14,14 @@ import { isMetricsSavingEnabled } from "./monitoring-settings";
 import type { Server } from "../types";
 
 /**
- * Real server metrics. EVERY server — including the host running Deplo — is
- * measured by its agent's Metrics RPC over mTLS (PLAN Part C): the agent measures
- * its own host (CPU/mem/disk + a live running-container count). An unreachable /
- * not-yet-provisioned agent reports no live data (online:false) rather than
- * fabricating any.
+ * Real server metrics.
  */
 export interface ServerMetrics {
   serverId: string;
   online: boolean;
   /**
    * Whether a Traefik reverse proxy is running on the server (read live from the
-   * agent's Hello on this same poll). Carried in the live payload so the Traefik
-   * badge updates without a page reload, like online/CPU — and self-corrects when
-   * Traefik is added/removed. False when offline/unreachable.
+   * agent's Hello on this same poll).
    */
   traefik: boolean;
   cpu: number;
@@ -45,16 +39,12 @@ export interface ServerMetrics {
   containers: number;
   /**
    * The agent version this server is running, as last reported (refreshed on this
-   * same poll's Hello). Null until the agent has called home. Carried in the live
-   * payload so the version badge — and the outdated check below — update without a
-   * page reload.
+   * same poll's Hello).
    */
   agentVersion: string | null;
   /**
    * The agent version every server should be running — the latest GitHub release,
-   * resolved once per poll and stamped onto every server's snapshot. Carried live
-   * so a freshly-resolved "latest" (after a "Check for updates" bust) reaches the
-   * badges through the poll, not just a page refresh.
+   * resolved once per poll and stamped onto every server's snapshot.
    */
   expectedAgentVersion: string;
   ts: number;
@@ -101,15 +91,9 @@ function unavailable(
 }
 
 /**
- * Measure a remote server via its agent's Metrics RPC. The agent measures its own
- * host (CPU/mem/disk of its --data-dir + a live running-container count) and
- * returns a HostMetrics, mapped 1:1 into ServerMetrics. An unreachable / not-yet-
+ * Measure a remote server via its agent's Metrics RPC. An unreachable / not-yet-
  * provisioned agent reports no live data (online:false) — never fabricated, never
  * the control plane's own numbers.
- *
- * NOTE: the dashboard polls every ~1s, so this dials+closes a gRPC client per
- * poll per viewer. Acceptable at current scale; a connection pool is a Part C+
- * optimisation (TODO) if the fleet/viewer count makes the churn matter.
  */
 async function measureRemote(
   server: Server,
@@ -121,11 +105,9 @@ async function measureRemote(
   try {
     // Empty dataDir => the agent measures its own configured --data-dir.
     const m = await conn.metrics("");
-    // Read the Traefik state live on this same poll (the poll already holds the
-    // mTLS connection open). This is the ONLY steady-state path — the deploy
-    // preflight aside — so without it traefikEnabled would only ever update on a
-    // deploy. Best-effort: a Hello failure doesn't fail the metrics snapshot;
-    // we just keep the last-known traefik flag for the payload.
+    // Read the Traefik state live on this same poll (the poll already holds the mTLS
+    // connection open). This is the ONLY steady-state path — the deploy preflight aside
+    // — so without it traefikEnabled would only ever update on a deploy.
     let traefik = server.traefikEnabled;
     // The agent version reported on THIS poll's Hello (if it succeeds). Used for
     // the live outdated check so a just-updated agent self-corrects in the same
@@ -137,11 +119,7 @@ async function measureRemote(
       // unreachable) — see observedTraefik. Same reason the catch below keeps it.
       traefik = observedTraefik(hello) ?? traefik;
       if (hello.agentVersion) liveAgentVersion = hello.agentVersion;
-      // Persist the live value (read-live-not-stored, like health). The badge's
-      // server-rendered render reads this on the next page load; the live payload
-      // below updates it without a reload. Also persist the host's CAPACITY (from
-      // the metrics RPC, which succeeded) so the Servers page can show specs
-      // statically without a poll.
+      // Persist the live value (read-live-not-stored, like health).
       await markServerSeen(
         server.id,
         hello.agentVersion,
@@ -154,12 +132,8 @@ async function measureRemote(
         hello.dockerVersion,
         hello.hostArch,
       );
-      // This Hello is a health OBSERVATION as good as the Servers page's own probe,
-      // so it goes through the SAME recorder. Without this the two views contradict
-      // each other: the dashboard streams live green while the stored status — last
-      // written by a probe that lost a race — still says offline. The 1s poll also
-      // keeps `status_checked_at` fresh, which makes the Servers page's throttle
-      // correctly decide there is nothing to re-dial.
+      // This Hello is a health OBSERVATION as good as the Servers page's own probe, so it
+      // goes through the SAME recorder.
       await recordServerHealth(
         server.id,
         classifyServerHealth(hello, null, { storageOnly: server.storageOnly }),
@@ -201,18 +175,8 @@ async function metricsFor(
   try {
     return await measureRemote(server, expected);
   } catch {
-    // Unreachable / unprovisioned agent, or any transport error: report offline
-    // rather than a fabricated snapshot. Still carry the version fields from the
-    // stored value so an offline-but-outdated server stays flagged.
-    //
-    // Deliberately DO NOT persist health here. This catch is the crude path — it has
-    // no confirming retry, no throttle, and no trust-detection, because `measureRemote`
-    // issues `metrics()` (not `hello()`) as its first RPC, so a cert-pin rejection
-    // arrives WITHOUT the `trust` flag and would be misrecorded as `offline` instead of
-    // the security-relevant `error`. Recording failure states is the dedicated prober's
-    // job (lib/data/server-health.ts), which has all three protections. When the metrics
-    // poll stops succeeding, `status_checked_at` simply stops advancing and the Servers
-    // page ages the card out to "Unknown" on its own — honest, and never a false verdict.
+    // Unreachable / unprovisioned agent, or any transport error: report offline rather
+    // than a fabricated snapshot.
     return unavailable(server.id, expected, server);
   }
 }
@@ -238,8 +202,7 @@ export async function getServerMetrics(
 /**
  * The buffered metrics HISTORY for one server (lib/monitoring/history.ts) — what
  * the Monitoring page seeds its charts from on load, so a reload no longer starts
- * them empty. Team-scoped exactly like {@link getServerMetrics}; empty when saving
- * is off (the switch drops the buffers) or nothing has been sampled yet.
+ * them empty.
  */
 export async function getServerMetricsHistory(
   serverId: string,
@@ -255,19 +218,13 @@ export async function getServerMetricsHistory(
  * Session-free measure for the background collector (lib/monitoring/collector.ts),
  * which has no request context to team-scope against: it takes an already-resolved
  * Server row — never a caller-supplied id — and its result reaches no client
- * directly; the sample lands in the in-memory history buffer only. Every
- * user-facing read goes through {@link getServerMetrics}.
  */
 export const measureServerForCollector = metricsFor;
 
 /**
- * Cheap, instant metrics for the initial server render. measureLocal() takes
- * ~1.2s (a 1s network-delta window + a 200ms CPU sample + docker calls), which
- * would block the Monitoring and Servers pages on every load. The client polls
- * the real metrics every second (see MonitoringDashboard), so the server only
- * needs to supply a sensible hydration fallback: each server's last-known usage
- * from the store. No sampling, no docker, no sleep — the live values arrive on
- * the first client poll and replace these within ~1s.
+ * Cheap, instant metrics for the initial server render. measureLocal() takes ~1.2s
+ * (a 1s network-delta window + a 200ms CPU sample + docker calls), which would
+ * block the Monitoring and Servers pages on every load.
  */
 /** Race a promise against a short deadline; rejects if it doesn't settle in time. */
 function withSpecTimeout<T>(p: Promise<T>, ms = 4000): Promise<T> {
@@ -280,18 +237,12 @@ function withSpecTimeout<T>(p: Promise<T>, ms = 4000): Promise<T> {
 
 /**
  * Fill in each server's hardware specs (cores / RAM / disk) for a STATIC render —
- * the Servers page shows capacity without polling. Stored specs are used as-is
- * (capacity is effectively static and {@link measureRemote} persists it); a
- * provisioned server that has never been measured (specs still 0) is measured
- * once here, best-effort, which also persists them for next time. Unprovisioned
- * servers and unreachable agents keep their zeros (the card shows "—").
+ * the Servers page shows capacity without polling.
  */
 export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
-  // A migration source is never measured: this dial happens INSIDE the page
-  // render, so a freshly registered one (specs still 0, which it always is - it is
-  // never polled) would put a multi-second round trip to another platform's box in
-  // front of every load of Settings → Servers. Its card shows "—", which is
-  // honest: we do not monitor that machine.
+  // A migration source is never measured: this dial happens INSIDE the page render,
+  // so a freshly registered one (specs still 0, which it always is - it is never
+  // polled) would put a multi-second round trip to another platform's box in front of
   const measurable = (s: Server) =>
     s.cpuCores === 0 && Boolean(s.agent?.certFingerprint) && !s.importOnly;
   if (!servers.some(measurable)) return servers;
@@ -300,10 +251,9 @@ export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
     servers.map(async (s) => {
       if (!measurable(s)) return s;
       try {
-        // Bound the one-time measure: this runs SYNCHRONOUSLY in the page render,
-        // so an unreachable provisioned host must degrade to "—" in a few seconds
-        // rather than holding SSR for the full 30s metrics deadline. The detached
-        // measure may still complete and persist specs for the next load.
+        // Bound the one-time measure: this runs SYNCHRONOUSLY in the page render, so an
+        // unreachable provisioned host must degrade to "—" in a few seconds rather than
+        // holding SSR for the full 30s metrics deadline.
         const m = await withSpecTimeout(measureRemote(s, expected));
         if (m.cpuCores <= 0) return s;
         return {
@@ -331,13 +281,9 @@ export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
     .filter((s) => !s.importOnly)
     .map((s) => ({
       serverId: s.id,
-      // Cheap hydration hint from the stored status; the first live poll replaces
-      // it. A not-yet-provisioned server has no agent and reports offline, exactly
-      // as metricsFor() would, keeping the card UI consistent.
-      //
-      // `warning` counts as up: the agent answered, it just can't reach Docker. It
-      // still serves metrics, so hydrating it as offline would blank the very host
-      // an operator opened this page to look at.
+      // Cheap hydration hint from the stored status; the first live poll replaces it. A
+      // not-yet-provisioned server has no agent and reports offline, exactly as
+      // metricsFor() would, keeping the card UI consistent.
       online:
         Boolean(s.agent?.certFingerprint) &&
         (s.status === "online" || s.status === "warning"),

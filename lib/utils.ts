@@ -23,15 +23,6 @@ export function timeAgo(input: Date | string | number): string {
 
 /**
  * How long a build took (or has been running), as `340ms` / `12s` / `2m 5s`.
- * Empty for a missing duration so a caller can render its own placeholder.
- *
- * Under a second the unit drops to milliseconds rather than collapsing to "0s":
- * an app that redeploys in a few hundred milliseconds took a real, reportable
- * amount of time, and rounding it away reads as "not measured".
- *
- * Rounds DOWN at every scale, because the same formatter feeds a timer that
- * ticks live while a build runs: a clock that shows "1s" 400ms in is lying, and
- * a finished build must not be able to report more time than it actually took.
  */
 export function formatBuildDuration(ms: number | null): string {
   if (ms == null) return "";
@@ -96,11 +87,6 @@ const COMMIT_PATH: Record<string, string> = {
  * The URL for a specific commit of an app's source, or `null` when there is
  * nothing linkable (no sha, or a host whose commit path we don't know - a plain
  * git server has no web UI to guess at).
- *
- * GitHub is resolved from the `owner/name` slug, so a plain-git source that
- * happens to point at github.com still links. Every other provider appends its
- * own path to the stored repository URL, which IS the browsable base.
- * Structural param so both `GitRepo` and a `{provider, repo}` projection fit.
  */
 export function repoCommitUrl(
   repo:
@@ -141,10 +127,8 @@ export function githubPullRequestUrl(
 
 /**
  * The `owner/name` slug of a project's GitHub repo, or null when it isn't on
- * GitHub. Handles the GitHub-App source (provider "github", `repo` already the
- * slug) AND a plain-git source whose URL happens to be on github.com (https or
- * `git@` SSH form). Strips a trailing `.git`/slash so the commit URL never
- * doubles up (`owner/name.git` / `owner/name/` → `owner/name`).
+ * GitHub. Strips a trailing `.git`/slash so the commit URL never doubles up
+ * (`owner/name.git` / `owner/name/` → `owner/name`).
  */
 function githubRepoSlug(repo: {
   provider?: string | null;
@@ -165,14 +149,7 @@ function githubRepoSlug(repo: {
 
 /**
  * Whether a project deploys its own docker-compose stack rather than a single
- * built/pulled image. `compose` is authoritative; the legacy heuristic (a
- * stored compose with no repo/image) catches template services created before
- * the `compose` source existed. An "upload" source is always a single-image
- * build, so it is excluded even if a stale compose lingers from a former source
- * (setAppUpload nulls repo/image but keeps compose for switching back).
- *
- * One source of truth so the deploy pipeline (runDeployment, rerouteApp)
- * and the settings UI can never disagree about whether a project is a stack.
+ * built/pulled image.
  */
 export function usesComposeStack(project: {
   source: string;
@@ -191,20 +168,8 @@ export function usesComposeStack(project: {
 }
 
 /**
- * Whether an App's deploys MINT AN IMAGE Deplo owns - the one condition a
- * Rollback rests on, and the mirror of the branch `runDeployment` takes.
- *
- * True only for a source Deplo builds: a repository or an uploaded archive. A
- * compose stack has no single image (each service brings its own), and a prebuilt
- * `docker-image` source is a mutable registry tag with nothing pinned behind it,
- * so "back" would land on whatever that tag points at today.
- *
- * It has to be asked of the app AS IT IS NOW, not of the deployment: an app that
- * used to build from git and has since been switched to a compose stack still has
- * old rows carrying an `image_ref`, and `runDeployment` would take its compose
- * branch and quietly redeploy the current stack while the row claimed to be a
- * rollback. One predicate, shared by the list, the detail page and the gate, so
- * none of the three can offer what the pipeline would not honour.
+ * Whether an App's deploys MINT AN IMAGE Deplo owns - the one condition a Rollback
+ * rests on, and the mirror of the branch `runDeployment` takes.
  */
 export function appBuildsItsOwnImage(project: {
   source: string;
@@ -222,12 +187,8 @@ export function appBuildsItsOwnImage(project: {
 
 /**
  * What KIND of thing an App is, in one short human phrase — the contextual
- * subtitle its management header falls back to when the App has no domain
- * linked (and therefore no URL to show in that slot). Deliberately coarse: it
- * answers "what am I looking at", not "where does the code come from" (that is
- * {@link deploySourceLabel} / `describeAppSource`, shown on the Overview). The
- * only distinction worth drawing here is single-container vs. multi-service,
- * because that is the one that changes what the rest of the UI does.
+ * subtitle its management header falls back to when the App has no domain linked
+ * (and therefore no URL to show in that slot).
  */
 export function appTypeLabel(app: {
   source: string;
@@ -239,19 +200,9 @@ export function appTypeLabel(app: {
 }
 
 /**
- * Which GitHub App the repo picker opens on.
- *
- * For a NEW app (`initial` undefined - no repo chosen yet) the first connected
- * App is a fine starting point: nothing is asserted, and the user is about to
- * choose one anyway. For an app that ALREADY has a repo, falling back to the
- * first App DRAWS A CONNECTION THE APP DOES NOT HAVE - an imported app carries a
- * repo with no installation, and a re-installed App re-keys the row this used to
- * point at. Both then READ as linked while `resolveCloneUrl` takes its third
- * branch and clones anonymously, which is how an app ends up failing to deploy
- * from a repository the UI says it is connected to.
- *
- * Empty string instead: the picker says "not connected", which is the truth, and
- * a credential the user never chose cannot be stitched onto a save.
+ * Which GitHub App the repo picker opens on. For a NEW app (`initial` undefined -
+ * no repo chosen yet) the first connected App is a fine starting point: nothing is
+ * asserted, and the user is about to choose one anyway.
  */
 export function pickerInstallationId(
   initial: { installationId?: string | null } | undefined,
@@ -265,16 +216,6 @@ export function pickerInstallationId(
 
 /**
  * Whether an App claims a git credential it does not have.
- *
- * `source: "github"` means "clone through a connected GitHub App". With no
- * installation stored the row contradicts itself: the deploy will clone
- * anonymously, which fails on a private repository and cannot receive a webhook
- * either (both webhook routes find apps BY the credential id).
- *
- * A bare "Repository URL" with no connection is NOT this. Cloning a public repo
- * anonymously is exactly what that source is for, so widening this to "no
- * credential" would flag apps that deploy perfectly well - and a warning on a
- * healthy app is what teaches people to ignore the warning.
  */
 export function repoCredentialMissing(app: {
   source: string;
@@ -290,20 +231,16 @@ export function repoCredentialMissing(app: {
 
 /**
  * The host-global docker volume name for a single-container project's named
- * volume. A volume name is GLOBAL on the daemon (like container_name was —
- * compose strips it to avoid collisions) and the host is shared across teams,
- * so it MUST be namespaced per project. Derived from the slug at render time
- * (never stored) so a rename can't orphan data and `name` stays a label.
+ * volume. Derived from the slug at render time (never stored) so a rename can't
+ * orphan data and `name` stays a label.
  */
 export function hostVolumeName(slug: string, name: string): string {
   return `deplo-${slug}-${name}`;
 }
 
 /**
- * Validate a user-typed colour without throwing — accepts `#rgb`/`#rrggbb`
- * (with or without the leading `#`, any case). Used for live client-side input
- * validation; {@link normalizeHexColor} is the throwing, normalising sibling
- * used at the trust boundary (the data layer).
+ * Validate a user-typed colour without throwing — accepts `#rgb`/`#rrggbb` (with
+ * or without the leading `#`, any case).
  */
 export function isHexColor(input: string): boolean {
   return /^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(input.trim());
@@ -311,9 +248,7 @@ export function isHexColor(input: string): boolean {
 
 /**
  * Normalise a colour to a canonical lowercase `#rrggbb`, expanding the `#rgb`
- * shorthand and tolerating a missing `#`. Throws on anything that is not a valid
- * hex colour, so callers can persist the result verbatim and every stored colour
- * is the same shape (cheap parsing in {@link readableTextColor}).
+ * shorthand and tolerating a missing `#`.
  */
 export function normalizeHexColor(input: string): string {
   const raw = input.trim().replace(/^#/, "").toLowerCase();
@@ -331,11 +266,8 @@ export function normalizeHexColor(input: string): string {
 }
 
 /**
- * Pick the readable foreground (`#000000` or `#ffffff`) for text/icons placed on
- * a solid `hex` background — automatic contrast. Uses the WCAG relative
- * luminance with the 0.179 crossover (the luminance at which black and white
- * text have equal contrast), so a folder's chosen colour never produces an
- * unreadable label. Defensive: an unparseable colour falls back to dark text.
+ * Pick the readable foreground (`#000000` or `#ffffff`) for text/icons placed on a
+ * solid `hex` background — automatic contrast.
  */
 export function readableTextColor(hex: string): "#000000" | "#ffffff" {
   // Parse defensively (no throwing): tolerate a missing `#`, any case, and the
@@ -386,11 +318,7 @@ export function shortId(length = 8): string {
 
 /**
  * A client-side password suggestion for the "Generate" affordance on the create-
- * database form. Drawn from an alphabet that is safe both inside a connection-
- * string URL and a compose env-file (no `@ / : ? # % $ \ ` [ ] `, no whitespace),
- * so it always passes the server's `assertPasswordSafe`. Not the server's
- * `randomToken` (that is server-only) — this is only a suggestion the user can
- * edit; the value is validated server-side on create regardless.
+ * database form.
  */
 export function generatePassword(length = 20): string {
   const alphabet =
@@ -402,11 +330,8 @@ export function generatePassword(length = 20): string {
 }
 
 /**
- * A path this app may send the browser back to after a detour off-site (the
- * GitHub App manifest flow) or off-page (Settings → Git). Answers `null` for
- * anything that is not a plain in-app route, so a return address can never
- * become an open redirect: an absolute URL, a protocol-relative `//host`, a
- * backslash Windows-style `/\host`, or an API route nobody should land on.
+ * A path this app may send the browser back to after a detour off-site (the GitHub
+ * App manifest flow) or off-page (Settings → Git).
  */
 export function safeReturnPath(raw: string | null | undefined): string | null {
   const p = raw?.trim();

@@ -8,9 +8,7 @@ import {
 /**
  * Pure capability/role helpers with no server-only or request-context deps, so
  * they are safe to import from the store hydration path (migrations) and from
- * client components (the role editor) alike. The request-aware authorization
- * helpers live in `lib/membership.ts`; the capability catalog (labels,
- * descriptions, categories, search) lives in `lib/capabilities.ts`.
+ * client components (the role editor) alike.
  */
 
 export {
@@ -27,12 +25,6 @@ export {
 
 /**
  * Capability sets the three built-in roles are born with.
- *
- * Member and Viewer are written as the expansion of what they granted when
- * capabilities were coarse, so the split changed nobody's access: Member is
- * exactly the old `deploy` + `manage_domains` + `manage_env` + `manage_files`,
- * spelled out. An admin who wants a tighter Member edits it — that is the point
- * of the roles page.
  */
 export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
   owner: [...ALL_CAPABILITIES],
@@ -50,10 +42,6 @@ export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
  * Build a preset from the coarse names it used to be, through the MIGRATION's
  * mapping — so a team that never touched its Member or Viewer role comes out of
  * the split matching its preset exactly, and reads as unmodified.
- *
- * Deliberately not {@link expandLegacyCapabilities}, which answers the other
- * question ("what does this name mean as INPUT today", where `view` is just the
- * floor). Here the question is "what did this role already grant".
  */
 function presetOf(...legacy: string[]): Capability[] {
   const set = new Set(
@@ -91,13 +79,7 @@ export const BUILTIN_ROLE_KEYS: Role[] = ["owner", "member", "viewer"];
 
 /**
  * Intersect `caps` with `bound`, in canonical {@link ALL_CAPABILITIES} order and
- * de-duplicated. The one way a capability set is ever narrowed by another: a
- * folder grant clamped to the grantee's live team caps, and an API token's own
- * set clamped to what its creator can still do. Pure.
- *
- * Lives here rather than beside either caller because both need it and
- * `lib/membership.ts` cannot import `lib/data/folder-access.ts` (which imports
- * `lib/membership.ts`).
+ * de-duplicated.
  */
 export function boundedBy(
   caps: Capability[],
@@ -109,21 +91,9 @@ export function boundedBy(
 }
 
 /**
- * The capabilities that can mean anything INSIDE a single Project.
- *
- * An API token limited to a set of Projects is intersected with this on top of
- * its own set, so the twenty-two team-wide ones fall away with no extra gate:
- * there is no per-project version of "manage members", "manage roles",
- * "manage the team's registries" or "delete the team", and `databases` carries
- * no `project_id` at all, so no database capability can be scoped either.
- *
- * `move_apps` is deliberately absent even though it is app-shaped: its own
- * description is "move an app into a folder, project or another team", which is
- * a token editing its own boundary. Dropping it closes moveAppToFolder,
- * moveAppToProject, moveAppToEnvironment and transferAppToTeam at once.
- *
- * Folder capabilities are absent for a simpler reason: a Folder never lives
- * inside a Project, so a project-scoped token has no folder story.
+ * The capabilities that can mean anything INSIDE a single Project. Folder
+ * capabilities are absent for a simpler reason: a Folder never lives inside a
+ * Project, so a project-scoped token has no folder story.
  */
 export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "view",
@@ -136,11 +106,9 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "configure_apps",
   "delete_apps",
   "open_app_console",
-  // A cron job hangs off ONE app, so it is meaningful inside a Project - and it
-  // sits next to `open_app_console` for the same reason it does everywhere else:
-  // both are "run a command in this container", one at a keystroke and one on a
-  // timer. Including it is also what makes the per-app grant (ADR-0016) the
-  // 0080 backfill writes reachable from the UI.
+  // A cron job hangs off ONE app, so it is meaningful inside a Project - and it sits
+  // next to `open_app_console` for the same reason it does everywhere else: both are
+  // "run a command in this container", one at a keystroke and one on a timer.
   "manage_crons",
   "manage_domains",
   "manage_basic_auth",
@@ -160,23 +128,8 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
 ];
 
 /**
- * The capabilities that may be handed out ON A SINGLE NODE — an App, a Folder or
- * a Project container (ADR-0016). A node grant REPLACES the team role's set
- * inside that node and may exceed it, so this list is what stops one from ever
- * becoming a route back to team administration: `manage_members`, `manage_roles`,
- * `manage_team`, `delete_team`, `manage_tokens`, `manage_registries`,
- * `manage_git`, `manage_backup_destinations`, `manage_notifications`, `manage_environments`, the
- * folder/project CRUD verbs and every database capability are all absent, so a
- * grant can never satisfy the last-admin check, mint a credential, or re-share.
- *
- * It is {@link PROJECT_SCOPED_CAPABILITIES} plus three, and the difference is
- * deliberate rather than an oversight:
- *  - `move_apps` — dropped for a TOKEN because moving an app is a token editing
- *    its own boundary. A person is not their own boundary, and `folders.ts`
- *    already gates the move per folder for humans.
- *  - `organize_folders` / `delete_folders` — a folder-shaped verb has no meaning
- *    for a project-scoped token (a folder never lives in a project), but it is
- *    the whole point of handing someone one corner of the fleet.
+ * The capabilities that may be handed out ON A SINGLE NODE — an App, a Folder or a
+ * Project container (ADR-0016).
  */
 export const NODE_GRANTABLE_CAPABILITIES: Capability[] =
   ALL_CAPABILITIES.filter(
@@ -248,13 +201,6 @@ export function capabilitiesForRole(role: Role): Capability[] {
 
 /**
  * Sanitize an arbitrary capability list to known values, always implying `view`.
- * An empty/absent list falls back to the role's preset. Shared by the
- * add-member, invite and registration-link flows so every membership is seeded
- * with a coherent, validated capability set.
- *
- * A list still using one of the original eight coarse names (an API client, a
- * saved script) is expanded to the permissions that name used to imply, so it
- * keeps meaning exactly what it meant before the split.
  */
 export function cleanCapabilities(
   caps: Capability[] | undefined,

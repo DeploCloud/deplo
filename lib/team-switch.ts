@@ -1,17 +1,5 @@
 /**
  * Where the dashboard should land when the ACTIVE TEAM changes.
- *
- * Switching teams used to always drop the viewer on the Overview, which throws
- * away where they were even though most of the dashboard is the same page in
- * every team: Storage, Variables, Templates, Deployments, Logs,
- * Monitoring, Members, Activity and Settings are *sections*, not rows — the
- * team only decides what they list. Leaving those is the exception, not the
- * rule.
- *
- * So the rule is: stay put, unless the URL names a specific team-owned resource
- * (an App, a Database, a Project) — that row belongs to the team just left and
- * has no counterpart in the new one, so fall back to the nearest section page,
- * the same destination that section's "back" nav entry uses.
  */
 
 /**
@@ -33,9 +21,7 @@ const RESOURCE_ROUTES: ReadonlyArray<{ base: string; fallback: string }> = [
 
 /**
  * The path to navigate to after switching the active team, given the path the
- * viewer is on. Always returns a path with NO query string: search params carry
- * filters and selections (`?project=`, `?folder=`, `?template=`, `?repo=`) that
- * name rows of the team being left.
+ * viewer is on.
  */
 export function teamSwitchDestination(pathname: string): string {
   const path = pathname.split("?")[0].split("#")[0] || "/";

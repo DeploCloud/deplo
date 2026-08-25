@@ -7,24 +7,9 @@ import {
 } from "node:crypto";
 
 /**
- * A software WebAuthn authenticator, for tests.
- *
- * Everything else about passkeys can be tested by seeding a row; the CEREMONY
- * cannot, and it is where most of the configuration lives. Whether `origin` and
- * `rpID` are right, whether the challenge cookie survives the round trip,
- * whether deplo's `userVerified` guard actually fires, whether the replay
- * counter is written back - none of that is provable without a credential that
- * produces real signatures over real challenges. Driving a browser is not an
- * option in this harness, so the authenticator is the thing that gets simulated.
- *
- * It implements only what `@simplewebauthn/server` needs to accept: ES256 keys,
- * `fmt: "none"` attestation, and the flag bits deplo asks for. That is a
- * deliberate floor - this is not a conformance implementation, and it should
- * never grow into one. If a test needs a shape this does not produce, the honest
- * move is usually that the test is asking for something a real device would not
- * do either.
- *
- * Not named `*.test.ts`, so the `node --test` glob skips it.
+ * A software WebAuthn authenticator, for tests. Everything else about passkeys can
+ * be tested by seeding a row; the CEREMONY cannot, and it is where most of the
+ * configuration lives.
  */
 
 /* ------------------------------------------------------------------ */
@@ -32,12 +17,8 @@ import {
 /* ------------------------------------------------------------------ */
 
 /**
- * Only the four shapes an attestation object and a COSE key are made of:
- * unsigned ints, negative ints, byte strings, text strings and maps. Written out
- * rather than pulled from a library because the library in question
- * (`@levischuck/tiny-cbor`) is a transitive dependency of the verifier being
- * tested, and a test that shares its dependencies with the thing under test can
- * agree with it about something they are both wrong about.
+ * Only the four shapes an attestation object and a COSE key are made of: unsigned
+ * ints, negative ints, byte strings, text strings and maps.
  */
 function head(major: number, n: number): Buffer {
   const tag = major << 5;
@@ -220,10 +201,8 @@ export function makeAuthenticator(): Authenticator {
       state.counter += 1;
       const cdj = clientData("webauthn.get", challenge, origin);
       const ad = authData(rpId, flags, state.counter);
-      // The assertion signs the authenticator data concatenated with the HASH of
-      // the client data - not the client data itself. Getting this wrong is the
-      // classic way a hand-rolled authenticator "works" against a verifier that
-      // is also wrong.
+      // The assertion signs the authenticator data concatenated with the HASH of the
+      // client data - not the client data itself.
       const signed = Buffer.concat([
         ad,
         createHash("sha256").update(cdj).digest(),

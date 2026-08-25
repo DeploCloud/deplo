@@ -7,7 +7,7 @@ import type {
 
 /**
  * Per-CONTAINER (per-app / per-database) metrics HISTORY — the sibling of {@link
- * import(".
+ * import("./history")} for the Monitoring TAB on an app or database page.
  */
 
 /** Keep samples this far back — the largest chart window (15m) plus slack. */

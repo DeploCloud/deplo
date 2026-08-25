@@ -69,13 +69,6 @@ export function normalizePreferredHost(raw: string | null | undefined): string {
 /**
  * Whether a caller-supplied hostname is a CLAIM on a name — the thing
  * `manage_domains` exists to gate.
- *
- * `domains.name` is unique instance-wide, so registering a real hostname takes
- * it away from every other team. Two kinds of value are NOT a claim and must not
- * drag the permission onto the first-run path: one of Deplo's own generated
- * `…-<hexip>.nip.io` hosts (a template bakes them in /new, and nobody else can
- * want one), and anything that is not a hostname at all — `ensureAutoDomain`
- * drops those and generates a nip.io instead, so nothing is claimed.
  */
 export function isHostnameClaim(raw: string | null | undefined): boolean {
   const host = normalizePreferredHost(raw);
@@ -97,44 +90,24 @@ export function __resetDnsResolve4ForTest(): void {
   dnsResolve4 = resolve4;
 }
 
-/** A per-domain port override applies to every project: on a single-image
- * project it picks the container port this host routes to; on a compose stack it
- * overrides the chosen `service`'s compose-declared port (blank ⇒ the service's
- * own port). The deploy path threads it through for both. */
+/**
+ * A per-domain port override applies to every project: on a single-image project
+ * it picks the container port this host routes to; on a compose stack it overrides
+ * the chosen `service`'s compose-declared port (blank ⇒ the service's own port).
+ */
 
-/** A `service` is the compose analogue of the single-image `port` override: it
+/**
+ * A `service` is the compose analogue of the single-image `port` override: it
  * picks which compose service a hostname routes to (the port defaults to that
- * service's compose definition, or the per-domain `port` when set). It is
- * meaningless on a single-image project, which has exactly one container — reject
- * it there rather than persist an inert value the UI would falsely report as
- * applied. */
+ * service's compose definition, or the per-domain `port` when set).
+ */
 const SERVICE_UNSUPPORTED =
   "Picking a container is only available for compose stacks — a single-image app has exactly one, so use the container port field.";
 
 /**
- * Refuse a hostname an app in ANOTHER TEAM already routes.
- *
- * The stored uniqueness is `(name, coalesce(path_prefix,''))`, not `name`, so
- * that one team can serve `app.com` on `/` and `app.com` on `/api` from two
- * apps. That is a real feature and it stays. What it also allowed, until this
- * check, was a DIFFERENT team attaching `victim.com` on a path of their choosing
- * to an app of their own - and every step after that lands by itself:
- *
- *  - `servers.all_teams` defaults to true, so the attacker can put their app on
- *    the very host the victim's app runs on;
- *  - the victim's DNS already points there (it has to, for their own app), so
- *    {@link checkDomainDns} answers `valid` and the row is routable at once;
- *  - `traefikRouterLabels` pins a path router ABOVE the whole-host router on
- *    purpose (see PATH_PRIORITY_BASE), so the new route WINS for that path.
- *
- * The result is same-origin content under someone else's hostname: cookies,
- * phishing, a service worker, and a certificate order for a name that is not
- * theirs. The team boundary is therefore the cut, not the app: inside one team a
- * shared hostname is collaboration, across two it is a takeover.
- *
- * Says "another team" and nothing more. Which team, which app and which path are
- * none of the caller's business, and the hostname's existence is already public
- * in DNS.
+ * Refuse a hostname an app in ANOTHER TEAM already routes. The stored uniqueness
+ * is `(name, coalesce(path_prefix,''))`, not `name`, so that one team can serve
+ * `app.com` on `/` and `app.com` on `/api` from two apps.
  */
 async function assertHostnameNotAnotherTeams(
   name: string,
@@ -154,30 +127,6 @@ async function assertHostnameNotAnotherTeams(
 
 /**
  * Refuse a PREVIEW BASE DOMAIN that lives under a hostname another team routes.
- *
- * `assertHostnameNotAnotherTeams` guards the `domains` table, and a preview host
- * never goes in it: `previewHost` builds `<slug>-pr-<n>.<base>` straight into a
- * Traefik router, with `certProvider: "letsencrypt"` by default. So a team that
- * set its base to somebody else's domain got routers - and ACME orders - under a
- * name that is not theirs, which is the takeover the domains guard closes, one
- * level down.
- *
- * BOTH directions of the zone count, because a preview host is
- * `<slug>-pr-<n>.<base>` and lands in whoever's zone `<base>` sits in:
- *
- *  - the victim serves `victim.com` and the base IS `victim.com` (or anything
- *    under it, `preview.victim.com`) - the previews land in their zone;
- *  - the victim serves `app.victim.com` and the base is `victim.com` - the
- *    previews land ABOVE it, in the same zone, on the same wildcard record.
- *
- * Equal, ancestor or descendant: one team's claim. Inside one team nothing
- * changes - pointing previews at a domain you already serve is the normal setup -
- * and a name that merely ENDS WITH another (`notvictim.com`) is a different
- * hostname, so the comparison is on label boundaries, never a bare suffix.
- *
- * Every domain row is read rather than narrowed by a `LIKE`: the ancestor
- * direction has no usable prefix, this runs once on a settings save, and a
- * hostname list is small.
  */
 export async function assertPreviewBaseNotAnotherTeams(
   base: string,
@@ -200,11 +149,6 @@ export async function assertPreviewBaseNotAnotherTeams(
     );
 }
 
-/** True if any project already owns this exact hostname (global uniqueness —
- * the `domains_name_pathprefix_uq` index is on (name, path) rather than on name
- * alone, so this is the stricter, hostname-only pre-check the generators use to
- * regenerate instead of colliding. Cross-team refusal for a hostname a USER
- * typed lives in {@link assertHostnameNotAnotherTeams}). */
 async function domainNameExists(name: string): Promise<boolean> {
   const hit = await getDb()
     .select({ id: domainsTable.id })
@@ -216,11 +160,7 @@ async function domainNameExists(name: string): Promise<boolean> {
 
 /**
  * A generated nip.io hostname for `label` on `ip` whose `adjective-animal` words
- * don't collide with ANY existing domain (global uniqueness). Regenerates the
- * word pair until the candidate is free, bounded so a saturated namespace can't
- * loop forever (~427k word pairs make a real collision astronomically unlikely;
- * the bound is a safety valve, not an expected path). The `domains.name` unique
- * index remains the hard backstop against a concurrent same-name insert.
+ * don't collide with ANY existing domain (global uniqueness).
  */
 export async function uniqueAutoDomainName(
   label: string,
@@ -236,13 +176,9 @@ export async function uniqueAutoDomainName(
 }
 
 /**
- * Ensure a project has a registered primary domain and return its hostname.
- *
- * Runs without an authenticated user (the deploy pipeline is fire-and-forget),
- * so it talks to the store directly. If a `preferred` name is given (e.g. the
- * domain a template baked into its env), it is used as-is; otherwise the
- * nip.io hostname for the slug is generated. The first domain on a project is
- * marked primary. Idempotent: returns the existing primary if one exists.
+ * Ensure a project has a registered primary domain and return its hostname. If a
+ * `preferred` name is given (e.g. the domain a template baked into its env), it is
+ * used as-is; otherwise the nip.io hostname for the slug is generated.
  */
 export async function ensureAutoDomain(
   appId: string,
@@ -266,12 +202,9 @@ export async function ensureAutoDomain(
   const existing = await loadDomainsForApp(appId);
   const primary = existing.find((d) => d.primary) ?? existing[0];
   if (primary) {
-    // Self-heal an auto-generated nip.io domain that still encodes a stale or
-    // loopback IP (e.g. created before DEPLO_SERVER_IP was set), so a corrected
-    // IP takes effect on the next deploy without the operator deleting the
-    // domain by hand. Only the hex IP label is rewritten — the words are kept,
-    // so the host stays recognisably the same project's. Only auto domains are
-    // touched, and never rewritten toward a loopback address.
+    // Self-heal an auto-generated nip.io domain that still encodes a stale or loopback
+    // IP (e.g. created before DEPLO_SERVER_IP was set), so a corrected IP takes effect
+    // on the next deploy without the operator deleting the domain by hand.
     if (
       primary.source === "auto" &&
       isIpv4(opts.ip) &&
@@ -292,10 +225,10 @@ export async function ensureAutoDomain(
     return primary.name;
   }
 
-  // A template-baked `preferred` host is honored as-is UNLESS it already belongs
-  // to another project (a re-used template domain, or a regenerate-after-delete
-  // that drew the same words) — in which case fall back to a freshly-generated
-  // unique host. Absent a preferred, generate a globally-unique one.
+  // A template-baked `preferred` host is honored as-is UNLESS it already belongs to
+  // another project (a re-used template domain, or a regenerate-after-delete that
+  // drew the same words) — in which case fall back to a freshly-generated unique
+  // host.
   const preferred = normalizePreferredHost(opts.preferred) || undefined;
   // Only honor a preferred host that is one of our OWN generated nip.io hosts or
   // at least a syntactically valid hostname; a garbage value is dropped and a
@@ -307,25 +240,15 @@ export async function ensureAutoDomain(
     preferredOk && !(await domainNameExists(preferred!))
       ? preferred!
       : await uniqueAutoDomainName(opts.slug, opts.ip);
-  // Our own generated nip.io hosts point at the server IP by construction, so
-  // they are born routable ("valid"). A caller-supplied CUSTOM host must NOT be
-  // trusted as valid on sight — that would let a create squat or capture another
-  // team's hostname on the shared server — so derive its status from DNS
-  // (pending until it actually resolves to this server), exactly like addDomain.
+  // Our own generated nip.io hosts point at the server IP by construction, so they
+  // are born routable ("valid").
   const status =
     nipEmbeddedIp(name) != null
       ? ("valid" as const)
       : await checkDomainDns(name, opts.ip);
-  // Born WITHOUT a certificate unless the caller opted in: an absent stored
-  // provider reads as letsencrypt at the deploy edge (pre-field back-compat),
-  // so the default must be stored explicitly, never left off. Only mark ssl when
-  // the host is actually routable, so we don't try to issue a cert for a pending
-  // (unverified) custom host.
-  //
-  // The one automatic opt-in is a caller-supplied CUSTOM host the check above
-  // found PROXIED: Cloudflare already serves it over HTTPS, so it is born with
-  // the `cloudflare` provider rather than cert-less (see certProviderForDns).
-  // Our own generated nip.io hosts are never proxied, so they keep the default.
+  // Born WITHOUT a certificate unless the caller opted in: an absent stored provider
+  // reads as letsencrypt at the deploy edge (pre-field back-compat), so the default
+  // must be stored explicitly, never left off.
   const certProvider = certProviderForDns(status, opts.certProvider ?? "none");
   const domain: Domain = {
     id: newId("dom"),
@@ -338,10 +261,8 @@ export async function ensureAutoDomain(
       certProvider !== "none" &&
       (status === "valid" || status === "cloudflare"),
     source: "auto",
-    // Always born complete: the resolved container port (and, on a compose
-    // stack, the service it routes to) so no auto domain is ever portless or
-    // appless. These equal the project's default expose/build port, so the
-    // compose renderer treats them as the default route (byte-identical YAML).
+    // Always born complete: the resolved container port (and, on a compose stack, the
+    // service it routes to) so no auto domain is ever portless or appless.
     port: opts.defaultPort,
     ...(opts.defaultApp ? { service: opts.defaultApp } : {}),
     certProvider,
@@ -354,17 +275,6 @@ export async function ensureAutoDomain(
 /**
  * Ensure a secondary (non-primary) domain is registered for a project, e.g. the
  * extra hostnames a multi-domain template exposes (garage-with-ui's web UI).
- * Runs without an authenticated user (called from createApp, alongside the
- * primary auto domain). Registered ONCE at creation — never on a deploy — so a
- * deleted extra is never resurrected. Idempotent: a same-named domain on THIS
- * project is left as-is (so a creation retry won't duplicate it) — except the
- * app's own PRIMARY, which regenerates instead of no-oping (see below).
- *
- * The template-supplied `rawName` is honored when it's globally free. If it
- * already belongs to another project (two extras drew the same random words, or
- * a re-used template host), a fresh globally-unique host is generated from the
- * project's slug + service + `ip` instead — so a word collision regenerates
- * rather than silently dropping the domain.
  */
 export async function ensureExtraDomain(
   appId: string,
@@ -381,12 +291,7 @@ export async function ensureExtraDomain(
   const clean = normalizePreferredHost(rawName);
   if (!clean || !DOMAIN_RE.test(clean)) return;
   const existing = await loadDomainsForApp(appId);
-  // Already on this project (idempotent re-run) ⇒ nothing to do. The app's own
-  // PRIMARY is NOT that case: a template that marks a non-first
-  // `[[config.domains]]` entry `primary = true` leaves the displaced entry still
-  // declaring the generated main host, which the primary now owns — that
-  // service needs an address of its own, not a silent no-op, so it falls
-  // through to the regenerate branch below.
+  // Already on this project (idempotent re-run) ⇒ nothing to do.
   if (existing.some((d) => d.name === clean && !d.primary)) return;
   // Honor the template host when globally free; otherwise regenerate a unique
   // one (labelled by slug + service so it stays recognizable) rather than skip.
@@ -435,24 +340,9 @@ export interface ImportedRoute {
 }
 
 /**
- * Re-host the routes an import could not keep the address of, and answer with
- * the addresses they landed on (`sourceHost` -> the new hostname).
- *
- * An app that answered on two addresses over there must answer on two here. The
- * old names cannot come across - the source's throwaway hosts carry ITS server's
- * IP, and a real name may already be another team's - but the routes are real,
- * so each one is put on a temporary address Deplo mints and keeps everything
- * else: port, service, path, strip, entrypoint, certificate.
- *
- * ONE new host per SOURCE host, not per row. Two rows that shared `x.sslip.io`
- * for `/` and `/api` were one address with two routes, and they stay one address
- * with two routes - splitting them would hand back a topology the app never had.
- *
- * Ungated on purpose, and the same purpose `ensureExtraDomain` has: the names
- * minted here are Deplo's own `…-<hexip>.nip.io` hosts, which `isHostnameClaim`
- * exempts because nobody else can want one. The authority to create them was
- * already established when the app was created; nothing here takes a name away
- * from anyone.
+ * Re-host the routes an import could not keep the address of, and answer with the
+ * addresses they landed on (`sourceHost` -> the new hostname). An app that
+ * answered on two addresses over there must answer on two here.
  */
 export async function addImportedDomains(
   appId: string,
@@ -520,13 +410,8 @@ export async function addImportedDomains(
 }
 
 /**
- * Put an imported route onto a domain row that already exists - the app's
- * primary, which `createApp` minted before the import could say what it should
- * answer on.
- *
- * The same act as {@link addImportedDomains} and ungated for the same reason:
- * the row is Deplo's own generated host, and this only decides which port,
- * service and path it serves.
+ * Put an imported route onto a domain row that already exists - the app's primary,
+ * which `createApp` minted before the import could say what it should answer on.
  */
 export async function applyImportedRoute(
   domainId: string,
@@ -549,10 +434,6 @@ export async function applyImportedRoute(
 
 /**
  * Stop telling this app that its addresses changed.
- *
- * Clearing the provenance IS the dismissal: it exists for that one message, and
- * the import report keeps the permanent record of what became what. Gated like
- * every other write to a domain row.
  */
 export async function dismissImportedDomains(appId: string): Promise<void> {
   const { membership } = await requireAppCapability(appId, "manage_domains");
@@ -566,11 +447,9 @@ export async function dismissImportedDomains(appId: string): Promise<void> {
 }
 
 /**
- * The hostname of a project's current primary domain, or "" when the project
- * has no domains at all. Store-direct (no auth) for the deploy engine: the
- * production deploy routes to this host and NEVER resurrects a deleted auto
- * domain — an empty string means "deploy unrouted". Prefers the `primary`-flagged
- * row, falling back to the first domain (mirrors syncProductionUrl's choice).
+ * The hostname of a project's current primary domain, or "" when the project has
+ * no domains at all. Prefers the `primary`-flagged row, falling back to the first
+ * domain (mirrors syncProductionUrl's choice).
  */
 export async function primaryDomainName(appId: string): Promise<string> {
   return (await primaryDomainRow(appId))?.name ?? "";
@@ -594,11 +473,8 @@ export async function primaryDomainRow(appId: string): Promise<Domain | null> {
 }
 
 /**
- * The compose service the project's primary domain routes to, or "" when there
- * is none (single-image apps, or a project with no domains). Used to flag
- * the "exposed" instance for console ordering — the role the dropped
- * `project.expose.service` used to fill, now read from the authoritative
- * `domains` table.
+ * The compose service the project's primary domain routes to, or "" when there is
+ * none (single-image apps, or a project with no domains).
  */
 export async function primaryDomainApp(appId: string): Promise<string> {
   const domains = await loadDomainsForApp(appId);
@@ -624,10 +500,8 @@ export async function listDomains(
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
-  // A domain names its app and its hostname, so an app the caller can't reach
-  // (one inside a folder they can't see) contributes none. A narrowed principal
-  // is NOT exempt: `listApps` retracted that exemption, and a scope ticked onto
-  // an invisible folder would otherwise read every hostname inside it.
+  // A domain names its app and its hostname, so an app the caller can't reach (one
+  // inside a folder they can't see) contributes none.
   const reach = await appCapabilitiesForTeam(
     teamId,
     scopedApps.map((p) => ({
@@ -656,14 +530,10 @@ export async function listDomains(
     });
 }
 
-/** The per-domain routing config a user sets when adding a domain — the same
- * knobs the Edit dialog exposes (port, entrypoint, cert provider, middlewares).
- * All optional. An omitted `certProvider` means NO certificate (`none`): a cert
- * is only ever registered when explicitly requested — the one exception being a
- * host the add-time DNS check finds proxied through Cloudflare, which is served
- * over HTTPS by Cloudflare already and so is stored as `cloudflare`
- * ({@link certProviderForDns}). (Only rows created BEFORE the field existed read
- * an absent stored provider as letsencrypt.) */
+/**
+ * The per-domain routing config a user sets when adding a domain — the same knobs
+ * the Edit dialog exposes (port, entrypoint, cert provider, middlewares).
+ */
 export interface DomainConfig {
   port?: number | null;
   entrypoint?: DomainEntrypoint;
@@ -739,31 +609,21 @@ export async function addDomain(
   const existing = await loadDomainsForApp(appId);
   const isFirst = existing.length === 0;
   // A path-routed row is a SECOND row on a hostname that may already be verified
-  // (`app.com` for `/`, `app.com` for `/api`). DNS verification is a property of
-  // the HOSTNAME, not of the path — the new row resolves to exactly the same
-  // A/CNAME record the sibling already proved — so inherit the sibling's verified
-  // status instead of restarting at `pending`. Without this the new row is filtered
-  // out of `routableRoutes` (which only routes `valid`/`cloudflare`) and the path
-  // silently never routes until the user hunts down the Verify button.
+  // (`app.com` for `/`, `app.com` for `/api`).
   const sibling = existing.find(
     (d) =>
       d.name === clean && (d.status === "valid" || d.status === "cloudflare"),
   );
-  // No verified sibling ⇒ check DNS RIGHT NOW instead of parking the row at
-  // `pending` until someone finds the Verify button: a host whose record is
-  // already in place (a suggested nip.io domain, a pre-pointed custom domain)
-  // is born `valid`/`cloudflare` and the caller's routing re-apply makes it
-  // live in the same click — zero manual steps. A host that doesn't check out
-  // yet lands on `pending` (no record) or `misconfigured` (wrong address) and
-  // the domains page keeps re-checking it automatically.
+  // No verified sibling ⇒ check DNS RIGHT NOW instead of parking the row at `pending`
+  // until someone finds the Verify button: a host whose record is already in place (a
+  // suggested nip.io domain, a pre-pointed custom domain) is born
+  // `valid`/`cloudflare` and the caller's routing re-apply makes it live in the same
+  // click — zero manual steps.
   const status =
     sibling?.status ?? (await checkDomainDns(clean, await appServerIp(appId)));
-  // A host the check found PROXIED is served over HTTPS by Cloudflare, so it is
-  // born with the `cloudflare` provider instead of the cert-less default — the
-  // user never has to open Advanced settings to match what Cloudflare already
-  // does. An explicit `letsencrypt` (or a pre-existing sibling row's provider,
-  // which the caller passes back in) is left exactly as asked; see
-  // certProviderForDns for why this only ever fires out of `none`.
+  // A host the check found PROXIED is served over HTTPS by Cloudflare, so it is born
+  // with the `cloudflare` provider instead of the cert-less default — the user never
+  // has to open Advanced settings to match what Cloudflare already does.
   const certProvider = certProviderForDns(
     status,
     config.certProvider ?? "none",
@@ -776,15 +636,9 @@ export async function addDomain(
     primary: isFirst,
     redirectTo: null,
     ssl: sibling ? sibling.ssl : status === "valid" || status === "cloudflare",
-    // Always store a concrete port so no domain is ever portless. Compose
-    // already required one above; single-image falls back to the project's
-    // production port (build.port) — byte-identical to leaving it null, since
-    // the router resolves an absent port to build.port anyway.
+    // Always store a concrete port so no domain is ever portless.
     port: config.port ?? portFor(project),
     // Entrypoint persists only when the user picked it explicitly (manual mode).
-    // Absent ⇒ derived at deploy time by domainTlsConfig (websecure for TLS, web
-    // for the `none` provider). Storing it only when given keeps the auto/manual
-    // distinction round-trippable and a default domain byte-identical.
     ...(config.entrypoint ? { entrypoint: config.entrypoint } : {}),
     certProvider,
     ...(middlewares.length ? { middlewares } : {}),
@@ -799,10 +653,9 @@ export async function addDomain(
   // `primary` to the hostname that ends up serving the app.
   if (config.www && config.www !== "none")
     await applyWwwRedirect(domain, config.www, membership.teamId);
-  // The FIRST domain is the app's canonical URL from this second on (before it,
-  // the card reads "No domain yet"); a later one can still change the scheme of
-  // the fallback the app is showing. Cheap, and it keeps apps.production_url a
-  // faithful mirror of the domains table rather than a deploy-time snapshot.
+  // The FIRST domain is the app's canonical URL from this second on (before it, the
+  // card reads "No domain yet"); a later one can still change the scheme of the
+  // fallback the app is showing.
   await syncProductionUrl(appId);
   await recordActivity("domain", `Added domain ${clean}`, user.name, appId);
   return domain;
@@ -811,19 +664,7 @@ export async function addDomain(
 /**
  * Per-team Let's Encrypt quota: the whole fleet shares ONE ACME account/resolver,
  * so an uncapped tenant registering hundreds of letsencrypt subdomains would
- * exhaust the shared account's rate limit for every other team. Counts this
- * team's existing letsencrypt domains (across all its apps) and refuses past the
- * cap. A no-op for every other provider — including for a `www` companion that
- * inherits `none`/`cloudflare`, which registers no certificate at all.
- *
- * PULL REQUEST PREVIEWS COUNT TOO. A preview host is deliberately never a
- * `domains` row (ADR-0017 §5 — one there would be baked into the PRODUCTION
- * router's rule), which meant every preview on a base domain was an ACME order
- * this quota could not see. An app with previews on, a wildcard domain and
- * HTTPS mints one certificate per open pull request, forever, against the
- * shared account: exactly the exhaustion the cap exists to prevent, through the
- * one door it wasn't watching. Only OPEN previews are counted — a closed one's
- * certificate is not renewed.
+ * exhaust the shared account's rate limit for every other team.
  */
 async function assertTeamLetsencryptQuota(
   teamId: string,
@@ -859,11 +700,11 @@ async function assertTeamLetsencryptQuota(
   );
 }
 
-/** Normalise a router path prefix to its canonical stored form: trim, strip a
+/**
+ * Normalise a router path prefix to its canonical stored form: trim, strip a
  * pasted scheme/host, drop backticks (it is interpolated into a Traefik backtick
- * literal), force a single leading slash, drop a trailing slash. Empty or a bare
- * `/` ⇒ `""` (no path). One choke point so the data layer and the router grammar
- * (`normalizeRulePath`) agree on what a path looks like. */
+ * literal), force a single leading slash, drop a trailing slash.
+ */
 export function normalizePath(input?: string | null): string {
   let p = (input ?? "").trim();
   if (!p) return "";
@@ -876,9 +717,9 @@ export function normalizePath(input?: string | null): string {
     }
   }
   // Strip the backtick (the value is interpolated into a Traefik backtick literal
-  // inside a router rule) plus double-quotes and control characters (incl.
-  // newlines): the rule is emitted into a compose label, and although the label
-  // emitter now JSON-escapes, keeping these out preserves a clean rule grammar.
+  // inside a router rule) plus double-quotes and control characters (incl. newlines):
+  // the rule is emitted into a compose label, and although the label emitter now
+  // JSON-escapes, keeping these out preserves a clean rule grammar.
   p = p.replace(/[`"\u0000-\u001f]/g, "");
   if (!p.startsWith("/")) p = `/${p}`;
   p = p.replace(/\/+$/, "");
@@ -902,11 +743,12 @@ export function composeServiceNames(compose?: string | null): string[] {
   }
 }
 
-/** Validate + normalise a domain's chosen compose `service`: REQUIRED on a
- * compose stack (a domain must name the service it routes to — there is no
- * "default service"), must name a real service in that stack, and is rejected
- * (→ error) on single-image apps. Single-image returns null (no service).
- * Rejecting an unknown/absent service keeps an inert value from being persisted. */
+/**
+ * Validate + normalise a domain's chosen compose `service`: REQUIRED on a compose
+ * stack (a domain must name the service it routes to — there is no "default
+ * service"), must name a real service in that stack, and is rejected (→ error) on
+ * single-image apps.
+ */
 function resolveApp(
   raw: string | undefined,
   project: { compose: string | null },
@@ -933,12 +775,8 @@ export function normalizeMiddlewares(input?: string[] | null): string[] {
   for (const raw of input ?? []) {
     const m = raw.trim();
     if (!m || seen.has(m)) continue;
-    // A middleware name is emitted verbatim into a Traefik `middlewares=` label,
-    // which is rendered into the compose YAML. Restrict it to the characters a
-    // real Traefik middleware reference uses (name, optional `@provider`) so a
-    // crafted value can't carry quotes/newlines/`:` toward the renderer. The
-    // label emitter also JSON-escapes as a backstop, but rejecting here gives the
-    // user a clear error instead of a silently-broken router.
+    // A middleware name is emitted verbatim into a Traefik `middlewares=` label, which
+    // is rendered into the compose YAML.
     if (!/^[A-Za-z0-9._@-]+$/.test(m))
       throw new Error(`Invalid middleware name: ${m}`);
     seen.add(m);
@@ -966,29 +804,21 @@ export interface DomainPatch {
    * current value, so an untouched dropdown is a no-op). */
   www?: WwwRedirect;
   /**
-   * The entrypoint, expressed as a tri-state because the Edit dialog always
-   * sends the full routing config:
-   *   - a concrete value      → manual mode: store it
-   *   - `null`                → auto mode: delete it (derived at deploy time)
-   *   - absent (`undefined`)  → leave whatever is stored unchanged
-   * This lets the "set entrypoint manually" checkbox round-trip (auto persists
-   * as a genuinely-absent field) without colliding with "field not in this edit".
+   * The entrypoint, expressed as a tri-state because the Edit dialog always sends
+   * the full routing config: - a concrete value → manual mode: store it - `null` →
+   * auto mode: delete it (derived at deploy time) - absent (`undefined`) → leave
+   * whatever is stored unchanged This lets the "set entrypoint manually" checkbox
+   * round-trip (auto persists as a genuinely-absent field) without colliding with
+   * "field not in this edit".
    */
   entrypoint?: DomainEntrypoint | null;
 }
 
 /**
- * Apply a full edit to a domain — name, port override, entrypoint, cert
- * provider, middleware chain, path prefix (+strip), and compose service in one
- * mutation — and return the appId so the caller can re-apply routing (the
- * new Traefik labels only reach the running container once its stack file is
- * re-rendered). Renaming re-runs the same regex + normalisation as {@link
- * addDomain}; uniqueness is on (host + path) so one hostname can carry several
- * path-routed rows. A renamed `custom` domain drops back to `pending`/no-SSL
- * because the new host's DNS hasn't been verified against this server.
- * Per-domain ports stay unsupported on compose stacks (they pick a `service`
- * instead). Each optional routing field uses delete-when-empty so a cleared
- * value re-renders byte-identically to a domain that never had it.
+ * Apply a full edit to a domain — name, port override, entrypoint, cert provider,
+ * middleware chain, path prefix (+strip), and compose service in one mutation —
+ * and return the appId so the caller can re-apply routing (the new Traefik labels
+ * only reach the running container once its stack file is re-rendered).
  */
 export async function updateDomain(
   id: string,
@@ -1080,31 +910,20 @@ export async function updateDomain(
     next.stripPrefix = strip ? true : undefined;
   }
   if (patch.service !== undefined) next.service = nextApp ?? undefined;
-  // A renamed domain points at a new host whose DNS the stored status says
-  // nothing about — so check the NEW name right now, exactly like addDomain
-  // does: a pre-pointed host keeps routing across the rename with zero manual
-  // steps, an unpointed one drops to pending/misconfigured and stops routing
-  // until the automatic re-checks see it settle.
-  //
-  // Provenance buys NO exemption. The generated nip.io host is the row most
-  // people rename (on a fresh app it is the only row there is), and skipping the
-  // check for `source: "auto"` left a hostname the user typed sitting on the
-  // nip.io row's inherited `valid` + ssl: green badge, routed, and never
-  // corrected — the domains page only re-checks unsettled rows and Verify hides
-  // itself on a valid one. Status is a fact about the hostname, not about who
-  // first put it there.
+  // A renamed domain points at a new host whose DNS the stored status says nothing
+  // about — so check the NEW name right now, exactly like addDomain does: a
+  // pre-pointed host keeps routing across the rename with zero manual steps, an
+  // unpointed one drops to pending/misconfigured and stops routing until the
+  // automatic re-checks see it settle.
   if (renamed) {
     next.status = await checkDomainDns(
       nextName,
       await appServerIp(current.appId),
     );
     next.ssl = next.status === "valid" || next.status === "cloudflare";
-    // The rename's check can discover the NEW host is proxied, so it gets the
-    // same automatic Cloudflare provider an add would have given it — UNLESS this
-    // edit deliberately moved the provider, which always wins. The Edit dialog
-    // posts the whole config every time, so "deliberately" means the submitted
-    // value actually DIFFERS from the stored one; an untouched dropdown must not
-    // read as a decision to stay cert-less.
+    // The rename's check can discover the NEW host is proxied, so it gets the same
+    // automatic Cloudflare provider an add would have given it — UNLESS this edit
+    // deliberately moved the provider, which always wins.
     const chosen =
       patch.certProvider !== undefined &&
       patch.certProvider !== current.certProvider;
@@ -1155,34 +974,8 @@ export async function updateDomain(
 
 /**
  * Pair a hostname with its `www`/non-`www` counterpart so one of the two serves
- * the app and the other permanently redirects to it.
- *
- * The redirect is a REAL second Domain row, never a hidden flag on the first —
- * which is the whole reason this is safe for someone who has never touched
- * Traefik. The counterpart hostname then gets, for free and by construction:
- * its own DNS check (so `www` that isn't pointed anywhere shows up as
- * `pending` on the domains page instead of failing invisibly), its own
- * certificate on its own Traefik router (so an unresolvable `www` can never sink
- * the ACME order of the host that DOES work — one shared router would), its own
- * row in the table, and one-click removal.
- *
- * `mode` is expressed relative to `domain` — the row the user is editing:
- *
- *  - `none`          — break the pair. A companion this feature created is
- *                      deleted; a hostname the USER added themselves is only
- *                      un-redirected (it goes back to serving), because deleting
- *                      a domain somebody typed is not ours to do.
- *  - `toThis`        — the counterpart 301s HERE. Created if it doesn't exist,
- *                      mirroring this row's port/service/certificate.
- *  - `toCounterpart` — this row 301s to the counterpart, which serves the app.
- *                      The counterpart is created if missing (copying this row's
- *                      routing), and `primary` moves with the serving host so the
- *                      app's canonical URL follows.
- *
- * Idempotent: the current state is DERIVED from the rows ({@link
- * deriveWwwRedirect}) and a call that asks for what is already true writes
- * nothing — which is what lets the Edit dialog post the whole config every time.
- * Callers re-apply routing afterwards; this only touches the store.
+ * the app and the other permanently redirects to it. `mode` is expressed relative
+ * to `domain` — the row the user is editing: - `none` — break the pair.
  */
 async function applyWwwRedirect(
   domain: Domain,
@@ -1255,16 +1048,6 @@ async function applyWwwRedirect(
 
 /**
  * Keep `primary` on the half of a pair that SERVES the app.
- *
- * A redirecting hostname is not a canonical host — it answers 301 — so when the
- * pair flips, the Primary badge and the app's production URL flip with it. Only
- * fires when the REDIRECTING half currently holds the flag: an unrelated third
- * domain that is the app's primary keeps it, because pairing two hostnames says
- * nothing about a third.
- *
- * CLEAR-then-SET in one transaction for the same reason {@link setPrimaryDomain}
- * does it: the `(app_id) WHERE is_primary` partial unique cannot tolerate two
- * live primaries, even transiently.
  */
 async function movePrimaryToServingHost(
   appId: string,
@@ -1292,15 +1075,6 @@ async function movePrimaryToServingHost(
 
 /**
  * Follow a renamed hostname with everything that redirects to it.
- *
- * Two things move. Every dependent row is re-pointed at the new name, so a pair
- * survives the rename instead of 301-ing to a hostname the app dropped. And a
- * companion THIS feature generated (`source: "redirect"`) is itself renamed to
- * the counterpart of the NEW hostname — `www.old.com` redirecting to `new.com`
- * is a hostname nobody asked for — which re-checks its DNS, exactly as renaming
- * it by hand would. The rename is skipped when the new counterpart is already
- * taken (anywhere on the instance): re-pointing alone still leaves a working
- * redirect, and stealing a name would not.
  */
 async function repointRedirects(
   appId: string,
@@ -1361,17 +1135,11 @@ async function deleteDomainRow(id: string): Promise<void> {
 }
 
 /**
- * Create the other half of a `www` pair, cloned from the row the user is
- * editing: same container port, same compose service, same entrypoint and the
- * same certificate provider — a redirect that answers on `https://www.…` needs
- * its own valid certificate there, or the browser hits a certificate error
- * BEFORE it is ever told where to go.
- *
- * DNS is checked right now (like {@link addDomain}) so the new hostname is born
- * `valid` when the record is already in place, and `pending` — visibly, on the
- * domains page, with the automatic re-check running — when it isn't. It is never
- * born primary: the serving host keeps that, and `applyWwwRedirect` hands it
- * over explicitly when the pair flips.
+ * Create the other half of a `www` pair, cloned from the row the user is editing:
+ * same container port, same compose service, same entrypoint and the same
+ * certificate provider — a redirect that answers on `https://www.…` needs its own
+ * valid certificate there, or the browser hits a certificate error BEFORE it is
+ * ever told where to go.
  */
 async function insertPairedDomain(
   from: Domain,
@@ -1412,42 +1180,9 @@ async function insertPairedDomain(
 
 /**
  * Verify a domain against real DNS and settle its status into one of three
- * outcomes (the classification is pure — {@link classifyDomainDns}):
- *
- *   - `valid`         its A records — following any CNAME chain, which resolve4
- *                     does — include the public IPv4 of the server this project
- *                     runs on. Traefik issues the Let's Encrypt cert on the next
- *                     request, so `ssl` flips on. (The long-standing check.)
- *   - `cloudflare`    the domain is proxied through Cloudflare's orange-cloud:
- *                     its A records are Cloudflare's shared anycast IPs, which
- *                     INTENTIONALLY mask the origin, so a bare server-IP match
- *                     can never see this server. UNVERIFIED, not verified: this
- *                     is what a correct proxied setup looks like, but it is also
- *                     exactly what a domain forwarded to somebody ELSE's server
- *                     looks like — the anycast IPs are shared by every proxied
- *                     domain alive. Routed regardless (see
- *                     {@link routableRoutes}) and `ssl` is on (TLS really is
- *                     terminated at Cloudflare's edge), but every surface above
- *                     must present it as an open question, never a green tick.
- *   - `misconfigured` its A records point at some unrelated address (a different
- *                     server, an unrelated site).
- *   - `pending`       it doesn't resolve at all yet (no A record) — the normal
- *                     state of a record the user just created; the domains page
- *                     re-checks it automatically until it settles.
- *
- * The server-IP DNS check (deplo's core) is unchanged; the Cloudflare case is a
- * new, additive branch that stops a correctly-proxied domain from reading as
- * broken. A domain whose DNS is on Cloudflare but NOT proxied (grey-cloud)
- * resolves straight to the origin and so verifies as `valid` exactly as before.
- *
- * A check that lands on `cloudflare` also settles the domain's CERTIFICATE: a
- * cert-less host moves onto the `cloudflare` provider, because the proxy that
- * masks its origin is also what serves it over HTTPS ({@link certProviderForDns}).
- *
- * Returns the settled domain plus `statusChanged`, so the caller can skip the
- * routing re-apply (an agent round-trip) when a check settles on the status the
- * row already had — the common case for the page's automatic interval checks.
- * A provider move counts as a change: it rewrites the router's TLS labels.
+ * outcomes (the classification is pure — {@link classifyDomainDns}): - `valid` its
+ * A records — following any CNAME chain, which resolve4 does — include the public
+ * IPv4 of the server this project runs on.
  */
 export async function verifyDomain(
   id: string,
@@ -1461,18 +1196,12 @@ export async function verifyDomain(
   const target = await appServerIp(dom.appId);
   const status = await checkDomainDns(dom.name, target);
   // `valid` (points straight here) and `cloudflare` (proxied — DNS delegated to
-  // Cloudflare, origin masked) are the two routable states, so `ssl` (a cert is
-  // in effect for end users) is on for those two only — a `pending`/
-  // `misconfigured` host has no working DNS and thus no live cert. `ssl` stays
-  // true for a proxied host even though the origin is unverifiable: Cloudflare
-  // really does terminate TLS at its edge, which is the fact this flag reports.
+  // Cloudflare, origin masked) are the two routable states, so `ssl` (a cert is in
+  // effect for end users) is on for those two only — a `pending`/ `misconfigured`
+  // host has no working DNS and thus no live cert.
   const ssl = status === "valid" || status === "cloudflare";
   // Discovering the host is proxied also settles WHO issues its certificate:
-  // Cloudflare does, at its edge. A cert-less domain is moved onto the
-  // `cloudflare` provider here so the very check that discovers the proxy also
-  // makes the origin match it (HTTPS on `websecure`, `https://` URLs) — the user
-  // is never sent into Advanced settings to finish the job. One-way and only out
-  // of `none`; see certProviderForDns.
+  // Cloudflare does, at its edge.
   const certProvider = certProviderForDns(status, dom.certProvider);
   const providerChanged = certProvider !== dom.certProvider;
   // `statusChanged` is what tells the caller a routing re-apply is worth an agent
@@ -1488,9 +1217,7 @@ export async function verifyDomain(
     .returning();
   if (updated.length === 0) throw new Error("Not found");
   // A provider move flips the canonical URL's scheme (a proxied host is served
-  // https:// from now on), so the stored URL follows. Only when something
-  // actually changed: the domains page re-checks on an interval, and a settled
-  // check must not write on every tick.
+  // https:// from now on), so the stored URL follows.
   if (providerChanged) await syncProductionUrl(dom.appId);
   return { ...dom, status, ssl, certProvider, statusChanged };
 }
@@ -1499,18 +1226,8 @@ export async function verifyDomain(
  * server the project is deployed on, falling back to this instance's host when
  * that server has no usable recorded IP (mirrors the deploy path's choice). */
 /**
- * Re-check every domain that was last seen pointing HERE, and report the ones
- * that no longer do.
- *
- * `checkDomainDns` runs at write time only, so a domain whose A record is later
- * repointed (or whose server IP changed) keeps claiming `valid` forever unless
- * somebody happens to have the domains page open. This is the background half:
- * UNGATED and team-agnostic, like `recordServerHealth`, because it runs on the
- * maintenance sweep with no request and no active team.
- *
- * Only `valid` rows are checked. A `cloudflare` domain resolves to an anycast
- * edge that legitimately changes, and `pending`/`misconfigured` are already
- * flagged in the UI — re-alerting them would be noise.
+ * Re-check every domain that was last seen pointing HERE, and report the ones that
+ * no longer do.
  */
 export async function sweepDomainDns(): Promise<void> {
   const db = getDb();
@@ -1568,22 +1285,7 @@ async function appServerIp(appId: string): Promise<string> {
 /**
  * Resolve `name`'s A records and classify them against `target` (the server IP
  * this domain must reach) into `pending` / `valid` / `cloudflare` /
- * `misconfigured`. This is the thin resolver boundary; the verdict itself is
- * pure ({@link classifyDomainDns}) so it stays exhaustively unit-testable
- * without a network.
- *
- * resolve4 follows CNAME chains and returns the final A records, so a CNAME'd
- * host is handled here too — including a Cloudflare-proxied host, whose CNAME is
- * flattened to Cloudflare's anycast A records. IPv4-only, matching the IPv4 the
- * rest of the domain system uses.
- *
- * A host that doesn't resolve AT ALL (NXDOMAIN, SERVFAIL, no A record) reads as
- * `pending`, not `misconfigured`: checks now run automatically (at add time and
- * on the domains page's interval), so "no record yet" is the normal state of a
- * record the user just created and DNS hasn't propagated — calling that
- * "misconfigured" would flash red at everyone doing the right thing.
- * `misconfigured` is reserved for a host that DOES resolve, to an address that
- * is neither this server nor a Cloudflare edge.
+ * `misconfigured`.
  */
 async function checkDomainDns(
   name: string,
@@ -1600,31 +1302,18 @@ async function checkDomainDns(
 }
 
 /**
- * Working, routable hostnames for a project, primary first.
- *
- * Only `valid` and `cloudflare` domains are returned: a pending/misconfigured
- * host has no working DNS, so routing to it would make Traefik fail HTTP-01
- * issuance and (because all hosts share one cert order) could jeopardise the
- * cert for the domains that *do* work. A `cloudflare` (proxied) host is included
- * even though its origin is unverifiable: the router has to carry the host
- * BEFORE any traffic can arrive, so withholding it until we're sure would
- * guarantee the failure it's meant to prevent — every correctly-proxied domain
- * would 404 at this Traefik. Unverified is routed; only unresolvable is not. The
- * primary is
- * sorted first so it stays the canonical host. Store-direct (no auth) so the
- * deploy engine can call it like [[ensure-auto-domain]] does. Empty when the
- * project has no working domain.
+ * Working, routable hostnames for a project, primary first. The primary is sorted
+ * first so it stays the canonical host.
  */
 export async function routableDomains(appId: string): Promise<string[]> {
   return (await routableRoutes(appId)).map((d) => d.name);
 }
 
-/** A routable hostname plus everything its Traefik router needs: the per-domain
- * port override (null ⇒ project default) and the resolved TLS triplet
- * (entrypoint, whether TLS is on, and the cert resolver). The triplet is derived
- * from the domain's `entrypoint`/`certProvider` via {@link domainTlsConfig}, so
- * callers hand these straight to `traefikRouterLabels` without re-deriving. Same
- * filtering/ordering as {@link routableDomains}. */
+/**
+ * A routable hostname plus everything its Traefik router needs: the per-domain
+ * port override (null ⇒ project default) and the resolved TLS triplet (entrypoint,
+ * whether TLS is on, and the cert resolver).
+ */
 export interface RoutableDomain {
   name: string;
   port: number | null;
@@ -1645,30 +1334,16 @@ export interface RoutableDomain {
   /** Compose-stack only: the compose service this host targets (null ⇒ the
    * stack's default exposed service). Ignored by the single-image path. */
   service: string | null;
-  /** Absolute base URL this host permanently redirects to (`https://example.com`),
-   * or "" when it serves the app. Resolved from the stored `redirectTo` hostname
-   * plus the TARGET row's certificate provider, so the 301 lands on the scheme
-   * the canonical host is actually served over. */
+  /**
+   * Absolute base URL this host permanently redirects to (`https://example.com`),
+   * or "" when it serves the app.
+   */
   redirectTo: string;
 }
 
 /**
- * A {@link RoutableDomain} for a bare hostname carrying no per-domain config:
- * no path, no strip, and by default the long-standing HTTPS/letsencrypt TLS
- * triplet. Used for synthetic routes that aren't backed by a `valid` stored row
- * — the primary fallback when a brand-new project has no `valid` domain yet, a
- * never-deployed compose preview, or a pull request preview's own host — so
- * every route handed to the router grammar has the full shape. `service`/`port`
- * default to null (the single-image fallback uses neither); the compose preview
- * passes the stored row's service + port so the right compose service is routed.
- *
- * `tls` is the ONE thing a caller may override, and it exists because the
- * default is wrong for exactly one caller: a pull request preview on a nip.io
- * host. nip.io is a single registered domain whose Let's Encrypt issuance budget
- * is shared with the whole internet, which is why Deplo's own auto domains are
- * born `certProvider: "none"` — a preview asking for a certificate there gets
- * none, and Traefik serves its self-signed default instead. Omitted ⇒
- * byte-identical to the historical behaviour.
+ * A {@link RoutableDomain} for a bare hostname carrying no per-domain config: no
+ * path, no strip, and by default the long-standing HTTPS/letsencrypt TLS triplet.
  */
 export function defaultRoute(
   name: string,
@@ -1690,20 +1365,15 @@ export function defaultRoute(
 
 /**
  * Valid, routable hostnames for a project (primary first), each with its port
- * override and resolved TLS triplet. The per-domain port lets one container
- * expose different apps on different hostnames; the TLS triplet lets each
- * host pick its entrypoint and certificate provider. A `null` port means "use
- * the project's default port". Same `valid`/`cloudflare` filtering rationale as
- * {@link routableDomains}.
+ * override and resolved TLS triplet.
  */
 export async function routableRoutes(appId: string): Promise<RoutableDomain[]> {
   const all = await loadDomainsForApp(appId);
   return (
     all
-      // `valid` (points straight here) and `cloudflare` (proxied — Cloudflare
-      // may or may not forward here, which DNS cannot tell us) are both routable
-      // hosts; a pending/misconfigured host has no working DNS at all and is left
-      // off the router.
+      // `valid` (points straight here) and `cloudflare` (proxied — Cloudflare may or may
+      // not forward here, which DNS cannot tell us) are both routable hosts; a
+      // pending/misconfigured host has no working DNS at all and is left off the router.
       .filter((d) => d.status === "valid" || d.status === "cloudflare")
       .sort((a, b) => Number(b.primary) - Number(a.primary))
       // Every row is mapped against the app's FULL domain set, because a
@@ -1713,23 +1383,15 @@ export async function routableRoutes(appId: string): Promise<RoutableDomain[]> {
 }
 
 /**
- * The stored row → the route its Traefik router is rendered from. The ONE mapper,
- * so every path into the router grammar carries the row's full config — port
- * override, TLS triplet, middleware chain, and (the part that used to get lost)
- * its `pathPrefix` + `stripPrefix`.
- *
- * {@link defaultRoute} is its counterpart for a hostname with no row behind it at
- * all (a preview's ephemeral host). Reaching for `defaultRoute` when a row DOES
- * exist is the bug this exists to prevent: it silently flattens the row to
- * whole-host HTTPS-on-the-default-port and the path never routes.
+ * The stored row → the route its Traefik router is rendered from.
  */
 export function toRoutableDomain(
   d: Domain,
-  /** The app's other domains, so a redirecting host can read its TARGET's
+  /**
+   * The app's other domains, so a redirecting host can read its TARGET's
    * certificate provider (the 301 must land on the scheme the canonical host is
-   * really served over). Omitted ⇒ the row's own scheme is assumed, which is
-   * exactly right for the pair this feature creates (the counterpart mirrors the
-   * canonical's provider). */
+   * really served over).
+   */
   siblings: Domain[] = [],
 ): RoutableDomain {
   return {
@@ -1745,17 +1407,8 @@ export function toRoutableDomain(
 }
 
 /**
- * The absolute URL a domain's stored `redirectTo` hostname resolves to, or ""
- * when the row serves the app.
- *
- * The scheme comes from the TARGET row when it is present (the canonical host
- * decides whether the site is https), falling back to the redirecting row's own
- * scheme when the target isn't in `siblings` — that only happens on a
- * partially-loaded set, and guessing the pair's shared scheme beats emitting a
- * 301 to a scheme nobody serves. A target that names a row which itself
- * redirects is IGNORED (no redirect chains): the data layer refuses to create
- * one, so a chain can only come from a hand-edited row, and dropping it keeps
- * the host serving rather than bouncing a browser in circles.
+ * The absolute URL a domain's stored `redirectTo` hostname resolves to, or "" when
+ * the row serves the app.
  */
 function redirectTargetUrl(d: Domain, siblings: Domain[]): string {
   const target = (d.redirectTo ?? "").trim().toLowerCase();
@@ -1768,11 +1421,7 @@ function redirectTargetUrl(d: Domain, siblings: Domain[]): string {
 /**
  * The primary's stored row as a route, verified or NOT — the fallback a deploy
  * uses when the canonical host hasn't passed its DNS check yet (a brand-new app,
- * or a custom domain added minutes ago). Null when the app has no row for that
- * hostname, in which case the caller synthesises a {@link defaultRoute}.
- *
- * Store-direct (no auth) so the deploy engine can call it like {@link
- * routableDomains} does.
+ * or a custom domain added minutes ago).
  */
 export async function pendingPrimaryRoute(
   appId: string,
@@ -1782,22 +1431,14 @@ export async function pendingPrimaryRoute(
   const all = await loadDomainsForApp(appId);
   const rows = all.filter((d) => d.name === primary);
   // A hostname can carry SEVERAL rows (one per path), so prefer the one actually
-  // flagged primary — `primary` is only a name, and picking whichever row happens
-  // to come back first would route an arbitrary sibling's path as the canonical
-  // host. Fall back to any row on that hostname when none is flagged (a legacy
-  // app whose primary flag was never set).
+  // flagged primary — `primary` is only a name, and picking whichever row happens to
+  // come back first would route an arbitrary sibling's path as the canonical host.
   const row = rows.find((d) => d.primary) ?? rows[0];
   return row ? toRoutableDomain(row, all) : null;
 }
 
 /**
- * Flip which domain is primary for its project. Returns the affected appId
- * so the caller can re-apply routing (the running container's Traefik labels
- * are baked at deploy time, so the switch only takes effect once the stack is
- * re-rendered and `docker compose up -d` recreates it). `productionUrl` follows
- * the new primary right away ({@link syncProductionUrl}): the canonical URL is
- * the user's choice, not a deploy artifact, and the reroute that makes the
- * container serve it happens moments later in the same click.
+ * Flip which domain is primary for its project.
  */
 export async function setPrimaryDomain(id: string): Promise<string> {
   const dom = await loadDomain(id);
@@ -1818,15 +1459,6 @@ export async function setPrimaryDomain(id: string): Promise<string> {
       `${dom.name} redirects to ${dom.redirectTo}, so it can't be the canonical host — flip the redirect from ${dom.redirectTo} instead.`,
     );
   // The multi-row primary flip is CLEAR-then-SET in one transaction (PLAN §4).
-  // A single `SET is_primary = (id = $target)` UPDATE is NOT safe: the
-  // `(project_id) WHERE is_primary` index is a plain (non-deferrable) unique, and
-  // Postgres checks each updated tuple's index entry as it processes that row —
-  // if the executor sets the NEW target true before clearing the OLD primary,
-  // their two live `is_primary=true` entries collide (a transient duplicate-key
-  // abort whose likelihood depends on physical scan order). Clearing every
-  // primary first guarantees no two rows are ever simultaneously primary, so the
-  // index can't transiently collide; the partial-unique still backstops two
-  // concurrent flips (the loser aborts cleanly).
   await getDb().transaction(async (tx) => {
     await tx
       .update(domainsTable)
@@ -1847,18 +1479,9 @@ export async function setPrimaryDomain(id: string): Promise<string> {
 }
 
 /**
- * Point a project's canonical `productionUrl` at its current primary domain.
- * The primary domain IS the canonical URL the moment the user picks it, so every
- * domain mutation below calls this on success regardless of whether the running
- * container has been rerouted yet — the title-bar URL (and the app card's
- * subtitle) must reflect the domains that exist NOW, not lag a deploy behind.
- * Falls back to the first remaining domain when none is flagged primary, and
- * clears the URL when the last domain is gone.
- *
- * This runs in the data layer, not at the API edge, on purpose: the reroute that
- * follows a domain write talks to an agent and can fail, and the dashboard must
- * never keep advertising a hostname the user just deleted merely because a host
- * was unreachable.
+ * Point a project's canonical `productionUrl` at its current primary domain. Falls
+ * back to the first remaining domain when none is flagged primary, and clears the
+ * URL when the last domain is gone.
  */
 export async function syncProductionUrl(appId: string): Promise<void> {
   const domains = await loadDomainsForApp(appId);
@@ -1884,29 +1507,7 @@ export async function syncProductionUrl(appId: string): Promise<void> {
 
 /**
  * Which of the remaining domains inherits `primary` when the current primary is
- * deleted. An app must never be left primary-less: the primary is the canonical
- * host — the URL on the app card, in the title bar, and the one a deploy routes
- * FIRST — so dropping it has to hand the crown over, not vacate the throne.
- *
- * The heir is the remaining domain that most looks like the one being removed,
- * in this order:
- *
- *  1. **same compose service** — on a multi-service stack the service IS "which
- *     app this is": if `app.com` fronted `web`, `www.app.com → web` is the same
- *     site, while `api.app.com → api` is a different one.
- *  2. **same port** — the single-image equivalent of the above (`:3000` is the
- *     UI, `:9000` the admin panel), and the tie-breaker within one service.
- *  3. **routability** — a `valid`/`cloudflare` host outranks one still `pending`,
- *     which outranks a `misconfigured` one. It only ever breaks a tie: a
- *     same-service host with broken DNS is still a better canonical URL than an
- *     unrelated host that happens to resolve, and its DNS can be fixed.
- *  4. oldest first, then name — so the outcome is deterministic (the domains
- *     table has no inherent order) rather than "whatever Postgres returned".
- *
- * Null when nothing remains: the app legitimately has no domain and its URL is
- * cleared (`No domain yet`) rather than left pointing at a deleted host.
- *
- * Pure — the caller does the writing.
+ * deleted.
  */
 export function successorPrimary(
   remaining: Domain[],
@@ -1943,17 +1544,16 @@ export async function removeDomain(id: string): Promise<string> {
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
   await requireAppCapability(dom.appId, "manage_domains");
-  // Removing the PRIMARY hands the crown to the closest remaining domain, in the
-  // same transaction as the delete: an app with domains must always have exactly
-  // one primary, and a half-applied succession would leave the canonical host
-  // undefined (`primaryDomainRow` would fall back to an arbitrary row, and the
-  // "Primary" badge would vanish from the domains list).
+  // Removing the PRIMARY hands the crown to the closest remaining domain, in the same
+  // transaction as the delete: an app with domains must always have exactly one
+  // primary, and a half-applied succession would leave the canonical host undefined
+  // (`primaryDomainRow` would fall back to an arbitrary row, and the "Primary" badge
+  // would vanish from the domains list).
   const rest = (await loadDomainsForApp(dom.appId)).filter((d) => d.id !== id);
-  // Removing a hostname takes its redirects with it: a companion Deplo generated
-  // for the pair (`source: "redirect"`) is deleted — it exists only to point at
-  // this host — while a hostname the USER added is merely un-redirected, so it
-  // stays as a domain of the app and starts serving instead of 301-ing into a
-  // hole. Both happen in the same transaction as the delete.
+  // Removing a hostname takes its redirects with it: a companion Deplo generated for
+  // the pair (`source: "redirect"`) is deleted — it exists only to point at this host
+  // — while a hostname the USER added is merely un-redirected, so it stays as a
+  // domain of the app and starts serving instead of 301-ing into a hole.
   const dependents = rest.filter((d) => d.redirectTo === dom.name);
   const orphaned = dependents.filter((d) => d.source === "redirect");
   const freed = dependents.filter((d) => d.source !== "redirect");

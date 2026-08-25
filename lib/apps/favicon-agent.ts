@@ -28,35 +28,7 @@ import { MAX_LOGO_BYTES } from "./logo-shared";
 /**
  * Favicon auto-detection for an app whose icon lives on its OWNING HOST rather
  * than in a repo or an upload — a **compose stack**. Two places it can be, and
- * this module reads both, because a compose app is either shape:
- *
- *  1. ON DISK, in the app's files dir (`<stacks>/files/<slug>`, the tree every
- *     `./x` bind mount resolves into, which the Files tab browses) — the static
- *     site case, where the stack serves files the user put there.
- *  2. INSIDE THE IMAGE, which is the usual case and the one the files walk can
- *     never see: a stack of prebuilt images keeps its favicon in the image and
- *     only ever SERVES it. That one is read by asking the running app for it,
- *     exactly as a browser would — see {@link detectServedFavicon}.
- *
- * Every read routes through the owning server's agent (ADR-0006 — the control
- * plane never touches a host, not even its own); only the DECIDING is here. The
- * files walk ranks with the shared pure {@link file://./favicon-shared.ts} pick,
- * the served read with {@link file://./favicon-http.ts}.
- *
- * The files walk is two reads, cheapest first:
- *  1. A BOUNDED breadth-first walk over `ListFiles` (metadata only) collects the
- *     `favicon.*` candidates. An app with no favicon costs nothing beyond this,
- *     which is the common case on every deploy.
- *  2. The winner's bytes. `ReadFile` hands back text and REFUSES binary, so it
- *     only serves an SVG; every other favicon comes out of the `ExportFiles` tar
- *     stream, which is read lazily and cancelled the instant the entry lands
- *     (see {@link file://../infra/tar-stream.ts}).
- *
- * Best-effort otherwise: a missing files dir, an unreadable subdirectory, an app
- * that isn't answering, an agent too old for `files-copy` or `http-probe` — all
- * of them just mean "no icon", never an error a deploy has to care about. The
- * single exception is an unreachable server, which is re-raised so the manual
- * action can say so.
+ * this module reads both, because a compose app is either shape: 1.
  */
 
 /** Directories opened across one walk (each is one RPC round trip). */
@@ -68,11 +40,7 @@ const MAX_ENTRIES_SEEN = 20_000;
 /** Candidates collected before the walk stops early. */
 const MAX_CANDIDATES = 32;
 /**
- * Raw archive bytes read from `ExportFiles` before giving up. The stream is
- * cancelled as soon as the wanted entry arrives, so this only bites when the
- * icon sits behind a lot of other data (a media-heavy files dir) — comfortably
- * past any real site's assets, and a hard ceiling on what a cosmetic nicety may
- * cost the host and the wire on a deploy that finds no icon.
+ * Raw archive bytes read from `ExportFiles` before giving up.
  */
 const MAX_TAR_SCAN_BYTES = 32 * 1024 * 1024;
 /** Hello capability required for the `ExportFiles` stream. */
@@ -107,14 +75,9 @@ export interface FaviconFileReader {
 }
 
 /**
- * Walk an app's files dir breadth-first and collect the favicon candidates
- * (path + real size), pruning dependency/build dirs on the way down and
- * stopping at every cap above. Breadth-first on purpose: a real site icon sits
- * at the root or one level in (`public/favicon.ico`), so the shallow levels are
- * always covered even when the budget runs out inside a deep tree.
- *
- * A directory that fails to list is skipped, not fatal — one unreadable subdir
- * must not cost the whole scan.
+ * Walk an app's files dir breadth-first and collect the favicon candidates (path +
+ * real size), pruning dependency/build dirs on the way down and stopping at every
+ * cap above.
  */
 export async function collectAgentFaviconCandidates(
   lister: FaviconFileLister,
@@ -171,15 +134,9 @@ async function* gunzip(
 }
 
 /**
- * Read one file out of an app's files dir as raw bytes.
- *
- * An SVG is tried through `ReadFile` first — one small unary call instead of a
- * whole-directory tar, and the only read that works on an agent too old for
- * `files-copy`. It is accepted ONLY when the text round-trips to the exact byte
- * length the agent stat'd: `ReadFile` hands back a UTF-8 string, so a file that
- * isn't valid UTF-8 would come back subtly rewritten, and a re-encoded icon is
- * a corrupted icon. Any mismatch (and every non-SVG) falls through to the
- * `ExportFiles` tar, whose entries the agent writes under a `files/` prefix.
+ * Read one file out of an app's files dir as raw bytes. An SVG is tried through
+ * `ReadFile` first — one small unary call instead of a whole-directory tar, and
+ * the only read that works on an agent too old for `files-copy`.
  */
 export async function readFilesDirBytes(
   conn: FaviconFileReader,
@@ -214,13 +171,8 @@ export interface DetectedFaviconBytes {
 }
 
 /**
- * Detect a favicon in an app's files dir on its owning server. Null when the
- * app has no files dir yet, no `favicon.*` in it, or the bytes can't be read.
- *
- * The ONE failure it re-raises is {@link AgentUnreachableError}: "the server
- * didn't answer" is not the same answer as "this app has no icon", and the
- * manual "Detect from source" action says so out loud instead of blaming the
- * user's files. Every automatic caller is fire-and-forget and ignores it.
+ * Detect a favicon in an app's files dir on its owning server. Null when the app
+ * has no files dir yet, no `favicon.*` in it, or the bytes can't be read.
  */
 export async function detectAgentFilesFavicon(
   serverId: string,
@@ -294,16 +246,8 @@ export interface FaviconHttpProber {
 }
 
 /**
- * Work out which container, port and hostname an app's icon should be asked
- * for — the SAME target Traefik was pointed at, so what we read is what a
- * visitor sees.
- *
- * The app's routed domains are authoritative (a domain row names its compose
- * service and port; that pair is what makes the app reachable at all), with the
- * primary preferred so a multi-domain app is read on its canonical host. An app
- * with no domain yet is still probed — it is running, it just isn't published —
- * by falling back to the compose file's own default service, which is exactly
- * what seeded the first domain. Null only when there is no service to talk to.
+ * Work out which container, port and hostname an app's icon should be asked for —
+ * the SAME target Traefik was pointed at, so what we read is what a visitor sees.
  */
 export function servedIconTarget(
   app: { id: string; slug: string; compose: string | null },
@@ -392,22 +336,9 @@ async function readHomePage(
 }
 
 /**
- * Read the icon a RUNNING app serves — the compose-stack arm of favicon
- * detection, and the only one that can work for an app whose files are all
- * inside a prebuilt image.
- *
- * It does what a browser does: read the home page, take the `<link rel="icon">`
- * the app declares about itself (best format and size first), and fall back to
- * `/favicon.ico`. The requests go to the app's own container through its owning
- * server's agent, so this works before DNS resolves, before a certificate is
- * issued, and for an app that was never published at all.
- *
- * Null whenever the app has nothing usable to offer — not running, not
- * answering, no icon declared, or an icon that turns out not to be an image
- * (an SPA answering `/favicon.ico` with its index.html is the common case, and
- * is caught by sniffing the bytes rather than trusting the content type).
- * {@link AgentUnreachableError} is re-raised, as everywhere else: "the server
- * didn't answer" is a different answer from "this app has no icon".
+ * Read the icon a RUNNING app serves — the compose-stack arm of favicon detection,
+ * and the only one that can work for an app whose files are all inside a prebuilt
+ * image.
  */
 export async function detectServedFavicon(
   serverId: string,

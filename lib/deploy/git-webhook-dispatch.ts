@@ -13,17 +13,8 @@ import { shouldAutoDeploy, type GitPushEvent } from "./git-webhook";
 
 /**
  * Turning ONE verified push into deployments - shared by every git provider's
- * webhook route.
- *
- * The routes differ only in how they authenticate a delivery and how they parse
- * it. What happens next is identical: find the apps wired to that repository,
- * apply the same trigger rules (`shouldAutoDeploy`), start a deployment for each
- * survivor, and - when nothing matches - say exactly why. Keeping that in one
- * place is what stops GitHub's push arm and the others from drifting apart, and
- * it is why adding a provider adds no auto-deploy semantics of its own.
- *
- * Runs with no session: a delivery is authenticated by its signature, not by a
- * user, so nothing here may call a capability gate.
+ * webhook route. Runs with no session: a delivery is authenticated by its
+ * signature, not by a user, so nothing here may call a capability gate.
  */
 export async function dispatchPushEvent(opts: {
   /** Which apps this delivery could possibly target (a SQL fragment). */
@@ -42,10 +33,7 @@ export async function dispatchPushEvent(opts: {
 
   const db = getDb();
   const wired = await db.select().from(appsTable).where(match);
-  // First cut on the row-local facts (auto-deploy + repo match). The root-dir
-  // "skip unchanged" filter needs each candidate's build row (root_directory +
-  // skip_unchanged_deployments live on app_build, not the flattened apps row),
-  // so load those in one query keyed by app id before the final filter.
+  // First cut on the row-local facts (auto-deploy + repo match).
   const candidates = wired.filter(
     (p) => p.autoDeploy && p.repoRepo === repoFullName,
   );
@@ -75,10 +63,8 @@ export async function dispatchPushEvent(opts: {
   );
 
   if (targets.length === 0) {
-    // The silent-failure heart of these endpoints: a delivered, verified push
-    // that matches no app returns 200 with no deploy. Dump every wired app's
-    // match-relevant fields so the exact mismatched clause (autoDeploy / repo /
-    // branch / trigger / watch paths) is obvious from one log line.
+    // The silent-failure heart of these endpoints: a delivered, verified push that
+    // matches no app returns 200 with no deploy.
     console.warn(
       `[${logTag}] no auto-deploy target: repo=${repoFullName} ref=${event.refName} ` +
         `isTag=${event.isTag} deleted=${event.deleted}; candidates=` +
@@ -109,10 +95,9 @@ export async function dispatchPushEvent(opts: {
       });
       started++;
     } catch (e) {
-      // One app must not stop the delivery, but a push that silently deploys
-      // nothing is the worst version of that: the refusals reachable here are
-      // real states someone has to fix (data a migration could not copy, an app
-      // on its way out), and they belong in the log next to the slug.
+      // One app must not stop the delivery, but a push that silently deploys nothing is
+      // the worst version of that: the refusals reachable here are real states someone
+      // has to fix (data a migration could not copy, an app on its way out), and they
       console.warn(
         `[${opts.logTag}] ${p.slug}: not deployed - ${e instanceof Error ? e.message : String(e)}`,
       );

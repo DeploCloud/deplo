@@ -21,23 +21,8 @@ import {
 
 /**
  * Browse and edit a single-container project's files directory — the on-disk
- * `<stacks>/files/<slug>` tree that backs the `./` app-files volume
- * convention (see `lib/deploy/compose-stack.ts`). Every op is gated by the
- * `manage_files` capability and sandboxed inside that one directory: a path is
- * rejected unless its real location (symlinks resolved) is the root itself or a
- * true descendant, so a `..` segment or a planted symlink can never read or
- * clobber a sibling project's files — let alone the host.
- *
- * MULTI-SERVER (PLAN Part C, D9): the files live on the PROJECT'S host. EVERY
- * project — the host running Deplo included — routes every op to its owning
- * agent's file RPCs, where the anti-traversal sandbox is enforced (the path
- * arrives off the wire). `normalizeRel` still runs control-plane-side as a
- * fast-fail guard before any RPC (the agent re-checks independently — separate
- * trust boundaries).
- *
- * The directory only exists once a project has materialised config files or a
- * project-type volume there, so callers first check {@link appFilesExist}
- * to decide whether to surface the Files tab at all.
+ * `<stacks>/files/<slug>` tree that backs the `./` app-files volume convention
+ * (see `lib/deploy/compose-stack.ts`).
  */
 
 /** Reject writes whose body exceeds this — the editor is for config, not blobs. */
@@ -67,12 +52,8 @@ export interface FileContent {
 
 /**
  * Resolve `relPath` (user-supplied) to an absolute host path that is PROVABLY
- * inside `root`, with symlinks resolved. Throws on any escape. Both `root` and
- * the resolved candidate must already exist. The symlink resolution (not just a
- * string-prefix check) is what defeats a planted symlink that points outside the
- * sandbox — a `realpath` of the target lands on the real location, which then
- * fails the containment boundary. Exported (root-parameterised) so the path
- * containment can be unit-tested against a real temp tree without the store.
+ * inside `root`, with symlinks resolved. Both `root` and the resolved candidate
+ * must already exist.
  */
 export async function resolveWithinRoot(
   root: string,
@@ -90,9 +71,8 @@ export async function resolveWithinRoot(
 
 /**
  * Normalise a relative path to a clean POSIX form, rejecting absolute paths and
- * any `..` traversal before it can reach the filesystem. Backslashes are folded
- * to `/` so a Windows-style `..\` can't sneak past the segment check. Exported
- * for unit tests — it is the first-line traversal guard.
+ * any `..` traversal before it can reach the filesystem. Backslashes are folded to
+ * `/` so a Windows-style `..\` can't sneak past the segment check.
  */
 export function normalizeRel(relPath: string): string {
   const rel = (relPath ?? "")
@@ -146,11 +126,8 @@ function toEntry(e: {
 }
 
 /**
- * Whether a project's on-disk files directory exists AND the caller may manage
- * it — the single gate that drives the Files tab's visibility. This runs during
- * the project layout render, so it must NEVER throw on a missing capability (that
- * would 500 the whole page); a member without `manage_files`, or a project with
- * no files dir, simply yields false and the tab is hidden.
+ * Whether a project's on-disk files directory exists AND the caller may manage it
+ * — the single gate that drives the Files tab's visibility.
  */
 export async function appFilesExist(appId: string): Promise<boolean> {
   // Per-app, not team-wide: `read_app_files` held somewhere else in the team is
@@ -242,16 +219,8 @@ export type StorageFileState =
   "text" | "new" | "folder" | "binary" | "too-large";
 
 /**
- * What a FAILED agent read of a File entry's path means, or null when the
- * failure is real and must be rethrown.
- *
- * The agent answers NOT_FOUND when nothing is there (the file, a parent dir, or
- * the app's files dir itself — none of which is a failure for an editor whose
- * whole job is to create that file) and INVALID_ARGUMENT "not a file" for a
- * directory. Everything else, an unreachable server above all, stays an error:
- * reporting "new" for a host we could not reach would offer to overwrite a file
- * nobody read. Pure, so those three cases are pinned by tests — there is no
- * mocking seam for `connectAgent`.
+ * What a FAILED agent read of a File entry's path means, or null when the failure
+ * is real and must be rethrown.
  */
 export function storageFileStateForError(e: unknown): StorageFileState | null {
   const code = (e as { code?: number } | null)?.code;
@@ -266,12 +235,6 @@ export function storageFileStateForError(e: unknown): StorageFileState | null {
 /**
  * The user-facing failure for a read deplo could NOT classify — the editor puts
  * this next to a "Try again" button, so it has to say what happened.
- *
- * It never forwards the raw transport message: a gRPC transport error embeds the
- * dial address and the pinned cert fingerprint, which is exactly what the GraphQL
- * layer masks to "Something went wrong" (lib/graphql/yoga.ts). Curated copy on a
- * plain Error passes that mask; the original rides along as `cause` for the
- * server-side log and never reaches the browser.
  */
 export function storageFileReadError(e: unknown): Error {
   return new Error(
@@ -293,14 +256,7 @@ export interface StorageFile {
 /**
  * Read the file a **File** storage entry points at (Settings → Storage), where a
  * path that isn't there yet is a normal answer — `state: "new"` — rather than an
- * error. That is the whole difference from {@link readAppFile}: the Storage
- * editor writes the file's content, so the commonest case by far is a file deplo
- * has not created yet, and a "not found" thrown at the UI would read as a
- * failure instead of an empty page to type into.
- *
- * `"folder"` (the path is a directory) and `"binary"` / `"too-large"` are the
- * other three honest answers — each one the editor states instead of pretending
- * the file is empty and offering to overwrite it.
+ * error.
  */
 export async function readAppStorageFile(
   appId: string,
@@ -418,16 +374,6 @@ export async function renameAppFile(
 
 /**
  * Keep the app's stored CONFIG FILES in step with what just happened on disk.
- *
- * A compose stack's config files live in `app_mounts` and the agent re-writes
- * them from there on every bring-up. So editing one here and leaving that row
- * alone was not an edit at all: the next deploy put the old bytes back, and the
- * only clue was that the change "did not take". A rename resurrected the old
- * name on top of the new one; a delete brought the file back from the dead.
- *
- * The row is the durable copy and the disk is the live one - this is what keeps
- * them the same thing. A path that is not one of the app's config files (an
- * ordinary file in the tree) matches nothing and this does nothing.
  */
 async function syncAppMount(
   appId: string,

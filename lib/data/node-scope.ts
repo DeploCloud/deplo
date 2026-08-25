@@ -21,36 +21,17 @@ import {
 } from "../db/schema/control-plane";
 
 /**
- * REACH, as opposed to POWER: which nodes of a team a principal can touch at
- * all, before anyone asks what they may do there.
- *
- * The two axes are already separate in this codebase — `lib/data/node-access.ts`
- * answers power through the grant ladder, and an API token has carried a reach
- * of its own since ADR-0015. This module is the same idea for a person: a team
- * ROLE may name whole projects, whole folders, or single apps, and its holders
- * reach nothing else.
- *
- * Deliberately free of `lib/membership.ts`, `lib/data/tokens.ts` and
- * `lib/data/node-access.ts`, all three of which need it: it is the leaf that
- * keeps the graph acyclic, and it is why {@link expandFolders} lives here rather
- * than in the token module it was written for.
- *
- * The predicates below mirror `inAppScope` / `inFolderScope` / `inProjectScope`
- * in `lib/auth/request-context.ts` clause for clause, because the two answers
- * compose as a CONJUNCTION: a token narrowed to one project, held by a member
- * whose role reaches one app inside it, reaches that app. Composing them as sets
- * would need a query to decide whether a named app sits inside a named project;
- * composing them as predicates needs nothing.
+ * REACH, as opposed to POWER: which nodes of a team a principal can touch at all,
+ * before anyone asks what they may do there.
  */
 
 /** What a scope names. `null` anywhere below means "unrestricted". */
 export interface NodeScope {
   projectIds: string[];
   /**
-   * Ticked environments. An app lives in exactly one (ADR-0009), so this is the
-   * finest cut inside a project a scope can make. Filing an app into a folder
-   * CLEARS its environment, which is why the app predicate asks the folder
-   * first: the two are alternatives, never both.
+   * Ticked environments. Filing an app into a folder CLEARS its environment, which
+   * is why the app predicate asks the folder first: the two are alternatives,
+   * never both.
    */
   environmentIds: string[];
   /** Ticked folders and their whole subtrees, expanded once at read time. */
@@ -65,14 +46,9 @@ export interface NodeScope {
 }
 
 /**
- * Every folder a scope actually reaches: the ticked ones, everything nested
- * under them, and everything filed under a ticked project — plus the projects
- * those folders sit in, so the containers stay navigable.
- *
- * One query for the folder set of the teams involved, then a walk in memory:
- * folder trees are small (an Overview a person browses). Cycle-safe by the
- * seen-set, the same tolerance the rest of the folder-tree code applies to a
- * stale parent — a resolver that hangs is a worse outage than one that stops.
+ * Every folder a scope actually reaches: the ticked ones, everything nested under
+ * them, and everything filed under a ticked project — plus the projects those
+ * folders sit in, so the containers stay navigable.
  */
 export async function expandFolders(
   teamIds: string[],
@@ -129,25 +105,9 @@ export async function expandFolders(
 }
 
 /**
- * The reach of this PERSON in this team, or `null` for the whole of it — which
- * is every member until someone limits one, and so the answer for most of them.
- *
- * Two sources, in this order:
- *
- *  1. **the member's own nodes** (`memberships.granular`) — the member page
- *     saved a set of nodes that is not the one their role reaches, so those
- *     nodes ARE their reach. Their role no longer answers the question, which is
- *     the whole point of personalising one person without touching the role
- *     every one of their colleagues holds;
- *  2. **their role's scope** otherwise.
- *
- * `team_roles.scoped` is asked, not "are there any rows": the junctions CASCADE,
- * so deleting the last project a role named empties the scope, and reading that
- * as "unrestricted" would widen the role at the exact moment somebody deleted
- * something. Scoped with nothing left reaches nothing.
- *
- * A membership with no role (`role_id` NULL — the legacy hand-picked set) and no
- * nodes of its own is unrestricted: there is nothing carrying a scope.
+ * The reach of this PERSON in this team, or `null` for the whole of it — which is
+ * every member until someone limits one, and so the answer for most of them. Two
+ * sources, in this order: 1. **their role's scope** otherwise.
  */
 export const memberScopeFor = cache(async function memberScopeFor(
   userId: string,
@@ -181,13 +141,8 @@ export const memberScopeFor = cache(async function memberScopeFor(
 });
 
 /**
- * The nodes one person holds in a team, as a scope: the same rows that grant
- * them capabilities there (ADR-0016) read as REACH rather than as power.
- *
- * Only ever asked for a `granular` membership. For everyone else these rows
- * still extend what their role reaches (`hasOwnGrant` in
- * `lib/data/node-access.ts`) — a folder shared with a member is not a boundary
- * around them.
+ * The nodes one person holds in a team, as a scope: the same rows that grant them
+ * capabilities there (ADR-0016) read as REACH rather than as power.
  */
 async function loadMemberScope(
   userId: string,
@@ -301,11 +256,8 @@ export async function loadRoleScope(
     appProjectIds: [
       ...new Set(
         [
-          // A named node makes its project navigable, whatever kind it is: you
-          // cannot drill into staging, or into one app, without seeing the
-          // project that holds it. Leaving the APPS out of this list is what
-          // showed a role scoped to single apps an empty Overview — the apps
-          // resolved, and the container they live in did not.
+          // A named node makes its project navigable, whatever kind it is: you cannot drill
+          // into staging, or into one app, without seeing the project that holds it.
           ...envRows.map((r) => r.projectId),
           ...appRows.map((r) => r.projectId),
           ...folderRows.map((r) => r.projectId),
@@ -323,9 +275,7 @@ export async function loadRoleScope(
 /**
  * An app lives in exactly ONE place — a folder, a project, or the team top level
  * (filing it into a folder clears its project link) — so the three clauses are
- * alternatives. An app at the top level is in no container at all and is reached
- * only by naming it: fail-closed, and it stops a scope from widening the moment
- * someone drags an app out of a folder.
+ * alternatives.
  */
 export function appInScope(
   scope: NodeScope | null,

@@ -10,33 +10,15 @@ import { GRAVATAR_ORIGINS, isValidAvatarValue } from "./apps/avatar-shared";
 
 /**
  * Where a person's or a team's picture comes from, resolved once on the server.
- *
- * This module is deliberately a LEAF: it imports the database client, the schema
- * and the hash, and nothing else. In particular it must never import `lib/auth`
- * or anything under `lib/data/` — `lib/data/instance-settings.ts` imports
- * `getCurrentUser` from `lib/auth`, and `lib/auth` needs the Gravatar flag, so
- * putting the flag read anywhere under `lib/data` closes an import cycle.
- *
- * The whole feature funnels through {@link avatarResolver}, and that is the
- * point. Every DTO that names a person carries a computed `avatarUrl` rather than
- * a raw `image` plus an email, which means:
- *  - the Gravatar switch is enforced in ONE place instead of in the ~25
- *    components that draw an avatar, so no component can bypass it;
- *  - **no DTO ever carries an email**. The address is selected into the query row
- *    and consumed here; only the derived URL leaves the data layer.
  */
 
 /** The singleton row's PK. Mirrors `lib/data/instance-settings.ts`. */
 const SETTINGS_ID = "default";
 
 /**
- * Whether Gravatar fallback is on for this instance. Ungated and per-request
- * cached, for the same reason `logMaxDays` is: it is consulted while building
- * every DTO that names a person, takes no caller input, and reveals nothing
- * about anyone. Writing it is admin-only (`setGravatarEnabled`).
- *
- * No row at all is a fresh instance, which gets the column's own default rather
- * than a `false` that would silently turn the feature off before anyone chose to.
+ * Whether Gravatar fallback is on for this instance. No row at all is a fresh
+ * instance, which gets the column's own default rather than a `false` that would
+ * silently turn the feature off before anyone chose to.
  */
 export const gravatarEnabled = cache(async (): Promise<boolean> => {
   const [row] = await getDb()
@@ -47,15 +29,8 @@ export const gravatarEnabled = cache(async (): Promise<boolean> => {
 });
 
 /**
- * A person's Gravatar address.
- *
- * `d=404` is load-bearing: it makes Gravatar answer 404 for somebody who has
- * none, the `<img>` fails, and the avatar falls back to their monogram. The
- * service's default (`d=identicon`) would instead paint a random geometric
- * pattern over every person who never signed up for it.
- *
- * SHA-256 of the lowercased, trimmed address — Gravatar's recommended form since
- * 2022, and the reason nothing here needs MD5 (there is none in this repo).
+ * A person's Gravatar address. The service's default (`d=identicon`) would instead
+ * paint a random geometric pattern over every person who never signed up for it.
  */
 function gravatarUrl(email: string): string {
   return `${GRAVATAR_ORIGINS[0]}/avatar/${sha256Hex(
@@ -73,10 +48,6 @@ export type AvatarSource = {
  * Resolve many people in one go: reads the instance flag once and hands back a
  * SYNC mapper, so a batch builder (`listMembers`, `loadUserIdentities`) maps N
  * rows without N awaits.
- *
- * Precedence is uploaded picture, then Gravatar, then null (the monogram). The
- * stored value is re-validated on the way OUT as well as on the way in: a row
- * written before the validator tightened must never become a rendered `src`.
  */
 export async function avatarResolver(): Promise<
   (row: AvatarSource) => string | null

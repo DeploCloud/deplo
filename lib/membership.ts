@@ -44,19 +44,9 @@ export {
 } from "./membership-shared";
 
 /**
- * Active-team context for the multi-tenant control plane.
- *
- * Mirrors how `getCurrentUser()` works: instead of threading `teamId` through
- * every data-layer signature, the active team is resolved once per request from
- * a signed-by-membership cookie and cached. Data functions call
+ * Active-team context for the multi-tenant control plane. Data functions call
  * `getActiveTeamId()` internally and filter their reads/writes by it; mutating
  * actions call `requireCapability(...)` to gate on the member's permissions.
- *
- * Identity (`users`/`teams`/`memberships`) is relational (relational-store PLAN
- * cut-set (b)). `teamsForUser`/`membershipFor`/`hasGrant` query Postgres via
- * `getDb()` and are therefore **async** — every caller awaits them. A
- * `Membership.capabilities` array is reassembled from the
- * `membership_capabilities` junction on read.
  */
 
 const ACTIVE_TEAM_COOKIE = "deplo_team";
@@ -120,13 +110,7 @@ export async function teamsForUser(userId: string): Promise<Team[]> {
 
 /**
  * Thrown when a team (or the member's role in it) requires two-factor
- * authentication and the account has not enrolled one. Carries the team id and a
- * human reason so the caller can say WHICH policy is blocking them.
- *
- * This is a hard stop, not a downgrade: a member under an unmet 2FA policy gets
- * NO capabilities, no reads, and no bearer-API access in that team — "niente 2FA,
- * niente di niente". Their other teams are untouched, and their own account
- * settings stay reachable, which is what makes the block recoverable.
+ * authentication and the account has not enrolled one.
  */
 export class TwoFactorRequiredError extends Error {
   constructor(
@@ -142,20 +126,6 @@ export class TwoFactorRequiredError extends Error {
 
 /**
  * Whether `userId` satisfies `teamId`'s 2FA policy, and if not, what to name.
- *
- * Two independent sources, either of which is enough: the team-wide switch
- * (`teams.require_two_factor`) and the member's own role
- * (`team_roles.require_two_factor`). A membership with no role — the hand-picked
- * "Custom" capability set — is covered by the team switch alone.
- *
- * SATISFIED BY EITHER SECOND FACTOR: an enrolled authenticator app, or a
- * passkey that this request actually signed in with (ADR-0024). The passkey half
- * is what lets a team turn the policy on without asking every member to install
- * anything; the "actually signed in with" half is what stops one factor clearing
- * a two-factor policy. A password session on an account that merely OWNS a
- * passkey is blocked here - and, deliberately, only here: it keeps its own
- * account settings, which is what makes the block recoverable (ADR-0014 §4).
- *
  * Request-cached: the gate runs on every read AND every capability check, so
  * without memoization a single page would re-run it dozens of times.
  */
@@ -238,10 +208,7 @@ export async function membershipFor(
   userId: string,
   teamId: string,
 ): Promise<Membership | null> {
-  // THE gate. Everything that resolves what a member may do runs through here —
-  // requireMembership, requireCapability, hasCapability, currentCapabilities, and
-  // authenticateToken for the bearer API — so one guard closes the UI and the API
-  // together. Reads go through requireActiveTeamId, which carries the twin call.
+  // THE gate.
   await assertTwoFactor(userId, teamId);
   const rows = await getDb()
     .select({
@@ -274,28 +241,7 @@ export async function membershipFor(
 
 /**
  * Narrow a member's effective capabilities to what the API token making this
- * request was granted. THE clamp: because every authorization decision — the
- * mutation gates, the nav, `ctx.capabilities`, the per-folder maths — reads
- * `membershipFor`, one intersection here is what makes a token a principal with
- * its own permissions instead of an impersonation of its creator.
- *
- * Two intersections, in order:
- *  - the token's own set, so it can never exceed its creator (and loses a
- *    permission the moment they do — nothing is materialized, this is read live);
- *  - and, when the token is narrowed BELOW this whole team (to a project or a
- *    single app), {@link PROJECT_SCOPED_CAPABILITIES}, which drops every
- *    team-wide permission that has no per-project meaning. Naming several whole
- *    teams is breadth and strips nothing.
- *
- * Keyed on the (userId, teamId) PAIR because `membershipFor` is also called to
- * hydrate OTHER people's memberships (the member list, the roles page, a folder
- * grant's bound) — clamping those would make a token see the rest of the team
- * through its own permissions. A cookie request carries no token and is untouched.
- *
- * Exported as {@link clampCapabilitiesToToken} because a node grant (ADR-0016)
- * REPLACES the membership set rather than narrowing it, so it never passes
- * through the intersection below — `lib/data/node-access.ts` has to apply the
- * same clamp itself or a scoped CI token would inherit its creator's grants.
+ * request was granted.
  */
 function clampToToken(
   caps: Capability[],
@@ -306,9 +252,7 @@ function clampToToken(
   if (!id?.token || id.userId !== userId || id.teamId !== teamId) return caps;
   const own = boundedBy(caps, id.token.capabilities);
   // Depth strips, breadth doesn't: a token holding this team WHOLLY keeps every
-  // capability it was given, however many other teams it also reaches. Only
-  // being narrowed to a project or an app inside this team drops the team-wide
-  // ones, which have no per-project meaning.
+  // capability it was given, however many other teams it also reaches.
   return narrowedScope() ? boundedBy(own, PROJECT_SCOPED_CAPABILITIES) : own;
 }
 
@@ -318,8 +262,7 @@ export const clampCapabilitiesToToken = clampToToken;
 /**
  * Resolve the active team id for the current request. Reads the `deplo_team`
  * cookie, validates it against the user's memberships, and falls back to the
- * user's first team. Returns null when unauthenticated or the user has no team.
- * Cached per-request so it is cheap to call from many data functions.
+ * user's first team.
  */
 export const getActiveTeamId = cache(async (): Promise<string | null> => {
   const user = await getCurrentUser();
@@ -327,12 +270,6 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
   const teams = await teamsForUser(user.id);
   if (teams.length === 0) return null;
   // A bearer-token request is scoped to the token's team — and ONLY that team.
-  // If the principal no longer belongs to it (a stale token), fail CLOSED with a
-  // clear error: the request must never silently re-scope to another of their
-  // teams (the old teams[0] fallback). authenticateToken already rejects such a
-  // token upstream, so in the live GraphQL path this branch only ever sees a
-  // valid membership; the throw is the defense-in-depth backstop for a stale
-  // identity reaching the data layer directly.
   const override = currentIdentity();
   if (override) {
     if (!teams.some((t) => t.id === override.teamId))
@@ -354,10 +291,7 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
 export async function requireActiveTeamId(): Promise<string> {
   const teamId = await getActiveTeamId();
   if (!teamId) throw new Error("No active team");
-  // The twin of the guard in `membershipFor`. Every READ in lib/data scopes
-  // itself through this function and never touches `membershipFor`, so without
-  // this second call a member under an unmet 2FA policy would still be able to
-  // list apps, logs and variables — blocked from writing, but not from looking.
+  // The twin of the guard in `membershipFor`.
   const user = await getCurrentUser();
   if (user) await assertTwoFactor(user.id, teamId);
   return teamId;
@@ -403,15 +337,6 @@ export async function currentCapabilities(): Promise<Capability[]> {
 /**
  * Everything the current user could do SOMEWHERE in the active team: their role's
  * set, plus every capability any node grant hands them (ADR-0016).
- *
- * This is deliberately WIDER than the truth at any one place, and it must only be
- * used where being wider is the correct answer — showing a nav item or a tab that
- * is useful for at least one app, and the GraphQL `authScopes` pre-check, which
- * `lib/graphql/context.ts` has always documented as a convenience snapshot rather
- * than the boundary. The boundary is `requireAppCapability`, which asks about one
- * specific app and is the only thing that may decide a mutation.
- *
- * Three cheap DISTINCT lookups, each already narrowed to this user and team.
  */
 export async function reachableCapabilities(): Promise<Capability[]> {
   const user = await getCurrentUser();
@@ -516,11 +441,6 @@ export async function requireInstanceAdmin(): Promise<{ userId: string }> {
 
 /**
  * Instance-admin is opt-in PER TOKEN, not inherited from the person.
- *
- * Otherwise a token minted by an admin would quietly administer users, servers
- * and the global environment — the exact implicit root the capability set exists
- * to remove, and one that no team capability can narrow (these gates never
- * consult them). A cookie session is unaffected: no token, no restriction.
  */
 function tokenHoldsInstanceAdmin(): boolean {
   const token = currentIdentity()?.token;
@@ -529,27 +449,7 @@ function tokenHoldsInstanceAdmin(): boolean {
 
 /**
  * Refuse a resource that has no per-Project meaning to a principal who reaches
- * only part of this team — a narrowed API token, or a member whose ROLE is
- * scoped.
- *
- * Either way the capability set has already dropped every team-wide permission
- * (see {@link PROJECT_SCOPED_CAPABILITIES}, applied by `clampToToken` for a
- * token and at write time for a role), which closes the MUTATIONS. But `view` is
- * an always-on floor that no capability check consults, so team-wide READS need
- * this explicit refusal: the member roster, the other tokens, the registries,
- * the databases (which carry no `project_id` to scope by at all).
- *
- * Use it for collections and team-level actions. For a point lookup by id,
- * prefer behaving as NOT FOUND instead — a scope must never become an oracle for
- * whether some id exists.
- *
- * The message names the right subject. Telling a person their SESSION is "an API
- * token limited to specific projects" is both confusing and a statement about
- * the enforcement mechanism that they did not ask for.
- *
- * Async, unlike the token half it replaces: a person's reach lives in the
- * database. Call it BEFORE opening a transaction — a query issued while one is
- * open waits on it, and under pglite that is a hang rather than a slow query.
+ * only part of this team — a narrowed API token, or a member whose ROLE is scoped.
  */
 export async function requireTeamWide(what: string): Promise<void> {
   if (narrowedScope())
@@ -563,15 +463,9 @@ export async function requireTeamWide(what: string): Promise<void> {
 }
 
 /**
- * The CURRENT caller's reach in the active team, or null when they reach all of
- * it — their own nodes when their membership carries a set, their role's scope
+ * The CURRENT caller's reach in the active team, or null when they reach all of it
+ * — their own nodes when their membership carries a set, their role's scope
  * otherwise ({@link memberScopeFor}).
- *
- * Most reads never need it: anything that resolves through
- * `appCapabilitiesForTeam` gets the scope applied for free, because that is
- * where it lives. It is the handful of lists that assemble their own rows —
- * the project list, the breadcrumb graph — that have to ask, and forgetting to
- * is exactly how those two shipped leaking.
  */
 export async function currentMemberScope(): Promise<NodeScope | null> {
   const user = await getCurrentUser();
@@ -584,22 +478,16 @@ export async function currentMemberScope(): Promise<NodeScope | null> {
 }
 
 /**
- * The non-throwing twin of {@link requireTeamWide}, for a PAGE that has to
- * degrade rather than fail: a section outside someone's access should say so,
- * not render the error boundary over a healthy dashboard.
- *
- * True for every cookie session whose role is unscoped and whose membership
- * carries no nodes of its own, and for every unrestricted token.
+ * The non-throwing twin of {@link requireTeamWide}, for a PAGE that has to degrade
+ * rather than fail: a section outside someone's access should say so, not render
+ * the error boundary over a healthy dashboard.
  */
 export async function reachesWholeTeam(): Promise<boolean> {
   if (narrowedScope()) return false;
   const user = await getCurrentUser();
-  // FAIL CLOSED. "No user" and "no active team" are not the same shape as "an
-  // unscoped member", and this answer is read as an authorization decision in
-  // places that treat `true` as full reach — a database backup schedule, a run
-  // history, an artifact sweep. Every caller today happens to prove a session
-  // first, so this changes nothing about who can do what; it is the default
-  // being right that matters, because the next caller will not check.
+  // FAIL CLOSED. Every caller today happens to prove a session first, so this changes
+  // nothing about who can do what; it is the default being right that matters,
+  // because the next caller will not check.
   if (!user) return false;
   const teamId = await getActiveTeamId();
   if (!teamId) return false;
@@ -636,8 +524,6 @@ async function hasGrant(
 /**
  * True if the current user may publish container ports — a compose service's
  * `ports:` (bound to the host) or `expose:` (advertised to linked containers).
- * This is orthogonal to Traefik routing: giving an app a public DOMAIN does
- * NOT require this grant; only declaring published ports in the compose does.
  */
 export async function canExposePorts(): Promise<boolean> {
   return hasGrant(await getCurrentUser(), "canExposePorts");

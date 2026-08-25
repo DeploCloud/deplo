@@ -4,21 +4,7 @@ import type { ResourceLimits } from "../types";
 
 /**
  * Per-app resource limits → the `docker compose up` service keys that ENFORCE
- * them. deplo's agent brings every stack up with `docker compose up` (never
- * `docker stack deploy`), so the enforced form is the top-level, non-swarm
- * container keys (`mem_limit` / `cpus` / `pids_limit` / …) — the swarm-only
- * `deploy.resources.*` block is silently ignored by `compose up` and is NOT
- * used here.
- *
- * A `null` limits object — or one whose every field is unset — yields `{}`, so
- * the rendered service is byte-identical to the historical one (the same
- * byte-identical-stack contract volumes/env injection preserve: an app with no
- * limits never restarts on a reroute).
- *
- * Stored units → compose units: memory MiB → `<n>m`, disk GiB → `<n>G`, CPU
- * milli-CPUs → a fractional-core string (`500` → `"0.5"`). Kept as one pure
- * function so the single-image path, the compose-stack path, and the tests all
- * agree on exactly one mapping.
+ * them.
  */
 export function resourceLimitsToComposeKeys(
   r: ResourceLimits | null | undefined,
@@ -45,12 +31,9 @@ export function resourceLimitsToComposeKeys(
 }
 
 /**
- * Render the resource-limit keys as a YAML FRAGMENT indented `indent` spaces —
- * for the string-built single-image path (`renderCompose`), which has no service
- * object to mutate. Empty string when there are no limits, so the fragment drops
- * out of the template and the stack stays byte-identical. We dump the same keys
- * object with `js-yaml` (rather than hand-format the nested `ulimits`/
- * `storage_opt` maps) so the fragment can never disagree with the object form.
+ * Render the resource-limit keys as a YAML FRAGMENT indented `indent` spaces — for
+ * the string-built single-image path (`renderCompose`), which has no service
+ * object to mutate.
  */
 export function renderResourceLimitsYaml(
   r: ResourceLimits | null | undefined,
@@ -71,10 +54,7 @@ export function renderResourceLimitsYaml(
 
 /**
  * Overlay resource-limit keys onto a compose-stack service, EXISTING-WINS: a key
- * the service already declares in its own compose is never overridden. This
- * mirrors the env-injection precedence (`mergeEnvironment`) — the user's own
- * compose is authoritative — and applies the app-level cap to every service that
- * hasn't set its own. Empty keys ⇒ the service is left untouched (byte-identical).
+ * the service already declares in its own compose is never overridden.
  */
 export function mergeResourceLimits(
   svc: Record<string, unknown>,

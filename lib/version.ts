@@ -3,28 +3,17 @@ import { version as packageVersion } from "../package.json";
 import { FALLBACK_AGENT_VERSION } from "./agent/release";
 
 /**
- * Current Deplo (control plane / website) version and upstream repository. The
- * dashboard compares this against the latest GitHub release to surface available
- * updates. This is the WEBSITE's version and is independent of the agent version
- * below — they release on their own cadences.
- *
- * Read from package.json rather than written twice. It used to be a literal here,
- * and it drifted the first time it mattered: `chore(release): deplo 1.2.0` bumped
- * package.json, the tag and the image, while this constant stayed at 1.1.0 — so a
- * fully updated instance kept telling its operator "v1.2.0 is available, you have
- * v1.1.0", forever. Both readers (`lib/data/updates.ts`, `lib/data/instance-settings.ts`)
- * are server-only, so the JSON import never reaches a client bundle.
+ * Current Deplo (control plane / website) version and upstream repository. Both
+ * readers (`lib/data/updates.ts`, `lib/data/instance-settings.ts`) are
+ * server-only, so the JSON import never reaches a client bundle.
  */
 export const DEPLO_VERSION: string = packageVersion;
 export const DEPLO_REPO = "DeploCloud/deplo";
 
 /**
- * The agent version we expect every server to be running. The agent now lives in
- * its own repo (DeploCloud/deplo-agent) and ships as GitHub releases, so the
- * real "latest" is resolved at runtime via resolveExpectedAgentVersion() — see
- * lib/agent/release.ts. This constant is the OFFLINE FALLBACK used only when
- * GitHub can't be reached, and it is what "Update agent" would install then.
- * Deliberately NOT tied to DEPLO_VERSION.
+ * The agent version we expect every server to be running. This constant is the
+ * OFFLINE FALLBACK used only when GitHub can't be reached, and it is what "Update
+ * agent" would install then.
  */
 export const EXPECTED_AGENT_VERSION = FALLBACK_AGENT_VERSION;
 
@@ -51,25 +40,9 @@ export function isNewer(latest: string, current: string): boolean {
 }
 
 /**
- * Whether to offer "Update agent" for a host at all.
- *
- * The button used to be unconditional, on the reasoning that it IS the update
- * path so it should not wait to exist. In practice that reads as a permanent
- * chore on a fleet that is already current, and it makes the one moment that
- * matters (a release landed) indistinguishable from every other day.
- *
- * The question it answers is "is this host on the release that exists", NOT
- * "is there a newer one" — deliberately, in both directions:
- *
- *  - A host AHEAD of the release is the documented fleet rollback
- *    (`docs/agents/fleet-rollout.md` §10): deleting a bad release walks
- *    `releases/latest` backwards, and the button is what then puts every host
- *    back on the older artifact. `isNewer` alone would hide it exactly there.
- *  - An agent that reported nothing, or a version this cannot parse, gets the
- *    button too. That is where an operator needs the repair path most, and
- *    `isNewer` answers false for both.
- *
- * So only a confident, parsed, exact match hides it.
+ * Whether to offer "Update agent" for a host at all. `isNewer` alone would hide it
+ * exactly there. - An agent that reported nothing, or a version this cannot parse,
+ * gets the button too.
  */
 export function agentUpdateAvailable(
   reported: string | null,
@@ -82,13 +55,7 @@ export function agentUpdateAvailable(
 }
 
 /**
- * The agent version a server is effectively running, for display. Every server (the host running Deplo included) runs an agent
- * installed via install-agent.sh that reports its version on each Hello (cached
- * in `agent.version`); an empty string or absent agent (not-yet-provisioned)
- * collapses to null.
- *
- * Kept here, decoupled from the `Server` type, so the GraphQL resolver and the
- * server-rendered Servers card derive the same value from one rule.
+ * The agent version a server is effectively running, for display.
  */
 export function reportedAgentVersion(server: {
   agent?: { version: string };
@@ -98,15 +65,7 @@ export function reportedAgentVersion(server: {
 
 /**
  * Resolve the agent version every server should be running — the latest agent
- * GitHub release (DeploCloud/deplo-agent), cached. Falls back to the static
- * EXPECTED_AGENT_VERSION when GitHub is unreachable. This is the async successor
- * to the old compile-time EXPECTED_AGENT_VERSION constant: server-side callers
- * (GraphQL resolvers, the Servers RSC) await it once and thread the value into
- * the pure helpers below, which stay synchronous and unit-testable.
- *
- * Kept out of lib/agent/release.ts so that module owns "what release exists" and
- * this one owns "what version we compare against" (they differ only in the
- * fallback). server-only is inherited transitively via release.ts.
+ * GitHub release (DeploCloud/deplo-agent), cached.
  */
 export async function resolveExpectedAgentVersion(): Promise<string> {
   const { resolveLatestAgentRelease } = await import("./agent/release");

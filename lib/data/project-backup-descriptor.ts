@@ -15,14 +15,6 @@ import type { App, VolumeMount } from "../types";
  * Build the {@link ProjectDescriptor} the agent's Backup/Restore RPC needs from a
  * project, resolving Deplo's three persistent-state shapes into a FLAT list of
  * on-host docker volume names plus the files-dir flag and the compose/env
- * snapshot. The agent stays dumb about Deplo's volume-naming scheme: it tars/wipes
- * each name in `volumeNames` verbatim (mounting `-v <name>:/v`), so this builder
- * is the single place that must get the host names exactly right — a wrong name
- * silently backs up nothing (or, on restore, wipes the wrong volume).
- *
- * The descriptor's shape mirrors the wire `ProjectDescriptor` but stays a plain
- * structural type here (the data layer maps it 1:1 into the protobuf message),
- * matching how the rest of agent-client keeps gen types out of the data layer.
  */
 export interface ProjectBackupDescriptor {
   slug: string;
@@ -40,15 +32,7 @@ export interface ProjectBackupDescriptor {
 
 /**
  * The exact decrypted env a project runs with in production — the snapshot the
- * restore re-Reroutes. MUST mirror build.ts's private `appEnv` (production
- * target) so a backup captures EXACTLY what a production deploy would inject:
- * instance globals, the app's own vars, and every shared var that reaches it —
- * merged through the SAME `resolveEnvEntries` seam with the SAME precedence,
- * decrypted at this edge. (Omitting a source here silently dropped it from a
- * compose-stack restore, which interpolates ${VAR} from this snapshot rather than
- * baked YAML.) Secrets are decrypted here because the agent must write the real
- * `.env` on restore; they ride the same mTLS channel as the S3 creds and the DB
- * password.
+ * restore re-Reroutes.
  */
 export async function appEnvSnapshot(
   appId: string,
@@ -76,12 +60,6 @@ export async function appEnvSnapshot(
 
 /**
  * The on-host docker volume names for a SINGLE-CONTAINER project's named volumes.
- * The renderCompose path namespaces each named volume per project as
- * `hostVolumeName(slug, name)` = `deplo-<slug>-<name>` (pinned via `name:` in the
- * top-level volumes block), so we compute that directly from the stored mounts —
- * no YAML round-trip needed. `type === "host"` mounts are EXCLUDED (shared
- * cross-tenant host paths, outside Deplo); `type === "service"` mounts live under
- * the files dir and are captured by `includeFiles`, not as volumes.
  */
 export function namedVolumeHostNames(
   slug: string,
@@ -94,41 +72,13 @@ export function namedVolumeHostNames(
 
 /**
  * The on-host docker volume names for a COMPOSE-STACK project, parsed from the
- * rendered stack YAML's TOP-LEVEL `volumes:` block.
- *
- * Unlike the single-container renderer, `buildComposeStack` does NOT rewrite a
- * compose-stack project's own `volumes:` — the user's declarations pass through
- * untouched. So the on-host name of each declared volume follows Docker Compose's
- * own rule, reproduced here:
- *  - an explicit `name:` on the volume wins verbatim (the user/operator pinned a
- *    fixed host name);
- *  - otherwise Compose namespaces it as `<project>_<key>`, and the project is
- *    always `deplo-<slug>` (the `-p deplo-<slug>` the agent runs every compose
- *    command with), so the host name is `deplo-<slug>_<key>`.
- *  - `external: true` volumes are pre-existing host volumes Deplo doesn't own:
- *    their host name is the explicit `name:` if set, else the bare key (Compose
- *    does NOT project-prefix an external volume). We still back them up (they hold
- *    the stack's data) but never project-prefix them.
- *
- * A volume entry that is `null`/`{}` (the common `myvol: {}` shape) has no `name:`
- * and is not external, so it resolves to `deplo-<slug>_<key>`.
+ * rendered stack YAML's TOP-LEVEL `volumes:` block. We still back them up (they
+ * hold the stack's data) but never project-prefix them.
  */
 /**
  * Deplo owns the `deplo-` host-volume namespace: every per-app volume it derives
  * lives there (`deplo-<slug>_<key>` for compose, `deplo-<slug>-<name>` for single-
- * container). A user compose that PINS an explicit `name:` — or references an
- * `external:` volume — inside that namespace could name ANOTHER app's live volume,
- * so THIS app's backup archive (exfil), restore (stop→wipe→untar) and server-move
- * (`down -v`) would operate on the victim's data. Because the enumerator can't tell
- * `deplo-<myslug>-<x>` from `deplo-<otherslug>...` by string shape (both slug and
- * key allow hyphens), the safe rule is categorical: a user may not pin/reference
- * ANY `deplo-`-prefixed name — only Deplo's own derived names may live there.
- *
- * `own` carries exactly those: the host names the STACK RENDERER itself pinned for
- * the app's Storage-settings volumes (`hostVolumeName(slug, name)`, injected by
- * `injectAppVolumes`). They are derived from the app's own rows, never from the
- * user's compose text, so exempting them can't launder a hand-pinned name — a
- * `name:` the user typed still has to be outside the namespace.
+ * container).
  */
 function assertNotReservedVolumeName(
   slug: string,
@@ -172,10 +122,8 @@ export function composeStackVolumeHostNames(
       names.push(s.name);
       continue;
     }
-    // `external` can be `true` (bool) or, in the deprecated long form, an object
-    // that may itself carry a `name`. An external volume is a pre-existing host
-    // volume Deplo doesn't own: its name is `external.name` if given, else the
-    // bare key — NEVER project-prefixed (Compose doesn't prefix externals).
+    // `external` can be `true` (bool) or, in the deprecated long form, an object that
+    // may itself carry a `name`.
     if (s.external && typeof s.external === "object") {
       const ext = s.external as { name?: unknown };
       const n = typeof ext.name === "string" && ext.name ? ext.name : key;
@@ -199,20 +147,12 @@ export function composeStackVolumeHostNames(
  * The exact shape a Docker named volume must have, MIRRORING the agent's
  * `volumeNamePattern` (deplo-agent backup_tar.go) so the control plane rejects a
  * bad name with an actionable message INSTEAD of letting the agent fail opaquely
- * mid-stream ("unsafe volume name") after it has already started archiving. A
- * name that fails here would be bind-mounted as a host path or rejected agent-
- * side, so it must never reach the wire. (The agent re-validates regardless —
- * this is defence in depth + a clear UX, not the only gate.)
  */
 const AGENT_VOLUME_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 
 /**
  * Validate every resolved host volume name against the agent's rule, throwing a
- * clear, actionable error on the first bad one. The usual culprit is a compose
- * `volumes:` entry with an INTERPOLATED explicit name (`name: ${VAR}`) — Compose
- * resolves `${VAR}` only at `docker compose` runtime, so the rendered YAML still
- * carries the literal `${VAR}`, which is not a legal docker volume name. Rather
- * than back up the wrong (or no) volume, we refuse with guidance.
+ * clear, actionable error on the first bad one.
  */
 export function assertSafeVolumeNames(slug: string, names: string[]): void {
   for (const name of names) {
@@ -231,17 +171,9 @@ export function assertSafeVolumeNames(slug: string, names: string[]): void {
 }
 
 /**
- * The on-host docker volume names to COPY on an app server MOVE. Same as the
- * backup enumeration (named for a single-container project, compose-stack volumes
- * for a stack) EXCEPT `external:` compose volumes are EXCLUDED: an external volume
- * is a pre-existing host volume Deplo doesn't own and didn't create, so it must not
- * be relocated (unlike a backup, which copies it because it holds data the operator
- * asked to snapshot). A move recreates the app on a new host; an external volume
- * there is the operator's responsibility, exactly as it was on the old host.
- *
- * `renderedYaml` is the compose-stack project's rendered stack (empty for a single-
- * container project, which has no compose `volumes:` block). Names are validated
- * with {@link assertSafeVolumeNames} by the caller before they reach the wire.
+ * The on-host docker volume names to COPY on an app server MOVE. Names are
+ * validated with {@link assertSafeVolumeNames} by the caller before they reach the
+ * wire.
  */
 export function appMoveVolumeNames(
   project: App,
@@ -286,15 +218,7 @@ export function appMoveVolumeNames(
 }
 
 /**
- * Build the full backup descriptor for a project. For a compose-stack project the
- * rendered YAML (the source of truth for the host volume names AND the snapshot)
- * is read back from the OWNING agent via `readStack`; for a single-container
- * project the volume names are derived from the stored mounts and the snapshot is
- * still read from the agent so the archive captures the EXACT deployed config.
- *
- * Throws {@link AgentUnreachableError} (from `connectAgent`) when the owning
- * server's agent can't be reached, or a clear validation error when a resolved
- * volume name is not agent-safe (e.g. an interpolated compose volume name).
+ * Build the full backup descriptor for a project.
  */
 export async function buildProjectDescriptor(
   project: App,
@@ -330,10 +254,9 @@ export async function buildProjectDescriptor(
   return {
     slug,
     volumeNames,
-    // Single-container apps keep their config files under the files dir only
-    // when they have project-path mounts or `mounts`; a compose-stack project's
-    // `./` bind mounts also land there. Including the dir is cheap and the agent
-    // no-ops when it's absent, so include it whenever the project could have one.
+    // Single-container apps keep their config files under the files dir only when they
+    // have project-path mounts or `mounts`; a compose-stack project's `./` bind mounts
+    // also land there.
     includeFiles: appHasFilesDir(project),
     composeYaml,
     envSnapshot: await appEnvSnapshot(project.id),
@@ -346,11 +269,8 @@ export async function buildProjectDescriptor(
 
 /**
  * Whether a project could have a files dir (<stacks>/files/<slug>) worth
- * archiving: a compose-stack project (its `./x` bind mounts + template mounts
- * live there), any project with template `mounts`, or any with a `project`-type
- * volume mount. The agent stats the dir and no-ops if it's absent, so a false
- * positive only costs an empty stat — but skipping a real files dir would lose
- * config, so we err toward including it.
+ * archiving: a compose-stack project (its `./x` bind mounts + template mounts live
+ * there), any project with template `mounts`, or any with a `project`-type volume
  */
 export function appHasFilesDir(project: App): boolean {
   if (usesComposeStack(project)) return true;

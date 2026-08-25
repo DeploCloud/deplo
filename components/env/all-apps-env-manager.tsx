@@ -428,6 +428,7 @@ export function AllAppsEnvManager({
    * Drop: move the dragged project to the target's slot IN THE FULL ORDER, so the
    * projects a filter is currently hiding keep their places (the mutation takes a
    * total order and appends whatever it isn't given — a subset would scramble
+   * them).
    */
   function onDragEnd(event: DragEndEvent) {
     const { active, over } = event;

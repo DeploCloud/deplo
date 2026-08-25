@@ -1,17 +1,6 @@
 /**
  * The deploy-source seam: decide WHICH source a deployment builds from, and the
  * shared rootDirectory resolution every built source uses.
- *
- * `runDeployment` used to inline a multi-way `if/else` over the source
- * (docker-image / git / upload / compose) with the rootDirectory logic copied
- * into three arms. The DECISION (which path, and why) is pulled out here as a
- * pure function so it can be exercised without a clone, an archive, or docker;
- * the EXECUTION of each plan stays in the engine (it needs the filesystem and
- * docker). The split is the point: the branchy part is now testable in isolation.
- *
- * Pure on purpose (no store, no docker, no `server-only`) except
- * `resolveBuildDir`, which is the one shared filesystem touch — it wraps
- * `safeBuildDir` so every built source contains rootDirectory the same way.
  */
 
 import { join } from "node:path";
@@ -19,12 +8,11 @@ import { realpath } from "node:fs/promises";
 import { safeBuildDir } from "./path-safety";
 import type { GitRepo, UploadArchive } from "../types";
 
-/** What a deployment builds from, decided from the project.
- * Each variant CARRIES the data its execution needs, so the engine never
- * re-derives (or non-null-asserts) what the decision already proved present.
- *  - `docker-image`  — pull a prebuilt image; no build, no tree.
- *  - `git` / `upload` — materialise a tree, then build it.
- *  - `none`          — nothing deployable; the engine errors. */
+/**
+ * What a deployment builds from, decided from the project. Each variant CARRIES
+ * the data its execution needs, so the engine never re-derives (or
+ * non-null-asserts) what the decision already proved present.
+ */
 export type SourcePlan =
   | { kind: "docker-image"; image: string }
   | { kind: "git"; repo: GitRepo }
@@ -79,14 +67,7 @@ export class RootDirectoryNotFound extends Error {}
 /**
  * Resolve the directory to build from inside a materialised tree (`root`),
  * containing a user-supplied `rootDirectory` against it via {@link safeBuildDir}
- * (realpath-based, defeats symlink escape). The one place every built source
- * (git, upload) resolves rootDirectory, so they can never drift.
- *
- * When `failOnMissing` is set and an EXPLICIT rootDirectory resolves back to the
- * tree root (i.e. it wasn't found / escaped), throws {@link RootDirectoryNotFound}
- * with `notFoundMessage` — a typo'd path must fail loudly rather than silently
- * shipping the wrong tree. `upload` historically did NOT hard-fail, so it passes
- * `failOnMissing: false` to preserve that behaviour.
+ * (realpath-based, defeats symlink escape).
  */
 export async function resolveBuildDir(opts: {
   root: string;

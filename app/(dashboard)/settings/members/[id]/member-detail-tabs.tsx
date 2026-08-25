@@ -743,6 +743,7 @@ export function groupNodes(nodes: UserTeamAccessDTO["nodes"]): NodeGroup[] {
  * The payload: every node in `selection`, carrying `authored` — except nodes that
  * already had a set of their own, which keep it unless the admin edited the
  * permission list (then one set applies everywhere, which is what editing it
+ * says).
  */
 export function buildGrants(
   selection: ScopeSelection,

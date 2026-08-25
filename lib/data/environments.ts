@@ -23,9 +23,7 @@ import type { Environment, EnvironmentKind } from "../types";
 /**
  * Environment CRUD (ADR-0008 Phase 3). Environments are owned by a Project
  * container and gate on the container's team (`deploy`) — there are no
- * per-environment grants. The three defaults are seeded on Project create via
- * {@link defaultEnvironmentRows}; users may add `custom` ones, rename them, pick
- * the default, and delete any non-default (never the last).
+ * per-environment grants.
  */
 
 const MAX_NAME = 40;
@@ -155,8 +153,7 @@ export interface TeamEnvironment {
 /**
  * Every environment across the active team's projects, ordered by project then
  * position — the source for the "share to environments" multi-select on the
- * unified Shared-variables tab. No env values are read, so the view floor
- * (`requireActiveTeamId`) suffices, matching `listProjects`.
+ * unified Shared-variables tab.
  */
 export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
   const teamId = await requireActiveTeamId();
@@ -206,10 +203,9 @@ async function uniqueEnvSlug(projectId: string, name: string): Promise<string> {
         .where(eq(environmentsTable.projectId, projectId))
     ).map((r) => r.slug),
   );
-  // `pr-<n>` is reserved: an environment slugged that way would produce the
-  // EXACT deploy key a pull request preview of the same app owns
-  // (`<slug>__pr-42`), i.e. two different things fighting over one container.
-  // Treat the whole shape as taken so the loop below suffixes past it.
+  // `pr-<n>` is reserved: an environment slugged that way would produce the EXACT
+  // deploy key a pull request preview of the same app owns (`<slug>__pr-42`), i.e.
+  // two different things fighting over one container.
   if (!taken.has(base) && !PREVIEW_SUFFIX_RE.test(base)) return base;
   for (let i = 2; ; i++) {
     const candidate = `${base}-${i}`;
@@ -327,10 +323,7 @@ export async function setDefaultEnvironment(id: string): Promise<void> {
 }
 
 /**
- * Delete a non-default environment; never the default or the last one. The
- * environment's apps are NOT deleted: they re-parent to the project's
- * default environment (ADR-0009 — an environment is a sub-folder of apps,
- * so removing the sub-folder keeps its contents in the project).
+ * Delete a non-default environment; never the default or the last one.
  */
 export async function deleteEnvironment(id: string): Promise<void> {
   await requireCapability("manage_environments");
@@ -360,12 +353,6 @@ export async function deleteEnvironment(id: string): Promise<void> {
   if (siblings.length <= 1)
     throw new Error("A project must keep at least one environment.");
   // The project's default, else its FIRST remaining environment — never null.
-  // An app whose `environment_id` is cleared while its `project_id` stays is an
-  // app filed in a project and in none of its environments: invisible on the
-  // Overview drill-in, which browses per environment. The default is normally
-  // there (this refuses to delete it), so the fallback only bites on a project
-  // that somehow has none — exactly when silently orphaning apps would be
-  // hardest to notice. `siblings.length > 1` makes it always defined.
   const others = siblings.filter((e) => e.id !== id);
   const fallback = others.find((e) => e.isDefault) ?? others[0];
   await getDb().transaction(async (tx) => {

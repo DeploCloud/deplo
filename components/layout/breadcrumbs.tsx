@@ -50,7 +50,8 @@ export function Breadcrumbs({
   /** Plain label shown (after a "/") when there's no rich trail to build. */
   fallback: string;
 }) {
-  // The Overview drill-in lives in the query string (?
+  // The Overview drill-in lives in the query string (?folder=/?project=/?view=),
+  // which layouts don't receive — so the topbar reads it client-side.
   const params = useSearchParams();
   const searching = Boolean(params.get("q"));
   const openFolderId = searching ? null : params.get("folder");

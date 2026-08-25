@@ -1,12 +1,7 @@
 import type { LogLevel } from "./types";
 
 /**
- * Presentation for a deployment log line's severity. The producer side already
- * tags every line with a {@link LogLevel} (build.ts/builders/agent); this is the
- * single place the UI turns that tag into a visible label + colors, so the
- * build-log stream and the logs page render identical pills and the copied text
- * carries the same label. Keep this in sync with `LogLevel` — the `Record`
- * types force every level to be covered.
+ * Presentation for a deployment log line's severity.
  */
 
 /** Short uppercase label shown in the per-line pill and the copied log text. */
@@ -30,13 +25,7 @@ export const LEVEL_BADGE_CLASS: Record<LogLevel, string> = {
 };
 
 /**
- * The 2px rail down the left edge of a row. Unlike the chip, this one SPANS the
- * whole row, wrapped lines included: that is the point of it. A stack trace is
- * one event printed across a dozen lines, and an unbroken rail beside all of
- * them is what makes it read as a single block instead of a dozen records.
- *
- * `info` is deliberately blank. Most lines are info once the level detector
- * stops guessing, and a rail beside every one of them is a rail beside none.
+ * The 2px rail down the left edge of a row.
  */
 export const LEVEL_BAR_CLASS: Record<LogLevel, string> = {
   command: "bg-zinc-600",
@@ -51,12 +40,6 @@ export const LEVEL_BAR_CLASS: Record<LogLevel, string> = {
  * A faint wash of the level's own colour across the whole row, and a slightly
  * stronger one on hover. Same idea as the notice chip in the toolbar: the colour
  * says what kind of thing this is before you have read a word of it.
- *
- * `info` gets NO wash, only the neutral hover. It is the majority of any log
- * once the detector stops guessing, and a tint behind every line is a tint
- * behind none — the whole point is that the four rows that matter stand out of
- * the page. Kept at single digits: a screenful of errors should read as a page
- * with red in it, not as a red page.
  */
 export const LEVEL_ROW_CLASS: Record<LogLevel, string> = {
   command: "bg-zinc-400/[0.05] hover:bg-zinc-400/[0.09]",
@@ -78,14 +61,9 @@ export const LEVEL_TEXT_CLASS: Record<LogLevel, string> = {
 };
 
 /**
- * How a level reads in the FILTER MENU, as a word rather than a shout.
- *
- * Separate from {@link LEVEL_LABEL} on purpose. That one is a fixed-width tag
- * stamped on a line of monospace output and pasted into a bug report, where
- * `ERROR` is the convention and the alignment is the point. This one is an
- * option in a dropdown, sitting next to `All levels` and `Search` — sentence
- * case, like every other menu in the product. `Warning` rather than `Warn`
- * because the menu has the room and that is the word people know.
+ * How a level reads in the FILTER MENU, as a word rather than a shout. `Warning`
+ * rather than `Warn` because the menu has the room and that is the word people
+ * know.
  */
 export const LEVEL_MENU_LABEL: Record<LogLevel, string> = {
   command: "Command",
@@ -98,13 +76,6 @@ export const LEVEL_MENU_LABEL: Record<LogLevel, string> = {
 
 /**
  * The level's own colour, for that menu.
- *
- * Token utilities, not the console's {@link LEVEL_TEXT_CLASS}: those are tuned
- * for light text on the log pane's permanent dark background (`text-white`,
- * `text-zinc-300`) and would be invisible in a dropdown, which follows the
- * theme. `command` and `info` stay `text-foreground` for the same reason `info`
- * gets no rail and no row wash — they are the majority of any log, and colouring
- * everything colours nothing.
  */
 export const LEVEL_MENU_CLASS: Record<LogLevel, string> = {
   command: "text-foreground",

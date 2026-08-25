@@ -27,18 +27,8 @@ import type {
 import type { Database } from "../types";
 
 /**
- * The database twin of `lib/data/console.ts` — runtime truth (and, in later
- * steps, console/logs seams) for a DATABASE container. Deliberately separate:
- * console.ts resolves through the app graph (loadTeamApp, compose services,
- * primary domains), none of which exists for a database. The agent RPCs
- * underneath are container-generic; only the authorization + instance
- * resolution differ.
- *
- * A database's container is discoverable through the same `deplo.project=<id>`
- * label the app stacks carry — stamped by generateDatabaseCompose since the
- * detail-page work. A container provisioned BEFORE the labels existed is
- * invisible to listInstances until its next reroute ("Redeploy"); the overview
- * surfaces that as a callout rather than a silently dead terminal.
+ * The database twin of `lib/data/console.ts` — runtime truth (and, in later steps,
+ * console/logs seams) for a DATABASE container.
  */
 
 /**
@@ -141,11 +131,9 @@ async function listDatabaseInstances(db: Database): Promise<ConsoleInstance[]> {
 }
 
 /**
- * The honest not-running placeholder for a page render when the real list can't
- * be obtained (unreachable agent, or zero containers — including a pre-labels
- * container the agent can't see). Same display-only contract as console.ts's
- * displayFallback: the page loads and says "not running", never a fabricated
- * "running"; the operational paths still fail clearly.
+ * The honest not-running placeholder for a page render when the real list can't be
+ * obtained (unreachable agent, or zero containers — including a pre-labels
+ * container the agent can't see).
  */
 function displayFallback(db: Database): ConsoleInstance {
   return {
@@ -250,10 +238,7 @@ export async function getDatabaseShellLabel(id: string): Promise<string> {
 }
 
 /**
- * Authorise an attach and resolve the real container. Attaching stdin to the
- * live engine is a console operation → `open_database_console` (databases have no
- * folder/deploy story; this is the capability the interactive console gates on).
- * Same discriminated result contract as console.ts's resolveAttachTarget.
+ * Authorise an attach and resolve the real container.
  */
 export async function resolveDatabaseAttachTarget(
   id: string,
@@ -323,12 +308,7 @@ export async function resolveDatabaseLogsTarget(
 }
 
 /**
- * Run one console line inside the database container. RCE into the engine →
- * `open_database_console` in the data layer (the GraphQL field carries the same
- * scope — defense in depth). Reuses console.ts's exec semantics verbatim: `exit`/
- * `logout` detach, `clear` is a form feed, docker-level stderr is classified
- * apart from the guest's own exit code, and an unreachable agent answers with
- * a clear line instead of throwing at the terminal.
+ * Run one console line inside the database container.
  */
 export async function execInDatabase(
   id: string,

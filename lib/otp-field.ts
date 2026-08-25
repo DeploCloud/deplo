@@ -1,18 +1,6 @@
 /**
  * The edit model behind the split one-time-code input
  * (`components/ui/otp-input.tsx`), where each digit gets its own box.
- *
- * Pure logic with no React import so `bun run test` can drive every key and
- * paste path directly — the same split `lib/exec-line-editor.ts` uses. What
- * makes a split field fiddly is not the rendering, it is that six boxes have to
- * behave like ONE cursor: typing advances, backspace retreats, a pasted code
- * fills everything, and no box is reachable past the first empty one.
- *
- * The model is DENSE: `value` holds 0..length characters, always packed from the
- * left, and the caret is implied by its length. A sparse model (each box owning
- * its own slot, gaps allowed) is where the real bugs live — "1_3_5_" is a state
- * no user meant to create and every consumer then has to defend against. Making
- * the gap unrepresentable is cheaper than validating it away.
  */
 
 /** Where the caret sits for a given value: the first empty box, clamped. */
@@ -41,11 +29,6 @@ function reachable(value: string, index: number, length: number): number {
 
 /**
  * Type one character at `index`.
- *
- * Non-digits are dropped rather than rejected loudly: the field is numeric, and
- * a stray letter from a keyboard layout should be a no-op, not an error state.
- * Typing over a filled box REPLACES that digit (so a mistyped third digit is one
- * keystroke to fix), while typing at the end appends.
  */
 export function typeDigit(
   value: string,
@@ -65,10 +48,6 @@ export function typeDigit(
 
 /**
  * Backspace at `index`.
- *
- * On a filled box it removes that digit and closes the gap; at the end it
- * removes the last one. Either way the caret follows the deletion backwards,
- * which is what makes holding backspace clear the field.
  */
 export function backspace(
   value: string,
@@ -84,10 +63,6 @@ export function backspace(
 
 /**
  * Paste at `index`, keeping only digits.
- *
- * Deliberately lenient about what it accepts: people paste `123 456`, `123-456`
- * and a code with a trailing newline out of a password manager, and all three
- * mean the same six digits. Overflow is truncated rather than refused.
  */
 export function pasteDigits(
   value: string,
@@ -104,16 +79,6 @@ export function pasteDigits(
 
 /**
  * One `input` event on a box, which is not always one keystroke.
- *
- * A password manager or a platform one-time-code autofill delivers the WHOLE
- * code as a single input event on the first box — no paste event is fired, so
- * `onPaste` never sees it, and `typeDigit` (which keeps the last digit, because
- * a box that already holds one reports "old+new") would throw away five of the
- * six digits and leave the user staring at a field holding just a "6".
- *
- * The discriminator is the box being EMPTY: more than one digit arriving where
- * nothing was is a fill, while two characters arriving on an occupied box is
- * somebody replacing a digit they already typed.
  */
 export function typeOrFill(
   value: string,

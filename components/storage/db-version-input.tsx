@@ -9,7 +9,8 @@ import type { DatabaseType } from "@/lib/types";
 
 /**
  * Database engine version input with an autocomplete dropdown synced live to
- * Docker Hub (via `/api/database-versions?
+ * Docker Hub (via `/api/database-versions?engine=…`), so the list tracks new
+ * engine releases automatically instead of a hardcoded set.
  */
 export function DbVersionInput({
   engine,

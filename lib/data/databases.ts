@@ -77,12 +77,7 @@ const DEFAULT_PORTS: Record<DatabaseType, number> = {
 };
 
 // The host-port range the "generate an available port" button draws from when a
-// database is exposed publicly. Deliberately HIGH and away from the well-known
-// engine ports (5432/3306/…) so a generated port never lands on a system service
-// or the control plane's own DB — the exact collision that made "expose publicly"
-// silently fail before. Any port in [1024, 65535] a user types is still allowed
-// (validated + agent-checked for availability); this range only bounds the
-// suggestion.
+// database is exposed publicly.
 const EXPOSE_PORT_MIN = 20000;
 const EXPOSE_PORT_MAX = 40000;
 // A user-supplied port must be a real, unprivileged TCP port. Privileged ports
@@ -107,10 +102,7 @@ function defaultUserFor(type: DatabaseType): string {
 const DB_NAME_MAX = 60;
 
 /**
- * Clean a user-supplied DISPLAY name. Free-form on purpose — spaces, capitals
- * and accents are all fine, exactly like an App's name — because the display
- * name is not an identifier: {@link databaseSlug} derives the container's
- * identity separately, and only at creation.
+ * Clean a user-supplied DISPLAY name.
  */
 function cleanDatabaseName(raw: string): string {
   const trimmed = raw.trim();
@@ -123,11 +115,9 @@ function cleanDatabaseName(raw: string): string {
 }
 
 /**
- * Derive the host-side slug from a display name: the compose project (`db-<slug>`),
- * its container_name, its data volume and its DNS name on the `deplo` network all
- * hang off it. CREATE-ONLY — the slug is frozen in the `host` column at creation
- * and a later rename never re-derives it, which is precisely what makes renaming
- * safe (nothing physical moves).
+ * Derive the host-side slug from a display name: the compose project
+ * (`db-<slug>`), its container_name, its data volume and its DNS name on the
+ * `deplo` network all hang off it.
  */
 function databaseSlug(name: string): string {
   const slug = name
@@ -152,12 +142,7 @@ function isDuplicateNameError(e: unknown): boolean {
 /**
  * Sanitize a user-supplied engine identifier (DB user or DB name) to a portable,
  * URL-safe SQL identifier: lowercased, `[a-z0-9_]`, starting with a letter or
- * underscore. Returns null when the cleaned value is empty or leads with a digit
- * so the caller can fall back to the engine default rather than emit a broken
- * identifier. Deliberately NOT the same rule as the service `name` (which allows
- * hyphens for DNS): a hyphen is not a legal unquoted SQL identifier character for
- * a role/database in postgres/mysql, and the value rides raw inside a
- * connection-string URL, so we keep it to `_`.
+ * underscore.
  */
 function sanitizeDbIdentifier(raw: string): string | null {
   const cleaned = raw
@@ -169,20 +154,9 @@ function sanitizeDbIdentifier(raw: string): string | null {
 }
 
 /**
- * Reject a password that would corrupt the two places it is written.
- *
- * It used to reject every URL-authority delimiter too (`@ / : ? # %`), because the
- * password rode RAW inside the connection string. It no longer does -
- * `buildConnectionString` percent-encodes and `parseConnectionPassword` decodes -
- * and the old rule had a cost paid somewhere it should not have been: an IMPORT
- * carries a password chosen on another platform, `@` is about the most common
- * character in one, and rotating it there leaves the imported database holding the
- * OLD platform's users while Deplo holds a credential that opens nothing. The data
- * arrives and is unreachable.
- *
- * What still cannot ride: `$`, which docker-compose INTERPOLATES out of the
- * `- KEY=value` env line this password is emitted on, and whitespace or control
- * characters, which break that line (and the YAML around it) outright.
+ * Reject a password that would corrupt the two places it is written: `$` is
+ * interpolated out by docker-compose on the `- KEY=value` line this rides, and
+ * whitespace or a control char breaks both the line and the YAML.
  */
 function assertPasswordSafe(password: string): void {
   // eslint-disable-next-line no-control-regex
@@ -191,18 +165,13 @@ function assertPasswordSafe(password: string): void {
 }
 
 /**
- * Resolve the server a team may provision/reroute a database on: it must exist,
- * be visible to the team (an `all_teams` server or one granted to it), and be
- * provisioned (have a live agent). Defaults to the sole server when there is
- * exactly one and none was named. Throws a caller-facing error otherwise. Shared
- * by createDatabase, generateAvailableDbPort, and updateDatabase so the three
- * paths can't drift on what "a usable server" means.
+ * Resolve the server a team may provision/reroute a database on: it must exist, be
+ * visible to the team (an `all_teams` server or one granted to it), and be
+ * provisioned (have a live agent). Throws a caller-facing error otherwise.
  */
 async function resolveTeamServer(teamId: string, serverId?: string) {
   // A specialised host runs no workload: storage-only has no Docker at all, and
-  // build-only compiles for other machines and has no proxy. Filtered HERE rather
-  // than in the picker alone, because the picker is UI and this is the boundary -
-  // an id can arrive from a bearer token too.
+  // build-only compiles for other machines and has no proxy.
   const servers = (await listServersForTeam(teamId)).filter(canHostWorkloads);
   if (servers.length === 0) throw new Error("No server available");
   let server;
@@ -220,12 +189,7 @@ async function resolveTeamServer(teamId: string, serverId?: string) {
 }
 
 /**
- * Ask the owning server's agent whether a host TCP port is free to publish. The
- * agent binds the port to answer, so this sees BOTH Docker-published ports and any
- * non-Deplo host listener (a system Postgres on 5432, the control plane's own DB).
- * Surfaces {@link import("../infra/agent-client").AgentCheckPortUnsupportedError}
- * when the server's agent is too old to probe ports, so the UI can say "update the
- * agent" rather than silently letting a collision through at provision time.
+ * Ask the owning server's agent whether a host TCP port is free to publish.
  */
 async function isHostPortFree(
   serverId: string,
@@ -244,17 +208,8 @@ async function isHostPortFree(
 
 /**
  * Whether another database ALREADY holds this host port on this server, by row.
- *
- * The agent probe is a liveness test, not a registry: it answers by binding, so a
- * database whose container is not up right now does not hold anything - and a
- * database Deplo has only just created never is (`provisionDatabase` is floated).
- * Two rows could therefore both claim 5432 on one host, each passing the probe,
- * and whichever started second failed at `compose up` with nobody having been
- * told. An import makes that routine: several databases arrive at once, from
- * different source machines, carrying the port each had over there.
- *
- * Cross-team on purpose. Servers are shared, and a host port is a singleton on
- * the machine, so the answer cannot depend on who is asking.
+ * Servers are shared, and a host port is a singleton on the machine, so the answer
+ * cannot depend on who is asking.
  */
 async function portClaimedByAnotherDatabase(
   serverId: string,
@@ -276,10 +231,7 @@ async function portClaimedByAnotherDatabase(
 
 /**
  * The one check a host port has to pass before it is written: nothing is listening
- * on it right now, AND no other database row has already reserved it. Both halves
- * are needed - see {@link portClaimedByAnotherDatabase} for why the bind probe
- * alone is not enough - and both raise the SAME sentence, because from where the
- * caller stands the port is taken either way.
+ * on it right now, AND no other database row has already reserved it.
  */
 async function assertHostPortAvailable(
   server: { id: string; name: string },
@@ -298,12 +250,8 @@ async function assertHostPortAvailable(
 /**
  * Which of these host ports are taken on this server, for a screen that wants to
  * say so BEFORE anything is created - the import review, where a database carries
- * the port it had on the other platform and the person still has a choice about it.
- *
- * Never throws for an unreachable or too-old agent: `checked: false` plus the
- * reason is the honest answer, and the caller says it once rather than blocking a
- * migration on a probe. A genuine refusal (the team cannot see that server, or
- * cannot publish ports at all) still throws - that is not a probe result.
+ * the port it had on the other platform and the person still has a choice about
+ * it.
  */
 export async function hostPortsInUse(
   serverId: string,
@@ -342,11 +290,8 @@ export async function hostPortsInUse(
 
 /**
  * Pick a host port that is currently free on the given server, drawn from the high
- * ephemeral range. Backs the "generate an available port" button. Probes the agent
- * per candidate (a bind test) and returns the first free one; throws if it can't
- * find one in a bounded number of tries (a saturated host — vanishingly unlikely
- * across a 20k-wide range). The port is only a SUGGESTION — creation re-checks it,
- * so a race between suggest and submit is caught there too.
+ * ephemeral range. The port is only a SUGGESTION — creation re-checks it, so a
+ * race between suggest and submit is caught there too.
  */
 export async function generateAvailableDbPort(input: {
   serverId?: string;
@@ -356,11 +301,9 @@ export async function generateAvailableDbPort(input: {
     throw new Error("You don't have permission to publish ports");
   const server = await resolveTeamServer(teamId, input.serverId);
 
-  // Start at a random offset in the range so repeated clicks (and concurrent
-  // callers) don't all probe the same candidate first, then step by a fixed stride
-  // to spread the search across the range. A modest cap bounds the agent
-  // round-trips; the 20k-wide range dwarfs any realistic set of used host ports, so
-  // a free one is found in the first try or two in practice.
+  // Start at a random offset in the range so repeated clicks (and concurrent callers)
+  // don't all probe the same candidate first, then step by a fixed stride to spread
+  // the search across the range.
   const span = EXPOSE_PORT_MAX - EXPOSE_PORT_MIN + 1;
   const start = Math.floor(Math.random() * span);
   const MAX_TRIES = 40;
@@ -391,13 +334,6 @@ function maskConnectionString(conn: string): string {
 
 /**
  * The config files of one or more databases, keyed by id and in stored order.
- *
- * Every reader that assembles a {@link Database} goes through here, because the
- * object it produces is what a reroute renders: a path that skipped the children
- * would hand `generateDatabaseCompose` an empty list and silently UNMOUNT the
- * engine's configuration on the next redeploy — the same trap the compose-stack
- * reroute documents for volumes. One query for a whole list, so the Storage grid
- * still costs two round trips no matter how many databases it shows.
  */
 async function mountsByDatabase(
   ids: string[],
@@ -437,10 +373,7 @@ function toDTO(db: Database): DatabaseDTO {
 }
 
 /**
- * Load one team-scoped database row, assembled, or null. Exported (cookie-free —
- * the caller supplies the teamId) as the seam the `databaseStatus` subscription
- * generator and `lib/data/database-console.ts` resolve through, mirroring
- * `loadTeamApp` in apps.ts.
+ * Load one team-scoped database row, assembled, or null.
  */
 export async function loadDatabaseForTeam(
   id: string,
@@ -455,16 +388,9 @@ export async function getDatabaseForTeam(
   id: string,
   teamId: string,
 ): Promise<DatabaseDTO | null> {
-  // The SESSION-FREE twin, so it does NOT consult the ambient request identity —
-  // its only caller is the status stream, whose ticks run after the HTTP handler
-  // returned the streaming Response, with no cookies left to read. It therefore
-  // carries a contract: the caller has ALREADY proven the principal's reach
-  // (`databaseStatusStream` does it explicitly with `memberScopeFor`), and this
-  // function's own gate is the `teamId` filter below.
-  //
-  // Leaning on `reachesWholeTeam()` here instead would be reading an answer that
-  // does not exist outside a request. It used to answer "yes, the whole team" in
-  // that case, which is exactly the fail-open the stream had to route around.
+  // The SESSION-FREE twin, so it does NOT consult the ambient request identity — its
+  // only caller is the status stream, whose ticks run after the HTTP handler returned
+  // the streaming Response, with no cookies left to read.
   const rows = await getDb()
     .select()
     .from(databasesTable)
@@ -475,35 +401,23 @@ export async function getDatabaseForTeam(
 }
 
 /**
- * Load one team-scoped database row, assembled, or null.
- *
- * THE ownership gate for databases, and therefore where a project-scoped API
- * token is refused: `databases` carries no `project_id`, so there is nothing to
- * scope by and the only honest answer is that the token cannot reach any of
- * them. It reads as NOT FOUND rather than as a scope error, so a scope can never
- * become an oracle for which database ids exist.
+ * Load one team-scoped database row, assembled, or null. It reads as NOT FOUND
+ * rather than as a scope error, so a scope can never become an oracle for which
+ * database ids exist.
  */
 /**
  * A database row for the active team, and - by default - a REFUSAL while a
- * migration is still creating it.
- *
- * Deny by default, opt out to read: there is no single gate a database mutation
- * passes through the way an app has `requireAppCapability`, so the loader every
- * one of them calls is the choke point. A new mutation therefore inherits the
- * refusal by writing no code at all, which is the only version of this that
- * stays true. The three READ callers say so explicitly, because watching a
- * service arrive is exactly what somebody should be able to do.
+ * migration is still creating it. The three READ callers say so explicitly,
+ * because watching a service arrive is exactly what somebody should be able to do.
  */
 async function loadDatabase(
   id: string,
   teamId: string,
   opts: { forRead?: boolean } = {},
 ): Promise<Database | null> {
-  // A database belongs to the team and to no project, so a principal who
-  // reaches only part of the team reaches none of them — a token narrowed to a
-  // project, and equally a member on a limited role. NOT FOUND rather than a
-  // scope error: the collection says plainly that it is limited, and existence
-  // must never be something a refusal confirms.
+  // A database belongs to the team and to no project, so a principal who reaches only
+  // part of the team reaches none of them — a token narrowed to a project, and
+  // equally a member on a limited role.
   if (narrowedScope()) return null;
   if (!(await reachesWholeTeam())) return null;
   const rows = await getDb()
@@ -545,9 +459,9 @@ export async function listDatabases(query?: string): Promise<DatabaseDTO[]> {
     databaseOrderRank(teamId),
   ]);
   // Honour the team's manual order (Storage grid drag-and-drop) when present:
-  // explicitly-ordered databases come first in that order, anything not listed
-  // (a brand-new database, or before any reorder) falls back to newest-first —
-  // the same rule the Overview apps grid uses.
+  // explicitly-ordered databases come first in that order, anything not listed (a
+  // brand-new database, or before any reorder) falls back to newest-first — the same
+  // rule the Overview apps grid uses.
   const mounts = await mountsByDatabase(rows.map((r) => r.id));
   return rows
     .map((r) => toDTO(assembleDatabase(r, mounts.get(r.id) ?? [])))
@@ -561,13 +475,8 @@ export async function listDatabases(query?: string): Promise<DatabaseDTO[]> {
 }
 
 /**
- * Persist the team-wide order of databases in the Storage grid. Team-wide (every
- * member sees the same arrangement), gated on `manage_infra` — the capability
- * that owns every database mutation. Incoming ids are sanitised to the caller's
- * own team databases (dropping unknown/duplicate ids); the `team_database_order`
- * junction is rewritten over the survivors, and any omitted database is appended
- * so the stored order stays total. A dead id can't be stored (the FK CASCADE
- * makes the self-healing a DB invariant). Mirrors {@link import("./apps").reorderApps}.
+ * Persist the team-wide order of databases in the Storage grid. A dead id can't be
+ * stored (the FK CASCADE makes the self-healing a DB invariant).
  */
 export async function reorderDatabases(orderedIds: string[]): Promise<void> {
   const teamId = (await requireCapability("configure_databases")).teamId;
@@ -613,10 +522,9 @@ export async function getDatabase(id: string): Promise<DatabaseDTO | null> {
 }
 
 export async function getConnectionString(id: string): Promise<string> {
-  // This returns the plaintext connection string (embeds the DB password), so it
-  // must enforce the capability at the data-layer boundary itself — not lean on
-  // the revealConnection field's authScope alone (keep BOTH gates). Matches
-  // rotateDatabasePassword, which self-gates its secret reveal the same way.
+  // This returns the plaintext connection string (embeds the DB password), so it must
+  // enforce the capability at the data-layer boundary itself — not lean on the
+  // revealConnection field's authScope alone (keep BOTH gates).
   const { teamId } = await requireCapability("reveal_secrets");
   // A read: the credentials of a database still arriving are the same
   // credentials it will have, and somebody watching it land may want them.
@@ -631,11 +539,9 @@ export async function createDatabase(input: {
   version: string;
   serverId?: string;
   /**
-   * The engine login to create. Optional — falls back to the engine default
-   * (`app`, or `default` for redis). Sanitized to a portable SQL identifier.
-   * Forced to `default` for redis (there is no mechanism to create a redis ACL
-   * user, so any override would emit an unusable connection string). Create-only:
-   * the images apply it only on first init against an empty volume.
+   * The engine login to create. Forced to `default` for redis (there is no
+   * mechanism to create a redis ACL user, so any override would emit an unusable
+   * connection string).
    */
   username?: string;
   /**
@@ -651,43 +557,27 @@ export async function createDatabase(input: {
    */
   password?: string;
   /**
-   * The supplied password was GENERATED by a machine rather than typed by a
-   * person — today that is an import carrying another platform's credential.
-   * It keeps {@link assertPasswordSafe} (which is about the connection string
-   * and the env-file, not about strength) and skips the account policy and the
-   * breach check, because those bound a password somebody CHOSE. Refusing
-   * inherited entropy is not a security win: the import falls back to a fresh
-   * password and every `DATABASE_URL` that already spells out the old one stops
-   * working. deplo's own default is in the same class — `randomToken` is
-   * base64url, so it would itself fail "at least 1 special character" most of
-   * the time.
+   * The supplied password was GENERATED by a machine rather than typed by a person
+   * — today that is an import carrying another platform's credential.
    */
   passwordIsGenerated?: boolean;
   exposedPublicly?: boolean;
   /**
-   * The host port to publish on when {@link exposedPublicly} is true. Required in
-   * that case (there is no implicit default — the engine's default port routinely
-   * collides on a shared host, which is what made the old "expose publicly"
-   * silently fail). Ignored when not exposing.
+   * The host port to publish on when {@link exposedPublicly} is true.
    */
   exposedPort?: number;
   /**
-   * Run this exact image instead of the one derived from type + version. Set at
-   * CREATE time (not left to a later edit) so the very first provision already
-   * runs it: an import pins the source platform's image, and a database whose
-   * volume is about to receive a byte-for-byte copy must be reopened by the
-   * binary that wrote it — a Postgres cluster written under glibc sorts text
-   * differently under musl, which silently breaks every text index.
+   * Run this exact image instead of the one derived from type + version.
    */
   customImage?: string | null;
 }): Promise<DatabaseDTO> {
   const { membership } = await requireCapability("create_databases");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
-  // Display name as typed (trimmed) vs. the slug the host artifacts are named
-  // after: "My Main DB" now STAYS "My Main DB" on the card and runs as the
-  // stack `db-my-main-db`, instead of the name itself being slugified into
-  // "my-main-db" for everyone to read forever.
+  // Display name as typed (trimmed) vs. the slug the host artifacts are named after:
+  // "My Main DB" now STAYS "My Main DB" on the card and runs as the stack
+  // `db-my-main-db`, instead of the name itself being slugified into "my-main-db" for
+  // everyone to read forever.
   const name = cleanDatabaseName(input.name);
   const slug = databaseSlug(name);
   // The version is interpolated raw into the compose `image:` scalar
@@ -718,10 +608,8 @@ export async function createDatabase(input: {
   if (exposed && !(await canExposePorts()))
     throw new Error("You don't have permission to publish ports");
 
-  // Server selection (Step 0): the caller picks the host; default to the sole
-  // server when there is exactly one. The chosen server must exist, be visible
-  // to this team (every `all_teams` server + its grants), and be provisioned
-  // (have a live agent) — provisioning routes through that agent.
+  // Server selection (Step 0): the caller picks the host; default to the sole server
+  // when there is exactly one.
   const server = await resolveTeamServer(teamId, input.serverId);
 
   // The display name is unique per team (`databases_team_name_uq`). Check it here
@@ -737,18 +625,9 @@ export async function createDatabase(input: {
   if (nameTaken.length > 0)
     throw new Error(`A database named "${name}" already exists in this team.`);
 
-  // The stack slug `db-<slug>`, its container_name and its data volume are a
-  // GLOBAL namespace on the host, but the DB name is only unique per-team — and
-  // servers are shared cross-team. Two teams landing the same slug on one server
-  // would collide on the same compose project/volume, so one team's reroute could
-  // adopt the other's live volume and its delete/rebuild would wipe it. Reject a
-  // create whose host slug already exists on the target server (any team). Apps
-  // dodge this with a globally-unique slug; databases still derive it from the
-  // name, so this is the interim guard until the slug comes from the row id.
-  //
-  // Compared against `host` — the column that IS the slug — never against `name`:
-  // a renamed database keeps its original host, so matching on the display name
-  // would both miss a real collision and invent a phantom one.
+  // The stack slug `db-<slug>`, its container_name and its data volume are a GLOBAL
+  // namespace on the host, but the DB name is only unique per-team — and servers are
+  // shared cross-team.
   const slugCollision = await getDb()
     .select({ id: databasesTable.id })
     .from(databasesTable)
@@ -764,11 +643,7 @@ export async function createDatabase(input: {
       `A database stack named "db-${slug}" already exists on ${server.name}. Database stacks share a per-host namespace — pick a different name.`,
     );
 
-  // Validate + reserve the host port up front when exposing. A collision here is
-  // a hard STOP — no container is created — so the operator gets a clear error
-  // instead of a half-provisioned DB whose compose-up silently dropped the port
-  // bind (the original bug). The agent's bind-probe sees Docker-published ports
-  // AND raw host listeners, so this catches a system Postgres on 5432 too.
+  // Validate + reserve the host port up front when exposing.
   let exposedPort: number | null = null;
   if (exposed) {
     if (input.exposedPort == null)
@@ -789,13 +664,7 @@ export async function createDatabase(input: {
   // it is stored in `host` and never re-derived (a rename leaves it alone).
   const service = `db-${slug}`;
 
-  // Resolve the credentials. Redis has no user concept (auth is a single
-  // requirepass and the built-in ACL user is literally `default`), so its
-  // username is forced regardless of any override — a custom name would emit a
-  // connection string that authenticates as a redis ACL user that was never
-  // created. The logical DB defaults to the service name (today's behavior), so
-  // the compose `*_DB` env, the connection-string path, and the backup dump
-  // target all stay `db-<name>` for a default create.
+  // Resolve the credentials.
   const username =
     input.type === "redis"
       ? "default"
@@ -808,11 +677,7 @@ export async function createDatabase(input: {
       ? input.password
       : randomToken(12);
 
-  // The connection host:port depends on reachability. Internal (default): the
-  // container's DNS name + engine port, usable only from the deplo network. When
-  // exposed publicly: the SERVER's reachable host + the published host port, so the
-  // string actually works from outside — the old code always emitted the internal
-  // form, so even a correctly-published DB handed out an unusable string.
+  // The connection host:port depends on reachability.
   const conn = buildConnectionString({
     type: input.type,
     username,
@@ -895,21 +760,10 @@ export async function createDatabase(input: {
 }
 
 /**
- * The ONE render call for a database's compose stack. Every path that ships
- * YAML to the agent (initial provision, exposure edit / server move, redeploy)
- * goes through here, reading everything — exposure, resource limits, image /
- * command overrides — from the {@link Database} object, so the renders can't
- * drift and "the row is truth": any reroute applies the row's pending edits.
+ * The ONE render call for a database's compose stack.
  */
 /**
  * The config files a Reroute has to carry, in the agent's own shape.
- *
- * Every reroute sends them, without exception: the agent writes what it is given
- * and nothing else, so a call that omitted the list would bring the stack up
- * against a bind source that is not there — and docker answers a missing bind
- * source by inventing an empty DIRECTORY, which is a database that starts
- * ignoring its own configuration. Small enough to inline; a function so no call
- * site can decide it does not need one.
  */
 function mountFilesFor(db: Database): { path: string; content: string }[] {
   return db.mounts.map((m) => ({ path: m.filePath, content: m.content }));
@@ -929,22 +783,14 @@ function renderDatabaseStackYaml(db: Database, password: string): string {
     resources: db.resources,
     customImage: db.customImage,
     customCommand: db.customCommand,
-    // The engine's config files. They ride the SAME object as everything else
-    // here, which is the whole point of "the row is truth": a reroute path that
-    // took them from somewhere else - or forgot them - would silently unmount
-    // the engine's configuration on the next redeploy.
+    // The engine's config files.
     mounts: db.mounts,
     filesDir: stackFilesDir(db.host),
   });
 }
 
 /**
- * Provision the DB stack on the owning server's agent. Reuses `Reroute`, which
- * is already a "provision stack" primitive: it writes `<stackDir>/<slug>.yml`
- * and `docker compose -p deplo-<slug> up -d --remove-orphans` idempotently
- * (creating it if absent). No local docker / stack file — the stack lives on the
- * agent's host now (Step 0). The DB keeps its `db-<name>` DNS name on the shared
- * `deplo` network, so connection strings are unchanged.
+ * Provision the DB stack on the owning server's agent.
  */
 async function provisionDatabase(
   db: Database,
@@ -953,9 +799,7 @@ async function provisionDatabase(
   const yaml = renderDatabaseStackYaml(db, password);
   // Run the provision under the DB's lifecycle lock so a concurrent delete can't
   // interleave: a delete issued during provisioning WAITS here, then tears down a
-  // fully-created stack (no orphan). If the row was already deleted before we even
-  // acquired the lock, there is nothing to provision — bail without creating a
-  // stack the control plane no longer tracks.
+  // fully-created stack (no orphan).
   await withKeyedLock(db.id, async () => {
     if (!(await databaseExists(db.id))) return; // deleted before us
     const conn = await connectAgent(db.serverId);
@@ -1008,19 +852,16 @@ export async function setDatabaseRunning(
   const host = db.host;
   const serverId = db.serverId;
   // Serialize on the DB's lifecycle lock: a start/stop issued during provisioning
-  // WAITS for the provision to finish rather than racing its status write or
-  // hitting a not-yet-created compose project. Everything that touches the agent +
-  // writes status happens inside the lock so there is no last-writer-wins window.
+  // WAITS for the provision to finish rather than racing its status write or hitting
+  // a not-yet-created compose project.
   await withKeyedLock(id, async () => {
     // Re-read under the lock — the DB may have been deleted, or just finished
     // provisioning, while we waited our turn.
     const cur = await loadDatabase(id, teamId);
     if (!cur) throw new Error("Not found");
     // The compose project doesn't exist until provisioning finishes, so start/stop
-    // against a still-provisioning DB would fail on the agent with a confusing
-    // "agent failed to…". Gate on the fresh status — idiomatic here (members.ts).
-    // (After waiting behind a provision this reads "running", so a
-    // queued start/stop proceeds correctly rather than being rejected.)
+    // against a still-provisioning DB would fail on the agent with a confusing "agent
+    // failed to…".
     if (cur.status === "provisioning")
       throw new Error(
         "Database is still provisioning — wait for it to finish before starting or stopping it.",
@@ -1049,12 +890,7 @@ export async function setDatabaseRunning(
 }
 
 /**
- * The host-side Docker volume name of a database's data volume. The DB compose
- * declares the volume as `<slug>-data` with NO `name:` override (see
- * generateDatabaseCompose), so Docker Compose prefixes it with the project name
- * (`-p deplo-<slug>`) → `deplo-<slug>_<slug>-data`. This is the exact string the
- * agent's ExportVolume/ImportVolume operate on. Matches the compose-stack
- * convention `composeStackVolumeHostNames` uses for projects (`deplo-<slug>_<key>`).
+ * The host-side Docker volume name of a database's data volume.
  */
 export function dbVolumeHostName(slug: string): string {
   return `deplo-${slug}_${slug}-data`;
@@ -1062,36 +898,7 @@ export function dbVolumeHostName(slug: string): string {
 
 /**
  * Edit a database's public exposure (publish/unpublish + host port) and,
- * optionally, the SERVER it runs on. The engine, username and db name are
- * create-only — the official images apply those env vars only on first init
- * against an empty volume, so changing them would be a silent no-op or data
- * loss. Version / image / command edits live in {@link updateDatabaseImage},
- * resource limits in {@link updateDatabaseResources}, password rotation in
- * {@link rotateDatabasePassword}.
- *
- * Two shapes of edit, both routed through the same lock and status gates:
- *
- *  - In-place (server unchanged): re-render the compose and reroute the container
- *    on its current host (`up -d --remove-orphans`), which PRESERVES the named data
- *    volume; the only material change to the rendered YAML is the `ports:` block.
- *
- *  - Move to a different server: the container is provisioned fresh on the new host,
- *    then the data volume is COPIED host-to-host (relayed through the control plane
- *    via the agent ExportVolume/ImportVolume RPCs — no S3), then the old host's
- *    stack is torn down. So the data FOLLOWS the move. The sequence is: reroute on
- *    the new host → stop BOTH stacks (destination so nothing writes the volume mid-
- *    import, source for a consistent read) → copy the volume → start the new stack →
- *    destroy the old. The old stack is only destroyed AFTER a verified successful
- *    copy, so a copy failure ROLLS BACK (the half-built new stack is removed, the
- *    old one restarted) and the original is left intact with its data.
- *
- * Because the connection string embeds a host:port that depends on reachability
- * (the internal service name + engine port when unexposed, the server's host +
- * published port when exposed), toggling exposure OR moving servers INVALIDATES the
- * stored string — so it is re-derived and re-encrypted here, around the UNCHANGED
- * create-only password recovered from the old string. The `host`/`port`/`username`/
- * `dbName` columns are untouched (the container's DNS identity and credentials are
- * fixed at first init and don't move).
+ * optionally, the SERVER it runs on.
  */
 export async function updateDatabase(
   id: string,
@@ -1099,10 +906,8 @@ export async function updateDatabase(
     exposedPublicly: boolean;
     exposedPort?: number;
     /**
-     * Move the database to this server. Optional — omitted (or equal to the current
-     * server) keeps it in place. Must be a server visible to the team and
+     * Move the database to this server. Must be a server visible to the team and
      * provisioned (resolved via {@link resolveTeamServer}, same guard as create).
-     * A move recreates the container on the new host WITHOUT its data (see above).
      */
     serverId?: string;
   },
@@ -1120,11 +925,9 @@ export async function updateDatabase(
   if (exposed && !(await canExposePorts()))
     throw new Error("You don't have permission to publish ports");
 
-  // Resolve the TARGET server through the team's visible set: a move can only land
-  // on a server this team may use, and an in-place edit re-resolves the current one
-  // so a team that LOST access to it can't reroute onto it. Also yields the host
-  // for the re-derived connection string when exposed. Default (no serverId) keeps
-  // the current server.
+  // Resolve the TARGET server through the team's visible set: a move can only land on
+  // a server this team may use, and an in-place edit re-resolves the current one so a
+  // team that LOST access to it can't reroute onto it.
   const targetServer = await resolveTeamServer(
     teamId,
     input.serverId ?? db.serverId,
@@ -1133,10 +936,7 @@ export async function updateDatabase(
   const movingFrom = targetServer.id !== db.serverId ? db.serverId : null;
 
   // Validate the new exposed port, mirroring create: the bind probe AND the other
-  // databases' rows, both against the TARGET server. Skip both only for a true
-  // self-collision — the DB is ALREADY exposed on this exact port on the SAME
-  // host we're staying on; on a MOVE the port must be re-checked on the new host
-  // (it may be taken there even if free here), so the shortcut must not apply.
+  // databases' rows, both against the TARGET server.
   let newExposedPort: number | null = null;
   if (exposed) {
     if (input.exposedPort == null)
@@ -1164,10 +964,10 @@ export async function updateDatabase(
   )
     return;
 
-  // The reroute + teardown + row write happen under the DB's lifecycle lock, the
-  // SAME lock create/start-stop/delete use: an edit issued during provisioning
-  // WAITS, then reroutes a now-running DB; a delete issued during an edit WAITS for
-  // the reroute/teardown, then tears down the fully-rerouted stack (no orphan).
+  // The reroute + teardown + row write happen under the DB's lifecycle lock, the SAME
+  // lock create/start-stop/delete use: an edit issued during provisioning WAITS, then
+  // reroutes a now-running DB; a delete issued during an edit WAITS for the
+  // reroute/teardown, then tears down the fully-rerouted stack (no orphan).
   let moveWarning: string | null = null;
   await withKeyedLock(id, async () => {
     // Re-read under the lock — the DB may have been deleted, or just finished
@@ -1181,13 +981,9 @@ export async function updateDatabase(
       throw new Error(
         "Database is still provisioning — wait for it to finish before editing it.",
       );
-    // Re-derive the connection string around the UNCHANGED create-only password,
-    // from the LOCK-FRESH row. Recovering it pre-lock raced a concurrent
-    // rotateDatabasePassword (which also takes this lock): the rotation would
-    // commit the new password, then this write would clobber it back to the stale
-    // one. Deriving from `cur` here means we always re-encrypt the current
-    // password. Host is the TARGET server's when exposed (a move changes it),
-    // else the stable service DNS name (unaffected by a move — same `deplo` net).
+    // Re-derive the connection string around the UNCHANGED create-only password, from
+    // the LOCK-FRESH row. Deriving from `cur` here means we always re-encrypt the
+    // current password.
     const password = parseConnectionPassword(
       decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
     );
@@ -1208,10 +1004,7 @@ export async function updateDatabase(
       { ...cur, exposedPublicly: exposed, exposedPort: newExposedPort },
       password,
     );
-    // Provision on the TARGET server first. On a move this creates the stack fresh
-    // on the new host (empty volume, ready to receive the copied data); in place it
-    // reroutes the existing container. Doing this BEFORE any old-host teardown means
-    // a failed reroute leaves the original stack untouched.
+    // Provision on the TARGET server first.
     const agent = await connectAgent(targetServer.id);
     try {
       const res = await agent.reroute({
@@ -1227,17 +1020,8 @@ export async function updateDatabase(
     }
 
     if (movingFrom) {
-      // MOVE: migrate the data volume from the old host to the new one, then tear
-      // down the old. The data FOLLOWS the move (copied host-to-host, relayed
-      // through the control plane — no S3). Ordering is safety-critical:
-      //   1. stop the NEW stack — nothing may write its volume while we untar into it;
-      //   2. stop the OLD stack — a consistent read (its files can't change mid-tar);
-      //   3. copy old → new (wipe-first, overwriting the fresh-init empty volume);
-      //   4. start the NEW stack on the migrated data;
-      //   5. ONLY THEN destroy the OLD stack + its volume.
-      // If the copy fails, the old stack still has all the data — so ROLL BACK: tear
-      // down the half-built new stack and restart the old one, then surface the error
-      // (the move is undone, the DB stays where it was).
+      // MOVE: migrate the data volume from the old host to the new one, then tear down
+      // the old. ONLY THEN destroy the OLD stack + its volume.
       await stopStackOn(targetServer.id, cur.host);
       await stopStackOn(movingFrom, cur.host);
       try {
@@ -1246,10 +1030,8 @@ export async function updateDatabase(
           volumeNames: [dbVolumeHostName(cur.host)],
         });
       } catch (copyErr) {
-        // Roll back: remove the new (empty/partial) stack + volume, bring the old DB
-        // back up so the operator is left exactly where they started. Rollback steps
-        // are best-effort — a rollback failure is appended, but the ORIGINAL copy
-        // error is what we throw (it's the actionable cause).
+        // Roll back: remove the new (empty/partial) stack + volume, bring the old DB back
+        // up so the operator is left exactly where they started.
         await destroyStackOn(targetServer.id, cur.host).catch(() => {});
         await startStackOn(movingFrom, cur.host).catch(() => {});
         throw new Error(
@@ -1258,12 +1040,7 @@ export async function updateDatabase(
             `The move was rolled back — the database is still on its original server.`,
         );
       }
-      // Copy succeeded — start the new stack on the migrated data. A failure here
-      // leaves the data safely on the new host (already copied) but the container
-      // down; surface it as a warning and still repoint the row below (the data is
-      // on the target now) rather than throwing, which would abort before the row
-      // write and leave the DB pointing at the old, already-stopped host with an
-      // orphaned volume on the new one.
+      // Copy succeeded — start the new stack on the migrated data.
       try {
         await startStackOn(targetServer.id, cur.host);
       } catch (e) {
@@ -1273,10 +1050,8 @@ export async function updateDatabase(
           `Redeploy the database to bring it up.`;
       }
 
-      // Tear down the OLD host's stack + its (now-migrated) data volume so it isn't
-      // left running and orphaned. Best-effort, exactly like deleteDatabase: the data
-      // is already safe on the new host, so a failed/unreachable teardown is surfaced
-      // (and logged) rather than rolled back.
+      // Tear down the OLD host's stack + its (now-migrated) data volume so it isn't left
+      // running and orphaned.
       try {
         const old = await connectAgent(movingFrom);
         try {
@@ -1298,10 +1073,9 @@ export async function updateDatabase(
       }
     }
 
-    // Persist the new location + exposure + re-derived connection string. On a move
-    // the data followed, so `sizeMb` is left as-is (a metrics sweep refreshes it).
-    // `host`/`port`/`username`/`dbName` are untouched (the container's DNS identity
-    // and credentials are fixed at first init).
+    // Persist the new location + exposure + re-derived connection string.
+    // `host`/`port`/`username`/`dbName` are untouched (the container's DNS identity and
+    // credentials are fixed at first init).
     await getDb()
       .update(databasesTable)
       .set({
@@ -1330,47 +1104,17 @@ export async function updateDatabase(
 
 /**
  * Tear a database's stack down on its owning server and PROVE nothing of it
- * survived. Returns `null` when the host is clean, or the reason it is not.
- *
- * A plain `destroyStack` is not enough on its own, because it can fail while
- * reporting only what the agent saw:
- *
- *  - The agent's `compose down -v` needs the stack file it wrote at provision
- *    time (`<stackDir>/<slug>.yml`). If that file is gone — a half-finished
- *    provision, a restored/rebuilt host, an earlier teardown that removed the
- *    file before the volume — the `down` fails and the agent falls back to a
- *    force-remove of `deplo-<slug>`, which is the APP container-name convention:
- *    a database's container is named `<slug>` (`db-<name>`), so that fallback
- *    can never remove one. The container keeps running.
- *  - We would then have deleted the row anyway, so a live database — possibly on
- *    a published port — becomes invisible to Deplo and reclaimable only from a
- *    shell on the host. That is exactly the "you must know Docker/SSH" hole the
- *    product exists to close.
- *
- * So: destroy → if that failed, HEAL and retry → then verify. The heal is a
- * `reroute` (the one RPC that writes the stack file) re-rendered from the row,
- * which restores the file the `down` needs; the retry then removes the container
- * AND reclaims the data volume. Verification asks the agent which containers
- * still carry this database's `deplo.project` label — the same list the console
- * and the runtime poll read — so a teardown is only "clean" when the host agrees.
- * Anything left is stopped (never leave a database the user asked to delete
- * serving) and reported.
+ * survived. That is exactly the "you must know Docker/SSH" hole the product exists
+ * to close.
  */
 async function teardownDatabaseStack(db: Database): Promise<string | null> {
   const conn = await connectAgent(db.serverId);
   try {
     let res = await conn.destroyStack(db.host, true);
     if (!res.ok) {
-      // Rewrite the stack file from the row, then tear down again. `reroute`
-      // brings the stack up in the process — harmless for something we are about
-      // to destroy, and it is what makes the volume reclaimable at all (only a
-      // `down -v` with a compose file can drop a named volume).
-      // `reroute` brings the stack UP before the `down -v`, so an EMPTY password
-      // (an undecryptable ciphertext under a rotated DEPLO_SECRET) would boot an
-      // auth-less engine on the shared network for that window — the missed 4th
-      // call site of the same "never render an empty credential" rule. The volume
-      // is about to be dropped, so the value is irrelevant: fall back to a
-      // throwaway rather than throw (which would block reclaiming the volume).
+      // Rewrite the stack file from the row, then tear down again. The volume is about to
+      // be dropped, so the value is irrelevant: fall back to a throwaway rather than
+      // throw (which would block reclaiming the volume).
       let password: string;
       try {
         password = parseConnectionPassword(
@@ -1397,10 +1141,8 @@ async function teardownDatabaseStack(db: Database): Promise<string | null> {
       .catch(() => null);
     const leftover = left !== null && left.length > 0;
     if (leftover || !res.ok) {
-      // Whatever we could not remove must at least not be SERVING — the user
-      // asked for this database to go. This also catches the one case the verify
-      // can't see: a heal that brought the stack up (to restore the compose file)
-      // and a retry that still failed, on an agent whose probe we couldn't read.
+      // Whatever we could not remove must at least not be SERVING — the user asked for
+      // this database to go.
       await conn.stopStack(db.host).catch(() => {});
       return leftover
         ? `its container survived the teardown` +
@@ -1414,22 +1156,8 @@ async function teardownDatabaseStack(db: Database): Promise<string | null> {
 }
 
 /**
- * Delete a database: stop + destroy the real container and its data volume on
- * the owning server, then drop the row and everything hanging off it.
- *
- * The teardown is AUTHORITATIVE, not best-effort: unless `force` is set, a
- * database whose stack could not be verifiably removed is NOT deleted, and the
- * caller gets an actionable error instead of a green "deleted" over a container
- * that is still running. This deliberately differs from {@link deleteApp}'s
- * "never pin a record to a dead box" stance — a database holds data and often a
- * published port, so silently forgetting a live one is the worse failure, and
- * keeping the row means it is still Deplo's to stop, retry or move.
- *
- * `force` is the escape hatch for a host that is never coming back (a server can
- * only be removed once nothing is hosted on it, so without it a dead box would
- * deadlock its databases). It skips nothing that CAN be cleaned — the teardown
- * still runs — it only stops a failed one from blocking the row delete, and
- * writes the leftovers into the activity log.
+ * Delete a database: stop + destroy the real container and its data volume on the
+ * owning server, then drop the row and everything hanging off it.
  */
 export async function deleteDatabase(
   id: string,
@@ -1439,24 +1167,15 @@ export async function deleteDatabase(
   const user = (await getCurrentUser())!;
   const db = await loadDatabase(id, membership.teamId);
   if (!db) throw new Error("Not found");
-  // Serialize the whole teardown on the DB's lifecycle lock. The race this closes:
-  // createDatabase fires provisionDatabase (`compose up -d`) as a floated task, so
-  // without the lock a delete could run `down -v` and remove the row while that
-  // provision is still in flight — the provision's `up -d` then recreates the
-  // container + volume the control plane no longer tracks. Under the lock a delete
-  // WAITS for the provision, then tears down a fully-created stack.
+  // Serialize the whole teardown on the DB's lifecycle lock.
   const server = await getServerById(db.serverId);
   const where = server ? server.name : "its server";
   await withKeyedLock(id, async () => {
     // Re-check under the lock: a concurrent delete (or never-finished provision
     // that bailed) may have already removed the row. Idempotent → just return.
     if (!(await databaseExists(id))) return;
-    // Tear down the real container + data volume on the owning agent, and hold
-    // the delete until the host confirms both are gone. Two ways it can fail —
-    // the teardown itself (agent reachable, `down -v` unhappy, something left
-    // behind) or the dial (host down / trust revoked) — and they want different
-    // advice, so each carries its own "what now": retrying a broken teardown is
-    // immediate, retrying a dead host means waiting for it to come back.
+    // Tear down the real container + data volume on the owning agent, and hold the
+    // delete until the host confirms both are gone.
     let failure: { why: string; retry: string } | null = null;
     try {
       const reason = await teardownDatabaseStack(db);
@@ -1492,10 +1211,8 @@ export async function deleteDatabase(
         },
       ]);
     }
-    // One DELETE — the agent teardown above ran OUTSIDE any transaction (PLAN §1
-    // rule (a)). The `backups.database_id` FK CASCADE removes dependent backup
-    // SCHEDULES automatically (was a manual `d.backups` filter); `backup_runs`'
-    // `database_id` is SET NULL so run history outlives the deleted database.
+    // One DELETE — the agent teardown above ran OUTSIDE any transaction (PLAN §1 rule
+    // (a)).
     await getDb().delete(databasesTable).where(eq(databasesTable.id, id));
     // Tell subscribers: the reload comes back null, ending their streams.
     publishDatabaseChanged(id);
@@ -1518,15 +1235,9 @@ export async function deleteDatabase(
 /* ------------------------------------------------------------------ */
 
 /**
- * Rename a database (Settings → General) — the display label only.
- *
- * Nothing physical moves: the compose project, container_name, data volume and
- * DNS name all live in the create-only `host` column, and the connection string
- * embeds that host, so a rename can't invalidate a client's DSN or strand a
- * volume. This is the same split an App has between its name and its slug.
- *
- * The name is unique per team (`databases_team_name_uq`) — checked here for a
- * readable error, and caught again below for the concurrent-rename race.
+ * Rename a database (Settings → General) — the display label only. The name is
+ * unique per team (`databases_team_name_uq`) — checked here for a readable error,
+ * and caught again below for the concurrent-rename race.
  */
 export async function renameDatabase(id: string, name: string): Promise<void> {
   const { membership } = await requireCapability("configure_databases");
@@ -1575,11 +1286,6 @@ export async function renameDatabase(id: string, name: string): Promise<void> {
  * Set (or clear) a database's display logo (Settings → General). Null clears it,
  * falling the UI back to the ENGINE's real brand mark — which is why clearing is
  * never a downgrade to a generic glyph, unlike an App's.
- *
- * Stored inline as a base64 image data-URI so it renders under the strict CSP
- * with no remote fetch (see {@link isValidLogoValue}). Purely cosmetic: no
- * deploy, compose render or connection string reads it. A no-op write records
- * nothing, so an idle re-pick doesn't spam the activity log.
  */
 export async function updateDatabaseLogo(
   id: string,
@@ -1623,11 +1329,6 @@ export async function updateDatabaseLogo(
 
 /**
  * Save a database's per-container resource limits (Settings → Resources).
- * A row write only — no agent call, no lock: the limits are baked into the
- * rendered compose (renderDatabaseStackYaml), so they take effect on the NEXT
- * redeploy or settings-driven reroute, exactly like app resource limits take
- * effect on the next deploy. Validation is the shared `cleanResourceLimits`
- * (same bounds, same cross-field checks as apps).
  */
 export async function updateDatabaseResources(
   id: string,
@@ -1663,10 +1364,10 @@ export async function updateDatabaseResources(
   );
 }
 
-/** A docker image reference the compose can carry as a plain scalar: repo /
- *  registry path, optional tag/digest. Anything else (whitespace, quotes, YAML
- *  metacharacters) is rejected rather than escaped — an image ref never
- *  legitimately contains them. */
+/**
+ * A docker image reference the compose can carry as a plain scalar: repo /
+ * registry path, optional tag/digest.
+ */
 function isValidImageRef(ref: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/.test(ref);
 }
@@ -1674,10 +1375,7 @@ function isValidImageRef(ref: string): boolean {
 /**
  * Save a database's expert overrides (Settings → Advanced): a custom image
  * replacing the derived engine image, a custom command replacing the default
- * verbatim, and/or a version (image tag) change. A row write only — applied on
- * the next redeploy/reroute ("the row is truth"). No engine-compat validation
- * beyond syntax: this IS the expert escape hatch — the UI carries the warnings
- * (redis `--requirepass`, cross-version data compatibility).
+ * verbatim, and/or a version (image tag) change.
  */
 export async function updateDatabaseImage(
   id: string,
@@ -1743,23 +1441,7 @@ export async function updateDatabaseImage(
 const MAX_MOUNT_BYTES = 1024 * 1024; // 1 MiB, the same ceiling the Files editor uses
 
 /**
- * Validate + canonicalise a database's whole config-file set. Pure, so the rules
- * are unit-testable and the UI can lint against the same ones.
- *
- * Every rule exists because the alternative is a database that starts and
- * silently ignores its configuration, or one that cannot start at all:
- *
- *  - the file path is RELATIVE and stays inside the stack's files dir (a `..`
- *    or a leading `/` would name a host path, and the agent refuses to write it
- *    anyway - here it becomes an error the user can read);
- *  - the mount path is absolute, with no spaces or `:` (both would smuggle extra
- *    fields into the `- "source:target"` compose line) and no `..`;
- *  - NOTHING may be mounted inside the engine's own DATA DIRECTORY. That is the
- *    named volume: a file placed there lands inside the data, travels into every
- *    backup, and on Postgres the entrypoint refuses to start at all. It is the
- *    one path a config file must never take, and the only one refused;
- *  - the two paths are each unique - two files with the same name are one file,
- *    and two mounts at the same path are a container docker will not create.
+ * Validate + canonicalise a database's whole config-file set.
  */
 export function validateDatabaseMounts(
   type: DatabaseType,
@@ -1815,17 +1497,8 @@ export function validateDatabaseMounts(
 }
 
 /**
- * Replace a database's config files (whole set) and APPLY them.
- *
- * Applied immediately, unlike the image/command overrides sitting next to it in
- * Advanced: those change what the next deploy builds, this one changes what the
- * running engine reads, and a config file that is saved but not in effect is the
- * kind of half-state that has people editing the same value twice. The reroute
+ * Replace a database's config files (whole set) and APPLY them. The reroute
  * recreates the container, so the UI says so before the save.
- *
- * A database that has never been provisioned (or is mid-provision) is persisted
- * and NOT rerouted - there is no stack to write into yet, and the provision that
- * follows renders from the row.
  */
 export async function setDatabaseMounts(
   id: string,
@@ -1891,10 +1564,8 @@ export async function setDatabaseMounts(
 }
 
 /**
- * Restart the database container (stop + start on the owning agent). Unlike
- * redeploy this does NOT re-render the compose — it bounces the container
- * exactly as configured on the host. Same lock/gate discipline as
- * setDatabaseRunning.
+ * Restart the database container (stop + start on the owning agent). Same
+ * lock/gate discipline as setDatabaseRunning.
  */
 export async function restartDatabase(id: string): Promise<void> {
   const teamId = (await requireCapability("control_databases")).teamId;
@@ -1938,12 +1609,7 @@ export async function restartDatabase(id: string): Promise<void> {
 
 /**
  * Re-render the database's compose from the CURRENT row and reroute it on its
- * owning server — the "apply my pending settings" verb. This is what makes
- * resource limits / image / command edits take effect, and it is also the
- * migration path that stamps the deplo.* labels onto containers provisioned
- * before the labels existed (enabling logs / terminal / the runtime poll).
- * `docker compose up -d` recreates the container only when its config actually
- * changed; the data volume is always preserved.
+ * owning server — the "apply my pending settings" verb.
  */
 export async function redeployDatabase(id: string): Promise<void> {
   const teamId = (await requireCapability("control_databases")).teamId;
@@ -1992,20 +1658,8 @@ export async function redeployDatabase(id: string): Promise<void> {
 }
 
 /**
- * DESTRUCTIVE rebuild — the Danger Zone "factory reset". Tears down the
- * database container AND its data volume on the owning agent (`down -v`, the
- * same teardown deleteDatabase uses), then re-provisions a fresh stack from
- * the CURRENT row: same engine, version, credentials, exposure and overrides.
- * The engine images apply their credential env vars only on first init against
- * an empty volume — which is exactly what the teardown leaves — so the stored
- * connection string keeps working on the rebuilt database. ALL DATA IS ERASED;
- * that is the point (restore a backup afterwards to repopulate). Unlike
- * redeployDatabase this never preserves the volume — use redeploy for the
- * data-preserving recreate.
- *
- * Failure honesty: a failed teardown throws with the row untouched (the old
- * container is still there). A teardown that succeeded but a re-provision that
- * failed flips the row to "error" — the stack is gone, so "running" would lie.
+ * DESTRUCTIVE rebuild — the Danger Zone "factory reset". Unlike redeployDatabase
+ * this never preserves the volume — use redeploy for the data-preserving recreate.
  */
 export async function rebuildDatabase(id: string): Promise<void> {
   const teamId = (await requireCapability("delete_databases")).teamId;
@@ -2052,10 +1706,9 @@ export async function rebuildDatabase(id: string): Promise<void> {
       .update(databasesTable)
       .set({ status: "running" })
       .where(eq(databasesTable.id, id));
-    // A factory reset is the one action that makes an empty volume the INTENDED
-    // state, so it also settles a failed migration copy: the data is not coming,
-    // and someone confirmed that. Without this the database would stay blocked
-    // after the very action taken to unblock it.
+    // A factory reset is the one action that makes an empty volume the INTENDED state,
+    // so it also settles a failed migration copy: the data is not coming, and someone
+    // confirmed that.
     await clearDataCopyError({ kind: "database", id });
     publishDatabaseChanged(id);
   });
@@ -2071,20 +1724,13 @@ export async function rebuildDatabase(id: string): Promise<void> {
 
 /**
  * The per-engine in-engine rotation step. postgres / mysql / mariadb / mongodb
- * persist their users INSIDE the data volume, so changing the compose env alone
- * is a silent no-op on an initialized volume — the engine must be told first,
- * via an exec in the running container. redis (command-carried `--requirepass`)
- * and clickhouse (config regenerated from env on every container start, outside
- * the data volume) rotate through the compose re-render alone.
- *
- * mysql/mariadb rotate BOTH root and the scoped user: root's password == the
- * connection-string password is load-bearing for backups (`dumpUserFor` dumps
- * as root with that password). `IF EXISTS` keeps the statement idempotent
- * across the images' root@'%'/root@localhost variants.
- *
- * Exported for its unit test: the passwords land in a command line the agent may
- * hand to a shell, so "does a quote/`$(…)`/backtick stay a literal" is the part
- * worth pinning, and it is testable with no database and no agent.
+ * persist their users INSIDE the data volume, so changing the compose env alone is
+ * a silent no-op on an initialized volume — the engine must be told first, via an
+ * exec in the running container. redis (command-carried `--requirepass`) and
+ * clickhouse (config regenerated from env on every container start, outside the
+ * data volume) rotate through the compose re-render alone. mysql/mariadb rotate
+ * BOTH root and the scoped user: root's password == the connection-string password
+ * is load-bearing for backups (`dumpUserFor` dumps as root with that password).
  */
 export function rotationExecCommand(
   db: Database,
@@ -2132,19 +1778,6 @@ export function rotationExecCommand(
 
 /**
  * Wrap a value so a POSIX shell reads it as one literal argument.
- *
- * These commands are handed to the agent as a raw command LINE, which it may
- * run through a shell (`ExecRequest.command`: "shell-interpreted or argv"), so
- * every value interpolated into one is a shell injection waiting for a
- * character. `assertPasswordSafe` blocks the ones that would land today
- * (`$ \` \\ [ ] whitespace`) and `rotateDatabasePassword` rejects quotes on top
- * — but that is a BLOCKLIST, and a blocklist is one forgotten character away
- * from `configure_databases` becoming arbitrary code execution inside the
- * database container. Quoting is safe by construction instead, so the blocklist
- * goes back to being what it should be: defence in depth.
- *
- * Single quotes, with the only escape a POSIX shell has for them: end the
- * string, emit an escaped quote, start it again.
  */
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -2161,20 +1794,8 @@ function jsQuote(value: string): string {
 }
 
 /**
- * Rotate a database's engine password. Two-phase, old-credentials-safe:
- *
- *  1. Engines with volume-persisted users are told FIRST via an exec in the
- *     running container ({@link rotationExecCommand}) — if that fails, nothing
- *     was written and the old password stays fully valid.
- *  2. The row's connection string is re-encrypted around the new password and
- *     the stack is rerouted so the compose env / command / healthcheck agree
- *     with the engine again. If the reroute fails AFTER a successful in-engine
- *     rotation, the row already matches reality — "Redeploy" reconciles the
- *     container config (the error says so).
- *
- * Requires the database to be RUNNING (the exec needs a live engine, and
- * rotating a stopped redis would silently start it). Returns the NEW connection
- * string — shown once by the UI, same contract as revealConnection.
+ * Rotate a database's engine password. Requires the database to be RUNNING (the
+ * exec needs a live engine, and rotating a stopped redis would silently start it).
  */
 export async function rotateDatabasePassword(
   id: string,
@@ -2185,16 +1806,11 @@ export async function rotateDatabasePassword(
 
   const newPassword = input.password?.trim() || randomToken(24);
   assertPasswordSafe(newPassword);
-  // The POLICY only bounds a password a person CHOSE. `randomToken(24)` is 32
-  // characters of base64url and carries no punctuation at all, so asking it for
-  // "at least 1 special character" would refuse deplo's own generated default
-  // about a third of the time.
+  // The POLICY only bounds a password a person CHOSE.
   if (input.password?.trim()) assertPasswordPolicy(newPassword);
-  // No extra quote rule any more. It existed because `rotationExecCommand`
-  // pasted the password straight into a shell string, and it made rotation
-  // stricter than creation for no reason a user could see (create has always
-  // accepted a quote). The command is now built with `shellQuote`/`sqlQuote`,
-  // which carry any byte, so the two paths accept the same passwords again.
+  // No extra quote rule any more. It existed because `rotationExecCommand` pasted the
+  // password straight into a shell string, and it made rotation stricter than
+  // creation for no reason a user could see (create has always accepted a quote).
 
   let newConn = "";
   await withKeyedLock(id, async () => {
@@ -2211,10 +1827,7 @@ export async function rotateDatabasePassword(
     // with one is rotatable like every other. It used to be a dead end.
     const execCmd = rotationExecCommand(cur, oldPassword, newPassword);
 
-    // Phase 1 — tell the engine (postgres/mysql/mariadb/mongodb). Abort on any
-    // failure: nothing has been written yet, the old password stays valid. Never
-    // echo the command (it carries both passwords) — surface only the engine's
-    // own stderr.
+    // Phase 1 — tell the engine (postgres/mysql/mariadb/mongodb).
     if (execCmd) {
       const conn = await connectAgent(cur.serverId);
       try {

@@ -15,18 +15,8 @@ import type {
 import { SERVER_1 } from "./app-graph-test-helpers";
 
 /**
- * Shared seeding for the Docker-cleanup tables (the data layer + the scheduler both
- * read pglite). Pair with `seedServer` (every run's `server_id` FK, and the exclusion
- * list's) and `seedIdentity` (the activity rows the executor writes), and drive the
- * data functions inside `runWithIdentity({ userId, teamId })`.
- *
- * Nothing here is team-scoped: servers are the one shared cross-team resource, so the
- * policy, the runs and the exclusions are all instance-wide infra state.
- *
- * The types come from `./docker-cleanup` as TYPE-ONLY imports, so this helper never
- * pulls the `server-only` data module into the test process at runtime.
- *
- * Not named `*.test.ts` so the `node --test` glob skips it (a helper).
+ * Shared seeding for the Docker-cleanup tables (the data layer + the scheduler
+ * both read pglite).
  */
 
 const T0 = "2026-01-01T00:00:00.000Z";

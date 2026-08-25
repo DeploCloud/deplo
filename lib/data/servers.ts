@@ -43,19 +43,11 @@ import {
 import type { Server, Team } from "../types";
 
 /**
- * `servers` is RELATIONAL as of cut-set (e) (relational-store PLAN Step 6). It is
- * instance-wide infra (no `team_id`), read/written directly through the `servers`
- * table here. The old JSONB `read().servers`/`mutate()` paths and the
- * `server-row.ts` mirror bridge (which kept the relational row in sync while
- * `servers` was JSONB-authoritative for cut-set (c)'s `apps.server_id` FK) are
- * gone — this module now owns the table outright.
+ * `servers` is RELATIONAL as of cut-set (e) (relational-store PLAN Step 6).
  */
 
 /**
- * All servers by creation order (internal; NO auth gate). Exported for the
- * consumers that iterate every server (metrics fan-out, summary join, S3 dest
- * server picklist) and already enforce their own auth — they read the relational
- * `servers` table through this instead of the deleted `read().servers`.
+ * All servers by creation order (internal; NO auth gate).
  */
 export async function listAllServers(): Promise<Server[]> {
   const rows = await getDb()
@@ -76,12 +68,8 @@ export async function getServerById(id: string): Promise<Server | null> {
 }
 
 /**
- * The public, TEAM-SCOPED server read: a viewer sees only the servers their
- * active team may target (every `all_teams` server + the ones granted to it).
- * A server restricted to other teams must never leak through this read — the
- * unscoped list is {@link listAllServers} (internal) / the instance-admin-gated
- * management page. (Previously this returned every server to any logged-in user,
- * which leaked a restricted server's metadata to excluded teams.)
+ * The public, TEAM-SCOPED server read: a viewer sees only the servers their active
+ * team may target (every `all_teams` server + the ones granted to it).
  */
 export async function listServers(): Promise<Server[]> {
   return listServersForCurrentTeam();
@@ -89,13 +77,7 @@ export async function listServers(): Promise<Server[]> {
 
 export async function getServer(id: string): Promise<Server | null> {
   // A point lookup answers NOT FOUND rather than "your token is limited", so a
-  // narrowed scope can never become an oracle for which server ids exist. The
-  // collection above says plainly that it is limited; existence does not.
-  //
-  // A host is team-level and has no per-project meaning, so this is closed to a
-  // limited MEMBER for the same reason it is closed to a narrowed token. What a
-  // member still needs from a host their own app runs on - its address, for a
-  // DNS record - is {@link serverIpForApp}, which asks about the app.
+  // narrowed scope can never become an oracle for which server ids exist.
   if (narrowedScope()) return null;
   if (!(await reachesWholeTeam())) return null;
   const teamId = await requireActiveTeamId();
@@ -121,21 +103,19 @@ export async function getServer(id: string): Promise<Server | null> {
  * Callers must tolerate null and prompt the operator to add a server.
  */
 export async function getPrimaryServer(): Promise<Server | null> {
-  // Team-scoped: the first server the active team can target (was: the first
-  // server overall, which leaked existence of an other-team-only server), and
-  // filtered by role: "primary" means the default place to PUT something, so a
-  // storage/build/import host answering it hands callers a target that refuses
-  // the very thing they were about to do.
+  // Team-scoped: the first server the active team can target (was: the first server
+  // overall, which leaked existence of an other-team-only server), and filtered by
+  // role: "primary" means the default place to PUT something, so a
+  // storage/build/import host answering it hands callers a target that refuses the
+  // very thing they were about to do.
   const servers = await listServersForCurrentTeam();
   return servers.filter(canHostWorkloads)[0] ?? null;
 }
 
 /**
- * Servers a given team may target for its apps/databases: every `all_teams`
- * server PLUS the ones explicitly granted to this team via `server_teams`. This
- * is the CONSUMPTION view (the deploy-target picklist), as opposed to the
- * management view ({@link listServers}, which is unfiltered so an infra operator
- * administers every host). Creation order, like the unfiltered list.
+ * Servers a given team may target for its apps/databases: every `all_teams` server
+ * PLUS the ones explicitly granted to this team via `server_teams`. Creation
+ * order, like the unfiltered list.
  */
 export async function listServersForTeam(teamId: string): Promise<Server[]> {
   const db = getDb();
@@ -158,13 +138,6 @@ export async function listServersForTeam(teamId: string): Promise<Server[]> {
 
 /**
  * {@link listServersForTeam} for the caller's active team (asserts membership).
- *
- * A host is a TEAM-LEVEL resource with no per-Project meaning, so a token
- * narrowed to a project reaches none of them — same answer `listDatabases` and
- * `listRegistries` give, and for the same reason: the fleet's names, addresses
- * and live metrics are not part of one project. The deploy path is unaffected —
- * it resolves its picklist through {@link listServersForTeam}, which takes an
- * explicit team and is the engine primitive.
  */
 export async function listServersForCurrentTeam(): Promise<Server[]> {
   await requireTeamWide("servers");
@@ -173,25 +146,9 @@ export async function listServersForCurrentTeam(): Promise<Server[]> {
 }
 
 /**
- * The server PICKER: id, name and type, and nothing else.
- *
- * Deliberately not team-wide-gated, unlike the listing above. Creating an app is
- * a per-project act - `create_apps` is one of the capabilities that keeps its
- * meaning inside a scope - and it has to say where the app runs. A member
- * limited to one project who could create an app but never choose a host would
- * hold a capability that does nothing, which is the opposite of what limiting a
- * role is for.
- *
- * What the gate protects is the fleet itself: names paired with addresses,
- * agent state and live metrics. A menu of hosts their own apps already run on is
- * not that.
- *
- * `isDeploHost` rides along so a picker can offer the obvious default without
- * shipping the addresses it takes to work that out. It has to be computed here:
- * there is no column for it, and `deploHostSelfAddresses` reads environment and
- * network interfaces, neither of which a client component has. It legitimately
- * comes back false for every row (the classifier fails open on an install whose
- * address it cannot match), so a caller defaults to the first server instead.
+ * The server PICKER: id, name and type, and nothing else. A member limited to one
+ * project who could create an app but never choose a host would hold a capability
+ * that does nothing, which is the opposite of what limiting a role is for.
  */
 export async function listServerChoices(): Promise<
   { id: string; name: string; type: Server["type"]; isDeploHost: boolean }[]
@@ -213,14 +170,6 @@ export async function listServerChoices(): Promise<
  * Whether a server may RUN a workload - the one predicate behind every deploy
  * target picker, and behind the server-side re-checks in `createApp` and the
  * database resolver that back them up.
- *
- * All three specialised roles are excluded, for the same reason stated three
- * ways: a storage-only host has no Docker to run anything with, a build-only host
- * has Docker but exists to compile for other machines and has no proxy to route to
- * it, and a migration source is another platform's machine that Deplo only reads
- * volumes from. Any of them would produce a deploy that fails on the host after
- * everything looked fine in the UI - or, for the last one, a deploy that lands on
- * infrastructure that is not ours to use.
  */
 export function canHostWorkloads(s: Server): boolean {
   return !s.storageOnly && !s.buildOnly && !s.importOnly;
@@ -228,13 +177,6 @@ export function canHostWorkloads(s: Server): boolean {
 
 /**
  * Refuse an action that treats a MIGRATION SOURCE as one of our servers.
- *
- * The host-management verbs (restart the workloads, restart Traefik, sweep Docker,
- * check readiness) are reachable from the API and from MCP, not only from a page
- * we can hide. Most would be harmless no-ops on a migration source - there are no
- * workloads, and the agent refuses a Traefik it did not install - but a no-op that
- * answers OK writes an Activity line claiming Deplo just operated another
- * platform's machine, which is worse than the refusal.
  */
 export function assertNotMigrationSource(
   s: Pick<Server, "name" | "importOnly">,
@@ -247,18 +189,6 @@ export function assertNotMigrationSource(
 
 /**
  * The BUILD SERVER picker: the hosts that can compile for another machine.
- *
- * Wider than {@link listServerChoices} on purpose - a build-only server is here
- * BECAUSE it cannot deploy, and an ordinary server is here too, since a fleet with
- * one big machine and several small ones wants the big one building for all of
- * them without giving up its own apps. Two roles are excluded: storage-only (no
- * Docker, no build) and a migration source - it HAS Docker, which is exactly why
- * it has to be named here, and building on it would ship an app's source and its
- * decrypted env to another platform's host.
- *
- * `hostArch` rides along because the caller has to grey out the hosts whose
- * architecture cannot produce a runnable image for the target, and asking each
- * agent live would be a dial per server on every render.
  */
 export async function listBuildServerChoices(): Promise<
   { id: string; name: string; hostArch: string; buildOnly: boolean }[]
@@ -275,13 +205,8 @@ export async function listBuildServerChoices(): Promise<
 }
 
 /**
- * The public address of the host ONE app runs on — the value a custom domain's
- * A record has to point at.
- *
- * Gated on the app rather than on the fleet: someone limited to one project
- * manages that project's domains, and the address of the machine their own app
- * runs on is part of the app, not part of the inventory. An app that isn't
- * theirs answers the same as a host with no address recorded.
+ * The public address of the host ONE app runs on — the value a custom domain's A
+ * record has to point at.
  */
 export async function serverIpForApp(appId: string): Promise<string> {
   const reach = await appCapabilities(appId);
@@ -361,10 +286,8 @@ export interface AddServerInput {
   /** A server that only BUILDS: Docker installed, no Traefik, nothing deployed. */
   buildOnly?: boolean;
   /**
-   * A server registered only to IMPORT from another platform. Forces the row to
-   * the one team doing the migration and takes the host out of everything else -
-   * see {@link Server.importOnly}. Set by the import wizard, never by the Add
-   * server dialog.
+   * A server registered only to IMPORT from another platform. Set by the import
+   * wizard, never by the Add server dialog.
    */
   importOnly?: boolean;
   teamIds?: string[];
@@ -383,12 +306,7 @@ export interface AddServerResult {
 
 /**
  * Register a remote server (PLAN Part B, P1). No SSH-in: the control plane never
- * holds the server's root credential. Instead it mints a one-time bootstrap
- * token, records the server in `provisioning`, and returns a paste-on-the-server
- * install command. The operator runs it; the agent calls home (see
- * app/api/agent/bootstrap), gets its CSR signed, and the server flips to
- * `online`. The old `sshUser`/`sshPort` fields are gone — the call-home model
- * never uses them (PLAN P1).
+ * holds the server's root credential.
  */
 export async function addServer(
   input: AddServerInput,
@@ -407,14 +325,8 @@ export async function addServer(
   const importOnly = input.importOnly ?? false;
   if (importOnly) await assertImportHostIsNew(host);
 
-  // Default to instance-wide. When restricting at registration, the junction
-  // grants the named teams; an empty teamIds list means "no team yet" (the
-  // operator wires teams up later from the server's Team access editor).
-  //
-  // A migration source is the exception, and it is not the caller's to choose:
-  // it is somebody else's machine, borrowed by ONE team for one migration, so it
-  // is granted to that team and to no other. Another team seeing it in its own
-  // Servers list would be a leak of who is migrating what from where.
+  // Default to instance-wide. Another team seeing it in its own Servers list would be
+  // a leak of who is migrating what from where.
   const allTeams = importOnly ? false : (input.allTeams ?? true);
   const teamIds = importOnly
     ? [teamId]
@@ -485,18 +397,7 @@ export async function addServer(
 
 /**
  * Refuse to register a MIGRATION SOURCE that is a machine Deplo already stands on.
- *
- * The failure this prevents is quiet and expensive. Someone runs Deplo and the
- * platform they are migrating from on the SAME box (the import wizard has a
- * toggle for exactly that case). The wizard resolves the source machine by
- * address and, when the Dokploy URL is a hostname while the server row holds an
- * IP, finds no match - so it offers to add it, and now one host has two rows. The
- * install command then re-runs on a box that already has an agent: the installer
- * clears the existing mTLS materials and re-bootstraps, and the fleet's own agent
- * is now the migration source. "Migration complete" would uninstall it.
- *
- * Cheap to prevent, impossible to undo, so it is checked here rather than trusted
- * to the wizard - the mutation is reachable from the API too.
+ * "Migration complete" would uninstall it.
  */
 async function assertImportHostIsNew(host: string): Promise<void> {
   const self = deploHostSelfAddresses();
@@ -519,45 +420,16 @@ async function assertImportHostIsNew(host: string): Promise<void> {
 
 /**
  * Register the machine Deplo itself runs on as a server - "agent 0" - so a fresh
- * install has somewhere to deploy to WITHOUT anyone opening a shell.
- *
- * Why this exists at all: every deploy goes to a server agent (ADR-0006, no
- * localhost shortcut), and until now the only way to get the first one was the
- * dashboard's Add server flow - which hands you a command to paste over SSH, on
- * the very box you just installed. So a new VPS came up with an EMPTY server list
- * and the first deploy was impossible without the shell the product exists to
- * remove.
- *
- * The control plane cannot install the agent on its own host (it is a container
- * with no Docker socket and no host access, deliberately). `install.sh` can - it
- * is root on the box - so the two halves meet on a token the installer generates
- * and passes to both: it lands here as `DEPLO_HOST_BOOTSTRAP_TOKEN`, and rides
- * the agent installer's argv on the host. This side only ever creates the row and
- * arms the token; the agent still calls home and gets its CSR signed exactly like
- * any remote server, so there is no second trust path to audit.
- *
- * NO AUTH GATE, by necessity: it runs at boot, before any user or team exists on
- * a first install. That is safe because it grants nothing - it writes a
- * `provisioning` row whose only power is to accept ONE call-home from whoever
- * already holds the token, i.e. root on this host. Everything it needs is
- * environment written by the installer, never client input.
- *
- * Three outcomes, in order:
- *  - no server matches this host -> create it, `provisioning`, armed;
- *  - one matches and is still waiting for its first call-home -> RE-ARM its token
- *    from the environment, because the stored one expires in an hour and the
- *    retry may be days later (re-running `install.sh` is the documented repair);
- *  - one matches and is already trusted -> do nothing. Never disturb a live
- *    agent's pinned mTLS from a boot hook.
+ * install has somewhere to deploy to WITHOUT anyone opening a shell. Everything it
+ * needs is environment written by the installer, never client input.
  */
 export async function ensureDeploHostServer(): Promise<void> {
   const rawToken = process.env.DEPLO_HOST_BOOTSTRAP_TOKEN?.trim();
   if (!rawToken) return;
   // The address the control plane will DIAL, which is why it is taken from the
-  // installer's own detection rather than guessed from a NIC here: a container
-  // sees docker's bridge addresses, and the agent's cert SANs are pinned to
-  // whatever this row declares (completeBootstrap never trusts a self-reported
-  // one). No address, no enrollment - a row we cannot dial is worse than none.
+  // installer's own detection rather than guessed from a NIC here: a container sees
+  // docker's bridge addresses, and the agent's cert SANs are pinned to whatever this
+  // row declares (completeBootstrap never trusts a self-reported one).
   const ip = process.env.DEPLO_SERVER_IP?.trim();
   if (!ip) return;
 
@@ -618,13 +490,7 @@ export async function ensureDeploHostServer(): Promise<void> {
  * Re-mint a fresh bootstrap token + install command for a server — whether it is
  * still `provisioning` (the original token expired or the operator lost it) OR
  * already provisioned and online (the operator wants the install command back to
- * copy it again, e.g. to reinstall or repair the agent on the box). Re-minting
- * only issues a new single-use token; it does NOT disturb a running agent's pinned
- * mTLS — the old cert keeps working until/unless the operator actually re-runs the
- * command, at which point the normal call-home (`completeBootstrap`) re-pins a
- * fresh cert. Because re-minting is a copy action, a server that is already trusted
- * KEEPS its current status (online/offline); only a server that never finished its
- * first call-home is (re)marked `provisioning`.
+ * copy it again, e.g. to reinstall or repair the agent on the box).
  */
 export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   await requireInstanceAdmin();
@@ -650,9 +516,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
     .where(eq(serversTable.id, id));
   const fresh = (await getServerById(id))!;
   // Re-minting a single-use bootstrap token arms a ~1h re-pin window — and for an
-  // already-trusted server that window can silently replace its agent cert. Like
-  // addServer/removeServer, leave an audit trail so a re-issue against a live box
-  // is never invisible (the operator-gated act is logged, not hidden).
+  // already-trusted server that window can silently replace its agent cert.
   await recordActivity(
     "member",
     `Reissued install command for server ${server.name}`,
@@ -689,10 +553,7 @@ export interface ServerRemoval {
 
 /**
  * The instance's public base URL: the address an admin set in Settings → Deplo,
- * otherwise DEPLO_PUBLIC_URL, otherwise the request's own host. It tolerates a
- * call from OUTSIDE a request scope, which removeServer needs: the base URL only
- * feeds a display string (the uninstall one-liner), so degrading is right where
- * throwing would fail a removal that has already happened.
+ * otherwise DEPLO_PUBLIC_URL, otherwise the request's own host.
  */
 async function publicBaseUrl(): Promise<string> {
   return instancePublicBaseUrl();
@@ -700,16 +561,8 @@ async function publicBaseUrl(): Promise<string> {
 
 /**
  * The paste-on-the-host command that takes Deplo's agent back off a machine.
- *
- * Instance-wide, not per server: it is `<panel>/uninstall.sh --agent-only` and
- * nothing else, so a caller showing it next to five stuck migration sources asks
- * once.
- * It carries no secret - the installer it points at is served unauthenticated by
- * design - which is why it is readable by whoever is looking at a source they
- * cannot get rid of, rather than by instance admins only.
- *
- * Exists because the row that needs it is exactly the row Deplo cannot act on:
- * an unreachable host's agent can only be removed from the host.
+ * Exists because the row that needs it is exactly the row Deplo cannot act on: an
+ * unreachable host's agent can only be removed from the host.
  */
 export async function agentUninstallCommand(): Promise<string> {
   await requireActiveTeamId();
@@ -727,11 +580,6 @@ function nameList(names: string[], max = 5): string {
  * Refuse when the host still RUNS something, BEFORE anything is touched. Both
  * tables' `server_id` FKs are RESTRICT, so a removal would fail anyway - but as a
  * raw Postgres foreign-key error, which tells the operator nothing.
- *
- * Its own function because two callers need exactly this and only one of them also
- * cares about backup destinations: turning a server into a BUILD server strands its
- * apps the same way removing it would, while a build server keeping backup
- * artifacts on its disk is perfectly fine - the disk is still there.
  */
 async function assertNoWorkloads(id: string): Promise<void> {
   const [apps, dbs] = await Promise.all([
@@ -758,14 +606,8 @@ async function assertNoWorkloads(id: string): Promise<void> {
 
 /**
  * Everything {@link assertNoWorkloads} refuses, plus the backup destinations kept
- * on this host. `backup_destination.server_id` is ON DELETE RESTRICT, so without
- * this the preflight passes, trust is revoked, the DELETE throws deep in Postgres
- * and the operator gets a raw constraint string naming nothing they can act on -
- * with the server left un-removable forever. A destination is also the one blocker
- * an instance admin may not be able to clear themselves: the rows are team-scoped
- * and removal is instance-wide, so the message has to name the team, or the honest
- * answer becomes "look in the database". It runs before the trust revoke, so a
- * blocked removal has no side effects at all.
+ * on this host. It runs before the trust revoke, so a blocked removal has no side
+ * effects at all.
  */
 async function assertServerRemovable(id: string): Promise<void> {
   await assertNoWorkloads(id);
@@ -782,26 +624,9 @@ async function assertServerRemovable(id: string): Promise<void> {
 }
 
 /**
- * Remove a server. This is TRUST REVOCATION + FORGETTING — it is NOT a host
- * uninstall, and it never pretended to be one anywhere but in its own copy:
- *
- *   (a) BLOCK first, with zero side effects, while any App or database still
- *       lives on the host — the operator moves or deletes them consciously.
- *   (b) Revoke trust — drop the pinned agent cert — so even a box we can no
- *       longer reach never keeps a valid badge. Persisted before the delete, so
- *       a crash in between still leaves trust dead.
- *   (c) Delete the row. If that fails, RESTORE the pin: a server that is still
- *       in the table but permanently un-dialable is the worst of both states.
- *
- * There is deliberately no "teardown" RPC call here. After (a) the control plane
- * provably owns no stack on that host, so there is nothing left it could name and
- * destroy — and everything that DOES survive (the deplo-agent binary + its
- * systemd unit, /var/lib/deplo-agent with the mTLS certs and Traefik's acme.json,
- * the deplo-traefik container squatting on :80/:443, the `deplo` docker network,
- * built images, and Docker itself) has no RPC behind it at all —
- * and (b) has just revoked our right to call the agent anyway. A sweep here would
- * be theatre. The honest answer is the host-side {@link uninstallCommand}, which
- * we always return so the UI can hand it over the moment the server is gone.
+ * Remove a server. (b) Revoke trust — drop the pinned agent cert — so even a box
+ * we can no longer reach never keeps a valid badge. Persisted before the delete,
+ * so a crash in between still leaves trust dead. A sweep here would be theatre.
  */
 export async function removeServer(id: string): Promise<ServerRemoval> {
   await requireInstanceAdmin();
@@ -813,14 +638,6 @@ export async function removeServer(id: string): Promise<ServerRemoval> {
 /**
  * The removal itself, with NO gate of its own - everything {@link removeServer}
  * does once it knows the caller is allowed to.
- *
- * Split out for exactly one other caller: the sweep that takes Deplo's agent off
- * a finished migration's source. That runs on a timer with nobody signed in, so
- * it cannot pass through `requireInstanceAdmin` / `requireActiveTeamId` - and it
- * must not therefore grow its own copy of the revoke → delete → restore-the-pin
- * dance, which is the part that must never differ between the two. The gates stay
- * at the callers; the invariant that keeps the ungated one honest is that it may
- * only ever be handed a MIGRATION SOURCE (see {@link uninstallMigrationSource}).
  */
 async function removeServerRow(
   id: string,
@@ -831,13 +648,7 @@ async function removeServerRow(
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
-  // (0) The host running Deplo itself is NOT removable, by anyone, ever. Removing
-  // it revokes the trust the control plane needs to reach its own box and forgets
-  // the row — the dashboard you are clicking in loses its own server, and no UI
-  // path exists to get it back (re-adding means re-bootstrapping the agent from a
-  // shell, which is exactly what Deplo promises you never need). The check lives
-  // HERE, not only in the UI: this is the boundary, and the mutation is reachable
-  // from the bearer API too.
+  // (0) The host running Deplo itself is NOT removable, by anyone, ever.
   if (isDeploHostServer(server))
     throw new Error(
       `${server.name} is the host running Deplo itself — it can't be removed, ` +
@@ -847,21 +658,19 @@ async function removeServerRow(
   // (a) Block on live workloads — before any side effect.
   await assertServerRemovable(id);
 
-  // An App mid-move OFF this server is NOT a blocker (the source host may be the
-  // very thing that died, which would deadlock the removal) — but it is a data
-  // hazard we must not let pass silently: its volumes still sit on this host and
-  // `apps.migrate_from_server_id` is SET NULL on delete, so the marker naming
-  // this host as the copy-from source is about to vanish. The next deploy would
-  // then quietly start from EMPTY volumes. Warn, loudly, with the App named.
+  // An App mid-move OFF this server is NOT a blocker (the source host may be the very
+  // thing that died, which would deadlock the removal) — but it is a data hazard we
+  // must not let pass silently: its volumes still sit on this host and
+  // `apps.migrate_from_server_id` is SET NULL on delete, so the marker naming this
+  // host as the copy-from source is about to vanish.
   const stranded = await getDb()
     .select({ slug: appsTable.slug })
     .from(appsTable)
     .where(eq(appsTable.migrateFromServerId, id));
 
-  // Queued teardowns go with the host: they name stacks on a machine Deplo is
-  // about to forget, so retrying them forever would be dialing an address that is
-  // no longer ours. The count is read BEFORE the delete (the FK CASCADE drops the
-  // rows) so the trail can say what was abandoned and where.
+  // Queued teardowns go with the host: they name stacks on a machine Deplo is about
+  // to forget, so retrying them forever would be dialing an address that is no longer
+  // ours.
   const abandoned = await pendingTeardownsForServer(id);
 
   // (b) Revoke trust before the delete: if anything below fails, the agent's
@@ -922,9 +731,7 @@ export interface ServerUninstall {
   removed: boolean;
   /**
    * The host-side one-liner, ALWAYS returned - on success so the operator can
-   * verify, on failure because it is then the only way through. ADR-0011's rule
-   * survives the arrival of the RPC: an unreachable or already-de-trusted host
-   * will always need a path that does not go through the agent.
+   * verify, on failure because it is then the only way through.
    */
   uninstallCommand: string;
   /** Why it did not happen, or null. Surfaced verbatim in the UI. */
@@ -935,33 +742,8 @@ export interface ServerUninstall {
 
 /**
  * Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host, then
- * forget the server.
- *
- * This is the one place the product does what ADR-0011 says removal does not, and
- * the reason is the mission rather than a change of mind: the agent on a migration
- * source was installed BY Deplo, for Deplo, on a machine that is not part of the
- * fleet. Ending a migration by handing someone a shell command to undo an install
- * they never performed is exactly the failure mode Deplo exists to remove. ADR-0011
- * anticipated this shape - additive RPC, gated on a Hello capability, and the
- * script stays - and this is it.
- *
- * The ORDER is the contract:
- *
- *   (0) Nothing installed yet (a registration whose install command was never run)
- *       is not a failure: there is no agent to uninstall, so this degrades to
- *       forgetting the row. It is also the only way out for that row now that a
- *       migration source has no management page.
- *   (1) Block on what would make the delete fail - BEFORE the RPC. A backup
- *       destination on the host is ON DELETE RESTRICT, so discovering it after the
- *       uninstall would leave a de-agented host that can never be removed.
- *   (2) Uninstall, THEN revoke. Revoking trust is precisely the act that ends our
- *       right to command that agent, so the call has to come first.
- *   (3) Only on success, remove the row - reusing {@link removeServer}, which
- *       carries the revoke → delete → restore-the-pin-if-the-delete-fails dance.
- *
- * A failure at (2) keeps the row and returns the host-side command. That is the
- * honest outcome: the machine still has an agent on it, and pretending otherwise
- * by deleting the row would strand a running agent nobody can see.
+ * forget the server. (1) Block on what would make the delete fail - BEFORE the
+ * RPC.
  */
 export async function uninstallServerAgent(
   id: string,
@@ -973,23 +755,9 @@ export async function uninstallServerAgent(
 }
 
 /**
- * The uninstall itself, with NO capability gate - what {@link uninstallServerAgent}
- * does once it knows the caller is allowed to, and what the automatic sweep does
- * with nobody signed in at all.
- *
- * Ungated is safe here because of the one check it makes for itself and never
- * skips: the target must be a MIGRATION SOURCE. That is not a role anything but
- * the import wizard can create, it is granted to one team, it is out of every
- * deploy and build picker, and it holds no workload by construction (a
- * {@link assertServerRemovable} away from proving it). Taking Deplo's own agent
- * back off such a box is the closing half of an action somebody already
- * authorised - the wizard told them Deplo would - not a new one, which is why the
- * timer is allowed to finish it when the person who started the migration was
- * never an instance admin. Widening it to any other role would be a different
- * decision entirely, and this refusal is what stops that happening by accident.
- *
- * `deadlineMs` shortens the RPC for the ONE attempt made inline while somebody is
- * waiting on the wizard; the retries take the full deadline.
+ * The uninstall itself, with NO capability gate - what {@link
+ * uninstallServerAgent} does once it knows the caller is allowed to, and what the
+ * automatic sweep does with nobody signed in at all.
  */
 export async function uninstallMigrationSource(
   id: string,
@@ -1051,15 +819,6 @@ export interface UpdateServerAddressInput {
   /**
    * Write only `ip` and leave `host` alone - the MIGRATION WIZARD's flag, and the
    * one case where the two are meant to diverge.
-   *
-   * A migration source is registered at the address the other platform's PANEL
-   * answers on, which behind Cloudflare or any reverse proxy is the proxy's, not
-   * the machine's. Correcting it has to keep the panel hostname somewhere, because
-   * `planMachines` (lib/data/dokploy-import.ts) pairs a Dokploy machine with our
-   * server BY ADDRESS - `s.ip === a || s.host === a` - so overwriting both makes a
-   * second pass of the wizard fail to recognise the machine and register a SECOND
-   * row for it. `host` keeps where it came from (the match), `ip` is where we dial
-   * (`remoteTarget` reads `server.ip || server.host`).
    */
   keepHost?: boolean;
 }
@@ -1067,18 +826,6 @@ export interface UpdateServerAddressInput {
 /**
  * Rewrite where Deplo dials a server's agent (Danger zone -> "Change address") -
  * the migration verb: a VPS got a new IP, or the whole instance moved hosts.
- * Trust is the PINNED cert fingerprint, never the address, so an edit never
- * re-bootstraps anything; a wrong address is recoverable by editing again (or,
- * when the panel itself can no longer help, `bun run recover server-address` on
- * the Deplo host).
- *
- * Verify-first: unless `force`, the agent must answer a Hello AT the new address
- * before the row flips - and because that dial pins the same fingerprint, success
- * also proves the box there is the same agent we provisioned. Before the probe,
- * the agent's leaf is re-signed with old+new addresses unioned as SANs
- * (best-effort): an IP dial verifies via the `localhost` DNS SAN either way, but
- * a DNS-name dial needs its name in the cert, and the union keeps the OLD address
- * dialable if the operator cancels after a failed probe.
  */
 export async function updateServerAddress(
   input: UpdateServerAddressInput,
@@ -1113,14 +860,7 @@ export async function updateServerAddress(
     ];
     try {
       const { renewAgentCert } = await import("../agent/cert-renewal");
-      // The NEW address first. This edit exists because an address is wrong, and
-      // the most common way for it to be wrong is that nothing answers there any
-      // more - so delivering the renewal over the address being REPLACED failed
-      // by construction on the very path people take most, and warned about
-      // broken TLS on an edit that was about to succeed. Which side carries the
-      // certificate changes nothing about what gets installed: the agent gets
-      // the same signed leaf, and the pinned fingerprint means no other machine
-      // could accept it.
+      // The NEW address first.
       try {
         await renewAgentCert(server.id, sans, {
           ip: address,
@@ -1133,16 +873,8 @@ export async function updateServerAddress(
         await renewAgentCert(server.id, sans);
       }
     } catch (e) {
-      // Soft on purpose: the force path exists precisely because the old address
-      // may already be dead, and an IP-dialed host never consults these SANs.
-      //
-      // Worded as the small thing it is. It used to open with "Could not refresh
-      // the agent certificate", which reads as "the trust is broken" on an
-      // operation that then SUCCEEDS - and it succeeds having proven the point,
-      // because unless `force` the probe below reaches the agent at the new
-      // address over that very certificate. Leading with the failure made people
-      // stop and go looking for a problem that the next line had already ruled
-      // out.
+      // Soft on purpose: the force path exists precisely because the old address may
+      // already be dead, and an IP-dialed host never consults these SANs.
       warning =
         (input.force
           ? `The address was saved without checking it (force). `
@@ -1197,19 +929,7 @@ export async function updateServerAddress(
 
 /**
  * Update a server's agent binary in place to the latest released version WITHOUT
- * reissuing its certificates. Unlike re-running the installer (which mints a new
- * token and re-bootstraps, clearing the agent's mTLS materials), this dials the
- * agent over its EXISTING pinned-mTLS channel and asks it to self-update: fetch
- * the checksum-verified latest binary, swap itself on disk, and re-exec keeping
- * the same on-disk cert/key/CA. Trust — the pinned fingerprint — is untouched, so
- * the server stays "online" with the same identity across the upgrade.
- *
- * Resolves the "latest" target version through the same release resolver the
- * outdated badge uses, so what we install matches what the dashboard flagged.
- * Returns the version the agent is now running. Throws when the server is
- * unreachable / not provisioned, or — until the agent ships the self-update RPC —
- * AgentUpdateUnsupportedError (the GraphQL layer turns that into a clear message
- * telling the operator to re-run the installer for now).
+ * reissuing its certificates.
  */
 export async function updateServerAgent(
   id: string,
@@ -1229,10 +949,7 @@ export async function updateServerAgent(
     );
 
   // Lazy-import for the same reason removeServer does: keep the grpc agent-client
-  // (and its deps) out of modules that never reach an agent. The seam resolves the
-  // latest release itself (version + per-arch url/sha from one consistent release)
-  // and tells the agent to self-update over its existing pinned-mTLS channel —
-  // certs are never reissued.
+  // (and its deps) out of modules that never reach an agent.
   const { selfUpdateServerAgent } = await import("../infra/agent-client");
   const result = await selfUpdateServerAgent(id);
 
@@ -1292,8 +1009,6 @@ async function teamNames(
  * Re-assert, INSIDE a write transaction, that a server is still targetable by a
  * team — taking a SHARE lock on the server row so the check serializes against a
  * concurrent {@link setServerTeams} restrict (which takes the row's UPDATE lock).
- * Callers that place a workload (createApp/createDatabase) use this to close
- * the TOCTOU window between picking a team-visible server and committing the row.
  */
 export async function assertServerAccessibleTx(
   tx: DbTx,
@@ -1328,14 +1043,7 @@ export interface SetServerTeamsInput {
 
 /**
  * Set a server's team access (Settings → Servers → Team access; also the install
- * dialog's initial choice). `allTeams: true` opens it to every team and clears
- * any specific grants. `allTeams: false` restricts it to `teamIds`.
- *
- * RESTRICTING is BLOCKED when a team that still has apps or databases on this
- * server would lose access — the operator moves/deletes those first, the same
- * conscious-teardown rule {@link removeServer} enforces (no silent orphaning of a
- * team's running workloads onto a server it can no longer target). Widening to
- * `all_teams` never blocks. Instance-admin only.
+ * dialog's initial choice). Widening to `all_teams` never blocks.
  */
 export async function setServerTeams(
   id: string,
@@ -1353,9 +1061,9 @@ export async function setServerTeams(
 
   await getDb().transaction(async (tx) => {
     // Lock the server row FOR UPDATE so a concurrent create that SHARE-locks it
-    // (assertServerAccessibleTx) serializes against this restrict — the workload
-    // check below then observes every workload committed before we won the lock,
-    // closing the TOCTOU window (no team left orphaned on a server it can't see).
+    // (assertServerAccessibleTx) serializes against this restrict — the workload check
+    // below then observes every workload committed before we won the lock, closing the
+    // TOCTOU window (no team left orphaned on a server it can't see).
     const locked = await tx
       .select({ id: serversTable.id })
       .from(serversTable)
@@ -1411,11 +1119,9 @@ export async function setServerTeams(
 
 /**
  * Set a server's deploy concurrency — how many deployments its agent runs at once
- * (the Coolify `concurrent_builds` analogue, read by lib/deploy/deploy-queue).
- * 1 = strict per-server serialization; deploys on OTHER servers still run in
- * parallel, and a same-app deploy never overlaps regardless of this value.
- * Instance-admin only, like every server-config mutation — servers are shared
- * cross-team infra, never team-scoped. Clamped to a whole number in [1, 50].
+ * (the Coolify `concurrent_builds` analogue, read by lib/deploy/deploy-queue). 1 =
+ * strict per-server serialization; deploys on OTHER servers still run in parallel,
+ * and a same-app deploy never overlaps regardless of this value.
  */
 export async function setServerDeployConcurrency(
   id: string,
@@ -1444,10 +1150,9 @@ export async function setServerDeployConcurrency(
   return (await getServerById(id))!;
 }
 
-/** What a server is FOR. `everything` is the default and what almost every host is;
- *  the other three are the specialised installs. `import` is the odd one out - it
- *  is not a machine the operator shaped, it is another platform's host Deplo is
- *  migrating away from, and the import wizard is its only birth path. */
+/**
+ * What a server is FOR.
+ */
 export type ServerRole = "everything" | "build" | "storage" | "import";
 
 /** The stored flags as one word. */
@@ -1461,27 +1166,9 @@ export function serverRole(
 }
 
 /**
- * Change what a server is for.
- *
- * The three FLEET roles are settable after installation, because a role is a
- * CONTROL-PLANE decision: it changes which pickers offer the host and which
- * readiness rows apply, and the installer's only per-role difference is whether it
- * sets Traefik up. A host that has Docker can therefore be any of them, and go
- * back. `import` is not one of them and is refused in both directions - see below.
- *
- * The one true asymmetry is physical rather than a policy: a server INSTALLED as
- * backups-only never had Docker put on it, and no database write can change that.
- * It is pinned to that role until the install command is re-run on the host, and
- * `dockerVersion` (only ever non-empty because an agent reported one) is how we
- * tell that case from a Docker-having host somebody merely retired into storage.
- *
- * Leaving "Everything" is refused while the host still runs anything, reusing the
- * probe {@link removeServer} uses: neither of the other roles serves workloads, so
- * accepting it would strand every app on the box, unrouted, with no indication of
- * why. Going back TO "Everything" always succeeds, but the caller is expected to
- * warn that Traefik may not be installed there.
- *
- * Instance-admin, like every server mutation - servers are shared cross-team infra.
+ * Change what a server is for. The one true asymmetry is physical rather than a
+ * policy: a server INSTALLED as backups-only never had Docker put on it, and no
+ * database write can change that.
  */
 export async function setServerRole(
   id: string,
@@ -1497,11 +1184,8 @@ export async function setServerRole(
   if (role === current) return server;
 
   // A migration source is not a role anyone picks: it is another platform's host,
-  // registered by the import wizard, where the installer put no Traefik and no
-  // shared network. Promoting one from here would produce a server that looks
-  // ready and routes nothing, and demoting a real server into one would arm an
-  // agent uninstall against a box that runs apps. Both directions are refused; the
-  // way in and the way out are both the install command.
+  // registered by the import wizard, where the installer put no Traefik and no shared
+  // network.
   if (current === "import")
     throw new Error(
       `${server.name} was installed only to import from another platform. ` +
@@ -1567,19 +1251,9 @@ export interface BootstrapCompletion {
 }
 
 /**
- * Complete a call-home bootstrap (PLAN P1-P4). UNAUTHENTICATED entry point (the
- * caller is a brand-new agent, not a logged-in user) — its trust comes entirely
- * from the single-use token + the CSR proof-of-possession, NOT from a session.
- * Validates the token against a provisioning server, signs the agent's CSR with
- * the control-plane CA using the SERVER ROW's declared address as the cert SANs
- * (never a self-reported one), then atomically pins the cert fingerprint, clears
- * the bootstrap token (single-use), and flips `provisioning -> online`.
- *
- * The check-sign-consume is split: signing (CSR crypto) happens first, then a
- * single conditional UPDATE re-validates the token is still unused and pins the
- * result. The `WHERE bootstrap_used_at IS NULL` predicate makes the consume
- * single-use under concurrency — a double-submit's loser updates 0 rows and throws
- * (replacing the old in-memory mutate() re-check).
+ * Complete a call-home bootstrap (PLAN P1-P4). The check-sign-consume is split:
+ * signing (CSR crypto) happens first, then a single conditional UPDATE
+ * re-validates the token is still unused and pins the result.
  */
 export async function completeBootstrap(
   call: BootstrapCallHome,
@@ -1620,18 +1294,9 @@ export async function completeBootstrap(
 }
 
 /**
- * What a Hello actually OBSERVED about Traefik — `undefined` when it observed nothing.
- *
- * The agent FORCES `traefikRunning` to false whenever Docker is unreachable, because its
- * only signal is a substring match over running containers and it has no container list
- * to match against. Passing that straight through to {@link markServerSeen} persists "we
- * looked and Traefik is off" for a host where we never looked — which then paints a
- * confident grey "Traefik off" badge. `undefined` means "don't touch the column", so the
- * last real observation survives and the UI can age it out on its own terms.
- *
- * The same tri-state lives in `classifyServerReadiness` (lib/infra/server-readiness.ts),
- * which renders its unknown as a "skip" row rather than a warning. Kept separate because
- * that module is pure classification and must not import the data layer.
+ * What a Hello actually OBSERVED about Traefik — `undefined` when it observed
+ * nothing. Kept separate because that module is pure classification and must not
+ * import the data layer.
  */
 export function observedTraefik(hello: {
   dockerAvailable: boolean;
@@ -1642,14 +1307,8 @@ export function observedTraefik(hello: {
 
 /**
  * Mark a server seen now (P5 heartbeat cache). A best-effort write behind the
- * live-read health check — never the source of truth for status. Also refreshes
- * `traefikEnabled` from the live Hello (whether a Traefik proxy is running on the
- * host) — read-live-not-stored, so the badge self-corrects if Traefik later stops
- * or is added, instead of the hardcoded false a remote row is born with. Callers
- * pass it through {@link observedTraefik}, never raw.
- *
- * Async + self-swallowing (like `recordActivity`): callers fire-and-forget it
- * (`void markServerSeen(...)`), so a write failure never disrupts the live read.
+ * live-read health check — never the source of truth for status. Callers pass it
+ * through {@link observedTraefik}, never raw.
  */
 export async function markServerSeen(
   id: string,
@@ -1669,19 +1328,15 @@ export async function markServerSeen(
     if (typeof traefikRunning === "boolean")
       set.traefikEnabled = traefikRunning;
     // The Docker engine version the agent reports on its Hello — born "" at
-    // registration and only known live, so persist it here (guard on non-empty so
-    // a missing/Docker-unreachable Hello never blanks a good value). Drives the
-    // Servers page's Docker spec tile without a live poll.
+    // registration and only known live, so persist it here (guard on non-empty so a
+    // missing/Docker-unreachable Hello never blanks a good value).
     if (dockerVersion) set.dockerVersion = dockerVersion;
     // The host's CPU architecture, same read-live-then-persist deal as the Docker
-    // version. Guarded on non-empty so an agent too old to report it never blanks a
-    // value a newer one already wrote - that would silently take the server back out
-    // of the build-server picker.
+    // version.
     if (hostArch) set.hostArch = hostArch;
     // Persist the host's hardware CAPACITY (cores / RAM / disk) the agent reports
-    // alongside its live usage. Capacity is effectively static, so storing it lets
-    // the Servers page render the specs without a live poll. Guard on cpuCores>0 so
-    // a failed/empty measure never zeroes good values.
+    // alongside its live usage. Guard on cpuCores>0 so a failed/empty measure never
+    // zeroes good values.
     if (specs && specs.cpuCores > 0) {
       set.cpuCores = specs.cpuCores;
       set.memoryMb = specs.memoryMb;

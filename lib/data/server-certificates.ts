@@ -15,20 +15,6 @@ import { getServerById } from "./servers";
 /**
  * Custom TLS certificates on ONE server: the "I already bought a certificate"
  * escape hatch next to the Let's Encrypt one Deplo issues by itself.
- *
- * They live in the host's own Traefik stack file and nowhere else. No table, no
- * column, no copy in the control plane: the host is the only place the proxy can
- * read a certificate from, so it is also the only honest answer to "what is
- * installed here", the same reason the ACME account email and the dashboard
- * domain are read live rather than stored.
- *
- * Traefik picks a certificate by SNI, so an installed certificate covers every
- * domain named in it that is served over HTTPS on this host, and it takes
- * precedence over Let's Encrypt: Traefik does not request a certificate for a
- * domain the store already covers.
- *
- * Instance-admin gated, like every other host action: a certificate here fronts
- * whatever any team runs on this server.
  */
 
 /** An installed certificate, described from the certificate itself. The private
@@ -102,16 +88,9 @@ function identify(certificate: CustomCertificate): ServerCertificate | null {
 /* ------------------------------------------------------------------ */
 
 /**
- * Install a certificate on a server.
- *
- * A certificate that covers everything an installed one covers REPLACES it: that
- * is what a renewal looks like (same domains) and what adding a name to an
- * existing certificate looks like (a superset), and leaving both would let
- * Traefik answer with either. A certificate that merely overlaps is kept
+ * Install a certificate on a server. A certificate that merely overlaps is kept
  * alongside - evicting it would take away the names only it covers, and Traefik
  * prefers the more specific certificate for a given hostname anyway.
- *
- * Applying recreates the proxy, so routing on this host blips.
  */
 export async function addServerCertificate(
   serverId: string,
@@ -222,9 +201,8 @@ async function applyCertificates(
   const { applyTraefikConfig } = await import("../infra/agent-client");
   const composeYaml = withTraefikCertificates(currentYaml, certificates);
   // Nothing to write, nothing to restart: applying recreates the proxy and takes
-  // every site on the host down for a few seconds, and pasting the same
-  // certificate in twice must not cost that. The transform is byte-stable, so
-  // this comparison is exact.
+  // every site on the host down for a few seconds, and pasting the same certificate
+  // in twice must not cost that.
   if (composeYaml === currentYaml) return;
   const res = await applyTraefikConfig(serverId, { composeYaml });
   if (!res.ok)
@@ -237,11 +215,7 @@ async function applyCertificates(
 
 /**
  * The certificate rides in a compose `configs` entry with inline `content`, which
- * Docker Compose only understands from v2.23.1. An older one rejects the whole
- * file, and its complaint ("configs.deplo-certificates: additional property
- * content is not allowed") names our config without naming the fix. The agent has
- * already put the working config back by then, so this only has to say what to
- * upgrade.
+ * Docker Compose only understands from v2.23.1.
  */
 function addComposeHint(error: string): string {
   return /config/i.test(error)
@@ -255,13 +229,6 @@ function addComposeHint(error: string): string {
 
 /**
  * Read and check a pasted certificate + key.
- *
- * Everything a host cannot tell us afterwards is checked here: that the PEM is a
- * certificate at all, that the key is the one it was issued for (a mismatched
- * pair makes Traefik serve its self-signed default and nothing says why), and
- * that today falls inside its validity. The chain is kept VERBATIM: a full chain
- * is several certificates in one PEM and the intermediates are what browsers
- * need.
  */
 function parseCertificate(input: CertificateInput): CustomCertificate {
   const certPem = input.certPem.trim();
@@ -342,16 +309,9 @@ function matchesKey(
 }
 
 /**
- * Whether a certificate covering `incoming` makes `installed` redundant.
- *
- * True only when the new one covers EVERY hostname the old one does: that is a
- * renewal (the same domains) or a certificate the operator added a name to, and
- * leaving both would let Traefik answer a request with either. A partial overlap
- * is not redundancy - evicting it would take away the names only it covers - so
- * both stay and Traefik picks the more specific one per hostname.
- *
- * A certificate naming no hostname at all is never superseded: nothing can be
- * shown to cover it, so removing it would be a guess.
+ * Whether a certificate covering `incoming` makes `installed` redundant. A partial
+ * overlap is not redundancy - evicting it would take away the names only it covers
+ * - so both stay and Traefik picks the more specific one per hostname.
  */
 export function supersedes(
   incoming: Set<string>,

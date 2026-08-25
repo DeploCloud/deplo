@@ -25,53 +25,20 @@ import type { HelloResponse, HostMetrics } from "../agent/gen/agent";
 import type { Server } from "../types";
 
 /**
- * Server READINESS (Settings → Servers → ⋯ → Check readiness): a live, never-stored answer
- * to "is this host's installation complete enough to deploy Apps to?".
- *
- * This module is only the ORCHESTRATOR. It gates the call, dials the owning server's agent
- * exactly once, collects everything one bounded probe can honestly learn (a Hello, two host
- * port bind-tests, host metrics) plus the control plane's own facts about the row, and hands
- * the lot to the pure classifier in lib/infra/server-readiness.ts. Every decision — which
- * signal proves what, which absence is normal, which string may be shown — lives THERE, so it
- * can be tested without a socket (there is no mocking seam for `connectAgent`).
- *
- * IT WRITES NOTHING. Not `servers.status`, not `status_checked_at`, not `status_probed_at`,
- * not `last_seen_at`; it calls neither `recordServerHealth` nor `markServerSeen` nor
- * `claimProbe` nor `recordActivity`. Two reasons, and they are the same reason `metricsFor`
- * refuses to persist:
- *   - this probe has NO confirming retry and NO throttle lease. `probeServer` demotes a server
- *     only after a second look, because a persisted false `offline` sits on the operator's
- *     screen for the whole throttle window after the blip is over. A readiness check that wrote
- *     a status on a single failed Hello would reintroduce exactly that bug.
- *   - it is a DIAGNOSTIC the operator runs *because* something already looks wrong. Opening a
- *     dialog must not perturb what the page is telling them. Health stays the health prober's
- *     story (lib/data/server-health.ts owns `servers.status`); readiness is a READ.
- * There is no throttle for the same reason: nothing is persisted, so a re-run costs one dial
- * and the operator is the one waiting on it.
- *
- * An unreachable or untrusted agent is NOT an exception here — it IS the report ("Not ready to
- * deploy: the agent did not answer"). The raw error, which carries the pinned certificate
- * fingerprint and the dial address, goes to `console.error` and nowhere else; the report
- * carries only the classifier's curated, closed-set strings.
+ * Server READINESS (Settings → Servers → ⋯ → Check readiness): a live,
+ * never-stored answer to "is this host's installation complete enough to deploy
+ * Apps to?" Opening a dialog must not perturb what the page is telling them.
  */
 
 /**
- * Belt-and-braces bound around the WHOLE probe: connectAgent's DB read + cert issue, the
- * Hello, and the concurrent CheckPort/Metrics phase. The individual RPCs have their own
- * deadlines (Hello 3s, CheckPort 15s, Metrics 30s), but an operator is WATCHING this dialog —
- * a slow answer is itself the answer. Same discipline as PROBE_DEADLINE_MS in server-health.ts.
+ * Belt-and-braces bound around the WHOLE probe: connectAgent's DB read + cert
+ * issue, the Hello, and the concurrent CheckPort/Metrics phase.
  */
 export const READINESS_DEADLINE_MS = 12_000;
 
 /**
- * The bound on the POST-HELLO phase (the two CheckPort bind-tests + the metrics read), which
- * must sit BELOW {@link READINESS_DEADLINE_MS}. Their own RPC deadlines are longer than the
- * whole-probe budget (CheckPort 15s, Metrics 30s — both shared with other callers, so neither
- * can be lowered here), which means that without this phase bound a stall in the port/metrics
- * phase would always trip the OUTER deadline and throw away a Hello that demonstrably
- * succeeded — reporting "the agent did not answer" about an agent that answered in 300ms.
- * A phase overrun is a `skip`, not a fail: we could not evaluate those rows, so we say so, and
- * everything the Hello already told us survives.
+ * The bound on the POST-HELLO phase (the two CheckPort bind-tests + the metrics
+ * read), which must sit BELOW {@link READINESS_DEADLINE_MS}.
  */
 export const READINESS_PHASE_DEADLINE_MS = 8_000;
 
@@ -122,10 +89,9 @@ const NOT_DIALED: DialedProbe = {
 };
 
 /**
- * Run the readiness check for ONE server and return the report. Instance-admin only: servers
- * are instance-wide infra, and every other server mutation gates the same way. The gate lives
- * HERE, in the data layer — the GraphQL `authScopes` is the introspectable contract, this is
- * the boundary.
+ * Run the readiness check for ONE server and return the report. The gate lives
+ * HERE, in the data layer — the GraphQL `authScopes` is the introspectable
+ * contract, this is the boundary.
  */
 export async function checkServerReadiness(
   id: string,
@@ -135,11 +101,9 @@ export async function checkServerReadiness(
   const server = await getServerById(id);
   // The same message checkServerHealth throws, so the UI's toast reads identically.
   if (!server) throw new Error("Server not found");
-  // Readiness asks "could a deployment land here?", and for a migration source the
-  // answer is no by design - it has no Traefik of ours and something else owns
-  // :80. Reporting that as findings would describe a healthy machine as broken,
-  // so the question is refused rather than answered wrongly. Reachable from the
-  // API and MCP, hence a check here and not only a hidden button.
+  // Readiness asks "could a deployment land here?" Reporting that as findings would
+  // describe a healthy machine as broken, so the question is refused rather than
+  // answered wrongly.
   if (server.importOnly)
     throw new Error(
       `${server.name} is a migration source - nothing is deployed there, so there ` +
@@ -149,12 +113,8 @@ export async function checkServerReadiness(
   const observedAt = nowIso();
   const grantedTeamCount = (await getServerTeamIds(id)).length;
 
-  // The fence, identical to the health prober's: a NON-EMPTY cert pin is the only proof there
-  // is an agent on the other end. `removeServer` revokes trust by writing "" (not NULL), so a
-  // trust-revoked row is fenced exactly like a never-provisioned one — dialing either would
-  // make `resolveTarget` throw from a pure DB read, and reporting THAT as "the agent did not
-  // answer" would tell an operator their brand-new server is broken when it simply hasn't been
-  // installed yet.
+  // The fence, identical to the health prober's: a NON-EMPTY cert pin is the only
+  // proof there is an agent on the other end.
   if (!server.agent?.certFingerprint) {
     return classifyServerReadiness({
       server,
@@ -186,19 +146,9 @@ export async function checkServerReadiness(
 }
 
 /**
- * ONE dial, closed in a `finally`. The Hello is the gate: if it fails, the channel is dead or
- * untrusted and we do not keep talking to it — that single failure IS the report. If it
- * succeeds, the two port bind-tests and the host-metrics read run CONCURRENTLY (the metrics
- * RPC blocks ~1s agent-side computing its CPU/net deltas), so the whole phase costs ~1.2s on a
- * healthy host.
- *
- * Neither the port checks nor the metrics read is skipped when Docker is down: CheckPort is a
- * raw TCP bind and Metrics is procfs/statfs — both are Docker-independent, and a broken-install
- * host (Docker dead, something else squatting on :80) is exactly the case this feature exists
- * to explain.
- *
- * NO confirming retry, deliberately. Nothing is persisted, so a false negative costs the
- * operator one click of "Run again", not a wrong badge in the database.
+ * ONE dial, closed in a `finally`. The Hello is the gate: if it fails, the channel
+ * is dead or untrusted and we do not keep talking to it — that single failure IS
+ * the report.
  */
 async function probeAgent(server: Server): Promise<DialedProbe> {
   let conn: AgentConnection;
@@ -272,10 +222,9 @@ async function probeAgent(server: Server): Promise<DialedProbe> {
 }
 
 /**
- * Bind-test one host port. The capability preflight mirrors `connectBackupAgent`: an agent
- * that never advertised `checkport` is not asked, so an old agent degrades to an honest
- * "skipped" row instead of a fabricated pass. The catch is the belt-and-braces for an agent
- * that advertises the flag yet answers UNIMPLEMENTED anyway.
+ * Bind-test one host port. The capability preflight mirrors `connectBackupAgent`:
+ * an agent that never advertised `checkport` is not asked, so an old agent
+ * degrades to an honest "skipped" row instead of a fabricated pass.
  */
 async function probePort(
   conn: AgentConnection,

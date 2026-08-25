@@ -21,15 +21,7 @@ import type {
 
 /**
  * Shared seeding for the infra / integrations cut-set (e) data-layer tests
- * (relational-store PLAN Step 6). `servers`, `github_apps`(+`github_installation`)
- * and `activities` are RELATIONAL: the data layer reads pglite. So
- * this seeds those tables directly, the same way `app-graph-test-helpers` seeds
- * the project graph.
- *
- * Pair with `seedIdentity` (team FKs). Drive the data functions inside
- * `runWithIdentity({ userId, teamId })`.
- *
- * Not named `*.test.ts` so the `node --test` glob skips it (a helper).
+ * (relational-store PLAN Step 6).
  */
 
 const T0 = "2026-01-01T00:00:00.000Z";

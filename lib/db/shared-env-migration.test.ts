@@ -50,7 +50,7 @@ before(async () => {
   });
   db = drizzle(pg, { schema });
 
-  // Replay 0000.. 0026, seed the old world, THEN apply 0027 and EVERYTHING after it.
+  // Replay 0000..0026, seed the old world, THEN apply 0027 and EVERYTHING after it.
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
@@ -89,6 +89,7 @@ before(async () => {
   // RAW SQL, not the drizzle `seedServer` helper: the schema is frozen at 0026 here,
   // but drizzle names EVERY column the live `servers` object knows in its INSERT — so
   // the helper reaches for columns a later migration adds (0030's status_checked_at /
+  // status_message) and the insert fails on a table that doesn't have them yet.
   await pg.exec(`
     insert into servers (
       id, name, host, type, status, ip, docker_version, traefik_enabled,
@@ -211,6 +212,7 @@ test("the only mode-less/link-less var is the one whose group reached no app", a
   // Spec §4's "no shared var left without a valid sharing mode" — the ONE legitimate
   // exception is a var exploded from a group that was attached to nothing: it
   // injected nowhere before and injects nowhere after, so parity holds and the row is
+  // kept rather than destroying the user's authored value.
   const orphans = await pg.query<{ key: string }>(`
     select v.key from shared_env_vars v
     where v.team_wide = false

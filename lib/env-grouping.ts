@@ -1,14 +1,7 @@
 /**
- * Folding the Variables page's aggregate "All" tab into Project sections.
- *
- * The tab holds every variable of every app in ONE flat row list (that is what
- * lets its filters cut across cards and its sort order the whole page). This is
- * the last step: the surviving rows are folded back into Project → App buckets,
- * which is what the collapsible sections render.
- *
- * Kept pure and UI-free on purpose — the component around it cannot be tested in
- * this repo (no renderer in the `node --test` harness), so the grouping, the
- * ordering and the Standalone bucket live here where they can be.
+ * Folding the Variables page's aggregate "All" tab into Project sections. The tab
+ * holds every variable of every app in ONE flat row list (that is what lets its
+ * filters cut across cards and its sort order the whole page).
  */
 
 /** The section key of every App that belongs to no Project. */
@@ -51,21 +44,9 @@ export interface ProjectBucket<R extends { app: GroupableApp }> {
 }
 
 /**
- * Fold rows into Project → App buckets.
- *
- * The SECTIONS come out in `projects` order — the team-wide Project order the
- * Overview grid shows and the Variables page lets you drag — with Standalone
- * always last. That order is the user's, so no sort mode and no search may
- * reshuffle it behind their back; only a drag moves a section.
- *
- * Inside a section the cards keep PASS ORDER: the first row of a bucket is its
- * extreme (the newest one under "Recently modified"), so grouping in the order
- * the sort left the rows carries that sort down to the cards for free. `byName`
- * re-sorts them A→Z instead — what the "Sort by key" mode wants, where the
- * ordering is about the KEYS and the cards should just sit still.
- *
- * A project or an app with no surviving row never appears: an empty card is pure
- * noise on a page whose whole subject is variables.
+ * Fold rows into Project → App buckets. The SECTIONS come out in `projects` order
+ * — the team-wide Project order the Overview grid shows and the Variables page
+ * lets you drag — with Standalone always last.
  */
 export function groupRowsByProject<R extends { app: GroupableApp }>(
   rows: readonly R[],

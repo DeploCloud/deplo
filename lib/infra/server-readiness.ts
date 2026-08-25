@@ -9,29 +9,9 @@ import { AgentUnreachableError } from "./agent-client";
 import type { Server } from "../types";
 
 /**
- * The readiness CLASSIFIER: given everything one bounded probe of a server can honestly
- * learn — a Hello (or the error it rejected with), two host-port bind tests, host metrics,
- * and the control-plane's own row — decide what we can TRUTHFULLY tell the operator about
- * whether this host is set up to run deployments.
- *
- * It is a pure function, deliberately hoisted out of the dial, for exactly the reason
- * `classifyServerHealth` is: there is no mocking seam for `connectAgent` in this repo (grpc
- * is real, `dial`/`resolveTarget` are module-private), so a decision welded to the RPC is a
- * decision that can never be tested. Everything hard here — which signals prove what, which
- * absences are normal, which strings may be shown — lives in this file and is exercised by
- * lib/infra/server-readiness.test.ts without a socket.
- *
- * THE HONESTY RULE, which every string below obeys:
- *   A Hello `capabilities[]` entry is a compiled-in constant of the agent BINARY. It proves
- *   "this agent knows how to run Nixpacks builds". It does NOT prove the `nixpacks` binary is
- *   on the host — the agent downloads it on the first Nixpacks build. There is no RPC that
- *   reports tool presence, so this module never claims one is "installed". Likewise
- *   `traefikRunning` is a substring match over running containers' image/name, and it is
- *   FORCED false when Docker is unreachable — so Docker-down makes the Traefik row `skip`,
- *   not `warn`. Never let copy promise a capability the contract does not have (ADR-0011).
- *
- * This module NEVER produces a ServerStatus and nothing here is persisted. Readiness is a
- * live read; `servers.status` belongs to the health prober (lib/data/server-health.ts).
+ * The readiness CLASSIFIER: given everything one bounded probe of a server can
+ * honestly learn — a Hello (or the error it rejected with), two host-port bind
+ * tests, host metrics, and the control-plane's own row — decide what we can
  */
 
 /* ------------------------------------------------------------------ */
@@ -39,14 +19,8 @@ import type { Server } from "../types";
 /* ------------------------------------------------------------------ */
 
 /**
- * What a row means. The contract, in one line each — hold to it, or the report becomes a
- * wall of colour nobody reads:
- *   fail — a deployment to this server CANNOT succeed.
- *   warn — a deployment succeeds, but the result is not fully usable / needs attention.
- *   info — a true, neutral fact worth showing. Never a problem.
- *   pass — verified good.
- *   skip — we could not evaluate this (the agent is too old, or an upstream fact is missing).
- *          A skip NEVER moves the verdict: "we didn't look" is not "it's broken".
+ * What a row means. A skip NEVER moves the verdict: "we didn't look" is not "it's
+ * broken".
  */
 export type ReadinessSeverity = "pass" | "info" | "warn" | "fail" | "skip";
 
@@ -117,18 +91,8 @@ export interface ReadinessProbe {
 /* ------------------------------------------------------------------ */
 
 /**
- * Every reason string this classifier can produce for a FAILURE, and every remediation it can
- * suggest. Closed on purpose, exactly like HEALTH_MESSAGES: these strings are served over
- * GraphQL, and the raw errors they would otherwise carry are not safe to show.
- * `checkServerIdentity`'s text embeds the PINNED FINGERPRINT (our trust anchor); grpc-js
- * UNAVAILABLE details routinely embed the dial address (`10.x.x.x:9443`). None of that belongs
- * in a report. The raw error goes to `console.error` in lib/data/server-readiness.ts and
- * nowhere else.
- *
- * THE INVARIANT (asserted by lib/infra/server-readiness.test.ts): no value derived from an
- * Error — its `message`, its gRPC `details`, its `code` — may ever reach a `detail` or a
- * `hint`. The formatters below interpolate only numbers and strings the CONTROL PLANE owns
- * (a port, a percentage, a version, a team count, a build-method label).
+ * Every reason string this classifier can produce for a FAILURE, and every
+ * remediation it can suggest.
  */
 export const READINESS_MESSAGES = {
   // agent
@@ -211,12 +175,9 @@ export const READINESS_DETAILS = {
     "This server only stores backups, so Docker is not installed. Nothing is deployed here.",
   traefikSkippedBuildOnly:
     "This server only builds images, so no proxy is installed. Nothing is routed here.",
-  // The ONLY signal is `traefikRunning`: a substring match over running containers' image and
-  // name, which the agent's own comment says "covers the deplo-traefik instance and a
-  // bring-your-own proxy alike". It does not prove the container is the one Deplo installed,
-  // that it is attached to the `deplo` network app routers are pinned to, or that its
-  // entrypoints are the web ports. State the observation, hedge the consequence — the same
-  // register the sibling port rows already use.
+  // The ONLY signal is `traefikRunning`: a substring match over running containers'
+  // image and name, which the agent's own comment says "covers the deplo-traefik
+  // instance and a bring-your-own proxy alike".
   traefikOk:
     'A container whose image or name contains "traefik" is running on this host — consistent with a proxy that can route apps to their domains. Deplo cannot verify from here that it is the one it installed, or that it is on the deplo network.',
   portHeldWithTraefik: (port: number) =>
@@ -258,10 +219,8 @@ export const READINESS_DETAILS = {
 /* ------------------------------------------------------------------ */
 
 /**
- * Disk thresholds, on the filesystem the AGENT measures — which the installer points at `/`
- * (the host's ROOT filesystem), not `/var/lib/docker`. If the Docker graph dir is on its own
- * volume these numbers do not describe it; that caveat rides in the group's tooltip, and the
- * copy above says "root filesystem" and nothing more.
+ * Disk thresholds, on the filesystem the AGENT measures — which the installer
+ * points at `/` (the host's ROOT filesystem), not `/var/lib/docker`.
  */
 export const DISK_WARN_PCT = 90;
 export const DISK_FAIL_PCT = 95;
@@ -274,13 +233,8 @@ export const HTTP_PORT = 80;
 export const HTTPS_PORT = 443;
 
 /**
- * The BUILD METHODS an operator can select for an App, and the Hello flag each needs. The
- * `supported` copy is the whole honesty budget of this feature — it says what the flag proves
- * ("the agent supports X") and, where the tool is fetched at build time, says so.
- *
- * `deploy.compose.single` is deliberately NOT surfaced: it is the agent's internal
- * single-image runtime, not a build method the operator chooses, so a row for it would be one
- * nobody can act on.
+ * The BUILD METHODS an operator can select for an App, and the Hello flag each
+ * needs.
  */
 export interface BuildMethodSpec {
   id: string;
@@ -375,10 +329,9 @@ export function readinessVerdict(
 }
 
 /**
- * A `skip` does not move the VERDICT ("we didn't look" is not "it's broken"), but it must not
- * be laundered into a pass by the sentence the operator actually reads. A report where both
- * CheckPort probes were skipped, or where the agent reported no capabilities at all, is not one
- * where "every check passed" — it is one where some checks were never run. Say so.
+ * A `skip` does not move the VERDICT ("we didn't look" is not "it's broken"), but
+ * it must not be laundered into a pass by the sentence the operator actually
+ * reads.
  */
 export function readinessSummary(
   verdict: ReadinessVerdict,
@@ -407,16 +360,9 @@ export function readinessSummary(
 /* ------------------------------------------------------------------ */
 
 /**
- * THE PRINCIPLE that decides which rows exist:
- *   the report always contains every check whose INPUTS we actually have.
- * Control-plane facts (the `config` group) never need a dial, so they are ALWAYS present.
- * Dial-derived facts appear only when the dial produced them. Concretely:
- *   - no agent yet / trust revoked → [agent.bootstrap] + config.*      (verdict: provisioning)
- *   - the Hello failed             → [agent.hello (fail)] + config.*   (verdict: not_ready)
- *   - the contract is wrong        → [agent.hello (pass), agent.contract (fail)] + config.*
- *   - the Hello succeeded          → the full set.
- * A wall of grey "skipped" rows under a dead agent would bury the one fact that matters, and a
- * response from an agent speaking a protocol we don't understand is not evidence of anything.
+ * THE PRINCIPLE that decides which rows exist: the report always contains every
+ * check whose INPUTS we actually have. Control-plane facts (the `config` group)
+ * never need a dial, so they are ALWAYS present.
  */
 export function classifyServerReadiness(
   probe: ReadinessProbe,
@@ -424,10 +370,8 @@ export function classifyServerReadiness(
   const { server } = probe;
   const checks: ReadinessCheck[] = [];
 
-  // The fence, identical to the health prober's: a NON-EMPTY cert pin is the only proof there
-  // is an agent on the other end. `removeServer` revokes trust by writing "" (not NULL), so
-  // the empty string is a second sentinel and a revoked row is treated exactly like a
-  // never-provisioned one.
+  // The fence, identical to the health prober's: a NON-EMPTY cert pin is the only
+  // proof there is an agent on the other end.
   const provisioning = !server.agent?.certFingerprint;
 
   if (provisioning) {
@@ -483,9 +427,7 @@ export function classifyServerReadiness(
   checks.push(featuresCheck(hello.capabilities ?? []));
 
   // docker. A STORAGE-ONLY server has none by design — it holds backups and runs
-  // nothing — so the absence is a `skip`, not a `fail`. Reporting it as a failure
-  // would leave the user's storage box permanently red for working correctly, and
-  // `readinessVerdict` would call it not_ready.
+  // nothing — so the absence is a `skip`, not a `fail`.
   checks.push(
     hello.dockerAvailable
       ? {
@@ -601,12 +543,6 @@ const stripV = (v: string) => v.replace(/^v/i, "");
 
 /**
  * Which version the agent runs, as a NEUTRAL fact.
- *
- * It deliberately does not compare against the latest release: a released
- * version is not a readiness property, and what actually decides whether this
- * host can do something is `featuresCheck` below, which asks the agent what it
- * supports. Nagging about a version number on top of that is noise the operator
- * has to read past on every check.
  */
 function versionCheck(agentVersion: string): ReadinessCheck {
   const base = {
@@ -678,9 +614,7 @@ function traefikCheck(
     label: "Traefik proxy",
   };
   // A BUILD SERVER has no proxy by design - the installer skips it, because nothing
-  // is routed to a host that runs nothing. Reporting the absence would leave every
-  // build server permanently amber for working exactly as intended, which is the
-  // same reasoning that makes Docker a `skip` on a storage-only box.
+  // is routed to a host that runs nothing.
   if (buildOnly)
     return {
       ...base,
@@ -705,10 +639,7 @@ function traefikCheck(
 }
 
 /**
- * CheckPort binds 0.0.0.0:<port> and releases it. For a WEB port the polarity inverts:
- * "available" (nothing listening) is the BAD outcome. Crossed with the Traefik fact this is
- * the report's most valuable finding — a held :80 with no Traefik running is the classic
- * "something else owns the web port, so Traefik never came up" broken install.
+ * CheckPort binds 0.0.0.0:<port> and releases it.
  */
 function portCheck(
   id: string,
@@ -805,12 +736,9 @@ function diskCheck(metrics: HostMetrics | null): ReadinessCheck {
       detail: READINESS_MESSAGES.diskUnmeasured,
       hint: READINESS_HINTS.retry,
     };
-  // ONE number, displayed and classified. `diskPct` is a proto3 double with no field presence,
-  // so an agent that fills disk_total/disk_used but not disk_pct arrives here as 0 — hence the
-  // used/total fallback. Classifying on the raw field while PRINTING the fallback would render
-  // a 98%-full host as a green `pass` whose own text says it is 98% full. And `floor`, never
-  // `round`: rounding 94.7 up to "95% full" while classifying it as a warn puts the number on
-  // the wrong side of the threshold the copy is read against.
+  // ONE number, displayed and classified. Classifying on the raw field while PRINTING
+  // the fallback would render a 98%-full host as a green `pass` whose own text says
+  // it is 98% full.
   const rawPct = Number(metrics.diskPct);
   const pct = Math.floor(
     Number.isFinite(rawPct) && rawPct > 0 ? rawPct : (used / total) * 100,

@@ -8,14 +8,6 @@ import type { ServerStatus } from "../types";
  * The health CLASSIFIER: given the outcome of one agent `Hello` — a response, or
  * the error it rejected with — decide what the server's status is and what we tell
  * the operator.
- *
- * It is a pure function, deliberately hoisted out of the dial. There is no mocking
- * seam for `connectAgent` in this repo (grpc is real, `dial`/`resolveTarget` are
- * module-private), so a decision welded to the RPC — the shape `metricsFor` uses —
- * is a decision that can never be tested. Everything that is actually hard here
- * (which failures are the host's fault, which are the agent's, which must never be
- * persisted) lives in this file and is exercised by lib/infra/server-health.test.ts
- * without a socket. Mirrors `reconcileStatus` / `agentCanHandle`.
  */
 
 export interface ServerHealth {
@@ -30,11 +22,7 @@ export interface ServerHealth {
 /**
  * Every reason string this classifier can produce. A closed set, on purpose:
  * `status_message` is persisted and served over GraphQL, and the raw errors it
- * would otherwise carry are not safe to store. `checkServerIdentity`'s text embeds
- * the PINNED FINGERPRINT (our trust anchor); grpc-js `UNAVAILABLE` details routinely
- * embed the dial address (`10.x.x.x:9443`); `resolveTarget`'s errors embed the
- * server name. None of that belongs in a column. The raw error goes to the server
- * log, where an operator with shell access — who already has all of it — can read it.
+ * would otherwise carry are not safe to store.
  */
 export const HEALTH_MESSAGES = {
   untrusted:
@@ -54,30 +42,8 @@ export const HEALTH_MESSAGES = {
 
 /**
  * Node's TLS layer rejects an EXPIRED (or not-yet-valid) peer certificate with an
- * error whose code is `CERT_HAS_EXPIRED` / `CERT_NOT_YET_VALID` and whose message is
- * "certificate has expired" / "certificate is not yet valid". That rejection happens
- * during standard chain validation, BEFORE `checkServerIdentity` runs — so it never
- * sets `AgentUnreachableError.trust`, and gRPC flattens it into the SAME opaque
- * `UNAVAILABLE` a genuinely dead host produces. The two are indistinguishable by
- * status code alone, which is exactly how an expired agent leaf cert gets misreported
- * as "connection refused" and sends the operator to debug systemd/firewall on a
- * healthy box.
- *
- * The reason text does survive, though: grpc-js stringifies the TLS error into its
- * subchannel failure ("No connection established. Last error: Error: certificate has
- * expired …"), which `toAgentError` copies verbatim into the error's `message`. So we
- * recover the distinction by matching that text here — the only signal we actually
- * have. (We also test a string `code`, in case the connect site is later taught to
- * carry the raw Node TLS code — see the caller note below. A numeric gRPC code, which
- * is what `AgentUnreachableError.code` holds today, never matches.)
- *
- * CALLER NOTE (agent-client.ts, out of scope here): the robust fix is to stop relying
- * on the message text — in `helloError`, when `(err as { code?: unknown }).code` is a
- * string `CERT_HAS_EXPIRED`/`CERT_NOT_YET_VALID` from the underlying Node TLS error
- * (grpc-js surfaces it before flattening in some paths), set a dedicated
- * `AgentUnreachableError` field (e.g. `certInvalid: true`) the way `trust` is set in
- * `dial`. This function would then read that field instead of pattern-matching a
- * message string grpc-js owns and can reword at any release.
+ * error whose code is `CERT_HAS_EXPIRED` / `CERT_NOT_YET_VALID` and whose message
+ * is "certificate has expired" / "certificate is not yet valid".
  */
 const CERT_VALIDITY_RE =
   /CERT_HAS_EXPIRED|CERT_NOT_YET_VALID|certificate has expired|certificate is not yet valid/i;
@@ -89,48 +55,15 @@ function isCertValidityError(err: AgentUnreachableError): boolean {
 }
 
 /**
- * Classify one Hello outcome. Exactly one of `hello` / `err` is meaningful: pass the
- * response on success, the thrown error on failure.
- *
- * The states, and why each is where it is:
- *
- *  - a TRUST failure is `error`, never `offline`. The peer answered — it just isn't
- *    the agent whose cert we pinned (or it rejected ours). Reporting that as "offline"
- *    would send the operator to check a host that is up, and would bury what is
- *    potentially a MITM or a half-finished re-provision. `AgentUnreachableError.trust`
- *    is set by `dial` because gRPC flattens the TLS rejection into an opaque
- *    UNAVAILABLE that is otherwise indistinguishable from a dead box.
- *  - an EXPIRED / not-yet-valid agent certificate is `error`, never `offline`, for the
- *    same reason the box is up: the TLS handshake reached the agent and was refused on
- *    cert VALIDITY, not connectivity. gRPC flattens it into the same opaque UNAVAILABLE
- *    as a dead host, so left unhandled it reads as "connection refused" and sends the
- *    operator to debug systemd/firewall on a healthy host instead of re-bootstrapping
- *    the lapsed cert. See {@link isCertValidityError} for how the signal is recovered.
- *  - a contract mismatch or any application-level gRPC error is `error` for the same
- *    reason: the box is up, its agent is wrong.
- *  - `warning` has exactly ONE member — Docker unreachable — and it means "the agent
- *    is up and trusted, but nothing can be deployed here". It is deliberately NOT
- *    used for a stopped Traefik (legitimate on a DB/worker host, and it already has
- *    its own live badge) nor for an agent behind the latest release (deploys fine).
- *    A warning that fires on a normal configuration is a warning operators learn to
- *    ignore.
- *  - everything else — connection refused, no answer inside the deadline — is
- *    `offline`. The CALLER is responsible for confirming that with a retry before it
- *    persists a demotion (see `probeServer`); a single missed packet is not an outage.
- *
- * There is intentionally no "unknown" state. A probe that we could not complete
- * (wrapper timeout, throttled, skipped) is not classified at all — the caller writes
- * nothing and the row keeps its previous observation. Stamping a fresh check we did
- * not perform is the same lie as a stale green badge, just better hidden.
+ * Classify one Hello outcome. The states, and why each is where it is: - a TRUST
+ * failure is `error`, never `offline`.
  */
 export function classifyServerHealth(
   hello: HelloResponse | null,
   err: unknown,
   /**
    * A storage-only server holds backups and runs nothing, so it has no Docker on
-   * purpose. Without this it would sit at `warning` forever for doing exactly
-   * what it was bought to do — and a warning that fires on a correct
-   * configuration is a warning operators learn to ignore.
+   * purpose.
    */
   opts: { storageOnly?: boolean } = {},
 ): ServerHealth {
@@ -160,10 +93,7 @@ export function classifyServerHealth(
 }
 
 /**
- * Whether a failed probe is worth retrying once before we demote the server. A
- * transport blip (a dropped packet, the agent re-exec'ing mid self-update) must not
- * be persisted as an outage; a trust failure or an application error is a stable fact
- * that a retry would only confirm more slowly.
+ * Whether a failed probe is worth retrying once before we demote the server.
  */
 export function isRetryableProbeFailure(err: unknown): boolean {
   return err instanceof AgentUnreachableError && !err.trust;

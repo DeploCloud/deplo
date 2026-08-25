@@ -1,26 +1,7 @@
 /**
  * The pure model behind a **File** storage entry's content box: what the server's
  * answer means for the editor, and the one rule that decides whether a save must
- * write the file. No React and no fetching, so it unit-tests directly (the same
- * split as `volume-model` / `resource-limits-model`).
- *
- * The rule is the interesting part. A File entry's content is not a database
- * column — it is the real file under this app's Files, on the app's own server —
- * so the save has to decide, per entry, whether to touch it at all. Three cases
- * matter and each one has bitten somebody:
- *
- *  - **A file that isn't there yet is still written**, even when the user typed
- *    nothing. Docker answers a missing bind source by inventing an empty
- *    DIRECTORY at the mount path, so an entry with no file behind it boots the
- *    app with a folder where its config should be — the one storage mistake that
- *    fails silently.
- *  - **A read is tied to the path it was read for.** Content read for
- *    `config.toml` must never be written to `nginx.conf` because the user edited
- *    the path a moment ago; that would truncate a file nobody looked at.
- *  - **What deplo cannot edit, it does not touch**: a folder, a binary, an
- *    oversized file, or a read that failed. Each one stays mounted exactly as it
- *    is, and the editor says which it is instead of showing an empty box that
- *    would overwrite it.
+ * write the file.
  */
 
 /** What the agent found at the entry's path. Mirrors `AppStorageFile.state`. */
@@ -28,11 +9,9 @@ export type StorageFileState =
   "text" | "new" | "folder" | "binary" | "too-large";
 
 /**
- * One File entry's content, as the Storage form holds it.
- *
- * `path` is the path in Files this content was read for — NOT necessarily the
- * entry's current path. Keeping it here is what lets the form notice a path edit
- * and re-read, and what stops a save from writing to a file it never read.
+ * One File entry's content, as the Storage form holds it. Keeping it here is what
+ * lets the form notice a path edit and re-read, and what stops a save from writing
+ * to a file it never read.
  */
 export interface StorageFileDraft {
   path: string;
@@ -102,15 +81,7 @@ export function loadingFileDraft(path: string): StorageFileDraft {
 }
 
 /**
- * What the box holds before the entry names a file. The editor is on screen from
- * the moment a File entry exists — you write the config first and say where it
- * goes after, which is the order people actually work in — so the text needs
- * somewhere to live while there is no path to read or write it at.
- *
- * `path: ""` is what keeps it inert: nothing is read (there is nothing to read),
- * {@link pendingFileWrite} refuses an empty path outright, and the moment the
- * entry IS given a path the form re-reads it and carries this text over as the
- * unsaved draft.
+ * What the box holds before the entry names a file.
  */
 export function unpathedFileDraft(text: string): StorageFileDraft {
   return {

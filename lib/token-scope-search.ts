@@ -1,16 +1,9 @@
 import type { ScopeTreeFolder, ScopeTreeTeam } from "./data/tokens";
 
 /**
- * The scope picker's search, as a pure function over the tree.
- *
- * Two rules, and both have to hold or the control lies. A node survives when
- * anything UNDER it matches — otherwise a hit three folders deep is unreachable.
- * And a node that matches ITSELF keeps all of its children — otherwise ticking
- * it would stop meaning "everything in here", which is the one rule the whole
- * picker rests on.
- *
- * Type-only import of the tree shape, so this stays client-safe even though
- * `lib/data/tokens.ts` is `server-only`.
+ * The scope picker's search, as a pure function over the tree. A node survives
+ * when anything UNDER it matches — otherwise a hit three folders deep is
+ * unreachable.
  */
 
 const hit = (name: string, terms: string[]) =>

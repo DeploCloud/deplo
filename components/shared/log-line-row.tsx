@@ -21,8 +21,7 @@ const CHIP_WIDTH = "w-16";
 const CHIP = `h-[18px] ${CHIP_WIDTH}`;
 
 /**
- * Matches http(s) URLs inside a log line. Kept deliberately conservative: a URL
- * runs until the first whitespace, and a trailing `.,;:!?)]
+ * Matches http(s) URLs inside a log line.
  */
 const URL_RE = /(https?:\/\/[^\s]+?)(?=[.,;:!?)\]}]*(?:\s|$))/g;
 
@@ -215,11 +214,6 @@ export function LogRow({
             : "text-zinc-300",
         )}
       >
-        {/**
-         * Log producers (docker build, buildkit, app stdout) emit raw ANSI, and lines are
-         * stored verbatim — so parse each line into styled runs: SGR colors render as
-         * colors, every other escape is swallowed instead of showing up as `[0m`-style
-         */}
         {parseAnsi(text).map((seg, i) =>
           seg.className ? (
             <span key={i} className={seg.className}>

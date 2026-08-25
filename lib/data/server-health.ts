@@ -35,31 +35,14 @@ import type { HelloResponse } from "../agent/gen/agent";
 import type { Server } from "../types";
 
 /**
- * Live server health (Settings → Servers).
- *
- * `servers.status` used to be write-once — `provisioning` at registration, `online`
- * the moment the agent called home, and never revisited — so a server whose agent
- * had been dead for a month still rendered a confident green "Online". This module
- * makes the column an OBSERVATION instead of a claim: a probe dials the agent's
- * `Hello` over the existing pinned-mTLS channel, `classifyServerHealth` turns the
- * outcome into a status + a curated reason, and both are persisted alongside
- * `status_checked_at` — the timestamp that lets the UI say "Online, checked 12s ago"
- * and refuse to paint a stale value at all.
- *
- * The column stays a CACHE, never a gate (ADR-0006). Nothing in the deploy path reads
- * it; a server marked `offline` here is still deployable the instant its agent answers
- * the mandatory live Hello pre-flight. Writing a wrong status must never be able to
- * cause an outage — which is also why every "we don't know" outcome writes nothing at
- * all rather than guessing.
+ * Live server health (Settings → Servers). The column stays a CACHE, never a gate
+ * (ADR-0006).
  */
 
 /** Skip re-dialing a server probed within this window (the ambient page-load sweep). */
 const THROTTLE_MS = 15_000;
 /**
- * The floor even a FORCED check (the operator's button) respects. "Force" means
- * "ignore the ambient throttle", not "dial as fast as you can click" — this is the
- * only backstop against a mashed button (or a scripted bearer-token caller) turning
- * the control plane into a fan-out dialer.
+ * The floor even a FORCED check (the operator's button) respects.
  */
 const FORCE_FLOOR_MS = 5_000;
 /**
@@ -75,10 +58,7 @@ const RETRY_DELAY_MS = 750;
 const ACTIVE_DEPLOY_STATES = ["queued", "building"] as const;
 
 /**
- * In-flight probes, keyed by server id. A dedupe, NOT a cache: five admin tabs that
- * land in the same 200ms share one dial instead of five. Purely an optimisation —
- * it has no correctness role (the DB throttle claim below is the real serialization),
- * so it is safe that it is per-process and evaporates on restart.
+ * In-flight probes, keyed by server id.
  */
 const inFlight = new Map<string, Promise<Server | null>>();
 
@@ -102,10 +82,7 @@ function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
 
 /**
  * A server has a live agent worth dialing iff its cert pin is set to a NON-EMPTY
- * fingerprint. `removeServer` revokes trust by writing `""` (not NULL) and the
- * partial unique index guards `is not null and <> ''` — so the empty string is a
- * real second sentinel, and a probe must treat a trust-revoked row exactly like a
- * never-provisioned one. Both branches of the prober fence on this.
+ * fingerprint.
  */
 const HAS_LIVE_AGENT = and(
   isNotNull(serversTable.agentCertFingerprint),
@@ -113,27 +90,9 @@ const HAS_LIVE_AGENT = and(
 );
 
 /**
- * CLAIM the right to probe a server, atomically, by advancing `status_probed_at` — the
- * throttle LEASE, deliberately NOT `status_checked_at`.
- *
- * Using the freshness column as the lease was a real bug: an inconclusive probe (a
- * timeout, a deploy-in-flight skip) claims the lease but records nothing, and if the
- * lease WERE `status_checked_at` the row would then wear a fresh timestamp over a stale
- * status — a confident green painted for a host nobody reached. The lease lives in its
+ * CLAIM the right to probe a server, atomically, by advancing `status_probed_at` —
+ * the throttle LEASE, deliberately NOT `status_checked_at`. The lease lives in its
  * own column so "we tried" and "we observed" never get conflated.
- *
- * A conditional UPDATE rather than read-then-decide because the point is concurrency: N
- * page-loads hitting a dead host must produce ONE dial. Whoever wins the UPDATE dials;
- * everyone else gets 0 rows and reuses the stored observation. The claim also skips when
- * a genuine observation is already fresh (`status_checked_at` recent) — no reason to
- * re-dial a server the 1s metrics poll just measured.
- *
- * {@link HAS_LIVE_AGENT} is the fence that keeps a `provisioning` (or trust-revoked)
- * server out of the prober entirely: `resolveTarget` throws for those from a pure DB
- * read, which would misclassify every server awaiting its first call-home as `offline`.
- *
- * Exported only so the throttle can be tested without a socket — not part of the
- * module's interface; nothing outside lib/data/server-health.test.ts calls it.
  */
 export async function claimProbe(id: string, force: boolean): Promise<boolean> {
   const now = nowIso();
@@ -175,16 +134,9 @@ async function serversDeployingNow(ids: string[]): Promise<Set<string>> {
 }
 
 /**
- * The ONE writer of an observed health outcome. Everything that learns something about
- * a server's health — the prober here, and the metrics poll in lib/data/monitoring.ts —
- * goes through this, so the dashboard can never show live green while the column says
- * offline. Internal and UNGATED, like `markServerSeen`: it is a heartbeat writer, not a
- * user action, and gating it would make it unusable from a future background sweeper.
- *
- * `observedAt` is the time the probe STARTED, and the write is watermarked on it. Probes
- * do not finish in the order they start: a 3s "offline" probe launched first can land
- * after a 50ms "online" probe launched second, and a naive last-write-wins would leave
- * the row claiming an outage that a later observation already disproved.
+ * The ONE writer of an observed health outcome. Internal and UNGATED, like
+ * `markServerSeen`: it is a heartbeat writer, not a user action, and gating it
+ * would make it unusable from a future background sweeper.
  */
 export async function recordServerHealth(
   id: string,
@@ -215,11 +167,8 @@ export async function recordServerHealth(
         ),
       )
       .returning({ name: serversTable.name });
-    // Every caller that learns something about a server's health lands here, so
-    // this one hook covers the prober, the metrics poll and all three supervisor
-    // writes. Keyed off the WRITE, not the intent: a stale observation that lost
-    // the watermark is not news. The dedupe state IS the status, so recovery
-    // ("back online") comes out of the same call with no extra bookkeeping.
+    // Every caller that learns something about a server's health lands here, so this
+    // one hook covers the prober, the metrics poll and all three supervisor writes.
     if (written.length > 0) alertServerHealth(id, written[0].name, health);
   } catch (e) {
     // Best-effort, like markServerSeen: a failed heartbeat write must never take
@@ -229,10 +178,7 @@ export async function recordServerHealth(
 }
 
 /**
- * The four health verdicts map one-to-one onto four alerts. They are separate
- * keys and not one "server is unhappy" switch because the answers differ: an
- * offline host needs power, a Docker-less one needs a daemon, and a host whose
- * identity changed needs somebody to ask why.
+ * The four health verdicts map one-to-one onto four alerts.
  */
 function alertServerHealth(
   id: string,
@@ -273,20 +219,8 @@ function alertServerHealth(
 }
 
 /**
- * Dial one server's agent and persist what we learn. Returns the refreshed row, or the
- * stored row unchanged when the probe was throttled or could not be completed.
- *
- * Two things here exist purely to avoid lying:
- *
- *  - the CONFIRMING RETRY. A transport failure gets one more chance after 750ms before
- *    we demote the server. An agent that is re-exec'ing mid self-update, or a single
- *    dropped packet on a WAN link, is not an outage — and because the outcome is
- *    PERSISTED and the throttle then suppresses re-checks for 15s, a false `offline`
- *    would sit on the operator's screen long after the blip is over.
- *  - the WRAPPER TIMEOUT writing NOTHING. If we could not complete the probe, we do not
- *    know the status; "don't know" is not "offline". The row keeps its previous
- *    observation and its previous timestamp, so the UI ages it out to "Unknown" on its
- *    own rather than being handed a fresh, fabricated verdict.
+ * Dial one server's agent and persist what we learn. A transport failure gets one
+ * more chance after 750ms before we demote the server.
  */
 async function probeServer(
   server: Server,
@@ -339,10 +273,7 @@ async function probeServer(
     console.error(`[deplo] health probe for ${server.name}: ${String(error)}`);
   }
 
-  // Never demote a server that is running a deployment RIGHT NOW. Its agent is
-  // provably alive (it is streaming build events to us); a Hello that lost a race with
-  // a build-pegged host is a false negative, and persisting it would tell the operator
-  // their server is down in the middle of a deploy that is visibly working.
+  // Never demote a server that is running a deployment RIGHT NOW.
   if (
     health.status === "offline" &&
     (await serversDeployingNow([server.id])).has(server.id)
@@ -354,11 +285,9 @@ async function probeServer(
   }
 
   await recordServerHealth(server.id, health, observedAt);
-  // This Hello carries `traefikRunning` too, and the prober is the ONLY thing that dials
-  // a server on a schedule — so before this, the Traefik badge could only ever be
-  // refreshed by a deploy pre-flight or the monitoring stream, and a host nobody deployed
-  // to wore whatever flag it had when it last called home. AWAITED, not fire-and-forget:
-  // the row we read below is what the mutation returns to the card.
+  // This Hello carries `traefikRunning` too, and the prober is the ONLY thing that
+  // dials a server on a schedule — so before this, the Traefik badge could only ever
+  // be refreshed by a deploy pre-flight or the monitoring stream, and a host nobody
   if (hello)
     await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
   return getServerById(server.id);
@@ -391,10 +320,9 @@ function isProbeable(server: Server): boolean {
 }
 
 /**
- * Re-check ONE server's health (the per-card button). Instance-admin only: servers are
- * instance-wide infra, and every other server mutation gates the same way. The gate
- * lives HERE, in the data layer — the GraphQL `authScopes` is the introspectable
- * contract, this is the boundary.
+ * Re-check ONE server's health (the per-card button). The gate lives HERE, in the
+ * data layer — the GraphQL `authScopes` is the introspectable contract, this is
+ * the boundary.
  */
 export async function checkServerHealth(
   id: string,
@@ -409,12 +337,6 @@ export async function checkServerHealth(
 
 /**
  * Re-check EVERY server (the page's on-load sweep, and the header's "Check all").
- * Unprovisioned servers pass through untouched.
- *
- * Fan-out is bounded by the throttle claim, not by a pool: a claim is one round-trip to
- * Postgres and losers never dial, so the real concurrency is "servers whose 15s window
- * has elapsed" — and the deployment this runs on manages a handful of hosts, not a fleet
- * of hundreds. If that stops being true, bound it here, not in the caller.
  */
 export async function checkAllServerHealth(
   opts: { force?: boolean } = {},

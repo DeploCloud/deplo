@@ -60,10 +60,6 @@ export interface TeardownEntry {
   teamId: string | null;
   /**
    * Volumes to reclaim BY NAME on the destroy, on top of what `down -v` finds.
-   * In-memory only: it rides the INLINE attempt, which is the one that matters —
-   * a stack whose host answers is torn down there and then. A row replayed from
-   * `pending_teardowns` has no names (the app row is gone by then), and its
-   * retry is about a host that was unreachable, not about a volume.
    */
   reclaimVolumes?: string[];
 }
@@ -94,11 +90,7 @@ const DRAIN_BATCH = 8;
 const DRAIN_CONCURRENCY = 4;
 
 /**
- * How long a freshly queued teardown is left alone. The caller that wrote it is
- * about to try it inline, and that call can burn the agent's 3-minute stack
- * deadline on a dead host: without this, the next tick would dial the same stack
- * again while the first attempt is still waiting. A failure moves the row onto
- * the ladder (a minute), so this delay only ever covers the inline try.
+ * How long a freshly queued teardown is left alone.
  */
 const INLINE_GRACE_MS = 4 * 60_000;
 
@@ -145,8 +137,6 @@ export function nextTeardownAttempt(
 /**
  * Record the intents. One statement, `ON CONFLICT DO NOTHING`: a second enqueue
  * for the same stack must be a no-op rather than a second ladder of retries.
- * Never throws - a queue write that fails must not fail the delete the user
- * asked for (the boot drain still has the app row's own stamp to work from).
  */
 export async function enqueueTeardowns(
   entries: TeardownEntry[],
@@ -189,11 +179,7 @@ async function stackContainers(
   if (rows === null) return null;
   // The label already scopes the answer to the doomed thing, so this only has to
   // separate deploy keys that SHARE one: `blink` must not count `blink__pr-3`'s
-  // containers as survivors of its own teardown. Three name shapes exist -
-  // `deplo-<key>-<service>-<n>` for a compose stack, `deplo-<key>` for a single
-  // image, and a BARE `<host>` for a database, whose container carries no prefix
-  // at all (which is also why the agent's own `deplo-<slug>` fallback can never
-  // remove one).
+  // containers as survivors of its own teardown.
   const key = entry.deployKey;
   return rows
     .map((r) => r.name)
@@ -304,8 +290,7 @@ async function recordFailure(
 /**
  * Say what happened. A row with no team belongs to a team that no longer exists,
  * and `recordActivity` would fall back to the OLDEST team on the instance - a
- * stranger's audit trail. It gets the server alert instead, which fans out to
- * whoever still has something on that host.
+ * stranger's audit trail.
  */
 async function announce(
   entry: TeardownEntry,
@@ -342,19 +327,13 @@ async function serverFacts(
 }
 
 /**
- * Queue the intent, then try it once. `true` means the host confirmed the stack
- * is gone and nothing was left queued.
- *
- * Writes no Activity of its own: the caller owns that copy, because the bulk
- * delete aggregates twenty apps into ONE line.
+ * Queue the intent, then try it once. Writes no Activity of its own: the caller
+ * owns that copy, because the bulk delete aggregates twenty apps into ONE line.
  */
 export async function teardownOrQueue(entry: TeardownEntry): Promise<boolean> {
   await enqueueTeardowns([entry]);
   const { name, offline } = await serverFacts(entry.serverId);
-  // ADR-0006 says `servers.status` is a cache and never a gate. It gates nothing
-  // here: a host the health prober just found offline still gets torn down, one
-  // minute later, from the drain. What it buys is not waiting out the 3-minute
-  // stack deadline per app while somebody deletes twenty of them.
+  // ADR-0006 says `servers.status` is a cache and never a gate.
   if (offline) {
     await recordFailure(entry, `${name} is offline`, name, new Date());
     return false;
@@ -454,13 +433,7 @@ export async function pendingTeardownsForServer(
 
 /**
  * Give a new ladder to teardowns Deplo gave up on, once their host is answering
- * again. Giving up is how Deplo stops nagging, not a decision that the containers
- * may stay, and with no UI to resume one by hand this is the only way back.
- *
- * Two conditions, both cheap: the host is online and was seen minutes ago, and
- * the row was abandoned at least an hour ago. The second is what stops a stack
- * that fails for its OWN reasons (an agent error on a perfectly reachable host)
- * from reopening the moment it is abandoned and spinning forever.
+ * again.
  */
 async function reopenReachableTeardowns(now: Date): Promise<void> {
   const db = getDb();

@@ -71,6 +71,9 @@ export function BuildOutputCard({
   // Which overrides the deploy path actually consumes, per builder — a field is shown
   // only where the agent-side builder reads it, so nothing here can silently do
   // nothing: - nixpacks / railpack: build + start commands, Node version - static:
+  // build command + Node version (the builder stage); nginx serves the output, so
+  // there is no process to start - dockerfile: none — the repo's Dockerfile owns
+  // install/build/run
   const method = build.buildMethod;
   const showBuildCommand =
     method === "nixpacks" || method === "railpack" || method === "static";
@@ -94,6 +97,7 @@ export function BuildOutputCard({
    * Correcting the framework carries the container port with it — that is the
    * whole reason the setting is worth having (`vite preview` binds 4173 and
    * ignores PORT, so an app mis-read as Next.js deploys green and answers
+   * nothing).
    */
   function pickFramework(next: string | null) {
     const previousPort = frameworkById(framework)?.defaultPort ?? 3000;

@@ -42,40 +42,8 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 /**
  * Per-NODE authorization — what one person may do to one App, Folder or Project
  * container, as opposed to what their team role lets them do everywhere
- * (`lib/membership.ts`).
- *
- * **A node capability set REPLACES the team role's inside that node, and may
- * exceed it** (ADR-0016). Precedence is most-specific-wins:
- *
- *     app grant → nearest ancestor folder → further ancestors → project → membership
- *
- * The first rung that says anything wins outright; nothing said anywhere falls
- * through to the membership. `view` is implied at every rung, so an empty result
- * means "no access" and never "read-only".
- *
- * Two things this deliberately does NOT do:
- *
- *  - **It does not clamp a grant to the grantee's team capabilities.** That was
- *    the old rule, and it made "this person owns Prod and nothing else"
- *    unexpressible: to hand someone `manage_env` in one folder you had to hand it
- *    to them team-wide. The live clamp is now membership EXISTENCE, not its
- *    contents — removing them from the team, suspending them or an unmet 2FA
- *    policy still revokes everything, everywhere, live, because every path here
- *    goes through `membershipFor` first.
- *  - **It does not invent visibility.** A Folder stays private to its owner and
- *    its grantees (that is what an empty result means for `listFolders`); a
- *    Project or an App is as visible as it always was, so a grant on one is a
- *    capability override and nothing more.
- *
- * The set a grant may name is bounded to `NODE_GRANTABLE_CAPABILITIES` at every
- * write site, which is what stops a node from becoming a route back to team
- * administration.
- *
- * Everything below resolves through ONE {@link GrantIndex} — every folder, grant
- * and ownership row for a (user, team) pair, loaded in a fixed five queries. A
- * single node builds a small index; a whole page's worth of apps builds one and
- * answers them all in memory, so the global Variables tab is five queries and not
- * five per app.
+ * (`lib/membership.ts`). **A node capability set REPLACES the team role's inside
+ * that node, and may exceed it** (ADR-0016).
  */
 
 /** The three things a capability set can be attached to. */
@@ -86,11 +54,9 @@ export type NodeRef =
   | { kind: "project"; id: string };
 
 /**
- * An app as the resolver needs it — the columns that place it. An app lives in
- * exactly ONE of them: a folder, or a project's environment, or the team top
- * level (ADR-0009's one-home rule, which the movers enforce by clearing the
- * others). `environmentId` is optional so a caller that never asks about
- * environments keeps compiling; it only ever widens the answer.
+ * An app as the resolver needs it — the columns that place it. `environmentId` is
+ * optional so a caller that never asks about environments keeps compiling; it only
+ * ever widens the answer.
  */
 export interface AppPlacement {
   id: string;
@@ -111,16 +77,6 @@ interface GrantIndex {
   base: Capability[];
   /**
    * Instance admin or `manage_team`: their base set applies to every node.
-   *
-   * Read from the PERSON's stored capabilities, not the token-clamped ones —
-   * REACH is a property of the human, POWER is what the token narrows. A
-   * super-user acting through a token scoped to one folder must still see that
-   * folder (they see it in the dashboard), while what they may DO there stays
-   * clamped to the token, because `resolveFrom` returns the clamped `base`.
-   * Reading the clamped set here instead made every narrowed token blind to
-   * every folder, which is why the list paths used to skip this check entirely
-   * for a narrowed token — and skipping it is what let a token scoped to a
-   * folder its creator cannot see read the apps inside.
    */
   superUser: boolean;
   /**
@@ -322,14 +278,9 @@ async function buildIndex(
 }
 
 /**
- * Whether the PERSON holds `manage_team` in this team, straight off the
- * junction — deliberately NOT through `membershipFor`, whose set is clamped to
- * the API token making the request.
- *
- * Reach is a property of the human and power is what the token narrows: a
- * super-user acting through a scoped token must still SEE every folder (they see
- * them in the dashboard), while what they may do there stays clamped. Shared
- * with `lib/data/folder-access.ts`, which asks the same question.
+ * Whether the PERSON holds `manage_team` in this team, straight off the junction —
+ * deliberately NOT through `membershipFor`, whose set is clamped to the API token
+ * making the request.
  */
 export async function holdsManageTeam(
   userId: string,
@@ -390,14 +341,8 @@ async function teamOf(node: NodeRef): Promise<string | null> {
 
 /**
  * The ancestor ladder for a node, most specific first: the app itself, then its
- * folder chain, then its ENVIRONMENT, then the Project container. Cycle-safe —
- * `folders.parent_id` is a self-reference with no acyclicity guarantee, and a
- * resolver that hangs is a worse outage than one that stops early.
- *
- * The environment sits between the folders and the project because that is where
- * an app inside a project actually lives (ADR-0009): "you own staging" has to
- * beat "you were given the project", or the finer statement could never win.
- * An app filed into a FOLDER has no environment, so the two never both apply.
+ * folder chain, then its ENVIRONMENT, then the Project container. An app filed
+ * into a FOLDER has no environment, so the two never both apply.
  */
 function ladder(
   index: GrantIndex,
@@ -479,16 +424,6 @@ function ladder(
 /**
  * Whether this person holds something of their own on the node or an ancestor —
  * ownership, or a grant row.
- *
- * A node grant EXTENDS reach rather than intersecting with it, which is the one
- * contentious rule of the model and the right one for two reasons. Intersecting
- * would silently revoke every live folder share the moment its holder was put on
- * a scoped role, which is a data-destroying default; and a grant is a deliberate
- * act by someone who holds the node, so refusing it because of an unrelated role
- * scope would make the Share dialog lie about what it just saved. Safety is kept
- * elsewhere: `NODE_GRANTABLE_CAPABILITIES` keeps every team-administration
- * capability off a node, so extending reach can never extend the team-wide
- * surface.
  */
 function hasOwnGrant(
   index: GrantIndex,
@@ -504,17 +439,7 @@ function hasOwnGrant(
 }
 
 /**
- * Whether the member's ROLE reaches this node at all. Answered before anything
- * else in {@link resolveFrom}, including the super-user branch, and the order is
- * load-bearing: `holdsManageTeam` deliberately reads the person's raw, unclamped
- * junction row, so a member whose role is limited to one project but who still
- * held `manage_team` would otherwise resolve the whole team here. Writing a
- * scoped role clamps that capability away at the source, and this is the second
- * lock on the same door.
- *
- * An instance admin is exempt because they are not a member acting under a team
- * role — they administer the instance, and every other cross-team guard in this
- * file (`resolveOne`, `appGate`) still applies to them.
+ * Whether the member's ROLE reaches this node at all.
  */
 function reachesNode(
   index: GrantIndex,
@@ -561,10 +486,9 @@ function resolveFrom(
   const clamp = (caps: Capability[]) =>
     withView(clampCapabilitiesToToken(caps, index.userId, index.teamId));
 
-  // REACH first: outside the role's scope nothing exists, which is the same
-  // empty answer a folder they were never shown gives, so neither can be told
-  // from the other. A node grant is what puts a node BACK in reach (ADR-0016
-  // says a grant may exceed the role), so it is checked below, not here.
+  // REACH first: outside the role's scope nothing exists, which is the same empty
+  // answer a folder they were never shown gives, so neither can be told from the
+  // other.
   if (!reachesNode(index, node) && !hasOwnGrant(index, node)) return [];
 
   // Super-user: their full team set on every node, grants and folder privacy
@@ -576,15 +500,8 @@ function resolveFrom(
 
   const rungs = ladder(index, node);
 
-  // Folder privacy: a folder is invisible unless you own one in the chain or
-  // hold a grant on one. A grant on an ancestor reaches its subtree, which is
-  // the tree the admin ticks in.
-  //
-  // A role SCOPE naming the folder satisfies it too, and has to: an admin who
-  // limits a role to "Prod" is saying its holders work there, so hiding Prod
-  // from them would make the scope useless at the one place it is most wanted.
-  // It grants no power — what they may DO there is still their role's set, or a
-  // grant's when there is one.
+  // Folder privacy: a folder is invisible unless you own one in the chain or hold a
+  // grant on one.
   const folders = rungs.filter((r) => r.kind === "folder");
   if (
     folders.length > 0 &&
@@ -630,17 +547,9 @@ async function resolveOne(
   activeTeamId: string,
 ): Promise<Capability[]> {
   const teamId = await teamOf(node);
-  // A node belonging to ANOTHER team does not exist for this request. Taking the
-  // team from the node and answering from the caller's membership THERE is how a
-  // read-only token minted in one team deleted a folder in another: the token
-  // clamp keys on the (user, team) pair, so it goes silent the moment the team
-  // under test is not the one the token authenticated into, and the caller is
-  // resolved with their full human permissions in the other team. `appGate`
-  // below has always had this check (`app.teamId !== ctx.teamId`); the node
-  // resolver never did, and the folder gates are its only unguarded users.
-  //
-  // Instance admins are NOT exempt, exactly as they are not in `appGate`: reach
-  // across teams is switching team, not passing an id from one.
+  // A node belonging to ANOTHER team does not exist for this request. `appGate` below
+  // has always had this check (`app.teamId !== ctx.teamId`); the node resolver never
+  // did, and the folder gates are its only unguarded users.
   if (!teamId || teamId !== activeTeamId) return [];
   const index = await buildIndex(userId, teamId, admin);
   if (!index) return [];
@@ -676,15 +585,8 @@ export async function nodeCapabilities(node: NodeRef): Promise<Capability[]> {
 
 /**
  * ANY user's effective capabilities on a node — for hydrating someone else's
- * access in an admin view. Uses the stored instance-admin flag rather than
- * {@link isInstanceAdmin}, which additionally asks whether the API token making
- * THIS request may act as an admin; that question is about the caller, not about
- * the person being displayed.
- *
- * The team is an ARGUMENT here, not read from the request: this is the seam the
- * subscriptions use, and it must not touch cookies (see `reachableByUser` in
- * ./apps.ts). Naming it also keeps the boundary explicit rather than optional —
- * a `null` that meant "skip the check" is how the hole would come back.
+ * access in an admin view. Naming it also keeps the boundary explicit rather than
+ * optional — a `null` that meant "skip the check" is how the hole would come back.
  */
 export async function nodeCapabilitiesFor(
   userId: string,
@@ -739,14 +641,8 @@ export async function requireNodeCapability(
 
 /**
  * THE gate for anything that lives under an App: membership + 2FA, the app is in
- * the active team, the API token's scope reaches it, and the caller holds `cap`
- * ON THAT APP. Returns what `requireCapability` returns, so it is a drop-in
- * replacement for the `requireCapability` + `appInTeam` + folder-gate triple.
- *
- * It cannot be split back into "team check, then node check": a node grant may
- * exceed the team role, so a team-level check would refuse before the node was
- * ever consulted. That is why the app-shaped call sites route through here and
- * the team-wide ones keep `requireCapability`.
+ * the active team, the API token's scope reaches it, and the caller holds `cap` ON
+ * THAT APP.
  */
 export async function requireAppCapability(
   appId: string,
@@ -757,16 +653,11 @@ export async function requireAppCapability(
   // sits in a folder the caller can't see all answer the same thing — the gate is
   // never an oracle for which ids exist.
   if (!gate || gate.caps.length === 0) throw new Error("App not found");
-  // Confirmed for deletion (`apps.deleting_at`): the teardown is running behind
-  // the response and the row is on its way out. Nothing may act on it any more —
-  // not a deploy, not a rename, not a second delete — because there is no state
-  // left to act on. THE gate for every app-shaped mutation, so this one refusal
-  // covers every one of them, and it says what happened rather than "not found".
+  // Confirmed for deletion (`apps.deleting_at`): the teardown is running behind the
+  // response and the row is on its way out.
   if (gate.deleting) throw new Error("This app is being deleted");
   // Still arriving: a migration is writing this row and copying data into its
-  // volumes, and the whole run can still be taken back out. Same placement as
-  // the refusal above, and for the same reason - one gate, every app-shaped
-  // mutation, including the REST edges and MCP.
+  // volumes, and the whole run can still be taken back out.
   assertNotMigrating("app", gate.name, gate.migrationRunId);
   if (!gate.caps.includes(cap)) {
     throw new Error(
@@ -779,17 +670,13 @@ export async function requireAppCapability(
 }
 
 /**
- * Everything the caller may do to ONE app - the read-side twin of
- * {@link requireAppCapability}, answering `[]` instead of throwing when the app
- * isn't reachable (gone, another team, out of the token's scope, in a folder
- * they can't see, or they aren't a member at all).
- *
- * **`[]` means "no access", never "read-only"** - `view` is implied for anyone
- * who can reach the app - so this doubles as the visibility test that keeps an
- * app inside a private folder out of the UI entirely.
- *
- * Request-cached: the page, its layout and every gate below it ask the same
- * question, and one render should cost one resolution, not one per asker.
+ * Everything the caller may do to ONE app - the read-side twin of {@link
+ * requireAppCapability}, answering `[]` instead of throwing when the app isn't
+ * reachable (gone, another team, out of the token's scope, in a folder they can't
+ * see, or they aren't a member at all). **`[]` means "no access", never
+ * "read-only"** - `view` is implied for anyone who can reach the app - so this
+ * doubles as the visibility test that keeps an app inside a private folder out of
+ * the UI entirely.
  */
 export const appCapabilities = cache(async function appCapabilities(
   appId: string,
@@ -831,17 +718,13 @@ async function appGate(appId: string): Promise<{
       // Confirmed for deletion: the row is still here, the app is not. See the
       // refusal in requireAppCapability.
       deletingAt: appsTable.deletingAt,
-      // Still being brought over by a migration: same idea as `deleting_at` one
-      // line up, and the same refusal below. The name rides along because that
-      // refusal names the app - "this app" reads as a bug when three of them
-      // arrive at once.
+      // Still being brought over by a migration: same idea as `deleting_at` one line up,
+      // and the same refusal below. The name rides along because that refusal names the
+      // app - "this app" reads as a bug when three of them arrive at once.
       name: appsTable.name,
       migrationRunId: appsTable.migrationRunId,
-      // An app lives in exactly one place, and for an app inside a project that
-      // place is its ENVIRONMENT. Omitting it here refused an
-      // environment-scoped role every app it actually reaches, through every
-      // gate that routes here — which is every app-shaped mutation and every
-      // REST edge.
+      // An app lives in exactly one place, and for an app inside a project that place is
+      // its ENVIRONMENT.
       environmentId: appsTable.environmentId,
     })
     .from(appsTable)

@@ -14,16 +14,7 @@ import {
 /**
  * Per-app / per-database live resource metrics — the data behind the Monitoring
  * TAB on an app or database page (the per-container sibling of
- * lib/data/monitoring.ts's host-level metrics). Every read resolves the owning
- * server + the `deplo.project=<id>` label from the team-scoped row, dials that
- * server's agent, and calls the ContainerStats RPC (ADR-0006: the control plane
- * never touches a Docker socket itself).
- *
- * A stack can be multi-container (a compose app + its sidecars); the tab charts
- * the APP TOTAL — the sum across the stack's running containers — and also
- * carries the per-container breakdown for the table. net_* / block_* are
- * CUMULATIVE byte counters (what `docker stats` reports); the client derives
- * bytes/sec from the delta between consecutive samples.
+ * lib/data/monitoring.ts's host-level metrics).
  */
 
 /** One container's live usage in the breakdown table (live only; not charted). */
@@ -42,10 +33,7 @@ export interface ContainerInstanceMetrics {
 }
 
 /**
- * The aggregate stored in the ring buffer + charted. `online` means the agent
- * answered with a real measurement (reachable AND new enough); an offline /
- * unsupported answer is never recorded (a gap, not a fake zero — see
- * container-history.ts).
+ * The aggregate stored in the ring buffer + charted.
  */
 export interface ContainerMetricsSample {
   /** The app or database id — the history buffer key. */
@@ -175,13 +163,9 @@ function toSample(m: ContainerMetrics): ContainerMetricsSample {
   return sample;
 }
 
-/* `measureContainerStack` lived here: one ContainerStats dial per resource, the
- * shape the whole telemetry stream exists to replace. It was the last per-resource
- * agent dial in the control plane and it has no callers left, so it is gone rather
- * than left lying around — a dead path that still dials an agent reads like the
- * architecture endorses dialling per resource, and someone will eventually revive
- * it. The unary ContainerStats RPC itself stays on the agent, serving control
- * planes older than this change.
+/**
+ * `measureContainerStack` lived here: one ContainerStats dial per resource, the
+ * shape the whole telemetry stream exists to replace.
  */
 
 /* ------------------------------------------------------------------ */
@@ -190,15 +174,6 @@ function toSample(m: ContainerMetrics): ContainerMetricsSample {
 
 /**
  * Live metrics for one app (team-scoped). Null for an unknown / cross-team app.
- *
- * A BUFFER READ, not a measurement. The telemetry-stream supervisor is already
- * writing this app's samples every cadence from the host-wide frame, so dialling
- * the agent here would re-measure what we measured moments ago — and it is what
- * made the old cost model scale with the number of people looking.
- *
- * The team-scope gate is unchanged and remains the ONLY thing preventing a
- * cross-team metrics read: `loadTeamApp` returning null is the boundary, and it
- * matters more now than it did, because the buffer itself is not team-scoped.
  */
 export async function getAppMetrics(
   appId: string,
@@ -214,14 +189,8 @@ export async function getAppMetrics(
 }
 
 /**
- * Rebuild the live DTO from what the supervisor buffered. `toSample` deliberately
- * strips `instances` (a live table, not a series) and `unsupported` (never true
- * for a recorded sample), so they are re-attached here from their own cells
- * rather than being carried in every point of the window.
- *
- * No buffered sample means the stream has not delivered a frame for this resource
- * yet — the host may be unreachable, or its agent too old to stream. That is an
- * honest "no data", never a fabricated zero.
+ * Rebuild the live DTO from what the supervisor buffered. That is an honest "no
+ * data", never a fabricated zero.
  */
 function fromBuffer(id: string): ContainerMetrics {
   const s = latestContainerSample(id);
@@ -272,20 +241,8 @@ export async function getDatabaseMetricsHistory(
 /* Removed with the polling collector                                  */
 /* ------------------------------------------------------------------ */
 
-/* This file used to end with two more sections, both deleted.
- *
- * The COLLECTOR ENUMERATIONS went first. `sampleContainerForCollector` measured
- * one stack per tick; the telemetry stream carries every container on a host in
- * one frame, so per-resource sampling has no caller left.
- * `listSaveMetricsTargetsForCollector` answered "which resources should we pay to
- * sample?" — a question that only existed because sampling cost an RPC each.
- *
- * The per-resource TOGGLES (`setAppSaveMetrics` / `setDatabaseSaveMetrics`, and
- * the `apps.save_metrics` / `databases.save_metrics` columns behind them) went
- * with them. They rationed that same RPC cost. Buffering one more resource now
- * costs RAM the frame already delivered, so the answer is "all of them" — a
- * switch whose only remaining effect is declining a few KB, while its tooltip
- * promises it is saving work, is worse than no switch at all. The instance-wide
- * `monitoring_settings.saveMetrics` singleton remains the master switch, applied
- * on the RECORD side. See lib/monitoring/supervisor.ts.
+/**
+ * This file used to end with two more sections, both deleted. The COLLECTOR
+ * ENUMERATIONS went first. — a question that only existed because sampling cost an
+ * RPC each.
  */

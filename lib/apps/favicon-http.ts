@@ -1,23 +1,6 @@
 /**
- * Pure logic for reading an app's icon out of what the app SERVES, rather than
- * out of files it ships — the arm a **compose stack** needs.
- *
- * A compose app runs prebuilt images. Its favicon is not on the host at all (the
- * files dir holds only the config its bind mounts need); it exists inside the
- * image and is only ever served over HTTP. So the detection has to do what a
- * browser does: read the home page, believe the `<link rel="icon">` the app
- * declares about itself, and fall back to `/favicon.ico`.
- *
- * This module is the decision-making half — which paths to ask for, in what
- * order, and whether what came back is really an image. The requests themselves
- * go through the owning server's agent (ADR-0006 — the control plane never
- * touches a host), see {@link file://./favicon-agent.ts}.
- *
- * Note the deliberate difference from {@link file://./favicon-shared.ts}, which
- * accepts ONLY a file literally named `favicon`: there, a name is all we have to
- * go on, so guessing from `logo.png` would be inventing an icon. Here the app
- * has *told* us which URL is its icon, so the declaration is authoritative and
- * the name is irrelevant.
+ * Pure logic for reading an app's icon out of what the app SERVES, rather than out
+ * of files it ships — the arm a **compose stack** needs.
  */
 
 import { faviconFormatScore, mimeForFaviconPath } from "./favicon-shared";
@@ -27,10 +10,11 @@ import { faviconFormatScore, mimeForFaviconPath } from "./favicon-shared";
  * work a hostile/huge page can cost us regardless of what the agent returned. */
 const MAX_HTML_SCAN = 256 * 1024;
 
-/** How many icon URLs we are willing to fetch before giving up. Detection is a
- * cosmetic nicety, so it gets a handful of tries, not a crawl. Six because a
- * page that lists four apple-touch variants which all 404 (a real shape — the
- * declarations outlive the files) must still reach the icon further down. */
+/**
+ * How many icon URLs we are willing to fetch before giving up. Six because a page
+ * that lists four apple-touch variants which all 404 (a real shape — the
+ * declarations outlive the files) must still reach the icon further down.
+ */
 export const MAX_ICON_FETCHES = 6;
 
 /** The last-resort path every site is expected to answer on. */
@@ -57,10 +41,9 @@ export type IconCandidate =
 /* HTML                                                                */
 /* ------------------------------------------------------------------ */
 
-/** `<link …>` tags, and the attributes inside one. Deliberately NOT a parser: we
- * are reading two attributes off self-closing tags in a head, not building a DOM,
- * and a real parser would be a dependency plus a much larger attack surface for
- * what a browser itself treats as a hint. */
+/**
+ * `<link …>` tags, and the attributes inside one.
+ */
 const LINK_TAG_RE = /<link\b[^>]*>/gi;
 // An unquoted value runs to the next space or `>` — including any `=` inside it,
 // which is how browsers tokenize `href=/i.png?v=1&t=2` and therefore what a page
@@ -69,11 +52,9 @@ const ATTR_RE =
   /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>][^\s>]*))/g;
 
 /**
- * Every icon `<link>` a document declares, in document order.
- *
- * `mask-icon` is excluded on purpose: Safari's pinned-tab icon is a
- * single-colour silhouette that renders as a black blob anywhere else, so it is
- * never the app's real icon.
+ * Every icon `<link>` a document declares, in document order. `mask-icon` is
+ * excluded on purpose: Safari's pinned-tab icon is a single-colour silhouette that
+ * renders as a black blob anywhere else, so it is never the app's real icon.
  */
 export function parseIconLinks(html: string): IconLink[] {
   // Icons live in the head; stopping there keeps a large body out of the scan.
@@ -148,14 +129,9 @@ function formatOf(link: IconLink): string {
 }
 
 /**
- * Order icon links best-first.
- *
- * Format leads, on the same table the file-based detector ranks by (a scalable
- * SVG beats a PNG beats a small multi-res ICO), then the declared size — a
- * 180×180 apple-touch PNG is a better app icon than a 16×16 one, and both are
- * better than an unlabelled guess. `rel=icon` breaks a tie against an Apple
- * variant, and document order breaks everything else, so the same page always
- * yields the same icon.
+ * Order icon links best-first. `rel=icon` breaks a tie against an Apple variant,
+ * and document order breaks everything else, so the same page always yields the
+ * same icon.
  */
 export function rankIconLinks(links: readonly IconLink[]): IconLink[] {
   return links
@@ -179,10 +155,10 @@ export function rankIconLinks(links: readonly IconLink[]): IconLink[] {
 /* Href resolution                                                     */
 /* ------------------------------------------------------------------ */
 
-/** A request path the agent will accept: absolute, no spaces, no control
- * characters (it refuses those outright — they are request smuggling, not a
- * typo). A space is encoded rather than rejected; anything else invalid drops
- * the candidate. */
+/**
+ * A request path the agent will accept: absolute, no spaces, no control characters
+ * (it refuses those outright — they are request smuggling, not a typo).
+ */
 function cleanPath(path: string): string | null {
   const encoded = path.replace(/ /g, "%20");
   if (!encoded.startsWith("/") || encoded.length > 2000) return null;
@@ -198,12 +174,6 @@ function joinPath(basePath: string, href: string): string {
 
 /**
  * Turn one declared href into something we can act on, or null when we can't.
- *
- * An icon hosted on a CDN is dropped rather than fetched: the agent reaches the
- * app's own container and nothing else, which is exactly the property that keeps
- * this from being a general outbound fetch from someone's server. An absolute
- * URL back to the app's own hostname is fine — it's the same app, so we keep the
- * path and let the agent reach it locally.
  */
 export function resolveIconHref(
   href: string,
@@ -254,14 +224,8 @@ function parseDataUri(uri: string): IconCandidate | null {
 
 /**
  * The ordered list of things to try for an app's icon: everything the page
- * declared, best first, then `/favicon.ico` as the fallback every site is
- * expected to answer on. Deduped by path and capped, so a page listing twenty
- * icons still costs at most {@link MAX_ICON_FETCHES} requests.
- *
- * `basePath` is the prefix the app is served under when a domain routes it on a
- * path without stripping (`/api`), so a relative href resolves the way it would
- * in the browser. `host` is the app's own hostname, used to recognise an
- * absolute URL that points back at itself.
+ * declared, best first, then `/favicon.ico` as the fallback every site is expected
+ * to answer on.
  */
 export function iconCandidates(
   html: string,
@@ -329,11 +293,6 @@ function startsWith(
 /**
  * The image format the BYTES actually are, from their magic number — null when
  * they aren't a recognised image.
- *
- * This is the check that matters: plenty of apps answer `/favicon.ico` with
- * their SPA's index.html (a 200, sometimes even with an image content type), and
- * storing that as a logo would render a broken image on every page. What the
- * bytes are beats what the header claims.
  */
 export function sniffImageMime(bytes: Uint8Array): string | null {
   if (bytes.length < 4) return null;

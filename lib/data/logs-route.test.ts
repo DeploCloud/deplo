@@ -18,9 +18,9 @@ import type { AttachHandle } from "../infra/docker";
 import { DELETE } from "@/app/api/apps/[id]/logs/route";
 
 /**
- * A live log stream is closed by `DELETE …/logs? The id is random, which makes it
- * a nuisance rather than a break-in, but "you can't guess it" is not an
- * authorization rule: ids travel in URLs, logs and shared screens.
+ * A live log stream is closed by `DELETE …/logs?sessionId=…`, and the session id
+ * is the only thing the route was given to go on — so anyone holding one could cut
+ * short somebody else's stream.
  */
 
 let db: TestDb;

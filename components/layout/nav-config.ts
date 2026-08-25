@@ -314,6 +314,7 @@ export const SETTINGS_NAV: NavSection[] = [
  * Per-app facts the sidebar can't derive itself (the URL gives the slug and the
  * viewer's capabilities gate Environment/Backups, but whether the container is
  * running and whether the app has a files dir are known only to the app layout,
+ * which publishes them via the app-nav store).
  */
 export interface AppNavFlags {
   /** Full current pathname — lets a section stay listed while it's the open page
@@ -390,6 +391,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
     // Cron jobs - the OPERATIONAL page, offered only once the feature is on, exactly
     // like Pull requests above and for the same reason: with the switch off there is
     // nothing to list, and the setting that turns it back on lives under Settings where
+    // you would look for it.
     ...(f.cronsEnabled || on("/cron-jobs")
       ? [
           {

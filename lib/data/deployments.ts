@@ -116,10 +116,7 @@ export async function listDeployments(filter?: {
       environmentId: p.environmentId ?? null,
     })),
   );
-  // A narrowed principal is NOT exempt. It used to be, on the grounds that the
-  // scope was its own authorization — `listApps` retracted that (see the note
-  // there): a scope ticked onto a folder its author cannot see would otherwise
-  // list, here, the name, slug, commit and URL of every app inside it.
+  // A narrowed principal is NOT exempt.
   const teamApps = scopedApps.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);
   const byId = new Map(teamApps.map((p) => [p.id, p] as const));
   const appIds = filter?.appId
@@ -137,11 +134,7 @@ export async function listDeployments(filter?: {
     .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq));
   const rows = await (filter?.limit != null ? base.limit(filter.limit) : base);
 
-  // Resolve owning-server NAMES for the "Server" column / filter. A deployment's
-  // own `serverId` is the host it ran on (may be null on legacy rows) — fall back
-  // to the app's current server. Names are looked up by id: servers aren't
-  // team-scoped, but we only resolve ids the team's own rows already reference, so
-  // this leaks nothing (a team can't conjure a server id it never deployed on).
+  // Resolve owning-server NAMES for the "Server" column / filter.
   const serverIds = [
     ...new Set(
       [
@@ -162,10 +155,7 @@ export async function listDeployments(filter?: {
         ).map((s) => [s.id, s.name] as const),
   );
 
-  // Which rows may be rolled back to, per app. Computed BEFORE the environment /
-  // status filters below, because the ranking is over the app's whole history:
-  // filtering to "ready" first would make a failed build look like a version, and
-  // filtering to one environment would renumber the window.
+  // Which rows may be rolled back to, per app.
   const byApp = new Map<string, Deployment[]>();
   for (const row of rows) {
     const dep = assembleDeployment(row);
@@ -240,18 +230,6 @@ export async function getDeployment(
 
 /**
  * How far back the single-row check reads before it gives up.
- *
- * The window itself is at most {@link MAX_ROLLBACK_KEEP} + 1 BUILDS, but rollback
- * rows sit among them without being builds, so the scan has to be deeper than the
- * window. This much deeper is far past any real history: an app would need two
- * hundred successful production deploys, nearly all of them rollbacks, before the
- * cut could bite - and when it does it fails CLOSED (the target reads as
- * ineligible), which is the safe direction.
- *
- * It exists because this read is reachable per-object through GraphQL
- * (`apps { latestDeployment { canRollback } }`), where an unbounded history load
- * per app turns one small query into thousands of rows of work. The cost limiter
- * scores a query by its SHAPE, so a resolver that fans out has to bound itself.
  */
 const ROLLBACK_SCAN_LIMIT = 200;
 
@@ -259,11 +237,6 @@ const ROLLBACK_SCAN_LIMIT = 200;
  * Whether ONE deployment is a rollback target - the single-row read the detail
  * page needs. Shares {@link rollbackTargetIds} with the list and the gate, so all
  * three answer the same question with the same code.
- *
- * Bounded on purpose: it reads only the rows that can affect the answer (a
- * successful PRODUCTION deploy - everything else is discarded as the first thing
- * the ranking does, so filtering here changes nothing but the volume) and stops
- * at {@link ROLLBACK_SCAN_LIMIT}.
  */
 export async function canRollbackTo(dep: Deployment): Promise<boolean> {
   if (!dep.imageRef || dep.rollbackOf || dep.status !== "ready") return false;
@@ -306,14 +279,7 @@ export async function canRollbackTo(dep: Deployment): Promise<boolean> {
 }
 
 /**
- * A build's log. Gated on `view_logs`, NOT on bare membership: a build log
- * carries the app's build-time variables and whatever its Dockerfile echoed, so
- * it is exactly the read the permission names.
- *
- * Answers EMPTY rather than throwing, like the two lines above it: an
- * unreadable log, an unknown deployment and another team's deployment are one
- * answer, so no caller can use it to learn which is which. The honest refusal
- * for an API client is the `view_logs` scope on the `Deployment.logs` field.
+ * A build's log.
  */
 export async function getLogs(deploymentId: string): Promise<LogLine[]> {
   const teamId = await requireActiveTeamId();
@@ -325,18 +291,9 @@ export async function getLogs(deploymentId: string): Promise<LogLine[]> {
 }
 
 /**
- * 1-based position of a `queued` deployment in its owning server's build queue,
- * or null when it isn't queued (already building/terminal) or isn't the active
- * team's. Position 1 = next to build.
- *
- * Mirrors the deploy queue's drain order exactly (see {@link ../deploy/deploy-queue}
- * `pickNext`): per OWNING SERVER, oldest-first by `(createdAt, seq)`, where the
- * effective server is the row's denormalized `serverId` or the app's when that's
- * null — the same `coalesce` the cancel sweep uses. So the number the UI shows is
- * the order the queue will actually drain in. It counts only the queued rows
- * ahead, NOT whatever is currently `building`: position 1 means "next queued", so
- * it starts as soon as a build slot on the server frees. Recomputed on every read
- * (not cached), so a live poll watches it shrink as the builds ahead finish.
+ * 1-based position of a `queued` deployment in its owning server's build queue, or
+ * null when it isn't queued (already building/terminal) or isn't the active
+ * team's.
  */
 export async function getQueuePosition(
   deploymentId: string,
@@ -381,16 +338,7 @@ export async function getQueuePosition(
 
 /**
  * Re-apply a project's routing to its already-running stack — no rebuild, no
- * redeploy. Re-renders the on-disk stack with the project's CURRENT domains
- * (primary first) and basic-auth, then `docker compose up -d` recreates only the
- * routed service in place so the new Traefik labels take effect in seconds. This
- * is the "Reload" action that replaced "Rebuild" for routing-only changes
- * (added/removed/primary-switched domains, basic-auth edits) — far cheaper than a
- * full image rebuild. The outcome the caller surfaces:
- *  - "rerouted"  — routing was re-applied to the running container
- *  - "unchanged" — labels already matched; nothing to do
- *  - "deferred"  — saved, but it applies on the next deploy/start (the project
- *                  isn't active, was never deployed, or has no domain)
+ * redeploy.
  */
 export async function reloadApp(
   appId: string,
@@ -451,11 +399,7 @@ function rollbackTargetIds(
     "id" | "status" | "environment" | "imageRef" | "rollbackOf" | "serverId"
   >[],
 ): Set<string> {
-  // Asked of the app AS IT IS NOW. An app switched to a compose stack (or to a
-  // prebuilt image) still has old rows carrying an `image_ref`, and offering one
-  // would be offering a deploy the pipeline answers differently - its compose
-  // branch runs first and would redeploy the CURRENT stack while the row claimed
-  // to be a rollback.
+  // Asked of the app AS IT IS NOW.
   if (!appBuildsItsOwnImage({ ...app, repo: app.repoUrl })) return new Set();
   const production = deps.filter(
     (d) => d.environment === "production" && d.status === "ready",
@@ -476,17 +420,6 @@ function rollbackTargetIds(
 
 /**
  * Put an app back on a previous deployment - its image, not its settings.
- *
- * Gated on `rollback_apps`, which is deliberately NOT `deploy_apps`: they are two
- * decisions an admin may want to make separately, and this one is the smaller of
- * the two (anyone who can deploy can already ship a revert commit; this just makes
- * it take seconds instead of a build). The retention number that decides how FAR
- * back an app can go is a third decision again, and lives under `configure_apps`
- * with every other app setting.
- *
- * Every refusal below says which of the several ways this target is unusable it
- * fell into, because "Rollback failed" would leave the operator guessing between a
- * host move, a pruned image and a build that never succeeded.
  */
 export async function rollbackDeployment(
   deploymentId: string,
@@ -516,10 +449,7 @@ export async function rollbackDeployment(
     .limit(1);
   if (!app) throw new Error("App not found");
 
-  // The app AS IT IS NOW. This one is checked before the per-deployment refusals
-  // below because it is about the app, not the target: `runDeployment` answers a
-  // compose app through its own branch, so a rollback there would redeploy the
-  // CURRENT stack and report success - the one failure mode that lies.
+  // The app AS IT IS NOW.
   if (!appBuildsItsOwnImage({ ...app, repo: app.repoUrl })) {
     throw new Error(
       "This app doesn't build an image Deplo can re-run, so it has nothing to roll back to. Only an app deployed from a repository or an uploaded archive can.",
@@ -598,28 +528,12 @@ export async function redeploy(appId: string): Promise<Deployment> {
 
 /**
  * How long the build had been running, frozen onto a row at the moment it is
- * canceled. A build stopped after 12s reports 12s instead of a blank "Build
- * time" — the same number the page's live timer was showing when the button was
- * clicked, so stopping a build doesn't erase what it cost.
- *
- * Computed in SQL against `started_at` (not in JS against a value read earlier)
- * so it measures the row as it is at write time. Null-safe by construction: a
- * deployment canceled while still `queued` never started, so it keeps a null
- * duration — there is no build whose time we could claim to know.
+ * canceled.
  */
 const elapsedBuildMs = sql`case when ${deploymentsTable.startedAt} is null then null else greatest(0, (extract(epoch from (now() - ${deploymentsTable.startedAt})) * 1000)::bigint) end`;
 
 /**
- * Stop a queued/building deployment. Flips the row to `canceled` and settles the
- * app off "building" right away (see `settleAppAfterCancel`); the running
- * build job (fire-and-forget, no agent-side abort) keeps going, but its terminal
- * write honors this flag — `settleIfCanceled` in build.ts never overwrites a
- * canceled row back to ready/error. The in-progress build on the host may still
- * finish in the background; its result is simply not deployed. Truly killing that
- * host build needs a new agent RPC.
- *
- * Returns whether a build was actually stopped — `false` when it had already
- * finished (0 rows), so the caller can avoid a misleading "Build stopped" toast.
+ * Stop a queued/building deployment.
  */
 export async function cancelDeployment(id: string): Promise<boolean> {
   await requireMembership();
@@ -656,10 +570,9 @@ export async function cancelDeployment(id: string): Promise<boolean> {
 }
 
 /**
- * A deployment is "in progress" while it sits in the queue or is being built —
- * its row is still referenced by the deploy queue and the fire-and-forget build
- * job, so it must be CANCELED (see `cancelDeployment`), not deleted. Everything
- * else (`ready` / `error` / `canceled`) is terminal history and safe to remove.
+ * A deployment is "in progress" while it sits in the queue or is being built — its
+ * row is still referenced by the deploy queue and the fire-and-forget build job,
+ * so it must be CANCELED (see `cancelDeployment`), not deleted.
  */
 const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
 
@@ -667,11 +580,7 @@ const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
  * How many deployments are in flight (queued or building) for a team, seen from
  * one member's side: a build inside a folder they can't reach - or outside a
  * narrowed token's scope - is not counted, exactly as it is not listed on the
- * Deployments page. Feeds the sidebar's live chip.
- *
- * Cookie-free on purpose (team and principal are arguments): the chip reads it
- * from an SSE generator, where `cookies()` is no longer callable across
- * iteration ticks - the same contract as `summarizeForTeam` in ./apps.ts.
+ * Deployments page.
  */
 export async function countActiveDeploymentsForTeam(
   teamId: string,
@@ -709,11 +618,9 @@ export async function countActiveDeploymentsForTeam(
   return count;
 }
 
-/** Narrow a deployment sweep to one owning server. Matches the SAME effective
- *  server the list shows — the deployment's own `server_id`, or the app's when
- *  the row's is null — so filtering by a server on the deployments page and then
- *  sweeping it hits exactly the visible rows (including legacy rows with a null
- *  `deployments.server_id`). Both columns are in scope via the `apps` join. */
+/**
+ * Narrow a deployment sweep to one owning server.
+ */
 const onServer = (serverId: string) =>
   sql`coalesce(${deploymentsTable.serverId}, ${appsTable.serverId}) = ${serverId}`;
 
@@ -796,9 +703,7 @@ async function mayManageAppFolder(
 /**
  * Delete finished deployments by id (the multi-select "Delete selected"). Only
  * terminal rows are removed; any in-progress id in the selection is left for the
- * caller to cancel first. Team-scoped, and — like `moveAppsToFolder` — it
- * requires `delete_apps` on each distinct app's folder, throwing on one the caller
- * can't manage. Returns how many were actually deleted.
+ * caller to cancel first.
  */
 export async function deleteDeployments(ids: string[]): Promise<number> {
   const { membership } = await requireMembership();
@@ -812,11 +717,11 @@ export async function deleteDeployments(ids: string[]): Promise<number> {
   return removeDeploymentRows(rows, membership.teamId, user.name);
 }
 
-/** Keep only rows whose app's folder the caller holds `cap` on — the
- *  team-wide-sweep guard shared by delete-all (`delete_apps`) and cancel-all
- *  (`deploy_apps`), each passing the capability its entry gate already required.
- *  SKIPS (rather than throws on) a locked folder so one never blocks clearing the
- *  rest, memoizing the per-app check. */
+/**
+ * Keep only rows whose app's folder the caller holds `cap` on — the
+ * team-wide-sweep guard shared by delete-all (`delete_apps`) and cancel-all
+ * (`deploy_apps`), each passing the capability its entry gate already required.
+ */
 async function folderPermittedRows(
   rows: { id: string; appId: string }[],
   cap: "deploy_apps" | "delete_apps",
@@ -832,16 +737,9 @@ async function folderPermittedRows(
 }
 
 /**
- * Delete EVERY finished deployment — for one app (`appId` given, the
- * app page's "Delete all") or across the whole active team (`appId`
- * null/absent, the global page's "Delete all"). Optional `serverId` / `environment`
- * / `status` narrow the sweep to the deployments page's active view filters (owning
- * server, environment, and a specific terminal status), so a filtered "Delete all"
- * removes exactly the rows on screen. The single-app form enforces folder `delete_apps`
- * (throws if the caller can't manage it); the team-wide sweep SKIPS apps whose
- * folder the caller can't manage rather than failing whole, so one locked folder
- * never blocks clearing the rest. In-progress deployments are always left. Returns
- * how many were deleted.
+ * Delete EVERY finished deployment — for one app (`appId` given, the app page's
+ * "Delete all") or across the whole active team (`appId` null/absent, the global
+ * page's "Delete all").
  */
 export async function deleteAllDeployments(
   appId?: string | null,
@@ -871,10 +769,10 @@ export async function deleteAllDeployments(
   return removeDeploymentRows(permitted, membership.teamId, user.name);
 }
 
-/** In-progress (queued/building) deployment rows for the team, optionally narrowed
- *  to one app and/or one owning server. Mirror of `terminalDeploymentRows` for
- *  the cancel sweep; joined through `apps` so a foreign/stale id is simply
- *  absent (team isolation). */
+/**
+ * In-progress (queued/building) deployment rows for the team, optionally narrowed
+ * to one app and/or one owning server.
+ */
 async function inProgressDeploymentRows(
   teamId: string,
   filter: {
@@ -904,16 +802,9 @@ async function inProgressDeploymentRows(
 }
 
 /**
- * Settle an app off the in-progress states the instant its build is canceled.
- * The app is flipped to `building`/`queued` at deploy time (build.ts) and only
- * settled back when the fire-and-forget build job finally reaches `markStopped` —
- * which can be minutes away, so until then the live badge lies "building" even
- * though the deployment already reads `canceled`. Flip it to `idle` ("Stopped")
- * now, matching that eventual outcome. Guarded two ways so it never overreaches:
- * only when the app has NO other queued/building deployment left (a superseding
- * build keeps it going) and only FROM `building`/`queued` (never clobbering a
- * running/errored/idle app). No publish here — the caller emits one snapshot
- * after settling so subscribers paint the settled status.
+ * Settle an app off the in-progress states the instant its build is canceled. No
+ * publish here — the caller emits one snapshot after settling so subscribers paint
+ * the settled status.
  */
 async function settleAppAfterCancel(appId: string): Promise<void> {
   const remaining = await getDb()
@@ -938,13 +829,11 @@ async function settleAppAfterCancel(appId: string): Promise<void> {
     );
 }
 
-/** Flip the given in-progress rows to `canceled` (same semantics as the single
- *  `cancelDeployment`: the host build may finish in the background, its result just
- *  isn't deployed). The `status IN (queued, building)` guard stays in the WHERE —
- *  not just the read above — so a build that settled to ready/error in the gap is
- *  never retroactively flipped to canceled (it drops out at 0 rows). Settles each
- *  affected app off "building", nudges live subscribers so each badge flips at
- *  once, and logs one activity line. Returns how many were actually stopped. */
+/**
+ * Flip the given in-progress rows to `canceled` (same semantics as the single
+ * `cancelDeployment`: the host build may finish in the background, its result just
+ * isn't deployed).
+ */
 async function cancelDeploymentRows(
   rows: { id: string; appId: string }[],
   teamId: string,
@@ -981,17 +870,9 @@ async function cancelDeploymentRows(
 }
 
 /**
- * Cancel EVERY in-progress deployment — for one app (`appId` given, the
- * app page's "Stop all builds") or across the whole active team (`appId`
- * null/absent, the global page's "Stop all builds"). Optional `serverId` /
- * `environment` / `status` narrow the sweep to the deployments page's active view
- * filters (owning server, environment, and a specific in-progress status), so a
- * filtered "Stop all builds" stops exactly the builds on screen. The counterpart to
- * `deleteAllDeployments`: same folder-`deploy` rules (single-app throws if the
- * caller can't manage that folder; the team-wide sweep SKIPS folders it can't manage
- * rather than failing whole) but it flips queued/building rows to `canceled` instead
- * of deleting terminal ones. Terminal deployments are always left. Returns how many
- * builds were actually stopped.
+ * Cancel EVERY in-progress deployment — for one app (`appId` given, the app page's
+ * "Stop all builds") or across the whole active team (`appId` null/absent, the
+ * global page's "Stop all builds").
  */
 export async function cancelAllDeployments(
   appId?: string | null,
@@ -1022,23 +903,13 @@ export async function cancelAllDeployments(
 }
 
 // `listAppDeployments` lived here: an EXPORTED, ungated pass-through to
-// `loadDeploymentsForApp` that took an app id from anywhere and answered with
-// that app's whole history, whatever team it belonged to. It had no callers -
-// the `App.deployments` resolver reads through the gated app - so it was a
-// loaded gun waiting for one. The loader is still there for the paths that have
-// already proved the app is theirs; anything user-facing goes through
-// `requireAppCapability` first.
+// `loadDeploymentsForApp` that took an app id from anywhere and answered with that
+// app's whole history, whatever team it belonged to.
 
 /**
  * Tear down a preview's stack. Returns `true` if it was destroyed, `false` if the
  * teardown failed (an unreachable agent, mostly) and never throws, so a dead host
  * never blocks the caller.
- *
- * The retry lives in the CALLER here: `teardownPreviewStack` only stamps
- * `torn_down_at` on success, so the reaper picks the row up again. The app delete
- * paths do NOT use this (their preview rows cascade away moments later, taking
- * that stamp with them) - they queue the work in `lib/data/teardown-queue.ts`,
- * which also verifies the host rather than trusting the agent's `ok`.
  */
 export async function teardownApp(
   deployKey: string,

@@ -88,8 +88,7 @@ export function Topbar({
 
       {/**
        * Rich trail on the apps tree (Overview ▾ / Folder ▾ / App ▾ / Section ▾ with
-       * sibling menus), a plain "/ Label" everywhere else. Wrapped in Suspense because
-       * Breadcrumbs reads the URL's search params (?
+       * sibling menus), a plain "/ Label" everywhere else.
        */}
       <React.Suspense
         fallback={

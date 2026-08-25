@@ -22,13 +22,9 @@ const UPLOAD_DIR = join(DATA_DIR, "uploads");
 export const ARCHIVE_TOO_LARGE = "ARCHIVE_TOO_LARGE";
 
 /**
- * Hard ceiling on the DECOMPRESSED size of an uploaded archive. The compressed
- * upload is already capped at MAX_UPLOAD_BYTES (512 MiB), but that bounds the
- * INPUT, not the output: a decompression bomb can expand a few hundred MiB into
- * hundreds of GB and exhaust the shared control-plane disk/tmpfs while a favicon
- * scan or a build extracts it. 4 GiB comfortably fits any real source tree while
- * refusing a bomb long before it can fill the disk. Keep the "4 GiB" wording in
- * {@link EXTRACTED_TOO_LARGE} in sync if this changes.
+ * Hard ceiling on the DECOMPRESSED size of an uploaded archive. 4 GiB comfortably
+ * fits any real source tree while refusing a bomb long before it can fill the
+ * disk.
  */
 const MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 * 1024; // 4 GiB
 
@@ -58,18 +54,9 @@ function capBytes(
 }
 
 /**
- * Stream an uploaded archive's body to disk and return the pointer to persist
- * on the project. Each upload lands in its OWN subdirectory keyed by its id
- * (`<appId>/<uploadId>/`) and the project dir is never wiped here — so a
- * fresh upload never deletes a file an in-flight deploy is still extracting,
- * and a rejected upload leaves the previous (working) archive untouched. Call
- * {@link pruneUploads} after the new pointer is committed to drop stale ones.
- *
- * The write is bounded by a streaming byte cap, so an oversized or
- * Content-Length-lying client cannot exhaust the disk: the pipeline aborts and
- * the partial file is removed the moment the cap is crossed (throws
- * {@link ARCHIVE_TOO_LARGE}). Caller validates the extension via
- * {@link archiveExt} first.
+ * Stream an uploaded archive's body to disk and return the pointer to persist on
+ * the project. Call {@link pruneUploads} after the new pointer is committed to
+ * drop stale ones. Caller validates the extension via {@link archiveExt} first.
  */
 export async function storeUpload(opts: {
   appId: string;
@@ -113,10 +100,7 @@ export async function storeUpload(opts: {
 }
 
 /**
- * Remove every upload subdir for a project except `keepId`. Called from the
- * route only after the new pointer is committed, so the archive the project now
- * points at is never the one being deleted and a superseded deploy keeps
- * reading its own archive until it (and its subdir) is pruned on the next run.
+ * Remove every upload subdir for a project except `keepId`.
  */
 export async function pruneUploads(
   appId: string,
@@ -146,33 +130,9 @@ export async function removeUploads(appId: string): Promise<void> {
 }
 
 /**
- * Extract a stored archive into `destDir`, which must already exist. Dispatches
- * on the file extension: tarballs via `tar`, zips via `unzip` (both shipped in
- * the runtime image). Throws on a non-zero exit so the deploy errors clearly.
- *
- * Security — size: the compressed upload is capped, but decompression is not, so
- * a bomb could expand a few hundred MiB into hundreds of GB and exhaust the
- * shared disk. We bound the DECOMPRESSED size to {@link MAX_EXTRACTED_BYTES}:
- * tarballs are decompressed in-process through a byte cap that aborts the pipe
- * mid-stream (before the bomb hits disk); zips are refused up front when their
- * central-directory uncompressed total already blows the budget, with a
- * post-extract tree measurement as a backstop against a lying directory. On any
- * abort we delete `destDir` so no partial (possibly oversized) tree is left
- * behind (the callers also clean their temp dir, but we don't wait for them).
- *
- * Security — symlinks: an uploaded archive is fully attacker-controlled, so after the
- * extract we walk the tree and REJECT any symbolic link. Left in place, a
- * symlink pointing outside `destDir` (e.g. `ctx -> /`) would let a crafted
- * build context / rootDirectory follow it and bake arbitrary host files —
- * including the shared secrets store — into the user's own image. `tar`'s
- * `..`-stripping and `unzip`'s path checks stop directory traversal, but
- * neither blocks a symlink ENTRY, so we enforce it ourselves.
- *
- * Many archives wrap their contents in a single top-level folder (e.g.
- * `my-app/…` from `git archive` or GitHub's "Download ZIP"). When the extract
- * yields exactly one directory and nothing else, we treat that folder as the
- * project root so build commands and `rootDirectory` resolve against the code,
- * not an empty wrapper.
+ * Extract a stored archive into `destDir`, which must already exist. Security —
+ * symlinks: an uploaded archive is fully attacker-controlled, so after the extract
+ * we walk the tree and REJECT any symbolic link.
  */
 export async function extractArchive(
   archive: UploadArchive,
@@ -204,10 +164,9 @@ export async function extractArchive(
       await assertTreeWithinBudget(destDir);
     } else {
       log(`tar -x ${archive.filename}`);
-      // Drive the decompression ourselves so a gzip bomb is capped DURING
-      // extraction (aborted before it can fill the disk), not merely detected
-      // once 500 GB has already landed. A plain `.tar` is not a bomb (extracted
-      // size <= the capped input) but takes the same bounded path.
+      // Drive the decompression ourselves so a gzip bomb is capped DURING extraction
+      // (aborted before it can fill the disk), not merely detected once 500 GB has
+      // already landed.
       await extractTarBounded(archive, destDir, isGzip, log);
     }
 
@@ -221,13 +180,8 @@ export async function extractArchive(
 }
 
 /**
- * Extract a tarball into `destDir` with a hard cap on DECOMPRESSED bytes. We
- * can't trust `tar -xzf` to self-limit, so we read the file, gunzip it in
- * process (when gzipped), run it through {@link capBytes} — which aborts the
- * pipeline the instant it crosses {@link MAX_EXTRACTED_BYTES} — and feed the
- * result to `tar -x` on stdin. A gzip bomb therefore fails mid-stream, before it
- * can fill the shared disk. Throws {@link EXTRACTED_TOO_LARGE} on a cap breach,
- * or a `tar failed` error on a non-zero exit / timeout.
+ * Extract a tarball into `destDir` with a hard cap on DECOMPRESSED bytes. A gzip
+ * bomb therefore fails mid-stream, before it can fill the shared disk.
  */
 async function extractTarBounded(
   archive: UploadArchive,
@@ -286,11 +240,8 @@ async function extractTarBounded(
 }
 
 /**
- * Uncompressed byte total declared by a zip's central directory, read via
- * `unzip -l` (which decompresses nothing). Returns null when the total can't be
- * parsed — the caller then relies on the post-extract backstop instead of
- * blocking a possibly-fine archive. The summary line looks like
- * `   <total>                     <n> files`.
+ * Uncompressed byte total declared by a zip's central directory, read via `unzip
+ * -l` (which decompresses nothing).
  */
 async function zipDeclaredBytes(archivePath: string): Promise<number | null> {
   const lines: string[] = [];
@@ -317,9 +268,7 @@ async function zipDeclaredBytes(archivePath: string): Promise<number | null> {
 
 /**
  * Sum the real file sizes under `dir` (symlinks already rejected upstream) and
- * throw {@link EXTRACTED_TOO_LARGE} once the total crosses the budget. Walks
- * iteratively and short-circuits, so a bomb is caught without traversing the
- * whole oversized tree.
+ * throw {@link EXTRACTED_TOO_LARGE} once the total crosses the budget.
  */
 async function assertTreeWithinBudget(dir: string): Promise<void> {
   let total = 0;
@@ -365,9 +314,7 @@ export async function rejectSymlinks(dir: string): Promise<void> {
 
 /**
  * If `dir` contains exactly one entry and it is a real directory, return that
- * subdirectory; otherwise return `dir` unchanged. Hidden entries count — a
- * lone `__MACOSX` sibling (common in macOS zips) means there is *not* a single
- * clean root, so we leave the dir as-is rather than guess wrong.
+ * subdirectory; otherwise return `dir` unchanged.
  */
 async function collapseSingleRoot(dir: string): Promise<string> {
   let entries;
@@ -382,8 +329,5 @@ async function collapseSingleRoot(dir: string): Promise<string> {
   return dir;
 }
 
-// `safeBuildDir` (the rootDirectory containment guard) now lives in
-// ./path-safety — its own concern, separate from archive streaming, and free of
-// `server-only` so the source seam and tests can use it. Re-exported here for
-// callers that still import it from this module.
+// `safeBuildDir` (the rootDirectory containment guard) now lives in .
 export { safeBuildDir } from "./path-safety";

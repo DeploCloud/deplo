@@ -78,10 +78,7 @@ export interface AppEnvGroup {
   /**
    * `projectId` / `environmentId` are how a shared variable's project scope
    * resolves to apps (see `listSharedVarsForApp`), so the shared-var wizard needs
-   * them to tell you what a scope actually reaches. Both are null for a loose app.
-   *
-   * `logo` / `primaryDomain` are what the wizard's app cards show, so two apps
-   * with near-identical names are told apart by sight instead of by slug.
+   * them to tell you what a scope actually reaches.
    */
   app: {
     id: string;
@@ -128,11 +125,9 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
-  // The gate is asked PER APP, not once for the team: `manage_env` can now be held
-  // on a single folder or app (ADR-0016), so a team-level check would both refuse
+  // The gate is asked PER APP, not once for the team: `manage_env` can now be held on
+  // a single folder or app (ADR-0016), so a team-level check would both refuse
   // someone who legitimately holds it somewhere and — the old bug — wave through
-  // every top-level app for someone whose only claim was one folder. Five queries
-  // for the whole page, not five per app.
   const reach = await appCapabilitiesForTeam(teamId, rows);
   const apps = rows.filter((p) => reach.get(p.id)?.includes("manage_env"));
   // Batch-load every var across the team's apps (one pair of queries), then
@@ -198,10 +193,7 @@ export async function upsertEnv(input: {
       )
       .limit(1);
     if (existing.length > 0) {
-      // A SECRET is frozen. Writing `type` from caller input is what used to hand
-      // the plaintext back: the editor round-tripped the MASK so the row kept its
-      // ciphertext while the label flipped to plain, and the very next read
-      // decrypted it. Promotion plain -> secret still lands here: `existing` is
+      // A SECRET is frozen. Promotion plain -> secret still lands here: `existing` is
       // plain, so there is nothing to protect yet.
       if (existing[0]!.type === "secret") throw new Error(secretImmutable(key));
       const varId = existing[0]!.id;
@@ -247,9 +239,7 @@ export async function upsertEnv(input: {
 /**
  * Rename an existing env var's key. Kept OUT of `upsertEnv` on purpose: that one
  * locates the row by `(appId, key)`, so feeding it a changed key would mint a
- * brand-new var beside the old, not rename it. Here the row is targeted by `id`
- * and its key moved in place, so its value, targets, type and authorship all ride
- * along untouched. Returns the owning app so the caller can reload the entity.
+ * brand-new var beside the old, not rename it.
  */
 export async function renameEnv(
   id: string,
@@ -295,12 +285,6 @@ export async function renameEnv(
 
 /**
  * Bulk import from a .env style blob.
- *
- * A line whose key already exists as a SECRET is SKIPPED, not written: every line
- * imports as `plain`, so without the skip a paste containing a secret's name would
- * silently downgrade it (and `upsertEnv` would refuse the whole import instead).
- * The count comes back so the toast can say how many were left alone — a variable
- * that quietly did not import is worse than one that refused out loud.
  */
 export async function importEnv(
   appId: string,
@@ -348,16 +332,8 @@ export async function importEnv(
 }
 
 /**
- * Replace a project's whole env set from the ".env editor": upsert every entry
- * and delete the ones the editor dropped, in a single atomic write.
- *
- *  - New keys are created as PLAIN (never secret by default) with `defaultTargets`
- *    (omitted ⇒ every runtime).
- *  - Existing keys keep their `type` and `targets` (the flat editor can't express
- *    them); only the value changes.
- *  - A SECRET is left untouched, whatever the incoming value is. You cannot read
- *    one back, so you cannot meaningfully rewrite one from a flat file either;
- *    the row is frozen until somebody deletes it.
+ * Replace a project's whole env set from the ".env editor": upsert every entry and
+ * delete the ones the editor dropped, in a single atomic write.
  */
 export async function setAppEnv(
   appId: string,

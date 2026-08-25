@@ -1,22 +1,10 @@
 /**
  * The square crop an image picker drags around, in SOURCE-IMAGE pixels.
- *
- * Deliberately screen-free: the preview canvas and the exported canvas are
- * different sizes, and the one bug a cropper cannot afford is a preview that
- * disagrees with what gets saved. Both ask {@link cropRect} for the same three
- * numbers and hand them straight to `drawImage`.
- *
- * Pure and DOM-free so the arithmetic is unit-tested (`crop-geometry.test.ts`)
- * rather than eyeballed in a browser.
  */
 
 /**
- * What zoom 1 means.
- *
- * `cover` - the biggest square INSIDE the picture, so a profile picture fills
- * the circle at every zoom and can never show transparent bars.
- * `fit` - the smallest square that CONTAINS the picture, so a wide logo is
- * whole at zoom 1 and confirming without touching anything crops nothing.
+ * What zoom 1 means. `cover` - the biggest square INSIDE the picture, so a profile
+ * picture fills the circle at every zoom and can never show transparent bars.
  */
 export type CropMode = "cover" | "fit";
 
@@ -51,11 +39,6 @@ export function maxZoom(s: CropSource): number {
 
 /**
  * One axis of the clamp.
- *
- * `lo > hi` is exactly "the crop square is wider than the picture on this
- * axis", i.e. this side is padded - so it is pinned to the middle, because
- * panning could only push the picture out of frame and hand back empty space.
- * A 3:1 logo at zoom 1 has both axes locked and needs no special case anywhere.
  */
 function clampAxis(centre: number, span: number, size: number): number {
   const half = size / 2;
@@ -85,11 +68,6 @@ export function initialView(s: CropSource): CropView {
 
 /**
  * What `drawImage` takes as sx, sy and sWidth/sHeight.
- *
- * In `fit` mode sx/sy go NEGATIVE and the square runs past the edge of the
- * picture: the spec clips the source rectangle to the image and the destination
- * rectangle in the same proportion, which is precisely the transparent padding
- * a non-square logo wants. No manual letterboxing.
  */
 export function cropRect(v: CropView, s: CropSource) {
   const size = baseSize(s) / v.zoom;
@@ -110,14 +88,7 @@ export function panBy(
 }
 
 /**
- * Zoom to `next`, holding still whatever sits under (px, py) - each 0..1 across
- * the frame.
- *
- * The slider passes the centre; the wheel and the pinch pass the pointer, and
- * that is the whole difference between zoom that tracks your fingers and zoom
- * that slides away from them. The source x under frame fraction `px` is
- * `cx + (px - 0.5) * size`; holding it fixed across a zoom gives
- * `cx' = cx + (px - 0.5) * (size - size')`.
+ * Zoom to `next`, holding still whatever sits under (px, py) - each 0..
  */
 export function zoomTo(
   v: CropView,

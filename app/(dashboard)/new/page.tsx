@@ -46,7 +46,8 @@ export default async function NewAppPage(props: PageProps<"/new">) {
     : params.variant;
   const repoParam = Array.isArray(params.repo) ? params.repo[0] : params.repo;
 
-  // The Overview drill-in this wizard was opened from (?
+  // The Overview drill-in this wizard was opened from (?folder= / ?project= & ?env=):
+  // the app is CREATED THERE rather than at the team top level.
   const placement = await resolveOverviewPlacement(
     placementFromSearchParams(params),
   );
@@ -72,7 +73,10 @@ export default async function NewAppPage(props: PageProps<"/new">) {
     );
 
   // Generate the template's public hostname (with its random words baked in) up front
-  // and thread it into the blueprint env.
+  // and thread it into the blueprint env. createApp passes this same string through
+  // as the app's `preferred` auto domain, so the value the app sees matches the
+  // domain Traefik routes and the one shown in the Domains section — the words
+  // generated here are the words that get persisted.
   const autoDomain = template
     ? productionDomain(template.slug, instanceHost())
     : null;

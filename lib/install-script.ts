@@ -1,11 +1,7 @@
 /**
  * The Deplo installer is a static, version-controlled shell script at the repo
- * root (`install.sh`), served straight from GitHub so users can run:
- *
- *   curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
- *
- * Edit `install.sh` directly to change install behaviour — it is the single
- * source of truth. The `/install` route is a short alias that redirects here.
+ * root (`install.sh`), served straight from GitHub so users can run: curl -fsSL
+ * https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash Edit
  */
 
 /** Canonical location of the installer on GitHub (raw, default branch). */

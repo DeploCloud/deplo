@@ -8,8 +8,8 @@ export type Role = "owner" | "member" | "viewer";
 
 /**
  * A single thing a member is allowed to do within a team — ONE action, never a
- * bundle. A {@link Role} is a named set of these, assigned per member; the labels,
- * descriptions and browse categories live in `lib/capabilities.ts`.
+ * bundle. `view` is the always-on floor: every member of a team holds it, and it
+ * is never offered as a toggle.
  */
 export type Capability =
   | "view"
@@ -138,9 +138,8 @@ export interface User {
    */
   role: Role;
   /**
-   * Global-scoped admin. Instance admins manage all users platform-wide: the
-   * Settings → Users list, minting registration links, and the per-user admin
-   * editor.
+   * Global-scoped admin. The first account (setup) is an instance admin. Distinct
+   * from per-team capabilities (which only ever scope to one team).
    */
   isInstanceAdmin?: boolean;
   /**
@@ -150,8 +149,7 @@ export interface User {
   suspended?: boolean;
   /**
    * Instance-wide grant: may publish container ports declared in a compose stack —
-   * a service's `ports:` (bound to the host) or `expose:`. Orthogonal to Traefik
-   * routing: giving an app a public domain/route does NOT require this grant.
+   * a service's `ports:` (bound to the host) or `expose:`.
    */
   canExposePorts?: boolean;
   /**
@@ -175,7 +173,7 @@ export interface PublicUser {
   /**
    * Where this person's picture comes from, already resolved: their uploaded
    * image, else their Gravatar (when the instance allows it), else null for the
-   * {@link avatarColor} monogram.
+   * {@link avatarColor} monogram. Always COMPUTED server-side, never a raw column.
    */
   avatarUrl: string | null;
   /**
@@ -225,8 +223,7 @@ export type RegistrationLinkStatus = "pending" | "used" | "revoked";
 
 /**
  * A single-use link that lets a new person self-register a brand-new account AND
- * their own team (like the first-run setup, not a team invite). Minted by a member
- * with `manage_members`; only the token hash is stored.
+ * their own team (like the first-run setup, not a team invite).
  */
 export interface RegistrationLink {
   id: ID;
@@ -250,8 +247,7 @@ export interface Team {
   plan: "pro" | "enterprise";
   /**
    * The team's ABSOLUTE owner — the user who originally created the team, the
-   * holder of the "crown" (👑). Distinct from the `owner` *role*: a team may have
-   * several owner memberships ("assigned owners"), but exactly one founder.
+   * holder of the "crown" (👑).
    */
   founderUserId?: ID | null;
   /**
@@ -262,7 +258,8 @@ export interface Team {
   requireTwoFactor?: boolean;
   /**
    * Team-wide display order of apps in the Overview grid (array of project ids,
-   * first = top-left).
+   * first = top-left). Absent ⇒ no manual order yet, fall back to
+   * newest-updated-first.
    */
   appOrder?: ID[];
   /**
@@ -293,9 +290,8 @@ export interface TeamSummary extends Team {
 }
 
 /**
- * A team-wide grouping of apps shown on the Overview. A project belongs to at most
- * one folder (via {@link App.folderId}); folders themselves NEST via {@link
- * parentId}, forming a tree within the team.
+ * A team-wide grouping of apps shown on the Overview. Creating a folder requires
+ * the `deploy` capability — the same gate as creating a project.
  */
 export interface Folder {
   id: ID;
@@ -303,13 +299,12 @@ export interface Folder {
   name: string;
   /**
    * Parent folder id for nesting, or null/absent when this folder sits at the top
-   * level. A folder's children are the folders whose `parentId` equals this
-   * folder's id.
+   * level.
    */
   parentId?: ID | null;
   /**
    * Optional accent colour for the folder tile on the Overview, stored as a
-   * normalised `#rrggbb` hex string. Absent/null ⇒ the default neutral tile.
+   * normalised `#rrggbb` hex string.
    */
   color?: string | null;
   /**
@@ -330,8 +325,8 @@ export interface Folder {
 
 /**
  * A **Project** — the top-level, team-scoped CONTAINER introduced in ADR-0008.
- * Folder-like (owner + per-container grants + colour + team ordering) but it also
- * owns a set of {@link Environment}s (added in a later phase).
+ * Folders and Apps live INSIDE a Project via their `projectId`; a Project never
+ * nests in another Project (no `parentId`).
  */
 export interface Project {
   id: ID;
@@ -359,8 +354,7 @@ export type EnvironmentKind =
 
 /**
  * An **Environment** (ADR-0008 Phase 3) — a per-{@link Project}, first-class
- * ISOLATED deploy target. Seeded Development/Preview/Production on Project create;
- * renamable and extensible.
+ * ISOLATED deploy target.
  */
 export interface Environment {
   id: ID;
@@ -381,9 +375,8 @@ export interface Environment {
 }
 
 /**
- * A server's health as last OBSERVED by a `Hello` probe - a timestamped cache,
- * never a gate; the deploy path uses its own live pre-flight (ADR-0006).
- * `warning` = agent up, Docker unreachable. `error` = agent answered wrong.
+ * A server's health, as last OBSERVED by a live agent `Hello` probe — not a
+ * lifecycle the control plane drives.
  */
 export type ServerStatus =
   "online" | "warning" | "error" | "offline" | "provisioning";
@@ -443,20 +436,17 @@ export interface Server {
   memoryUsage: number;
   diskUsage: number;
   /**
-   * Team access scope. `true` (the default a server is born with) means EVERY team
-   * can target this server for its apps/databases — the historical instance-wide
-   * behaviour.
+   * Team access scope.
    */
   allTeams: boolean;
   /**
    * A server bought purely to HOLD BACKUPS: the agent is installed, Docker is not,
-   * and nothing is ever deployed here. Set by the storage-only installer.
+   * and nothing is ever deployed here.
    */
   storageOnly: boolean;
   /**
    * A server bought purely to COMPILE: Docker is installed, Traefik is not, and no
-   * app of any team runs here. It builds images for the hosts that do, which
-   * receive them over the image relay.
+   * app of any team runs here.
    */
   buildOnly: boolean;
   /**
@@ -472,7 +462,7 @@ export interface Server {
   uninstallPending: boolean;
   /**
    * Why Deplo could not take its agent off this migration source, after it stopped
-   * trying. Empty for every other server and for one it is still working on.
+   * trying.
    */
   uninstallError: string;
   /**
@@ -483,13 +473,13 @@ export interface Server {
   hostArch: string;
   /**
    * How many deployments this server runs concurrently — the per-server slot count
-   * the deploy queue enforces.
+   * the deploy queue enforces. 1 (the default a server is born with) = strict
+   * serialization: one deploy at a time on this host, deploys on other servers
+   * still run in parallel.
    */
   deployConcurrency: number;
   /**
    * The Traefik web panel: the host's own Traefik dashboard, published here.
-   * Absent = off, which is where every server starts. The password is deliberately
-   * NOT part of this shape.
    */
   traefikDashboard?: { domain: string; username: string };
   createdAt: string;
@@ -517,7 +507,7 @@ export interface Server {
   /**
    * The operator-facing reason behind a non-`online` status ("Docker daemon
    * unreachable — deploys to this server will fail"), from the closed set in
-   * `classifyServerHealth`.
+   * `classifyServerHealth`. Absent when `online` or never probed.
    */
   statusMessage?: string;
 }
@@ -532,16 +522,11 @@ export type AppStatus =
   // Persisted (so it survives reload and every client sees it) until the stop
   // completes and the project settles to "idle".
   | "stopping"
-  // Transient: a backup is being put back in place. The agent stops the stack,
-  // wipes it and untars the snapshot, so for the whole restore the host truthfully
-  // reports nothing running — which read as a red "Not running", then "Degraded"
-  // as services came back, for an operation the user had just asked for. Persisted
-  // like "stopping", and settled to "active"/"error" when the restore returns.
+  // Transient: a backup is being put back in place.
   | "restoring";
 
 /**
- * Where a project's code or image comes from. How it becomes an image is a
- * separate axis - see BuildConfig.buildMethod.
+ * Where a project's code/image comes from.
  */
 export type DeploySource =
   "github" | "git" | "docker-image" | "upload" | "compose";
@@ -555,6 +540,7 @@ export const MIGRATION_HEARTBEAT_STALE_MS = 90_000;
  * The internal `DeploySource` strings are lowercase and hyphenated
  * ("docker-image"), but the GraphQL `DeploySource` enum exposes uppercase,
  * underscored value *names* (GITHUB, DOCKER_IMAGE …) — GraphQL enum names can't
+ * contain hyphens.
  */
 export function deploySourceEnumName(source: DeploySource): string {
   return source.replace(/-/g, "_").toUpperCase();
@@ -597,8 +583,7 @@ export interface GitRepo {
   installationId?: string | null;
   /**
    * For every OTHER host: the {@link GitConnection} whose stored token
-   * authenticates the clone and registers the push webhook. Absent for a public
-   * repo cloned anonymously — which is what a bare "Repository URL" is.
+   * authenticates the clone and registers the push webhook.
    */
   connectionId?: string | null;
   /**
@@ -607,9 +592,7 @@ export interface GitRepo {
    */
   triggerType?: GitTriggerType;
   /**
-   * Optional path globs (one per entry). When set, an automatic deployment only
-   * fires if a pushed commit changed a file matching at least one glob; empty ⇒
-   * deploy on any change.
+   * Optional path globs (one per entry).
    */
   watchPaths?: string[];
   /**
@@ -619,7 +602,9 @@ export interface GitRepo {
   submodules?: boolean;
 }
 
-/** How Deplo turns a repository into a runnable image. */
+/**
+ * How Deplo turns a repository into a runnable image.
+ */
 export type BuildMethod = "dockerfile" | "railpack" | "nixpacks" | "static";
 
 /**
@@ -654,9 +639,7 @@ export interface BuildConfig {
    */
   rootDirectory: string;
   /**
-   * Include files OUTSIDE the root directory in the build context. Default true —
-   * the whole repository is available to the build (monorepo packages shared
-   * across apps resolve).
+   * Include files OUTSIDE the root directory in the build context.
    */
   includeFilesOutsideRoot: boolean;
   /**
@@ -667,8 +650,7 @@ export interface BuildConfig {
   skipUnchangedDeployments: boolean;
   /**
    * Reuse the owning server's Docker layer cache (and the builder's own cache
-   * mounts) between this app's builds. Default true — it is what makes a redeploy
-   * of an unchanged app take seconds instead of minutes.
+   * mounts) between this app's builds.
    */
   buildCache: boolean;
   /**
@@ -691,14 +673,15 @@ export interface BuildConfig {
 
 /**
  * How mounts appearing UNDERNEATH a bind mount cross between the server and the
- * container. Bind mounts only (`VolumeMount.type === "host"`); docker rejects a
- * propagation option on a managed volume.
+ * container.
  */
 export const MOUNT_PROPAGATIONS = ["rslave", "rshared"] as const;
 export type MountPropagation = (typeof MOUNT_PROPAGATIONS)[number];
 
 /**
- * A persistent volume mounted into an app's container.
+ * A persistent volume mounted into an app's container. No grant needed — it can't
+ * escape the project. - "host": a bind mount of a real HOST filesystem path
+ * (`hostPath`).
  */
 export interface VolumeMount {
   /**
@@ -742,16 +725,14 @@ export interface VolumeMount {
   /** Mount read-only (`:ro`). Defaults to false (read-write). */
   readOnly: boolean;
   /**
-   * HOST binds only: whether the mount follows submounts that appear later. Absent
-   * ⇒ docker's `rprivate` default. See {@link MountPropagation}.
+   * HOST binds only: whether the mount follows submounts that appear later.
    */
   propagation?: MountPropagation;
 }
 
 /**
  * Per-app resource limits — caps applied to the app's container(s) at deploy time
- * so a runaway app can't starve its neighbours on a shared host. Every field is
- * INDEPENDENTLY optional: `null` ⇒ that dimension is uncapped.
+ * so a runaway app can't starve its neighbours on a shared host.
  */
 export interface ResourceLimits {
   /** Hard RAM ceiling, MiB → `mem_limit`. The container is OOM-killed above it. */
@@ -771,9 +752,7 @@ export interface ResourceLimits {
   /** `/dev/shm` size, MiB → `shm_size`. */
   shmSizeMb: number | null;
   /**
-   * Writable-layer disk quota, GiB → `storage_opt.size`. HOST-GATED: only takes
-   * effect where the Docker storage driver supports quotas (overlay2 on XFS with
-   * pquota, or devicemapper); on other hosts `compose up` rejects it.
+   * Writable-layer disk quota, GiB → `storage_opt.size`.
    */
   storageGb: number | null;
   /** Max open file descriptors → `ulimits.nofile` (soft = hard). */
@@ -791,8 +770,7 @@ export interface App {
   teamId: ID;
   /**
    * The folder this project lives in on the Overview, or null/absent when it sits
-   * at the top level (ungrouped). Folders are a team-wide, single-level grouping
-   * (see {@link Folder}); a project belongs to at most one.
+   * at the top level (ungrouped).
    */
   folderId?: ID | null;
   /**
@@ -803,7 +781,8 @@ export interface App {
   /**
    * The {@link Environment} (of `projectId`'s Project) this app LIVES in —
    * ADR-0009's membership axis: each environment of a project holds its own apps,
-   * like a sub-folder picked from the project's environment dropdown.
+   * like a sub-folder picked from the project's environment dropdown. null/absent
+   * outside a project.
    */
   environmentId?: ID | null;
   serverId: ID;
@@ -846,12 +825,12 @@ export interface App {
    * The JavaScript framework Deplo recognised in this app's own source — a {@link
    * FrameworkId} from `lib/apps/framework-catalog.ts` ("nextjs", "astro", …), or
    * null when none was found or the build method isn't one of the auto-detecting
+   * builders (Nixpacks / Railpack), the only ones this applies to.
    */
   framework: FrameworkId | null;
   /**
    * The framework the user picked because detection got it wrong, or null (the
-   * default) to trust detection. Read as `frameworkOverride ?? framework`
-   * everywhere the app's framework is shown or used.
+   * default) to trust detection.
    */
   frameworkOverride: FrameworkId | null;
   /** How this project is deployed (git, docker image, dockerfile, upload). */
@@ -876,7 +855,9 @@ export interface App {
   /**
    * User-managed persistent volumes for the SINGLE-CONTAINER deploy path
    * (renderCompose) — docker-managed named volumes and (for privileged users) host
-   * bind mounts.
+   * bind mounts. null/absent for compose-stack apps and apps that never added one
+   * — so renderCompose emits no `volumes:` keys and the stack stays byte-identical
+   * (no reroute churn).
    */
   volumes?: VolumeMount[] | null;
   build: BuildConfig;
@@ -916,7 +897,8 @@ export interface App {
   latestDeploymentId: ID | null;
   /**
    * When someone confirmed this app's deletion, or null (every app that is not on
-   * its way out).
+   * its way out). Treat it as gone: every gate refuses a stamped app, its pages
+   * 404, and no user-facing list returns it (`listApps` filters on this).
    */
   deletingAt?: string | null;
   createdAt: string;
@@ -935,7 +917,7 @@ export const MAX_ROLLBACK_KEEP = 20;
 
 /**
  * How far back the log viewer's time range reaches out of the box, in days, and
- * the ceiling an instance admin may raise it to. A bound on what may be ASKED for.
+ * the ceiling an instance admin may raise it to.
  */
 export const DEFAULT_LOG_RANGE_DAYS = 7;
 export const MAX_LOG_RANGE_DAYS = 90;
@@ -988,14 +970,11 @@ export interface Deployment {
   buildDurationMs: number | null;
   /**
    * Replace the running containers even if the rendered stack is unchanged
-   * (`compose up --force-recreate`). Set only by "Rebuild container" — every other
-   * deploy leaves it false, so an unchanged reroute still causes no restart.
+   * (`compose up --force-recreate`).
    */
   forceRecreate: boolean;
   /**
-   * The image tag this deploy rendered into its stack and the agent ran. Set only
-   * where Deplo BUILT it (git, upload) - `deplo/<deployKey>:<id[0:12]}`, living on
-   * the owning server.
+   * The image tag this deploy rendered into its stack and the agent ran.
    */
   imageRef: string | null;
   /** Set when this deploy is a ROLLBACK: the deployment whose image it re-ran.
@@ -1004,8 +983,9 @@ export interface Deployment {
   rollbackOf: ID | null;
   creator: string;
   /**
-   * The account behind {@link creator}, when there is one. Free text is what the
-   * row shows; this is what lets it show a face.
+   * The account behind {@link creator}, when there is one. NULL for a webhook push
+   * (whose creator is a GitHub login, not a deplo account) and for every row
+   * written before it existed — both of which render the bare string.
    */
   creatorUserId: ID | null;
   /** That person, resolved for display. A DECORATION the list batch-resolves. */
@@ -1038,17 +1018,15 @@ export function sanitizeTargets(targets: EnvTarget[]): EnvTarget[] {
 
 /**
  * The refusal every env layer raises when a write would touch a SECRET row.
+ * Immutability is what closes it: create it, delete it, never edit it. Promotion
+ * `plain` -> `secret` stays open, because hardening is never the thing you gate.
  */
 export const secretImmutable = (key: string) =>
   `${key} is a secret and cannot be edited. Delete it and add it again.`;
 
 /**
- * Who created or last modified a variable. `null` when the author's account was
- * deleted (the FK is ON DELETE SET NULL) or the row predates authorship tracking
- * (migration 0029 does not backfill) — the UI renders "—".
- *
- * Identity fields only: never an email, never a hash. Authorship is METADATA, not
- * a value, so it is safe in a DTO whose `value` stays masked.
+ * Who created or last modified a variable. Identity fields only: never an email,
+ * never a hash.
  */
 export interface VarAuthor {
   id: ID;
@@ -1090,10 +1068,7 @@ export interface EnvVarDTO {
 
 /**
  * A GLOBAL environment variable — injected into services without being attached
- * per-project. Two scopes: `team` (every project in one team) and `instance`
- * (every project of every team, instance-admin managed). Both share this shape;
- * the scope determines storage table, gating, and deploy precedence (instance is
- * the lowest, then team, then a project's own var, then shared groups).
+ * per-project.
  */
 /**
  * Global env scope. Only `instance` remains: team-global vars became team-wide
@@ -1129,57 +1104,26 @@ export interface GlobalEnvVarDTO {
 }
 
 /**
- * A custom domain's DNS verification state.
- *  - valid          an A record points straight at this project's server.
- *  - cloudflare     proxied through Cloudflare's orange-cloud: the A records are
- *                   Cloudflare's anycast IPs, which mask the origin. UNVERIFIED,
- *                   not a success — those IPs are identical for every proxied
- *                   domain on the internet, so DNS shows only that the host is
- *                   proxied, never that Cloudflare forwards it to this app's
- *                   server. Routed anyway (excluding it would break every
- *                   correctly-proxied domain) but surfaced as an open question,
- *                   distinct from both `valid` and a genuine misconfiguration.
- *  - pending        added but not yet verified (no DNS check has run).
- *  - misconfigured  resolves nowhere useful, or to an unrelated address.
- *  - error          a check failed unexpectedly (reserved).
+ * A custom domain's DNS verification state. - valid an A record points straight at
+ * this project's server. - cloudflare proxied through Cloudflare's orange-cloud:
+ * the A records are Cloudflare's anycast IPs, which mask the origin.
  */
 export type DomainStatus =
   "valid" | "cloudflare" | "pending" | "misconfigured" | "error";
 
 /**
- * The Traefik entrypoint a domain's router binds to. Mirrors the two entrypoints
- * defined in the proxy's static config (install.sh): `websecure` (:443, TLS) and
- * `web` (:80, plain HTTP). Defaults to `websecure` when absent — the
- * long-standing behaviour where every router served HTTPS.
+ * The Traefik entrypoint a domain's router binds to.
  */
 export type DomainEntrypoint = "websecure" | "web";
 
 /**
  * How a domain's TLS certificate is issued — the user's *choice*, distinct from
- * `ssl` (whether a cert is currently active, derived from DNS verification):
- *  - letsencrypt  the HTTP-01 ACME resolver baked into the proxy (resolved via
- *                 `certResolver()` / `DEPLO_CERT_RESOLVER`).
- *  - cloudflare   Cloudflare fronts the domain: it terminates TLS at its edge and
- *                 presents the public certificate, so the origin is served over
- *                 HTTPS (`websecure`) with a DNS-01 resolver named `cloudflare`
- *                 when the proxy defines one. Chosen AUTOMATICALLY the moment the
- *                 DNS check finds a cert-less domain proxied (status
- *                 `cloudflare`) — see `certProviderForDns` — and freely
- *                 changeable afterwards, like any other domain setting.
- *  - custom       a certificate the operator installed on the owning SERVER
- *                 themselves (Settings → Servers → Certificates). The router is
- *                 served over HTTPS on `websecure` with NO `certresolver` label,
- *                 so Traefik presents the certificate from its own store and
- *                 never asks an ACME provider for one. Nothing here checks that
- *                 a certificate covering this hostname is actually installed —
- *                 the domains a certificate covers live on the host, not in the
- *                 control plane.
- *  - none         no certificate — serve plain HTTP on the `web` entrypoint, no
- *                 TLS labels, no forced upgrade. The default for every NEW
- *                 domain (stored explicitly): a cert is only registered when
- *                 the user — or a template that expects HTTPS, or the Cloudflare
- *                 detection above — opts in.
- * Absent ⇒ `letsencrypt` (back-compat with domains created before this field).
+ * `ssl` (whether a cert is currently active, derived from DNS verification): -
+ * letsencrypt the HTTP-01 ACME resolver baked into the proxy (resolved via
+ * `certResolver()` / `DEPLO_CERT_RESOLVER`). - cloudflare Cloudflare fronts the
+ * domain: it terminates TLS at its edge and presents the public certificate, so
+ * the origin is served over HTTPS (`websecure`) with a DNS-01 resolver named
+ * `cloudflare` when the proxy defines one.
  */
 export type CertProvider = "letsencrypt" | "cloudflare" | "none" | "custom";
 
@@ -1191,29 +1135,18 @@ export interface Domain {
   primary: boolean;
   /**
    * The hostname this domain answers a permanent redirect (301) to, or null when
-   * it serves the app. Set only by the `www` ⇄ non-`www` pairing, and only ever
-   * to another hostname of the SAME app that serves — never a chain, never an
-   * outside address. Its router still targets this domain's port/service (a
-   * Traefik router needs a service) but the generated `redirectregex` middleware
-   * answers first, so the container is never reached.
+   * it serves the app.
    */
   redirectTo: string | null;
   ssl: boolean;
   /**
-   * "auto"  the zero-config nip.io hostname Deplo generates once per project
-   * (already routed, no DNS setup). "custom"  a domain the user added and must
-   * point at this server. "redirect"  the `www`/non-`www` companion Deplo
-   * generated for a domain that asked to be paired — the provenance that makes
-   * un-pairing safe to DELETE the row, where a hostname the user typed is only
-   * un-redirected. Defaults to "custom" when absent.
+   * "auto" the zero-config nip.io hostname Deplo generates once per project
+   * (already routed, no DNS setup). "custom" a domain the user added and must
+   * point at this server.
    */
   source?: "auto" | "custom" | "redirect";
   /**
-   * Container port this hostname's Traefik router targets. Null/absent ⇒ route
-   * to the project's default port (single-image `build.port`, or the compose
-   * stack's exposed port) — the long-standing behaviour where every domain hits
-   * the same service. When set, this host gets its own router on that port, so
-   * one container can expose different services on different domains.
+   * Container port this hostname's Traefik router targets.
    */
   port?: number | null;
   /**
@@ -1230,66 +1163,35 @@ export interface Domain {
   /**
    * The hostname this domain REPLACED on the platform it was imported from, or
    * absent when it is the address the app always had.
-   *
-   * A migration cannot always keep the old address: the source's own throwaway
-   * host (`*.sslip.io` and friends, with the OLD server's IP in the name) points
-   * at a machine that is not this one, and a real hostname may already belong to
-   * another team here. The ROUTE is still real, so the domain is re-hosted onto
-   * an address Deplo mints rather than dropped - and this is what lets the app's
-   * Domains section say which address became which. Cleared when that notice is
-   * dismissed.
    */
   importedFrom?: string | null;
   /**
    * Traefik middlewares applied to this host's router, in order, emitted as
-   * `traefik.http.routers.<key>.middlewares=<m1>,<m2>,…`. Each entry is a
-   * middleware reference the proxy already defines (e.g. `redirect-https` or a
-   * provider-qualified `auth@file`). Absent/empty ⇒ no middleware label, the
-   * long-standing behaviour. Two hosts with different chains can't share a
-   * router, so the chain is part of the router-grouping signature.
+   * `traefik.http.routers.<key>.middlewares=<m1>,<m2>,…`.
    */
   middlewares?: string[];
   /**
-   * Path prefix this host's router matches, e.g. `/api`. The router rule becomes
-   * `Host(`name`) && PathPrefix(`/api`)`, so one hostname can route different
-   * paths to different apps/ports (each is its own `Domain` row). Stored
-   * normalised: a single leading slash, no trailing slash, never a scheme/host,
-   * never a backtick (it is interpolated into a Traefik backtick literal).
-   * Absent/empty ⇒ a `Host()`-only rule, the long-standing behaviour. Two hosts
-   * with different prefixes can't share a router, so it is part of the router
-   * signature; a path router is also given a `priority` above every whole-host
-   * router (which would otherwise swallow the path — Traefik defaults an
-   * un-pinned router's priority to its rule LENGTH), longest prefix first.
+   * Path prefix this host's router matches, e.g. `/api`. Stored normalised: a
+   * single leading slash, no trailing slash, never a scheme/host, never a backtick
+   * (it is interpolated into a Traefik backtick literal).
    */
   pathPrefix?: string;
   /**
    * Strip {@link pathPrefix} from the request path before forwarding to the app,
    * via a generated Traefik `stripprefix` middleware prepended to {@link
-   * middlewares} (so user middlewares see the already-stripped path the app
-   * sees). Meaningless without a `pathPrefix` and dropped when absent. Absent/
-   * false ⇒ forward the path unchanged, the long-standing behaviour.
+   * middlewares} (so user middlewares see the already-stripped path the app sees).
    */
   stripPrefix?: boolean;
   /**
    * COMPOSE/template stacks only: which compose service this host's router
-   * targets. The container port comes from that service's compose definition
-   * (the compose file owns the port — there is no per-domain `port` override on
-   * a stack), so `service` is the compose analogue of `port`. Absent ⇒ the
-   * stack's default exposed service (`expose`/`exposes`), the long-standing
-   * behaviour. Ignored for single-image services (which use `port`).
+   * targets.
    */
   service?: string;
   createdAt: string;
 }
 
 /**
- * An HTTP Basic Auth credential that protects EVERY domain of a project. When a
- * project has one or more of these, the deploy/reroute renderers inject a
- * generated Traefik `basicauth` middleware (built from all of them) at the head
- * of every router's middleware chain, so all the project's hostnames sit behind
- * the same browser login prompt. `passwordEnc` is the AES-GCM-encrypted password
- * (reversible, like {@link EnvVar.valueEnc}) so the htpasswd line is re-derived
- * on every render; it is write-only over the API and never returned to a client.
+ * An HTTP Basic Auth credential that protects EVERY domain of a project.
  */
 export interface BasicAuthUser {
   id: ID;
@@ -1320,10 +1222,7 @@ export interface Database {
   /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
   teamId: ID;
   /**
-   * DISPLAY name, editable in Settings → General. It is NOT the container's
-   * identity — {@link host} is (the compose project, its volume and its DNS name
-   * on the `deplo` network), and that is frozen at creation, so a rename is a
-   * pure label change that never touches the running stack. Unique per team.
+   * DISPLAY name, editable in Settings → General.
    */
   name: string;
   /**
@@ -1336,30 +1235,19 @@ export interface Database {
   version: string;
   /**
    * The engine login the connection string authenticates as, and the user the
-   * backup dump execs as (except mysql/mariadb, which always dump as `root` —
-   * see {@link file://./data/backups.ts} `dumpUserFor`). Create-only: the
-   * official images apply the `*_USER` env var only on first init against an
-   * empty volume, so it is display-only on edit. Defaults per engine at creation
-   * (`app`, or `default` for redis); legacy rows are backfilled the same way.
+   * backup dump execs as (except mysql/mariadb, which always dump as `root` — see
+   * {@link file://./data/backups.ts} `dumpUserFor`).
    */
   username: string;
   /**
-   * The logical database created on first init (`POSTGRES_DB` / `MYSQL_DATABASE`
-   * / `CLICKHOUSE_DB` / the mongo default DB). This is the single source of truth
-   * for the logical DB name: the compose `*_DB` env, the connection-string path
-   * segment, and the backup dump target all read it. Defaults to the service
-   * name (`db-<name>`) at creation and legacy rows are backfilled to {@link host}
-   * (which equals that service name), so existing databases dump the identical
-   * database. Redis has no logical DB, so its stored value is an inert
-   * placeholder. Create-only / display-only, like {@link username}.
+   * The logical database created on first init (`POSTGRES_DB` / `MYSQL_DATABASE` /
+   * `CLICKHOUSE_DB` / the mongo default DB).
    */
   dbName: string;
   status: DatabaseStatus;
   /**
-   * Why this database's data did not arrive, when a migration tried to copy it
-   * and could not. Empty in the common case. The twin of {@link App.dataCopyError}
-   * and the more dangerous half: an engine started on the emptied volume does not
-   * fail, it initialises a brand new database over the place the old one was.
+   * Why this database's data did not arrive, when a migration tried to copy it and
+   * could not.
    */
   dataCopyError: string;
   /** The migration still creating this database. See {@link App.migrationRunId}. */
@@ -1372,9 +1260,7 @@ export interface Database {
   exposedPublicly: boolean;
   /**
    * The host port the container publishes when {@link exposedPublicly} is true;
-   * null when not exposed. Distinct from {@link port} (the in-container engine
-   * port): the compose maps `exposedPort:port` so a user can publish on a free
-   * host port instead of colliding with the engine's default on that host.
+   * null when not exposed.
    */
   exposedPort: number | null;
   /**
@@ -1400,13 +1286,8 @@ export interface Database {
    *  to offer the Cron jobs page from it. */
   cronEnabled: boolean;
   /**
-   * Expert override: the engine's own CONFIG FILES, written next to the stack
-   * and bind-mounted into the container. Empty for almost every database.
-   *
-   * The third override, alongside {@link customImage} and {@link customCommand},
-   * and the one an engine actually documents: `postgresql.conf`, `my.cnf`,
-   * `redis.conf`, a script under `/docker-entrypoint-initdb.d`. Without it the
-   * only way to raise `shared_buffers` was a shell on the host.
+   * Expert override: the engine's own CONFIG FILES, written next to the stack and
+   * bind-mounted into the container.
    */
   mounts: DatabaseMount[];
   sizeMb: number;
@@ -1416,11 +1297,6 @@ export interface Database {
 /**
  * One config file of a database: its name in the stack's files directory, its
  * body, and where it lands inside the container.
- *
- * The sibling of `App.mounts`, plus {@link mountPath} — an App's config file is
- * bound by something that already knows where it goes (the stack's own compose,
- * or a Storage **File** entry), while a database's compose is rendered by deplo,
- * so the row is the only thing that can say.
  */
 export interface DatabaseMount {
   /** Relative path inside the stack's files dir, e.g. "postgresql.conf". */
@@ -1443,13 +1319,7 @@ export type S3Provider =
 export type DestinationStatus = "connected" | "error" | "unverified";
 
 /**
- * Where backup artifacts are kept. Two kinds, because demanding an S3 bucket
- * before anyone can take a first backup asks the user to stand up infrastructure
- * they may not have as a precondition for the most basic safety feature.
- *
- *  - `s3`     — an S3-compatible bucket.
- *  - `server` — a directory on a server in the fleet: the same VPS the workload
- *               runs on, or another one (including a storage-only box).
+ * Where backup artifacts are kept.
  */
 export type DestinationKind = "s3" | "server";
 
@@ -1469,9 +1339,7 @@ export interface BackupDestination {
   secretKeyEnc: string | null;
   /**
    * Opt out of the SSRF guard on `endpoint`, so a bucket on the operator's own
-   * private network is reachable at all. Instance-admin only to set — the agent
-   * dials this address as root — and false for everything created from the
-   * ordinary form.
+   * private network is reachable at all.
    */
   allowPrivateEndpoint: boolean;
   /**
@@ -1486,15 +1354,9 @@ export interface BackupDestination {
   /** Directory on that server. NULL ⇒ the agent's own managed store. */
   path: string | null;
   /**
-   * The age keypair the artifacts are encrypted to. The RECIPIENT is public and
-   * is all the agent gets when writing, so a storage host produces artifacts it
-   * cannot itself read. The IDENTITY is the private half and leaves the control
-   * plane only for a restore or a download.
-   *
-   * Set for BOTH kinds. A bucket artifact is encrypted too: a project archive
-   * carries the app's whole decrypted env, so leaving that one destination shape
-   * in the clear undid deplo's own write-only-secrets model. Null only on an
-   * `s3` destination created before that, whose existing objects are plaintext.
+   * The age keypair the artifacts are encrypted to. The RECIPIENT is public and is
+   * all the agent gets when writing, so a storage host produces artifacts it
+   * cannot itself read.
    */
   ageRecipient: string | null;
   ageIdentityEnc: string | null;
@@ -1508,10 +1370,8 @@ export interface BackupDestination {
   createdAt: string;
   /**
    * The last "Test connection" verdict. `lastTestAt` null ⇒ never tested (the
-   * `unverified` badge); a non-null `lastTestAt` with an empty `lastTestError`
-   * ⇒ the probe passed. The error is the agent's VERBATIM message, kept so the
-   * card can say why a destination is red and the connection log can be read
-   * after the fact without re-dialing the destination.
+   * `unverified` badge); a non-null `lastTestAt` with an empty `lastTestError` ⇒
+   * the probe passed.
    */
   lastTestAt: string | null;
   lastTestError: string | null;
@@ -1566,9 +1426,6 @@ export interface Backup {
 
 /**
  * One executed backup — the record of a single dump+upload (or restore source).
- * Persisted in the `backup_runs` table; the source of truth for artifact listing
- * and restore. `backupId` is null for an ad-hoc "back up now" run with no owning
- * schedule.
  */
 export interface BackupRun {
   id: ID;
@@ -1581,10 +1438,10 @@ export interface BackupRun {
   appId: ID | null;
   destinationId: ID;
   /**
-   * The target's id as plain text, carried alongside `databaseId`/`appId`
-   * because those two are `ON DELETE SET NULL`: deleting the app or database
-   * blanked the only thing that named what an artifact belonged to, and its
-   * bytes then sat on the destination with nothing left that could find them.
+   * The target's id as plain text, carried alongside `databaseId`/`appId` because
+   * those two are `ON DELETE SET NULL`: deleting the app or database blanked the
+   * only thing that named what an artifact belonged to, and its bytes then sat on
+   * the destination with nothing left that could find them.
    */
   targetId: ID;
   /** Object key: `deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>`. */
@@ -1592,24 +1449,16 @@ export interface BackupRun {
   sizeBytes: number;
   /**
    * How big the artifact is once decrypted: the exact number of bytes a download
-   * delivers, and so its Content-Length. Not derivable from `sizeBytes` (age
-   * adds a header plus a tag per 64 KiB chunk), so only the agent that wrote the
-   * artifact ever saw it. Null for a run taken before it was recorded, and the
-   * download then sends no length at all rather than a wrong one.
+   * delivers, and so its Content-Length.
    */
   decryptedSizeBytes: number | null;
   /**
-   * Hex sha256 of the artifact as written (ciphertext, before decryption) —
-   * what a restore checks before feeding those bytes to anything. Null for a run
-   * taken before integrity checking shipped, and a restore says so out loud
-   * rather than quietly skipping the check.
+   * Hex sha256 of the artifact as written (ciphertext, before decryption) — what a
+   * restore checks before feeding those bytes to anything.
    */
   sha256: string | null;
   /**
-   * When the orphan sweep first saw this run's target gone. The keep window for
-   * a deleted target's artifacts runs from HERE, not from `startedAt` - an app
-   * deleted today may well have month-old backups, and "keep them" has to mean
-   * something.
+   * When the orphan sweep first saw this run's target gone.
    */
   orphanedAt: string | null;
   status: BackupRunStatus;
@@ -1629,26 +1478,15 @@ export type CronShell = "sh" | "bash";
 export type CronOverlap = "skip" | "allow";
 
 /**
- * How a cron run ended. Six values, and the distinctions all earn their keep:
- *
- *  - `timedout` is apart from `failed` because it points at a SETTING (the job's
- *    timeout) rather than at the command.
- *  - `skipped` never started at all - the container was stopped, or a previous
- *    run was still going. It is not a failure and raises no alert.
- *  - `lost` means Deplo could not find out how it ended, because the agent
- *    restarted while the command was in flight. It is deliberately not `failed`:
- *    the command runs inside the AGENT's process, so a control-plane restart does
- *    not kill it, and a run we lost track of most likely succeeded.
+ * How a cron run ended. It is not a failure and raises no alert. - `lost` means
+ * Deplo could not find out how it ended, because the agent restarted while the
+ * command was in flight.
  */
 export type CronRunStatus =
   "running" | "succeeded" | "failed" | "timedout" | "skipped" | "lost";
 
 /**
  * A scheduled command inside one container of an App or a Database.
- *
- * Stored metadata only; running it produces a {@link CronRun}. The `timezone` is
- * per job and NOT UTC - unlike a {@link Backup}, whose "some time overnight" gets
- * away with a single zone (see ADR-0018).
  */
 export interface CronJob {
   id: ID;
@@ -1689,12 +1527,9 @@ export interface CronJob {
 }
 
 /**
- * One scheduled fire of a {@link CronJob}, retries included.
- *
- * `attempt` counts launches for THIS fire, so one scheduled minute is always one
- * row and the stored output is the LAST attempt's. `command` and the limits are
- * frozen at insert: editing a job mid-flight must not change the deadline the
- * reaper enforces, and the history must say what actually ran.
+ * One scheduled fire of a {@link CronJob}, retries included. `command` and the
+ * limits are frozen at insert: editing a job mid-flight must not change the
+ * deadline the reaper enforces, and the history must say what actually ran.
  */
 export interface CronRun {
   id: ID;
@@ -1775,13 +1610,8 @@ export interface Activity {
    */
   actorUserId: ID | null;
   /**
-   * That person's identity, resolved for display — the avatar the row shows
-   * before the name. Null for a non-human actor ("system" / "github"), for a
-   * deleted account, and for rows written before `actor_user_id` existed, all of
-   * which render the bare {@link actor} string with no picture.
-   *
-   * A DECORATION, not a column: the list batch-resolves it in one query, the way
-   * env authors are resolved.
+   * That person's identity, resolved for display — the avatar the row shows before
+   * the name.
    */
   actorUser: VarAuthor | null;
   appId: ID | null;
@@ -1791,14 +1621,7 @@ export interface Activity {
 /**
  * A unified shared variable (ADR-0010) — ONE variable owned by a team, the
  * replacement for the shared-env group, environment-scoped, and team-global
- * models. It reaches an app through any of three sharing MODES plus a per-app
- * link:
- *  - `teamWide` — every app in the team.
- *  - `environmentIds` — apps living in one of these {@link Environment}s.
- *  - `projectIds` — apps in one of these {@link Project} containers (whitelist).
- *  - `appIds` — an explicit per-app link attached from the app UI.
- * `targets` is the orthogonal runtime axis (production/preview),
- * defaulting to both. Deploy selection/precedence: lib/deploy/env-resolve.ts.
+ * models.
  */
 export interface SharedVar {
   id: ID;
@@ -1836,22 +1659,7 @@ export interface Registry {
 }
 
 /**
- * A plugin a team installed from a plugin repository (ADR-0005). An installed
- * plugin is a host-managed container — NOT an App — so this row is deliberately
- * minimal: no `status`, `url`, `appId`, or token reference. Status is read
- * live from the container at query time; the URL is computed from the stored
- * `slug`.
- *
- * **DORMANT (ADR-0013):** the Plugins feature is deferred and nothing writes this
- * row today — the boot sweep in `lib/plugins/retire.ts` clears any left by an
- * older version. The table and this type stay so the feature returns without a
- * migration.
- *
- * The `slug` is the FROZEN physical identity of the container — its name,
- * compose project, stack file, and Traefik path router all key off it. It is
- * computed once at install (`pluginSlug(catalogId, teamSlug)`) and persisted, so a
- * later team rename never orphans the running container/router — exactly as an
- * app's slug is frozen and `renameApp` never touches it.
+ * A plugin a team installed from a plugin repository (ADR-0005).
  */
 export interface InstalledPlugin {
   id: ID;
@@ -1868,16 +1676,9 @@ export interface InstalledPlugin {
 }
 
 /**
- * Where a team's alerts are delivered.
- *
- * A team configures N of them and any kind may repeat: EACH instance carries its
- * own alert selection, because a team room that wants every deploy outcome and
- * an on-call phone that wants only the failures are the normal case, not the
- * exotic one. See `NotificationChannelInstance`.
- *
- * The union is derived from the array so there is ONE declaration — the GraphQL
- * enum reads the same array, and the two cannot drift.
- * Everything after `telegram` is beta.
+ * Where a team's alerts are delivered. The union is derived from the array so
+ * there is ONE declaration — the GraphQL enum reads the same array, and the two
+ * cannot drift. Everything after `telegram` is beta.
  */
 export const ALL_CHANNELS = [
   "push",
@@ -1901,11 +1702,8 @@ export type EmailProvider = "smtp" | "resend";
 
 /**
  * One notifiable event a team can subscribe to, catalogued with its label,
- * description and default in `lib/alerts.ts`.
- *
- * Every key here MUST have a real emitter. A key nobody dispatches is exactly
- * the bug this feature was built to fix: a switch that promises an alert and
- * delivers silence.
+ * description and default in `lib/alerts.ts`. Every key here MUST have a real
+ * emitter.
  */
 export type AlertKey =
   // Deployments
@@ -1997,14 +1795,9 @@ export const ALL_ALERTS: AlertKey[] = [
 ];
 
 /**
- * ONE configured destination. A team has N of them, and any kind may repeat —
- * two Discord rooms with different alert sets is the normal case, not the
- * exotic one.
- *
- * Flat, mirroring its row: `url`/`target`/`secret*` are the shared concepts
- * (see `notification_channels`), and only the fields this `kind` uses carry
- * meaning — the UI decides which to show. Credentials surface as BITS and have
- * no read path, by design.
+ * ONE configured destination. Flat, mirroring its row: `url`/`target`/`secret*`
+ * are the shared concepts (see `notification_channels`), and only the fields this
+ * `kind` uses carry meaning — the UI decides which to show.
  */
 export interface NotificationChannelInstance {
   id: ID;
@@ -2031,10 +1824,7 @@ export interface NotificationChannelInstance {
 
 /**
  * What the channel modal sends for ONE instance, plus the plaintext credentials
- * the user actually retyped. They ride in their own bag so a masked `…Set` bit
- * can never be mistaken for a value. **An absent or empty secret means "keep the
- * stored one"** — an edit that only moves the SMTP host must not require
- * retyping the password, and there is no reveal path to fill it back in.
+ * the user actually retyped.
  */
 export interface NotificationChannelInput extends Omit<
   NotificationChannelInstance,
@@ -2044,9 +1834,9 @@ export interface NotificationChannelInput extends Omit<
 }
 
 /**
- * A GitHub App connected to this instance, created through GitHub's App Manifest
- * flow - one click, no hand-copied ids and keys. The private key and secrets are
- * encrypted at rest; the dashboard only ever sees the public fields.
+ * A GitHub App connected to this Deplo instance, created through GitHub's App
+ * Manifest flow (one click no manual copy/paste of ids and keys, the way
+ * Dokploy/Coolify do it).
  */
 export interface GithubApp {
   id: ID;
@@ -2087,25 +1877,14 @@ export interface GithubInstallation {
 }
 
 /**
- * Which non-GitHub git host a {@link GitConnection} talks to. GitHub is absent on
- * purpose: it authenticates through a GitHub App, not a stored token, and keeps
- * its own tables and its own UI.
- *
- * `git` is the escape hatch — any git server with no API worth calling. It
- * carries credentials and nothing else: no repository listing, no branch listing,
- * no webhook registration.
+ * Which non-GitHub git host a {@link GitConnection} talks to.
  */
 export type GitProviderId = "gitlab" | "bitbucket" | "gitea" | "git";
 
 /**
- * A team's credentials for one git host, created once in Settings → Git and
- * reused by every App deploying from that host — the counterpart of a
- * {@link GithubInstallation}.
- *
- * The token itself is NEVER in this DTO (no `tokenEnc` field, no reveal path): it
- * is decrypted only at the clone edge and when calling the provider's API.
- * `health` is re-derived by the maintenance sweep and by "Test connection", so a
- * revoked token surfaces before the next deploy fails on it.
+ * A team's credentials for one git host, created once in Settings → Git and reused
+ * by every App deploying from that host — the counterpart of a {@link
+ * GithubInstallation}.
  */
 export interface GitConnection {
   id: ID;
@@ -2117,9 +1896,6 @@ export interface GitConnection {
   baseUrl: string;
   /**
    * The address points inside the deployment, and an instance admin said so.
-   * Surfaced rather than kept internal for the same reason a backup
-   * destination's encryption state is: a connection whose reach nobody can see
-   * is one nobody audits.
    */
   allowPrivateEndpoint: boolean;
   /** Basic-auth username for the clone URL ("oauth2", "x-token-auth", …). */

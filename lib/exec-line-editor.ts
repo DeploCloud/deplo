@@ -1,12 +1,6 @@
 /**
  * The wrap-aware line editor behind the exec console's terminal
- * (`components/apps/exec-terminal.tsx`). xterm.js is rendering-only there —
- * this class owns the edit state (line buffer, caret, history) and emits the
- * escape sequences that keep the on-screen prompt in sync, including when the
- * input wraps across multiple rows.
- *
- * Pure logic with no React/xterm imports so `bun run test` can drive it
- * against a headless terminal and assert real screen contents.
+ * (`components/apps/exec-terminal.tsx`).
  */
 
 /** The terminal surface the editor draws through. */
@@ -53,15 +47,8 @@ export class LineEditor {
   ) {}
 
   /**
-   * Repaint `prompt + next` and park the terminal cursor at `caret`, coping
-   * with input that wraps across rows. When `fromScratch` the cursor is
-   * already at column 0 of a clean region (fresh prompt after output/banner/
-   * reset); otherwise the sequence first climbs from the caret's current row
-   * to the prompt row and clears the stale render to end of screen.
-   *
-   * Invariant: the cursor is always left via explicit moves at
-   * row `⌊(promptLen+caret)/cols⌋`, col `(promptLen+caret)%cols` relative to
-   * the prompt row — never in xterm's ambiguous "pending wrap" state.
+   * Repaint `prompt + next` and park the terminal cursor at `caret`, coping with
+   * input that wraps across rows.
    */
   private repaint(next: string, caret: number, fromScratch = false): void {
     const w = Math.max(1, this.host.cols());
@@ -73,10 +60,8 @@ export class LineEditor {
     }
     seq += this.promptStr + next;
     const end = this.promptLen + next.length;
-    // Writing up to an exact row boundary leaves xterm in "pending wrap"
-    // (cursor logically past the last column). Write one throwaway space to
-    // force the wrap — materialising the next row (and scrolling it in at the
-    // bottom of the screen) so the moves below land deterministically.
+    // Writing up to an exact row boundary leaves xterm in "pending wrap" (cursor
+    // logically past the last column).
     if (end > 0 && end % w === 0) seq += " \r";
     const up = Math.floor(end / w) - Math.floor((this.promptLen + caret) / w);
     if (up > 0) seq += `\x1b[${up}A`;

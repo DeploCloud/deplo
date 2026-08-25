@@ -91,10 +91,10 @@ import type {
   DatabaseType,
 } from "../types";
 
-/** How many run RECORDS a target keeps per destination, regardless of how many
- *  artifacts its schedule asks for. A failed run owns no artifact, so this is the
- *  only thing bounding a long tail of failures; a schedule keeping MORE than this
- *  many artifacts raises it for itself (see {@link pruneRetention}). */
+/**
+ * How many run RECORDS a target keeps per destination, regardless of how many
+ * artifacts its schedule asks for.
+ */
 const MAX_RUNS_PER_TARGET = 50;
 
 /** The ceiling on how many backups one schedule may keep. Not a limit anyone
@@ -205,10 +205,10 @@ export async function listBackups(): Promise<BackupDTO[]> {
 async function filterBackupsToScope<
   T extends { targetKind: BackupTargetKind; appId: string | null },
 >(rows: T[]): Promise<T[]> {
-  // Either principal: a narrowed token and a member on a limited role reach the
-  // same part of the team, so they see the same schedules — and a DATABASE
-  // schedule belongs to neither, which is why the filter drops every row whose
-  // target is not an app they reach.
+  // Either principal: a narrowed token and a member on a limited role reach the same
+  // part of the team, so they see the same schedules — and a DATABASE schedule
+  // belongs to neither, which is why the filter drops every row whose target is not
+  // an app they reach.
   if (await reachesWholeTeam()) return rows;
   const appIds = [
     ...new Set(rows.map((r) => r.appId).filter((id): id is string => !!id)),
@@ -243,24 +243,9 @@ async function filterBackupsToScope<
 }
 
 /**
- * Whether a backup TARGET is reachable by this request. A database target never
- * is for a principal who reaches part of the team (a database belongs to no
- * Project); an app target is exactly when the app is. Inert for every unscoped
- * caller, which is every principal on every instance until someone limits one.
- *
- * The app question is asked of {@link appCapabilities}, not of `appInTeam`. The
- * latter's only scope clause is `appScopeWhere()`, which reads `narrowedScope()`
- * — the API TOKEN's reach, and null for every cookie session. It was the whole
- * gate here, and `backupRuns` carries no capability check of its own
- * (`authScopes: { loggedIn: true }`), so a member on a role limited to one
- * project read the full run history of every app in the team: status, timings,
- * byte size, error text, destination id, and an `objectKey` naming the team and
- * the target. `appCapabilities` answers for the human AND the token, and `[]`
- * there is the same answer an app that isn't there gives.
- *
- * None of the five call sites runs inside `getDb().transaction()`, which is what
- * makes this safe: `appCapabilities` opens its own connection, and one issued
- * while a transaction is open hangs under pglite.
+ * Whether a backup TARGET is reachable by this request. A database target never is
+ * for a principal who reaches part of the team (a database belongs to no Project);
+ * an app target is exactly when the app is.
  */
 async function backupTargetInScope(
   kind: BackupTargetKind,
@@ -273,11 +258,6 @@ async function backupTargetInScope(
 
 /**
  * Trim an incoming cron and REJECT it when it can't be parsed — never repair it.
- * `cronMatches` has to treat an unparseable expression as "never matches" (one
- * bad row must not crash the scheduler tick), so an accepted-but-unparseable
- * schedule is a backup that silently never runs while the UI reports it enabled.
- * An empty string still falls back to the daily default, since that is "the
- * caller didn't choose", not "the caller chose something broken".
  */
 function normalizeSchedule(schedule: string): string {
   const expr = (schedule || DEFAULT_SCHEDULE).trim();
@@ -286,13 +266,8 @@ function normalizeSchedule(schedule: string): string {
 }
 
 /**
- * The zone a schedule's cron is read in.
- *
- * REJECTED, not repaired, for the same reason a bad cron is: `cronMatchesInZone`
- * throws on an unknown zone and the scheduler contains that per row, so an
- * accepted-but-unusable zone is a backup that silently never runs while the UI
- * says it is enabled. Empty falls back to UTC, which is what every schedule made
- * before this was askable already meant.
+ * The zone a schedule's cron is read in. Empty falls back to UTC, which is what
+ * every schedule made before this was askable already meant.
  */
 function normalizeTimezone(tz: string | null | undefined): string {
   const raw = (tz ?? "").trim();
@@ -336,10 +311,10 @@ export async function createBackup(input: {
     throw new Error("Select a destination");
   if (targetKind === "database") {
     if (!databaseId) throw new Error("Select a database to back up");
-    // A principal who reaches only part of the team can't see any database, so
-    // they can't schedule a dump of one either — same answer their own reads
-    // give (`loadDatabase`), and the same one for a narrowed token and a member
-    // on a limited role.
+    // A principal who reaches only part of the team can't see any database, so they
+    // can't schedule a dump of one either — same answer their own reads give
+    // (`loadDatabase`), and the same one for a narrowed token and a member on a limited
+    // role.
     if (
       !(await reachesWholeTeam()) ||
       !(await databaseNameFor(databaseId, teamId))
@@ -383,17 +358,7 @@ export async function createBackup(input: {
 
 /**
  * The user the dump tool authenticates as — NOT always the connection string's
- * display user. For every engine except mysql/mariadb this is the database's
- * stored `username`: the account the image created on first init (POSTGRES_USER /
- * MONGO_INITDB_ROOT_USERNAME / CLICKHOUSE_USER, and redis' built-in `default`),
- * each of which the dump tool can authenticate as (pg_dump/mongodump/clickhouse
- * as a superuser; redis-cli auths with just the password). mysql/mariadb are the
- * exception: their compose only ever provisions `root` (MYSQL_ROOT_PASSWORD), and
- * a scoped `MYSQL_USER` lacks the global grants `mysqldump --databases` needs, so
- * they ALWAYS dump as `root`. Root's password IS the connection-string password
- * (the compose sets both to the same secret — see mysqlEnv in database-compose.ts),
- * so `parseConnectionPassword` still supplies it regardless of the string's user.
- * A `switch` (not a map) so a 7th engine forces an explicit decision here.
+ * display user.
  */
 function dumpUserFor(db: Database): string {
   switch (db.type) {
@@ -409,13 +374,7 @@ function dumpUserFor(db: Database): string {
 }
 
 /**
- * Build the wire {@link DatabaseDescriptor} for a managed database. `container`
- * is the DB stack's deterministic container name (`container_name: db-<name>`
- * in the compose == `db.host`), so the agent execs into exactly it. The dump user
- * is derived by {@link dumpUserFor}; `dbName` is the stored logical database
- * (which the compose `*_DB` env created and the connection string references, so
- * the dump can never target a database that doesn't exist); the password rides
- * decrypted over mTLS.
+ * Build the wire {@link DatabaseDescriptor} for a managed database.
  */
 function databaseDescriptor(db: Database): DatabaseDescriptor {
   return {
@@ -515,13 +474,7 @@ async function resolveTarget(
 /**
  * The ONE executor every real backup goes through — a schedule's "Run now"
  * (`runBackup`), an ad-hoc project run (`runAppBackup`), and (Step 6) the
- * scheduler. It resolves the target + destination, appends a `running`
- * {@link BackupRun}, dumps+uploads via the OWNING agent (capability-preflighted),
- * records the terminal result, then prunes old artifacts. `backupId` is the
- * owning schedule, or null for an ad-hoc run.
- *
- * Returns the finished `BackupRun`. Throws on a hard failure to resolve/dial
- * (the run is still recorded `failed` first, so the history never lies).
+ * scheduler.
  */
 async function executeBackup(
   teamId: string,
@@ -538,11 +491,8 @@ async function executeBackup(
   const startedAt = nowIso();
   const runId = newId("brun");
   // The target id is known up front (it IS the database/project id), so the run
-  // record can be appended BEFORE the expensive resolution (descriptor build,
-  // which for a project dials the agent). That way a resolution failure — a bad
-  // destination, an unreachable agent while reading the stack — is recorded as a
-  // `failed` run, not thrown with no trace: "history never lies", and the Step 6
-  // scheduler's unattended runs are visible even when they fail to start.
+  // record can be appended BEFORE the expensive resolution (descriptor build, which
+  // for a project dials the agent).
   const run: BackupRun = {
     id: runId,
     teamId,
@@ -551,10 +501,9 @@ async function executeBackup(
     databaseId: opts.kind === "database" ? opts.databaseId : null,
     appId: opts.kind === "app" ? opts.appId : null,
     destinationId: opts.destinationId,
-    // Denormalized on purpose: the two FK columns above are ON DELETE SET NULL,
-    // so deleting the app or database blanks them and nothing is left naming
-    // what the artifact on disk belonged to. This one survives, and it is what
-    // the orphan sweep uses to reclaim that disk.
+    // Denormalized on purpose: the two FK columns above are ON DELETE SET NULL, so
+    // deleting the app or database blanks them and nothing is left naming what the
+    // artifact on disk belonged to.
     targetId: (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "",
     objectKey: "", // filled once the key is built (after resolution)
     sizeBytes: 0,
@@ -566,10 +515,7 @@ async function executeBackup(
     startedAt,
     finishedAt: null,
   };
-  // START transaction (short): persist the `running` run + stamp the owning
-  // schedule. This is the FIRST of the two short transactions; the long agent
-  // dump runs BETWEEN them, never inside a tx (PLAN §1 rule (a) — never hold a
-  // connection + locks across a gRPC call).
+  // START transaction (short): persist the `running` run + stamp the owning schedule.
   await getDb().transaction(async (tx) => {
     await tx.insert(backupRunsTable).values(backupRunToRow(run));
     if (opts.backupId) {
@@ -646,12 +592,8 @@ async function executeBackup(
     if (!result.ok)
       failure = result.error || "the agent reported a failed backup";
 
-    // Retention runs on success only (a failed run wrote no object). Best-effort:
-    // a prune failure must never fail the backup the operator asked for.
-    // An AD-HOC run (no owning schedule) has no retention policy of its own — its
-    // `retentionCount` is a fabricated default, and pruning by it would delete
-    // artifacts of schedules keeping more on the same target+destination. It
-    // prunes to the record cap and nothing tighter.
+    // Retention runs on success only (a failed run wrote no object). Best-effort: a
+    // prune failure must never fail the backup the operator asked for.
     if (!failure) {
       try {
         await pruneRetention(
@@ -674,14 +616,7 @@ async function executeBackup(
 
   const finishedAt = nowIso();
   // TERMINAL transaction (short): flip the run to its final status + stamp the
-  // schedule. The SECOND of the two short transactions; the agent dump completed
-  // above, outside any tx (PLAN §1 rule (a)).
-  //
-  // A COMPARE-AND-SWAP on `running`, the same shape `commitOutcome` uses for a
-  // stopped build: `cancelBackupRun` flips the row on another connection while
-  // this is still unwinding, and a cancel that landed at ANY point before this
-  // write must win. 0 rows match, the run stays `canceled`, and the block below
-  // clears up after it.
+  // schedule.
   let canceled = false;
   const finished = await getDb().transaction(async (tx): Promise<BackupRun> => {
     const set = failure
@@ -711,10 +646,8 @@ async function executeBackup(
         ),
       )
       .returning();
-    // The record can be gone (deleting a target sweeps its run history, and a
-    // backup can be in flight when that happens) or no longer `running` (it was
-    // canceled). Both come back empty; the second is the one worth knowing about,
-    // so it is asked for rather than assumed.
+    // The record can be gone (deleting a target sweeps its run history, and a backup
+    // can be in flight when that happens) or no longer `running` (it was canceled).
     if (updated.length === 0) {
       const still = await tx
         .select({ status: backupRunsTable.status })
@@ -737,12 +670,7 @@ async function executeBackup(
   });
 
   // The cancel already said what happened, in its own Activity entry and to the
-  // person who pressed the button. What it could NOT know is whether the dump
-  // beat it: a cancel landing in the instant between the agent finishing its
-  // upload and the write above leaves a complete artifact at the destination with
-  // no successful run pointing at it - an orphan nothing would ever collect,
-  // which for a backup is a multi-GB object billed forever. So the artifact goes
-  // with the run that was stopped.
+  // person who pressed the button.
   if (canceled) {
     if (!failure && result?.ok && result.objectKey && creds) {
       try {
@@ -787,24 +715,8 @@ async function executeBackup(
 
 /**
  * Prune a target's artifacts down to the newest `keepLast` successful runs, and
- * its leftover run RECORDS down to the cap. We delete the OLD artifacts
- * individually, by exact key, rather than by prefix — so a still-current
- * artifact, or another destination sharing the same folder on the same host, is
- * never caught.
- * A `running` run is left alone (it's in flight). Only successful runs own an
- * object worth deleting.
- *
- * SCOPED TO ONE DESTINATION: a target can have runs in more than one place (an
- * ad-hoc run to a different destination, a re-pointed schedule), and we only hold
- * THIS destination's creds here. Pruning across destinations would compute the
- * "newest success to keep" against the wrong set AND drop the OTHER destination's
- * run records while their artifacts survive (an orphan + a vanished restore
- * point). So we consider only runs that live in `destinationId`.
- *
- * A run record is dropped ONLY when its object is gone — actually deleted, or it
- * never owned one (a failed run). A delete that FAILS (threw, or the agent
- * resolved `ok:false` on an S3 hiccup) keeps the record so the next prune retries
- * the object rather than orphaning it.
+ * its leftover run RECORDS down to the cap. A run record is dropped ONLY when its
+ * object is gone — actually deleted, or it never owned one (a failed run).
  */
 async function pruneRetention(
   teamId: string,
@@ -841,12 +753,10 @@ async function pruneRetention(
   if (toDelete.length) {
     const creds = await getDestinationWithSecretsForTeam(teamId, destinationId);
     try {
-      // Routed by DESTINATION, not by target: an artifact on another server's
-      // disk is only reachable through THAT server's agent, and dialing the
-      // workload's host instead would answer "no such file" forever — leaking
-      // the artifact while the record quietly disappeared. One connection for
-      // the whole sweep: a prune retires up to MAX_RUNS_PER_TARGET artifacts,
-      // and every dial mints a fresh client certificate.
+      // Routed by DESTINATION, not by target: an artifact on another server's disk is
+      // only reachable through THAT server's agent, and dialing the workload's host
+      // instead would answer "no such file" forever — leaking the artifact while the
+      // record quietly disappeared.
       const results = await deleteManyFromDestination(
         creds,
         target.serverId,
@@ -854,10 +764,9 @@ async function pruneRetention(
       );
       results.forEach((res, i) => {
         const r = toDelete[i]!;
-        // The agent resolves `ok:false` (not a throw) on a destination-side
-        // failure, so gate on `ok` — only a confirmed delete (incl. idempotent
-        // already-gone) retires the record. A transient failure keeps it for the
-        // next prune.
+        // The agent resolves `ok:false` (not a throw) on a destination-side failure, so
+        // gate on `ok` — only a confirmed delete (incl. idempotent already-gone) retires
+        // the record.
         if (res.ok) removable.add(r.id);
         else
           console.warn(
@@ -907,10 +816,7 @@ async function loadRunsForTarget(
 /* ------------------------------------------------------------------ */
 
 /**
- * Gate a backup operation on its TARGET. An app target answers to its own node —
- * `manage_backups` / `restore_backups` / `delete_backups` can be held on one app
- * or folder alone (ADR-0016) — while a database target has no node dimension and
- * stays team-wide.
+ * Gate a backup operation on its TARGET.
  */
 async function requireBackupCapability(
   target: { targetKind: BackupTargetKind; appId: string | null },
@@ -920,12 +826,10 @@ async function requireBackupCapability(
     await requireAppCapability(target.appId, cap);
     return;
   }
-  // A database belongs to no Project, so a principal who reaches only part of
-  // the team reaches none of them — and all three capabilities here survive the
-  // clamp (they mean something on an app), so the team-wide `requireCapability`
-  // below would let one through. NOT FOUND rather than a scope error, the same answer
-  // {@link deleteBackupArtifacts} gives: a scope must never become an oracle for
-  // which backup ids exist.
+  // A database belongs to no Project, so a principal who reaches only part of the
+  // team reaches none of them — and all three capabilities here survive the clamp
+  // (they mean something on an app), so the team-wide `requireCapability` below would
+  // let one through.
   if (!(await reachesWholeTeam())) throw new Error("Not found");
   await requireCapability(cap);
 }
@@ -960,15 +864,7 @@ async function loadBackup(id: string, teamId: string): Promise<Backup | null> {
 
 /**
  * Run a backup SCHEDULE unattended (Step 6 scheduler) — the session-free twin of
- * {@link runBackup}. The scheduler tick fires with NO request context, so there
- * is no `requireCapability`/`requireActiveTeamId` to lean on: it has already
- * claimed the cross-process lease and read the enabled schedule straight off the
- * store, so it passes the row's own `teamId` (the authority is the schedule
- * itself, created earlier under `manage_infra`) and a synthetic "Scheduler"
- * actor. Shares the one {@link executeBackup} with the manual paths, so an
- * unattended run records the same `BackupRun` history + retention. Never throws —
- * a failed run is recorded `failed` by the executor and the failure is swallowed
- * so one bad schedule can't abort the tick's remaining backups.
+ * {@link runBackup}.
  */
 export async function runScheduledBackup(backup: Backup): Promise<void> {
   try {
@@ -988,17 +884,7 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
 
 /**
  * Ad-hoc "Back up now" — one run with no owning schedule, sharing the executor
- * with `backupId: null`. Used by the Backups tab of an app and of a database.
- *
- * With no schedule to read a policy from there is nothing to retain BY: the run
- * prunes to the record cap and nothing tighter, so pressing "Back up now" can
- * never delete the artifacts of a schedule that keeps more on the same
- * target+destination.
- *
- * The gate splits exactly the way {@link requireBackupCapability} splits: an app
- * target answers to its own node — `manage_backups` can be held on one app or
- * folder alone (ADR-0016) — while a database target has no node dimension and
- * stays team-wide.
+ * with `backupId: null`.
  */
 async function runAdHocBackup(
   kind: BackupTargetKind,
@@ -1051,35 +937,16 @@ export function runDatabaseBackup(
 }
 
 /**
- * Stream one backup artifact out, decrypted, for the download route.
- *
- * Gated on `restore_backups`, not on `manage_backups`: downloading a dump hands
- * over every byte the target holds, which is the same power a restore gives and
- * strictly more than scheduling one. `restore_backups` is already the sensitive
- * capability the token presets withhold, so this needs no new one.
- *
- * Works for BOTH destination kinds. A bucket artifact used to be refused here
- * with instructions - fetch the object with your own S3 credentials, then
- * decrypt it yourself with the recovery key - which made the Download button
- * dead for every team whose backups live in a bucket, and answered a panel
- * question with a shell. The agent reads the object out and decrypts it on the
- * way, the same as it already did for one on its own disk.
- *
- * Returns the chunks plus the filename to offer. The caller MUST call `close()`
- * once the response is finished — the agent connection stays open behind it.
+ * Stream one backup artifact out, decrypted, for the download route. The caller
+ * MUST call `close()` once the response is finished — the agent connection stays
+ * open behind it.
  */
 export async function downloadBackupArtifact(runId: string): Promise<{
   filename: string;
   /**
-   * The exact number of bytes the stream below will produce, or null when the
-   * run never recorded it (taken before the agent reported it). The route turns
-   * it into `Content-Length`, which is the whole difference between a browser
-   * that shows a size, a percentage and an estimate and one that shows a
-   * download with no end in sight.
-   *
-   * NOT `sizeBytes`: that is the artifact as STORED, and the agent strips the
-   * age layer on the way out. Advertising it would leave the browser waiting for
-   * bytes that never come.
+   * The exact number of bytes the stream below will produce, or null when the run
+   * never recorded it (taken before the agent reported it). Advertising it would
+   * leave the browser waiting for bytes that never come.
    */
   sizeBytes: number | null;
   chunks: AsyncGenerator<Buffer, void, unknown>;
@@ -1111,11 +978,8 @@ export async function downloadBackupArtifact(runId: string): Promise<{
   const target = await downloadTargetFor(run, teamId);
   const label = target.label;
 
-  // The destination decides WHICH agent fetches it: its own host for a store,
-  // the workload's for a bucket. A run whose target has since been deleted has no
-  // workload host left, and any provisioned agent can dial a bucket - so the
-  // artifact of a deleted app stays downloadable instead of becoming unreachable
-  // the moment the thing it backed up is gone.
+  // The destination decides WHICH agent fetches it: its own host for a store, the
+  // workload's for a bucket.
   const via =
     destinationServerId(creds.destination, target.serverId ?? "") ||
     (await anyBackupCapableServer());
@@ -1130,11 +994,8 @@ export async function downloadBackupArtifact(runId: string): Promise<{
     run.sha256 ?? "",
   );
 
-  // Recorded HERE, when the stream opens, not when it finishes — and worded for
-  // that instant. The audit-relevant fact is that this person was handed the
-  // decryption key's output at all; a download they abort halfway still exposed
-  // the bytes it delivered, so "started" is the honest verb and waiting for a
-  // clean EOF would simply lose the entry for anyone who cancelled.
+  // Recorded HERE, when the stream opens, not when it finishes — and worded for that
+  // instant.
   await recordActivity(
     "backup",
     `Started downloading a backup of ${label}`,
@@ -1150,17 +1011,8 @@ export async function downloadBackupArtifact(runId: string): Promise<{
 }
 
 /**
- * What a download needs to know about the run's target: what to call the file,
- * and which host runs the thing it came from.
- *
- * Deliberately NOT `resolveTarget`: that one builds the full project descriptor,
- * which dials the owning agent to read the live stack. A download needs a name
- * and a server id, and paying for a round trip to get them would make every
- * download wait on the very host it may not even be talking to.
- *
- * Both are best-effort. A run outlives its target (`app_id` / `database_id` are
- * ON DELETE SET NULL), and an artifact whose app is gone is exactly the one
- * somebody still wants.
+ * What a download needs to know about the run's target: what to call the file, and
+ * which host runs the thing it came from.
  */
 async function downloadTargetFor(
   run: BackupRun,
@@ -1188,10 +1040,7 @@ async function downloadTargetFor(
 }
 
 /**
- * The name the browser saves the artifact under. The object key is stable and
- * unguessable on purpose (`…/<stamp>-<runId>.tar.gz.age`), which makes it a poor
- * filename — so the download offers `<target>-<stamp>.<ext>`, with the `.age`
- * dropped because what arrives has already been decrypted.
+ * The name the browser saves the artifact under.
  */
 function downloadFilename(label: string, run: BackupRun): string {
   const slug =
@@ -1207,11 +1056,7 @@ function downloadFilename(label: string, run: BackupRun): string {
 }
 
 /**
- * Restore a backup IN PLACE from one of its recorded runs. Loads the
- * `BackupRun`, decrypts the destination creds, resolves the owning server, and
- * streams the agent's `Restore` to completion (DB = drop-and-recreate; project =
- * stop → wipe + untar → re-Reroute the snapshot). Guarded by `restore_backups`;
- * the UI adds a typed confirmation. Throws on a failed restore.
+ * Restore a backup IN PLACE from one of its recorded runs.
  */
 export async function restoreBackup(runId: string): Promise<void> {
   const { membership } = await requireMembership();
@@ -1251,20 +1096,13 @@ export async function restoreBackup(runId: string): Promise<void> {
   // deploy, a delete, or a second restore of the same app: those all hold
   // `app-lifecycle:<appId>` (see `deleteApp` and the deploy pipeline) and this did
   // not, so a concurrent `compose up` could race the wipe on the same volumes.
-  // Database targets have no app-lifecycle key; they serialize on their own
-  // provisioning lock, so only the app arm needs it here.
   const withLifecycleLock = async <T>(fn: () => Promise<T>): Promise<T> =>
     run.targetKind === "app" && target.appId
       ? withKeyedLock(`app-lifecycle:${target.appId}`, fn)
       : fn();
   await withLifecycleLock(async () => {
     try {
-      // Say what is happening BEFORE it starts. The agent stops the stack, wipes it
-      // and untars the snapshot, so for the whole restore the host honestly reports
-      // nothing running — which the status derivation, correctly for every other
-      // case, painted as a red "Not running" and then "Degraded". Persisted rather
-      // than local so it survives a reload and every client sees it, exactly like
-      // `stopping`; `setAppStatus` publishes it to the live subscription.
+      // Say what is happening BEFORE it starts.
       if (run.targetKind === "app" && target.appId)
         await setAppStatus(target.appId, "restoring");
       const result = await restoreFromDestination(
@@ -1286,10 +1124,7 @@ export async function restoreBackup(runId: string): Promise<void> {
     } catch (e) {
       failure = (mapBackupUnsupported(e) as Error).message;
     } finally {
-      // The agent's app restore ends in a Reroute, so a clean run leaves the stack
-      // up. A failed one leaves it in whatever state the failure found it: "error"
-      // is the honest answer, and the telemetry reconciler promotes it back to
-      // "active" on its own if the containers are in fact running.
+      // The agent's app restore ends in a Reroute, so a clean run leaves the stack up.
       if (run.targetKind === "app" && target.appId)
         await setAppStatus(target.appId, failure ? "error" : "active");
     }
@@ -1421,14 +1256,10 @@ export async function prepareUploadRestore(input: {
   let opened: Awaited<ReturnType<typeof openUploadRestore>> | null = null;
   let target: ResolvedTarget;
   try {
-    // The artifact is judged FIRST, before the target is even resolved: for an
-    // app that resolution already dials the owning agent (the descriptor carries
-    // the live stack), and a file that was never a backup should cost nobody a
-    // round trip, let alone reach a host.
-    //
-    // Buffer only the head, then hand the SAME reader to the pump: the bytes
-    // already read are re-emitted first and the rest streams straight through,
-    // so nothing is ever held in memory but this prefix.
+    // The artifact is judged FIRST, before the target is even resolved: for an app that
+    // resolution already dials the owning agent (the descriptor carries the live
+    // stack), and a file that was never a backup should cost nobody a round trip, let
+    // alone reach a host.
     const reader = input.body.getReader();
     const head = await readUploadHead(reader);
     const { encrypted } = await sniffArtifact(head, {
@@ -2129,9 +1960,7 @@ export async function deleteAllBackupArtifacts(input: {
   if (destinations.length === 0) return { deleted: 0, failedDestinations: [] };
   if (!serverId) {
     // The target row is gone (or never ours) yet run records linger — there is no
-    // owning agent left to reach the buckets. Drop the orphaned records so history
-    // matches reality, and report the destinations as failed (their objects can't
-    // be swept from here) so the caller doesn't claim a clean wipe.
+    // owning agent left to reach the buckets.
     await getDb()
       .delete(backupRunsTable)
       .where(

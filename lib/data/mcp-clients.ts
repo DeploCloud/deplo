@@ -26,30 +26,9 @@ import { getMcpSettings } from "./mcp-settings";
 import { recordActivity } from "./activity";
 
 /**
- * Connecting an AI client to a team, over OAuth.
- *
- * The whole design is in one sentence: **approving the consent screen mints an
- * ordinary `api_tokens` row**, and the OAuth access token the client goes on to
- * present is only a pointer at it (`lib/data/tokens.ts`). Nothing here decides
- * what an agent may do at request time — the token's Capabilities do, exactly as
- * for a token someone typed into a terminal. That is ADR-0021 §2's "there is no
- * second authorization path, and there must never be one", kept true by not
+ * Connecting an AI client to a team, over OAuth. That is ADR-0021 §2's "there is
+ * no second authorization path, and there must never be one", kept true by not
  * building one.
- *
- * So the gates below are the gates on MINTING a credential, not on using it:
- *
- *  - `manage_mcp` — whether this person may let an AI agent into the team at all
- *    (ADR-0021 §5). Calling `requireCapability` is also what runs `membershipFor`,
- *    which is where the team's two-factor policy refuses.
- *  - `teams.mcp_enabled` — the team's own switch, checked at the DOOR and not
- *    only at the request, so turning it off does not leave connections that
- *    resume the moment it flips back.
- *  - `manage_tokens` + `withinActor`, inside `createToken` — nobody grants a
- *    capability they do not hold themselves.
- *
- * `instanceAdmin` is not a parameter and cannot be reached from here: the token
- * is always scoped to the chosen team, and a scoped token is refused instance
- * administration outright.
  */
 
 /** A registered client, as the consent screen shows it. */
@@ -72,14 +51,8 @@ export interface McpConnectionDTO {
    */
   id: string;
   /**
-   * How it got in. `web` is an OAuth connector (claude.ai, ChatGPT) that came
-   * through the consent screen and carries a registered client's own name;
-   * `token` is a `deplo_` bearer somebody pasted into a terminal or IDE agent,
-   * and the only name it has is the one they gave the token.
-   *
-   * Two shapes, ONE list, because the question the screen answers is "what can
-   * act in this team over MCP" and a split would answer it twice. Revoke is the
-   * same call for both, which is the point of ADR-0022 §1.
+   * How it got in. Two shapes, ONE list, because the question the screen answers
+   * is "what can act in this team over MCP" and a split would answer it twice.
    */
   kind: "web" | "token";
   clientName: string;
@@ -107,42 +80,17 @@ const MAX_CLIENT_NAME = 40;
 const CONSENT_FRESHNESS_MS = 5 * 60 * 1000;
 
 /**
- * Refuse to mint unless the person has JUST approved this client for real.
- *
- * Without this the mint answers to a `client_id` and a session and nothing
- * else — so a link to `/oauth/consent?client_id=<mine>` is enough to make
- * somebody with the capabilities click Authorize and mint a live API token
- * bound to a client they never heard of. It could not be used immediately (the
- * attacker still has no signed consent), but the credential would exist.
- *
- * The proof is a row rather than a signature: `POST /oauth2/consent` verifies
- * the provider's own HMAC over the authorization query before it writes
- * `oauth_consent`, so the row IS the verified approval, and re-deriving that
- * signature here would be re-implementing the library's crypto to learn
- * something the database already knows. The page therefore posts the consent
- * FIRST and mints second.
- *
- * Freshness matters as much as existence: a consent from a previous connection
- * would otherwise stay a standing permission to mint. Revoking the LAST team of
- * a connection deletes the row (`forgetOauthGrant`), and this window closes the
- * rest - including a partial revoke, which leaves the consent alone on purpose.
+ * Refuse to mint unless the person has JUST approved this client for real. It
+ * could not be used immediately (the attacker still has no signed consent), but
+ * the credential would exist.
  */
 async function assertFreshConsent(
   clientId: string,
   userId: string,
 ): Promise<void> {
-  // The age is compared in JS, and that is the CORRECT half of a real trap.
-  //
-  // These are Better Auth's tables, so the columns are plain `timestamp`
-  // WITHOUT a time zone — the one exception `AGENTS.md` allows to
-  // `isoTimestamptz`. On a naive column the two writers do not agree: a value
-  // the DRIVER writes (a JS `Date`, which is how the plugin writes this row)
-  // reads back as the same instant, while a value SQL `now()` writes comes back
-  // shifted by the server's offset. Measured on a UTC+2 box: driver-written is
-  // off by 7ms, `now()`-written by exactly an hour. So comparing this row
-  // against `now()` in SQL is what breaks, and comparing it against `Date.now()`
-  // is what works. Anything seeding this table in a test has to write it the way
-  // the application does, or it will disagree with production.
+  // The age is compared in JS, and that is the CORRECT half of a real trap. So
+  // comparing this row against `now()` in SQL is what breaks, and comparing it
+  // against `Date.now()` is what works.
   const row = (
     await getDb()
       .select({
@@ -166,12 +114,9 @@ async function assertFreshConsent(
 }
 
 /**
- * The teams the named projects, folders and apps belong to.
- *
- * A connection reaches every team its scope touches, not only the ones ticked
- * as wholes — so a project is a grant of its team, and has to pass the same
- * per-team gate. Refuses an id that resolves to nothing rather than silently
- * dropping it, because a scope that quietly loses a node is a scope nobody read.
+ * The teams the named projects, folders and apps belong to. A connection reaches
+ * every team its scope touches, not only the ones ticked as wholes — so a project
+ * is a grant of its team, and has to pass the same per-team gate.
  */
 async function teamsOfNodes(input: TokenScopeInput): Promise<string[]> {
   const named = new Set([
@@ -210,12 +155,6 @@ async function teamsOfNodes(input: TokenScopeInput): Promise<string[]> {
 
 /**
  * May this person let an AI client into THIS team?
- *
- * Asked per team and answered in that team: membership (which is also where the
- * two-factor policy refuses), the capability that governs AI access, and the
- * team's own switch. `createToken` clamps what the connection may DO to what the
- * approver holds, re-checked per team on every request — this is the separate
- * question of whether an agent belongs there at all.
  */
 async function assertMayConnect(teamId: string, userId: string): Promise<void> {
   const membership = await membershipFor(userId, teamId);
@@ -237,14 +176,9 @@ async function assertMayConnect(teamId: string, userId: string): Promise<void> {
 }
 
 /**
- * The teams this person may connect an AI client to, right now.
- *
- * Exactly the question {@link assertMayConnect} asks at the mint, asked ahead of
- * time for every team they are in — so the consent screen can tick them all to
- * begin with. A screen that opens with nothing ticked never says which teams the
- * app is getting: the answer it silently meant ("the one you came from") was
- * readable only by someone who knew the rule. A team the person may NOT grant
- * stays unticked, because ticking it would turn Authorize into a refusal.
+ * The teams this person may connect an AI client to, right now. A team the person
+ * may NOT grant stays unticked, because ticking it would turn Authorize into a
+ * refusal.
  */
 export async function listConnectableTeamIds(): Promise<string[]> {
   const user = await assertUser();
@@ -281,11 +215,6 @@ function originOf(url: string | null | undefined): string | null {
 
 /**
  * The client a consent request names.
- *
- * Read straight from the row rather than through `auth.api`: this is public
- * metadata a client published about itself at registration, it is not team state,
- * and the consent page is an RSC that needs it before anything is gated. Returns
- * null for an unknown or disabled client so the page can refuse plainly.
  */
 export async function getOAuthClientForConsent(
   clientId: string,
@@ -316,48 +245,20 @@ export async function getOAuthClientForConsent(
 }
 
 /**
- * `teamIds` names the teams this connection may work in. The team it is created
- * FROM is always one of them — you cannot connect a client from here and leave
- * here out — and every team named gets the same gate, checked in that team and
- * not in this one.
+ * `teamIds` names the teams this connection may work in.
  */
 export interface AuthorizeMcpClientInput extends TokenScopeInput {
   clientId: string;
   capabilities?: Capability[];
   /**
    * The team the consent screen SHOWED, for the server to disagree with.
-   *
-   * Not the client choosing the team — the server still takes it from the
-   * session. This is the screen saying what it displayed, so a team that
-   * changed underneath (another tab, a half-finished switch) is refused instead
-   * of quietly connecting the client somewhere the person never read.
    */
   expectedTeamId?: string;
 }
 
 /**
- * Every gate, and the mint. This is deplo's whole half of a consent.
- *
- * The `raw` secret `createToken` returns is DROPPED on the floor. It is a live
- * bearer, and the client is going to be handed an OAuth access token instead;
- * letting it reach a response, a redirect URL or the Activity trail would leave
- * a working credential behind after the connection is revoked.
- *
- * The credential is minted BEFORE the browser posts the consent, because a
- * consent with nothing behind it hands the client a code that resolves to
- * nothing. The opposite leftover — a token whose consent then failed — shows up
- * as an unused connection in both settings pages, is one click to revoke, and is
- * overwritten by re-approving through the `(client_id, user_id)` unique index.
- *
- * **The handshake that follows is the BROWSER's, not ours, and it cannot be
- * moved here.** `POST /api/auth/oauth2/consent` funnels into the provider's
- * `authorizeEndpoint`, which opens with `if (!ctx.request) throw
- * UNAUTHORIZED("request not found")` — an in-process `auth.api.*({body,
- * headers})` call has no `ctx.request` by construction, so calling it from a
- * resolver fails every time, and it fails with an APIError whose `message` is
- * EMPTY (the reason lives in `body.error_description`), which surfaces as an
- * error notification with nothing written in it. Mint here, let the page post
- * the consent, and both halves are exercised by the path production uses.
+ * Every gate, and the mint. The `raw` secret `createToken` returns is DROPPED on
+ * the floor.
  */
 export async function mintMcpConnection(
   input: AuthorizeMcpClientInput,
@@ -394,20 +295,9 @@ export async function mintMcpConnection(
       ),
     );
 
-  // Which teams this connection may work in — and the gate runs once PER TEAM,
-  // in that team.
-  //
-  // Naming a team is granting an AI client the run of it, so the question
-  // `manage_mcp` answers ("may an agent drive this team at all") has to be asked
-  // where the answer applies. Holding it here says nothing about there. The
-  // team being connected FROM is always included: you cannot connect a client
-  // from a team and leave that team out.
-  //
-  // Which team a given call then acts in is the call's own `team` argument — the
-  // protocol is stateless, so it is declared per request and never remembered
-  // (ADR-0021 §3). A team that was not granted is REFUSED there, never quietly
-  // swapped for another: that silent swap is how an app was once created in a
-  // team nobody had chosen.
+  // Which teams this connection may work in — and the gate runs once PER TEAM, in
+  // that team. The team being connected FROM is always included: you cannot connect a
+  // client from a team and leave that team out.
   const nodeTeams = await teamsOfNodes(input);
   const granted = [
     ...new Set([teamId, ...(input.teamIds ?? []), ...nodeTeams]),
@@ -450,30 +340,17 @@ export async function mintMcpConnection(
 }
 
 /**
- * The AI clients connected to the active team.
- *
- * Scoped like `listTokens`: a narrowed token has no business enumerating a team's
- * other credentials. Every connection that can ACT here is listed, whoever
- * approved it - the same row is also visible in Settings → API tokens, marked,
- * so one screen still answers "who can act in this team".
- *
- * TWO shapes, one list. An OAuth connector has an `oauth_client_id` from the
- * moment it is approved, so it is listed before it has ever called anything -
- * approving it IS the connection. A `deplo_` bearer has no such moment: it is
- * an ordinary token until somebody pastes it into Claude Code, and the only
- * evidence that happened is `mcp_last_used_at`. Listing every token that COULD
- * speak MCP instead would fill this screen with CI credentials and call them
- * connected agents, which is the opposite of what a company comes here to ask.
+ * The AI clients connected to the active team. An OAuth connector has an
+ * `oauth_client_id` from the moment it is approved, so it is listed before it has
+ * ever called anything - approving it IS the connection.
  */
 export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
   const teamId = await requireActiveTeamId();
   await requireTeamWide("connected MCP clients");
 
   // Every connection that can ACT here, not the ones minted here — the same rule
-  // `listTokens` follows, and for its reason: a team that cannot see a
-  // credential operating inside it cannot revoke it either. Filtering on the
-  // home team looked identical while a connection reached exactly one team, and
-  // would have hidden an agent from a team the moment one reached two.
+  // `listTokens` follows, and for its reason: a team that cannot see a credential
+  // operating inside it cannot revoke it either.
   const reaching = await tokenIdsReaching(teamId);
   if (reaching.size === 0) return [];
 
@@ -564,17 +441,9 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
 }
 
 /**
- * Has this token spoken MCP yet?
- *
- * The connect wizard's last step waits on this rather than declaring success
- * when the snippet is copied: "you pasted a config" and "your agent is talking
- * to deplo" are different claims, and only the second one is worth showing
- * somebody. It is deliberately a boolean and not a timestamp — the caller is
- * asking one question, and an id from another team must answer it with `false`
- * rather than with an error that confirms the row exists.
- *
- * Gated exactly like `listMcpConnections`, because it is a one-row read of the
- * same list.
+ * Has this token spoken MCP yet? It is deliberately a boolean and not a timestamp
+ * — the caller is asking one question, and an id from another team must answer it
+ * with `false` rather than with an error that confirms the row exists.
  */
 export async function mcpTokenConnected(tokenId: string): Promise<boolean> {
   const teamId = await requireActiveTeamId();

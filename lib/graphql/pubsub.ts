@@ -107,6 +107,7 @@ interface RemoteMessage {
  * Read a peer's notification, or `null` for anything not to be republished: our
  * own echo, a channel this version does not know, or a payload that is not one of
  * ours at all (the channel name is a plain string - somebody else's `NOTIFY` can
+ * land on it).
  */
 export function decodeRemote(raw: string): RemoteMessage | null {
   let m: unknown;

@@ -2,9 +2,6 @@
  * What a GitHub `pull_request` delivery MEANS for one app — the preview twin of
  * [git-webhook](./git-webhook.ts), and pure for the same reason: the decision is
  * the part worth testing, and the route around it is plumbing.
- *
- * No imports, no store, no fetch. The route parses, asks `previewIntent` once
- * per candidate app, and does what it is told.
  */
 
 /** The fields of a `pull_request` payload this module reads. */
@@ -110,10 +107,8 @@ export function parsePullRequestEvent(
     headCloneUrl: pr.head?.repo?.clone_url ?? "",
     baseRepo,
     baseBranch: pr.base?.ref ?? "",
-    // NOT `head.repo.fork`: a pull request opened from an unrelated repository
-    // in the same organisation reports `fork: false` and is every bit as
-    // untrusted. The only question that matters is whether the head lives
-    // somewhere the operator controls.
+    // NOT `head.repo.fork`: a pull request opened from an unrelated repository in the
+    // same organisation reports `fork: false` and is every bit as untrusted.
     isFork: !headRepo || headRepo !== baseRepo,
     draft: Boolean(pr.draft),
     merged: Boolean(pr.merged),
@@ -127,36 +122,8 @@ export function parsePullRequestEvent(
 }
 
 /**
- * What to do with one delivery, for one app. The ORDER of the checks is the
- * design:
- *
- *  1. `closed` destroys FIRST, before any gate. A preview created while
- *     previews were on must still be torn down after they are switched off, or
- *     after the app is repointed at another branch — otherwise the switch
- *     silently strands containers. Destroying is always safe: the route only
- *     acts on a preview row that exists.
- *  2. previews off ⇒ nothing.
- *  3. the pull request must TARGET the branch this app tracks. This is what
- *     makes "one repository backing three apps" behave: an app deployed from
- *     `main` must not build pull requests aimed at `release/v2`. It is also the
- *     one place a user can be silently surprised, which is why the empty state
- *     names the branch out loud.
- *  4. the LABEL filter, when the app has one. A pull request that carries none
- *     of the required labels gets nothing — and losing its last one DESTROYS
- *     what it had, because removing the label is the explicit gesture for
- *     "that's enough, free the slot". This is the only teardown besides
- *     `closed`, and it is deliberately unlike `converted_to_draft` below: a
- *     label is a switch someone flips at the preview, a draft is a statement
- *     about the work.
- *  5. drafts are skipped until `ready_for_review`, unless the app opts in. A
- *     work-in-progress branch is usually not worth a container, and the manual
- *     "Deploy a pull request" action covers the one-off exception.
- *  6. a new commit (`synchronize`) rebuilds only when the app auto-deploys
- *     previews. Off ⇒ the preview is built once and a person refreshes it.
- *  7. everything else (`edited`, `assigned`, `converted_to_draft`, …) is
- *     ignored. In particular `converted_to_draft` does NOT tear down: pulling a
- *     URL out from under someone because the author ticked a box is a surprise
- *     with no upside.
+ * What to do with one delivery, for one app. `closed` destroys FIRST, before any
+ * gate. the pull request must TARGET the branch this app tracks.
  */
 export function previewIntent(
   cfg: PreviewTriggerConfig,
@@ -185,11 +152,9 @@ export function previewIntent(
     ev.action === "reopened" ||
     ev.action === "synchronize" ||
     ev.action === "ready_for_review" ||
-    // `labeled` builds ONLY for an app that filters on labels: there, the label
-    // applied after the pull request opened is the moment it qualifies, and
-    // without this it would never build at all. For an app with no filter a
-    // label is just chatter, and rebuilding on it would burn a build every time
-    // somebody triaged a pull request.
+    // `labeled` builds ONLY for an app that filters on labels: there, the label applied
+    // after the pull request opened is the moment it qualifies, and without this it
+    // would never build at all.
     (ev.action === "labeled" && cfg.requiredLabels.length > 0)
   ) {
     if (!ev.headRepo) return { kind: "ignore", reason: "no-head-repo" };

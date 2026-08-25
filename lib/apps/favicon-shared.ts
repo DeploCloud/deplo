@@ -1,18 +1,7 @@
 /**
- * Pure logic for auto-detecting an app's display logo from a favicon/icon
- * shipped in its own files (a GitHub repo, an uploaded archive, or — for a
- * compose stack — its files dir on the server that runs it). Kept
- * free of any `server-only` / Node-only import so it is unit-testable in
- * isolation — the file-listing and the byte-fetching live in the server-only
- * {@link file://./favicon-detect.ts} module (and, for a compose stack's host,
- * {@link file://./favicon-agent.ts}), which call into here to RANK.
- *
- * We ONLY pick a file literally named `favicon` (favicon.svg / .ico / .png /
- * .jpg / …) that the app itself ships — never `logo.*`, `icon.*`,
- * `apple-touch-icon.*` or any other name. The caller inlines its bytes as a
- * base64 data-URI (the one storable logo shape — see
- * {@link file://./logo-shared.ts}). No remote favicon is fetched at render time,
- * so the strict dashboard CSP is preserved.
+ * Pure logic for auto-detecting an app's display logo from a favicon/icon shipped
+ * in its own files (a GitHub repo, an uploaded archive, or — for a compose stack —
+ * its files dir on the server that runs it).
  */
 
 import { MAX_LOGO_BYTES } from "./logo-shared";
@@ -38,22 +27,17 @@ export function mimeForFaviconPath(path: string): string | null {
   return EXT_MIME[ext] ?? null;
 }
 
-/** Directory segments that never hold a project's OWN icon — dependencies,
- * build output, examples, test fixtures, VCS/tooling metadata. A candidate under
- * any of these is discarded outright so we don't lift a favicon out of, say, a
- * vendored library or a Storybook example. */
+/**
+ * Directory segments that never hold a project's OWN icon — dependencies, build
+ * output, examples, test fixtures, VCS/tooling metadata.
+ */
 const EXCLUDED_DIR_RE =
   /^(node_modules|bower_components|vendor|\.git|\.github|\.next|\.nuxt|\.svelte-kit|\.cache|\.turbo|dist|build|out|coverage|tmp|temp|__tests__|__mocks__|tests?|e2e|examples?|samples?|fixtures?|docs?|storybook|\.storybook)$/i;
 
 /**
- * Whether an app's repo is GitHub-hosted — the ONLY provider the control
- * plane can read files from over the API for favicon auto-detection (a git repo
- * is otherwise cloned only on the deploy agent). True for the GitHub App
- * provider, or any repo whose URL is on github.com (a plain-git import of a
- * public GitHub URL). Pure + client-safe so the settings page can gate the
- * "Detect from source" button on the SAME test the detector uses — the `source`
- * string is NOT reliable here (a GitHub import is `source: "github"`, a bare git
- * URL is `source: "git"`; both carry a repo). One source of truth.
+ * Whether an app's repo is GitHub-hosted — the ONLY provider the control plane can
+ * read files from over the API for favicon auto-detection (a git repo is otherwise
+ * cloned only on the deploy agent).
  */
 export function isGithubRepo(
   repo: { provider?: string | null; url?: string | null } | null | undefined,
@@ -70,19 +54,13 @@ export function isGithubRepo(
 /**
  * WHICH pile of files an app's icon is detected from — the single dispatch both
  * the detector and the settings UI read, so the "Detect from source" button is
- * offered exactly when the server can actually scan something.
- *
- *  - `github`    — the repo's own tree, read over the GitHub API.
- *  - `upload`    — the uploaded archive, extracted control-plane-side.
- *  - `app-files` — the app's files dir ON ITS OWNING SERVER: a **compose stack**
- *    has no repo and no archive, its files are the `<stacks>/files/<slug>` tree
- *    its `./x` bind mounts resolve into (the Files tab), so that is where its
- *    own web assets — favicon included — actually live.
- *  - `none`      — a prebuilt docker image and nothing else: no files to scan.
- *
- * Compose is tested FIRST because `source` is authoritative for a compose stack
- * (an app switched to compose may still carry the repo it used to build from,
- * which the deploy ignores — so detection must ignore it too).
+ * offered exactly when the server can actually scan something. - `github` — the
+ * repo's own tree, read over the GitHub API. - `upload` — the uploaded archive,
+ * extracted control-plane-side. - `app-files` — the app's files dir ON ITS OWNING
+ * SERVER: a **compose stack** has no repo and no archive, its files are the
+ * `<stacks>/files/<slug>` tree its `./x` bind mounts resolve into (the Files tab),
+ * so that is where its own web assets — favicon included — actually live. - `none`
+ * — a prebuilt docker image and nothing else: no files to scan.
  */
 export type FaviconSourceKind =
   | "github"
@@ -112,10 +90,10 @@ export function faviconSourceKind(app: {
   return "none";
 }
 
-/** Whether a single directory NAME is one detection should never descend into
- * (dependencies, build output, VCS/tooling metadata). Exported so the tree walk
- * can prune these while descending — same set the scorer rejects candidates
- * under, kept as one source of truth. */
+/**
+ * Whether a single directory NAME is one detection should never descend into
+ * (dependencies, build output, VCS/tooling metadata).
+ */
 export function isExcludedDirName(name: string): boolean {
   return EXCLUDED_DIR_RE.test(name);
 }
@@ -123,9 +101,7 @@ export function isExcludedDirName(name: string): boolean {
 /**
  * The ONLY basename (without extension) we accept: `favicon`, optionally with a
  * size/variant suffix after a separator (`favicon-32x32`, `favicon_v2`,
- * `favicon.prod`). Matched case-insensitively. Deliberately strict — `logo`,
- * `icon`, `apple-touch-icon`, `android-chrome`, etc. are NOT favicons and are
- * rejected. We never guess a site icon from an arbitrarily-named image.
+ * `favicon.prod`). We never guess a site icon from an arbitrarily-named image.
  */
 const FAVICON_STEM_RE = /^favicon(?:[-_.].*)?$/;
 
@@ -142,10 +118,11 @@ const EXT_SCORES: Record<string, number> = {
   jpeg: 8,
 };
 
-/** The format preference above, for the OTHER detector — the one that reads a
+/**
+ * The format preference above, for the OTHER detector — the one that reads a
  * running app's declared icons ({@link file://./favicon-http.ts}) rather than
- * files on disk. Both arms must prefer the same formats, so there is one table.
- * 0 for anything not a candidate image type. */
+ * files on disk.
+ */
 export function faviconFormatScore(ext: string): number {
   return EXT_SCORES[ext.toLowerCase()] ?? 0;
 }
@@ -176,12 +153,7 @@ function segmentsOf(path: string): string[] {
 }
 
 /**
- * Score a single repo-relative file path as a favicon candidate. Returns a
- * number (higher = better) or `null` when the path is not a candidate — its
- * basename isn't `favicon(.*)?`, its extension isn't a supported image, or it
- * lives under an excluded directory. Among the `favicon.*` that qualify, the
- * winner is decided by extension, then location, then the build `rootDirectory`
- * (a monorepo's chosen sub-app wins over a sibling), then shallower depth.
+ * Score a single repo-relative file path as a favicon candidate.
  */
 export function scoreFaviconPath(path: string, rootRel = ""): number | null {
   const segments = segmentsOf(path);
@@ -221,10 +193,8 @@ export interface FaviconFile {
 
 /**
  * Pick the single best logo candidate from a list of files, or null when none
- * qualifies. Files larger than the stored-logo cap are dropped (a base64 inline
- * of them would exceed {@link MAX_LOGO_BYTES}); an unknown size (0) is kept and
- * size-checked after the bytes are read. Ties break deterministically on the
- * lexicographically smaller path so the same repo always yields the same icon.
+ * qualifies. Ties break deterministically on the lexicographically smaller path so
+ * the same repo always yields the same icon.
  */
 export function pickBestFavicon(
   files: readonly FaviconFile[],

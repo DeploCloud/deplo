@@ -21,16 +21,8 @@ import type { Deployment, App } from "../types";
 import { TEAM_A, USER_1 } from "./identity-test-helpers";
 
 /**
- * Shared seeding for the app-graph cut-set (c) data-layer tests
- * (relational-store PLAN Step 4). The project graph is RELATIONAL: the data layer
- * + the deploy engine read pglite. So this seeds a server + project (with its
- * 1-to-1 build / method-settings rows) and any deployments directly into the
- * relational tables, the same way `identity-test-helpers` seeds identity.
- *
- * Pair it with `seedIdentity` (the project's `team_id` FK needs a real team) and
- * drive the data functions inside `runWithIdentity({ userId, teamId })`.
- *
- * Not named `*.test.ts` so the `node --test` glob skips it (a helper).
+ * Shared seeding for the app-graph cut-set (c) data-layer tests (relational-store
+ * PLAN Step 4).
  */
 
 export const SERVER_1 = "srv_1";

@@ -16,31 +16,9 @@ import { authorOf, loadUserIdentities } from "./user-identity";
 import type { BasicAuthUser, VarAuthor } from "../types";
 
 /**
- * Per-project HTTP Basic Auth users.
- *
- * A project's basic-auth users gate EVERY one of its domains: the deploy/reroute
- * renderers read them via {@link basicAuthUsersValue} and inject a generated
- * Traefik `basicauth` middleware (built from all of them) at the head of every
- * router's middleware chain. Stored passwords are AES-GCM-encrypted (reversible,
- * like env secrets) so the htpasswd credentials can be re-derived on every
- * render. A password is NEVER part of a DTO; the only way back to the plaintext
- * is {@link revealBasicAuthPassword}, one credential at a time, behind the same
- * `manage_basic_auth` gate as every write here. That reveal exists — where an app
- * secret has none — because a basic-auth login is a credential you HAND TO A
- * PERSON: without it, "what is the password again?" can only be answered by
- * overwriting it, which locks out everyone already using it.
- *
- * Every mutation here is DB-only — the labels live on the running container, so
- * a write takes effect only once the stack is re-rendered. The API edge does
- * that for the caller (`lib/graphql/types/basic-auth.ts` re-applies routing after
- * each mutation, exactly as the domain mutations do), so a credential is live
- * seconds after it is saved. That reroute is NOT invoked from here: this module
- * is imported BY the deploy engine (`lib/deploy/build.ts` reads
- * {@link basicAuthUsersValue} when rendering), so calling back into it would
- * close an import cycle.
- *
- * Gated on `manage_basic_auth` — basic auth is a routing/edge concern attached to
- * a project's domains, with its own dedicated capability.
+ * Per-project HTTP Basic Auth users. A password is NEVER part of a DTO; the only
+ * way back to the plaintext is {@link revealBasicAuthPassword}, one credential at
+ * a time, behind the same `manage_basic_auth` gate as every write here.
  */
 
 /** A masked DTO for the UI — the password is never sent to the client. */
@@ -51,27 +29,27 @@ export interface BasicAuthUserDTO {
    * app's routing without a second lookup. */
   appId: string;
   username: string;
-  /** Who added the credential, and who last changed its password. Identity
-   * metadata — safe to project while the password itself never is. Null when the
-   * row predates migration 0045 or its author's account is gone; the UI renders
-   * "—" rather than guessing. */
+  /**
+   * Who added the credential, and who last changed its password. Identity metadata
+   * — safe to project while the password itself never is.
+   */
   createdBy: VarAuthor | null;
   updatedBy: VarAuthor | null;
   /**
-   * The credential came from another platform verbatim, so it never went
-   * through Deplo's password policy or the breach check. Shown in Access as a
-   * warning: keeping the app protected during a migration is worth more than a
-   * strong password nobody set, but it is worth rotating afterwards.
+   * The credential came from another platform verbatim, so it never went through
+   * Deplo's password policy or the breach check.
    */
   imported: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Usernames are HTTP Basic Auth identities: no `:` (the htpasswd separator),
- * no commas (the Traefik `users=` list separator), no whitespace, and no `"` or
- * backtick (the username is embedded in a compose YAML label / Traefik rule and
- * a quote would break the scalar), non-empty. */
+/**
+ * Usernames are HTTP Basic Auth identities: no `:` (the htpasswd separator), no
+ * commas (the Traefik `users=` list separator), no whitespace, and no `"` or
+ * backtick (the username is embedded in a compose YAML label / Traefik rule and a
+ * quote would break the scalar), non-empty.
+ */
 const USERNAME_RE = /^[^\s:,"`]+$/;
 
 function toDTO(
@@ -106,11 +84,6 @@ function assemble(row: typeof basicAuthTable.$inferSelect): BasicAuthUser {
 
 /**
  * Resolve one credential's authors for the DTO a mutation hands back.
- *
- * A mutation returns a single row, so the batched {@link loadUserIdentities} of
- * the list path would be one query for one or two ids either way — but going
- * through it keeps ONE resolution path, so a mutation's DTO can never disagree
- * with what the next list render shows.
  */
 async function withAuthors(u: BasicAuthUser): Promise<BasicAuthUserDTO> {
   const authors = await loadUserIdentities([
@@ -146,20 +119,8 @@ export async function listBasicAuthUsers(
 
 /**
  * The plaintext password of ONE credential, for the person who may change it.
- *
- * The deliberate exception to "secrets are write-only": a basic-auth login is
- * meant to be given to a human, so a platform that cannot tell you what it is
- * forces you to reset it — locking out everyone who already has it — every time
- * someone asks. Same gate as every write here (`manage_basic_auth` + the app's team
- * + its folder), one credential per call, and never part of a list DTO: the
- * plaintext leaves the server only when someone deliberately asks for that one
- * password.
- *
- * Fails LOUDLY when the ciphertext can't be decrypted (rotated `DEPLO_SECRET`,
- * restored dump): `decryptSecret` fails closed to `""`, and showing an empty
- * password as if it were the real one would send someone off to try a login that
- * cannot work. Empty passwords are rejected at write time, so `""` here always
- * means a decrypt failure — the same reasoning as {@link basicAuthUsersValue}.
+ * Empty passwords are rejected at write time, so `""` here always means a decrypt
+ * failure — the same reasoning as {@link basicAuthUsersValue}.
  */
 export async function revealBasicAuthPassword(id: string): Promise<string> {
   const [row] = await getDb()
@@ -168,11 +129,9 @@ export async function revealBasicAuthPassword(id: string): Promise<string> {
     .where(eq(basicAuthTable.id, id))
     .limit(1);
   if (!row) throw new Error("Not found");
-  // A credential in ANOTHER team answers exactly like one that does not exist:
-  // the gate's own "App not found" would otherwise tell a caller holding a
-  // stranger's id that it is real. A member of THIS team who simply lacks the
-  // capability still gets that message verbatim - they are allowed to know the
-  // thing exists, and a pretend "not found" would send them hunting.
+  // A credential in ANOTHER team answers exactly like one that does not exist: the
+  // gate's own "App not found" would otherwise tell a caller holding a stranger's id
+  // that it is real.
   try {
     await requireAppCapability(row.appId, "manage_basic_auth");
   } catch (e) {
@@ -195,13 +154,6 @@ export async function addBasicAuthUser(
   opts?: {
     /**
      * The credential is being CARRIED OVER from another platform, not chosen.
-     *
-     * Deplo's two password gates exist for a password someone is picking right
-     * now. An imported one is already in use and already protecting a public
-     * URL: refusing it does not make anything stronger, it removes the
-     * protection - measured on a real migration, a code-server arrived online
-     * with no basic auth at all because its password had no special character.
-     * So it is written as it is, flagged, and shown as weak in Access.
      */
     imported?: boolean;
   },
@@ -225,10 +177,9 @@ export async function addBasicAuthUser(
     )
     .limit(1);
   if (dup.length > 0) throw new Error("A user with that name already exists");
-  // A basic-auth credential is a password a PERSON chooses and is handed to
-  // another person, on an internet-facing URL: same two gates as an account
-  // password, in the same order (the local rules before the network call).
-  // Skipped for an imported one - see `opts.imported`.
+  // A basic-auth credential is a password a PERSON chooses and is handed to another
+  // person, on an internet-facing URL: same two gates as an account password, in the
+  // same order (the local rules before the network call).
   if (!opts?.imported) {
     assertPasswordPolicy(password);
     await assertPasswordNotPwned(password);
@@ -334,15 +285,7 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
 /**
  * The Traefik `basicauth.users` value for a project — a comma-separated list of
  * `user:bcrypt-hash` htpasswd lines, freshly hashed from the stored (decrypted)
- * passwords on every call. Empty string when the project has no basic-auth users
- * (the renderers then emit NO middleware, keeping the stack byte-identical to a
- * project that never had basic auth). Store-direct (no auth) so the deploy engine
- * can call it like the routing readers do.
- *
- * NOTE: the returned hashes contain literal `$`. The single-image renderer
- * embeds them in a docker-compose label and MUST double them to `$$` (compose
- * treats `$` as variable interpolation); the compose renderer does the same via
- * the shared escaping. This function returns the RAW (single-`$`) form.
+ * passwords on every call.
  */
 export async function basicAuthUsersValue(appId: string): Promise<string> {
   const rows = await getDb()
@@ -357,12 +300,8 @@ export async function basicAuthUsersValue(appId: string): Promise<string> {
     rows.map((r) => {
       const password = decryptSecret(r.passwordEnc);
       // decryptSecret fails CLOSED to "" (wrong/rotated key, restored DB, corrupt
-      // ciphertext). For a normal secret that is fine, but here an empty password
-      // would be hashed into a VALID hash of the empty string — the basic-auth
-      // middleware would stay active and accept an empty password (fail OPEN). A
-      // credential we cannot decrypt must REMOVE access, never grant it, so fail
-      // the render loudly instead. (Empty passwords can't be stored — addBasicAuthUser
-      // rejects them — so "" here always means a decrypt failure.)
+      // ciphertext). A credential we cannot decrypt must REMOVE access, never grant it,
+      // so fail the render loudly instead.
       if (password === "")
         throw new Error(
           `Cannot render basic-auth for user "${r.username}": its stored password could not be decrypted. ` +

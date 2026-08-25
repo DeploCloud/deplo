@@ -73,6 +73,7 @@ after(async () => {
  * A fresh instance: an owner who is also the instance admin (USER_1, the token
  * minter of last resort) and the matrix subject - a plain member whose
  * capabilities every test rewrites, and who is NOT an instance admin, so an `$any:
+ * { instanceAdmin, capability }` field is decided by the capability.
  */
 async function reset(caps: Capability[]): Promise<void> {
   await pg.exec(TRUNCATE_ALL);

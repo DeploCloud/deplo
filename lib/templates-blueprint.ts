@@ -4,28 +4,9 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 /**
  * Turns a one-click template's files — the docker-compose.yml plus the
- * template.toml the catalog serves alongside it — into a deployable blueprint:
- * the variables it declares, the environment it injects, which service is
- * exposed publicly, and any config files to mount into the stack. This is the
- * widely-used self-hosted template format:
- *
- *   [variables]            # ${password:N} / ${base64:N} / ${domain} / ${REF} ...
- *   [config]
- *   env = ["NAME=${var}"]  # (array form) OR
- *   [config.env]           # (table form) NAME = "${var}"
- *   [[config.domains]]     # which service Traefik exposes
- *   serviceName = "app"
- *   port = 3000
- *   host = "${domain}"
- *   primary = true         # optional; omitted means false
- *   [[config.mounts]]      # files written next to the stack and bind-mounted
- *   filePath = "configuration.yml"
- *   content = """ ... """
- *
- * Everything is resolved here so the deploy wizard shows the real, editable
- * compose + env, the deploy engine can wire the stack to Traefik on the
- * generated domain, and any required config files are materialised with the
- * SAME generated secrets the env uses.
+ * template.toml the catalog serves alongside it — into a deployable blueprint: the
+ * variables it declares, the environment it injects, which service is exposed
+ * publicly, and any config files to mount into the stack.
  */
 
 export interface BlueprintEnv {
@@ -53,9 +34,7 @@ export interface TemplateBlueprint {
   expose: BlueprintExpose | null;
   /**
    * Every service the template exposes publicly (one per config.domains entry),
-   * each on its own resolved hostname. Templates like garage-with-ui expose two
-   * (the API and the web UI); `expose` is the explicitly marked primary, or
-   * the first one for legacy templates without a marker.
+   * each on its own resolved hostname.
    */
   exposes: BlueprintExpose[];
   /** Config files to write next to the stack and bind-mount (resolved). */
@@ -73,10 +52,8 @@ function randomHex(len: number): string {
 }
 
 /**
- * Generate a value for a template helper token. Returns null when the
- * token is not a generator (then it is treated as a ${REF} to another variable).
- * Helpers MUST produce fresh random secrets so deployed stacks never share
- * predictable credentials across installs.
+ * Generate a value for a template helper token. Helpers MUST produce fresh random
+ * secrets so deployed stacks never share predictable credentials across installs.
  */
 function generateHelper(name: string, lenRaw?: string): string | null {
   const len = lenRaw ? Number(lenRaw.replace(/_/g, "")) : undefined;
@@ -312,11 +289,7 @@ function pushKeyValEntry(list: BlueprintEnv[], entry: string): void {
 }
 
 /**
- * Resolve template tokens to a flat variable map. `${password:N}` and the other
- * generator helpers become fresh random secrets, `${domain}` becomes the
- * supplied generated hostname, and `${OTHER_VAR}` references are substituted
- * from already-resolved variables. Generated once here so every consumer (env,
- * mounts) shares the same values.
+ * Resolve template tokens to a flat variable map.
  */
 function resolveVariables(
   raw: BlueprintEnv[],
@@ -345,10 +318,8 @@ function resolveVariables(
 }
 
 /**
- * Replace ${...} tokens in a string: ${domain} -> domain, a known generator
- * helper -> a fresh secret, a reference to a resolved variable -> its value.
- * Unknown tokens are left intact (and flagged by the caller) so a literal token
- * is never silently baked into a secret without notice.
+ * Replace ${...} tokens in a string: ${domain} -> domain, a known generator helper
+ * -> a fresh secret, a reference to a resolved variable -> its value.
  */
 function substituteRefs(
   input: string,
@@ -391,10 +362,9 @@ export function getTemplateBlueprint(
         value: substituteRefs(value, vars, domain),
       }));
 
-      // One expose per declared domain, each on its own resolved hostname. The
-      // explicitly marked primary is moved first because downstream creation
-      // treats the first expose as the service behind the generated main domain.
-      // If no marker exists, preserve the legacy first-entry behavior.
+      // One expose per declared domain, each on its own resolved hostname. The explicitly
+      // marked primary is moved first because downstream creation treats the first expose
+      // as the service behind the generated main domain.
       const domains = parsed.domains.filter((d) => d.serviceName && d.port);
       const primary = domains.find((d) => d.primary);
       const orderedDomains = primary

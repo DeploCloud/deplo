@@ -27,15 +27,8 @@ import { stopStackOn, startStackOn } from "./volume-migration";
 
 /**
  * Host-level maintenance for ONE server — the actions on Settings → Servers →
- * <server> that operate on the box rather than on anything deployed to it.
- *
- * Every entry point is instance-admin gated, matching the page itself: this view
- * spans servers restricted to other teams, and a host restart is an instance
- * concern, not a team one. There is no per-team variant on purpose.
- *
- * Everything that touches the host goes through the agent (ADR-0006). Nothing
- * here shells out, and the Traefik YAML is rendered by lib/deploy/traefik-stack —
- * this module decides WHEN, never WHAT the compose says.
+ * <server> that operate on the box rather than on anything deployed to it. There
+ * is no per-team variant on purpose.
  */
 
 /** What a host reports about itself, plus what the control plane knows about it. */
@@ -56,9 +49,7 @@ export type ServerHostInfo = {
   timeUnixMs: number;
   /**
    * Deplo's own clock when this reading landed, so a caller can say how far the
-   * host has drifted WITHOUT involving the viewer's machine. Skew measured
-   * against a browser is a measurement of the browser: a laptop an hour out
-   * would paint every healthy server in the fleet red.
+   * host has drifted WITHOUT involving the viewer's machine.
    */
   controlPlaneTimeUnixMs: number;
   utcOffsetMinutes: number;
@@ -100,18 +91,14 @@ export type ServerRestartReport = {
 /* ------------------------------------------------------------------ */
 
 /**
- * Read what this host IS. Dials the agent; persists nothing.
- *
- * Deliberately not cached: the whole point of the panel is to answer "what is
- * actually on this box right now", and a stored answer is how a server ends up
- * showing the RAM it had before the operator resized it.
+ * Read what this host IS. Deliberately not cached: the whole point of the panel is
+ * to answer "what is actually on this box right now", and a stored answer is how a
+ * server ends up showing the RAM it had before the operator resized it.
  */
 export async function serverHostInfo(id: string): Promise<ServerHostInfo> {
   await requireInstanceAdmin();
-  // Not redundant with the gate above: the 2FA POLICY lives in
-  // requireActiveTeamId, and every mutation in this module already goes through
-  // it. Without this line a member the policy has locked out of everything else
-  // could still read every host's hardware, disk and clock.
+  // Not redundant with the gate above: the 2FA POLICY lives in requireActiveTeamId,
+  // and every mutation in this module already goes through it.
   await requireActiveTeamId();
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
@@ -124,16 +111,9 @@ export async function serverHostInfo(id: string): Promise<ServerHostInfo> {
 }
 
 /**
- * Move a host's clock to an IANA timezone.
- *
- * Validated against the platform's own IANA database, so there is no list to
- * maintain and no dependency to add. The agent re-validates against
+ * Move a host's clock to an IANA timezone. The agent re-validates against
  * /usr/share/zoneinfo, because that is where the write happens and a host may
  * simply not carry every zone.
- *
- * This changes the host's WALL CLOCK LABEL, not the instant: nothing restarts,
- * no certificate and no TOTP is affected. Deplo's own schedules stay on UTC.
- * See the copy on the Advanced tab, which must keep saying so.
  */
 export async function setServerTimezone(
   id: string,
@@ -167,28 +147,6 @@ export async function setServerTimezone(
 
 /**
  * The CANONICAL IANA name for what the caller sent, or null if it is not a zone.
- *
- * Asked of the platform's own IANA database rather than a pattern or a list.
- * `Intl` is used instead of `Intl.supportedValuesOf("timeZone")` because it also
- * knows the ALIASES: that list holds only canonical names, so it rejects
- * `Asia/Calcutta` and `US/Eastern`, real zones a host carries and an API client
- * may reasonably send.
- *
- * Canonicalising rather than merely accepting is what keeps the host's two write
- * paths in agreement. `timedatectl` records the name it is handed; the
- * /etc/localtime relink records the file that name RESOLVES to. Send
- * "US/Eastern" and the host reports back "America/New_York" or "US/Eastern"
- * depending on which path ran. Send the canonical name and both agree.
- *
- * Two things `Intl` accepts that a host cannot:
- *  - a bare UTC offset ("+05:30"), which is not a zone and has no zone file;
- *  - any casing, so "europe/rome" survives here and then meets a case-sensitive
- *    filesystem, coming back as "not a known timezone on this host".
- * Both are refused here, where the message can still say something useful.
- *
- * The agent re-validates against /usr/share/zoneinfo, which is the check that
- * actually matters: this one only keeps garbage from reaching the host.
- *
  * Exported for its unit test: with the agent unreachable there is no other way to
  * observe WHICH name would have been sent.
  */
@@ -212,19 +170,6 @@ export function canonicalTimezone(input: string): string | null {
 
 /**
  * Restart every App and database Deplo runs on this server.
- *
- * Scoped to Deplo's OWN workloads, not `docker restart $(docker ps -q)`: a
- * server can carry containers Deplo never deployed — the agent itself, an
- * operator's own tooling — and bouncing those is not what this button offers.
- *
- * Already-stopped workloads are SKIPPED rather than started. "Restart" and
- * "start everything that was off" are different verbs, and only one of them was
- * pressed. So are the ones with a deploy in flight: stopping a stack out from
- * under its own `compose up` is how a "restart everything" leaves a half-built
- * app behind, and that deploy brings it up by itself anyway.
- *
- * Failures are collected per workload instead of aborting: on a host where one
- * stack is wedged, the other twenty should still come back.
  */
 export async function restartServerWorkloads(
   id: string,
@@ -238,12 +183,8 @@ export async function restartServerWorkloads(
 
   const db = getDb();
   const [appRows, dbRows] = await Promise.all([
-    // status is the App's own INTENT: the last thing the control plane was asked
-    // to do, not what the host has (lib/apps/display-status.ts). It is the right
-    // input all the same: what this button must never do is turn something the
-    // operator deliberately stopped back on, and intent is exactly the record of
-    // that. What the host is actually running is the agent's business, and it
-    // says so by failing the stop.
+    // status is the App's own INTENT: the last thing the control plane was asked to do,
+    // not what the host has (lib/apps/display-status.ts).
     db
       .select({
         slug: appsTable.slug,
@@ -327,19 +268,9 @@ export async function restartServerWorkloads(
 }
 
 /**
- * App statuses a whole-server restart passes over. See restartServerWorkloads.
- *
- * `idle`/`stopping` are down (restarting would START them); `building`/`queued`
- * have a deploy in flight and come back on their own. `error` is deliberately
- * NOT here: it means the last DEPLOY failed, which routinely leaves the previous
- * stack up and serving. Treating it as stopped skipped the very apps an operator
- * reaches for this button to fix, and then told them those apps were "already
- * stopped".
- *
- * Typed `Set<AppStatus>` inside and read as strings outside: that is what makes a
- * status that does not exist a COMPILE error. The untyped version carried
- * "stopped" and "failed" for months. Neither is an AppStatus, so neither ever
- * matched anything.
+ * App statuses a whole-server restart passes over. `idle`/`stopping` are down
+ * (restarting would START them); `building`/`queued` have a deploy in flight and
+ * come back on their own.
  */
 const LEAVE_ALONE_APP_STATUSES: ReadonlySet<string> = new Set<AppStatus>([
   "idle",
@@ -388,11 +319,6 @@ export async function restartServerTraefik(id: string): Promise<void> {
 
 /**
  * Restart the Deplo panel — only ever on the host that runs it.
- *
- * The refusal for a remote is not cosmetic: `restartControlPlane` identifies its
- * target by the hint we send, which is OUR hostname. On a remote that hint names
- * nothing, so without this check the operator would get "Deplo is not running as
- * a container on this host" from a button that should not have been offered.
  */
 export async function restartDeploPanel(id: string): Promise<void> {
   await requireInstanceAdmin();
@@ -421,10 +347,8 @@ export async function restartDeploPanel(id: string): Promise<void> {
 }
 
 /**
- * How the control plane names itself to the agent: its own hostname, which
- * inside a container IS the short container id. Sending an identity rather than
- * letting the agent hunt for "a container running the deplo image" is what stops
- * a second, unrelated deplo container on the same host from being the one bounced.
+ * How the control plane names itself to the agent: its own hostname, which inside
+ * a container IS the short container id.
  */
 function controlPlaneHint(): string {
   return hostname();
@@ -443,22 +367,9 @@ export type TraefikDashboardInput = {
 };
 
 /**
- * Publish (or unpublish) the host's Traefik dashboard.
- *
- * CREDENTIALS ARE MANDATORY, enforced here rather than only in the form: the
- * dashboard lists every router, service and certificate on the host, so a domain
- * without a username and password would put the fleet's routing table on the
- * open internet. The mutation is reachable from the bearer API too, where there
- * is no form to disable.
- *
- * The compose file is read from the LIVE host and transformed, never re-rendered
- * from a template — see lib/deploy/traefik-stack.ts for why. The row is written
- * only after the agent confirms the stack came up, so a stored domain always
- * means a dashboard that is actually being served.
- *
- * A request that would not change the host's file is answered by reading the host
- * and stopping there: applying recreates the proxy, and nothing on this box should
- * lose its routing for a few seconds to have the same bytes written back.
+ * Publish (or unpublish) the host's Traefik dashboard. The compose file is read
+ * from the LIVE host and transformed, never re-rendered from a template — see
+ * lib/deploy/traefik-stack.ts for why.
  */
 export async function setServerTraefikDashboard(
   id: string,
@@ -488,11 +399,8 @@ export async function setServerTraefikDashboard(
     // different account than the one the operator typed.
     if (username.includes(":"))
       throw new Error("A username cannot contain a colon");
-    // Only a freshly typed one: an edit that keeps the stored password must not
-    // be refused for a credential that is already published. Both gates, in the
-    // same order every other chosen password gets them — the panel lists every
-    // router, service and certificate on the host, so it is not the one credential
-    // that may be `abc`.
+    // Only a freshly typed one: an edit that keeps the stored password must not be
+    // refused for a credential that is already published.
     if (input.password) {
       assertPasswordPolicy(input.password);
       await assertPasswordNotPwned(input.password);
@@ -542,12 +450,9 @@ export async function setServerTraefikDashboard(
         })
       : withTraefikDashboard(current.traefikComposeYaml, null);
 
-    // A rewrite that would change nothing is never applied. Applying recreates the
-    // proxy, and that takes every site on the host down for a few seconds - doing it
-    // to write the same bytes back is the worst kind of surprise. The case this
-    // exists for is "turn off the panel" on a host that never published one: it now
-    // costs one read of the host and nothing else. The transform is byte-stable, so
-    // this comparison is exact (see lib/deploy/traefik-stack.ts).
+    // A rewrite that would change nothing is never applied. The case this exists for is
+    // "turn off the panel" on a host that never published one: it now costs one read of
+    // the host and nothing else.
     if (composeYaml === current.traefikComposeYaml) return false;
     const res = await applyTraefikConfig(id, { composeYaml });
     if (!res.ok)

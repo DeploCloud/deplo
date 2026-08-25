@@ -28,9 +28,7 @@ import type { ManifestConversion } from "../github/manifest";
 
 /**
  * `github_apps` + `github_installation` are RELATIONAL as of cut-set (e)
- * (relational-store PLAN Step 6). Installations are scoped to a team THROUGH their
- * parent app (`github_installation` has no `team_id`), so team-filtered queries
- * join through `github_apps.team_id`.
+ * (relational-store PLAN Step 6).
  */
 
 /** Client-safe view of a connected App and its installations (no secrets). */
@@ -38,10 +36,7 @@ export interface GithubInstallationDTO {
   id: string;
   installationId: number;
   /**
-   * Name of the connected GitHub App this installation belongs to. Source
-   * pickers identify an installation by App name, not by account: the same
-   * account can host several connected Apps, each with its own repository
-   * access, and the account alone doesn't say which one you're deploying from.
+   * Name of the connected GitHub App this installation belongs to.
    */
   appName: string;
   accountLogin: string;
@@ -163,13 +158,9 @@ export async function createGithubApp(
 }
 
 /**
- * Whether each connected GitHub App can drive pull request previews, keyed by
- * App id. Read LIVE from GitHub (never stored) because the operator fixes it on
+ * Whether each connected GitHub App can drive pull request previews, keyed by App
+ * id. Read LIVE from GitHub (never stored) because the operator fixes it on
  * github.com, and a cached "needs update" badge would outlive the fix.
- *
- * A GitHub failure yields no entry rather than a false accusation: an App that
- * cannot be checked is shown as fine, because telling someone their working
- * setup is broken is worse than saying nothing.
  */
 export async function githubAppsPreviewReadiness(): Promise<
   Record<string, { ready: boolean; settingsUrl: string }>
@@ -198,10 +189,7 @@ export async function hasGithubApp(): Promise<boolean> {
 }
 
 /**
- * Record (or refresh) an installation of a connected App. Called from the
- * post-install setup redirect. Idempotent on the numeric installation id (the
- * `github_installation.installation_id` UNIQUE backs the ON CONFLICT upsert; the
- * existing `created_at` is left untouched on conflict, per PLAN §2).
+ * Record (or refresh) an installation of a connected App.
  */
 export async function upsertInstallation(input: {
   appDbId: string;

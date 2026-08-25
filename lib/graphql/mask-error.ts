@@ -10,6 +10,8 @@ import { GraphQLError } from "graphql";
  * An INFRASTRUCTURE error whose message must never reach a client: a Drizzle
  * wrapper (its message embeds the raw SQL + bound params — which can include
  * secret values), a Postgres error (SQLSTATE `.code` + table/column identifiers),
+ * or a Node/gRPC transport error (a string `.code` like `ECONNREFUSED` or a
+ * numeric gRPC status — dial addresses, cert fingerprints).
  */
 function isInternalError(e: unknown): boolean {
   if (!(e instanceof Error)) return true; // a non-Error throw is never user copy
@@ -25,6 +27,7 @@ function isInternalError(e: unknown): boolean {
  * Never leak internals, but PRESERVE the repo's "surface the server's message
  * verbatim" contract for the intentional, user-facing errors resolvers and the
  * data layer throw ("You don't have permission to deploy", "Too many attempts",
+ * validation messages).
  */
 export function userFacingMessage(error: unknown): string | null {
   if (error instanceof GraphQLError) {

@@ -6,29 +6,16 @@ import type { App, VolumeMount } from "../types";
 /**
  * Pure, store-free read-time normalizers for a project (relational-store PLAN §7
  * "normalize BEFORE exploding into strict child tables").
- *
- * Extracted from `lib/data/services.ts` so BOTH the live read path AND the
- * app-graph backfill apply the IDENTICAL normalization before a legacy row is
- * exploded into the strict NOT-NULL child tables — the same anti-drift split as
- * `app-graph-rows.ts`. These touch no store/db and import only pure helpers
- * (`newId`, `normalizeBuildConfig`), so the backfill can import them without
- * pulling in the `server-only` data layer. `services.ts` re-exports them so its
- * existing internal call sites are unchanged.
  */
 
-/** A docker-volume-safe name derived from a mount path when the user left the
- *  name blank (e.g. "/var/data" → "var-data", "/" → "data"). Canonical copy lives
- *  in `lib/apps/volume-model.ts` (client-safe) so the Storage editor can PREVIEW
- *  the derived name with the exact function the writer will use; re-exported here
- *  because every existing caller reaches it through this module. */
+/**
+ * A docker-volume-safe name derived from a mount path when the user left the name
+ * blank (e.g. "/var/data" → "var-data", "/" → "data").
+ */
 export { deriveVolumeName } from "../apps/volume-model";
 
 /**
- * Backfill/sanitize a project's named volumes on read. Absent ⇒ null (so
- * renderCompose emits nothing and the stack stays byte-identical). Returns the
- * SAME reference when nothing changes so `normalizeApp`'s early-return still
- * fires for the common (modern) row. Entries with no mountPath are dropped;
- * missing id/name are backfilled.
+ * Backfill/sanitize a project's named volumes on read.
  */
 export function normalizeVolumes(
   raw: VolumeMount[] | null | undefined,
@@ -66,11 +53,7 @@ export function normalizeVolumes(
 }
 
 /**
- * Backfill a project read from the store to the current model. The legacy
- * "dockerfile" deploy source was folded into the "dockerfile" build method
- * (build from the repo's Dockerfile is *how* you build, not *where* code comes
- * from), so old apps on that source are remapped to a plain git/github
- * source with their build method forced to "dockerfile". Pure and idempotent.
+ * Backfill a project read from the store to the current model.
  */
 export function normalizeApp<T extends App>(p: T): T {
   const build = normalizeBuildConfig(p.build);

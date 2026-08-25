@@ -83,8 +83,7 @@ export function GitPanel({
   previewReadiness?: PreviewReadiness;
   /**
    * Where to send the browser once a provider is connected: the page that linked
-   * here (`? Connecting is almost never the errand — picking a repo in the
-   * create-app wizard is — so the detour ends by handing the user back to it.
+   * here (`?next=`), already validated server-side.
    */
   next?: string | null;
   /** Gates the one advanced option: pointing a connection inside the network. */

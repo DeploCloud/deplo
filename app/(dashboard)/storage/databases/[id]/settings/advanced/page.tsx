@@ -25,6 +25,7 @@ export const metadata = { title: "Advanced" };
  * Advanced: the powerful, less-everyday controls in one place — the Advanced
  * features card (the container Console and Cron jobs), expert image/command/
  * version overrides (applied on the next Redeploy) and the Danger Zone (rebuild
+ * from scratch, delete with artifacts).
  */
 export default async function DatabaseAdvancedSettingsPage(
   props: PageProps<"/storage/databases/[id]/settings/advanced">,

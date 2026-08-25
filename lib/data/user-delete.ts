@@ -24,35 +24,8 @@ import { teardownTeamResources, type TeardownPlan } from "./team-delete";
 import type { Capability } from "../types";
 
 /**
- * PERMANENTLY deleting a user account — the counterpart to suspending one, and
- * the only path in the product that removes a `users` row.
- *
- * The hard part is not the row, it is everything hanging off it. Three of the
- * user's belongings are NOT covered by any FK rule, because the safe default and
- * the operator's intent differ per instance:
- *
- *  - **Teams they are the ONLY member of.** Always deleted, never optional: a
- *    memberless team is unreachable (every read resolves through a membership),
- *    so leaving it behind would strand its apps, databases and volumes running
- *    forever with no UI able to show, stop or bill them. This is disclosed up
- *    front — {@link getDeleteUserImpact} names each such team with its exact app
- *    and database counts — rather than discovered afterwards.
- *  - **Teams they founded that still have other members.** Opt-in: those people
- *    are still working in there.
- *  - **The apps they created / the folders and Projects they own inside teams
- *    that survive.** Opt-in, because "this person left" and "everything they
- *    built must go" are different decisions.
- *
- * Everything else the FKs already answer correctly and this module leaves alone:
- * memberships, folder/Project grants and API tokens CASCADE; the crown
- * (`teams.founder_user_id`), folder/Project ownership and every authorship
- * column go `SET NULL`. Activity is deliberately untouched — `activities` is an
- * append-only audit log whose `actor_user_id` is NOT an FK precisely so that
- * deleting a user cannot rewrite history (see the table's own comment); entries
- * keep the name they were written with and simply stop resolving to an account.
- *
- * Lives in its own module (not members.ts) for the same reason team-delete does:
- * it pulls in the app-graph/agent teardown path, and members.ts stays light.
+ * PERMANENTLY deleting a user account — the counterpart to suspending one, and the
+ * only path in the product that removes a `users` row.
  */
 
 /** A team touched by the deletion, with what deleting it would take down. */
@@ -458,13 +431,6 @@ async function capabilityHolders(
 
 /**
  * Permanently delete a user account, plus whatever the operator opted into.
- *
- * Everything is decided and snapshotted INSIDE one transaction — the row reads,
- * the guards and the deletes — so an app created (or a member added) while the
- * dialog was open is caught by the same statement that removes it. The agent
- * teardown then runs detached from that transaction and from the request, as it
- * does for a team delete: gRPC never happens inside a transaction, and a
- * multi-host fan-out outlives any sane HTTP timeout.
  */
 export async function deleteUser(
   userId: string,
@@ -488,11 +454,10 @@ export async function deleteUser(
       const blocked = await blockedReasonFor(userId, actingUserId, tx);
       if (blocked) throw new Error(blocked);
 
-      // No "keep one active admin" check is needed here, unlike `updateUserAdmin`:
-      // the caller passed `requireInstanceAdmin` (so they ARE an active instance
-      // admin — a suspended account can't authenticate at all) and cannot be the
-      // target (blocked above), so an active admin always survives this delete by
-      // construction.
+      // No "keep one active admin" check is needed here, unlike `updateUserAdmin`: the
+      // caller passed `requireInstanceAdmin` (so they ARE an active instance admin — a
+      // suspended account can't authenticate at all) and cannot be the target (blocked
+      // above), so an active admin always survives this delete by construction.
 
       const teams = await teamsAroundUser(tx, userId);
       const teamsToDelete = teams.filter(
@@ -671,14 +636,8 @@ export async function deleteUser(
 }
 
 /**
- * Keep every surviving team manageable. Deleting an account cascades its
- * memberships, which is the one way a team can lose its last `manage_members` /
- * `manage_team` holder without passing through `removeMember`'s coverage check —
- * and a team with nobody able to manage members can never be repaired from
- * inside the product. The longest-standing remaining member inherits the
- * capability (their role is untouched). Disclosed before the fact by
- * `vacatedTeams` on {@link getDeleteUserImpact}. Returns the team ids healed, so
- * the caller can record the grant in the activity log.
+ * Keep every surviving team manageable. Disclosed before the fact by
+ * `vacatedTeams` on {@link getDeleteUserImpact}.
  */
 async function healCriticalCapabilities(
   tx: DbTx,
@@ -707,10 +666,9 @@ async function healCriticalCapabilities(
       .insert(membershipCapabilitiesTable)
       .values(missing.map((c) => ({ membershipId: heir.id, capability: c })))
       .onConflictDoNothing();
-    // The heir now grants more than their assigned role does, so it is no longer
-    // their role: drop the link and let the membership read as the hand-picked
-    // ("Custom") set it has become. Leaving the link would make the Roles page
-    // claim a member holds a role whose capabilities they no longer match.
+    // The heir now grants more than their assigned role does, so it is no longer their
+    // role: drop the link and let the membership read as the hand-picked ("Custom") set
+    // it has become.
     await tx
       .update(membershipsTable)
       .set({ roleId: null })

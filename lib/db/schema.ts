@@ -1,24 +1,5 @@
 /**
  * Aggregated Drizzle schema for the Postgres backend.
- *
- * Split into per-domain modules for navigability (relational-store PLAN §1
- * "Drizzle schema layout"):
- *
- *  - `schema/auth.ts`          — the Better Auth tables (user/session/account/
- *                                verification), owned by Better Auth's Drizzle
- *                                adapter.
- *  - `schema/scheduler.ts`     — `scheduler_lease`, the cross-process backup-
- *                                scheduler mutex (a live table; the legacy
- *                                `deplo_state` JSONB document was dropped in
- *                                PLAN Step 7).
- *  - `schema/control-plane.ts` — the full relational normalization of the former
- *                                JSONB control plane (Step 1). NO JSONB columns;
- *                                every nested object is a 1-to-1 child table and
- *                                every list an ordered child / junction.
- *
- * This file re-exports every table and an aggregated `schema` object, so
- * `drizzle.config.ts` (`schema: "./lib/db/schema.ts"`) and `lib/db/client.ts`
- * need no path change as the schema grows.
  */
 
 export {
@@ -57,9 +38,8 @@ import * as controlPlane from "./schema/control-plane";
 
 /**
  * Note the key names: Better Auth's Drizzle adapter resolves a model to
- * `schema[modelName]`, so `users` (spread in from control-plane) is what
- * `user: { modelName: "users" }` binds its `user` model to. There is no `user`
- * key on purpose — see [./schema/auth.ts](./schema/auth.ts).
+ * `schema[modelName]`, so `users` (spread in from control-plane) is what `user: {
+ * modelName: "users" }` binds its `user` model to.
  */
 export const schema = {
   session,

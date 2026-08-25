@@ -20,27 +20,16 @@ import type { BreadcrumbGraph } from "../breadcrumb-model";
 
 /**
  * The lightweight team snapshot the topbar breadcrumb navigates over: every
- * VISIBLE folder (id/name/parentId), every team app reduced to its grouping
- * links (slug/name/folder/project/environment) plus the logo its menu entry
- * wears, and the project containers by name. Deliberately minimal — this runs in
- * the dashboard layout on every page, so it skips the deployment/domain preload
- * `listApps` does (the breadcrumb only needs where each app LIVES, not its
- * status).
- *
- * Folder visibility is inherited from {@link listFolders} (owner/grant scoped);
- * an ancestor the caller can't see just ends the trail early client-side.
+ * VISIBLE folder (id/name/parentId), every team app reduced to its grouping links
+ * (slug/name/folder/project/environment) plus the logo its menu entry wears, and
  */
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   const teamId = await requireActiveTeamId();
-  // The apps here are queried directly rather than through `listApps`, so the
-  // role scope has to be applied by hand — `appScopeWhere` answers for a token
-  // only. The topbar naming every app in the team is a small leak with a large
-  // surface: it is on every page.
+  // The apps here are queried directly rather than through `listApps`, so the role
+  // scope has to be applied by hand — `appScopeWhere` answers for a token only.
   const roleScope = await currentMemberScope();
   // Storage is a TEAM-WIDE list (`requireTeamWide` in listDatabases), so a member
-  // narrowed to part of the team sees none of it. Asked here as a boolean rather
-  // than by calling that helper, which THROWS — and this runs in the dashboard
-  // layout, where a throw takes down every page instead of one list.
+  // narrowed to part of the team sees none of it.
   const [folders, projects, appRows, teamWide] = await Promise.all([
     listFolders(),
     listProjects(),

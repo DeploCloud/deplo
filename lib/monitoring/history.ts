@@ -6,15 +6,14 @@ import type { ServerMetrics } from "../data/monitoring";
  * The server-side metrics HISTORY — a rolling in-memory ring buffer of {@link
  * ServerMetrics} samples per server, so the Monitoring page's charts survive a
  * page reload instead of starting empty (before this, history lived only in the
+ * open tab's React state and died with it).
  */
 
 /** Keep samples this far back — the largest chart window (15m) plus slack. */
 export const HISTORY_WINDOW_MS = 16 * 60_000;
 
 /**
- * Ignore a sample landing within this of the previous one. 250ms sits below the
- * agent's own clamp floor (1000ms), so at any cadence the agent will actually
- * serve, this guard never fires.
+ * Ignore a sample landing within this of the previous one.
  */
 const MIN_GAP_MS = 250;
 

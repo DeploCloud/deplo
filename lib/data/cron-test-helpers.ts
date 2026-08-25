@@ -147,10 +147,6 @@ export interface FakeJobState {
 
 /**
  * A stand-in for a real agent connection.
- *
- * Only the four methods the cron runner uses are implemented; everything else on
- * `AgentConnection` throws if touched, which is the point - a test that reaches
- * for another RPC has found a coupling the runner should not have.
  */
 export class FakeAgent {
   /** Containers the fake host is running, in ListInstances order. */
@@ -236,10 +232,8 @@ export class FakeAgent {
         this.closed++;
       },
     };
-    // Only the cron surface is real; reaching for another RPC is a coupling bug,
-    // not a gap in this fake. `then` and symbols are exempt: awaiting the object
-    // probes for a thenable, and throwing there would turn every `await` into a
-    // failure that says nothing about the code under test.
+    // Only the cron surface is real; reaching for another RPC is a coupling bug, not a
+    // gap in this fake.
     return new Proxy(conn, {
       get(target, prop) {
         if (prop in target) return target[prop as keyof typeof target];

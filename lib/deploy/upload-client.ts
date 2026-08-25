@@ -1,10 +1,5 @@
 /**
  * Client-side helpers for streaming a code archive to an app's upload route.
- * Shared by the app settings form (components/apps/upload-input.tsx) and
- * the create-app wizard so validation and the raw-body XHR upload live in one
- * place. Kept free of any Node-only / "server-only" imports so it bundles for the
- * browser — see lib/deploy/upload-shared.ts for the size/extension constants it
- * builds on.
  */
 
 import { formatBytes } from "@/lib/utils";
@@ -32,10 +27,8 @@ export function validateArchive(file: File): string | null {
 
 /**
  * Stream `file` to an app's upload route as a raw body (filename in a header),
- * reporting progress via `onProgress` (0–100). Resolves once the archive is
- * stored server-side; the route no longer deploys on upload, so the caller
- * triggers the deploy separately (Save & Deploy / the wizard's Deploy). Uses
- * XHR rather than `fetch` because only XHR reports upload progress.
+ * reporting progress via `onProgress` (0–100). Uses XHR rather than `fetch`
+ * because only XHR reports upload progress.
  */
 export function uploadArchive(
   appId: string,

@@ -55,19 +55,6 @@ import {
 /**
  * API tokens — bearer credentials that drive deplo's API from outside the
  * dashboard.
- *
- * A token is a PRINCIPAL WITH ITS OWN CAPABILITIES, not an impersonation of the
- * member who minted it, and its reach is a TREE: whole teams, whole projects,
- * or individual apps, ticked at whatever depth makes sense. Its effective power
- * is the intersection of what it was granted and what its creator can still do
- * in the team the request resolves to, computed live on every request by the
- * clamp in `lib/membership.ts` — so nothing is materialized here, and revoking a
- * person's access blunts every token they ever minted.
- *
- * Breadth and depth are separate questions. Naming several teams restricts
- * nothing inside them. Naming a project or an app inside a team is what strips
- * that team's team-wide capabilities, because there is no per-project version of
- * "manage members".
  */
 
 const MAX_NAME = 40;
@@ -89,12 +76,9 @@ export interface ApiTokenDTO {
   /** Individually-named apps in the scope. */
   appIds: string[];
   /**
-   * Every team this token can act in, named - the four scope lists above
-   * flattened to the teams they land in. Empty when `scoped` is false, whose
-   * reach is "every team the creator belongs to" and is resolved live.
-   *
-   * Here because revoking is per-team: a screen offering Revoke has to say what
-   * survives it.
+   * Every team this token can act in, named - the four scope lists above flattened
+   * to the teams they land in. Here because revoking is per-team: a screen
+   * offering Revoke has to say what survives it.
    */
   teamsReached: TokenTeam[];
   instanceAdmin: boolean;
@@ -119,27 +103,17 @@ export interface ApiTokenDTO {
    */
   createdByUserId: string;
   /**
-   * The AI client this token was minted for, when it came from approving an
-   * OAuth consent rather than from the tokens page. It is an ordinary token
-   * either way, editable and revokable in the same places — one list still
-   * answers "who can act in this team", which is why it is projected here and
-   * not kept in a separate world.
+   * The AI client this token was minted for, when it came from approving an OAuth
+   * consent rather than from the tokens page.
    */
   oauthClientName: string | null;
   /**
-   * When this credential stops working, or null for "never" — which is what
-   * every token minted before expiry existed still is.
-   *
-   * Projected so the list can say so BEFORE it stops: a CI job that starts
-   * failing at 3am is a much worse way to learn a token expired than a row that
-   * has been saying "expires in 6 days" for a week.
+   * When this credential stops working, or null for "never" — which is what every
+   * token minted before expiry existed still is.
    */
   expiresAt: string | null;
   /**
-   * Whether that moment has passed. Computed HERE and not in the browser, the
-   * same rule a certificate's countdown follows: whether a credential still
-   * works is the server's answer, and a viewer whose clock is wrong must not
-   * see a different one.
+   * Whether that moment has passed.
    */
   expired: boolean;
   lastUsedAt: string | null;
@@ -162,11 +136,6 @@ const DTO_COLUMNS = {
 
 /**
  * Every token that can act in `teamId` — not merely the ones created there.
- *
- * A token's scope tree can span teams, so the team it was minted in is not the
- * only team it touches. A team that cannot SEE a credential operating inside it
- * cannot revoke it either, and "remove the person from the team" is too blunt an
- * instrument to be the only lever. Five indexed lookups, unioned in memory.
  */
 export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
   const db = getDb();
@@ -222,21 +191,6 @@ export interface TokenTeam {
 /**
  * The teams each token reaches, named - {@link tokenIdsReaching} read the other
  * way round, for a whole list at once.
- *
- * Revoking ends the credential everywhere (see {@link revokeToken}), so both
- * settings screens have to say which teams it touches BEFORE the button is
- * pressed, and the revoke itself needs the same answer to write the trail into
- * each of them. One helper, batched over every row, rather than a per-token
- * query in a `.map`.
- *
- * A token with no junction rows (`scoped = false`) answers with nothing: its
- * reach is "every team its creator belongs to", resolved live at authentication
- * and not a set anyone can hand back here.
- *
- * The names are resolved server-side even for a team the reader is not in. That
- * is deliberate and already the rule for `McpConnectionDTO.teamName`: a team
- * hosting a credential must be able to see where else that credential goes,
- * otherwise "revoke" is a decision taken blind.
  */
 export async function teamsReachedByTokens(
   ids: string[],
@@ -302,17 +256,6 @@ export async function teamsReachedByTokens(
 /**
  * The tokens Settings → API tokens shows: every one YOU minted, whatever team it
  * acts in, plus every token that can act in the ACTIVE team.
- *
- * The personal half is not a nicety. That page is an account page (the topbar
- * hides the team switcher on it, `NON_TEAM_SETTINGS_PREFIXES`), so a token
- * filtered out by the active team is one you cannot reach from there at all,
- * which is how someone loses track of the credential their AI client is using.
- * The team half stays because a team that cannot SEE a credential operating
- * inside it cannot revoke it either.
- *
- * A BEARER request is deliberately left team-scoped: reading the person's other
- * teams is a personal-session action (see `requirePersonalSession`), and a token
- * is a principal of its own, never a stand-in for the member who minted it.
  */
 export async function listTokens(): Promise<ApiTokenDTO[]> {
   const teamId = await requireActiveTeamId();
@@ -394,10 +337,9 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
   const now = Date.now();
   const avatarUrl = await avatarResolver();
-  // `createdByImage` / `createdByEmail` are DESTRUCTURED OUT before the spread:
-  // the row carries them so the avatar can be resolved, and `...rest` would
-  // otherwise walk both straight into the DTO — an email this list has never
-  // exposed.
+  // `createdByImage` / `createdByEmail` are DESTRUCTURED OUT before the spread: the
+  // row carries them so the avatar can be resolved, and `...rest` would otherwise
+  // walk both straight into the DTO — an email this list has never exposed.
   return rows.map(({ createdByImage, createdByEmail, ...r }) => ({
     ...r,
     createdByAvatarUrl: avatarUrl({
@@ -477,41 +419,23 @@ export interface ScopeTreeTeam {
 }
 
 /**
- * Every team the CURRENT USER belongs to, with its projects, its folders and
- * their apps — the tree the scope picker draws.
- *
- * Folders are first-class here because they are where apps actually live: filing
- * an app into a folder CLEARS its `project_id`, so a tree without them showed
- * nearly everything as "outside a project", which was both useless and untrue.
- * A folder is placed under its parent when it has one, else under its project,
- * else at the team top level — the same arrangement the Overview shows.
- *
- * Deliberately not filtered to the active team: a token may span teams, and you
- * can only give it what you can reach yourself. That is also the bound — the
- * tree is built from the user's own memberships, so a picker can never offer a
- * team the actor isn't in.
+ * Every team the CURRENT USER belongs to, with its projects, its folders and their
+ * apps — the tree the scope picker draws.
  */
 export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
   // Deliberately NOT gated on `manage_tokens`: a member without it still opens a
   // token page (read-only, like the roles page), and the tree holds nothing they
-  // can't already see. A narrowed token is refused: it must not enumerate the
-  // teams its creator belongs to.
+  // can't already see.
   const user = await assertUser();
   await requireTeamWide("the token scope picker");
-  // Their memberships bound WHICH teams; per-node access bounds what shows up
-  // inside one. Team membership alone is not enough — a folder is private to its
-  // owner and grantees, and a picker that listed every private folder (and the
-  // apps in it) by name would disclose exactly what the folder exists to hide.
+  // Their memberships bound WHICH teams; per-node access bounds what shows up inside
+  // one.
   return buildScopeTree(await teamsForUser(user.id), { asCaller: true });
 }
 
 /**
  * The same tree, narrowed to the ACTIVE team — what a ROLE editor draws, since a
  * role belongs to exactly one team and cannot reach past it.
- *
- * Not gated on `manage_roles`: a member without it opens the roles page
- * read-only, exactly as they open the token page, and the tree holds nothing
- * they cannot already see (`asCaller` filters it to their own reach).
  */
 export async function listTeamScopeTree(): Promise<ScopeTreeTeam[]> {
   const teamId = await requireActiveTeamId();
@@ -519,10 +443,7 @@ export async function listTeamScopeTree(): Promise<ScopeTreeTeam[]> {
 }
 
 /**
- * The tree for an explicit set of teams. Split out of {@link listScopeTree} so
- * the instance-admin user editor can build the same picker rooted at SOMEONE
- * ELSE's memberships — it carries no gate of its own, so every caller supplies
- * the teams it has already decided the actor may see.
+ * The tree for an explicit set of teams.
  */
 export async function buildScopeTree(
   mine: { id: string; name: string; avatarUrl?: string | null }[],
@@ -583,9 +504,8 @@ export async function buildScopeTree(
   ]);
 
   // Per-node visibility, when the tree is the CALLER's own picker: a folder they
-  // can't see, and an app they hold nothing on, must not be listed — the same
-  // answer `listFolders` and `listApps` give. The instance-admin user editor
-  // passes nothing and keeps the full tree, which is what an admin already sees.
+  // can't see, and an app they hold nothing on, must not be listed — the same answer
+  // `listFolders` and `listApps` give.
   const { folders: visibleFolders, apps: visibleApps } = opts.asCaller
     ? await visibleNodes(teamIds, folderRows, appRows)
     : { folders: null, apps: null };
@@ -681,9 +601,6 @@ export async function buildScopeTree(
 /**
  * The folder and app ids the CURRENT caller may see, across several teams — the
  * per-node half of the picker's bound.
- *
- * Six queries per team (one `visibleFolderIds`, one batched
- * `appCapabilitiesForTeam`), not one per node: a picker draws the whole fleet.
  */
 async function visibleNodes(
   teamIds: string[],
@@ -744,13 +661,7 @@ export interface TokenScopeInput {
 
 /**
  * A SCOPED API token must not mint (or widen a token to reach) a team OUTSIDE its
- * own scope. `resolveScopeInput` validates ticked nodes against the human
- * creator's memberships, not the acting token's scope, and `withinActor` bounds
- * capabilities, not reach — so without this a token scoped to team A could mint a
- * token reaching team B (or an unscoped token reaching every team the creator
- * belongs to), defeating the containment a scoped token exists for. A cookie
- * session (no token) and an unrestricted token (scope null) are unaffected — this
- * mirrors the check `transferAppToTeam` makes.
+ * own scope.
  */
 function assertScopeWithinActingToken(
   scope: ResolvedScope,
@@ -863,12 +774,8 @@ export async function createToken(
 
 /**
  * Validate a requested expiry: an ISO instant in the future, or null for never.
- *
- * Refuses a date already past rather than storing it, because a token that is
- * born dead is indistinguishable from one that was revoked, and the person who
- * just copied the secret would have no idea which. There is no upper bound: a
- * five-year token is a decision, and refusing it would only push people back to
- * "never".
+ * There is no upper bound: a five-year token is a decision, and refusing it would
+ * only push people back to "never".
  */
 function cleanExpiry(raw: string | null | undefined): string | null {
   const value = (raw ?? "").trim();
@@ -881,26 +788,7 @@ function cleanExpiry(raw: string | null | undefined): string | null {
 }
 
 /**
- * Re-scope a live token without re-minting it. The secret is untouched, so
- * tightening a token costs one save instead of a rotation across every CI
- * secret, webhook and client config that carries it — and a tightening that
- * costs a rotation is a tightening nobody performs.
- *
- * Its CREATOR edits it from any team. A token is minted on a person's ACCOUNT,
- * not inside a team: the team it was created from only decides where its trail
- * lands and which team a request that names none acts in, and for a credential
- * spanning several teams that is merely whichever one they happened to be
- * looking at. The bound that matters is live - `clampToToken` intersects the
- * token with its creator's capabilities in whatever team the request resolves to
- * - so gating the edit on where they stand buys nothing and strands the row on a
- * page that lists it from every team. Same reasoning `revokeToken` already
- * applies to the sibling action.
- *
- * ANYONE ELSE edits it only from the team it was created in: a token can reach
- * several teams, and re-authoring one from a team that merely happens to be in
- * its scope would let that team's admin quietly cut another team's automation.
- * Any team it reaches can still REVOKE it outright, which is the lever that
- * matters.
+ * Re-scope a live token without re-minting it.
  */
 export async function updateToken(
   input: {
@@ -955,11 +843,9 @@ export async function updateToken(
   const reach = scoped
     ? scope.teamsReached
     : (await teamsForUser(existing.createdByUserId)).map((t) => t.id);
-  // What may be TICKED. The creator is measured across the teams the token
-  // reaches rather than the one they happen to be standing in, or a credential
-  // spanning teams would be unsaveable from any team that holds less than
-  // another. A token-driven request keeps the acting team's clamp: a narrowed
-  // token authoring a wider one is the escalation the clamp exists to stop.
+  // What may be TICKED. The creator is measured across the teams the token reaches
+  // rather than the one they happen to be standing in, or a credential spanning teams
+  // would be unsaveable from any team that holds less than another.
   const bound =
     isCreator && !currentIdentity()?.token
       ? await actorAcross(membership, reach)
@@ -1043,23 +929,8 @@ const TOKEN_ROW_COLUMNS = {
 } as const;
 
 /**
- * Resolve an incoming bearer credential to the identity the whole data layer
- * runs under, or null if it does not match a live token.
- *
- * TWO credential shapes arrive here and there is deliberately only ONE thing
- * they resolve to:
- *
- *  - `deplo_…` — an API token minted from Settings → API tokens.
- *  - `dplo_at_…` — an OAuth 2.1 access token, issued when someone approved a
- *    consent screen. That approval minted an ordinary `api_tokens` row and the
- *    access token is only a pointer at it, so an OAuth client is not a second
- *    kind of principal and gets no second authorization path (ADR-0021 §2).
- *
- * `teamHint` picks WHICH of the token's teams this request acts in (the
- * `X-Deplo-Team` header, or the owning team of a deploy hook's app); an absent
- * or unreachable hint falls back to the first team in scope, deterministically.
- * Bumps `lastUsedAt`. Never throws for an unknown token (an unmet 2FA policy on
- * the creator does throw, deliberately — see `membershipFor`).
+ * Resolve an incoming bearer credential to the identity the whole data layer runs
+ * under, or null if it does not match a live token.
  */
 export async function authenticateToken(
   raw: string,
@@ -1075,13 +946,9 @@ export async function authenticateToken(
   }
   if (raw.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
     const row = await oauthTokenRow(raw);
-    // No hint means the connection's OWN team — never `reachable[0]`, the
-    // OLDEST team its approver belongs to, which is how an agent once worked
-    // somewhere nobody chose. A hint that IS given must be one of the teams the
-    // connection was granted; an unreachable one falls back here exactly as it
-    // does for a `deplo_` token, and the caller that must not tolerate that
-    // (a tool naming a team) resolves it against the granted set first and
-    // refuses, rather than asking this function to guess.
+    // No hint means the connection's OWN team — never `reachable[0]`, the OLDEST team
+    // its approver belongs to, which is how an agent once worked somewhere nobody
+    // chose.
     return row ? identityForTokenRow(row, teamHint ?? row.teamId) : null;
   }
   return null;
@@ -1089,13 +956,6 @@ export async function authenticateToken(
 
 /**
  * Resolve an opaque OAuth access token to the `api_tokens` row its grant minted.
- *
- * The join is the whole revocation story: delete the `api_tokens` row and this
- * returns nothing on the very next request, whatever the access token's own
- * expiry says. The token is stored hashed with the same `sha256Hex` the
- * `deplo_` path uses — wired through the plugin's `storeTokens` option — and the
- * plugin strips its prefix before hashing, so the digest is taken over the bare
- * secret.
  */
 async function oauthTokenRow(raw: string): Promise<TokenRow | null> {
   const hash = sha256Hex(raw.slice(OAUTH_ACCESS_TOKEN_PREFIX.length));
@@ -1125,19 +985,14 @@ async function oauthTokenRow(raw: string): Promise<TokenRow | null> {
 }
 
 /**
- * THE identity builder. Everything from "which teams may this token act in"
- * onward lives here and nowhere else, so both credential shapes above are
- * subject to the same fail-closed membership check, the same two-factor policy,
- * the same capability set and the same usage stamp.
+ * THE identity builder.
  */
 async function identityForTokenRow(
   match: TokenRow,
   teamHint?: string | null,
 ): Promise<RequestIdentity | null> {
-  // Expiry first, and it is a plain "this token is not valid": before any team
-  // is resolved, before the membership read, before `lastUsedAt` is stamped. One
-  // check here covers every credential shape and every entry point - GraphQL,
-  // MCP, the deploy hook - because they all resolve through this function.
+  // Expiry first, and it is a plain "this token is not valid": before any team is
+  // resolved, before the membership read, before `lastUsedAt` is stamped.
   if (match.expiresAt && Date.parse(match.expiresAt) <= Date.now()) return null;
   const scope = match.scoped ? await loadScope(match.id) : null;
 
@@ -1155,9 +1010,6 @@ async function identityForTokenRow(
     reachable[0];
 
   // The 2FA / membership guard, on the team the request actually resolved to.
-  // Runs OUTSIDE runWithIdentity, so `membershipFor` sees the member's UNCLAMPED
-  // set — correct, and it must stay that way: clamping it with the very token
-  // being authenticated would be circular.
   if (!(await membershipFor(match.userId, picked.id))) return null;
 
   const caps = await getDb()
@@ -1191,20 +1043,8 @@ async function identityForTokenRow(
 
 /**
  * Record that this token just drove an AI agent, rather than merely that it was
- * used.
- *
- * `lastUsedAt` above rises on every authenticated request and answers "is this
- * credential alive". It cannot answer "which clients are connected to this
- * team", because a CI job and Claude Code look identical through it. This one
- * only ever rises from `/api/mcp`, which is what lets Settings -> MCP Server
- * list a `deplo_` token pasted into a terminal agent beside an OAuth web
- * connector - and what lets the connect wizard wait for a REAL first call
- * instead of promising the config was probably right.
- *
- * Fire-and-forget and deliberately not `async`: it is called from the MCP route
- * on a path where a failed usage write must never fail the tool call, and an
- * awaited promise there would add a round trip to every request for a column
- * nothing reads synchronously.
+ * used. It cannot answer "which clients are connected to this team", because a CI
+ * job and Claude Code look identical through it.
  */
 export function stampMcpUse(tokenId: string): void {
   void getDb()
@@ -1217,20 +1057,7 @@ export function stampMcpUse(tokenId: string): void {
 }
 
 /**
- * Revoke = the credential is gone, everywhere. Delete means delete.
- *
- * It used to detach the active team and leave the row alive for the others,
- * which made one button mean two things: a token somebody had just revoked was
- * still answering requests in the next team, and nothing on the screen it was
- * pressed from ever said so again. Any team a token can act in may cut it (a
- * team that cannot stop a credential operating inside it holds no lever at all),
- * and so may its creator from anywhere - and either way it ends: the row, the
- * OAuth consent and the refresh token go together.
- *
- * The blast radius is why every team that was reaching it gets the entry in ITS
- * OWN Activity, not only the one that pressed the button: the other teams lose
- * an automation they did not switch off, and that has to be readable as a line
- * with a name on it rather than discovered as an outage.
+ * Revoke = the credential is gone, everywhere.
  */
 export async function revokeToken(id: string): Promise<void> {
   const { teamId, userId } = await requireCapability("manage_tokens");
@@ -1250,17 +1077,13 @@ export async function revokeToken(id: string): Promise<void> {
   )[0];
   if (!row) throw new Error("Token not found");
 
-  // An INSTANCE-ADMIN token is unscoped and reaches every team its creator
-  // belongs to, so "any reaching team may revoke" (below) would let a plain
-  // manage_tokens holder in any of those teams kill the admin's global
-  // credential. Minting and editing one already require instance admin; revoking
-  // it does too.
+  // An INSTANCE-ADMIN token is unscoped and reaches every team its creator belongs
+  // to, so "any reaching team may revoke" (below) would let a plain manage_tokens
+  // holder in any of those teams kill the admin's global credential.
   if (row.instanceAdmin) await requireInstanceAdmin();
 
-  // Any team the token can act in may cut it off: that is the lever a team has
-  // over a credential someone else minted into it. Its CREATOR may cut it from
-  // ANY team: their tokens page lists every token they minted, and a row you can
-  // see but not revoke is a dead end, not a safeguard.
+  // Any team the token can act in may cut it off: that is the lever a team has over a
+  // credential someone else minted into it.
   const reachesHere = (await tokenIdsReaching(teamId)).has(id);
   if (!reachesHere && row.userId !== userId) throw new Error("Token not found");
 
@@ -1304,17 +1127,9 @@ export async function revokeToken(id: string): Promise<void> {
 }
 
 /**
- * Tear down the OAuth half of a connection when its token is revoked.
- *
- * Deleting the `api_tokens` row is already enough to stop the next request — the
- * join in `oauthTokenRow` goes empty. This clears what would otherwise be left
- * behind: the refresh token that would mint a fresh access token an hour later,
- * and the consent record that would let the client re-authorize without the
- * screen. It lives INSIDE `revokeToken` so both settings pages and the GraphQL
- * mutation get it - one revocation lever, not two that can drift.
- *
- * Best-effort, like `lastUsedAt`: the credential is already gone by this point,
- * and a failed cleanup must not turn a successful revoke into an error.
+ * Tear down the OAuth half of a connection when its token is revoked. Best-effort,
+ * like `lastUsedAt`: the credential is already gone by this point, and a failed
+ * cleanup must not turn a successful revoke into an error.
  */
 async function forgetOauthGrant(
   userId: string,
@@ -1345,11 +1160,9 @@ async function forgetOauthGrant(
         ),
       );
   } catch (e) {
-    // Not fatal: the credential is already gone, so a leftover consent or
-    // refresh row grants nothing — the join that resolves an access token has
-    // no `api_tokens` row to land on. Said out loud anyway, because a silent
-    // failure here leaves rows that quietly change what `prompt=none` and the
-    // abandoned-client sweep do next.
+    // Not fatal: the credential is already gone, so a leftover consent or refresh row
+    // grants nothing — the join that resolves an access token has no `api_tokens` row
+    // to land on.
     console.warn(
       `[deplo] could not clear the OAuth rows for a revoked connection (client ${clientId}):`,
       e,
@@ -1382,19 +1195,15 @@ interface ResolvedScope {
   appIds: string[];
   /**
    * Every team the ticked nodes put in reach — the whole teams plus the owning
-   * team of each project, folder and app. All of them are teams the ACTOR
-   * belongs to (that is what {@link resolveScopeInput} validates), so this is
-   * what {@link assertWithinActorEverywhere} measures the edit against.
+   * team of each project, folder and app.
    */
   teamsReached: string[];
 }
 
 /**
  * Decide the two orthogonal switches, refusing the combination that cannot mean
- * what it says. Instance-admin gates read the user's admin flag and nothing
- * else, so a scope could not narrow one — offering both would be a switch that
- * lies. Runs its gates BEFORE any transaction is opened (a data function that
- * queries on its own connection inside one deadlocks pglite).
+ * what it says. Instance-admin gates read the user's admin flag and nothing else,
+ * so a scope could not narrow one — offering both would be a switch that lies.
  */
 async function validateScope(
   input: { instanceAdmin?: boolean } & TokenScopeInput,
@@ -1416,10 +1225,7 @@ async function validateScope(
 }
 
 /**
- * Validate every ticked node against what the ACTOR can reach. You can only put
- * a team in a token's scope if you are in that team, and a project or app only
- * if it lives in one of those teams — otherwise the scope picker would be a way
- * to discover, and reach into, teams you don't belong to.
+ * Validate every ticked node against what the ACTOR can reach.
  */
 async function resolveScopeInput(
   input: TokenScopeInput,
@@ -1507,12 +1313,6 @@ async function resolveScopeInput(
  * The actor, measured across the teams a token reaches instead of the one team
  * they are standing in - the ceiling on what the CREATOR may tick when they edit
  * their own token from somewhere else.
- *
- * A union, not an intersection: the token stores ONE capability set for every
- * team it reaches, and `clampToToken` intersects it live with what the creator
- * may do in whichever team the request lands in. So a permission they hold in
- * only one of those teams is real there and inert everywhere else, and refusing
- * to save it would make a multi-team token editable from nowhere.
  */
 async function actorAcross(
   actor: Membership,
@@ -1532,21 +1332,8 @@ async function actorAcross(
 }
 
 /**
- * Bound a token edit by what the ACTOR may do in every team the token will act
- * in — not merely in the team it is managed from.
- *
- * The live clamp measures a token against its CREATOR, so it says nothing about
- * whoever re-authors it later. Without this, an admin of the home team could
- * hand someone else's credential capabilities they do not hold themselves in
- * another team that token reaches: a `manage_tokens` holder who is a plain
- * viewer in team B could point Alice's token at B with `delete_apps` on it, and
- * the runtime clamp — which only asks about Alice — would let it through.
- *
- * Only runs when the actor is not the creator; editing your own token is already
- * bounded, in every team, by the clamp against yourself. A token the actor
- * cannot measure at all (an unrestricted one whose creator belongs to teams the
- * actor doesn't) is refused rather than silently gutted: revoking it is the
- * lever a team has over a credential it can't author.
+ * Bound a token edit by what the ACTOR may do in every team the token will act in
+ * — not merely in the team it is managed from.
  */
 async function assertWithinActorEverywhere(
   capabilities: Capability[],
@@ -1592,17 +1379,6 @@ async function writeScope(
 
 /**
  * Flatten a stored scope for the request identity.
- *
- * The team set is DERIVED — a project knows its team, a folder knows its team,
- * an app knows its team — so a node deleted anywhere simply drops out of the
- * join and the token narrows instead of widening.
- *
- * Folders are EXPANDED here rather than stored expanded: a ticked folder brings
- * its whole subtree, and a ticked project brings every folder filed under it (an
- * app in a folder has no `project_id` of its own, so without this a project
- * scope would miss most of what people mean by it). Doing it per authentication
- * means moving or nesting a folder takes effect on the very next request, with
- * nothing to re-materialize.
  */
 async function loadScope(tokenId: string): Promise<TokenScope> {
   const db = getDb();
@@ -1642,11 +1418,7 @@ async function loadScope(tokenId: string): Promise<TokenScope> {
   ]);
 
   const projectIds = projRows.map((r) => r.id);
-  // A team is WHOLE only when nothing narrower inside it is named. Both at once
-  // is not a shape the picker can draw (ticking a node clears everything under
-  // it), but `createToken` accepts it from an API client, and read as a union it
-  // turned "one app" into the whole team while the editor still displayed the
-  // app. The narrower tick wins: it is the one the reader believes.
+  // A team is WHOLE only when nothing narrower inside it is named.
   const narrowedTeamIds = new Set(
     [...projRows, ...folderRows, ...appRows].map((r) => r.teamId),
   );

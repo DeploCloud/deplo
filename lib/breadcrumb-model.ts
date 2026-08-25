@@ -1,21 +1,5 @@
 /**
- * Pure model behind the topbar breadcrumb. Given the current location (pathname +
- * the Overview's ?folder=/?project= drill-in params) and a lightweight snapshot of
- * the team's folders / apps / projects, it produces the ordered list of
- * breadcrumb SEGMENTS — each carrying a link (where clicking the name goes) and a
- * dropdown of sibling/child targets (where the ▾ takes you), Vercel/Windows-
- * Explorer style.
- *
- * Every apps-tree location (browsing a folder/project on the Overview, or
- * anywhere inside an app) reads as one consistent path rooted at "Overview":
- *
- *   Overview ▾ / Folder ▾ / Subfolder ▾ / App ▾ / Section ▾ / Subsection ▾
- *
- * No React, no DB, no "server-only" — so it renders on the server, hydrates on the
- * client, AND is unit-testable in isolation (lib/breadcrumb-model.test.ts). The
- * server data loader (lib/data/breadcrumb.ts) and the client renderer
- * (components/layout/breadcrumbs.tsx) both import from here so they can never
- * disagree on the shape.
+ * Pure model behind the topbar breadcrumb.
  */
 
 export interface BreadcrumbFolder {
@@ -107,13 +91,9 @@ export interface BreadcrumbSegment {
   /** Sibling / child targets for the ▾ dropdown (empty ⇒ no dropdown). */
   items: DropItem[];
   /**
-   * The crumb's own avatar, when the thing it names has one. A trail of names is
-   * a trail of strings that all look alike; the App you are working on wearing
-   * the same logo its card and its Overview wear is what makes the crumb
-   * recognisable at a glance rather than read word by word.
-   *
-   * Only on the crumbs that name a THING (app, database, folder, project) —
-   * never on "Overview" or on a section like "Logs", which are places.
+   * The crumb's own avatar, when the thing it names has one. Only on the crumbs
+   * that name a THING (app, database, folder, project) — never on "Overview" or on
+   * a section like "Logs", which are places.
    */
   logo?: string | null;
   /** A database crumb's engine — the fallback mark when it has no logo. */
@@ -131,10 +111,8 @@ export interface BreadcrumbCaps {
 }
 
 /**
- * Live per-app facts the section dropdown needs (Console only while running,
- * Files only when present). Sourced from the app-nav store; `slugMatches`
- * is false until it confirms the store is for the app in the URL (so a stale
- * value from the app you just left never leaks its sections in).
+ * Live per-app facts the section dropdown needs (Console only while running, Files
+ * only when present).
  */
 export interface BreadcrumbFlags {
   running: boolean;
@@ -144,11 +122,6 @@ export interface BreadcrumbFlags {
 
 /**
  * A database's top-level sections, in sidebar order (see nav-config.databaseNav).
- * Deliberately the STABLE ones only: Console hides behind a one-time warning and
- * Cron jobs behind a switch, both of which are client-side facts this pure model
- * has no way to know. The crumb still names whichever section you are actually
- * on — `capitalize(seg)` covers the two that are not listed here — it just does
- * not offer them in the dropdown as if everyone had them.
  */
 const DATABASE_SECTIONS: { seg: string; label: string }[] = [
   { seg: "", label: "Overview" },
@@ -222,10 +195,7 @@ function projectUrl(id: string, view: "grid" | "list"): string {
 }
 
 /**
- * The ancestor folder chain for a folder id, root → leaf (inclusive). Walks
- * `parentId` up over the VISIBLE folder set; a missing link (a folder the viewer
- * can't see, or a stale id) just ends the walk, and a `seen` guard makes a stale
- * cycle terminate.
+ * The ancestor folder chain for a folder id, root → leaf (inclusive).
  */
 export function folderChainFor(
   folderId: string | null,
@@ -245,16 +215,8 @@ export function folderChainFor(
 
 /**
  * Build the breadcrumb segments for the current location, or null when it isn't an
- * apps-tree location (a plain page like /storage, or an app/folder not in
- * the graph) — the topbar then falls back to its plain top-level label. The trail:
- *
- *   Overview  →  [folder…]  or  [project]  →  [app]  →  [section]  →  [subsection]
- *
- * Every folder crumb's dropdown lists that folder's subfolders + direct apps
- * (pivot across the tree); the Overview crumb's dropdown lists the top level
- * (root folders, projects, ungrouped apps); the app crumb's dropdown lists
- * its sibling apps; the section crumbs list the app's other sections. The
- * entry matching the current path at each level is flagged `current`.
+ * apps-tree location (a plain page like /storage, or an app/folder not in the
+ * graph) — the topbar then falls back to its plain top-level label.
  */
 export function buildBreadcrumb(
   ctx: BreadcrumbContext,
@@ -307,10 +269,8 @@ export function buildBreadcrumb(
     return null;
   }
 
-  // Section preservation for sibling app links (Vercel-style: switch app,
-  // keep your tab). Console/Files hinge on per-app runtime facts a sibling
-  // may not share, so those never carry over; deeper detail (a deployment id) is
-  // dropped — only the section (+ settings subsection) is kept.
+  // Section preservation for sibling app links (Vercel-style: switch app, keep your
+  // tab).
   const UNSAFE_SECTIONS = new Set(["console", "files"]);
   const siblingSuffix =
     rest.length > 0 && !UNSAFE_SECTIONS.has(rest[0])
@@ -502,10 +462,8 @@ export function buildBreadcrumb(
       items: mainItems,
     });
 
-    // A settings subsection (General/Deployments/Storage/Access/Danger) adds one
-    // more crumb whose dropdown swaps between the subsections. Emitted for the
-    // bare /settings index too (sub = "" = General) so you can pivot subsections
-    // from there instead of dead-ending on General.
+    // A settings subsection (General/Deployments/Storage/Access/Danger) adds one more
+    // crumb whose dropdown swaps between the subsections.
     if (mainSeg === "settings") {
       const sub = rest[1] ?? "";
       const subBase = `${base}/settings`;
@@ -534,12 +492,8 @@ export function buildBreadcrumb(
 }
 
 /**
- * Storage / <database> ▾ / <section> ▾.
- *
- * Shorter than the apps trail because storage has no tree: a database lives in
- * the team, not in a folder. Returns null for an id the caller cannot see, which
- * is what makes the topbar fall back to the plain "Storage" label instead of
- * naming a database in a breadcrumb the viewer has no business reading.
+ * Storage / <database> ▾ / <section> ▾. Shorter than the apps trail because
+ * storage has no tree: a database lives in the team, not in a folder.
  */
 function buildDatabaseTrail(
   id: string,

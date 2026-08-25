@@ -467,6 +467,7 @@ test("a path prefix appends && PathPrefix to a parenthesised Host group + priori
   // Rule wraps the Host group in parens (so && binds across all hosts) and adds
   // PathPrefix; the priority is the BASE (which lifts it above every whole-host
   // router) plus the prefix length; NO stripprefix / middlewares label (strip not
+  // requested).
   assert.ok(
     labels.some((l) =>
       l.includes(".rule=(Host(`app.com`)) && PathPrefix(`/api`)"),
@@ -854,7 +855,7 @@ test("single-image: mixed null + explicit-default ports still fold into ONE rout
 
 // --- No routes: the container is deployed but NOT routed (a project whose domains
 // were all deleted; Deplo never resurrects an auto domain). The labels must DISABLE
-// Traefik for the container, never emit an empty/invalid Host() rule.
+// Traefik for the container, never emit an empty/invalid Host() rule. ---
 
 test("no routes ⇒ traefik.enable=false and NOTHING else (single-image)", () => {
   const labels = traefikRouterLabels({

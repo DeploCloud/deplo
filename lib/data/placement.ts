@@ -6,18 +6,9 @@ import { listEnvironmentsForProject } from "./environments";
 import type { OverviewPlacement } from "../overview-links";
 
 /**
- * Resolving the Overview drill-in that a creation flow was opened from.
- *
- * The `?folder=` / `?project=` / `?env=` params travel from the Overview into
- * `/templates` and `/new` so that an app created while standing INSIDE a folder
- * (or a project environment) is created there — ADR-0009's "an app lives in one
- * place", applied at birth instead of only on a later move.
- *
- * Resolution happens against what the CALLER can see (`listFolders` is already
- * per-caller visibility-filtered), so a stale, foreign or hand-typed id quietly
- * degrades to a top-level create rather than erroring at deploy time. This is a
- * display/preselect helper, NOT the gate: `createApp` re-validates the
- * destination and requires `deploy` on the target folder.
+ * Resolving the Overview drill-in that a creation flow was opened from. This is a
+ * display/preselect helper, NOT the gate: `createApp` re-validates the destination
+ * and requires `deploy` on the target folder.
  */
 export interface ResolvedPlacement {
   /** What the UI shows, e.g. "Marketing" or "Shop · Production". */

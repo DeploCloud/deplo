@@ -1,24 +1,7 @@
 /**
- * The app's own extra `docker compose up` flags.
- *
- * deplo assembles the bring-up itself — the project name keys every container and
- * label, the stack file is the compose it just rendered, the env-file holds the
- * decrypted secrets. What an operator sometimes needs is one more FLAG on that
- * command (`--pull always`, `--force-recreate`, `--scale web=3`), and until now
- * there was nowhere to put it.
- *
- * So this is deliberately NOT the "custom command" other platforms ship, where
- * you retype the whole invocation from whatever the UI currently prints. That
- * design breaks twice: the day deplo changes its own command, every hand-copied
- * override silently keeps running the old one; and one typo in the project name
- * or stack path points compose at nothing, which looks like a green deploy of an
- * app that never restarted. Here the operator adds only the part that is theirs,
- * deplo keeps owning the rest, and both sides — control plane and agent — refuse
- * the flags that would take that ownership away.
- *
- * Pure and client-safe (no `server-only`): the settings form previews the exact
- * command with the same functions the deploy path uses, so what the user reads is
- * what the host runs.
+ * The app's own extra `docker compose up` flags. Here the operator adds only the
+ * part that is theirs, deplo keeps owning the rest, and both sides — control plane
+ * and agent — refuse the flags that would take that ownership away.
  */
 
 /** At most this many tokens — a bring-up is a flag or two, not a script. */

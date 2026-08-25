@@ -1,17 +1,11 @@
 /**
- * Overview drill-in URL builders. A PLAIN module (no "use client") on purpose:
- * the Overview server component builds these hrefs too, and calling a function
- * exported from a client module inside an RSC render throws at runtime
- * ("Attempted to call … from the server"). Client components import from here
- * as well, so the two sides can never disagree on the URL shape.
+ * Overview drill-in URL builders. Client components import from here as well, so
+ * the two sides can never disagree on the URL shape.
  */
 
 /**
  * The Overview drill-in an action was started from — an open folder, or a
- * project's selected environment (ADR-0009: never both). Carried through
- * `/new` and `/templates` as `?folder=` / `?project=` / `?env=` so an app
- * created from inside a folder is CREATED IN that folder instead of landing at
- * the team top level.
+ * project's selected environment (ADR-0009: never both).
  */
 export interface OverviewPlacement {
   folderId?: string | null;
@@ -103,9 +97,7 @@ export function templatesHref(p?: OverviewPlacement | null): string {
 
 /**
  * Read a placement back out of a page's `searchParams` (the same `?folder=` /
- * `?project=` / `?env=` grammar the Overview uses). Values are not validated
- * here — `/new` resolves them against the caller's visible folders/projects,
- * and the data layer re-authorizes the destination on create.
+ * `?project=` / `?env=` grammar the Overview uses).
  */
 export function placementFromSearchParams(sp: {
   folder?: string | string[];

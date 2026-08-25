@@ -3,20 +3,8 @@ import { ALL_ALERTS } from "./types";
 
 /**
  * The alert catalog — one entry per thing Deplo will tell a team about, plus the
- * categories the notification settings browse them by.
- *
- * Deliberately FINE-GRAINED, and deliberately shaped exactly like the capability
- * catalog next door (`lib/capabilities.ts`): same meta record, same category
- * array, same search text, and the same picker UI on top. Somebody who has
- * already ticked permissions for a role knows how to tick alerts.
- *
- * The one rule that governs what may be listed here: **every key must have a
- * real emitter**. A key nobody dispatches is a switch that promises an alert and
- * delivers silence, which is the exact bug this feature exists to close. When
- * adding a key, add its `dispatchAlert` call in the same change.
- *
- * No server-only or request-context imports: the settings panel is a client
- * component and reads this catalog directly.
+ * categories the notification settings browse them by. The one rule that governs
+ * what may be listed here: **every key must have a real emitter**.
  */
 
 /** How an alert is shown in the notification settings. */
@@ -91,10 +79,8 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     description:
       "A scheduled command exited with an error, or its outcome is unknown.",
     keywords: "cron schedule scheduled task command error exit",
-    // On by default: a job that fails at 03:00 and tells nobody is the exact
-    // failure a cron manager exists to prevent. It also carries the `lost` case
-    // (Deplo could not find out how the run ended), which is not a failure but
-    // is equally something you want to hear about.
+    // On by default: a job that fails at 03:00 and tells nobody is the exact failure a
+    // cron manager exists to prevent.
     defaultOn: true,
   },
   cron_job_succeeded: {
@@ -373,9 +359,9 @@ export const ALERT_CATEGORIES: {
 
 /**
  * What a team is subscribed to before it ever opens the settings — and what an
- * alert key added in a LATER release falls back to for every existing team, so
- * a new alert never needs a backfill (`notification_alerts` stores a row only
- * for keys the team has actually decided about).
+ * alert key added in a LATER release falls back to for every existing team, so a
+ * new alert never needs a backfill (`notification_alerts` stores a row only for
+ * keys the team has actually decided about).
  */
 export const DEFAULT_ALERTS: AlertKey[] = ALL_ALERTS.filter(
   (a) => ALERT_META[a].defaultOn,

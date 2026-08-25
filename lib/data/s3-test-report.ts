@@ -3,37 +3,6 @@ import type { DestinationKind, LogLevel, S3Provider } from "../types";
 /**
  * The "Test connection" report for a backup destination: what deplo probed, in
  * order, and what came back — the debug output behind the badge.
- *
- * WHY THIS EXISTS. Testing a destination used to be a black box that always
- * reported success: the mutation returned the destination regardless of the
- * agent's verdict, so the UI toasted "connection verified" over a probe that had
- * just failed, and a red badge could never say why. The verdict now travels with
- * the reason, and this module turns it into something readable.
- *
- * TWO PROBES, ONE REPORT. A destination is a bucket or a folder on a server
- * (ADR-0019), and the two are checked by completely different code on the agent
- * — so every label, step and command here is chosen by `target.kind`. Printing
- * the S3 sequence for a server destination is not a cosmetic slip: it tells the
- * reader deplo went looking for a bucket that does not exist, and the reproduce
- * block hands them `aws s3api head-bucket --bucket ` with nothing after it.
- *
- * WHAT IS REAL AND WHAT IS DERIVED — the honesty rule for this file. The agent's
- * `S3Check` RPC returns exactly `{ ok, error }` (plus, for a folder, the resolved
- * root and the headroom), so:
- *  - `error` is the agent's VERBATIM message and is never rewritten here;
- *  - the step sequence is DERIVED. It mirrors, one-for-one, the fixed sequence
- *    the agent performs — for a bucket build client (with its SSRF guard) →
- *    BucketExists → PutObject probe → RemoveObject (internal/s3client/s3client.go
- *    `Check`), for a folder resolve the root → write a probe file → remove it
- *    (internal/server/backup_store.go `storeCheck`) — and the step it stopped at
- *    is read off the message prefixes those same functions produce. It is not a
- *    transcript the agent sent us, and the UI says so.
- * Keep {@link classifyFailedStep} in sync with the agent's messages: a prefix it
- * no longer recognises degrades to "the probe failed, here is the output",
- * never to a wrong step being blamed.
- *
- * Pure and dependency-free (no db, no agent, no session) so the whole
- * presentation is unit-testable from a `{ ok, error }` pair.
  */
 
 /**
@@ -148,13 +117,8 @@ function pathStyle(provider: S3Provider): boolean {
 
 /**
  * Which step a verdict stopped at, read off the agent's own message prefixes
- * (deplo-agent internal/s3client/s3client.go):
- *  - `s3: empty endpoint` / `cannot resolve endpoint host` / `SSRF guard`
- *    ⇒ the client never got built.
- *  - `reach bucket "x": …` / `bucket "x" does not exist …` ⇒ BucketExists failed.
- *  - `write probe to bucket "x": …` ⇒ the PutObject probe failed (read-only key).
- * Anything unrecognised blames NO step (null): the log still shows the verbatim
- * output, which beats pointing at the wrong operation.
+ * (deplo-agent internal/s3client/s3client.go): - `s3: empty endpoint` / `cannot
+ * resolve endpoint host` / `SSRF guard` ⇒ the client never got built.
  */
 export function classifyFailedStep(
   error: string,
@@ -167,10 +131,9 @@ export function classifyFailedStep(
     // every "the folder is wrong" message; only `storeCheck`'s own probe write
     // says "cannot write to".
     if (e.startsWith("cannot write to ")) return "write";
-    // Every message `resolveStoreRoot` can produce names the store: "backup
-    // store path %q must be absolute / does not exist on this server / is not a
-    // directory / is not initialized for Deplo / is not empty", plus "create
-    // backup store %q: …" and "mark backup store %q: …".
+    // Every message `resolveStoreRoot` can produce names the store: "backup store path
+    // %q must be absolute / does not exist on this server / is not a directory / is not
+    // initialized for Deplo / is not empty", plus "create backup store %q: …" and "mark
     if (e.includes("backup store")) return "root";
     return null;
   }
@@ -188,10 +151,7 @@ export function classifyFailedStep(
 }
 
 /**
- * Build the report for a completed probe. `serverName` empty ⇒ no agent served
- * it (the "agent" step is what failed); `agentAttempts` are the servers deplo
- * tried and skipped on the way, which is the difference between "your bucket is
- * wrong" and "no host could even run the check".
+ * Build the report for a completed probe.
  */
 export function buildS3TestReport(opts: {
   target: S3TestTarget;
@@ -265,11 +225,7 @@ export function buildS3TestReport(opts: {
     status,
   });
 
-  // Everything before the failing step ran; everything after never got to. An
-  // UNATTRIBUTABLE failure (a message no prefix matches) lists only the step we
-  // can actually vouch for — the agent answered — rather than mislabelling the
-  // rest as "not reached", which may well be false. The verbatim output carries
-  // the rest of the story.
+  // Everything before the failing step ran; everything after never got to.
   const failedAt = failedStep ? ORDER.indexOf(failedStep) : -1;
   const steps: S3TestStep[] = ok
     ? ORDER.map((key) => step(key, "passed"))
@@ -356,22 +312,13 @@ export function emptyS3TestReport(target: S3TestTarget): S3TestReport {
 /**
  * The same calls, as commands an operator can paste into a shell to see the raw
  * answer for themselves.
- *
- * deplo does NOT shell out — the agent performs them in-process (one Go binary,
- * no aws CLI and no shell on the host) — so this is billed in the UI as
- * "reproduce it yourself", not as "the command we ran". It is an EXPERT escape
- * hatch and nothing on the happy path needs it. Credentials are placeholders on
- * purpose: a stored secret is write-only in deplo and has no reveal path, and
- * this block must not become one.
  */
 export function reproduceCommand(target: S3TestTarget): string {
   if (target.kind === "server") return reproduceStoreCommand(target);
   const url = endpointUrl(target.endpoint);
-  // QUOTED, all of it. This block is what an admin pastes into a shell precisely
-  // when a destination is failing, and the bucket and region are strings someone
-  // else typed into a form. Deplo validates them on the way in as well; either
-  // guard alone is one refactor away from being the only one, and the cost of
-  // both is a pair of quotes.
+  // QUOTED, all of it. Deplo validates them on the way in as well; either guard alone
+  // is one refactor away from being the only one, and the cost of both is a pair of
+  // quotes.
   const common = `--endpoint-url ${shellQuote(url)} --region ${shellQuote(target.region || "auto")}`;
   const bucket = shellQuote(target.bucket);
   const styleNote = pathStyle(target.provider)

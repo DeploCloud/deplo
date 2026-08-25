@@ -459,7 +459,7 @@ function SortableGrid({
   const [, startTransition] = React.useTransition();
 
   // Local optimistic order for snappy moves. The order arrays are the sole source of
-  // arrangement; the card objects always come from props (so status etc.
+  // arrangement; the card objects always come from props (so status etc. stay fresh).
   const [order, setOrder] = React.useState<string[]>(() => allAppIds);
   const [folderOrder, setFolderOrder] = React.useState<string[]>(() =>
     folders.map((f) => f.id),
@@ -645,6 +645,7 @@ function SortableGrid({
   // The confirm copy names exactly what is selected: the three kinds have very
   // different consequences (only apps are actually destroyed — a folder or a project
   // is just removed, its contents survive), so one fixed sentence would either scare
+  // or mislead depending on the selection.
   const deleteParts: string[] = [];
   if (selectedAppIds.length)
     deleteParts.push(
@@ -938,6 +939,10 @@ function SortableGrid({
   // Restrict each card kind to the droppables it can meaningfully land on, so
   // closestCenter never resolves a drag onto a neighbour the drop handler would
   // ignore (which makes reordering feel broken): - a project container only reorders
+  // among other projects; - a folder only reorders among other folders (folders never
+  // enter a project — ADR-0009: a project's contents are its environments' apps); -
+  // an app keeps every droppable (siblings to reorder among, folders and projects to
+  // drop into, and the breadcrumb to move out a level).
   const collisionDetection = React.useCallback<CollisionDetection>(
     (args) => {
       const a = String(args.active.id);
@@ -1405,6 +1410,7 @@ function SortableItem({
   // …and scoped to the card's own DOM: a press inside a menu or modal THIS card
   // rendered still reaches these listeners through the React tree (portals move the
   // DOM node, not the React parent), and must never pick the card up under the
+  // backdrop.
   const pointerDragListeners = scopeListenersToSubtree(rawPointerDragListeners);
   // Drop the draggable's role="button" (and its role-only ARIA companions) from
   // the wrapper: it also hosts the ⋯ menu button, and a button must not nest one.
@@ -1439,6 +1445,7 @@ function SortableItem({
     // Menus and modals this card opens are portalled to <body> but stay REACT children
     // of it, so their clicks arrive here first (capture runs before the event ever
     // reaches the surface, so the surface cannot stop it — see
+    // lib/portal-event-scope.ts).
     if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(
       (e.target as HTMLElement).closest?.("[data-card-actions]"),

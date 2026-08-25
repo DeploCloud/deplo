@@ -45,22 +45,9 @@ import type {
 } from "../types";
 
 /**
- * Backup destinations: WHERE an artifact goes.
- *
- * Two kinds behind one table and one id space, because `backups.destination_id`
- * and `backup_runs.destination_id` must keep pointing at one place:
- *
- *  - `s3`     — a bucket. The historical shape; credentials encrypted at rest,
- *               decrypted at the deploy edge and sent to the agent over mTLS.
- *  - `server` — a directory on a server in the fleet. Artifacts are ALWAYS
- *               age-encrypted, with one keypair per destination.
- *
- * The asymmetry in the age keypair is the security model, not a detail. The
- * RECIPIENT (public) is all an agent gets when WRITING, so a storage host
- * produces artifacts it cannot itself read. The IDENTITY (private) leaves the
- * control plane only for a restore or a download — and it is also handed to the
- * operator once as a recovery key, because an encrypted backup whose only key
- * lives inside the thing that might be lost is not a backup.
+ * Backup destinations: WHERE an artifact goes. Two kinds behind one table and one
+ * id space, because `backups.destination_id` and `backup_runs.destination_id` must
+ * keep pointing at one place: - `s3` — a bucket.
  */
 
 export interface DestinationDTO extends Omit<
@@ -74,10 +61,7 @@ export interface DestinationDTO extends Omit<
 
 /**
  * What "Test connection" returns: the destination as it now stands (its badge
- * repainted from the live verdict) AND the verdict itself. The report is the
- * point — the mutation used to return only the destination, so a caller had no
- * way to tell a passing probe from a failing one and the UI cheerfully toasted
- * success either way.
+ * repainted from the live verdict) AND the verdict itself.
  */
 export interface DestinationTestResult {
   destination: DestinationDTO;
@@ -86,9 +70,7 @@ export interface DestinationTestResult {
 
 /**
  * A destination as a PICKER needs it — what to call it, where it points, how it
- * last answered. Deliberately narrower than the DTO: a dialog that only chooses
- * a destination has no business shipping the region, the masked key or the test
- * history to the browser.
+ * last answered.
  */
 export interface DestinationOption {
   id: string;
@@ -101,11 +83,9 @@ export interface DestinationOption {
   serverId: string | null;
   /** Whether artifacts written here are age-encrypted. */
   encrypted: boolean;
-  /** When someone last took the recovery key, or null if nobody ever has. The
-   *  picker ships it so the screens that USE a destination can say that its
-   *  backups are locked by a key living only inside this instance - the Storage
-   *  card was the only place that said so, and it is not the screen where
-   *  someone schedules their first backup. */
+  /**
+   * When someone last took the recovery key, or null if nobody ever has.
+   */
   recoveryKeySavedAt: string | null;
 }
 
@@ -186,8 +166,7 @@ export const S3_PROVIDERS: {
 /**
  * The outbound-URL guard lives in `lib/outbound-url.ts` (a leaf, so the alert
  * channels can import it without closing a cycle back through this module's
- * activity logging). Re-exported here because this is where its callers and its
- * tests have always looked for it.
+ * activity logging).
  */
 export {
   assertSafeOutboundUrl,
@@ -197,10 +176,7 @@ export {
 
 /**
  * Whether to address a provider's bucket PATH-style (bucket in the URL path) vs
- * VIRTUAL-HOST style (bucket as a subdomain). AWS S3 is virtual-host; the
- * S3-compatible stores (R2, B2, Spaces, Wasabi, self-hosted MinIO, "other")
- * generally need or tolerate path-style, so we default everything non-AWS to
- * path-style. The agent's minio-go client honours this flag.
+ * VIRTUAL-HOST style (bucket as a subdomain).
  */
 function pathStyleFor(provider: S3Provider): boolean {
   return provider !== "aws";
@@ -210,11 +186,6 @@ function pathStyleFor(provider: S3Provider): boolean {
  * A destination with its secrets DECRYPTED, for the backup executor only
  * (server-only). NEVER returned to a client — {@link DestinationDTO} is the
  * client-facing masked shape.
- *
- * For `s3` the access/secret keys ride the mTLS channel to the owning agent,
- * which holds the S3 client; the bytes never round-trip through the control
- * plane. For `server`, `ageRecipient` goes out on every backup and `ageIdentity`
- * ONLY on a restore or a download.
  */
 export interface DestinationWithSecrets {
   destination: BackupDestination;
@@ -228,10 +199,7 @@ export interface DestinationWithSecrets {
 /**
  * Load a destination with its secrets decrypted for a SPECIFIC team — the
  * session-free core. Throws when the id is unknown / not in `teamId` so a backup
- * can't target a foreign destination. The scheduler runs with NO request
- * context, so it must call this with the schedule's own `teamId` rather than the
- * cookie-derived active team; the interactive {@link getDestinationWithSecrets}
- * wraps it.
+ * can't target a foreign destination.
  */
 export async function getDestinationWithSecretsForTeam(
   teamId: string,
@@ -239,13 +207,7 @@ export async function getDestinationWithSecretsForTeam(
 ): Promise<DestinationWithSecrets> {
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Destination not found");
-  // Strict, not best-effort. Every one of these is about to be ACTED on: the
-  // keys go to an agent that dials the bucket with them, and `ageIdentity` is
-  // what a restore reads the artifact with. Decrypting to "" would have turned
-  // a key-mismatch into "these credentials are wrong" from the S3 provider and,
-  // worse, into "this destination is not encrypted" - which is the one wrong
-  // answer that ends with a restore refusing an artifact it could actually have
-  // read, or a backup written in the clear.
+  // Strict, not best-effort.
   return {
     destination: d,
     accessKey: d.accessKeyEnc
@@ -278,28 +240,22 @@ async function loadDestination(
 
 /**
  * Load the ACTIVE team's destination with its secrets decrypted, for the
- * interactive executor (manual "Run now" / restore). Scoped to the active team
- * via the session (mirrors every other team-scoped read). The unattended
- * scheduler uses {@link getDestinationWithSecretsForTeam} instead (no session).
+ * interactive executor (manual "Run now" / restore).
  */
 export async function getDestinationWithSecrets(
   id: string,
 ): Promise<DestinationWithSecrets> {
   const teamId = await requireActiveTeamId();
   // A destination belongs to the team, not to a Project, so a project-scoped API
-  // token has no business READING one — while the session-free core above stays
-  // open, because a scoped token backing up an app it CAN reach still needs the
-  // destination's credentials to do it.
+  // token has no business READING one — while the session-free core above stays open,
+  // because a scoped token backing up an app it CAN reach still needs the
   await requireTeamWide("backup destinations");
   return getDestinationWithSecretsForTeam(teamId, id);
 }
 
 /**
  * Build the wire {@link S3Target} for an agent call from a decrypted S3
- * destination + the exact object key (or prefix). The ONE place the
- * destination → S3Target mapping (incl. the provider's path-style decision)
- * lives, so the executor, the connectivity check, and the retention pruner can't
- * drift on it.
+ * destination + the exact object key (or prefix).
  */
 export function s3TargetFor(
   s: DestinationWithSecrets,
@@ -335,16 +291,10 @@ export function storeTargetFor(
 }
 
 /**
- * WHICH SERVER's agent handles this destination.
- *
- * For `server` it is the destination's own host — the artifacts are on that
- * disk and no other agent can touch them. For `s3` it is the workload's host,
- * because the dump has to come from where the workload runs.
- *
- * Getting this wrong is silent: retention and delete-with-artifacts would dial
- * the app's server for an artifact living on a different one, get "no such
- * file", and either leak the artifact or block the delete. Every
- * `connectBackupAgent` in the backup path routes through here.
+ * WHICH SERVER's agent handles this destination - the single seam of ADR-0019.
+ * For `s3` it is the workload's host; for `kind: "server"` it is the
+ * DESTINATION's. Getting it wrong is silent: retention would dial the app's host
+ * for an artifact living elsewhere.
  */
 export function destinationServerId(
   d: Pick<BackupDestination, "kind" | "serverId">,
@@ -355,20 +305,6 @@ export function destinationServerId(
 
 /**
  * The destinations as a PICKER needs them, for ANY member of the team.
- *
- * Deliberately not `listDestinations`. That one is team-wide-only, which is
- * right for the Storage page's cards (region, masked key, test history, free
- * space) but wrong as the only way to learn a destination EXISTS: a member
- * scoped to one folder, holding `manage_backups` on an app in it, got an empty
- * list — so their app's Backups tab showed "Unknown destination" on every
- * artifact, hid the download button, claimed no destination was configured, and
- * disabled the two buttons that would have made one. They had the permission to
- * take a backup and no way to take one.
- *
- * What comes back is {@link DestinationOption}: a name, where it points, and how
- * it last answered. Nothing here is a credential, and every id in it is one the
- * member can already use — `createBackup` and `runAppBackup` accept any
- * destination in the team, and always did.
  */
 export async function listDestinationOptions(): Promise<DestinationOption[]> {
   const teamId = await requireActiveTeamId();
@@ -480,11 +416,9 @@ async function s3DestinationFields(input: CreateDestinationInput) {
     throw new Error("Access key and secret are required");
   const region = (input.region ?? "").trim() || "auto";
   assertUsableRegion(region);
-  // A private endpoint is an instance-level decision, exactly like a custom
-  // store path: the agent dials this address as root, so 169.254.169.254 must
-  // never be reachable from a form anyone can fill in. Turning it ON is what
-  // makes a self-hosted bucket on the operator's own LAN usable at all, which is
-  // an ordinary thing to want on a self-hosting platform.
+  // A private endpoint is an instance-level decision, exactly like a custom store
+  // path: the agent dials this address as root, so 169.254.169.254 must never be
+  // reachable from a form anyone can fill in.
   const allowPrivateEndpoint = Boolean(input.allowPrivateEndpoint);
   if (allowPrivateEndpoint) await requireInstanceAdmin();
   // The endpoint is dialed from the agents (bucket probe, backups) — never let
@@ -496,16 +430,9 @@ async function s3DestinationFields(input: CreateDestinationInput) {
     });
   else assertHttpUrl((input.endpoint ?? "").trim(), "Endpoint");
 
-  // A BUCKET artifact is encrypted too, with its own keypair, for the same
-  // reason a server one is: a project archive carries the app's entire decrypted
-  // env, because the restore has to write the real `.env` back. Leaving the
-  // oldest destination shape as the one that wrote every secret to somebody
-  // else's storage in the clear undid deplo's own write-only-secrets model.
-  // Existing destinations keep `null` here and keep writing plaintext — their
-  // objects already are, and rewriting history is not on offer.
-  // Refused here, not dropped: a flag the agent has no mapping for would look
-  // applied and change nothing, which on a store that is already misbehaving is
-  // the worst possible answer. The dialog checks the same function while typing.
+  // A BUCKET artifact is encrypted too, with its own keypair, for the same reason a
+  // server one is: a project archive carries the app's entire decrypted env, because
+  // the restore has to write the real `.env` back.
   const rawArgs = (input.s3ExtraArgs ?? "").trim();
   const argsError = validateS3Args(rawArgs);
   if (argsError) throw new Error(argsError);
@@ -530,15 +457,9 @@ async function s3DestinationFields(input: CreateDestinationInput) {
 }
 
 /**
- * A bucket name deplo is willing to store, print and hand to an operator.
- *
- * S3's own rules are stricter than this; the point here is narrower and it is
- * about the CONNECTION LOG, which prints the bucket into a copy-pasteable
- * `aws s3api …` block. That block is an expert escape hatch an admin reaches for
- * precisely when a destination is failing, and a name carrying a quote or a
- * semicolon would turn "why is this red" into a shell command somebody else
- * wrote. The report quotes what it prints as well - both, because either alone
- * is one edit away from being the only one.
+ * A bucket name deplo is willing to store, print and hand to an operator. The
+ * report quotes what it prints as well - both, because either alone is one edit
+ * away from being the only one.
  */
 function assertUsableBucketName(bucket: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{1,62}$/.test(bucket))
@@ -574,18 +495,10 @@ function assertHttpUrl(raw: string, label: string): void {
 }
 
 /**
- * The `server` half of {@link createDestination}: pick the host, mint the
- * keypair, and gate the custom path.
- *
- * Two rules that are easy to get wrong:
- *
- *  - The server must be one the ACTIVE TEAM can already reach. Anything else
- *    would let a member discover, and consume the disk of, a host outside their
- *    scope — and servers are the one resource deplo does not team-scope.
- *  - A custom path is instance-admin only. The default path is the agent's own
- *    managed store and carries no privilege; an arbitrary absolute path on a
- *    shared host is an instance-level decision, and the agent additionally
- *    refuses any root it has not itself marked.
+ * The `server` half of {@link createDestination}: pick the host, mint the keypair,
+ * and gate the custom path. Two rules are easy to get wrong: the server must be
+ * one the ACTIVE TEAM can already reach (servers are the resource deplo does not
+ * team-scope), and a custom path is instance-admin only.
  */
 async function serverDestinationFields(input: CreateDestinationInput) {
   const serverId = input.serverId?.trim();
@@ -595,10 +508,9 @@ async function serverDestinationFields(input: CreateDestinationInput) {
   if (!server) throw new Error("Not found");
   if (!server.agent?.certFingerprint)
     throw new Error(`${serverLabel(server)} has no agent connected yet`);
-  // Storage-only hosts are welcome here - holding backups is what they are for -
-  // but a migration source is not ours to fill: it is the other platform's machine,
-  // and the agent on it is removed the day the migration ends, which would take the
-  // destination's artifacts with it.
+  // Storage-only hosts are welcome here - holding backups is what they are for - but
+  // a migration source is not ours to fill: it is the other platform's machine, and
+  // the agent on it is removed the day the migration ends, which would take the
   if (server.importOnly)
     throw new Error(
       `${serverLabel(server)} is a migration source - Deplo is only borrowing it ` +
@@ -634,14 +546,6 @@ async function serverDestinationFields(input: CreateDestinationInput) {
 
 /**
  * Mint the age X25519 keypair a server destination encrypts to.
- *
- * X25519 specifically, not `generateIdentity()`: the agent parses with
- * `age.ParseX25519Recipient`, and a post-quantum/hybrid identity — which newer
- * versions of the JS library will happily hand back — would be rejected there
- * with a message about the key format that tells nobody anything.
- *
- * Imported lazily so the crypto library is not pulled into every module that
- * merely reads a destination.
  */
 async function generateAgeKeypair(): Promise<{
   identity: string;
@@ -654,35 +558,9 @@ async function generateAgeKeypair(): Promise<{
 }
 
 /**
- * Every team starts with a destination that works.
- *
- * Backups are the one feature where "you must first go sign up for a bucket"
- * turns a five-second decision into a project, and the fleet already has a disk.
- * So a team with NO destinations gets one pointing at a server it can reach,
- * with a fresh keypair — the same shape it would have created by hand.
- *
- * Lazy, like `ensureTeamRoles`: no boot hook, no backfill, nothing to run on
- * upgrade. It is also deliberately silent about failure — a team that cannot
- * reach a backup-capable server yet simply has no destinations, and the empty
- * state explains the two ways to make one.
- *
- * ONCE PER TEAM, and that is the whole point of `teams.backupDefaultSeededAt`.
- * Seeding on "this team has no destinations" made the default UNDELETABLE: the
- * three pages that show a destination picker all call this on render, so
- * removing the card deleted the row and the next render put it straight back.
- * The claiming UPDATE is also the lock — two concurrent renders can otherwise
- * both see zero destinations and both insert, leaving the team with two
- * identical defaults. The claim is RELEASED when nothing was created (no
- * backup-capable server yet, or the insert failed), so the seed still happens
- * once the fleet can serve it.
- *
- * NO capability check, on purpose, and that is not an oversight: this grants
- * nobody anything. It creates a row the team could already have created, on a
- * server the team can already reach (`listServersForCurrentTeam` is the gate),
- * and it only ever fires when the team has none. Requiring
- * `manage_backup_destinations` here would mean the seed depends on WHO happened
- * to open the page first, which is exactly the arbitrary behaviour a default is
- * meant to remove.
+ * Every team starts with a destination that works. Backups are the one feature
+ * where "you must first go sign up for a bucket" turns a five-second decision into
+ * a project, and the fleet already has a disk.
  */
 export async function ensureDefaultDestination(): Promise<void> {
   const teamId = await requireActiveTeamId();
@@ -710,19 +588,13 @@ export async function ensureDefaultDestination(): Promise<void> {
     .limit(1);
   if (existing.length > 0) return;
 
-  // The Deplo host first, then any other provisioned server: "This server" has to
-  // BE this server, and a default silently living on some other box in the fleet
-  // is a surprise the day that box goes away. When it lands elsewhere the
-  // destination is named after the server instead, because the name is the only
-  // thing a picker shows.
-  // Inside the try with everything else: this claim is a one-shot marker, so a
-  // transient failure BEFORE the insert (a blip reading the fleet) used to keep
-  // the claim forever and the team never got its default at all.
+  // The Deplo host first, then any other provisioned server: "This server" has to BE
+  // this server, and a default silently living on some other box in the fleet is a
+  // surprise the day that box goes away.
   try {
-    // A migration source can be the first - or the only - provisioned server a
-    // fresh team can see, and seeding its default destination there would both put
-    // the backups on someone else's machine and make the server un-uninstallable
-    // (destination.server_id is ON DELETE RESTRICT).
+    // A migration source can be the first - or the only - provisioned server a fresh
+    // team can see, and seeding its default destination there would both put the
+    // backups on someone else's machine and make the server un-uninstallable
     const provisioned = (await listServersForCurrentTeam()).filter(
       (s) => s.agent?.certFingerprint && !s.importOnly,
     );
@@ -768,29 +640,17 @@ export async function ensureDefaultDestination(): Promise<void> {
     };
     await getDb().insert(destTable).values(destinationToRow(d));
   } catch {
-    // Nothing was created (a failed keygen, an insert that lost to the CHECK):
-    // hand the claim back so a later render can try again. This is a
-    // convenience, never a precondition — the empty state explains both ways to
-    // make a destination by hand.
+    // Nothing was created (a failed keygen, an insert that lost to the CHECK): hand the
+    // claim back so a later render can try again. This is a convenience, never a
+    // precondition — the empty state explains both ways to make a destination by hand.
     await release();
   }
 }
 
 /**
- * Verify a destination for real.
- *
- * S3 → dial a reachable agent advertising `"backup"` and have IT probe the
- * bucket (HEAD + a write probe) with the decrypted creds over mTLS; the agent
- * owns the S3 client. Any provisioned backup-capable agent can serve it (it
- * needs no Docker, just network + creds), so we try servers until one answers.
- *
- * SERVER → dial THAT destination's own host: the question is about that disk,
- * so no other agent can answer it. The probe creates the managed root (or marks
- * an empty custom one), round-trips a probe file so a read-only mount reports as
- * not-writable, sweeps stale `.partial` artifacts, and returns the headroom.
- *
- * The status is persisted from the live result (`connected` on success, `error`
- * otherwise) so the badge reflects reality, never a fake success.
+ * Verify a destination for real. The status is persisted from the live result
+ * (`connected` on success, `error` otherwise) so the badge reflects reality, never
+ * a fake success.
  */
 export async function testDestination(
   id: string,
@@ -803,16 +663,7 @@ export async function testDestination(
 
 /**
  * Re-probe EVERY destination in the active team and return them repainted, in
- * {@link listDestinations} order. This is what the destination picker calls when
- * it opens: a stored badge can be hours old, and picking a destination is
- * exactly the moment "is this actually reachable?" has to be true rather than
- * remembered.
- *
- * One destination's failure never sinks the list — a probe that throws before it
- * can record a verdict (a decrypt failure, a vanished row) falls back to that
- * destination as it currently stands, so the picker still shows every option.
- * Probes run concurrently but bounded: each one opens its own mTLS connection to
- * a host, and a team with twenty destinations should not open twenty at once.
+ * {@link listDestinations} order.
  */
 export async function testDestinations(): Promise<DestinationDTO[]> {
   const teamId = (await requireCapability("manage_backup_destinations")).teamId;
@@ -865,11 +716,6 @@ async function probeAndRecord(
 
   // The agent probe (RPC) runs BEFORE the status write (PLAN §1 rule (a) — never
   // inside a transaction); the status is persisted from the live verdict.
-  //
-  // "No agent could serve the probe" USED to throw out of here, which made the
-  // most confusing failure of all (nothing to do with the destination) the one
-  // with no recorded reason. It is now a verdict like any other: recorded,
-  // badged red, and explained in the connection log.
   const startedAt = nowIso();
   const began = Date.now();
   let ok = false;
@@ -893,10 +739,7 @@ async function probeAndRecord(
       // requires one — a sentinel that documents intent.
       const verdict = await checkOnAnyBackupAgent(
         s3TargetFor(creds, "deplo/.s3check"),
-        // An ENCRYPTED bucket needs an agent that honours the recipient. Without
-        // this the probe passed on an agent that would ignore it, so the card
-        // said `connected` while every backup to it was refused - a green badge
-        // over a destination that cannot work is worse than no badge at all.
+        // An ENCRYPTED bucket needs an agent that honours the recipient.
         Boolean(d.ageRecipient),
       );
       ok = verdict.ok;
@@ -973,10 +816,7 @@ async function serverLabelFor(serverId: string): Promise<string> {
 
 /**
  * The stored report for a destination — what the connection log opens on, so
- * reading the last failure never silently re-dials. Rebuilt from the
- * `last_test_*` columns plus the destination's own coordinates (the step
- * sequence and the reproduce commands are pure functions of those, which is why
- * none of it is stored). Never tested ⇒ an explicit "not tested yet" report.
+ * reading the last failure never silently re-dials.
  */
 export async function destinationTestReport(id: string): Promise<S3TestReport> {
   const teamId = await requireActiveTeamId();
@@ -1018,10 +858,7 @@ async function checkStoreOnItsServer(d: BackupDestination): Promise<{
       root: "",
     };
   }
-  // `store: true` is what makes an old agent say so. Without it the check went
-  // out anyway and the agent — which knows nothing about a StoreTarget and reads
-  // the request as an S3 probe with no bucket — answered "s3 check request
-  // missing target", which is both wrong and unactionable for a folder on a disk.
+  // `store: true` is what makes an old agent say so.
   const conn = await connectBackupAgent(d.serverId, { store: true });
   try {
     const verdict = await conn.storeCheck(storeTargetFor(d, ""));
@@ -1042,12 +879,7 @@ async function checkStoreOnItsServer(d: BackupDestination): Promise<{
 }
 
 /**
- * Run `S3Check` on the first reachable, backup-capable agent. Tries provisioned
- * servers in turn: an unreachable one (or one too old to back up) is skipped to
- * the next. Returns the agent's `{ ok, error }` verdict. Throws
- * {@link AgentBackupUnsupportedError} only when EVERY server lacks the capability
- * (so the UI says "update the agent"); throws {@link AgentUnreachableError} when
- * no server is reachable at all.
+ * Run `S3Check` on the first reachable, backup-capable agent.
  */
 async function checkOnAnyBackupAgent(
   target: S3Target,
@@ -1121,18 +953,8 @@ async function checkOnAnyBackupAgent(
 
 /**
  * The recovery key for a `server` destination: the age identity, in the clear,
- * once — the ONE sanctioned exception to "never add a show-secret affordance"
- * (the other being the basic-auth password).
- *
- * It exists because encryption without it is a trap. If DEPLO_SECRET is rotated,
- * or the control plane is lost in the very disaster the backups are for, the
- * artifacts on disk become unreadable forever. With this key, `age -d -i key.txt`
- * reads them on any machine, with no Deplo involved.
- *
- * Downloading it stamps `recoveryKeySavedAt`, which is what silences the nudge on
- * the card. It stays downloadable afterwards on purpose: a key you can only ever
- * see once, for a destination you may not have consciously created, is a key
- * nobody has.
+ * once — the ONE sanctioned exception to "never add a show-secret affordance" (the
+ * other being the basic-auth password).
  */
 export async function revealRecoveryKey(id: string): Promise<{
   name: string;
@@ -1143,10 +965,7 @@ export async function revealRecoveryKey(id: string): Promise<{
   const { teamId } = await requireCapability("manage_backup_destinations");
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Not found");
-  // On the KEYPAIR, not on the kind. Gating this on `kind === "server"` while
-  // bucket artifacts had just started being encrypted produced exactly the trap
-  // encryption exists to avoid: artifacts nobody can read, locked by a key that
-  // lives only inside the instance they are meant to survive.
+  // On the KEYPAIR, not on the kind.
   if (!d.ageIdentityEnc || !d.ageRecipient)
     throw new Error(
       "This destination's backups are not encrypted, so it has no recovery key",
@@ -1185,15 +1004,8 @@ export async function revealRecoveryKey(id: string): Promise<{
 }
 
 /**
- * Where the artifacts this key opens actually LIVE, in one line, for the key
- * file itself.
- *
- * The file is read in exactly one situation: this instance is gone. Whoever
- * opens it then has a key and, until now, no address - the endpoint, the bucket,
- * the host and the folder all lived in the database that was lost, and the card
- * that could have told them is not running any more. Deliberately more than the
- * card's `destinationWhere`: that one distinguishes two destinations for someone
- * looking at both, this one has to be enough to find the bytes years later.
+ * Where the artifacts this key opens actually LIVE, in one line, for the key file
+ * itself.
  */
 async function artifactLocation(d: BackupDestination): Promise<string> {
   if (d.kind === "s3")
@@ -1254,14 +1066,9 @@ export async function destinationRemovalImpact(id: string): Promise<{
 }
 
 /**
- * Remove a destination, and optionally the artifacts it holds.
- *
- * `deleteArtifacts` exists because "we keep your files" was, for a `server`
- * destination, a promise deplo could not follow through on: nothing lists what
- * is in a store, so the files stayed on that disk with no screen naming them and
- * no way to reclaim them short of an SSH session — the one thing the platform
- * exists to make unnecessary. Off by default, because keeping them is still the
- * safe answer and an S3 bucket is the operator's own to sweep.
+ * Remove a destination, and optionally the artifacts it holds. Off by default,
+ * because keeping them is still the safe answer and an S3 bucket is the operator's
+ * own to sweep.
  */
 export async function deleteDestination(
   id: string,
@@ -1291,10 +1098,9 @@ export async function deleteDestination(
       .filter((r) => r.objectKey)
       .map((r) => ({ key: r.objectKey }));
     if (keys.length > 0) {
-      // Imported HERE rather than at the top: backup-transport imports this
-      // module for `destinationServerId` / `s3TargetFor`, so a static import back
-      // would close a cycle — the same one `assertSafeOutboundUrl` was moved into
-      // its own leaf to avoid.
+      // Imported HERE rather than at the top: backup-transport imports this module for
+      // `destinationServerId` / `s3TargetFor`, so a static import back would close a
+      // cycle — the same one `assertSafeOutboundUrl` was moved into its own leaf to
       const { deleteManyFromDestination } = await import("./backup-transport");
       const creds = await getDestinationWithSecretsForTeam(teamId, id);
       const results = await deleteManyFromDestination(
@@ -1312,11 +1118,8 @@ export async function deleteDestination(
     }
   }
   // `backup_destination` ← `backups.destination_id` / `backup_runs.destination_id`
-  // are both RESTRICT (a destination must never be silently cascade-deleted out
-  // from under live schedules / restore points), so the dependent rows are removed
-  // EXPLICITLY in one transaction. The run records go too rather than being left
-  // with a dangling destinationId — the artifacts they name were either swept
-  // above or deliberately kept.
+  // are both RESTRICT (a destination must never be silently cascade-deleted out from
+  // under live schedules / restore points), so the dependent rows are removed
   await getDb().transaction(async (tx) => {
     await tx
       .delete(backupRunsTable)

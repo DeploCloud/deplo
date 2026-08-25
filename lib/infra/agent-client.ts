@@ -68,52 +68,27 @@ import type { Server } from "../types";
 
 /**
  * The agent client — the control plane's side of the second system boundary
- * (ADR-0006). Given a `serverId`, it dials that server's agent over mTLS and
- * exposes a small promise/async-iterator API (`hello`, `metrics`, `deploy`,
- * `reattach`). This is the ONE choke point that replaces direct
- * `lib/infra/docker.ts` calls in the deploy path: `runDeployment` calls
- * `agentDeploy(...)` instead of spawning docker locally.
- *
- * EVERY server — the host running Deplo included — resolves to its declared
- * address + port and PINS the agent's certificate fingerprint (stored in the
- * Server row at bootstrap, P3/P6). There is one uniform trust model: the dial is
- * mTLS against a CA-signed, pinned agent cert, with no in-process / un-pinned
- * special case.
+ * (ADR-0006).
  */
 
 const HELLO_TIMEOUT_MS = 8_000;
 /**
  * The Hello deadline the HEALTH PROBER uses (lib/data/server-health.ts) — much
  * shorter than {@link HELLO_TIMEOUT_MS}, which is a deploy pre-flight budget spent
- * on a deploy the operator has already committed to. A health probe runs while
- * someone waits on the Servers page, and a slow answer is itself the answer.
+ * on a deploy the operator has already committed to.
  */
 export const HEALTH_HELLO_TIMEOUT_MS = 3_000;
 const DEPLOY_DEADLINE_MS = 30 * 60_000; // a build can be long
 const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts exec
 /**
- * Cron RPC deadlines. Both are SHORT on purpose, and neither bounds the job.
- *
- * That is the whole point of the Start/Poll/Kill shape (ADR-0018): the command
- * runs inside the agent on its own context, so a 24-hour job is 24 hours of
- * `PollJob` calls that each take milliseconds - never one 24-hour connection.
- * `StartJob` gets the more generous budget because it is the one that has to
- * cross a possibly-slow link with the command and its environment attached.
+ * Cron RPC deadlines. `StartJob` gets the more generous budget because it is the
+ * one that has to cross a possibly-slow link with the command and its environment
+ * attached.
  */
 const CRON_START_TIMEOUT_MS = 15_000;
 const CRON_POLL_TIMEOUT_MS = 10_000;
 // The Metrics / ContainerStats POLL deadline — deliberately a fraction of the
-// console class. A normal measurement is ~1.2s (a 1s net-delta window + a 200ms
-// CPU sample + a docker list + statfs), so anything past ~8s means the host is
-// momentarily UNMEASURABLE: its Docker/disk pinned by its own deploy (a buildkit
-// export + container recreate) or otherwise saturated. The dashboards poll on a
-// busy-guard — one in-flight call blocks the next tick — so a LONG deadline here
-// is the amplifier that turns a ~15s host pin into a 30-60s chart hole: the poll
-// hangs the full deadline before it can retry and catch the moment the host frees
-// up. Fail fast instead and let the next 1s tick (or the 5s background collector)
-// recover; a genuinely missed window renders as a small, honest "No data" band,
-// not a minute-long void. Still ~6x the ~1.2s baseline, so a merely slow-but-
-// healthy host is not falsely marked unreachable.
+// console class.
 const METRICS_TIMEOUT_MS = 8_000;
 const FILES_TIMEOUT_MS = 15_000;
 const STREAM_DEADLINE_MS = 30 * 60_000; // logs/attach are long-lived
@@ -121,15 +96,6 @@ const STREAM_DEADLINE_MS = 30 * 60_000; // logs/attach are long-lived
  * The StreamMetrics deadline — its own constant because {@link STREAM_DEADLINE_MS}
  * would tear the telemetry stream down every 30 minutes, and this one is meant to
  * stay open for the life of the process.
- *
- * It is still FINITE on purpose, and the supervisor treats DEADLINE_EXCEEDED on it
- * as NORMAL ROTATION (reconnect immediately, no backoff, no health write). Two
- * things a rotation buys that an infinite stream cannot: it bounds any leak on
- * either side, and it forces a periodic fresh mTLS handshake that RE-VALIDATES the
- * pinned certificate fingerprint — so revoking trust (clearing the pin) takes
- * effect within an hour instead of never, on a connection that would otherwise
- * outlive the revocation. Immediate reconnect keeps the rotation gap at ~100ms,
- * two orders of magnitude under the chart's GAP_MS.
  */
 const METRICS_STREAM_DEADLINE_MS = 55 * 60_000;
 /** How many unread telemetry frames to hold before dropping the oldest. */
@@ -139,10 +105,7 @@ const METRICS_STREAM_MAX_QUEUED = 4;
 const BACKUP_DEADLINE_MS = 60 * 60_000;
 /**
  * How long a `running` backup run may sit before the boot reconcile calls it
- * orphaned. Derived from the deadline above rather than guessed alongside it:
- * the two used to be picked independently and disagreed with a comment claiming
- * a third number, so a run could be declared dead while its RPC was still legal.
- * The margin covers the dial, the descriptor build and the terminal write.
+ * orphaned.
  */
 export const BACKUP_RUN_MAX_MS = BACKUP_DEADLINE_MS + 30 * 60_000;
 // S3Check/S3Delete are quick bucket ops, but a slow/unreachable S3 endpoint must
@@ -150,44 +113,32 @@ export const BACKUP_RUN_MAX_MS = BACKUP_DEADLINE_MS + 30 * 60_000;
 const S3_OP_DEADLINE_MS = 60_000;
 const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000; // agent downloads + verifies + swaps its own binary
 const SELF_UNINSTALL_TIMEOUT_MS = 60_000; // a few file removals + two systemctl calls
-// Stack lifecycle verbs (reroute/start/stop/destroy). The agent caps its own
-// compose up/down at ~90-120s; this is that plus dial/network slack. A deadline
-// is mandatory: these run under the per-DB lifecycle lock (lib/data/keyed-mutex),
-// so a hung RPC with no deadline would wedge every future op for that database.
+// Stack lifecycle verbs (reroute/start/stop/destroy). A deadline is mandatory:
+// these run under the per-DB lifecycle lock (lib/data/keyed-mutex), so a hung RPC
+// with no deadline would wedge every future op for that database.
 const STACK_DEADLINE_MS = 3 * 60_000;
 // A cross-host volume copy (export/import) tars a whole DB data volume across the
 // wire; the agent caps each side at ~30min. Match the backup-class deadline plus
 // dial slack — same reasoning as BACKUP_DEADLINE_MS (a volume-heavy move is long).
 const VOLUME_COPY_DEADLINE_MS = 60 * 60_000;
 // How many BYTE-carrying frames a relay may hold before it pauses the source
-// stream. The agent frames at 1 MiB (deplo-agent volumecopy.go `chunkBytes`), so
-// this is ~8 MiB in flight per transfer: enough that the socket never starves
-// between event-loop turns, small enough that a dozen concurrent relays cannot
-// move the control plane's heap. Applies to exportVolume/exportFiles and to a
-// relayed backup — the three streams where a dropped frame corrupts the payload
-// and an unbounded queue is the whole artifact in memory.
+// stream.
 const STREAM_BYTES_PAUSE_ABOVE = 8;
 // A port-availability probe is a single bind()+close() on the host — near-instant.
 // Keep the deadline short so an unreachable agent fails fast (this gates an
 // interactive "generate available port" click + the pre-provision guard).
 const CHECK_PORT_DEADLINE_MS = 15_000;
-// One HTTP GET from the host to a container of an app's stack. The agent budgets
-// ~6s for the request itself; this is that plus dial slack. Deliberately short:
-// the only caller is icon detection, a cosmetic read that must never hold a
-// deploy or a settings click open waiting on a slow app.
+// One HTTP GET from the host to a container of an app's stack. Deliberately short:
+// the only caller is icon detection, a cosmetic read that must never hold a deploy
+// or a settings click open waiting on a slow app.
 const PROBE_HTTP_DEADLINE_MS = 12_000;
 // A cleanup sweep walks every image, volume and build-cache record on the host and
 // then removes them one at a time (never in one `prune` verb — see dockerCleanup);
-// on a full host that is tens of GB of unlinking. The agent budgets ~30min for its
-// own docker calls, so this is the backup class of deadline, not the interactive
-// one. It stays MANDATORY all the same: an agent that wedges mid-sweep must fail
-// the run rather than pin the request forever.
+// on a full host that is tens of GB of unlinking.
 const CLEANUP_DEADLINE_MS = 30 * 60_000;
-// Host ops. HostInfo/SetTimezone/RestartControlPlane are file reads, a relink and
-// a detached spawn — interactive, so an unresponsive host must fail fast rather
-// than hold a settings page open. TraefikConfig is the outlier: it can pull an
-// image and recreate the container, and the agent caps its own docker call at
-// 180s, so it gets that plus dial slack.
+// Host ops. HostInfo/SetTimezone/RestartControlPlane are file reads, a relink and a
+// detached spawn — interactive, so an unresponsive host must fail fast rather than
+// hold a settings page open.
 const HOSTOPS_DEADLINE_MS = 20_000;
 const TRAEFIK_DEADLINE_MS = 200_000;
 
@@ -298,25 +249,13 @@ export interface AgentJobStatus {
 /** A live, mTLS-secured connection to one agent, with a typed wrapper. */
 export interface AgentConnection {
   /**
-   * The reachability + capability handshake. `timeoutMs` overrides the default
-   * {@link HELLO_TIMEOUT_MS} deploy-preflight budget — the health prober passes
-   * the much shorter {@link HEALTH_HELLO_TIMEOUT_MS} because it runs while an
-   * operator waits on a page, not while a deploy is already committed.
-   *
-   * Rejects with {@link AgentUnreachableError}; on a certificate failure that
-   * error carries `trust: true` (the peer answered, it just isn't the agent we
-   * pinned) — the one signal that separates a broken agent from a dead host.
+   * The reachability + capability handshake.
    */
   hello(timeoutMs?: number): Promise<HelloResponse>;
   metrics(dataDir?: string): Promise<HostMetrics>;
   /**
-   * Live per-container resource usage for one project's containers (the
-   * per-app / per-database Monitoring tab). `projectId` is the `deplo.project`
-   * label the agent re-validates; `containers` are the already-resolved names
-   * (empty => every container in the project). Gated by the `container-stats`
-   * Hello capability: an agent too old to serve it rejects with gRPC
-   * UNIMPLEMENTED, which the data layer maps via {@link mapContainerStatsUnsupported}
-   * to the tab's "update the agent" state (no per-poll Hello preflight).
+   * Live per-container resource usage for one project's containers (the per-app /
+   * per-database Monitoring tab).
    */
   containerStats(
     projectId: string,
@@ -324,15 +263,8 @@ export interface AgentConnection {
   ): Promise<ContainerStat[]>;
   /**
    * ONE long-lived stream carrying this host's metrics AND every Deplo-managed
-   * container's stats, sampled on the AGENT's ticker rather than pulled per
-   * viewer per resource. Yields until the caller breaks out, the transport dies,
-   * or {@link METRICS_STREAM_DEADLINE_MS} rotates it.
-   *
-   * This is what makes telemetry cost O(hosts) instead of O(hosts x containers x
-   * viewers): the control plane holds exactly one of these per server and demuxes
-   * frames into its RAM ring buffers by each stat's `projectId`. Gated by the
-   * `metrics-stream` Hello capability — see {@link connectMetricsStreamAgent},
-   * which preflights it so an old agent falls back to polling instead of erroring.
+   * container's stats, sampled on the AGENT's ticker rather than pulled per viewer
+   * per resource.
    */
   streamMetrics(
     req: MetricsStreamRequest,
@@ -344,19 +276,9 @@ export interface AgentConnection {
   /** Stack lifecycle on the agent (Part C: stop/start; destroy from Part B). */
   stopStack(slug: string): Promise<{ ok: boolean; error: string }>;
   startStack(slug: string): Promise<{ ok: boolean; error: string }>;
-  /** Tear down a stack on the agent (P6 teardown / lifecycle). `removeVolumes`
-   *  (default false) also drops the stack's named volumes (`down -v`) and removes
-   *  the compose file — used by database deletion so the data volume is reclaimed
-   *  rather than orphaned. An agent too old to understand the flag ignores it
-   *  (protobuf skips the unknown field) and falls back to a volume-orphaning
-   *  `down`; the caller logs that the volume needs a manual sweep.
-   *
-   *  `reclaimVolumes` names volumes to remove OUTRIGHT, on top of what the `down`
-   *  finds. `down -v` can only reclaim what the on-disk compose file declares, so
-   *  a stack that was never deployed — an imported app between "the data arrived"
-   *  and "somebody deployed it" — kept its volumes forever. Only `deplo-` names
-   *  are accepted on the far side. An older agent ignores the field, which is the
-   *  pre-existing behaviour. */
+  /**
+   * Tear down a stack on the agent (P6 teardown / lifecycle).
+   */
   destroyStack(
     slug: string,
     removeVolumes?: boolean,
@@ -386,20 +308,17 @@ export interface AgentConnection {
     certPem: string;
     caPem: string;
   }): Promise<{ ok: boolean; error: string }>;
-  /** Stream a named Docker volume's gzipped tar OUT of this (source) host, for a
-   *  cross-host server move. Yields raw byte chunks until the stream ends. The
-   *  caller must have QUIESCED the source (stopped the owning stack) first so the
-   *  on-disk files can't change mid-read. An agent too old to implement it rejects
-   *  with UNIMPLEMENTED (mapped to AgentVolumeCopyUnsupportedError by the caller).
-   *  Data does not round-trip through S3 — the control plane relays these chunks
-   *  straight into {@link importVolume} on the destination host. */
+  /**
+   * Stream a named Docker volume's gzipped tar OUT of this (source) host, for a
+   * cross-host server move. The caller must have QUIESCED the source (stopped the
+   * owning stack) first so the on-disk files can't change mid-read.
+   */
   exportVolume(volumeName: string): AsyncGenerator<Buffer, void, unknown>;
-  /** Untar a stream of gzipped-tar chunks INTO a named Docker volume on this
-   *  (destination) host — the receiving half of a cross-host move. `wipeFirst`
-   *  empties the target before untarring so the copy overwrites rather than merges.
-   *  The caller must have stopped the destination stack first. Resolves with the
-   *  terminal StackResult. Rejects with UNIMPLEMENTED on a too-old agent (mapped by
-   *  the caller). */
+  /**
+   * Untar a stream of gzipped-tar chunks INTO a named Docker volume on this
+   * (destination) host — the receiving half of a cross-host move. `wipeFirst`
+   * empties the target before untarring so the copy overwrites rather than merges.
+   */
   importVolume(
     volumeName: string,
     wipeFirst: boolean,
@@ -413,12 +332,11 @@ export interface AgentConnection {
     bytesWritten: number;
     sha256: string;
   }>;
-  /** Stream an arbitrary HOST DIRECTORY out of this host as a gzipped tar — the
-   *  bind-mount half of a migration from another platform, whose services may keep
-   *  their data in a plain directory. Rejects with NOT_FOUND when the directory is
-   *  not there (it is never created on the way past) and PERMISSION_DENIED for a
-   *  system root. Gated control-plane side on instance admin + the host-volumes
-   *  grant, the same power a compose bind mount already carries. */
+  /**
+   * Stream an arbitrary HOST DIRECTORY out of this host as a gzipped tar — the
+   * bind-mount half of a migration from another platform, whose services may keep
+   * their data in a plain directory.
+   */
   exportHostPath(path: string): AsyncGenerator<Buffer, void, unknown>;
   /** Untar a stream into a HOST DIRECTORY on this host — the receiving half. The
    *  wipe happens on the first data frame, never on the header alone. */
@@ -432,33 +350,34 @@ export interface AgentConnection {
     bytesWritten: number;
     sha256: string;
   }>;
-  /** Stream an app's host-side FILES DIR (a plain host directory, not a Docker
-   *  volume) OUT of this host as a gzipped tar — the files-dir sibling of
-   *  {@link exportVolume} for an app move. A missing dir yields an empty stream.
-   *  Rejects with UNIMPLEMENTED on a too-old agent (mapped by the caller). */
+  /**
+   * Stream an app's host-side FILES DIR (a plain host directory, not a Docker
+   * volume) OUT of this host as a gzipped tar — the files-dir sibling of {@link
+   * exportVolume} for an app move.
+   */
   exportFiles(slug: string): AsyncGenerator<Buffer, void, unknown>;
-  /** Untar a stream of gzipped-tar chunks INTO an app's files dir on this host —
-   *  the receiving half. `wipeFirst` empties the dir first (overwrite, not merge).
-   *  Resolves with the terminal StackResult. Rejects with UNIMPLEMENTED on a too-old
-   *  agent (mapped by the caller). */
+  /**
+   * Untar a stream of gzipped-tar chunks INTO an app's files dir on this host —
+   * the receiving half. `wipeFirst` empties the dir first (overwrite, not merge).
+   */
   importFiles(
     slug: string,
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
   ): Promise<{ ok: boolean; error: string }>;
-  /** Stream a locally BUILT image OUT of this host as a gzipped `docker save` - the
-   *  third sibling of {@link exportVolume}/{@link exportFiles}, for a build server
-   *  that compiles for machines it does not run on. `removeAfter` deletes the image
-   *  here once the stream completes (a builder holds cache, not artifacts); a failed
-   *  export removes nothing. Rejects with UNIMPLEMENTED on a too-old agent. */
+  /**
+   * Stream a locally BUILT image OUT of this host as a gzipped `docker save` - the
+   * third sibling of {@link exportVolume}/{@link exportFiles}, for a build server
+   * that compiles for machines it does not run on.
+   */
   exportImage(
     imageRef: string,
     removeAfter: boolean,
   ): AsyncGenerator<Buffer, void, unknown>;
-  /** Load a streamed image INTO this host's daemon - the receiving half. No wipe
-   *  flag: loading a tag replaces it, so there is nothing to empty first. Resolves
-   *  with the terminal StoreResult, whose `bytesWritten` is what this host actually
-   *  consumed. Rejects with UNIMPLEMENTED on a too-old agent. */
+  /**
+   * Load a streamed image INTO this host's daemon - the receiving half. No wipe
+   * flag: loading a tag replaces it, so there is nothing to empty first.
+   */
   importImage(
     imageRef: string,
     chunks: AsyncIterable<Buffer>,
@@ -466,57 +385,42 @@ export interface AgentConnection {
   /** Read back the rendered stack YAML the agent has on disk, for the "View full
    *  compose" preview. `exists` is false (empty yaml) when never deployed. */
   readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
-  /** Whether a host TCP port is free to publish. The agent answers by attempting
-   *  to bind it (seeing both Docker-published ports and raw host listeners), so a
-   *  false here means the port is genuinely taken on that host right now. Gates
-   *  the database "Expose publicly" flow — the pre-provision collision guard and
-   *  the "generate an available port" button. An agent too old to implement it
-   *  rejects with UNIMPLEMENTED (mapped to AgentCheckPortUnsupportedError by the
-   *  caller). */
+  /**
+   * Whether a host TCP port is free to publish. Gates the database "Expose
+   * publicly" flow — the pre-provision collision guard and the "generate an
+   * available port" button.
+   */
   checkPort(port: number): Promise<{ available: boolean; reason: string }>;
-  /** One bounded HTTP GET to a container of an app's OWN stack, issued from the
-   *  host over Docker's network. The agent resolves the address itself (the
-   *  container carrying this app's `deplo.project` label, on `service`), so the
-   *  caller picks WHAT to ask for and never WHERE — this is not a general fetch.
-   *  Redirects come back unfollowed. Used by icon detection to read the favicon a
-   *  compose app only ever serves. Rejects with UNIMPLEMENTED on an agent without
-   *  the `http-probe` capability, and UNAVAILABLE when the app isn't answering. */
+  /**
+   * One bounded HTTP GET to a container of an app's OWN stack, issued from the
+   * host over Docker's network.
+   */
   probeHttp(req: AgentProbeHttpRequest): Promise<AgentProbeHttpResult>;
-  /** Update the agent BINARY in place to `version`, WITHOUT reissuing certs: the
-   *  agent picks the asset for its own arch from `binaries`, verifies the sha256,
-   *  swaps itself, and re-execs reusing the on-disk mTLS materials. Resolves once
-   *  the swap is staged and the restart is scheduled (`restarting`). */
+  /**
+   * Update the agent BINARY in place to `version`, WITHOUT reissuing certs: the
+   * agent picks the asset for its own arch from `binaries`, verifies the sha256,
+   * swaps itself, and re-execs reusing the on-disk mTLS materials.
+   */
   selfUpdate(
     version: string,
     binaries: Record<string, { url: string; sha256: string }>,
   ): Promise<{ version: string; restarting: boolean }>;
-  /** Remove the agent's OWN footprint from the host - systemd unit, binary, state
-   *  dir (mTLS materials included) - and stop. Resolves with the paths it actually
-   *  removed once every removal is done; the agent then exits, so this is the last
-   *  thing it ever answers. Docker is never touched. Rejects with UNIMPLEMENTED on
-   *  an agent without the `self-uninstall` capability. `deadlineMs` overrides the
-   *  default RPC deadline, for the one attempt made while somebody is waiting. */
+  /**
+   * Remove the agent's OWN footprint from the host - systemd unit, binary, state
+   * dir (mTLS materials included) - and stop. Docker is never touched.
+   */
   selfUninstall(deadlineMs?: number): Promise<string[]>;
-  /** Reclaim Docker disk on the host — a STRICT ALLOW-LIST, never a prune verb. The
-   *  agent removes only what it can PROVE is unreferenced (a container-reference
-   *  reverse index over running AND exited containers, or an on-disk sentinel), and
-   *  never runs `system`/`container`/`volume`/`network prune`: on a Deplo host a
-   *  STOPPED app is a LIVE app (StopStack is `compose stop` — the container, its
-   *  volumes and its networks must survive it) and a dangling volume may hold a
-   *  database's data files. With `dryRun` it enumerates the candidates and reclaims
-   *  NOTHING, filling every result field as if it had — that is what the confirm
-   *  dialog renders. A scope that fails, or that the agent declines because it could
-   *  not build the reverse index, is reported per-scope and the sweep carries on;
-   *  `ok:false` means the sweep never started. An agent too old to implement it
-   *  rejects with UNIMPLEMENTED (mapped to AgentCleanupUnsupportedError by the
-   *  caller — go through {@link runAgentCleanup}, which pre-flights the capability). */
+  /**
+   * Reclaim Docker disk on the host — a STRICT ALLOW-LIST, never a prune verb.
+   */
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
 
   // ---- Host ops: the four host-level verbs behind the "hostops" capability ----
-  /** What this host IS (CPU model, distro, kernel, clock, Docker root dir) plus
-   *  the two pieces of host state the control plane can act on: the deplo-traefik
-   *  stack file and whether the control-plane container hint resolves. Never
-   *  fails on a half-broken host — an unreadable field comes back empty. */
+  /**
+   * What this host IS (CPU model, distro, kernel, clock, Docker root dir) plus the
+   * two pieces of host state the control plane can act on: the deplo-traefik stack
+   * file and whether the control-plane container hint resolves.
+   */
   hostInfo(req: HostInfoRequest): Promise<HostInfoResponse>;
   /** Move the host clock to an IANA zone; answers with a FRESH HostInfoResponse
    *  so the caller sees the clock that actually moved. The agent re-validates the
@@ -533,10 +437,10 @@ export interface AgentConnection {
   ): Promise<RestartControlPlaneResponse>;
 
   // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
-  /** Dump a database or project to S3, streaming progress; yields BackupEvents
-   *  until the terminal result (objectKey + sizeBytes on success). The agent
-   *  runs the engine's dump tool / tars the project's volumes+files+snapshot,
-   *  gzip-compresses, and uploads itself — the bytes never round-trip here. */
+  /**
+   * Dump a database or project to S3, streaming progress; yields BackupEvents
+   * until the terminal result (objectKey + sizeBytes on success).
+   */
   backup(req: BackupRequest): AsyncGenerator<BackupEvent, void, unknown>;
   /** Restore a database or project from an S3 object, in place; yields
    *  RestoreEvents until the terminal result. DB = drop-and-recreate; project =
@@ -554,10 +458,11 @@ export interface AgentConnection {
   ): Promise<{ ok: boolean; error: string; deleted: number }>;
 
   // ---- Backup STORES: artifacts on a server's disk (capability "backup-store") ----
-  /** Verify a store root on THIS host: resolve it (creating the managed one, or
-   *  marking an empty custom one), probe writability, sweep stale `.partial`
-   *  artifacts, and report the filesystem headroom. Unlike an S3 bucket, this
-   *  question is about one machine's disk, so it must run on that machine. */
+  /**
+   * Verify a store root on THIS host: resolve it (creating the managed one, or
+   * marking an empty custom one), probe writability, sweep stale `.partial`
+   * artifacts, and report the filesystem headroom.
+   */
   storeCheck(store: StoreTarget): Promise<{
     ok: boolean;
     error: string;
@@ -571,19 +476,17 @@ export interface AgentConnection {
     store: StoreTarget,
     prefix?: boolean,
   ): Promise<{ ok: boolean; error: string; deleted: number }>;
-  /** Stream an artifact out of wherever it is kept: this host's store, or a
-   *  bucket the host can dial (exactly one of `store` / `s3`). Verbatim (still
-   *  encrypted) by default - which is what a relay needs; pass `ageIdentity` to
-   *  have the agent DECRYPT on the way out, which is what a download needs. Never
-   *  gunzipped: the file the user wants IS the .tar.gz / .dump.gz. */
+  /**
+   * Stream an artifact out of wherever it is kept: this host's store, or a bucket
+   * the host can dial (exactly one of `store` / `s3`).
+   */
   readStoreFile(
     target: { store?: StoreTarget; s3?: S3Target },
     ageIdentity?: string,
-    /** The sha256 recorded when this artifact was written. A STORE artifact is
-     *  hashed before a byte leaves, so a mismatch refuses outright; a BUCKET one
-     *  can only be hashed as it goes past, so the stream ends in an error after
-     *  bytes have already arrived. Omit only for a run taken before integrity
-     *  checking shipped. */
+    /**
+     * The sha256 recorded when this artifact was written. Omit only for a run
+     * taken before integrity checking shipped.
+     */
     expectedSha256?: string,
   ): AsyncGenerator<Buffer, void, unknown>;
   /** Stream an artifact INTO a store — the destination half of a cross-host
@@ -608,21 +511,17 @@ export interface AgentConnection {
   ): AsyncGenerator<RestoreEvent, void, unknown>;
 
   // ---- Part C: console observability ----
-  /** The RAW docker state of an app's single-image container (`deplo-<slug>`):
-   *  "running" | "restarting" | "exited" | … . The one place the agent already
-   *  tells the truth about a crash loop; ListInstances only carries a boolean.
-   *  A compose stack's containers are not addressable by slug — `exists:false`. */
+  /**
+   * The RAW docker state of an app's single-image container (`deplo-<slug>`):
+   * "running" | "restarting" | "exited" | … .
+   */
   inspect(
     slug: string,
   ): Promise<{ exists: boolean; running: boolean; state: string }>;
-  /** Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
-   *  plumbing). `write` is a no-op; `close()` cancels the stream + the grpc client.
-   *
-   *  `opts` is the time window and the timestamp prefix. It has to be the AGENT's
-   *  job: the stream is raw bytes with no per-line clock, so this side of the pipe
-   *  has nothing to filter on. An agent without {@link LOGS_TIMERANGE_CAPABILITY}
-   *  ignores the fields and streams `--tail` as before, which is why the UI greys
-   *  the control out rather than refusing to show logs. */
+  /**
+   * Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
+   * plumbing).
+   */
   followLogs(
     appId: string,
     container: string,
@@ -656,24 +555,14 @@ export interface AgentConnection {
 
   // ---- Cron jobs (ADR-0018) ----
   /**
-   * Spawn a scheduled command in a container and get its handle back. Returns in
-   * well under a second: the agent does the container check and the shell probe
-   * inside its own goroutine, so a pre-spawn failure arrives through
-   * {@link AgentConnection.pollJob} as `exitCode: -1` rather than as a throw.
-   *
-   * Deliberately NOT {@link AgentConnection.exec}, which is capped at 30s and
-   * unary because a console REPL types one command and waits. The process here
-   * lives in the AGENT, on a job-scoped context, so restarting the control plane
-   * does not kill a running cron job.
+   * Spawn a scheduled command in a container and get its handle back. Deliberately
+   * NOT {@link AgentConnection.exec}, which is capped at 30s and unary because a
+   * console REPL types one command and waits.
    */
   startJob(req: AgentStartJobRequest): Promise<string>;
   /**
    * A job's current state. `found: false` means this agent has no record of it -
-   * it restarted, or the job was evicted after its retention window. That is a
-   * normal answer, and the caller records the run as `lost` (outcome unknown),
-   * never as a failure.
-   *
-   * Output is populated only once `running` is false.
+   * it restarted, or the job was evicted after its retention window.
    */
   pollJob(jobId: string): Promise<AgentJobStatus>;
   /** Stop a running job. Idempotent: unknown or finished answers `false`. */
@@ -715,12 +604,6 @@ interface DialTarget {
 
 /**
  * A typed availability error: the agent could not be reached (caller falls back).
- *
- * The two optional fields exist for ONE caller — the health prober
- * (`lib/data/server-health.ts`), which has to tell "the box is off" apart from
- * "the box answered with the wrong certificate". They are additive and optional,
- * so every existing `instanceof AgentUnreachableError` guard (team-delete, backups,
- * s3, apps, console, metricsFor) keeps behaving exactly as before.
  */
 export class AgentUnreachableError extends Error {
   constructor(
@@ -730,9 +613,7 @@ export class AgentUnreachableError extends Error {
     /**
      * True when the failure is a TRUST failure rather than a dead host: the peer
      * presented a cert that is not the pinned one, or it rejected OUR client cert
-     * (UNAUTHENTICATED). Both reach gRPC as an opaque transport error, so the fact
-     * is captured at the only place that knows it ({@link dial}) instead of being
-     * recovered by parsing an error string we do not control.
+     * (UNAUTHENTICATED).
      */
     readonly trust?: boolean,
   ) {
@@ -742,17 +623,6 @@ export class AgentUnreachableError extends Error {
 
 /**
  * The reachable agent does not (yet) implement the in-place self-update RPC.
- *
- * The agent binary lives in its own repo (DeploCloud/deplo-agent) and ships on
- * its own cadence; the `SelfUpdate` RPC — "fetch the checksum-verified latest
- * binary, swap yourself on disk, re-exec keeping the SAME on-disk mTLS materials"
- * — is added there and rolled out in an agent release. Until a server is running
- * an agent new enough to answer it, `selfUpdateServerAgent` rejects with THIS
- * error (distinct from {@link AgentUnreachableError}: the agent IS up, it just
- * can't update itself remotely). The data/GraphQL layers surface it as a clear
- * "update this agent by re-running the installer for now" message rather than a
- * generic failure. When the RPC ships, only the body of `selfUpdateServerAgent`
- * changes — every layer above it is already wired.
  */
 export class AgentUpdateUnsupportedError extends Error {}
 
@@ -764,72 +634,42 @@ export class AgentUpdateUnsupportedError extends Error {}
 export class AgentUninstallUnsupportedError extends Error {}
 
 /**
- * The reachable agent does not (yet) implement the backup RPCs (Backup /
- * Restore / S3Check / S3Delete) — it doesn't advertise the `"backup"`
- * capability in Hello, or it answers the call with gRPC UNIMPLEMENTED.
- *
- * Backups route through the OWNING server's agent (ADR-0007): the real dump +
- * S3 upload, the connectivity check, and object deletion all run agent-side via
- * RPCs that ship in a `deplo-agent` release. Until a server runs an agent new
- * enough to answer them, the data layer surfaces THIS error — distinct from
- * {@link AgentUnreachableError} (the agent IS up, it just can't back up yet) —
- * so the UI says "update the agent on this server" rather than faking a success
- * or emitting a confusing UNIMPLEMENTED. Mirrors {@link AgentUpdateUnsupportedError}.
+ * The reachable agent does not (yet) implement the backup RPCs (Backup / Restore /
+ * S3Check / S3Delete) — it doesn't advertise the `"backup"` capability in Hello,
+ * or it answers the call with gRPC UNIMPLEMENTED.
  */
 export class AgentBackupUnsupportedError extends Error {}
 
 /**
- * The reachable agent can back up to S3 but cannot hold artifacts on its own
- * disk — it predates the `"backup-store"` capability. Distinct from
- * {@link AgentBackupUnsupportedError} on purpose: during a fleet rollout the two
- * are genuinely different states, and "backups are unsupported here" would send
- * an operator whose S3 backups are working fine looking in the wrong place.
+ * The reachable agent can back up to S3 but cannot hold artifacts on its own disk
+ * — it predates the `"backup-store"` capability.
  */
 export class AgentBackupStoreUnsupportedError extends Error {}
 
 /**
- * The reachable agent does not (yet) implement the {@link AgentConnection.containerStats}
- * RPC — it predates the `"container-stats"` capability, so it answers with gRPC
- * UNIMPLEMENTED. The per-app / per-database Monitoring tab needs the agent to
- * report a container's live CPU/mem/net/block usage; until a server runs a new
- * enough agent, the data layer surfaces THIS (distinct from
- * {@link AgentUnreachableError} — the agent IS up, it just can't stat containers
- * yet) so the tab shows an "update the agent on this server" state rather than a
- * confusing error. Mirrors {@link AgentBackupUnsupportedError}.
+ * The reachable agent does not (yet) implement the {@link
+ * AgentConnection.containerStats} RPC — it predates the `"container-stats"`
+ * capability, so it answers with gRPC UNIMPLEMENTED.
  */
 export class AgentContainerStatsUnsupportedError extends Error {}
 
 /**
- * The reachable agent does not (yet) implement {@link AgentConnection.streamMetrics}
- * — it predates the `"metrics-stream"` capability.
- *
- * Unlike its siblings this is NOT a user-facing error state, and nothing should
- * ever surface it in the UI. The monitoring supervisor catches it specifically and
- * DEMOTES that one server to the legacy poll path, which still produces correct
- * charts at a higher cost. That is the whole degradation story for a mixed-version
- * fleet: a rollout is server-by-server, and a user can register a server running
- * last year's agent tomorrow.
+ * The reachable agent does not (yet) implement {@link
+ * AgentConnection.streamMetrics} — it predates the `"metrics-stream"` capability.
  */
 export class AgentMetricsStreamUnsupportedError extends Error {}
 
 /**
- * The reachable agent does not (yet) implement the {@link AgentConnection.checkPort}
- * RPC — it doesn't advertise the `"checkport"` capability in Hello, or it answers
- * with gRPC UNIMPLEMENTED. The database "Expose publicly" flow needs the agent to
- * tell it whether a host port is free (both the pre-provision collision guard and
- * the "generate an available port" button), so until a server runs an agent new
- * enough to answer, the data layer surfaces THIS error — distinct from
- * {@link AgentUnreachableError} (the agent IS up, it just can't probe ports yet) —
- * and the UI says "update the agent on this server". Mirrors
- * {@link AgentBackupUnsupportedError}.
+ * The reachable agent does not (yet) implement the {@link
+ * AgentConnection.checkPort} RPC — it doesn't advertise the `"checkport"`
+ * capability in Hello, or it answers with gRPC UNIMPLEMENTED.
  */
 export class AgentCheckPortUnsupportedError extends Error {}
 
 /**
  * Map a checkPort RPC error to {@link AgentCheckPortUnsupportedError} when it is a
  * gRPC UNIMPLEMENTED (the agent predates the RPC); every other error passes
- * through unchanged. Callers preflight the capability via Hello first, but an
- * agent could advertise nothing yet still reject — this is the belt-and-braces.
+ * through unchanged.
  */
 export function mapCheckPortUnsupported(e: unknown): Error {
   if (e instanceof AgentCheckPortUnsupportedError) return e;
@@ -845,22 +685,16 @@ export function mapCheckPortUnsupported(e: unknown): Error {
  * The reachable agent does not (yet) implement the cross-host data-copy RPCs used
  * by a server move — the volume-copy pair ({@link AgentConnection.exportVolume} /
  * {@link AgentConnection.importVolume}, capability `"volume-copy"`) and/or the
- * files-dir pair ({@link AgentConnection.exportFiles} /
- * {@link AgentConnection.importFiles}, capability `"files-copy"`) — or it answers
- * with gRPC UNIMPLEMENTED. Moving a database or app to another server copies its
- * data host-to-host through these RPCs, so until BOTH the source and destination
- * servers run an agent new enough to answer, the data layer surfaces THIS error —
- * distinct from {@link AgentUnreachableError} (the agent IS up, it just can't copy
- * data yet) — and the UI says "update the agent on this server". Mirrors
- * {@link AgentCheckPortUnsupportedError}.
+ * files-dir pair ({@link AgentConnection.exportFiles} / {@link
+ * AgentConnection.importFiles}, capability `"files-copy"`) — or it answers with
+ * gRPC UNIMPLEMENTED.
  */
 export class AgentVolumeCopyUnsupportedError extends Error {}
 
 /**
- * Map a cross-host data-copy RPC error (volume OR files) to
- * {@link AgentVolumeCopyUnsupportedError} when it is a gRPC UNIMPLEMENTED (the agent
- * predates the RPCs); every other error passes through unchanged. `which` names the
- * side ("source"/"destination") so the message points at the right server.
+ * Map a cross-host data-copy RPC error (volume OR files) to {@link
+ * AgentVolumeCopyUnsupportedError} when it is a gRPC UNIMPLEMENTED (the agent
+ * predates the RPCs); every other error passes through unchanged.
  */
 export function mapVolumeCopyUnsupported(e: unknown, which: string): Error {
   if (e instanceof AgentVolumeCopyUnsupportedError) return e;
@@ -873,19 +707,9 @@ export function mapVolumeCopyUnsupported(e: unknown, which: string): Error {
 }
 
 /**
- * The reachable agent does not (yet) implement the {@link AgentConnection.dockerCleanup}
- * RPC — it doesn't advertise the `"docker-cleanup"` capability in Hello, or it answers
- * with gRPC UNIMPLEMENTED. Reclaiming Docker disk is host-coupled work, so it lives
- * entirely agent-side (ADR-0006); until a server runs an agent new enough to answer,
- * the data layer surfaces THIS error — distinct from {@link AgentUnreachableError} (the
- * agent IS up, it just can't reclaim disk yet) — and the UI says "update the agent on
- * this server".
- *
- * The alternative — letting an unsupported call resolve as an ok response with zero
- * bytes reclaimed — is the one outcome a cleanup must NEVER produce: a sweep that
- * silently did nothing is indistinguishable from one that worked, and the operator
- * would go on believing the disk was being kept clear while it filled up. Mirrors
- * {@link AgentCheckPortUnsupportedError}.
+ * The reachable agent does not (yet) implement the {@link
+ * AgentConnection.dockerCleanup} RPC — it doesn't advertise the `"docker-cleanup"`
+ * capability in Hello, or it answers with gRPC UNIMPLEMENTED.
  */
 export class AgentCleanupUnsupportedError extends Error {}
 
@@ -897,11 +721,11 @@ const CLEANUP_UNSUPPORTED_MESSAGE =
   "Update the agent on this server, then try again.";
 
 /**
- * Map a DockerCleanup RPC error to {@link AgentCleanupUnsupportedError} when it is a
- * gRPC UNIMPLEMENTED (the agent predates the RPC); every other error passes through
- * unchanged. {@link runAgentCleanup} preflights the capability via Hello first, but an
- * agent could advertise nothing yet still reject — this is the belt-and-braces.
- * Idempotent on an already-mapped error.
+ * Map a DockerCleanup RPC error to {@link AgentCleanupUnsupportedError} when it is
+ * a gRPC UNIMPLEMENTED (the agent predates the RPC); every other error passes
+ * through unchanged. {@link runAgentCleanup} preflights the capability via Hello
+ * first, but an agent could advertise nothing yet still reject — this is the
+ * belt-and-braces.
  */
 export function mapCleanupUnsupported(e: unknown): Error {
   if (e instanceof AgentCleanupUnsupportedError) return e;
@@ -912,15 +736,8 @@ export function mapCleanupUnsupported(e: unknown): Error {
 }
 
 /**
- * gRPC status codes that mean "the agent is down / not answering" rather than
- * "the agent answered with an application error". A provisioned-but-offline agent
- * (process dead, host down, network partition) rejects RPCs with one of these,
- * NOT with AgentUnreachableError — so without this mapping every "is the agent
- * unreachable?" guard in the data layer would miss the common case and either
- * 500 a page or lie about status. We normalise them to AgentUnreachableError at
- * the client boundary so the locked rule ("remote unreachable → fail clearly,
- * report offline, never fall back / lie") holds for down agents too, not just
- * never-provisioned ones.
+ * gRPC status codes that mean "the agent is down / not answering" rather than "the
+ * agent answered with an application error".
  */
 const TRANSPORT_DOWN_CODES = new Set<number>([
   GrpcStatus.UNAVAILABLE, // connection refused / TLS / keepalive / agent gone
@@ -931,8 +748,9 @@ const TRANSPORT_DOWN_CODES = new Set<number>([
 /**
  * Normalise an RPC error: a transport-down gRPC error becomes an
  * AgentUnreachableError (so the data-layer guards catch it); anything else (an
- * application error the agent deliberately returned — NOT_FOUND, PERMISSION_DENIED,
- * INVALID_ARGUMENT, FAILED_PRECONDITION) passes through unchanged.
+ * application error the agent deliberately returned — NOT_FOUND,
+ * PERMISSION_DENIED, INVALID_ARGUMENT, FAILED_PRECONDITION) passes through
+ * unchanged.
  */
 function toAgentError(err: unknown): Error {
   if (err instanceof AgentUnreachableError) return err;
@@ -950,10 +768,7 @@ function toAgentError(err: unknown): Error {
 export type LogsFailure = "unreachable" | "not-found" | "denied" | "failed";
 
 /**
- * Curate a FollowLogs stream failure into a stable, client-safe reason. A raw
- * gRPC transport error embeds the dial address and the pinned cert fingerprint
- * (see AppSummary.statusMessage: those never leave the server), so the wire
- * carries one of these four words and nothing else.
+ * Curate a FollowLogs stream failure into a stable, client-safe reason.
  */
 function logsFailureReason(err: unknown): LogsFailure {
   if (toAgentError(err) instanceof AgentUnreachableError) return "unreachable";
@@ -965,10 +780,7 @@ function logsFailureReason(err: unknown): LogsFailure {
 
 /**
  * Resolve a server to a dial target: its declared host/port + the control plane's
- * client cert, pinning the agent cert recorded at bootstrap. Applies uniformly to
- * every server, the host running Deplo included. Throws {@link AgentUnreachableError}
- * if the server is unknown, has no provisioned agent yet, or trust was revoked —
- * the caller surfaces "server unreachable / not provisioned" instead of hanging.
+ * client cert, pinning the agent cert recorded at bootstrap.
  */
 async function resolveTarget(serverId: string): Promise<DialTarget> {
   const server = await getServerById(serverId);
@@ -992,16 +804,8 @@ async function remoteTarget(server: Server): Promise<DialTarget> {
   const host = server.ip || server.host;
   return {
     address: `${host}:${agent.port}`,
-    // TLS SNI / authority. The agent cert's SANs cover the server's IP/host
-    // (signAgentCsr used them), so hostname verification passes either way — but
-    // Node's TLS layer REFUSES to send an IP literal as the SNI servername (RFC
-    // 6066: SNI must be a hostname). Dialing an IP-addressed server with
-    // serverName=<ip> therefore throws ERR_INVALID_ARG_VALUE before the
-    // handshake, which surfaces as gRPC UNAVAILABLE and silently kills every
-    // metrics/hello poll (the server shows "online" from call-home but no stats).
-    // For an IP host, verify against `localhost` instead — signAgentCsr ALWAYS
-    // adds it as a DNS SAN, so verification still passes. The real trust anchor
-    // is the exact-fingerprint pin in checkServerIdentity below, not the name.
+    // TLS SNI / authority. For an IP host, verify against `localhost` instead —
+    // signAgentCsr ALWAYS adds it as a DNS SAN, so verification still passes.
     serverName: IPV4_RE.test(host) ? "localhost" : host,
     clientCreds: {
       certPem: client.certPem,
@@ -1018,10 +822,7 @@ function peerFingerprint(cert: PeerCertificate): string {
 }
 
 /**
- * One promise wrapper for a plain unary call whose response IS the DTO. The
- * generated client's callback signature is identical for all of them, so the
- * host-ops methods share this instead of four near-identical Promise bodies that
- * could drift in their error mapping.
+ * One promise wrapper for a plain unary call whose response IS the DTO.
  */
 function unary<Req, Resp>(
   call: (
@@ -1047,22 +848,15 @@ function unary<Req, Resp>(
 function dial(target: DialTarget): AgentConnection {
   const { certPem, keyPem, caPem } = target.clientCreds;
   // Set by checkServerIdentity below when the peer's cert is not the pinned one.
-  // Node's TLS layer turns that rejection into a handshake failure, which grpc-js
-  // surfaces as an opaque UNAVAILABLE — indistinguishable from "the host is off".
-  // Recording the fact HERE, at the only place that knows it, is what lets the
-  // health prober report a trust failure as `error` instead of lying with
-  // `offline`. (Recovering it by matching on the error string would mean parsing
-  // a message grpc-js owns and can reword at any release.)
+  // (Recovering it by matching on the error string would mean parsing a message
+  // grpc-js owns and can reword at any release.)
   let trustFailed = false;
   const creds = credentials.createSsl(
     Buffer.from(caPem),
     Buffer.from(keyPem),
     Buffer.from(certPem),
     {
-      // Standard CA-chain + hostname verification still runs; this fires AFTER
-      // it. We additionally require the EXACT pinned fingerprint, so a cert that
-      // chains to our CA but isn't the one we provisioned (or whose trust was
-      // revoked by clearing the pin) is rejected — P6 revocation.
+      // Standard CA-chain + hostname verification still runs; this fires AFTER it.
       checkServerIdentity: (_host, cert) => {
         const got = peerFingerprint(cert);
         if (got !== target.pinnedFingerprint) {
@@ -1082,23 +876,12 @@ function dial(target: DialTarget): AgentConnection {
     // Large messages: a streamed build context rides inside the Deploy request.
     "grpc.max_receive_message_length": 256 * 1024 * 1024,
     "grpc.max_send_message_length": 256 * 1024 * 1024,
-    // HTTP/2 flow-control window. grpc-js defaults to 65535 bytes and, unlike
-    // grpc-go, never tunes it from the measured BDP - so a stream's ceiling is
-    // window/RTT no matter how fat the link is. On a 31 ms hop that is ~1 MB/s,
-    // which is what a 15 GB cross-host volume copy actually ran at: four hours
-    // of a migration spent on flow control, with an idle CPU and an idle disk
-    // at both ends. 16 MiB matches grpc-go's own BDP ceiling, so both sides of
-    // the relay agree, and it lifts one stream past any link we would ever have.
+    // HTTP/2 flow-control window. grpc-js defaults to 65535 bytes and, unlike grpc-go,
+    // never tunes it from the measured BDP - so a stream's ceiling is window/RTT no
+    // matter how fat the link is.
     "grpc-node.flow_control_window": 16 * 1024 * 1024,
-    // Keepalive, for the LONG-LIVED streams (StreamMetrics runs for the life of
-    // this process; logs/attach for hours). Without it a stream that goes quiet
-    // behind a NAT or stateful firewall gets its mapping reaped and we never
-    // learn: no error, no end event, just a chart that stops updating.
-    //
-    // The agent's server-side EnforcementPolicy sets MinTime 15s, so 30s is
-    // legal. Do NOT lower this below that floor without changing the agent in the
-    // same release — grpc-go answers a too-frequent ping with GOAWAY /
-    // ENHANCE_YOUR_CALM, which presents as random stream drops.
+    // Keepalive, for the LONG-LIVED streams (StreamMetrics runs for the life of this
+    // process; logs/attach for hours).
     "grpc.keepalive_time_ms": 30_000,
     "grpc.keepalive_timeout_ms": 10_000,
     // Only ping while an RPC is in flight. Matches the agent's
@@ -1110,10 +893,7 @@ function dial(target: DialTarget): AgentConnection {
   /**
    * Adapt a gRPC server-stream of LogChunks into the output-only AttachHandle the
    * logs session registry consumes — so lib/logs/session.ts works UNCHANGED for a
-   * remote backing. Pre-subscription chunks are BUFFERED and flushed to the first
-   * subscriber, exactly reproducing the synchronous tail burst the local
-   * `docker logs` pipe delivers (so session.backlog semantics hold). `close()`
-   * cancels the stream AND the grpc client (this is the only consumer of it).
+   * remote backing.
    */
   function logsHandle(stream: ClientReadableStream<LogChunk>): AttachHandle {
     const subs = new Set<(c: Buffer) => void>();
@@ -1133,11 +913,9 @@ function dial(target: DialTarget): AgentConnection {
       exitCb?.(error);
     };
     stream.on("end", () => end());
-    // A stream FAILURE is not a clean end: the agent can refuse the container
-    // (no such container / not this app's), or the host can drop mid-follow.
-    // Reporting it as a plain exit is what left the viewer sitting empty with
-    // nothing to say — carry the reason out so the UI can show it. A cancel we
-    // asked for (close()) is filtered by the `closed` guard above.
+    // A stream FAILURE is not a clean end: the agent can refuse the container (no such
+    // container / not this app's), or the host can drop mid-follow. A cancel we asked
+    // for (close()) is filtered by the `closed` guard above.
     stream.on("error", (e: Error) => end(logsFailureReason(e)));
     return {
       onData(cb) {
@@ -1169,11 +947,9 @@ function dial(target: DialTarget): AgentConnection {
   }
 
   /**
-   * Adapt a gRPC bidi attach stream into a full-duplex AttachHandle. `write`
-   * sends stdin AttachInput.data frames; output AttachOutput.data frames fan out
-   * via onData; an exit frame (or stream end) fires onExit. `close()` cancels the
-   * stream and the grpc client. The FIRST frame (AttachOpen) is sent by the
-   * factory before the handle is returned, so the agent has the container+tty.
+   * Adapt a gRPC bidi attach stream into a full-duplex AttachHandle. The FIRST
+   * frame (AttachOpen) is sent by the factory before the handle is returned, so
+   * the agent has the container+tty.
    */
   function attachHandle(
     stream: ClientDuplexStream<AttachInput, AttachOutput>,
@@ -1275,12 +1051,9 @@ function dial(target: DialTarget): AgentConnection {
   });
 
   /**
-   * Hello-specific error normaliser. A cert-pin rejection (recorded by
-   * `checkServerIdentity` above) or an UNAUTHENTICATED — the agent refusing OUR
-   * client cert — is a TRUST failure, not a dead host: the peer is up, the mTLS
-   * identity is wrong. Only `hello` normalises this way, because only the health
-   * prober consumes the distinction; every other RPC keeps seeing the plain
-   * transport-down AgentUnreachableError it always has.
+   * Hello-specific error normaliser. Only `hello` normalises this way, because
+   * only the health prober consumes the distinction; every other RPC keeps seeing
+   * the plain transport-down AgentUnreachableError it always has.
    */
   const helloError = (err: unknown): Error => {
     const e = toAgentError(err);
@@ -1310,11 +1083,11 @@ function dial(target: DialTarget): AgentConnection {
     },
     metrics(dataDir = "") {
       return new Promise<HostMetrics>((resolve, reject) => {
-        // A SHORT deadline is mandatory (METRICS_TIMEOUT_MS): the dashboard polls
-        // ~1s on a busy-guard, so a remote agent that accepts the connection but
-        // can't finish measuring (host pinned by its own deploy/load) must fail
-        // fast so the next tick can retry — not hang the poll for the full console
-        // deadline and amplify a brief pin into a minute-long chart gap.
+        // A SHORT deadline is mandatory (METRICS_TIMEOUT_MS): the dashboard polls ~1s on a
+        // busy-guard, so a remote agent that accepts the connection but can't finish
+        // measuring (host pinned by its own deploy/load) must fail fast so the next tick
+        // can retry — not hang the poll for the full console deadline and amplify a brief
+        // pin into a minute-long chart gap.
         client.metrics(
           { dataDir },
           new Metadata(),
@@ -1325,10 +1098,10 @@ function dial(target: DialTarget): AgentConnection {
     },
     containerStats(projectId: string, containers: string[]) {
       return new Promise<ContainerStat[]>((resolve, reject) => {
-        // Same reasoning as metrics(): the Monitoring tab polls ~1s on a busy-
-        // guard, so an agent that accepts the dial but can't finish stat-ing the
-        // stack (e.g. its containers are mid-recreate during a deploy) must fail
-        // fast and let the next tick recover, not hang the full console deadline.
+        // Same reasoning as metrics(): the Monitoring tab polls ~1s on a busy- guard, so an
+        // agent that accepts the dial but can't finish stat-ing the stack (e.g. its
+        // containers are mid-recreate during a deploy) must fail fast and let the next tick
+        // recover, not hang the full console deadline.
         client.containerStats(
           { projectId, containers },
           new Metadata(),
@@ -1343,10 +1116,7 @@ function dial(target: DialTarget): AgentConnection {
         client.streamMetrics(req, {
           deadline: new Date(Date.now() + METRICS_STREAM_DEADLINE_MS),
         }),
-        // Bounded, drop-oldest. Four frames is ~20s of history at the default
-        // cadence — enough to ride out a GC pause or a slow buffer write, far
-        // short of anything worth replaying. If the consumer is further behind
-        // than that, the right sample to keep is the newest one.
+        // Bounded, drop-oldest.
         { maxQueued: METRICS_STREAM_MAX_QUEUED, normalise: toAgentError },
       );
     },
@@ -1605,10 +1375,8 @@ function dial(target: DialTarget): AgentConnection {
       });
     },
     exportImage(imageRef: string, removeAfter: boolean) {
-      // Server-streaming gzipped `docker save` - the exact shape of exportVolume,
-      // with ImageChunk{data} frames. `removeAfter` reclaims the builder's disk once
-      // the last byte is out: on a build server the image is a courier, and what is
-      // worth keeping across builds is the BuildKit cache, which this never touches.
+      // Server-streaming gzipped `docker save` - the exact shape of exportVolume, with
+      // ImageChunk{data} frames.
       return (async function* () {
         const stream = client.exportImage(
           { imageRef, removeAfter },
@@ -1623,10 +1391,8 @@ function dial(target: DialTarget): AgentConnection {
       })();
     },
     importImage(imageRef: string, chunks: AsyncIterable<Buffer>) {
-      // Client-streaming `docker image load` - mirrors importVolume with an image
-      // header and no wipe flag (loading a tag replaces it; there is nothing to
-      // empty first). Terminal StoreResult, not StackResult: a relayed artifact
-      // reports the bytes and sha256 that actually landed.
+      // Client-streaming `docker image load` - mirrors importVolume with an image header
+      // and no wipe flag (loading a tag replaces it; there is nothing to empty first).
       return new Promise<{ ok: boolean; error: string; bytesWritten: number }>(
         (resolve, reject) => {
           const call: ClientWritableStream<ImageChunk> = client.importImage(
@@ -1796,12 +1562,9 @@ function dial(target: DialTarget): AgentConnection {
         client.backup(req, {
           deadline: new Date(Date.now() + BACKUP_DEADLINE_MS),
         }),
-        // BOUNDED, like every other stream that can carry bytes. Under
-        // `stream_out` this one IS the artifact: the frames are 1 MiB slices of
-        // a relayed backup, and an unbounded queue would hold the whole thing in
-        // this process while the destination disk catches up. Harmless for the
-        // ordinary log-line shape, where the consumer drains in a tight loop and
-        // the bound is never reached.
+        // BOUNDED, like every other stream that can carry bytes. Harmless for the ordinary
+        // log-line shape, where the consumer drains in a tight loop and the bound is never
+        // reached.
         { normalise: toAgentError, pauseAbove: STREAM_BYTES_PAUSE_ABOVE },
       );
     },
@@ -2000,10 +1763,8 @@ function dial(target: DialTarget): AgentConnection {
             projectId: appId,
             container,
             tail,
-            // 0 is the proto default and the agent's "unset", so an omitted
-            // window produces the exact request this sent before the fields
-            // existed. Seconds, not milliseconds: `docker logs --since` reads
-            // an integer as a Unix timestamp in seconds.
+            // 0 is the proto default and the agent's "unset", so an omitted window produces the
+            // exact request this sent before the fields existed.
             sinceUnix: opts.sinceUnix ?? 0,
             untilUnix: opts.untilUnix ?? 0,
             timestamps: opts.timestamps ?? false,
@@ -2225,14 +1986,6 @@ function dial(target: DialTarget): AgentConnection {
 
 /**
  * Test-only: answer `connectAgent` with a stand-in.
- *
- * The repo had NO seam here, and the cost was precise: not one test covered a byte
- * of the volume copy, so a relay that reported "Copied" having moved nothing passed
- * every suite for as long as it existed. Same shape as the other injected dials
- * (`__setMetricsConnectorForTest`, `__setRunnerForTest`) - a module-level swap the
- * production path reads once, so nothing about the real code changes.
- *
- * Pass nothing to restore the real dial.
  */
 let connector: ((serverId: string) => Promise<AgentConnection>) | null = null;
 
@@ -2255,9 +2008,7 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
 /**
  * Open a connection to `serverId`'s agent at an OVERRIDDEN dial address - the
  * verify-first probe behind the address edit (updateServerAddress): same client
- * identity, same PINNED cert fingerprint, only the target differs. A Hello that
- * succeeds over this therefore proves the box at the new address is the same
- * agent we provisioned, not merely something listening there. Persists nothing.
+ * identity, same PINNED cert fingerprint, only the target differs.
  */
 export async function connectAgentAt(
   serverId: string,
@@ -2286,58 +2037,35 @@ export async function connectAgentAt(
  *  (mirrors the "backup" entry in the agent's server.Capabilities). */
 const BACKUP_CAPABILITY = "backup";
 /**
- * Holding artifacts on THIS host's disk (the StoreTarget arms plus
- * ReadStoreFile / WriteStoreFile / RestoreFrom). Split from `"backup"` because
- * the two shipped in different agent releases: a fleet mid-rollout has agents
- * that can dump to S3 but not store, and telling that operator "backups are
- * unsupported" would send them looking in the wrong place.
+ * Holding artifacts on THIS host's disk (the StoreTarget arms plus ReadStoreFile /
+ * WriteStoreFile / RestoreFrom).
  */
 const BACKUP_STORE_CAPABILITY = "backup-store";
 
 /**
  * The agent honours `age_recipient` for a BUCKET artifact (and reports a sha256
- * for the upload). Without it the field is silently ignored, the archive - which
- * carries the app's whole decrypted env - lands in the bucket in the clear, and
- * the run records a `.age` key for a file that is not encrypted. That downgrade
- * is invisible, so an encrypted destination refuses to run on an agent lacking
- * this rather than quietly writing plaintext.
+ * for the upload).
  */
 const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
 
 /**
  * The agent reads `S3Target.extra_args` — a destination's advanced quirk flags
- * reach its minio client instead of being ignored.
- *
- * A SOFT gate, unlike the encryption one above, and the difference is what is at
- * stake: an agent that ignores the age recipient writes a decrypted archive into
- * somebody's bucket, so that one refuses to run. An agent that ignores
- * `--s3-force-path-style` just talks to the store the way it always did — the
- * backup either works anyway or fails loudly at the gateway. Refusing there
- * would take backups away from a whole fleet mid-rollout over a workaround.
+ * reach its minio client instead of being ignored. Refusing there would take
+ * backups away from a whole fleet mid-rollout over a workaround.
  */
 const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";
 
 /**
  * `ReadStoreFile` accepts an S3Target, so an artifact in a BUCKET can be streamed
  * back out decrypted - which is the whole of the Download button for a bucket
- * destination.
- *
- * A HARD gate. Without it there is no RPC to call at all, and the honest answer
- * is "update the agent on this server": a download that silently does not happen,
- * or hands back a file nobody decrypted, is worse than one that says why.
+ * destination. A HARD gate.
  */
 const BACKUP_S3_READ_CAPABILITY = "backup-s3-read";
 
 /**
- * `RestoreFrom` honours `untrusted_config`: an artifact that came from OUTSIDE
- * the fleet contributes data only, never the compose/env/mounts the stack comes
- * back up with.
- *
- * A HARD gate, and it has to be. An agent without this ignores the field, and
- * ignoring it restores precisely what the flag exists to prevent: with no digest
- * to prove an uploaded archive, the agent falls back to ITS config whenever the
- * control plane sends none, which is root on that host for whoever uploaded the
- * file. A silently-ignored security flag is worse than a refused restore.
+ * `RestoreFrom` honours `untrusted_config`: an artifact that came from OUTSIDE the
+ * fleet contributes data only, never the compose/env/mounts the stack comes back
+ * up with. A HARD gate, and it has to be.
  */
 const BACKUP_UNTRUSTED_CONFIG_CAPABILITY = "backup-untrusted-config";
 
@@ -2348,13 +2076,6 @@ export const CRON_CAPABILITY = "cron";
 /**
  * The reachable agent does not (yet) implement the cron RPCs - it predates the
  * `"cron"` capability, or answers them with gRPC UNIMPLEMENTED.
- *
- * There is deliberately NO fallback path. Emulating a long job over the 30s
- * `Exec` would mean backgrounding the command with `nohup` and polling a marker
- * file, which needs a shell, a writable `/tmp` and PID bookkeeping inside every
- * user's container - more code than the RPCs, and fragile in ways the user would
- * discover at 03:00. An old agent gets an honest "update this server's agent"
- * instead. Mirrors {@link AgentBackupUnsupportedError}.
  */
 export class AgentCronUnsupportedError extends Error {}
 
@@ -2363,15 +2084,6 @@ const CRON_UNSUPPORTED_MESSAGE =
 
 /**
  * Open a connection to an agent that can run cron jobs, or throw.
- *
- * Preflights the capability rather than relying on UNIMPLEMENTED alone, because
- * the scheduler decides what to do about a whole server before it starts firing
- * its jobs - one Hello beats one failed StartJob per job.
- *
- * Throws {@link AgentUnreachableError} when the host is unreachable and
- * {@link AgentCronUnsupportedError} when it is up but too old. The scheduler
- * treats those very differently: unreachable means "leave the run alone and ask
- * again next minute", too-old means "this attempt failed, say why".
  */
 export async function connectCronAgent(
   serverId: string,
@@ -2391,9 +2103,7 @@ export async function connectCronAgent(
 
 /**
  * Map a cron RPC error to {@link AgentCronUnsupportedError} when it is a gRPC
- * UNIMPLEMENTED, passing everything else through unchanged. The belt-and-braces
- * behind {@link connectCronAgent}'s preflight, for an agent that advertises the
- * capability but cannot actually serve the call. Idempotent.
+ * UNIMPLEMENTED, passing everything else through unchanged.
  */
 export function mapCronUnsupported(e: unknown): Error {
   if (e instanceof AgentCronUnsupportedError) return e;
@@ -2403,34 +2113,20 @@ export function mapCronUnsupported(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));
 }
 
-/** The capability an agent advertises once it can serve per-container
- *  `docker stats` (ContainerStats) — the per-app/per-database Monitoring tab.
- *  Mirrors BACKUP_CAPABILITY; the primary gate is the RPC's UNIMPLEMENTED, so
- *  there is no dedicated connect* preflight for this one — it is the fallback
- *  path, reached only for a server whose agent lacks METRICS_STREAM_CAPABILITY. */
+/**
+ * The capability an agent advertises once it can serve per-container `docker
+ * stats` (ContainerStats) — the per-app/per-database Monitoring tab.
+ */
 export const CONTAINER_STATS_CAPABILITY = "container-stats";
 
-/** The capability an agent advertises once it can serve the long-lived
- *  {@link AgentConnection.streamMetrics} telemetry stream. Unlike container-stats
- *  this one IS preflighted at connect time ({@link connectMetricsStreamAgent}),
- *  because the answer selects between two entirely different collection
- *  strategies for that host — and Hello already tells us, so discovering it from
- *  a failed RPC would mean opening a stream in order to learn we cannot. */
+/**
+ * The capability an agent advertises once it can serve the long-lived {@link
+ * AgentConnection.streamMetrics} telemetry stream.
+ */
 export const METRICS_STREAM_CAPABILITY = "metrics-stream";
 
 /**
  * Open a connection for the telemetry stream, preflighting the capability.
- *
- * Returns the LIVE connection (the caller owns closing it) together with the
- * opening Hello, because the supervisor needs that Hello anyway: it is where
- * `agentVersion` / `traefikRunning` / `dockerVersion` come from for the
- * once-per-connection `markServerSeen`, and it is a health OBSERVATION carrying
- * the `trust` flag on a certificate failure — the signal the old metrics poll
- * structurally could not produce, because it issued `metrics()` first and a
- * cert-pin rejection there arrives without it.
- *
- * Throws {@link AgentMetricsStreamUnsupportedError} when the agent is too old,
- * which the supervisor reads as "poll this one" rather than as a failure.
  */
 export async function connectMetricsStreamAgent(
   serverId: string,
@@ -2451,12 +2147,9 @@ export async function connectMetricsStreamAgent(
 }
 
 /**
- * Map a {@link AgentConnection.containerStats} error to
- * {@link AgentContainerStatsUnsupportedError} when it is a gRPC UNIMPLEMENTED (an
- * agent too old to serve the RPC), passing every other error through unchanged.
- * The data layer wraps its `conn.containerStats(...)` call with this so the
- * Monitoring tab can show "update the agent" instead of an opaque failure.
- * Idempotent on an already-mapped error. Mirrors {@link mapBackupUnsupported}.
+ * Map a {@link AgentConnection.containerStats} error to {@link
+ * AgentContainerStatsUnsupportedError} when it is a gRPC UNIMPLEMENTED (an agent
+ * too old to serve the RPC), passing every other error through unchanged.
  */
 export function mapContainerStatsUnsupported(e: unknown): Error {
   if (e instanceof AgentContainerStatsUnsupportedError) return e;
@@ -2471,26 +2164,8 @@ export function mapContainerStatsUnsupported(e: unknown): Error {
 
 /**
  * Open a connection to the agent owning `serverId` AND preflight that it can do
- * backups — the entry point every real backup/restore path uses (Step 3). It
- * dials, confirms the agent answers Hello, and checks the `"backup"` capability;
- * if the agent is too old (no capability), it closes the connection and throws
- * {@link AgentBackupUnsupportedError} so the caller surfaces "update the agent"
- * rather than a fake success — exactly the contract gate the PLAN locked. On
- * success the LIVE connection is returned (caller must `close()` it). Mirrors
- * the self-update preflight ({@link selfUpdateServerAgent}).
- *
- * The capability check is the PRIMARY gate and catches the common case here. But
- * the actual backup/restore/s3* RPCs run AFTER this returns (on the live
- * connection), so a just-old-enough agent that advertises `"backup"` yet rejects
- * an RPC with gRPC UNIMPLEMENTED wouldn't be caught here — the data layer (Step 3)
- * must wrap those RPC calls with {@link mapBackupUnsupported} to get the same
- * actionable error.
- *
- * Throws:
- *  - {@link AgentUnreachableError} when the server is unknown / not provisioned /
- *    offline (the data layer surfaces "not provisioned / unreachable").
- *  - {@link AgentBackupUnsupportedError} when the reachable agent doesn't
- *    advertise `"backup"` — the UI tells the operator to update the agent.
+ * backups — the entry point every real backup/restore path uses (Step 3). On
+ * success the LIVE connection is returned (caller must `close()` it).
  */
 export async function connectBackupAgent(
   serverId: string,
@@ -2528,9 +2203,8 @@ export async function connectBackupAgent(
       );
     }
     // FAIL rather than downgrade. An agent without this ignores the recipient and
-    // writes the artifact - the app's entire decrypted env included - to the
-    // bucket in plaintext, under a key whose `.age` suffix says otherwise. A
-    // backup that is quietly not encrypted is worse than one that did not run.
+    // writes the artifact - the app's entire decrypted env included - to the bucket in
+    // plaintext, under a key whose `.age` suffix says otherwise.
     if (
       opts.encryptedS3 &&
       !hello.capabilities?.includes(BACKUP_ENCRYPT_S3_CAPABILITY)
@@ -2560,10 +2234,9 @@ export async function connectBackupAgent(
           `Update the agent on this server, then try again.`,
       );
     }
-    // Said out loud, not swallowed: the flags exist because a store misbehaves
-    // without them, so an operator whose backup is failing needs to know this
-    // host is not applying them. It is a log line rather than an error because
-    // taking backups away is the worse outcome of the two.
+    // Said out loud, not swallowed: the flags exist because a store misbehaves without
+    // them, so an operator whose backup is failing needs to know this host is not
+    // applying them.
     if (
       opts.s3Args &&
       !hello.capabilities?.includes(BACKUP_S3_ARGS_CAPABILITY)
@@ -2584,11 +2257,7 @@ export async function connectBackupAgent(
 /**
  * Map a backup/restore/s3* RPC error to {@link AgentBackupUnsupportedError} when
  * it is a gRPC UNIMPLEMENTED (an agent that advertised `"backup"` but is too old
- * to actually serve the RPC), passing every other error through unchanged. The
- * data layer (Step 3) wraps each `conn.backup()/restore()/s3Check()/s3Delete()`
- * call with this — `connectBackupAgent`'s capability preflight is the primary
- * gate, this is the backstop for the RPC itself. Idempotent on an already-mapped
- * error.
+ * to actually serve the RPC), passing every other error through unchanged.
  */
 export function mapBackupUnsupported(e: unknown): Error {
   if (e instanceof AgentBackupUnsupportedError) return e;
@@ -2605,9 +2274,7 @@ export function mapBackupUnsupported(e: unknown): Error {
 /**
  * The capability an agent advertises once it brings a compose stack up from the
  * stack's OWN directory (`--project-directory`), with its env-file as `.env`
- * inside it. Without it a relative path an author wrote - `env_file: .env` above
- * all, which is what every stack exported from another platform carries -
- * resolves against the shared stack dir and finds nothing.
+ * inside it.
  */
 export const COMPOSE_PROJECTDIR_CAPABILITY = "deploy.compose.projectdir";
 
@@ -2624,9 +2291,8 @@ export interface FollowLogsOptions {
 
 /**
  * `FollowLogsRequest` carries `since_unix` / `until_unix` / `timestamps`. A SOFT
- * gate, unlike most: an agent without it still streams, so the control plane
- * keeps the stream and the UI greys out the time-range control. Refusing to show
- * any logs because the host cannot narrow them would be the worse trade.
+ * gate, unlike most: an agent without it still streams, so the control plane keeps
+ * the stream and the UI greys out the time-range control.
  */
 export const LOGS_TIMERANGE_CAPABILITY = "logs.timerange";
 
@@ -2653,10 +2319,9 @@ export async function serverSupports(
 }
 
 /**
- * Mandatory pre-flight (PLAN P5): confirm the agent answers Hello before a
- * deploy, with a contract-version check. Returns the HelloResponse or throws a
- * clear "server unreachable" error — never hangs. Also refreshes the server's
- * lastSeenAt cache (P5) on success for the chosen server.
+ * Mandatory pre-flight (PLAN P5): confirm the agent answers Hello before a deploy,
+ * with a contract-version check. Returns the HelloResponse or throws a clear
+ * "server unreachable" error — never hangs.
  */
 export async function agentPreflight(serverId: string): Promise<HelloResponse> {
   const conn = await connectAgent(serverId);
@@ -2687,24 +2352,8 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
   }
 }
 
-/*
+/**
  * There is deliberately NO teardownServerAgent here.
- *
- * There used to be: removeServer called it, and the UI told the operator it
- * "tells the agent to tear down its containers". It did nothing of the sort — it
- * sent a single Hello and closed the connection. The honest reading is that no
- * such function CAN exist: removeServer blocks while any App or database is still
- * on the host, so there is no stack left for the control plane to even name; and
- * everything that genuinely survives a removal (the agent binary, its systemd
- * unit, /var/lib/deplo-agent, deplo-traefik on :80/:443, the `deplo` network,
- * Docker itself) has no RPC behind it in the V1 contract. Removal also revokes the
- * pinned cert, which is exactly the moment we lose the right to dial that agent.
- *
- * The host cleanup is therefore host-side: `uninstall.sh --agent-only`, whose one-liner
- * removeServer returns (see lib/agent/bootstrap.ts `uninstallCommand`). If a
- * future agent ever grows a real host-teardown RPC, gate it on a Hello capability
- * the way SELF_UPDATE_CAPABILITY / BACKUP_CAPABILITY are gated below — do not
- * bring back a function whose name promises more than it does.
  */
 
 /** The capability an agent advertises in Hello once it can self-update (mirrors
@@ -2712,31 +2361,8 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
 const SELF_UPDATE_CAPABILITY = "self-update";
 
 /**
- * Update a server's agent binary IN PLACE to the latest release, WITHOUT
- * reissuing its certificates. We dial the agent over its existing pinned-mTLS
- * channel (`resolveTarget` proves it is provisioned + reachable, and the dial
- * reuses the cert fingerprint recorded at bootstrap) and ask it to self-update:
- * it fetches the checksum-verified binary for its own arch from GitHub Releases,
- * swaps itself on disk, and re-execs keeping the SAME on-disk `agent.crt` /
- * `agent.key` / `ca.crt`. Trust is untouched — no new CSR, no re-bootstrap, no
- * token — so the server stays "online" with the same pinned fingerprint across
- * the upgrade. This is the whole point of doing it over the agent channel rather
- * than re-running install-agent.sh (which clears materials and re-bootstraps).
- *
- * The control plane resolves the release and sends EVERY published per-arch asset
- * (url + sha256 from the release's checksums.txt — the same integrity source the
- * installer pins); the agent selects its own arch. We do NOT pass the target
- * version in from the caller's idea of "latest" only — we re-resolve here so the
- * url/sha/version are internally consistent (one release).
- *
- * Throws:
- *  - {@link AgentUnreachableError} when the server is unknown / not provisioned /
- *    offline (the data layer surfaces "not provisioned / unreachable").
- *  - {@link AgentUpdateUnsupportedError} when the reachable agent is too OLD to
- *    self-update (it doesn't advertise the `self-update` capability, or it returns
- *    gRPC UNIMPLEMENTED) — the UI tells the operator to re-run the installer.
- *  - a plain error when no agent release can be resolved (GitHub unreachable), so
- *    we never tell the agent to update to nothing.
+ * Update a server's agent binary IN PLACE to the latest release, WITHOUT reissuing
+ * its certificates.
  */
 export async function selfUpdateServerAgent(
   serverId: string,
@@ -2745,10 +2371,9 @@ export async function selfUpdateServerAgent(
   // AgentUnreachableError otherwise.
   const target = await resolveTarget(serverId);
 
-  // Resolve the release to install (version + per-arch url/sha). Out here so a
-  // GitHub outage fails before we touch the agent, and so version/urls are one
-  // consistent release. Lazy import keeps release.ts (and its server-only fetch)
-  // out of modules that never update an agent.
+  // Resolve the release to install (version + per-arch url/sha). Out here so a GitHub
+  // outage fails before we touch the agent, and so version/urls are one consistent
+  // release.
   const { resolveLatestAgentRelease } = await import("../agent/release");
   const release = await resolveLatestAgentRelease();
   if (!release) {
@@ -2801,18 +2426,8 @@ const SELF_UNINSTALL_CAPABILITY = "self-uninstall";
 
 /**
  * Ask a server's agent to remove itself from its host, and report what it removed.
- *
- * The mirror image of {@link selfUpdateServerAgent} in every way that matters: same
- * pinned-mTLS dial, same Hello capability pre-flight, same UNIMPLEMENTED mapping.
- * The difference is what a success means - the agent is gone, the mTLS materials
- * with it, and this connection is the last one that host will ever accept. So the
- * caller must not revoke trust first (the call would then be one we are no longer
- * entitled to make) and must not delete the row before this resolves.
- *
- * Only a MIGRATION SOURCE is uninstalled this way (`uninstallServerAgent` in
- * lib/data/servers.ts enforces that). For an ordinary server, removal stays trust
- * revocation plus the host-side script - ADR-0011 - and that script also remains
- * the answer whenever this throws.
+ * So the caller must not revoke trust first (the call would then be one we are no
+ * longer entitled to make) and must not delete the row before this resolves.
  */
 export async function selfUninstallServerAgent(
   serverId: string,
@@ -2820,10 +2435,10 @@ export async function selfUninstallServerAgent(
    *  wizard; the background retries take the full one. */
   deadlineMs?: number,
 ): Promise<string[]> {
-  // `connectAgent` rather than resolveTarget + dial (which is what SelfUpdate
-  // does): identical in production - it IS resolveTarget + dial - but it is the
-  // seam the tests inject a stand-in through, and an uninstall that no test can
-  // drive is one nobody would notice breaking until a real host kept its agent.
+  // `connectAgent` rather than resolveTarget + dial (which is what SelfUpdate does):
+  // identical in production - it IS resolveTarget + dial - but it is the seam the
+  // tests inject a stand-in through, and an uninstall that no test can drive is one
+  // nobody would notice breaking until a real host kept its agent.
   const conn = await connectAgent(serverId);
   try {
     const hello = await conn.hello();
@@ -2855,63 +2470,25 @@ export async function selfUninstallServerAgent(
  *  Exported so the readiness report can name the gap before anyone clicks. */
 export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
 
-/** The Hello capability gating `DockerCleanupRequest.keep_per_slug` - per-APP
- *  image retention, which is what carries each app's rollback depth. Soft, unlike
- *  {@link DOCKER_CLEANUP_CAPABILITY}: see the compensation in
- *  {@link runAgentCleanup}. */
+/**
+ * The Hello capability gating `DockerCleanupRequest.keep_per_slug` - per-APP image
+ * retention, which is what carries each app's rollback depth.
+ */
 const CLEANUP_KEEP_PER_SLUG_CAPABILITY = "cleanup.keep-per-slug";
 
-/** The Hello capability gating CLEANUP_SCOPE_LEFTOVER_APP_FILES. HARD, unlike
- *  {@link CLEANUP_KEEP_PER_SLUG_CAPABILITY}: an unknown scope is an
- *  INVALID_ARGUMENT that fails the WHOLE sweep, so an agent without this must
- *  never be sent it - see {@link dropUnsupportedScopes}. */
+/**
+ * The Hello capability gating CLEANUP_SCOPE_LEFTOVER_APP_FILES.
+ */
 const CLEANUP_LEFTOVER_FILES_CAPABILITY = "cleanup.leftover-files";
 
 /**
  * Reclaim Docker disk on `serverId`'s host: dial → Hello → capability pre-flight →
- * DockerCleanup → close, all in one self-contained op. Shaped like
- * {@link selfUpdateServerAgent} rather than {@link connectBackupAgent} because a
- * cleanup is a single unary RPC — there is no live connection left for the caller to
- * hold, so the caller never has to remember to close one.
- *
- * This is a HOST-level RPC, and the note above {@link selfUpdateServerAgent} says any
- * such RPC must be gated on a Hello capability the way SELF_UPDATE / BACKUP are. Here
- * the gate is load-bearing beyond mere ergonomics: an agent that does not advertise
- * `"docker-cleanup"` is never asked, and the failure it produces is
- * {@link AgentCleanupUnsupportedError} — "update the agent on this server" — never an
- * ok response with zero bytes reclaimed. A cleanup is only ever trusted, never
- * watched; the operator has no way to tell a sweep that quietly did nothing from one
- * that worked, so the ONE thing this function must not do is fake a success.
- *
- * `req.dryRun` picks the preview or the real sweep — the same RPC, the same deadline,
- * the same enumeration either way; under `dryRun` the agent removes nothing. The
- * safety of what gets removed is agent-side and allow-listed (never `system prune` /
- * `container prune` / `volume prune` / `network prune`): the control plane owns the
- * scope SET, not the deletion logic.
- *
- * Throws:
- *  - {@link AgentUnreachableError} when the server is unknown / not provisioned /
- *    offline. The caller writes the failed run — history never lies about a sweep it
- *    could not even start.
- *  - {@link AgentCleanupUnsupportedError} when the reachable agent is too old, whether
- *    that shows up in Hello or as UNIMPLEMENTED on the call itself.
+ * DockerCleanup → close, all in one self-contained op.
  */
 /**
- * Make `keep_per_slug` safe to send at an agent that has never heard of it.
- *
- * An old agent does not reject the field, it IGNORES it - and silently falling
- * back to the scalar would delete the very images an app's rollback depth exists
- * to keep. So when the capability is missing the map is dropped and the scalar is
- * raised to the deepest value it held: that host then over-keeps for every app
- * instead of under-keeping for one. More disk on an un-updated host is a cost;
- * deleting the image a rollback was about to run is a broken feature.
- *
- * A no-op in both directions once the fleet is updated, and a no-op today for any
- * request that carries no map at all.
- *
- * Exported for tests: this is a wire-compatibility rule, and the failure it
- * prevents (an image pruned out from under a rollback) is invisible until someone
- * needs it.
+ * Make `keep_per_slug` safe to send at an agent that has never heard of it. An old
+ * agent does not reject the field, it IGNORES it - and silently falling back to
+ * the scalar would delete the very images an app's rollback depth exists to keep.
  */
 export function compensateKeepPerSlug(
   req: DockerCleanupRequest,
@@ -2931,15 +2508,6 @@ export function compensateKeepPerSlug(
 /**
  * Strip scopes THIS agent does not implement, so an old host still gets the four
  * it does understand.
- *
- * The opposite failure mode from {@link compensateKeepPerSlug}: an unrecognised
- * FIELD is ignored by the agent, but an unrecognised SCOPE is a contract
- * violation it answers with INVALID_ARGUMENT — which fails the whole sweep, not
- * just that scope. So the drop happens here, once, rather than as a per-host
- * branch in the policy: the operator's saved scope set is instance-wide and must
- * not have to know which host is on which version.
- *
- * Exported for tests, like its sibling.
  */
 export function dropUnsupportedScopes(
   req: DockerCleanupRequest,
@@ -2977,10 +2545,10 @@ export async function runAgentCleanup(
     );
   } catch (e) {
     // Belt-and-braces: an agent one version behind on the RPC can advertise the
-    // capability and still answer UNIMPLEMENTED. mapCleanupUnsupported turns that
-    // into the same actionable error, passes every other failure (an unreachable
-    // host, a docker error the agent reported) through untouched, and is idempotent
-    // on the pre-flight throw above.
+    // capability and still answer UNIMPLEMENTED. mapCleanupUnsupported turns that into
+    // the same actionable error, passes every other failure (an unreachable host, a
+    // docker error the agent reported) through untouched, and is idempotent on the
+    // pre-flight throw above.
     throw mapCleanupUnsupported(e);
   } finally {
     conn.close();
@@ -2995,12 +2563,8 @@ export async function runAgentCleanup(
 const HOSTOPS_CAPABILITY = "hostops";
 
 /**
- * The reachable agent is too old for the host-ops RPCs — it cannot report what
- * the hardware is, move the clock, restart Traefik or restart the panel.
- *
- * A distinct error rather than a generic failure because the fix is specific and
- * the operator can do it from the same page: update the agent. Mirrors
- * {@link AgentCleanupUnsupportedError}.
+ * The reachable agent is too old for the host-ops RPCs — it cannot report what the
+ * hardware is, move the clock, restart Traefik or restart the panel.
  */
 export class AgentHostOpsUnsupportedError extends Error {}
 
@@ -3024,10 +2588,6 @@ function mapHostOpsUnsupported(e: unknown): Error {
 /**
  * Run one host-ops call against a server: resolve the pinned target, pre-flight
  * the capability via Hello, invoke, and always close the channel.
- *
- * Every host-ops entry point below is this plus a one-line body, so the
- * capability gate cannot be forgotten on a future fifth verb — the mistake that
- * would show up as a confusing UNIMPLEMENTED instead of "update the agent".
  */
 async function withHostOps<T>(
   serverId: string,
@@ -3079,25 +2639,11 @@ export function setHostTimezone(
 
 /**
  * Restart the host's Traefik, or rewrite its stack and recreate it.
- *
- * `composeYaml` is rendered by lib/deploy/traefik-stack.ts and applied verbatim
- * (ADR-0006). A refusal — a host running a Traefik Deplo did not install — comes
- * back as `ok:false` with a reason, not as a thrown error: it is an answer about
- * the host, not a failure to reach it.
  */
 /**
- * Serialise stack rewrites for ONE host.
- *
- * Every writer here reads the host's whole stack file, edits it, and writes the
- * whole thing back: the certificates tab, the ACME account email and the Traefik
- * dashboard toggle all do. Two of them interleaving means the second read misses
- * the first write and puts it back the way it was - a certificate that reports
- * itself installed and is not on the host. There is no compare-and-swap to lean
- * on (the agent takes the file it is given), so the read and the write are held
- * together instead.
- *
- * In-process, which is the whole of it today: one control plane owns the fleet.
- * A second instance writing the same host would need a lock the database holds.
+ * Serialise stack rewrites for ONE host. Two of them interleaving means the second
+ * read misses the first write and puts it back the way it was - a certificate that
+ * reports itself installed and is not on the host.
  */
 const stackWrites = new Map<string, Promise<unknown>>();
 
@@ -3128,12 +2674,9 @@ export function applyTraefikConfig(
 }
 
 /**
- * Bounce the container the Deplo panel runs in on this host.
- *
- * `ok:true` means SCHEDULED: the restart kills the process waiting on the reply,
- * so the agent answers first and restarts a moment later. The caller identifies
- * itself with `controlPlaneHint` — its own hostname, which inside a container is
- * the short container id.
+ * Bounce the container the Deplo panel runs in on this host. `ok:true` means
+ * SCHEDULED: the restart kills the process waiting on the reply, so the agent
+ * answers first and restarts a moment later.
  */
 export function restartControlPlaneOn(
   serverId: string,
