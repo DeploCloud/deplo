@@ -6,9 +6,9 @@ the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root) — authoritative glossary / ubiquitous language. Single-context repo.
 - **`docs/adr/`** — numbered decisions (0001-0025). Contradicting one? Surface it, don't silently override.
-- **`docs/reference/api.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
-- **`docs/README.md`** — the USER manual (getting-started, concepts, guides, advanced,
-  operations, reference, troubleshooting). Written for people using deplo, not for us.
+- **`schema.graphql`** (root) — generated SDL, the API contract.
+- **The USER manual is NOT in this repo.** It is [`DeploCloud/docs`](https://github.com/DeploCloud/docs),
+  served at <https://deplo.build/docs>. Never add a user-facing page here.
 - **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
@@ -566,6 +566,14 @@ language — reconsider, or note the gap.
 - **Issues & PRDs = GitHub Issues in `DeploCloud/deplo` via the `gh` CLI** (`docs/agents/issue-tracker.md`);
   triage with the five canonical labels (`docs/agents/triage-labels.md`).
 - Check `docs/adr/` before working an area; flag contradictions explicitly rather than overriding.
+- **Docs live in another repo, and they ship with the feature.** The user manual is
+  `DeploCloud/docs` (Fumadocs, `content/docs/**/*.mdx`), served at <https://deplo.build/docs>.
+  Never add a user-facing page here. Every feature, changed behaviour or renamed control ends
+  with **one question to the operator: "does this need a docs page?"** — inside the plan when
+  the task has one, otherwise before the task is called done. Never write docs without that
+  answer, and never skip the question because the change "looks internal". Clone at
+  `/root/projects/deplo-docs`, `git pull` before touching it (that repo moves under you), and
+  follow its own `AGENTS.md` for how a page is written.
 - **Commits = Conventional Commits with a scope**: `type(scope): imperative lowercase summary`
   (`feat(apps): redeploy a stack from the app page`). **Title 50 characters or fewer, no trailing
   period.** Body only when the why does not fit the title, 2-3 lines at most. Commit straight to

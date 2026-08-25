@@ -16,8 +16,9 @@ The host-coupled half of the platform (Docker exec, the build pipeline, log/cons
 host metrics) must move to the target; the data/policy/API half (GraphQL, Drizzle, auth,
 multi-tenancy) must not. This ADR records _what the remote unit of execution is_ and _where the
 seam falls_. The full design and phasing live in
-[`docs/research/server-agent/PLAN.md`](../research/server-agent/PLAN.md); the eight decisions
-below are referenced there as D1–D8.
+[`server-agent/PLAN.md`](https://github.com/DeploCloud/deplo/blob/f13259bb95789df067b7fcaeafd0103069540c4a/docs/research/server-agent/PLAN.md), a permalink since the
+`docs/research/` archive left the tree; the eight decisions below are referenced there as
+D1–D8.
 
 ## Implementation status
 

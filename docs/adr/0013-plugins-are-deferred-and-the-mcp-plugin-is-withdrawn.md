@@ -6,8 +6,9 @@
   path under Deplo's own host; status is read live) stand and are what a revival starts from.
   Everything it says about the **MCP plugin** — the stateless relay, the caller token, the
   install flow — is withdrawn, because that plugin no longer exists.
-- **Constrains**: [`docs/research/plugin-sections/DECISIONS.md`](../research/plugin-sections/DECISIONS.md),
-  which stays as the design record for the feature's return.
+- **Constrains**: [`plugin-sections/DECISIONS.md`](https://github.com/DeploCloud/deplo/blob/f13259bb95789df067b7fcaeafd0103069540c4a/docs/research/plugin-sections/DECISIONS.md), the
+  design record for the feature's return. The `docs/research/` archive was removed from the
+  tree when the manual moved out; the link is a permalink.
 
 ## Context
 

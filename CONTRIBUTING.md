@@ -72,8 +72,9 @@ deplo has strong opinions and they are written down. Before changing anything st
 - **[docs/adr/](docs/adr/)** - 25 numbered decisions, indexed in
   [docs/adr/README.md](docs/adr/README.md). If your change contradicts one, say so in the
   pull request instead of quietly overriding it.
-- **[docs/](docs/)** - the user manual. A change that alters what a user sees updates the
-  page that documents it, in the same pull request.
+- **[deplo.build/docs](https://deplo.build/docs)** - the user manual, and it is **not in this
+  repository**: it lives in [DeploCloud/docs](https://github.com/DeploCloud/docs). A change that
+  alters what a user sees opens a pull request there too.
 
 The one rule worth repeating here: **the control plane never touches a Docker socket or a
 host directly.** Every per-host action goes through the server agent over gRPC and mTLS.

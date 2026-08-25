@@ -20,8 +20,9 @@
  * No `X-Deplo-Team` header anywhere. The wizard mints the token scoped to the
  * active team, so `identityForTokenRow` resolves exactly one team and the header
  * would be restating what the credential already says. It is documented for the
- * hand-written case (`docs/reference/api.md`) and stays available; it is not
- * something anyone should have to copy correctly to get started.
+ * hand-written case (https://deplo.build/docs/reference/api) and stays
+ * available; it is not something anyone should have to copy correctly to get
+ * started.
  *
  * `docsUrl` is on every entry because these formats move. When one changes, the
  * reader should be one click from the truth rather than one search away.

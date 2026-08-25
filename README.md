@@ -11,7 +11,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/DeploCloud/deplo)](https://github.com/DeploCloud/deplo/commits)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-[Features](#-features) · [Quick start](#-quick-start) · [Documentation](docs/) · [How it works](#-how-it-works) · [Configuration](#%EF%B8%8F-configuration) · [Security](#-security) · [Contributing](CONTRIBUTING.md)
+[Features](#-features) · [Quick start](#-quick-start) · [Documentation](https://deplo.build/docs) · [How it works](#-how-it-works) · [Configuration](#%EF%B8%8F-configuration) · [Security](#-security) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -116,7 +116,7 @@ unless you add `--purge-data`, and backups need `--purge-backups` on top of that
 Engine is never touched. Use `--agent-only` on a server you are taking out of the fleet -
 that is the command the dashboard prints for you.
 
-See [Remove a server or uninstall](docs/operations/remove-a-server-or-uninstall.md).
+See [Remove a server or uninstall](https://deplo.build/docs/operations/remove-a-server-or-uninstall).
 
 ### Run it locally
 
@@ -172,8 +172,9 @@ The machine Deplo itself runs on is just another server in the fleet, agent and 
 is no privileged local shortcut, which means the path you use every day is the same one a
 remote host uses, and it is tested by everything.
 
-**The manual is [`docs/`](docs/)**: install it, ship your first app, then one page per
-feature, plus reference tables and troubleshooting by symptom.
+**The manual is [deplo.build/docs](https://deplo.build/docs)**: install it, ship your first
+app, then one page per feature, plus reference tables and troubleshooting by symptom. It is
+written in the [DeploCloud/docs](https://github.com/DeploCloud/docs) repository, not this one.
 
 Decisions behind this live in [`docs/adr/`](docs/adr/), the vocabulary in
 [`CONTEXT.md`](CONTEXT.md), and the architecture rules in [`AGENTS.md`](AGENTS.md).
@@ -207,7 +208,7 @@ The installer takes four more, passed in front of the command and written once i
 | `DEPLO_VERSION`     | Image tag to pull. Defaults to `latest`.                                                                      |
 
 Full tables, including the agent installer, in
-[`docs/reference/environment-variables.md`](docs/reference/environment-variables.md).
+[the environment variable reference](https://deplo.build/docs/reference/environment-variables).
 
 ## 🔐 Security
 
@@ -264,8 +265,8 @@ lib/db              Postgres pool, Drizzle schema and migrations
 lib/mcp             the MCP server, one row per tool
 components          UI, with shadcn primitives under components/ui
 install.sh          the installer, served from this repository
-docs                the user manual (getting started, guides, reference)
 docs/adr            numbered architecture decisions
+docs/agents         maintainer runbooks (issues, releases, fleet rollout)
 ```
 
 ## 📄 License
