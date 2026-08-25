@@ -982,9 +982,11 @@ async function runMoveDokployServiceData(
   }
 
   // A database is brought back up and CHECKED, because "the bytes are in the volume"
-  // is not the claim anyone cares about - "the engine reads them" is.
-  if (moved > 0 && landed.targetKind === "database") {
-    const verdict = await startAndVerifyDatabase(landed, teamId);
+  // is not the claim anyone cares about - "the engine reads them" is. It is brought
+  // back up even when NOTHING was copied: the copy stopped it, and a service that
+  // had no data to move is not a reason to leave somebody's database down.
+  if (landed.targetKind === "database" && failed === 0) {
+    const verdict = await startAndVerifyDatabase(landed, teamId, moved > 0);
     await appendRunItem(input.runId, {
       path,
       sourceKind: input.sourceKind,
@@ -997,7 +999,10 @@ async function runMoveDokployServiceData(
     });
     if (!verdict.ok) {
       failed++;
-      lost.push(verdict.message);
+      // Only a copy that MOVED bytes can have lost any. A database that will not
+      // come back up on the volume Deplo just made is a start problem, and saying
+      // "its data did not come across" would send people looking for data.
+      if (moved > 0) lost.push(verdict.message);
     }
   }
 
@@ -1137,13 +1142,17 @@ const CONTENT_COUNT: Partial<
 async function startAndVerifyDatabase(
   landed: Landed,
   teamId: string,
+  copied: boolean,
 ): Promise<{ ok: boolean; message: string }> {
+  const after = copied
+    ? "The data was copied but "
+    : "Nothing had to be copied, but ";
   try {
     await startStackOn(landed.targetServerId, landed.targetSlug);
   } catch (e) {
     return {
       ok: false,
-      message: `The data was copied but ${landed.targetName} would not start: ${
+      message: `${after}${landed.targetName} would not start: ${
         e instanceof Error ? e.message : "the host refused"
       }`,
     };
@@ -1162,6 +1171,11 @@ async function startAndVerifyDatabase(
       // signal there is: a running container is then the verdict.
       if (pick?.running && (pick.health === "healthy" || pick.health === "")) {
         await setDatabaseRunningAfterCopy(landed.targetId, teamId);
+        if (!copied)
+          return {
+            ok: true,
+            message: `${landed.targetName} is back up. Nothing was copied into it, so it is the empty database Deplo created.`,
+          };
         const counted = await countContent(conn, landed, pick.name, pick.image);
         return {
           ok: true,
@@ -1174,7 +1188,9 @@ async function startAndVerifyDatabase(
       if (Date.now() > deadline)
         return {
           ok: false,
-          message: `The data was copied but ${landed.targetName} did not come up (${last}). Check its logs - a data directory written by a different engine version is the usual cause.`,
+          message: copied
+            ? `The data was copied but ${landed.targetName} did not come up (${last}). Check its logs - a data directory written by a different engine version is the usual cause.`
+            : `${landed.targetName} did not come back up after the copy step (${last}). Nothing was written to it. Check its logs.`,
         };
       await sleep(POLL_MS);
     }
