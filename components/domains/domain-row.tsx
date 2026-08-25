@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import yaml from "js-yaml";
+import yaml from "@/lib/yaml";
 import { toast } from "sonner";
 import {
   MoreHorizontal,

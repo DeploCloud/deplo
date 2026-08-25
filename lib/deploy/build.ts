@@ -5,7 +5,7 @@ import "server-only";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import yaml from "js-yaml";
+import yaml from "../yaml";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getServerById } from "../data/servers";
 import { copyImageBetween } from "../data/volume-migration";

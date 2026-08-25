@@ -1,6 +1,6 @@
 import "server-only";
 
-import yaml from "js-yaml";
+import yaml from "../yaml";
 
 import { decryptSecretOrThrow } from "../crypto";
 import { hostVolumeName, usesComposeStack } from "../utils";

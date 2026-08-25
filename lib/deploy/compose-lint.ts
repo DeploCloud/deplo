@@ -13,7 +13,7 @@
  * is fast feedback, not a security boundary.
  */
 
-import yaml from "js-yaml";
+import yaml from "../yaml";
 
 export type LintSeverity = "error" | "warning" | "info";
 

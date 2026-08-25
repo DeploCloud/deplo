@@ -2,7 +2,7 @@ import "server-only";
 
 // https://deplo.build/docs/advanced/compose-apps
 
-import yaml from "js-yaml";
+import yaml from "../yaml";
 
 import type { MountPropagation, ResourceLimits, VolumeMount } from "../types";
 import { mountOptions } from "../apps/volume-model";
