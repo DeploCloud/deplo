@@ -5,7 +5,7 @@
  * represented: return the value that IS representable and add a line to `notes`.
  */
 
-import yaml from "js-yaml";
+import yaml from "../yaml";
 
 import { isValidLogoValue } from "../apps/logo-shared";
 
@@ -713,13 +713,20 @@ export function cloneTarget(
       };
     }
     case "gitlab": {
-      const owner = a.gitlabPathNamespace?.trim() || a.gitlabOwner?.trim();
-      if (!owner || !a.gitlabRepository) return null;
+      // `gitlabPathNamespace` is the FULL project path, not the namespace its name
+      // suggests: Dokploy clones `<host>/<gitlabPathNamespace>.git`. Appending the
+      // repository to it produced `group/repo/repo.git`, a 404 on every app.
+      const owner = a.gitlabOwner?.trim();
+      const repository = a.gitlabRepository?.trim();
+      const path =
+        a.gitlabPathNamespace?.trim() ||
+        (owner && repository ? `${owner}/${repository}` : "");
+      if (!path) return null;
       const origin = host(a.gitlab?.gitlabUrl, "https://gitlab.com");
       return {
         provider: "gitlab",
-        url: `${origin}/${owner}/${a.gitlabRepository}.git`,
-        repo: `${owner}/${a.gitlabRepository}`,
+        url: `${origin}/${path}.git`,
+        repo: path,
         branch: a.gitlabBranch?.trim() || "main",
       };
     }
@@ -834,6 +841,13 @@ export function mapDomains(
     if (internal && internal !== "/")
       notes.push(
         `${host} rewrites the path to ${internal} before the container sees it. Deplo forwards the path as it is (or strips the prefix), so the app now receives ${pathPrefix || "/"} - check that it serves that.`,
+      );
+    // Deplo has two entrypoints, web and websecure. A route on any other one
+    // lands on websecure, and that has to be said rather than discovered.
+    const custom = (d.customEntrypoint ?? "").trim();
+    if (custom && custom !== "web" && custom !== "websecure")
+      notes.push(
+        `${host} answered on Dokploy's "${custom}" entrypoint. Deplo has only web and websecure, so it comes across on websecure - open that port on this app if it needs one.`,
       );
     const port = d.port ?? opts.fallbackPort ?? null;
     if (opts.isCompose && port == null)
@@ -1282,6 +1296,13 @@ export function declaredSourceBindMounts(
 }
 
 /**
+ * Host paths that hold no DATA: a socket the runtime owns (`/var/run/docker.sock`
+ * above all) and the kernel's pseudo-filesystems. The agent refuses to read one as
+ * a directory, and the refusal used to reach the report as a lost volume.
+ */
+const NOT_DATA_HOST_PATH = /^\/(proc|sys|dev)(\/|$)|\.sock$/;
+
+/**
  * Match every source bind mount to the deplo host mount that should receive it.
  */
 export function pairHostMounts(
@@ -1291,6 +1312,7 @@ export function pairHostMounts(
   const out: { sourcePath: string; targetPath: string; mountPath: string }[] =
     [];
   for (const s of source) {
+    if (NOT_DATA_HOST_PATH.test(s.hostPath)) continue;
     const hit = target.find((t) => t.mountPath === s.mountPath);
     if (!hit) continue;
     out.push({

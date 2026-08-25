@@ -31,6 +31,7 @@ import {
   adaptComposeForDeplo,
   volumeLabel,
   declaredSourceVolumes,
+  pairHostMounts,
 } from "./map";
 import type { DokployApplication, DokployDatabase } from "./client";
 import { MAX_LOGO_STRING_LEN } from "../apps/logo-shared";
@@ -408,7 +409,9 @@ test("mapSource builds an https clone URL for every git flavour", () => {
     cloneTarget(
       app({
         sourceType: "gitlab",
-        gitlabPathNamespace: "acme/team",
+        // Dokploy's own clone URL is `<host>/<gitlabPathNamespace>.git`: the field
+        // is the FULL project path, repository included.
+        gitlabPathNamespace: "acme/team/api",
         gitlabRepository: "api",
         gitlabBranch: "develop",
         gitlab: { gitlabUrl: "https://git.acme.com" },
@@ -669,6 +672,50 @@ test("mapDomains keeps the compose service and needs a port there", () => {
   );
   assert.equal(value[0].service, "web");
   assert.match(notes.join(" "), /needs one for a compose stack/);
+});
+
+test("mapDomains says which routes lose their own entrypoint", () => {
+  const { value, notes } = mapDomains(
+    [
+      {
+        domainId: "d1",
+        host: "mail.acme.test",
+        customEntrypoint: "smtp",
+        port: 25,
+      },
+      { domainId: "d2", host: "acme.test", customEntrypoint: "websecure" },
+    ],
+    { isCompose: false },
+  );
+  assert.equal(value.length, 2);
+  assert.match(notes.join(" "), /"smtp"/);
+  assert.equal(
+    notes.length,
+    1,
+    "one of Deplo's own entrypoints is not a loss to report",
+  );
+});
+
+test("the docker socket is never paired as data to copy", () => {
+  assert.deepEqual(
+    pairHostMounts(
+      [
+        { hostPath: "/var/run/docker.sock", mountPath: "/var/run/docker.sock" },
+        { hostPath: "/etc/dokploy/x", mountPath: "/app/config.json" },
+      ],
+      [
+        { hostPath: "/var/run/docker.sock", mountPath: "/var/run/docker.sock" },
+        { hostPath: "/data/x", mountPath: "/app/config.json" },
+      ],
+    ),
+    [
+      {
+        sourcePath: "/etc/dokploy/x",
+        targetPath: "/data/x",
+        mountPath: "/app/config.json",
+      },
+    ],
+  );
 });
 
 test("mapDomains routes plain http to the web entrypoint", () => {

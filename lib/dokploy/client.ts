@@ -41,6 +41,9 @@ export interface DokployDomain {
    */
   internalPath?: string | null;
   serviceName?: string | null;
+  /** The Traefik entrypoint the route was bound to over there. Deplo has two
+   *  (web, websecure), so anything else is reported, not silently replaced. */
+  customEntrypoint?: string | null;
   domainType?: "application" | "compose" | "preview" | null;
   certificateType?: "letsencrypt" | "none" | "custom" | null;
   enabled?: boolean | null;
