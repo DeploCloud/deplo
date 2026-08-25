@@ -66,8 +66,8 @@ export const ApiTokenRef = builder
       }),
       instanceAdmin: t.exposeBoolean("instanceAdmin", {
         description:
-          "The token may administer the whole instance - users, servers and " +
-          "the global environment, not just its team. Mutually exclusive " +
+          "The token may administer the whole instance (users, servers and " +
+          "the global environment), not just its team. Mutually exclusive " +
           "with a project scope.",
       }),
       createdByUsername: t.exposeString("createdByUsername", {

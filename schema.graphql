@@ -2490,7 +2490,7 @@ type Mutation {
     clientId: String!
 
     """
-    The team the consent screen showed. Not a choice, the server takes the team from the session, but a disagreement is refused rather than connecting the client to a team nobody read.
+    The team the consent screen showed. Not a choice - the server takes the team from the session, but a disagreement is refused rather than connecting the client to a team nobody read.
     """
     expectedTeamId: String
     folderIds: [String!]
@@ -3814,7 +3814,7 @@ type Query {
   ): [Database!]
 
   """
-  What permanently deleting this account would remove. Read-only, nothing is deleted.
+  What permanently deleting this account would remove. Read-only - nothing is deleted.
   """
   deleteUserImpact(userId: String!): DeleteUserImpact
   deployment(id: String!): Deployment
