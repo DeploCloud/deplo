@@ -44,6 +44,12 @@ export function TeamSwitcher({
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = React.useTransition();
+  // The reorder gets its OWN transition: sharing `pending` with switchTo dimmed
+  // every row to 50% (data-[disabled]:opacity-50) while the mutation and the
+  // refresh ran, which is the one thing an optimistic reorder must not do - the
+  // list has already moved, so the wait belongs nowhere on screen. A failure
+  // still rolls the order back and toasts.
+  const [, startReorder] = React.useTransition();
   // What the drag has said so far, as ids — null until somebody drags. The list
   // itself is DERIVED from it and the prop rather than copied into state: state
   // seeded from a prop needs an effect to stay in step, and an effect that calls
@@ -79,7 +85,7 @@ export function TeamSwitcher({
     const next = arrayMove(order, from, to).map((t) => t.id);
     const previous = draggedIds;
     setDraggedIds(next);
-    startTransition(async () => {
+    startReorder(async () => {
       const res = await gqlAction(
         `mutation($teamIds: [String!]!) { reorderMyTeams(teamIds: $teamIds) }`,
         { teamIds: next },
