@@ -121,6 +121,40 @@ else
   ok "Docker already installed"
 fi
 
+# 1a. git --------------------------------------------------------------------
+# The agent clones repositories with the HOST's git. Without it every app that
+# deploys from a repo fails with `exec: "git": executable file not found`, and the
+# only way out would be an SSH session - which is the thing Deplo exists to avoid.
+ensure_git() {
+  command -v git >/dev/null 2>&1 && { ok "git already installed"; return; }
+  step "Installing git..."
+  # `|| true`: a package manager that refuses is a warning below, never the end of
+  # an install that has already put Docker on this machine.
+  {
+    if command -v apt-get >/dev/null 2>&1; then
+      DEBIAN_FRONTEND=noninteractive apt-get update -qq \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git
+    elif command -v dnf >/dev/null 2>&1; then dnf install -y -q git
+    elif command -v yum >/dev/null 2>&1; then yum install -y -q git
+    elif command -v zypper >/dev/null 2>&1; then zypper --non-interactive install -y git
+    elif command -v pacman >/dev/null 2>&1; then pacman -Sy --noconfirm git
+    elif command -v apk >/dev/null 2>&1; then apk add --no-cache git
+    fi
+  } || true
+  if command -v git >/dev/null 2>&1; then
+    ok "git installed"
+  else
+    err "Could not install git. Apps that deploy from a repository will not build"
+    err "until it is there: install it with this system's package manager."
+  fi
+}
+
+# A migration source only reads volumes, and a storage-only host only holds
+# backups: neither ever builds anything, so neither is worth changing for git.
+if [ "$STORAGE_ONLY" != "1" ] && [ "$IMPORT_ONLY" != "1" ]; then
+  ensure_git
+fi
+
 # 1b. Docker address pools ---------------------------------------------------
 # Docker's default pools allow ~31 networks and Deplo burns one PER APP, so an
 # untouched host dies on its 32nd deploy. Must run before any network exists:
