@@ -32,7 +32,9 @@ export function Combobox<T>({
   renderOption,
   renderLeading,
   displayValue,
+  selectable,
   id,
+  autoFocus = false,
   placeholder,
   searchPlaceholder,
   emptyLabel,
@@ -50,6 +52,13 @@ export function Combobox<T>({
   matches: (item: T, query: string) => boolean;
   renderOption: (item: T) => React.ReactNode;
   /**
+   * Which items can actually be chosen. Everything, unless the caller says
+   * otherwise — the tree pickers pass a predicate so their headings are drawn as
+   * rows but never landed on: the arrow keys step over them, Enter and a click
+   * ignore them. Default keeps every existing caller exactly as it was.
+   */
+  selectable?: (item: T) => boolean;
+  /**
    * A mark for the SELECTED item, drawn inside the field to the left of the
    * text — an app's own icon, say. Without it a picker shows you a logo per row
    * while you choose and then a bare name once you have, which reads as having
@@ -59,6 +68,10 @@ export function Combobox<T>({
   /** What the closed field shows for the selection. */
   displayValue: (item: T) => string;
   id?: string;
+  /** Put the cursor in the field on mount WITHOUT unfurling the menu: a page
+   *  whose whole job is this one field (`/logs`) wants to be typed into, not
+   *  covered by its own dropdown before anyone has asked for it. */
+  autoFocus?: boolean;
   placeholder: string;
   searchPlaceholder: string;
   /** Shown when nothing matches; a function gets the query's emptiness. */
@@ -74,6 +87,9 @@ export function Combobox<T>({
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [highlight, setHighlight] = React.useState(0);
+  // The focus `autoFocus` places is not a user gesture, so it must not open the
+  // menu — the same distinction `isOverlayAutoFocusing` draws for a dialog.
+  const autoFocused = React.useRef(autoFocus);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const fieldRef = React.useRef<HTMLDivElement | null>(null);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
@@ -206,10 +222,41 @@ export function Combobox<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [items, q],
   );
-  // Guard a stale index after the list shrinks, so Enter never picks past the end.
-  const activeIndex = highlight < filtered.length ? highlight : 0;
+  // The indices that can actually be landed on. Also guards a stale index after
+  // the list shrinks, so Enter never picks past the end — or a heading.
+  const pickable = React.useMemo(() => {
+    const out: number[] = [];
+    filtered.forEach((item, i) => {
+      if (!selectable || selectable(item)) out.push(i);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered]);
+  const activeIndex = pickable.includes(highlight)
+    ? highlight
+    : (pickable[0] ?? -1);
+
+  // Keep the highlighted row in view: a tree is taller than the menu, and the
+  // arrow keys walking off the bottom of it look like nothing is happening.
+  const activeRef = React.useRef<HTMLButtonElement | null>(null);
+  React.useEffect(() => {
+    if (open) activeRef.current?.scrollIntoView({ block: "nearest" });
+  }, [open, activeIndex]);
+
+  function step(delta: number) {
+    if (pickable.length === 0) return;
+    const at = pickable.indexOf(activeIndex);
+    const next =
+      at === -1
+        ? delta > 0
+          ? 0
+          : pickable.length - 1
+        : (at + delta + pickable.length) % pickable.length;
+    setHighlight(pickable[next]!);
+  }
 
   function choose(item: T) {
+    if (selectable && !selectable(item)) return;
     onChange(getKey(item));
     close();
   }
@@ -223,16 +270,15 @@ export function Combobox<T>({
     if (!open) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (filtered.length > 0) setHighlight((h) => (h + 1) % filtered.length);
+      step(1);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (filtered.length > 0)
-        setHighlight((h) => (h - 1 + filtered.length) % filtered.length);
+      step(-1);
     } else if (e.key === "Enter") {
       // Swallowed even with nothing to pick: the dialog's submit must not fire
       // from inside an open menu.
       e.preventDefault();
-      if (filtered.length > 0) choose(filtered[activeIndex]!);
+      if (activeIndex >= 0) choose(filtered[activeIndex]!);
     } else if (e.key === "Tab") {
       close();
     }
@@ -259,6 +305,7 @@ export function Combobox<T>({
           autoComplete="off"
           spellCheck={false}
           disabled={disabled}
+          autoFocus={autoFocus}
           // Open shows what you are typing; closed shows what you picked.
           value={open ? query : selected ? displayValue(selected) : ""}
           placeholder={
@@ -269,14 +316,22 @@ export function Combobox<T>({
               : placeholder
           }
           onChange={(e) => {
-            setQuery(e.target.value);
-            setHighlight(0);
+            // Open FIRST, then set the query: `openMenu` clears it, so doing it
+            // the other way round swallowed the character that opened the menu.
+            // With the field autofocused, that is every first keystroke.
+            const typed = e.target.value;
             if (!open) openMenu();
+            setQuery(typed);
+            setHighlight(0);
           }}
           onFocus={() => {
             // A dialog placing focus here as it opens is Radix, not the user —
             // and it is not a reason to unfurl the menu or probe every bucket.
             if (isOverlayAutoFocusing()) return;
+            if (autoFocused.current) {
+              autoFocused.current = false;
+              return;
+            }
             openMenu();
           }}
           onMouseDown={() => {
@@ -316,30 +371,40 @@ export function Combobox<T>({
                 </p>
               ) : (
                 <ul className="max-h-72 overflow-auto p-1">
-                  {filtered.map((item, i) => (
-                    <li key={getKey(item)}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={getKey(item) === value}
-                        onMouseEnter={() => setHighlight(i)}
-                        // mousedown, not click: the input's blur would otherwise
-                        // close the menu before the click landed.
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          choose(item);
-                        }}
-                        className={cn(
-                          "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
-                          i === activeIndex
-                            ? "bg-accent"
-                            : "hover:bg-accent/60",
-                        )}
-                      >
+                  {filtered.map((item, i) =>
+                    selectable && !selectable(item) ? (
+                      // A heading: drawn, never landed on. Not a button and not
+                      // an option, so the keyboard and the screen reader agree
+                      // with the pointer about what can be picked.
+                      <li key={getKey(item)} role="presentation">
                         {renderOption(item)}
-                      </button>
-                    </li>
-                  ))}
+                      </li>
+                    ) : (
+                      <li key={getKey(item)}>
+                        <button
+                          type="button"
+                          role="option"
+                          ref={i === activeIndex ? activeRef : undefined}
+                          aria-selected={getKey(item) === value}
+                          onMouseEnter={() => setHighlight(i)}
+                          // mousedown, not click: the input's blur would otherwise
+                          // close the menu before the click landed.
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            choose(item);
+                          }}
+                          className={cn(
+                            "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
+                            i === activeIndex
+                              ? "bg-accent"
+                              : "hover:bg-accent/60",
+                          )}
+                        >
+                          {renderOption(item)}
+                        </button>
+                      </li>
+                    ),
+                  )}
                 </ul>
               )}
             </div>,

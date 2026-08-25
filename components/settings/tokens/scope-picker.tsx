@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { LogoImage } from "@/components/shared/project-logo";
 import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
+import { TintedMark } from "@/components/shared/tinted-mark";
 import { cn } from "@/lib/utils";
 import { filterScopeTree } from "@/lib/token-scope-search";
 import type {
@@ -691,25 +692,6 @@ function AppMark({ logo }: { logo: string | null }) {
       size={16}
       fallback={<Box className="size-3" />}
       className="rounded-sm bg-transparent"
-    />
-  );
-}
-
-/** Projects and folders carry a colour, not an image — tint their glyph with it. */
-function TintedMark({
-  icon: Icon,
-  color,
-}: {
-  icon: React.ComponentType<{
-    className?: string;
-    style?: React.CSSProperties;
-  }>;
-  color: string | null;
-}) {
-  return (
-    <Icon
-      className={cn("size-3.5", !color && "text-muted-foreground")}
-      style={color ? { color } : undefined}
     />
   );
 }

@@ -153,7 +153,6 @@ export default async function DeploymentDetailPage(
             initialLogs={logs}
             initialStatus={deployment.status}
             initialQueuePosition={queuePosition}
-            showQueueBanner
           />
         ) : (
           <EmptyState

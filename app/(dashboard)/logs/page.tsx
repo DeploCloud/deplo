@@ -2,9 +2,11 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { listApps } from "@/lib/data/apps";
 import { listDatabases } from "@/lib/data/databases";
+import { listProjects } from "@/lib/data/projects";
+import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
+import { listFolders } from "@/lib/data/folders";
 import { getLogsInfo } from "@/lib/data/console";
 import { getDatabaseLogsInfo } from "@/lib/data/database-console";
-import { getLogs } from "@/lib/data/deployments";
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { LiveLogs } from "@/components/apps/live-logs";
 import { DatabaseLogs } from "@/components/storage/database-logs";
@@ -17,6 +19,7 @@ import { LogChooser, LogTargetPicker } from "@/components/logs/log-targets";
 import {
   LOG_TARGET_COOKIE,
   appTargetKey,
+  buildLogTree,
   databaseTargetKey,
   logTargetHref,
   resolveLogTarget,
@@ -30,14 +33,13 @@ export const metadata = { title: "Logs" };
  * The general Logs page: pick a thing, then watch its logs full screen.
  *
  * Two states on one route, both full-bleed (see `components/layout/shell-frame.tsx`).
- * With no target it is the chooser; with one it is the same pane an App's own
- * Logs tab renders, plus a target picker in the toolbar where the title would
- * be. It replaces a page that fetched the last fifteen deployments AND all
- * fifteen of their build logs on every render, to show static build output for
- * one of them.
+ * With no target it is the chooser — one question in the middle of the screen,
+ * answered by typing into the tree picker; with one it is the same pane an App's
+ * own Logs tab renders, plus that same picker in the toolbar where the title
+ * would be.
  *
  * The readable-target list is loaded either way, because state B's picker needs
- * it as much as state A's grid — which is also what makes validating the
+ * it as much as state A's does — which is also what makes validating the
  * remembered target free: membership in this list IS the check. A deleted App,
  * a revoked `view_logs`, a target belonging to the team the viewer just left
  * and a mangled cookie all come back as "not in the list", and the chooser
@@ -51,7 +53,7 @@ export default async function LogsPage(props: PageProps<"/logs">) {
   // app's capabilities in one batched pass and hands them back on the summary,
   // so this is the same answer `hasAppCapability` would give, without a call
   // per row. The real gates still sit behind it: `getLogsInfo` answers null,
-  // the SSE route answers 403, `getLogs` answers [].
+  // the SSE route answers 403.
   const readableApps = apps.filter((a) =>
     a.capabilities?.includes("view_logs"),
   );
@@ -72,6 +74,12 @@ export default async function LogsPage(props: PageProps<"/logs">) {
       detail: a.slug,
       status: a.status,
       logo: a.logo,
+      // Where the picker files it. All three are tolerated when they point at
+      // something this viewer cannot see — the tree drops the app to the top
+      // level rather than out of the list.
+      projectId: a.projectId ?? null,
+      environmentId: a.environmentId ?? null,
+      folderId: a.folderId ?? null,
     })),
     ...databases.map((d) => ({
       key: databaseTargetKey(d.id),
@@ -92,16 +100,34 @@ export default async function LogsPage(props: PageProps<"/logs">) {
     cookie: remembered,
   });
 
-  if (!target) return <LogChooser targets={targets} />;
+  // One readable target is not a choice: open it. `?pick=1` still forces the
+  // chooser, which is the only way to see it on such an instance. Outside any
+  // try/catch: `redirect` works by throwing.
+  const pick = Array.isArray(params.pick) ? params.pick[0] : params.pick;
+  if (!target && !pick && targets.length === 1)
+    redirect(logTargetHref(targets[0]!.key));
+
+  // The shape of the Overview, for the picker to file the targets into. All
+  // three read at the `view` floor and apply the caller's own scope (the same
+  // three the Overview itself loads), so a member with per-folder grants gets a
+  // smaller tree rather than an error — which is why `listTeamScopeTree`, whose
+  // first line is `requireTeamWide`, is not what this uses.
+  const [projects, environments, folders] = await Promise.all([
+    listProjects(),
+    listAllEnvironmentsForTeam(),
+    listFolders(),
+  ]);
+  const rows = buildLogTree(targets, { projects, environments, folders });
+
+  if (!target) return <LogChooser rows={rows} />;
 
   // Reopening the remembered target puts it in the URL rather than rendering it
   // at a bare `/logs`, so a link somebody copies shows the logs they meant and
-  // Back walks the targets they actually visited. Outside any try/catch:
-  // `redirect` works by throwing.
+  // Back walks the targets they actually visited.
   const askedFor = params.app ?? params.db;
   if (!askedFor) redirect(logTargetHref(target.key));
 
-  const picker = <LogTargetPicker targets={targets} value={target.key} />;
+  const picker = <LogTargetPicker rows={rows} value={target.key} />;
 
   if (target.kind === "database") {
     const db = databases.find((d) => d.id === target.key.slice("db:".length))!;
@@ -134,12 +160,6 @@ export default async function LogsPage(props: PageProps<"/logs">) {
   const latest = app.latestDeployment;
   const info = await getLogsInfo(app.id);
 
-  // Which source opens decides whether the build seed is worth reading: the
-  // pane defaults to Runtime whenever a container exists, and `BuildLogStream`
-  // fills itself on its first poll, so seeding it there is a read nobody sees.
-  const opensOnBuild = !(info?.streamable && info.instances.length > 0);
-  const buildLogs = opensOnBuild && latest ? await getLogs(latest.id) : [];
-
   const initialLive: LiveApp = {
     id: app.id,
     slug: app.slug,
@@ -160,10 +180,7 @@ export default async function LogsPage(props: PageProps<"/logs">) {
         initialUnreachable={!!info?.unreachable}
         initialSupportsTimeline={!!info?.supportsTimeline}
         initialLogMaxDays={info?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS}
-        latestDeployment={
-          latest ? { id: latest.id, status: latest.status } : null
-        }
-        initialBuildLogs={buildLogs}
+        deploymentsHref={`/apps/${app.slug}/deployments`}
         toolbar={picker}
       />
     </AppLiveStatusProvider>

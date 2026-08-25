@@ -19,8 +19,6 @@ import {
   useLogFilters,
   BUILD_LEVELS,
 } from "@/components/logs/log-filters";
-import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
-import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
@@ -66,43 +64,25 @@ type LogsResponse = {
   } | null;
 };
 
+/**
+ * One deployment's build output — the WHOLE of where build logs are read.
+ *
+ * They used to double as a fallback inside the live runtime pane, which made
+ * that pane claim to be a live stream while showing a finished transcript. It
+ * doesn't any more: a build belongs to its deployment, and this is that
+ * deployment's page.
+ */
 export function BuildLogStream({
   deploymentId,
   initialLogs,
   initialStatus,
   initialQueuePosition = null,
-  showQueueBanner = false,
-  notice = null,
-  title,
-  toolbar,
-  fill = false,
 }: {
   deploymentId: string;
   initialLogs: LogLine[];
   initialStatus: DeploymentStatus;
-  /** Why these are BUILD logs and not the live runtime stream. Rendered as a
-   *  chip in the toolbar; only the app Logs page, which falls back here when
-   *  there is no container, passes one. */
-  notice?: LogNotice | null;
-  /** What these logs belong to, linked back to its Overview. Set only on the
-   *  full-screen route, where the toolbar is the only heading left; the
-   *  deployment detail page keeps the app header and would say it twice. */
-  title?: PaneTitle;
-  /** Extra controls for the toolbar, dropped in right after the title: the
-   *  Runtime/Build switch, and on the general Logs page the target picker that
-   *  stands in for the title entirely. The per-resource routes pass nothing. */
-  toolbar?: React.ReactNode;
-  /** Fill the height of the frame instead of sitting in a fixed-height card.
-   *  Set on the full-bleed logs page; the deployment detail page leaves it off
-   *  and keeps its card. */
-  fill?: boolean;
-  /** Seed for the queued banner's position (detail page only); the poll keeps it
-   *  fresh. Omitted where the banner isn't shown. */
+  /** Seed for the queued banner's position; the poll keeps it fresh. */
   initialQueuePosition?: number | null;
-  /** Render the "in queue — position N" banner above the console while the
-   *  deployment is `queued` with no logs yet. The deployment-detail view opts in;
-   *  the app Logs view already shows its own queued/stopped notice, so it doesn't. */
-  showQueueBanner?: boolean;
 }) {
   // The log list is NOT seeded from `initialLogs` and is NOT server-rendered.
   // Logs are volatile (a build appends lines, a redeploy rewrites them), so any
@@ -265,22 +245,14 @@ export function BuildLogStream({
   );
 
   return (
-    <div className={fill ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-2"}>
-      {showQueueBanner && status === "queued" && logs.length === 0 && (
+    <div className="space-y-2">
+      {status === "queued" && logs.length === 0 && (
         <QueuedBanner position={queuePosition} />
       )}
-      <div
-        className={
-          fill
-            ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-terminal"
-            : "overflow-hidden rounded-xl border border-border bg-terminal"
-        }
-      >
+      <div className="overflow-hidden rounded-xl border border-border bg-terminal">
         {/* Every control beside the search input is h-9 — `size="sm"` is h-8,
             which lands a button 4px short of an Input and reads as a broken row. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-          <PaneTitleLink title={title} />
-          {toolbar}
           <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
             {logs.length === 1 ? "1 line" : `${logs.length} lines`}
             {live && (
@@ -293,8 +265,6 @@ export function BuildLogStream({
               </span>
             )}
           </span>
-
-          <LogNoticeChip notice={notice} />
 
           <LogSearch
             value={filters.state.q}
@@ -339,7 +309,7 @@ export function BuildLogStream({
         <LogLines
           ref={scrollRef}
           onScroll={onScroll}
-          className={fill ? "min-h-0 flex-1 text-xs" : "max-h-120 text-xs"}
+          className="max-h-120 text-xs"
         >
           {filters.shown.map((l, i) => (
             <LogRow

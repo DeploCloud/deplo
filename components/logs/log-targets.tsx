@@ -1,27 +1,32 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLink, LayoutGrid, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import {
+  Boxes,
+  Database,
+  ExternalLink,
+  Folder,
+  FolderTree,
+} from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import { LogsGraphic } from "@/components/apps/logs-graphic";
 import { Combobox } from "@/components/shared/combobox";
+import { TintedMark } from "@/components/shared/tinted-mark";
 import {
-  LOG_CHOOSER_HREF,
   LOG_TARGET_COOKIE,
   logTargetHref,
-  logTargetMatches,
   logTargetOverviewHref,
+  logTreeMatches,
   type LogTarget,
+  type LogTreeRow,
 } from "@/components/logs/log-target";
 
-/** The mark for a target, in both the grid and the picker: an App's own logo,
- *  or a database's engine brand when it has none of its own. */
+/** The mark for a target: an App's own logo, or a database's engine brand when
+ *  it has none of its own. */
 function TargetMark({ target, size }: { target: LogTarget; size: number }) {
   return target.kind === "database" ? (
     <DatabaseLogo
@@ -34,115 +39,178 @@ function TargetMark({ target, size }: { target: LogTarget; size: number }) {
   );
 }
 
-/**
- * Step one of the Logs page: which thing's logs are we here for.
- *
- * A flat, searchable grid rather than the project/folder tree, because this is
- * a "get me to the logs" screen and typing three letters beats walking a
- * hierarchy. Cards are plain links, so the whole screen works before any
- * JavaScript settles, and deliberately NOT `AppCard` — that one opens a live
- * GraphQL subscription per card, which for a picker is forty subscriptions to
- * paint a list nobody stays on.
- */
-export function LogChooser({ targets }: { targets: LogTarget[] }) {
-  const [query, setQuery] = React.useState("");
-  const shown = targets.filter((t) => logTargetMatches(t, query));
-  const apps = shown.filter((t) => t.kind === "app");
-  const databases = shown.filter((t) => t.kind === "database");
+/** A row of the picker: a line of the tree, or an action parked at its end. */
+type PickerItem =
+  | { kind: "row"; row: LogTreeRow }
+  | { kind: "action"; key: string; label: string; icon: React.ReactNode };
 
-  // The route is full-bleed, so the frame has no padding and does not scroll:
-  // this screen owns both, or a long list is simply unreachable.
+type PickerAction = Extract<PickerItem, { kind: "action" }>;
+
+/** How much one level of the tree steps in, in px. Inline, because Tailwind has
+ *  no dynamic `pl-`. */
+const INDENT = 14;
+
+const HEADING_ICON = {
+  project: FolderTree,
+  environment: Boxes,
+  folder: Folder,
+  section: Database,
+} as const;
+
+function TreeRowContent({ row }: { row: LogTreeRow }) {
+  if (row.target) {
+    // The option button already pads the row; this only adds the depth.
+    return (
+      <span
+        className="flex items-center gap-2"
+        style={{ paddingLeft: row.depth * INDENT }}
+      >
+        <TargetMark target={row.target} size={20} />
+        <span className="min-w-0 flex-1 truncate text-sm">{row.name}</span>
+        <StatusDot status={row.target.status} />
+      </span>
+    );
+  }
+  // A heading is not a button, so it carries the row padding itself.
+  const Icon = HEADING_ICON[row.kind as keyof typeof HEADING_ICON] ?? Folder;
+  const tinted = row.kind === "project" || row.kind === "folder";
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-6 py-10">
-        <h1 className="text-xl font-semibold tracking-tight">
-          Which logs do you want to see?
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Pick an app or a database to watch its output.
-        </p>
+    <span
+      className="flex items-center gap-2 py-1.5 pr-2 text-xs font-medium text-muted-foreground"
+      style={{ paddingLeft: 8 + row.depth * INDENT }}
+    >
+      {tinted ? (
+        <TintedMark icon={Icon} color={row.color ?? null} />
+      ) : (
+        <Icon className="size-3.5" />
+      )}
+      <span className="truncate">{row.name}</span>
+    </span>
+  );
+}
 
-        {targets.length > 0 && (
-          <div className="relative mt-6">
-            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search apps and databases"
-              aria-label="Search apps and databases"
-              autoFocus
-              className="pl-9"
-            />
-          </div>
-        )}
+/**
+ * Which logs to look at, as the tree they actually live in: projects and their
+ * environments, folders as deep as they nest, then the apps at the top level and
+ * the databases.
+ *
+ * One control, drawn twice — in the middle of the chooser, and in the pane's
+ * toolbar where it stands in for the title. The same shape both times on
+ * purpose: picking a target is one decision, and a decision with two grammars
+ * costs the reader a pause every time they meet the second one.
+ *
+ * Headings are drawn but never landed on (`selectable`), and typing filters on
+ * {@link LogTreeRow.haystack}, which is what keeps an app's headings on screen
+ * while narrowing to it.
+ */
+export function LogTreePicker({
+  rows,
+  value,
+  onChange,
+  actions = [],
+  autoFocus = false,
+  className,
+}: {
+  rows: LogTreeRow[];
+  /** The key of the target on screen, or "" while nothing is picked. */
+  value: string;
+  onChange: (key: string) => void;
+  /** Parked at the END of the list and matching only the empty query, so they
+   *  are one keystroke from gone and never come between somebody and the app
+   *  they are typing. */
+  actions?: PickerAction[];
+  autoFocus?: boolean;
+  className?: string;
+}) {
+  const items: PickerItem[] = [
+    ...rows.map((row) => ({ kind: "row" as const, row })),
+    ...actions,
+  ];
 
-        {targets.length === 0 ? (
-          <div className="mt-10">
-            <EmptyState
-              graphic={<LogsGraphic />}
-              title="No logs to read yet"
-              description="Deploy an app or create a database, and its logs show up here."
-            />
-          </div>
-        ) : shown.length === 0 ? (
-          <div className="mt-10">
-            <EmptyState
-              icon={Search}
-              title="Nothing matches"
-              description="No app or database goes by that name."
-            />
-          </div>
-        ) : (
-          <div className="mt-8 space-y-8">
-            <TargetSection title="Apps" targets={apps} />
-            <TargetSection title="Databases" targets={databases} />
-          </div>
-        )}
-      </div>
+  return (
+    <div className={className}>
+      <Combobox<PickerItem>
+        items={items}
+        value={value}
+        onChange={onChange}
+        autoFocus={autoFocus}
+        getKey={(i) => (i.kind === "row" ? i.row.key : i.key)}
+        selectable={(i) => (i.kind === "row" ? !!i.row.target : true)}
+        matches={(i, q) =>
+          i.kind === "row" ? logTreeMatches(i.row, q) : q.length === 0
+        }
+        displayValue={(i) => (i.kind === "row" ? i.row.name : i.label)}
+        renderLeading={(i) =>
+          i.kind === "row" && i.row.target ? (
+            <TargetMark target={i.row.target} size={20} />
+          ) : null
+        }
+        renderOption={(i) =>
+          i.kind === "row" ? (
+            <TreeRowContent row={i.row} />
+          ) : (
+            <span className="flex items-center gap-2 border-t border-border pt-2 text-sm text-muted-foreground">
+              {i.icon}
+              {i.label}
+            </span>
+          )
+        }
+        placeholder="Search apps and databases"
+        searchPlaceholder="Search apps and databases"
+        emptyLabel={() => "No app or database goes by that name"}
+      />
     </div>
   );
 }
 
-function TargetSection({
-  title,
-  targets,
-}: {
-  title: string;
-  targets: LogTarget[];
-}) {
-  if (targets.length === 0) return null;
+/**
+ * Step one of the Logs page: which thing's logs are we here for.
+ *
+ * One question in the middle of the screen, answered by typing — not a wall of
+ * cards to read through. It replaced a grid because a picker is not a
+ * destination: nobody comes to `/logs` to browse a list of their apps, they come
+ * to read one app's output, and three letters beats a scan every time.
+ */
+export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
+  const router = useRouter();
+  const hasTargets = rows.some((r) => r.target);
+
+  // The route is full-bleed, so the frame has no padding: this screen owns both
+  // its padding and its own centring. The extra padding at the BOTTOM lifts the
+  // block a little above true centre — optically centred, and it leaves the
+  // dropdown enough room to open downwards instead of flipping up over the
+  // question it is answering.
   return (
-    <section>
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {title}
-      </h2>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {targets.map((t) => (
-          <Link
-            key={t.key}
-            href={logTargetHref(t.key)}
-            className="flex items-center gap-3 rounded-xl border border-border bg-card/40 px-3 py-3 transition-colors hover:border-ring hover:bg-accent/40"
-          >
-            <TargetMark target={t} size={32} />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{t.name}</div>
-              <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                {t.detail}
-              </div>
-            </div>
-            <StatusDot status={t.status} />
-          </Link>
-        ))}
-      </div>
-    </section>
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-6 pb-24">
+      {hasTargets ? (
+        <div className="w-full max-w-md">
+          <div className="flex flex-col items-center text-center">
+            <LogsGraphic />
+            <h1 className="mt-5 text-xl font-semibold tracking-tight">
+              Which logs do you want to see?
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Pick an app or a database to watch its output live.
+            </p>
+          </div>
+          <LogTreePicker
+            rows={rows}
+            value=""
+            onChange={(key) => router.push(logTargetHref(key))}
+            autoFocus
+            className="mt-6"
+          />
+        </div>
+      ) : (
+        <EmptyState
+          graphic={<LogsGraphic />}
+          title="No logs to read yet"
+          description="Deploy an app or create a database, and its logs show up here."
+        />
+      )}
+    </div>
   );
 }
-
-/** A row of the picker: either a target to jump to, or one of the two actions
- *  parked at the end of the list. */
-type PickerItem =
-  | { kind: "target"; target: LogTarget }
-  | { kind: "action"; key: string; label: string; icon: React.ReactNode };
 
 /**
  * The toolbar's first cell on the general Logs page: the target picker, which
@@ -151,24 +219,22 @@ type PickerItem =
  * The pane's usual heading is `PaneTitleLink` — the name, and the way back to
  * the thing. Here the name is said by the picker's own field (logo, name,
  * chevron), so drawing both would say it twice; the way back moves into the
- * menu instead, alongside the way back to the chooser. Both actions sit at the
- * END of the list and match only the empty query, so they are one keystroke
- * from gone and never come between somebody and the app they are typing.
+ * menu instead, at the END of the list where it matches only the empty query.
  *
- * The menu's own footer slot is NOT used for them: it renders outside the
- * field, so anything hung there dangles under the toolbar row forever.
+ * The menu's own footer slot is NOT used for it: it renders outside the field,
+ * so anything hung there dangles under the toolbar row forever.
  */
 export function LogTargetPicker({
-  targets,
+  rows,
   value,
 }: {
-  targets: LogTarget[];
+  rows: LogTreeRow[];
   /** The key of the target on screen. Confirmed by the server, which is why
    *  this and not the URL is what gets remembered. */
   value: string;
 }) {
   const router = useRouter();
-  const current = targets.find((t) => t.key === value) ?? null;
+  const current = rows.find((r) => r.key === value)?.target ?? null;
 
   // Remember the target so the sidebar's Logs entry reopens it. Written here,
   // after the server resolved it, so a stale or forbidden one is never stored;
@@ -184,74 +250,30 @@ export function LogTargetPicker({
     }
   }, [value]);
 
-  const items: PickerItem[] = [
-    ...targets.map((target) => ({ kind: "target" as const, target })),
-    ...(current
-      ? [
-          {
-            kind: "action" as const,
-            key: "action:open",
-            label: `Open ${current.name}`,
-            icon: <ExternalLink className="size-4 text-muted-foreground" />,
-          },
-        ]
-      : []),
-    {
-      kind: "action" as const,
-      key: "action:browse",
-      label: "Browse all logs",
-      icon: <LayoutGrid className="size-4 text-muted-foreground" />,
-    },
-  ];
+  const actions: PickerAction[] = current
+    ? [
+        {
+          kind: "action",
+          key: "action:open",
+          label: `Open ${current.name}`,
+          icon: <ExternalLink className="size-4 text-muted-foreground" />,
+        },
+      ]
+    : [];
 
   function go(key: string) {
-    if (key === "action:browse") return router.push(LOG_CHOOSER_HREF);
     if (key === "action:open" && current)
       return router.push(logTargetOverviewHref(current.key));
     if (key !== value) router.push(logTargetHref(key));
   }
 
   return (
-    <div className="w-44 shrink-0">
-      <Combobox<PickerItem>
-        items={items}
-        value={value}
-        onChange={go}
-        getKey={(i) => (i.kind === "target" ? i.target.key : i.key)}
-        // An action survives only the empty query: they are a menu footer in
-        // list clothing, not something to sift through while typing a name.
-        matches={(i, q) =>
-          i.kind === "target" ? logTargetMatches(i.target, q) : q.length === 0
-        }
-        displayValue={(i) => (i.kind === "target" ? i.target.name : i.label)}
-        renderLeading={(i) =>
-          i.kind === "target" ? (
-            <TargetMark target={i.target} size={20} />
-          ) : null
-        }
-        renderOption={(i) =>
-          i.kind === "target" ? (
-            <span className="flex items-center gap-2">
-              <TargetMark target={i.target} size={20} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm">{i.target.name}</span>
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {i.target.detail}
-                </span>
-              </span>
-              <StatusDot status={i.target.status} />
-            </span>
-          ) : (
-            <span className="flex items-center gap-2 border-t border-border pt-2 text-sm text-muted-foreground">
-              {i.icon}
-              {i.label}
-            </span>
-          )
-        }
-        placeholder="Pick an app or database"
-        searchPlaceholder="Search apps and databases"
-        emptyLabel={() => "No app or database goes by that name"}
-      />
-    </div>
+    <LogTreePicker
+      rows={rows}
+      value={value}
+      onChange={go}
+      actions={actions}
+      className="w-64 shrink-0"
+    />
   );
 }

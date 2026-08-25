@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { getLogsInfo } from "@/lib/data/console";
-import { getLogs } from "@/lib/data/deployments";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
 import { LiveLogs } from "@/components/apps/live-logs";
@@ -29,16 +28,11 @@ export default async function AppLogsPage(
     );
   }
 
-  const latest = project.latestDeployment;
   // Reuse the console's instance discovery: the same containers, the app's own
   // one first, so the logs picker matches the console's. Logs doesn't use the
   // shell label, so skip that probe (getLogsInfo, not getAttachInfo) to keep this
-  // render path off the ≤4 extra docker exec calls. Also seed the most recent
-  // build's logs, for an app that has no container at all to read from.
-  const [info, buildLogs] = await Promise.all([
-    getLogsInfo(project.id),
-    latest ? getLogs(latest.id) : Promise.resolve([]),
-  ]);
+  // render path off the ≤4 extra docker exec calls.
+  const info = await getLogsInfo(project.id);
 
   // No title, no description, no padding: this route is full-bleed (see
   // components/layout/shell-frame.tsx) and the pane fills the frame. Everything
@@ -49,7 +43,8 @@ export default async function AppLogsPage(
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Seeded with whatever containers the host has, running or not:
           `docker logs` outlives the process, so a dead or restarting container
-          still streams. Only an app with NO container falls back to build logs. */}
+          still streams. An app with NO container gets an empty state pointing at
+          its latest build, which is where build output is read. */}
       <LiveLogs
         appId={project.id}
         title={{ label: project.name, href: `/apps/${project.slug}` }}
@@ -58,10 +53,7 @@ export default async function AppLogsPage(
         initialUnreachable={!!info?.unreachable}
         initialSupportsTimeline={!!info?.supportsTimeline}
         initialLogMaxDays={info?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS}
-        latestDeployment={
-          latest ? { id: latest.id, status: latest.status } : null
-        }
-        initialBuildLogs={buildLogs}
+        deploymentsHref={`/apps/${project.slug}/deployments`}
       />
     </div>
   );
