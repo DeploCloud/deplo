@@ -130,6 +130,27 @@ export interface VolumeCopyResult {
 }
 
 /**
+ * Called with each chunk's size as it crosses, for a caller that wants to SAY so
+ * while it happens.
+ *
+ * A migration's data phase writes no line until a whole service is copied, which
+ * on a 15 GB volume is hours of a screen that looks hung. The relay is the only
+ * place that knows the bytes are moving, so it is the only place that can say it.
+ * Deliberately sync and deliberately ignored on throw: a progress line must never
+ * be able to fail a copy.
+ */
+export type OnBytes = (chunkBytes: number) => void;
+
+/** Report progress without ever letting it fail the copy it is describing. */
+function report(onBytes: OnBytes | undefined, chunkBytes: number): void {
+  try {
+    onBytes?.(chunkBytes);
+  } catch {
+    // A progress line is not worth a copy.
+  }
+}
+
+/**
  * Prove the source volume has content BEFORE the destination is touched.
  *
  * `docker run -v <name>:/v` CREATES the named volume when it is missing, so an
@@ -173,6 +194,7 @@ export async function copyVolumeBetween(
   dest: AgentConnection,
   volumeName: string,
   targetName: string = volumeName,
+  onBytes?: OnBytes,
 ): Promise<VolumeCopyResult> {
   try {
     if (!(await sourceHasData(source, volumeName)))
@@ -190,6 +212,7 @@ export async function copyVolumeBetween(
     for await (const chunk of source.exportVolume(volumeName)) {
       bytes += chunk.length;
       hash.update(chunk);
+      report(onBytes, chunk.length);
       yield chunk;
     }
   })();
@@ -257,6 +280,7 @@ export async function copyHostPathBetween(
   dest: AgentConnection,
   sourcePath: string,
   targetPath: string,
+  onBytes?: OnBytes,
 ): Promise<VolumeCopyResult> {
   let seen = 0;
   try {
@@ -276,6 +300,7 @@ export async function copyHostPathBetween(
     for await (const chunk of source.exportHostPath(sourcePath)) {
       bytes += chunk.length;
       hash.update(chunk);
+      report(onBytes, chunk.length);
       yield chunk;
     }
   })();

@@ -55,6 +55,7 @@ import {
   copyVolumeBetween,
   startStackOn,
   stopStackOn,
+  type OnBytes,
 } from "./volume-migration";
 import { recordActivity } from "./activity";
 import { clearDataCopyError, markDataCopyFailed } from "./data-copy";
@@ -673,6 +674,8 @@ export interface MoveInput extends ConnectInput {
   /** The Dokploy service to cut over. Its volumes are DERIVED, never passed in. */
   sourceKind: string;
   sourceId: string;
+  /** Bytes as they cross, for a caller that shows progress while this runs. */
+  onBytes?: OnBytes;
 }
 
 /**
@@ -912,6 +915,7 @@ async function runMoveDokployServiceData(
           dest,
           pair.sourceVolume,
           pair.targetVolume,
+          input.onBytes,
         );
         // An empty source is not a copy and must never read as one. Nothing was
         // written and nothing was wiped, so the honest line is that there was
@@ -996,6 +1000,7 @@ async function runMoveDokployServiceData(
           dest,
           bind.sourcePath,
           bind.targetPath,
+          input.onBytes,
         );
         if (copied.empty) {
           empty++;

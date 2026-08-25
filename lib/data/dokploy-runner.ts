@@ -9,6 +9,7 @@ import {
   dokployRunTargets as targetsTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
+import { formatBytes } from "../utils";
 import { encryptSecret, decryptSecretOrThrow } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
 import { acquireLease, releaseLease } from "../backups/lease";
@@ -61,6 +62,8 @@ const LEASE = "dokploy-migration-runner";
 const STALE_MS = 90_000;
 /** How often the tick runs when nothing is going on. */
 const IDLE_TICK_MS = 15_000;
+/** How often a copy in flight refreshes its byte count on the progress line. */
+const PROGRESS_MS = 1_000;
 
 const owner = `${process.pid}-${newId("run")}`;
 
@@ -568,10 +571,12 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
   for (const [i, d] of movable.entries()) {
     if (await stopped(row.id)) return;
     await beat(row.id);
-    await setProgress(row.id, {
-      doneSteps: i,
-      stepLabel: `Copying ${d.sourceName}`,
-    });
+    await setProgress(row.id, { doneSteps: i, stepLabel: d.sourceName });
+    // The bytes, while they cross. One service is ONE step here, so without this
+    // a 15 GB volume is an hour of a progress line that never changes - which is
+    // indistinguishable from a run that died, and got read as one.
+    let copied = 0;
+    let shownAt = 0;
     const res = await moveDokployServiceData({
       url: c.url,
       apiKey: c.apiKey,
@@ -579,6 +584,18 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
       runId: row.id,
       sourceKind: d.sourceKind,
       sourceId: d.sourceId,
+      onBytes: (chunk) => {
+        copied += chunk;
+        // Throttled, because the relay hands us a chunk roughly every megabyte
+        // and this is a label, not a byte log. Fire-and-forget for the same
+        // reason: the copy does not wait on its own progress line.
+        const now = Date.now();
+        if (now - shownAt < PROGRESS_MS) return;
+        shownAt = now;
+        void setProgress(row.id, {
+          stepLabel: `${d.sourceName} - ${formatBytes(copied)}`,
+        }).catch(() => {});
+      },
     });
     // A failed VOLUME is a line in the report. A failed MACHINE is the end: every
     // service after this one is on it, and each gets stopped over there before

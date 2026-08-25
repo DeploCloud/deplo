@@ -100,6 +100,32 @@ test("a real volume arrives byte for byte, and the copy says how much", async ()
   assert.deepEqual(to.calls, ["import:target:wipe"]);
 });
 
+test("progress is reported as the bytes cross, and a throwing listener cannot fail the copy", async () => {
+  const from = source({ data: [REAL, REAL] });
+  const to = dest();
+  const seen: number[] = [];
+
+  const res = await copyVolumeBetween(
+    from.conn,
+    to.conn,
+    "data",
+    "data",
+    (n) => {
+      seen.push(n);
+      // The caller writes its progress line from here. If that write can take the
+      // copy down with it, the counter is worse than no counter at all.
+      throw new Error("the progress line blew up");
+    },
+  );
+
+  assert.equal(res.bytes, REAL.length * 2);
+  assert.deepEqual(
+    seen,
+    [REAL.length, REAL.length],
+    "one report per relayed chunk, sized, and only for the copy - not the probe",
+  );
+});
+
 test("the probe reads a chunk and no more, then the copy re-reads the whole volume", async () => {
   const from = source({ data: [REAL, REAL] });
   const to = dest();
