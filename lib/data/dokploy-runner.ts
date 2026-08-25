@@ -287,8 +287,21 @@ async function setProgress(
  * Close a run as failed, say why, forget the key - and take it back out. There
  * used to be a panel offering to keep it; there is not any more, so leaving the
  * debris would leave it with nothing to remove it.
+ *
+ * Debris is a CONFIG phase that could not finish. Once the data phase has begun,
+ * everything the run created is the user's new infrastructure: undoing it over a
+ * volume that would not copy left the old platform stopped and the new one empty.
  */
 async function failRun(row: RunRow, why: string): Promise<void> {
+  // The phase it broke IN. `row` is the snapshot the tick opened with, and the
+  // update below overwrites the column, so it has to be read first.
+  const [before] = await getDb()
+    .select({ phase: runsTable.phase })
+    .from(runsTable)
+    .where(eq(runsTable.id, row.id))
+    .limit(1);
+  const reached = before?.phase ?? row.phase;
+
   await getDb()
     .update(runsTable)
     .set({
@@ -301,6 +314,17 @@ async function failRun(row: RunRow, why: string): Promise<void> {
     })
     .where(and(eq(runsTable.id, row.id), eq(runsTable.status, "running")));
   publishMigrationChanged();
+
+  if (reached === "data") {
+    await appendRunItem(row.id, {
+      path: "Migration",
+      sourceKind: "run",
+      sourceName: "Migration",
+      outcome: "manual",
+      message: `The data step stopped: ${why} Everything already created here was kept - nothing was rolled back. Copy the rest from the app's own Storage, or run the migration again for what is missing.`,
+    });
+    return;
+  }
 
   // Under the actor, like everything else the runner does - the undo is a stack of
   // ordinary capability-gated deletes.
