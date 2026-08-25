@@ -23,6 +23,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import { LogLines, LogRow } from "@/components/shared/log-line-row";
+import { LogsDisplayMenu } from "@/components/shared/logs-display";
 import {
   LogSearch,
   LogLevelFilter,
@@ -639,6 +640,7 @@ export function ContainerLogs({
               <Trash2 className="size-3.5" />
             </Button>
           </SimpleTooltip>
+          <LogsDisplayMenu />
           <CopyButton value={plainOutput} className="size-9" />
           <DownloadButton
             value={plainOutput}

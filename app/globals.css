@@ -55,6 +55,12 @@
      transcript, read once, top to bottom. */
   --terminal-stripe: #0a0a0a;
 
+  /* Log type, set on :root so one preference reaches every pane at once - the
+     live consoles, the build log, the destination test. Read-only defaults:
+     components/shared/logs-display.tsx overwrites them per browser. */
+  --log-fs: 13px;
+  --log-lh: 1.625;
+
   /* Not a state and not a chart slot: the one purely decorative accent, spent by
      the empty-state illustrations that have no status to report. Kept out of the
      chart series on purpose - those five are a categorical set with a fixed slot

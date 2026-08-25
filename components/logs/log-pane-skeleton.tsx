@@ -51,6 +51,7 @@ export function LogPaneSkeleton() {
           <Skeleton className="size-9 rounded-md" />
           <Skeleton className="size-9 rounded-md" />
           <Skeleton className="size-9 rounded-md" />
+          <Skeleton className="size-9 rounded-md" />
         </div>
       </div>
 

@@ -17,8 +17,8 @@ import type { LogLevel } from "@/lib/types";
 /** Width of the level chip's gutter. Sized for the longest label (SUCCESS) with
  *  room to breathe, so no label is ever clipped and every message starts at the
  *  same x. Reserved whether or not a chip is drawn in it. */
-const CHIP_WIDTH = "w-16";
-const CHIP = `h-[18px] ${CHIP_WIDTH}`;
+const CHIP_WIDTH = "w-[calc(var(--log-fs)*4.92)]";
+const CHIP = `h-[calc(var(--log-fs)*1.38)] ${CHIP_WIDTH}`;
 
 /**
  * Matches http(s) URLs inside a log line.
@@ -103,7 +103,7 @@ export function LevelChip({
         // with the line it labels. `leading-none` keeps the text centred in the
         // box rather than riding the row's line-height.
         "inline-flex shrink-0 items-center justify-center self-start rounded select-none",
-        "text-[10px] leading-none font-semibold tracking-wide uppercase",
+        "text-[length:calc(var(--log-fs)*0.77)] leading-none font-semibold tracking-wide uppercase",
         LEVEL_BADGE_CLASS[level] ?? "bg-zinc-700/30 text-zinc-300",
         className,
       )}
@@ -126,7 +126,7 @@ export function LogLines({
   return (
     <div
       className={cn(
-        "space-y-0.5 overflow-y-auto bg-terminal p-3 font-mono text-[13px] leading-relaxed",
+        "space-y-0.5 overflow-y-auto bg-terminal p-3 font-mono text-[length:var(--log-fs)] leading-[var(--log-lh)]",
         className,
       )}
       {...rest}
@@ -193,7 +193,7 @@ export function LogRow({
       />
 
       {time !== undefined && (
-        <span className="shrink-0 self-start pt-px text-[11px] text-zinc-600 tabular-nums select-none">
+        <span className="shrink-0 self-start pt-px text-[length:calc(var(--log-fs)*0.85)] text-zinc-600 tabular-nums select-none">
           {time}
         </span>
       )}
@@ -256,9 +256,11 @@ export function LogLinesSkeleton() {
           // actually arrive, instead of blinking in unison.
           style={{ animationDelay: `${i * 120}ms` }}
         >
-          <span className="h-[13px] w-[52px] shrink-0 rounded bg-zinc-800" />
+          <span className="h-[var(--log-fs)] w-[calc(var(--log-fs)*4)] shrink-0 rounded bg-zinc-800" />
           <span className={cn(CHIP, "shrink-0 rounded bg-zinc-800")} />
-          <span className={cn("h-[13px] rounded bg-zinc-800", width)} />
+          <span
+            className={cn("h-[var(--log-fs)] rounded bg-zinc-800", width)}
+          />
         </div>
       ))}
     </div>

@@ -8,6 +8,7 @@ import { GitConnectToast } from "@/components/shared/git-connect-toast";
 import { DeployActivityProvider } from "./deploy-activity";
 import { MigrationActivityProvider } from "./migration-activity";
 import { TwoFactorReminder } from "@/components/security/two-factor-reminder";
+import { LogsDisplayVars } from "@/components/shared/logs-display";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { PublicUser, TeamIdentity, TeamSummary } from "@/lib/types";
 
@@ -38,6 +39,8 @@ export function AppShell({
     // The provider spans both panes: the sidebar collapses to zero width and the
     // topbar hosts the control that expands it again.
     <SidebarProvider>
+      {/* Reads the stored log type size so a pane without the menu matches. */}
+      <LogsDisplayVars />
       {/* Keyed by the active team: the live count is resolved server-side when
           the stream opens, so switching teams has to reconnect it. */}
       <DeployActivityProvider key={team.id}>
