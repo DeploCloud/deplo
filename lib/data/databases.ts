@@ -1034,9 +1034,16 @@ export async function updateDatabase(
       await stopStackOn(movingFrom, cur.host);
       try {
         // A database is a single compose volume with no files dir - copy just it.
-        await migrateWorkloadData(movingFrom, targetServer.id, {
+        const moved = await migrateWorkloadData(movingFrom, targetServer.id, {
           volumeNames: [dbVolumeHostName(cur.host)],
         });
+        // Deplo provisioned this database and started it, so its volume EXISTS.
+        // Not finding it means the name is wrong, and carrying on would tear the
+        // old host down over a copy that moved nothing.
+        if (moved.missing.length > 0)
+          throw new Error(
+            `${moved.missing.join(", ")} is not on that server, so there was nothing to move`,
+          );
       } catch (copyErr) {
         // Roll back: remove the new (empty/partial) stack + volume, bring the old DB back
         // up so the operator is left exactly where they started.

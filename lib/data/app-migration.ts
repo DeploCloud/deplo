@@ -117,10 +117,20 @@ async function runMigration(
   // Copy volumes + files old → new. On failure, restart the new stack (empty) and
   // leave the old host intact so no data is lost; clear the marker + warn.
   try {
-    await migrateWorkloadData(fromServerId, toServerId, {
+    const moved = await migrateWorkloadData(fromServerId, toServerId, {
       volumeNames,
       filesSlug: includeFiles ? slug : undefined,
     });
+    // Said out loud, because the old server is torn down below: a volume that is
+    // not on it is either one this app never used there, or one Deplo looked for
+    // under the wrong name.
+    if (moved.missing.length > 0)
+      emit(
+        "warn",
+        `${moved.missing.join(", ")} was not on the old server, so nothing was ` +
+          `copied for it. If the app was running there with data, stop and check ` +
+          `that volume before the old server is reused.`,
+      );
   } catch (e) {
     await startStackOn(toServerId, slug).catch(() => {});
     await clearMigrationMarker(appId);

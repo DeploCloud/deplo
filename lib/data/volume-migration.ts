@@ -383,13 +383,18 @@ export async function migrateWorkloadData(
   fromServerId: string,
   toServerId: string,
   opts: { volumeNames: string[]; filesSlug?: string },
-): Promise<void> {
+): Promise<{ missing: string[] }> {
+  const missing: string[] = [];
   const source = await connectAgent(fromServerId);
   try {
     const dest = await connectAgent(toServerId);
     try {
       for (const volume of opts.volumeNames) {
-        await copyVolumeBetween(source, dest, volume);
+        const res = await copyVolumeBetween(source, dest, volume);
+        // Reported, never swallowed: the callers tear the SOURCE down when this
+        // returns, and "the volume is not there" is also what a volume named
+        // wrongly looks like.
+        if (res.missing) missing.push(volume);
       }
       if (opts.filesSlug) {
         await copyFilesBetween(source, dest, opts.filesSlug);
@@ -400,4 +405,5 @@ export async function migrateWorkloadData(
   } finally {
     source.close();
   }
+  return { missing };
 }
