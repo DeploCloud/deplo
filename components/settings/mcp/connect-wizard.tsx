@@ -345,6 +345,19 @@ function WizardRun({
     // pushed two cards taller than their neighbours. Below that the picture
     // stacks on top and the content takes the full width.
     //
+    // NO `mx-auto max-w-5xl`: the wizard starts flush with the left edge of the
+    // content area, like every other tab on this page, instead of sitting in a
+    // 64rem block floating in the middle of a 86rem shell.
+    //
+    // The illustration's track is FLUID rather than a fixed 24rem, because the
+    // width freed by dropping that cap belongs to the picture: `clamp` keeps it
+    // at today's 24rem where the split first happens (30vw at 1280px is exactly
+    // that) and lets it grow to 36rem on a wide screen, where it is the only
+    // thing with room to spare. The content column can never be squeezed by it -
+    // the picture only takes what the window itself grew by. `w-[92%]` inside
+    // that track is the breathing room: filling it edge to edge reads as a
+    // cropped drawing rather than a large one.
+    //
     // Everything you act on down the left, the illustration large on the right.
     // The rail travels with the content, so "where am I" and "what do I do" are
     // one glance rather than two, and the drawing is the one element that never
@@ -353,7 +366,7 @@ function WizardRun({
     //
     // Borderless on purpose: this IS the tab, and a card drawn around the whole
     // of a tab is a box around a box.
-    <div className="mx-auto grid max-w-5xl gap-8 xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-12">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
       {/* First in the DOM on a phone, where the picture on top reads as a
           heading; last on a wide screen, where it belongs on the right. */}
       <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
@@ -362,7 +375,7 @@ function WizardRun({
         <RobotGraphic
           state={robot}
           accent={agent?.veil}
-          className="h-auto w-52 xl:w-full"
+          className="h-auto w-52 xl:w-[92%]"
         />
         {/* Mounted only on success, so it plays once and replays whenever a new
             run reaches the end. */}
