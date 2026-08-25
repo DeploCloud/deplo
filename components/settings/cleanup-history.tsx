@@ -44,7 +44,10 @@ export function CleanupHistory({
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           <History className="size-4" />
           Recent cleanups
-          <InfoTip content="The last three runs per server — scheduled and manual alike, including the ones that failed before they reached the host. About three days at the daily cadence; older runs are pruned automatically." />
+          <InfoTip
+            content="The last three runs per server - scheduled and manual alike, including the ones that failed before they reached the host. About three days at the daily cadence; older runs are pruned automatically."
+            docs="servers.cleanup"
+          />
         </CardTitle>
       </CardHeader>
       <CardContent>

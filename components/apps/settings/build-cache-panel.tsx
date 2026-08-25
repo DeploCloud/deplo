@@ -80,6 +80,7 @@ export function BuildCachePanel({
                 fresh dependencies every time — it makes every deploy slower.
               </>
             }
+            docs="build.cache"
           />
         </p>
         <p className="text-xs text-muted-foreground">

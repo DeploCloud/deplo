@@ -370,7 +370,10 @@ export function StorageSettingsForm({
         <CardHeader>
           <CardTitle className="flex w-fit items-center gap-2 text-base">
             Mounted storage
-            <InfoTip content="Storage the app keeps across deploys. A Volume is disk space deplo creates for it, a File is a config file you write here, and a Bind shares a folder that already exists on the server." />
+            <InfoTip
+              content="Storage the app keeps across deploys. A Volume is disk space deplo creates for it, a File is a config file you write here, and a Bind shares a folder that already exists on the server."
+              docs="storage.overview"
+            />
           </CardTitle>
         </CardHeader>
         {/**

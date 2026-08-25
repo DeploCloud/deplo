@@ -86,7 +86,7 @@ export function AlertPicker({
               ({alerts.length}/{ALL_ALERTS.length})
             </span>
           </h3>
-          <InfoTip content={hint} />
+          <InfoTip content={hint} docs="notifications.events" />
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {!disabled && (

@@ -52,6 +52,7 @@ import {
 } from "@/lib/apps/volume-model";
 import { cn, shortId } from "@/lib/utils";
 import type { MountPropagation, VolumeMount } from "@/lib/types";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * The Storage editor: a list of what this app keeps, one collapsed line each,
@@ -387,7 +388,8 @@ function MountRow({
                 <ShieldAlert className="mt-px size-3.5 shrink-0" />
                 Your account can&apos;t save a Bind. An admin turns it on with
                 &quot;Bind server folders&quot; in Settings → Users. Volume and
-                File need no extra permission.
+                File need no extra permission.{" "}
+                <DocsLink topic="hostAccess.grant" />
               </p>
             )}
             <Field
@@ -568,7 +570,10 @@ function MountRow({
                     {!mount.name.trim() && (
                       <span>(name taken from the path)</span>
                     )}
-                    <InfoTip content="The name deplo gives this storage on the server. It belongs to this app alone, so nothing else can read it or overwrite it. It is included in this app's backups." />
+                    <InfoTip
+                      content="The name deplo gives this storage on the server. It belongs to this app alone, so nothing else can read it or overwrite it. It is included in this app's backups."
+                      docs="storage.source"
+                    />
                   </p>
                 )}
               </>

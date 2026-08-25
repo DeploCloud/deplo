@@ -95,6 +95,7 @@ export function DeployHookPanel({
                   can&apos;t deploy anything.
                 </>
               }
+              docs="releases.deployHook"
             />
           </p>
           <p className="text-xs text-muted-foreground">

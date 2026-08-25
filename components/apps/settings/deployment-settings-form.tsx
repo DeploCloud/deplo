@@ -666,7 +666,10 @@ export function DeploymentSettingsForm({
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Deploy Source
-              <InfoTip content="Change how this app is deployed and which server runs it." />
+              <InfoTip
+                content="Change how this app is deployed and which server runs it."
+                docs="build.settings"
+              />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -981,7 +984,10 @@ export function DeploymentSettingsForm({
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Advanced settings
-              <InfoTip content="Rarely-changed controls: how builds reuse their cache, and how a deployment can be triggered from outside Deplo." />
+              <InfoTip
+                content="Rarely-changed controls: how builds reuse their cache, and how a deployment can be triggered from outside Deplo."
+                docs="build.cache"
+              />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">

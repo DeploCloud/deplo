@@ -41,7 +41,10 @@ export function ConnectedClients({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Connected clients
-          <InfoTip content="Revoking one deletes the credential, so the client stops working everywhere it was connected." />
+          <InfoTip
+            content="Revoking one deletes the credential, so the client stops working everywhere it was connected."
+            docs="mcp.clients"
+          />
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
           Every AI agent that can act in this team, and what each one is allowed

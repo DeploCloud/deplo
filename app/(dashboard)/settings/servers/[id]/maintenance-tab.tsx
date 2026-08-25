@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { DeploMark } from "@/components/logo";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "./server-detail-tabs";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * The Maintenance tab: the restarts an operator used to need SSH for.
@@ -125,8 +126,9 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
             Restart
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Bring things back up on this server. Each one interrupts something —
-            you will be told what before it runs.
+            Bring things back up on this server. Each one interrupts something -
+            you will be told what before it runs.{" "}
+            <DocsLink topic="servers.maintenance" />
           </p>
         </CardHeader>
         <CardContent className="space-y-3">

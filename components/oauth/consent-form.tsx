@@ -277,7 +277,10 @@ export function ConsentForm({
                 <p className="mt-1 flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
                   <Globe className="size-3.5 shrink-0" />
                   <span className="truncate">{client.redirectOrigin}</span>
-                  <InfoTip content="Where deplo sends it back after you approve. It is the one thing this app cannot make up about itself." />
+                  <InfoTip
+                    content="Where deplo sends it back after you approve. It is the one thing this app cannot make up about itself."
+                    docs="tokens.oauth"
+                  />
                 </p>
               ) : (
                 <p className="mt-1 text-sm text-muted-foreground">

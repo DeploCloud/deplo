@@ -62,7 +62,10 @@ export function TeamSecurityCard({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Security
-          <InfoTip content="Team-wide rules that apply to everyone in this team, whatever their role." />
+          <InfoTip
+            content="Team-wide rules that apply to everyone in this team, whatever their role."
+            docs="team.requireTwoFactor"
+          />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">

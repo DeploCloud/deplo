@@ -85,6 +85,7 @@ export function ComposeArgsPanel({
                 routing change.
               </>
             }
+            docs="compose.flags"
           />
         </p>
         <p className="text-xs text-muted-foreground">

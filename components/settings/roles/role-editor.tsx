@@ -296,7 +296,10 @@ export function RoleEditor({
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Summary
-              <InfoTip content="Exactly what a member holding this role will be able to do." />
+              <InfoTip
+                content="Exactly what a member holding this role will be able to do."
+                docs="roles.capabilities"
+              />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -343,7 +346,10 @@ export function RoleEditor({
                 <div className="flex items-center gap-3">
                   <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
                     Out of reach
-                    <InfoTip content="These are ticked but do nothing while the role is limited. Widen its access or untick them." />
+                    <InfoTip
+                      content="These are ticked but do nothing while the role is limited. Widen its access or untick them."
+                      docs="roles.sensitive"
+                    />
                   </dt>
                   <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
                     {outOfScope}

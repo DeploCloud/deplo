@@ -67,7 +67,10 @@ export function UsersPanel({
           <div>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Users
-              <InfoTip content="Everyone registered on this instance. Click a user to view details and edit their global permissions." />
+              <InfoTip
+                content="Everyone registered on this instance. Click a user to view details and edit their global permissions."
+                docs="instance.users"
+              />
             </CardTitle>
           </div>
           <Button size="sm" onClick={() => setRegisterOpen(true)}>
@@ -99,7 +102,10 @@ export function UsersPanel({
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Pending registration links
-              <InfoTip content="Single-use links that haven't been used yet. Each one works for 24 hours from the moment it was minted — copy it as often as you need until then, and revoke it if it goes astray." />
+              <InfoTip
+                content="Single-use links that haven't been used yet. Each one works for 24 hours from the moment it was minted - copy it as often as you need until then, and revoke it if it goes astray."
+                docs="team.registrationLink"
+              />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">

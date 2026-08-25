@@ -99,7 +99,10 @@ export function TwoFactorCard({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Two-factor authentication
-          <InfoTip content="A code from your phone, on top of your password. Someone who learns your password still cannot sign in." />
+          <InfoTip
+            content="A code from your phone, on top of your password. Someone who learns your password still cannot sign in."
+            docs="team.twoFactor"
+          />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

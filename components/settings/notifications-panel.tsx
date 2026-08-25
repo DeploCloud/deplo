@@ -271,7 +271,10 @@ export function NotificationsPanel({
               <div className="flex w-fit flex-wrap items-center gap-1.5 px-1 text-sm font-medium">
                 <Bell className="size-4" />
                 Alert channels
-                <InfoTip content="Where alerts go. Each channel carries its own list of what it is told about." />
+                <InfoTip
+                  content="Where alerts go. Each channel carries its own list of what it is told about."
+                  docs="notifications.channels"
+                />
                 <Badge
                   variant={onCount === 0 ? "muted" : "secondary"}
                   className="tabular-nums"

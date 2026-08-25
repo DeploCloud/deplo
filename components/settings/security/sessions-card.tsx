@@ -101,7 +101,10 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
       <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Signed-in devices
-          <InfoTip content="Every browser or client currently holding a session for this account. Sign one out and its next request is rejected." />
+          <InfoTip
+            content="Every browser or client currently holding a session for this account. Sign one out and its next request is rejected."
+            docs="team.sessions"
+          />
         </CardTitle>
         <ConfirmAction
           trigger={
@@ -149,7 +152,10 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
                 <TableHead>
                   <span className="inline-flex items-center gap-1">
                     Last seen
-                    <InfoTip content="Sessions refresh as they are used, so this is accurate to about fifteen minutes rather than to the second." />
+                    <InfoTip
+                      content="Sessions refresh as they are used, so this is accurate to about fifteen minutes rather than to the second."
+                      docs="team.sessions"
+                    />
                   </span>
                 </TableHead>
                 <TableHead>Signed in</TableHead>

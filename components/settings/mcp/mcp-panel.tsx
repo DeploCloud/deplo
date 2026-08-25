@@ -49,7 +49,10 @@ export function McpPanel({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Access
-          <InfoTip content="Applies to every API token that reaches this team, whoever minted it." />
+          <InfoTip
+            content="Applies to every API token that reaches this team, whoever minted it."
+            docs="mcp.overview"
+          />
         </CardTitle>
       </CardHeader>
       <CardContent>

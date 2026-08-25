@@ -37,7 +37,10 @@ export function DangerSettings({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base text-destructive">
           Danger Zone
-          <InfoTip content="Hand this app to another team, or permanently delete it and all of its data." />
+          <InfoTip
+            content="Hand this app to another team, or permanently delete it and all of its data."
+            docs="team.overview"
+          />
         </CardTitle>
         <CardDescription>
           These actions take the app away from this team. Each asks you to type

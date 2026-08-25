@@ -55,7 +55,10 @@ export function InstanceOwnerCard({
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           <Crown className="size-4" />
           Instance owner
-          <InfoTip content="The owner is the one account no other admin can demote, suspend or delete. Only they can hand the instance to someone else." />
+          <InfoTip
+            content="The owner is the one account no other admin can demote, suspend or delete. Only they can hand the instance to someone else."
+            docs="instance.owner"
+          />
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
           {ownerName ? (

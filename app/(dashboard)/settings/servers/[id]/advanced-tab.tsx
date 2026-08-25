@@ -221,7 +221,10 @@ function HostDetails({
                 label={
                   <span className="flex items-center gap-1">
                     Docker data
-                    <InfoTip content="Where images and volumes are stored. On a server with a separate data disk this is not the main filesystem." />
+                    <InfoTip
+                      content="Where images and volumes are stored. On a server with a separate data disk this is not the main filesystem."
+                      docs="servers.advanced"
+                    />
                   </span>
                 }
                 value={info.dockerRootDir || "—"}
@@ -595,7 +598,10 @@ function TraefikPanel({
             <LayoutDashboard className="size-4" />
             Traefik web panel
             <BetaChip />
-            <InfoTip content="Traefik's own dashboard: the live view of every route and certificate on this server. Useful when a domain is not resolving the way you expect." />
+            <InfoTip
+              content="Traefik's own dashboard: the live view of every route and certificate on this server. Useful when a domain is not resolving the way you expect."
+              docs="servers.advanced"
+            />
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             Publish Traefik&rsquo;s dashboard on a domain, behind a username and

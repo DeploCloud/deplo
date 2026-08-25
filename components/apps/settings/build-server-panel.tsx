@@ -141,6 +141,7 @@ export function BuildServerPanel({
                   architecture can build for this one.
                 </>
               }
+              docs="build.serversHowItWorks"
             />
           </p>
           <p className="text-xs text-muted-foreground">

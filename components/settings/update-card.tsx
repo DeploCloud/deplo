@@ -61,7 +61,10 @@ export function UpdateCard() {
         <div className="space-y-1.5">
           <CardTitle className="flex w-fit items-center gap-2 text-base">
             Updates
-            <InfoTip content="Deplo checks the official repository for new releases." />
+            <InfoTip
+              content="Deplo checks the official repository for new releases."
+              docs="upgrade.overview"
+            />
           </CardTitle>
         </div>
         <Button

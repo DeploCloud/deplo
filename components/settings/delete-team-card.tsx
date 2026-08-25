@@ -28,7 +28,10 @@ export function DeleteTeamCard({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base text-destructive">
           Danger zone
-          <InfoTip content="Permanently delete this team, its apps, databases and members." />
+          <InfoTip
+            content="Permanently delete this team, its apps, databases and members."
+            docs="team.overview"
+          />
         </CardTitle>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-4">

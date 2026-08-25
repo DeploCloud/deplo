@@ -325,6 +325,7 @@ export function ReviewStep({
   return (
     <StepShell
       title="What comes over"
+      docs="migration.changes"
       lead="Pick what to bring and where it lands. Nothing is deployed yet."
     >
       {/* Said once, at the top, instead of on every database it applies to: it

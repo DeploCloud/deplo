@@ -360,7 +360,10 @@ export function TokenEditor({
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Summary
-              <InfoTip content="Exactly what a client holding this token will be able to do." />
+              <InfoTip
+                content="Exactly what a client holding this token will be able to do."
+                docs="tokens.capabilities"
+              />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -412,6 +415,7 @@ export function TokenEditor({
                       content={`A token can never do more than the member who created it. If ${
                         token!.createdByUsername ?? "they"
                       } loses a permission, this token loses it too.`}
+                      docs="tokens.scope"
                     />
                   </dt>
                   <dd className="flex min-w-0 flex-1 items-center justify-end gap-1.5 truncate text-right font-medium">

@@ -114,7 +114,10 @@ export function BuildOutputCard({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Build &amp; Output
-          <InfoTip content="Every stage between your code and a running container - how the image is built, what runs during the build, and how it comes up." />
+          <InfoTip
+            content="Every stage between your code and a running container - how the image is built, what runs during the build, and how it comes up."
+            docs="build.methods"
+          />
         </CardTitle>
       </CardHeader>
 

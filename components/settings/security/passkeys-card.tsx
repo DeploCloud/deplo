@@ -91,7 +91,10 @@ export function PasskeysCard({
            * address in a way operators will meet the first time they move it.
            */}
           <BetaChip />
-          <InfoTip content="Sign in with your fingerprint, face or device PIN instead of a password, and it counts as your second factor." />
+          <InfoTip
+            content="Sign in with your fingerprint, face or device PIN instead of a password, and it counts as your second factor."
+            docs="team.passkeys"
+          />
         </CardTitle>
         {blocked ? (
           <SimpleTooltip content={blocked}>

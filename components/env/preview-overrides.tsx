@@ -176,7 +176,10 @@ export function PreviewOverrides({
                 {visibleOverrides.length}
               </Badge>
             )}
-            <InfoTip content="A pull request preview inherits every variable above. An override replaces one of them in previews only - the usual reason is pointing previews at a scratch database instead of the production one. It outranks the app's own value and any shared variable." />
+            <InfoTip
+              content="A pull request preview inherits every variable above. An override replaces one of them in previews only - the usual reason is pointing previews at a scratch database instead of the production one. It outranks the app's own value and any shared variable."
+              docs="env.previewOverrides"
+            />
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Values used only by pull request previews. Production is untouched.

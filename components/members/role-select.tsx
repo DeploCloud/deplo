@@ -51,7 +51,10 @@ export function RoleSelect({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <h3 className="text-sm font-medium">Role</h3>
-          <InfoTip content="What this member can do in the team. Roles are defined once for the whole team — editing one updates every member who holds it." />
+          <InfoTip
+            content="What this member can do in the team. Roles are defined once for the whole team - editing one updates every member who holds it."
+            docs="roles.overview"
+          />
         </div>
         <Link
           href="/settings/roles"

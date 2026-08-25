@@ -158,7 +158,10 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           <Globe className="size-4" />
           Panel address
-          <InfoTip content="Install commands, deploy hooks and invite links are built from this address. Deplo can hand it out, it cannot move your DNS: point the record below at this server first." />
+          <InfoTip
+            content="Install commands, deploy hooks and invite links are built from this address. Deplo can hand it out, it cannot move your DNS: point the record below at this server first."
+            docs="panel.address"
+          />
         </CardTitle>
         <Badge variant="muted">{SOURCE_LABEL[settings.panelUrlSource]}</Badge>
       </CardHeader>
@@ -273,7 +276,10 @@ function PanelIpAddressRow({
           <LifeBuoy className="size-4 text-muted-foreground" />
           IP address
           <Badge variant="muted">Always on</Badge>
-          <InfoTip content="Deplo answers here as well, straight on the server. It is served over plain http, so use the address above day to day." />
+          <InfoTip
+            content="Deplo answers here as well, straight on the server. It is served over plain http, so use the address above day to day."
+            docs="panel.address"
+          />
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Works even when the domain above stops answering. It cannot be turned
@@ -347,7 +353,10 @@ function PanelHttpsRow() {
           <div className="flex items-center gap-2 text-sm font-medium">
             <ShieldCheck className="size-4 text-muted-foreground" />
             HTTPS
-            <InfoTip content="Turn this off when the address cannot get a certificate: it does not resolve publicly yet, port 80 is closed, or the server is on an internal network. You can turn it back on once it can." />
+            <InfoTip
+              content="Turn this off when the address cannot get a certificate: it does not resolve publicly yet, port 80 is closed, or the server is on an internal network. You can turn it back on once it can."
+              docs="panel.https"
+            />
           </div>
           {cert.unavailable ? (
             <p className="mt-1 text-sm text-muted-foreground">
@@ -508,7 +517,10 @@ function CertificatesCard() {
           <CardTitle className="flex w-fit items-center gap-2 text-base">
             <ShieldCheck className="size-4" />
             Certificates
-            <InfoTip content="Deplo issues HTTPS certificates for your apps through Let's Encrypt. Expiry and revocation notices go to this address, on every server, so use one somebody reads." />
+            <InfoTip
+              content="Deplo issues HTTPS certificates for your apps through Let's Encrypt. Expiry and revocation notices go to this address, on every server, so use one somebody reads."
+              docs="panel.certEmail"
+            />
           </CardTitle>
         </CardHeader>
         <CardContent>

@@ -460,7 +460,10 @@ export function ServerCleanupTab({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 The schedule and what it reclaims are shared by every server
-                <InfoTip content="Deplo keeps one cleanup schedule for the whole instance, so a server you add later is swept without anyone remembering to enable it. Saving here changes it everywhere." />
+                <InfoTip
+                  content="Deplo keeps one cleanup schedule for the whole instance, so a server you add later is swept without anyone remembering to enable it. Saving here changes it everywhere."
+                  docs="servers.cleanupSettings"
+                />
               </span>
               <Button type="submit" disabled={saving || !dirty}>
                 Save schedule

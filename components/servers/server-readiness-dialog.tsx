@@ -344,7 +344,9 @@ export function ServerReadinessDialog({
                       <h4 className="text-xs font-medium text-muted-foreground">
                         {GROUP_LABELS[g]}
                       </h4>
-                      {info ? <InfoTip content={info} /> : null}
+                      {info ? (
+                        <InfoTip content={info} docs="servers.readiness" />
+                      ) : null}
                     </div>
                     <ul className="space-y-1.5">
                       {rows.map((c) => {

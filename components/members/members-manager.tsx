@@ -54,6 +54,7 @@ export function MembersManager({
                   this team.
                 </>
               }
+              docs="team.members"
             />
           </CardTitle>
         </div>

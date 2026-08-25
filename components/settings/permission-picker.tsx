@@ -105,7 +105,7 @@ export function PermissionPicker({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <h3 className="text-sm font-medium">Permissions</h3>
-          <InfoTip content={hint} />
+          <InfoTip content={hint} docs="capabilities.reference" />
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">

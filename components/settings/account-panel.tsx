@@ -48,7 +48,10 @@ function ProfileCard({ user }: { user: PublicUser }) {
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Profile
-          <InfoTip content="Your name, and the picture people see next to it." />
+          <InfoTip
+            content="Your name, and the picture people see next to it."
+            docs="team.security"
+          />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -119,7 +122,10 @@ function EmailCard({ user }: { user: PublicUser }) {
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Email
-          <InfoTip content="Changing your email requires your current password." />
+          <InfoTip
+            content="Changing your email requires your current password."
+            docs="team.security"
+          />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

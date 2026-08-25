@@ -55,6 +55,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 import { deriveWwwRedirect } from "@/lib/www-redirect";
 import type { Domain } from "@/lib/types";
+import { DocsLink } from "@/components/ui/docs-link";
 
 type Row = Domain & { serviceName: string; appSlug: string };
 
@@ -343,6 +344,7 @@ export function DomainRow({
           // other than this app's server.
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
             <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+            <DocsLink topic="domains.dnsStates" className="order-last" />
             {serverIp ? (
               <>
                 <span>

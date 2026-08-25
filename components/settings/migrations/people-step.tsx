@@ -56,6 +56,7 @@ export function PeopleStep({
   return (
     <StepShell
       title="The people who were on Dokploy"
+      docs="migration.people"
       lead="Everyone joins with a single-use link and arrives as a plain member, whatever they were over there. You can invite anyone else later from Members."
     >
       {people.length === 0 ? (
