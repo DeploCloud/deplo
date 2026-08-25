@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { BookOpen, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import { DeploLogo, DeploMark } from "@/components/logo";
 import { SidebarNav } from "./sidebar-nav";
 import { useSidebar } from "./sidebar-state";
@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { docsUrl } from "@/lib/docs";
 
 /**
  * Desktop sidebar. Collapsed flag and width come from SidebarProvider, which
@@ -122,6 +123,29 @@ export function Sidebar({
         />
       </div>
 
+      {/* Outside the scroller: the manual is reachable from any page, however
+          far down the nav has been scrolled. */}
+      <div className={cn("border-t border-border p-2", collapsed && "px-1.5")}>
+        <Tooltip delayDuration={collapsed ? 0 : 400}>
+          <TooltipTrigger asChild>
+            <a
+              href={docsUrl("docs.home")}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Documentation"
+              className={cn(
+                "group flex cursor-pointer items-center gap-2.5 rounded-md text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5",
+                collapsed ? "h-9 w-9 justify-center" : "px-3 py-1.5",
+              )}
+            >
+              <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
+              {!collapsed && "Documentation"}
+            </a>
+          </TooltipTrigger>
+          <TooltipContent side="right">Documentation</TooltipContent>
+        </Tooltip>
+      </div>
+
       {/* Drag-to-resize handle on the right edge */}
       <div
         onPointerDown={startResize}
@@ -139,7 +163,7 @@ export function Sidebar({
 
 /**
  * Brings the sidebar back once it has collapsed to zero width. It renders at the
- * head of the topbar (desktop only — the mobile nav is a sheet with its own
+ * head of the topbar (desktop only - the mobile nav is a sheet with its own
  * trigger) so the control stays top-left, in line with the collapse button.
  */
 export function SidebarExpandButton() {
