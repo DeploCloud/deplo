@@ -1082,6 +1082,14 @@ function dial(target: DialTarget): AgentConnection {
     // Large messages: a streamed build context rides inside the Deploy request.
     "grpc.max_receive_message_length": 256 * 1024 * 1024,
     "grpc.max_send_message_length": 256 * 1024 * 1024,
+    // HTTP/2 flow-control window. grpc-js defaults to 65535 bytes and, unlike
+    // grpc-go, never tunes it from the measured BDP - so a stream's ceiling is
+    // window/RTT no matter how fat the link is. On a 31 ms hop that is ~1 MB/s,
+    // which is what a 15 GB cross-host volume copy actually ran at: four hours
+    // of a migration spent on flow control, with an idle CPU and an idle disk
+    // at both ends. 16 MiB matches grpc-go's own BDP ceiling, so both sides of
+    // the relay agree, and it lifts one stream past any link we would ever have.
+    "grpc-node.flow_control_window": 16 * 1024 * 1024,
     // Keepalive, for the LONG-LIVED streams (StreamMetrics runs for the life of
     // this process; logs/attach for hours). Without it a stream that goes quiet
     // behind a NAT or stateful firewall gets its mapping reaped and we never
