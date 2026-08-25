@@ -36,7 +36,7 @@ The app is serving the older image within seconds.
 
 **Settings -> Deployments**, the **Rollbacks** card, field **Keep**.
 
-|         |                                            |
+| Value   | Meaning                                    |
 | ------- | ------------------------------------------ |
 | Default | `3`                                        |
 | Maximum | `20`                                       |

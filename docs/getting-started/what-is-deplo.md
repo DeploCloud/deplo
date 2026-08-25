@@ -54,7 +54,7 @@ The full picture is in [How Deplo works](../concepts/how-deplo-works.md).
 
 ## What you need
 
-|                  |                                                                                                                                  |
+| What             | Requirement                                                                                                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | A server         | Linux, `x86-64` or `arm64`, and root access for the length of one install command. Docker is installed for you if it is missing. |
 | Ports            | `80` and `443` reachable from the internet, `3000` for the dashboard, `9443` on every server you add later.                      |

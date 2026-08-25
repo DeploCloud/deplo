@@ -48,7 +48,7 @@ You can edit the file later in **Settings -> Deployments**.
 
 ## What is different about a Compose app
 
-|                              |                                                                                                                                       |
+| Difference                   | What it means                                                                                                                         |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **Domains name a Container** | A domain routes to one Compose service. That field appears instead of the port override, because your file already declares the ports |
 | **No rollbacks**             | There is no single image Deplo built, so there is nothing to re-run                                                                   |
