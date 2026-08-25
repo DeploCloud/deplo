@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import yaml from "js-yaml";
+import yaml from "../yaml";
 
 import {
   cloneTarget,
@@ -456,6 +456,31 @@ test("mapSource builds an https clone URL for every git flavour", () => {
       }),
     )?.repo,
     "a/b",
+  );
+});
+
+test("a self-hosted git server behind a path prefix keeps the prefix", () => {
+  assert.equal(
+    cloneTarget(
+      app({
+        sourceType: "gitlab",
+        gitlabPathNamespace: "acme/api",
+        gitlabRepository: "api",
+        gitlab: { gitlabUrl: "https://acme.test/gitlab/" },
+      }),
+    )?.url,
+    "https://acme.test/gitlab/acme/api.git",
+  );
+  assert.equal(
+    cloneTarget(
+      app({
+        sourceType: "gitea",
+        giteaOwner: "acme",
+        giteaRepository: "svc",
+        gitea: { giteaUrl: "acme.test/git" },
+      }),
+    )?.url,
+    "https://acme.test/git/acme/svc.git",
   );
 });
 
@@ -1396,6 +1421,62 @@ configs:
   // Every rewrite is reported, and the platform's own `.env` is left alone (the
   // agent writes one next to the stack).
   assert.equal(changes.filter((c) => c.includes("files directory")).length, 5);
+});
+
+test("the rewrite hands the file back the way its author wrote it", () => {
+  const src = `# an imported stack
+x-common: &common
+  restart: unless-stopped # keep me
+  networks: [dokploy-network]
+services:
+  app:
+    <<: *common
+    image: nginx
+    volumes:
+      - ../files/x.conf:/etc/x.conf
+networks:
+  dokploy-network:
+    external: true
+`;
+  const { compose, changes } = adaptComposeForDeplo(src);
+  assert.equal(changes.length, 2, changes.join(" | "));
+  // The structure is the file: a stack whose shared defaults stop being shared is
+  // a different file from the one somebody hands over.
+  assert.match(compose, /^# an imported stack$/m);
+  assert.match(compose, /x-common: &common/);
+  assert.match(compose, /<<: \*common/);
+  assert.match(compose, /restart: unless-stopped # keep me/);
+  // And the network is off the ANCHOR, not only off the services that merge it -
+  // the report says it was removed, so it has to be gone from the file.
+  assert.equal(compose.includes("dokploy-network"), false, compose);
+  assert.match(compose, /- \.\/x\.conf:\/etc\/x\.conf/);
+});
+
+test("an env value the author typed as text survives the rewrite", () => {
+  const src = `services:
+  app:
+    image: x
+    networks: [dokploy-network]
+    environment:
+      UMASK: 022
+      VER: 1.10
+      PORT: 8080
+      OK: true
+networks:
+  dokploy-network: {external: true}
+`;
+  const { compose } = adaptComposeForDeplo(src);
+  const env = (
+    yaml.load(compose) as {
+      services: { app: { environment: Record<string, unknown> } };
+    }
+  ).services.app.environment;
+  // `022` is a umask and `1.10` is a version: read as numbers they come back out
+  // as 22 and 1.1, and the container gets a value nobody typed.
+  assert.equal(env.UMASK, "022");
+  assert.equal(env.VER, "1.10");
+  assert.equal(env.PORT, 8080);
+  assert.equal(env.OK, true);
 });
 
 test("adaptComposeForDeplo leaves a file reference that is not Dokploy's alone", () => {

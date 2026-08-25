@@ -5,9 +5,17 @@
  * represented: return the value that IS representable and add a line to `notes`.
  */
 
-import yaml from "../yaml";
+import yaml, {
+  isMap,
+  isScalar,
+  isSeq,
+  Scalar,
+  type Document,
+  type YAMLMap,
+} from "../yaml";
 
 import { isValidLogoValue } from "../apps/logo-shared";
+import { keepAuthoredEnvText } from "../deploy/compose-lint";
 
 import type {
   BuildConfig,
@@ -100,6 +108,36 @@ export function envNeedsInterpolation(
 const DOKPLOY_NETWORK = "dokploy-network";
 
 /**
+ * The maps a compose file writes a SERVICE's keys into: the services themselves,
+ * and the top-level `x-*` blocks the services merge from. An anchor is where the
+ * value really lives, so a rewrite that skips it edits a copy.
+ */
+function serviceLikeMaps(root: YAMLMap): { name: string; map: YAMLMap }[] {
+  const out: { name: string; map: YAMLMap }[] = [];
+  const services = root.get("services");
+  if (isMap(services))
+    for (const item of services.items)
+      if (isMap(item.value))
+        out.push({
+          name: String((item.key as Scalar).value),
+          map: item.value,
+        });
+  for (const item of root.items) {
+    const name = String((item.key as Scalar | null)?.value ?? "");
+    if (name.startsWith("x-") && isMap(item.value))
+      out.push({ name, map: item.value });
+  }
+  return out;
+}
+
+/** The Scalar node at `map[key]`, when it holds a string. Its `value` is editable
+ *  in place, which is what keeps the rest of the file exactly as it was written. */
+function stringScalar(map: YAMLMap, key: string): Scalar | null {
+  const node = map.get(key, true);
+  return isScalar(node) && typeof node.value === "string" ? node : null;
+}
+
+/**
  * Every top-level network KEY in this compose that resolves to Dokploy's shared
  * network, which is not only the key `dokploy-network`.
  */
@@ -126,101 +164,92 @@ function dokployNetworkKeys(doc: { networks?: unknown }): Set<string> {
   return keys;
 }
 
+/** Take those networks off one `networks:` value, in either of its two shapes. */
+function stripNetworks(holder: YAMLMap, keys: Set<string>): void {
+  const node = holder.get("networks", true);
+  if (isSeq(node)) {
+    node.items = node.items.filter(
+      (entry) => !keys.has(String(isScalar(entry) ? entry.value : entry)),
+    );
+    if (node.items.length === 0) holder.delete("networks");
+  } else if (isMap(node)) {
+    for (const key of keys) node.delete(key);
+    if (node.items.length === 0) holder.delete("networks");
+  }
+}
+
 /**
  * Turn a Dokploy compose file into a Deplo one. Left alone, a `../` source is not
  * merely wrong - Deplo reads it as climbing OUT of the sandbox, so the stack would
  * demand the host-volumes grant and then bind a path that holds nothing.
+ *
+ * Edited as a DOCUMENT, so anchors, merge keys, comments and layout come out the
+ * way their author wrote them - and an anchor is edited once, for every service
+ * that merges it.
  */
 export function adaptComposeForDeplo(source: string): {
   compose: string;
   changes: string[];
 } {
-  let doc: Record<string, unknown> | null;
-  try {
-    doc = yaml.load(source) as Record<string, unknown> | null;
-  } catch {
-    return { compose: source, changes: [] };
-  }
-  if (!doc || typeof doc !== "object" || Array.isArray(doc))
-    return { compose: source, changes: [] };
+  const doc = readComposeDoc(source);
+  if (!doc) return { compose: source, changes: [] };
+  const root = doc.contents as YAMLMap;
 
   const changes: string[] = [];
-  const keys = dokployNetworkKeys(doc);
+  const keys = dokployNetworkKeys({ networks: toPlain(root.get("networks")) });
 
   if (keys.size > 0) {
-    const networks = doc.networks as Record<string, unknown> | undefined;
-    if (networks) {
-      for (const k of keys) delete networks[k];
-      if (Object.keys(networks).length === 0) delete doc.networks;
+    const declared = root.get("networks", true);
+    if (isMap(declared)) {
+      for (const key of keys) declared.delete(key);
+      if (declared.items.length === 0) root.delete("networks");
     }
     changes.push(
       "Dokploy's shared network was removed - Deplo attaches the services to its own.",
     );
   }
 
-  const services = doc.services;
-  if (services && typeof services === "object" && !Array.isArray(services)) {
-    for (const svc of Object.values(services as Record<string, unknown>)) {
-      if (!svc || typeof svc !== "object" || Array.isArray(svc)) continue;
-      const s = svc as Record<string, unknown>;
+  for (const { map: holder } of serviceLikeMaps(root)) {
+    if (keys.size > 0) stripNetworks(holder, keys);
 
-      // The network, off both shapes of a service's `networks:`.
-      if (keys.size > 0) {
-        const n = s.networks;
-        if (Array.isArray(n)) {
-          const kept = n.filter((entry) => !keys.has(String(entry)));
-          if (kept.length === 0) delete s.networks;
-          else s.networks = kept;
-        } else if (n && typeof n === "object") {
-          const map = n as Record<string, unknown>;
-          for (const k of keys) delete map[k];
-          if (Object.keys(map).length === 0) delete s.networks;
-        }
+    // The file-mount paths, off both shapes of a volume entry. A SEQUENCE is what
+    // tells a service's mounts from the top-level named-volume block.
+    const vols = holder.get("volumes", true);
+    if (!isSeq(vols)) continue;
+    for (const entry of vols.items) {
+      if (isScalar(entry) && typeof entry.value === "string") {
+        const idx = entry.value.indexOf(":");
+        if (idx <= 0) continue;
+        const rewritten = deploFilesPath(entry.value.slice(0, idx));
+        if (rewritten == null) continue;
+        changes.push(
+          `${entry.value.slice(0, idx)} now points at Deplo's files directory.`,
+        );
+        entry.value = `${rewritten}${entry.value.slice(idx)}`;
+      } else if (isMap(entry)) {
+        const src = stringScalar(entry, "source");
+        if (!src) continue;
+        const rewritten = deploFilesPath(src.value as string);
+        if (rewritten == null) continue;
+        changes.push(`${src.value} now points at Deplo's files directory.`);
+        src.value = rewritten;
       }
-
-      // The file-mount paths, off both shapes of a volume entry.
-      const vols = s.volumes;
-      if (!Array.isArray(vols)) continue;
-      s.volumes = vols.map((v) => {
-        if (typeof v === "string") {
-          const idx = v.indexOf(":");
-          if (idx <= 0) return v;
-          const rewritten = deploFilesPath(v.slice(0, idx));
-          if (rewritten == null) return v;
-          changes.push(
-            `${v.slice(0, idx)} now points at Deplo's files directory.`,
-          );
-          return `${rewritten}${v.slice(idx)}`;
-        }
-        if (v && typeof v === "object" && !Array.isArray(v)) {
-          const m = v as Record<string, unknown>;
-          if (typeof m.source !== "string") return v;
-          const rewritten = deploFilesPath(m.source);
-          if (rewritten == null) return v;
-          changes.push(`${m.source} now points at Deplo's files directory.`);
-          return { ...m, source: rewritten };
-        }
-        return v;
-      });
     }
   }
 
   // The SAME `../files/x` rewrite, everywhere else a compose file can name a file
   // next to itself.
-  for (const [where, target] of topLevelFileRefs(doc)) {
-    const rewritten = deploFilesPath(target.value);
+  for (const [where, target] of composeFileRefs(root)) {
+    const rewritten = deploFilesPath(target.value as string);
     if (rewritten == null) continue;
-    target.set(rewritten);
     changes.push(
       `${target.value} now points at Deplo's files directory (${where}).`,
     );
+    target.value = rewritten;
   }
 
   if (changes.length === 0) return { compose: source, changes: [] };
-  return {
-    compose: yaml.dump(doc, { lineWidth: -1, noRefs: true }),
-    changes,
-  };
+  return { compose: String(doc), changes };
 }
 
 /**
@@ -232,14 +261,9 @@ export function retargetPlatformEnvFiles(
   source: string,
   carried: string[],
 ): { compose: string; changes: string[] } {
-  let doc: Record<string, unknown> | null;
-  try {
-    doc = yaml.load(source) as Record<string, unknown> | null;
-  } catch {
-    return { compose: source, changes: [] };
-  }
-  if (!doc || typeof doc !== "object" || Array.isArray(doc))
-    return { compose: source, changes: [] };
+  const doc = readComposeDoc(source);
+  if (!doc) return { compose: source, changes: [] };
+  const root = doc.contents as YAMLMap;
 
   const have = new Set(
     carried.map((f) =>
@@ -260,117 +284,97 @@ export function retargetPlatformEnvFiles(
     return "./.env";
   };
 
-  for (const [name, raw] of Object.entries(
-    (doc.services ?? {}) as Record<string, unknown>,
-  )) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-    const svc = raw as Record<string, unknown>;
-    const note = (from: string) =>
+  for (const { name: who, map: holder } of serviceLikeMaps(root)) {
+    for (const target of envFileScalars(holder)) {
+      const next = retarget(target.value as string);
+      if (!next) continue;
       changes.push(
-        `${name} reads its variables from ${from}, which is the file the other platform wrote. It now reads Deplo's own - the values are this app's variables.`,
+        `${who} reads its variables from ${target.value}, which is the file the other platform wrote. It now reads Deplo's own - the values are this app's variables.`,
       );
-    if (typeof svc.env_file === "string") {
-      const next = retarget(svc.env_file);
-      if (next) {
-        note(svc.env_file);
-        svc.env_file = next;
-      }
-    } else if (Array.isArray(svc.env_file)) {
-      svc.env_file = svc.env_file.map((entry) => {
-        if (typeof entry === "string") {
-          const next = retarget(entry);
-          if (!next) return entry;
-          note(entry);
-          return next;
-        }
-        if (entry && typeof entry === "object" && !Array.isArray(entry)) {
-          const e = entry as Record<string, unknown>;
-          if (typeof e.path !== "string") return entry;
-          const next = retarget(e.path);
-          if (!next) return entry;
-          note(e.path);
-          return { ...e, path: next };
-        }
-        return entry;
-      });
+      target.value = next;
     }
   }
 
   if (changes.length === 0) return { compose: source, changes: [] };
-  return { compose: yaml.dump(doc, { lineWidth: -1, noRefs: true }), changes };
+  return { compose: String(doc), changes };
 }
 
-/** One editable string that names a file relative to the compose file. */
-interface FileRef {
-  value: string;
-  set(next: string): void;
+/** A compose document worth rewriting: it parsed, and its root is a mapping. */
+function readComposeDoc(source: string): Document | null {
+  let doc: Document;
+  try {
+    doc = yaml.parseDocument(source);
+  } catch {
+    return null;
+  }
+  if (doc.errors.length > 0 || !isMap(doc.contents)) return null;
+  // Re-serializing the document is what loses `UMASK: 022`, so the text is pinned
+  // before anything edits it.
+  keepAuthoredEnvText(doc);
+  return doc;
+}
+
+/** A node as plain data, for the readers that want the value and not the node. */
+function toPlain(node: unknown): unknown {
+  try {
+    return (node as { toJSON?: () => unknown } | null)?.toJSON?.() ?? node;
+  } catch {
+    return null;
+  }
+}
+
+/** Every `env_file` entry of one service-like map, in all three shapes. */
+function envFileScalars(holder: YAMLMap): Scalar[] {
+  const out: Scalar[] = [];
+  const node = holder.get("env_file", true);
+  if (isScalar(node) && typeof node.value === "string") out.push(node);
+  else if (isSeq(node))
+    for (const entry of node.items) {
+      if (isScalar(entry) && typeof entry.value === "string") out.push(entry);
+      else if (isMap(entry)) {
+        const path = stringScalar(entry, "path");
+        if (path) out.push(path);
+      }
+    }
+  return out;
 }
 
 /**
- * Every place OUTSIDE `services[].volumes` where a compose file names a
- * neighbouring file: `env_file` (string or list, on each service),
- * `build.context`, `label_file`, and the top-level `secrets` / `configs` blocks.
+ * Every place OUTSIDE `services[].volumes` where a compose file names a file next
+ * to itself: the env files, the label files, a build context, and the `secrets` /
+ * `configs` blocks.
  */
-function topLevelFileRefs(doc: Record<string, unknown>): [string, FileRef][] {
-  const out: [string, FileRef][] = [];
-  const push = (
-    where: string,
-    holder: Record<string, unknown>,
-    key: string | number,
-  ) => {
-    const value = (holder as Record<string | number, unknown>)[key];
-    if (typeof value !== "string") return;
-    out.push([
-      where,
-      {
-        value,
-        set: (next) =>
-          ((holder as Record<string | number, unknown>)[key] = next),
-      },
-    ]);
-  };
+function composeFileRefs(root: YAMLMap): [string, Scalar][] {
+  const out: [string, Scalar][] = [];
+  for (const { name: who, map: holder } of serviceLikeMaps(root)) {
+    for (const target of envFileScalars(holder))
+      out.push([`${who}.env_file`, target]);
 
-  const services = doc.services;
-  if (services && typeof services === "object" && !Array.isArray(services))
-    for (const [name, raw] of Object.entries(
-      services as Record<string, unknown>,
-    )) {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-      const svc = raw as Record<string, unknown>;
-      if (typeof svc.env_file === "string")
-        push(`${name}.env_file`, svc, "env_file");
-      else if (Array.isArray(svc.env_file))
-        svc.env_file.forEach((entry, i) => {
-          if (typeof entry === "string")
-            push(`${name}.env_file`, svc.env_file as never, i);
-          else if (entry && typeof entry === "object")
-            push(`${name}.env_file`, entry as Record<string, unknown>, "path");
-        });
-      if (typeof svc.label_file === "string")
-        push(`${name}.label_file`, svc, "label_file");
-      else if (Array.isArray(svc.label_file))
-        svc.label_file.forEach((entry, i) => {
-          if (typeof entry === "string")
-            push(`${name}.label_file`, svc.label_file as never, i);
-        });
-      if (typeof svc.build === "string") push(`${name}.build`, svc, "build");
-      else if (
-        svc.build &&
-        typeof svc.build === "object" &&
-        !Array.isArray(svc.build)
-      )
-        push(`${name}.build`, svc.build as Record<string, unknown>, "context");
+    const label = holder.get("label_file", true);
+    if (isScalar(label) && typeof label.value === "string")
+      out.push([`${who}.label_file`, label]);
+    else if (isSeq(label))
+      for (const entry of label.items)
+        if (isScalar(entry) && typeof entry.value === "string")
+          out.push([`${who}.label_file`, entry]);
+
+    const build = holder.get("build", true);
+    if (isScalar(build) && typeof build.value === "string")
+      out.push([`${who}.build`, build]);
+    else if (isMap(build)) {
+      const context = stringScalar(build, "context");
+      if (context) out.push([`${who}.build`, context]);
     }
+  }
 
   for (const block of ["secrets", "configs"] as const) {
-    const declared = doc[block];
-    if (!declared || typeof declared !== "object" || Array.isArray(declared))
-      continue;
-    for (const [name, raw] of Object.entries(
-      declared as Record<string, unknown>,
-    )) {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-      push(`${block}.${name}`, raw as Record<string, unknown>, "file");
+    const declared = root.get(block, true);
+    if (!isMap(declared)) continue;
+    for (const item of declared.items) {
+      if (!isMap(item.value)) continue;
+      const file = stringScalar(item.value, "file");
+      if (file)
+        out.push([`${block}.${String((item.key as Scalar).value)}`, file]);
     }
   }
   return out;
@@ -692,11 +696,14 @@ export function cloneTarget(
   app: DokployApplication | DokployCompose,
 ): GitRepo | null {
   const a = app as DokployApplication;
+  // Origin AND path: a self-hosted GitLab or Gitea behind a reverse proxy lives at
+  // `https://acme.com/gitlab`, and dropping the prefix clones a 404.
   const host = (raw: string | null | undefined, fallback: string): string => {
     const v = raw?.trim();
     if (!v) return fallback;
     try {
-      return new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).origin;
+      const url = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+      return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
     } catch {
       return fallback;
     }
