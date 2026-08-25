@@ -196,8 +196,15 @@ test("app entries carry the app's logo, wherever they are listed", () => {
   g.apps.find((a) => a.slug === "web")!.logo = "https://cdn.test/web.png";
   g.apps.find((a) => a.slug === "shop")!.logo = "https://cdn.test/shop.png";
 
+  // The app crumb ITSELF wears the logo, not just its menu entries.
+  assert.equal(
+    svc("/apps/web", g)!.find((s) => s.kind === "app")!.logo,
+    "https://cdn.test/web.png",
+  );
+
   // Sibling menu on the app crumb, and the folder crumb that holds it.
   const segs = svc("/apps/api", g)!;
+  assert.equal(segs.find((s) => s.kind === "app")!.logo, null);
   const siblings = segs.find((s) => s.kind === "app")!.items;
   assert.equal(
     siblings.find((i) => i.label === "Web")!.logo,

@@ -458,6 +458,7 @@ export function buildBreadcrumb(
       name: service.name,
       href: `/apps/${service.slug}`,
       kind: "app",
+      logo: service.logo ?? null,
       items: siblings
         .map((s) => ({
           id: s.id,
