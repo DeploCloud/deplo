@@ -8,7 +8,11 @@ import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
-import { LogLines, LogRow } from "@/components/shared/log-line-row";
+import {
+  LogLines,
+  LogLinesSkeleton,
+  LogRow,
+} from "@/components/shared/log-line-row";
 import {
   LogSearch,
   LogLevelFilter,
@@ -336,6 +340,12 @@ export function BuildLogStream({
               highlight={filters.highlight}
             />
           ))}
+
+          {/* Claimed but silent: the build is running and hasn't printed a
+              line yet. Placeholder rows say "waiting for output" where an empty
+              black pane says "broken". Gated on `live` — a finished deployment
+              with no logs is done waiting, and a skeleton there would lie. */}
+          {logs.length === 0 && live ? <LogLinesSkeleton /> : null}
 
           {logs.length > 0 && filters.shown.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">

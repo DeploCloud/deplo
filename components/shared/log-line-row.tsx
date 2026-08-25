@@ -267,3 +267,47 @@ export function LogRow({
     </div>
   );
 }
+
+/** Message-bar widths for the placeholder rows, so the block reads as log lines
+ *  of differing length rather than as a solid slab. */
+const SKELETON_WIDTHS = [
+  "w-[38%]",
+  "w-[62%]",
+  "w-[27%]",
+  "w-[55%]",
+  "w-[44%]",
+  "w-[70%]",
+  "w-[33%]",
+  "w-[50%]",
+];
+
+/**
+ * Placeholder lines for a console that has no rows yet but is still waiting on
+ * data (a build that has been claimed but hasn't printed anything). Mirrors
+ * `LogRow`'s geometry — same gutter, same chip box, same columns — so the real
+ * lines land exactly where the placeholders were instead of jumping.
+ *
+ * Painted in flat `zinc` rather than `Skeleton`: the pane is `#0a0a0a` in BOTH
+ * themes, while `bg-muted` and the shimmer sweep are both derived from
+ * `--foreground` and would be a bright slab on the light theme and an invisible
+ * one over black respectively.
+ */
+export function LogLinesSkeleton() {
+  return (
+    <div aria-hidden className="space-y-0.5">
+      {SKELETON_WIDTHS.map((width, i) => (
+        <div
+          key={i}
+          className="flex animate-pulse items-start gap-3 py-px pr-1.5 pl-3"
+          // Staggered so the rows breathe one after another, the way lines
+          // actually arrive, instead of blinking in unison.
+          style={{ animationDelay: `${i * 120}ms` }}
+        >
+          <span className="h-[13px] w-[52px] shrink-0 rounded bg-zinc-800" />
+          <span className={cn(CHIP, "shrink-0 rounded bg-zinc-800")} />
+          <span className={cn("h-[13px] rounded bg-zinc-800", width)} />
+        </div>
+      ))}
+    </div>
+  );
+}
