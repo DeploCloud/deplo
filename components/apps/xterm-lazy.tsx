@@ -12,7 +12,7 @@ export const XtermView = dynamic(
   () => import("./xterm-view").then((m) => m.XtermView),
   {
     ssr: false,
-    loading: () => <div className="h-full w-full bg-[#0a0a0a]" />,
+    loading: () => <div className="h-full w-full bg-terminal" />,
   },
 );
 

@@ -711,6 +711,9 @@ export function ContainerLogs({
                 : undefined
             }
             tintMessage={false}
+            // Alternating bands: a live pane never stops moving, and the eye
+            // needs a line to hold on to.
+            zebra={i % 2 === 1}
             chip="auto"
             highlight={filters.highlight}
           />

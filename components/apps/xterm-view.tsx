@@ -40,9 +40,7 @@ const THEME: ITerminalOptions["theme"] = {
 /** The --terminal token's value, resolved off a mounted node. xterm parses
  *  colours itself and does not understand `var()`, so it needs the literal. */
 function terminalBackground(node: HTMLElement): string {
-  return (
-    getComputedStyle(node).getPropertyValue("--terminal").trim() || "#0a0a0a"
-  );
+  return getComputedStyle(node).getPropertyValue("--terminal").trim() || "#000";
 }
 
 const FONT_FAMILY =

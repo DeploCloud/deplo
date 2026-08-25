@@ -158,7 +158,7 @@ export function LogLines({
   return (
     <div
       className={cn(
-        "space-y-0.5 overflow-y-auto bg-[#0a0a0a] p-3 font-mono text-[13px] leading-relaxed",
+        "space-y-0.5 overflow-y-auto bg-terminal p-3 font-mono text-[13px] leading-relaxed",
         className,
       )}
       {...rest}
@@ -174,6 +174,7 @@ export function LogRow({
   time,
   tintMessage = true,
   chip = "always",
+  zebra = false,
   highlight,
 }: {
   level: LogLevel;
@@ -196,6 +197,14 @@ export function LogRow({
    * `"always"`, where the level is authored and every line carries real meaning.
    */
   chip?: "always" | "auto";
+  /**
+   * Draw this row on the banded background instead of the bare slab — the
+   * caller alternates it, so a live stream reads as lines rather than as one
+   * black field. A row whose LEVEL already carries a wash keeps that wash:
+   * `cn` drops the band, because a red line saying "error" outranks a stripe
+   * saying "second".
+   */
+  zebra?: boolean;
   /** Search term to mark inside the message. Composes with ANSI and links. */
   highlight?: string;
 }) {
@@ -207,6 +216,9 @@ export function LogRow({
         // items-start, not the default stretch — see LevelChip.
         "group relative flex items-start gap-3 rounded-md py-px pr-1.5 pl-3 log-row",
         "transition-colors",
+        // Before the level, never after: `cn` keeps the LAST background, so a
+        // warn or error row wins its wash back and only the neutral lines band.
+        zebra && "bg-terminal-stripe",
         // The level's own faint wash, hover included. `info` supplies only the
         // neutral hover, so an ordinary line stays an ordinary line.
         LEVEL_ROW_CLASS[level] ?? "hover:bg-white/[0.04]",
