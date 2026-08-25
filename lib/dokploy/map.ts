@@ -1776,3 +1776,108 @@ function hasSwarmValue(v: unknown): boolean {
   if (typeof v === "object") return Object.keys(v as object).length > 0;
   return false;
 }
+
+/* ------------------------------------------------------------------ */
+/* A compose service that is really one app                            */
+/* ------------------------------------------------------------------ */
+
+/** What a git-backed compose turns out to be, when it is an app in disguise. */
+export interface ComposeRepoApp {
+  /** The one service's key, for the note that explains what happened. */
+  service: string;
+  /** Path to a Dockerfile relative to the repo, when the build names one. */
+  dockerfilePath?: string;
+  /** The build context, when it is not the repo root. */
+  dockerContextPath?: string;
+  /** `--target` on a multi-stage build. */
+  dockerBuildStage?: string;
+}
+
+/**
+ * Is this compose file one service that BUILDS FROM ITS OWN REPOSITORY?
+ *
+ * Dokploy lets a "Compose" service take its file from GitHub, and people use
+ * that for a plain application: one service, `build: .`, a port, a volume. Deplo
+ * imported it as a compose app, which was the wrong shape twice over. The
+ * repository was dropped - so no auto-deploy on push and no way to update the
+ * file - and, far worse, `build: .` was kept in a stack Deplo ships to the agent
+ * as opaque YAML with nothing beside it: the context is a directory holding one
+ * compose file, so the app could never build. It arrived looking migrated and
+ * was dead on arrival.
+ *
+ * The honest reading of that file is "this repository, built and run", which is
+ * exactly a Deplo app with a git source - so that is what it becomes, and the
+ * build settings come off the `build:` block.
+ *
+ * Deliberately narrow. TWO services, or one that also names an `image:`, or
+ * anything with a `depends_on`, is a real stack and stays one: those keep their
+ * compose, and the caller says out loud that Deplo has no repository to build
+ * them from.
+ */
+export function composeAsRepoApp(compose: string): ComposeRepoApp | null {
+  let doc: {
+    services?: Record<
+      string,
+      {
+        image?: unknown;
+        build?: unknown;
+        depends_on?: unknown;
+      }
+    >;
+  } | null;
+  try {
+    doc = yaml.load(compose) as typeof doc;
+  } catch {
+    return null;
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return null;
+  const keys = Object.keys(services);
+  if (keys.length !== 1) return null;
+
+  const key = keys[0]!;
+  const svc = services[key];
+  if (!svc || typeof svc !== "object") return null;
+  // An `image:` next to a `build:` means the build has a name to be pushed
+  // under, and Deplo names its own images - but an image ALONE is a stack that
+  // pulls, which is a compose app and stays one.
+  if (!svc.build) return null;
+  if (svc.depends_on) return null;
+
+  const out: ComposeRepoApp = { service: key };
+  // `build: .` is the whole block; the long form carries the paths.
+  if (typeof svc.build === "object" && !Array.isArray(svc.build)) {
+    const b = svc.build as Record<string, unknown>;
+    const str = (v: unknown) =>
+      typeof v === "string" && v.trim() ? v.trim() : undefined;
+    const ctx = str(b.context);
+    // "." is the repo root, which is Deplo's default - saying it again would put
+    // a value in the build settings that reads as a choice somebody made.
+    if (ctx && ctx !== ".") out.dockerContextPath = ctx;
+    out.dockerfilePath = str(b.dockerfile);
+    out.dockerBuildStage = str(b.target);
+  }
+  return out;
+}
+
+/**
+ * The services of a compose file that build from source, by name.
+ *
+ * A stack Deplo keeps as a stack has no repository behind it, so every one of
+ * these is a service that cannot build here. Naming them is the difference
+ * between an app that fails its first deploy with a docker error and a report
+ * line that says what to do.
+ */
+export function composeBuildServices(compose: string): string[] {
+  let doc: { services?: Record<string, { build?: unknown }> } | null;
+  try {
+    doc = yaml.load(compose) as typeof doc;
+  } catch {
+    return [];
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return [];
+  return Object.entries(services)
+    .filter(([, s]) => s && typeof s === "object" && s.build)
+    .map(([k]) => k);
+}

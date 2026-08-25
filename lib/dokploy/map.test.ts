@@ -5,6 +5,8 @@ import yaml from "js-yaml";
 
 import {
   cloneTarget,
+  composeAsRepoApp,
+  composeBuildServices,
   retargetPlatformEnvFiles,
   composeVolumeMounts,
   deploDatabaseVolumeName,
@@ -1499,4 +1501,87 @@ test("mapLogo drops what deplo would not store, and never throws", () => {
   // inflated string, so the ceiling is the string length either way.
   const huge = `data:image/png;base64,${"A".repeat(MAX_LOGO_STRING_LEN)}`;
   assert.equal(mapLogo(huge), null);
+});
+
+test("a git-backed compose that is one build IS an app, not a stack", () => {
+  // The real shape: Dokploy "Compose" pointed at a GitHub repo, one service that
+  // builds the repo it lives in. Imported as a stack it kept `build: .` with no
+  // repository beside it, so it could never build.
+  const one = `
+services:
+  app:
+    build: .
+    expose:
+      - 3000
+    volumes:
+      - aboutme_data:/app/data
+volumes:
+  aboutme_data:
+`;
+  assert.deepEqual(composeAsRepoApp(one), { service: "app" });
+  assert.deepEqual(composeVolumeMounts(one), [
+    { name: "aboutme_data", mountPath: "/app/data" },
+  ]);
+
+  // The long form carries the build settings across.
+  assert.deepEqual(
+    composeAsRepoApp(`
+services:
+  site:
+    build:
+      context: ./web
+      dockerfile: docker/Dockerfile
+      target: runner
+`),
+    {
+      service: "site",
+      dockerContextPath: "./web",
+      dockerfilePath: "docker/Dockerfile",
+      dockerBuildStage: "runner",
+    },
+  );
+  // "." is deplo's own default - never written back as if somebody chose it.
+  assert.equal(
+    composeAsRepoApp("services:\n  a:\n    build:\n      context: .\n")
+      ?.dockerContextPath,
+    undefined,
+  );
+
+  // A real stack stays a stack: two services, or one that depends on another.
+  assert.equal(
+    composeAsRepoApp(`
+services:
+  site:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:16
+`),
+    null,
+  );
+  // Nothing builds: an ordinary pulled stack.
+  assert.equal(composeAsRepoApp("services:\n  a:\n    image: nginx\n"), null);
+  assert.equal(composeAsRepoApp("not: yaml: ["), null);
+});
+
+test("a stack that stays a stack names the services it cannot build", () => {
+  assert.deepEqual(
+    composeBuildServices(`
+services:
+  site:
+    build: .
+  worker:
+    build:
+      context: .
+  db:
+    image: postgres:16
+`),
+    ["site", "worker"],
+  );
+  assert.deepEqual(
+    composeBuildServices("services:\n  a:\n    image: nginx\n"),
+    [],
+  );
 });
