@@ -110,7 +110,7 @@ export function ConsentForm({
   scope: string;
   oauthQuery: string;
   tree: ScopeTreeTeam[];
-  /** The team the mint will actually use — the dropdown must start here. */
+  /** The team the mint will actually use - the dropdown must start here. */
   activeTeamId: string;
   /**
    * The teams the mint would accept, ticked to begin with.
@@ -118,7 +118,7 @@ export function ConsentForm({
   connectableTeamIds: string[];
   /** The origin deplo publishes, which the consent POST must come from. */
   publicOrigin: string | null;
-  /** Whose account the minted token will act as — worth saying before the click. */
+  /** Whose account the minted token will act as - worth saying before the click. */
   username: string;
 }) {
   const router = useRouter();
@@ -138,11 +138,11 @@ export function ConsentForm({
   const [editing, setEditing] = useState<null | "access" | "permissions">(null);
   // The team this connection is being made FROM. Always granted (the server
   // includes it whatever the picker says) and the default when nothing is
-  // ticked. Not a control any more — the picker is the only one.
+  // ticked. Not a control any more - the picker is the only one.
   const connectingTeam = tree.find((t) => t.id === activeTeamId);
 
   // Better Auth refuses a cookie-carrying POST whose Origin is not the address deplo
-  // publishes — the CSRF defence the consent posts through.
+  // publishes - the CSRF defence the consent posts through.
   const wrongOrigin =
     typeof window !== "undefined" &&
     !!publicOrigin &&
@@ -159,20 +159,20 @@ export function ConsentForm({
       selection.appIds.length >
     0;
   // Named where we can name it: one ticked team reads "Idra Arts", not
-  // "1 team". Teams only — a mixed selection is honestly a count, and the
+  // "1 team". Teams only - a mixed selection is honestly a count, and the
   // deeper nodes are what the Advanced screen is for.
   const teamNames = useMemo(
     () => Object.fromEntries(tree.map((t) => [t.id, t.name])),
     [tree],
   );
   // "Access" is what this repo calls a token's reach and "Permissions" what it
-  // calls its capabilities (token-editor.tsx's own summary rows) — same words
+  // calls its capabilities (token-editor.tsx's own summary rows) - same words
   // here, so the two screens do not name one thing twice.
   const accessLabel = scoped
     ? scopeLabel({ scoped: true, ...selection }, teamNames)
     : { text: connectingTeam?.name ?? "This team", empty: false };
   // A team wears its initials everywhere else in deplo (the team switcher), so it
-  // wears them here too — the reach of a connection is the one place a name in plain
+  // wears them here too - the reach of a connection is the one place a name in plain
   // text is easiest to skim past.
   const accessTeams = (
     selection.teamIds.length ? selection.teamIds : scoped ? [] : [activeTeamId]
@@ -220,7 +220,7 @@ export function ConsentForm({
   }
 
   /**
-   * Signed in as the wrong person — the one thing this screen can be right about
+   * Signed in as the wrong person - the one thing this screen can be right about
    * and still be wrong, because the token it mints acts as whoever is looking at
    * it.
    */
@@ -260,7 +260,7 @@ export function ConsentForm({
         <form className="grid gap-6 p-6" onSubmit={onApprove}>
           <div className="grid justify-items-center gap-4 text-center">
             {/**
-             * Remote icons never render — the CSP is `img-src 'self' blob: data:` — so this is
+             * Remote icons never render, the CSP is `img-src 'self' blob: data:`, so this is
              * initials for almost every client, and the `src` is here for the rare `data:` one.
              */}
             <Avatar className="size-14">
@@ -288,7 +288,10 @@ export function ConsentForm({
           </div>
 
           <div className="grid gap-2">
-            <FieldLabel info="What the app may do, and what it may reach. It can never do more than you can.">
+            <FieldLabel
+              info="What the app may do, and what it may reach. It can never do more than you can."
+              docs="tokens.oauth"
+            >
               What it gets
             </FieldLabel>
             {/* One row, one dialog: press the half of the sentence you want to
@@ -388,6 +391,7 @@ export function ConsentForm({
               selection={selection}
               onChange={setSelection}
               info="Which teams this app may work in, and how much of each. Every team you can connect is ticked to begin with - untick the ones it should not reach, or narrow one to a project, folder or app."
+              docs="tokens.scope"
             />
 
             <DialogFooter>
@@ -421,6 +425,7 @@ export function ConsentForm({
                 <FieldLabel
                   htmlFor="consent-preset"
                   info="A starting set you can then adjust. Custom appears once the ticks stop matching one."
+                  docs="tokens.capabilities"
                 >
                   Template
                 </FieldLabel>
@@ -477,7 +482,7 @@ export function ConsentForm({
 /** Radix needs a value for the "matches no preset" state; it is never chosen. */
 const CUSTOM = "custom";
 
-/** One line of the summary — a label, what it currently says, and a way in. */
+/** One line of the summary - a label, what it currently says, and a way in. */
 function SummaryRow({
   label,
   children,

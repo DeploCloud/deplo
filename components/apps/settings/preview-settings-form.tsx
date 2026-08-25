@@ -89,12 +89,12 @@ export interface PreviewSettingsFormProps {
   buildDrafts: boolean;
   comment: boolean;
   requiredLabels: string[];
-  /** The app's own server — the default previews inherit. */
+  /** The app's own server - the default previews inherit. */
   appServerId: string;
-  /** The app's build port — what a preview uses when it names none. */
+  /** The app's build port - what a preview uses when it names none. */
   appPort: number;
   servers: { id: string; name: string }[];
-  /** Previews with a stack up right now — what turning the switch off destroys. */
+  /** Previews with a stack up right now - what turning the switch off destroys. */
   activeCount: number;
 }
 
@@ -128,8 +128,8 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
     setForm((f) => ({ ...f, [k]: v }));
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
-  // A nip.io host can never hold a certificate — one registered domain, one Let's
-  // Encrypt budget, shared with the whole internet — so the switch stays shut until
+  // A nip.io host can never hold a certificate - one registered domain, one Let's
+  // Encrypt budget, shared with the whole internet, so the switch stays shut until
   // there is a domain to put one on.
   const canHttps = form.baseDomain.trim() !== "";
 
@@ -185,7 +185,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
   }
 
   function toggle(v: boolean) {
-    // Turning previews off destroys the stacks that are up — the page goes away
+    // Turning previews off destroys the stacks that are up - the page goes away
     // with the switch, so anything left running would have no surface left to
     // manage it from. Say how many first. Turning them ON destroys nothing.
     if (!v && props.activeCount > 0) return setConfirmOff(true);
@@ -197,7 +197,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
 
   return (
     <div className="space-y-4">
-      {/* 1 — the one decision, alone, so it is answerable without reading on. */}
+      {/* 1 - the one decision, alone, so it is answerable without reading on. */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center justify-between gap-4">
@@ -230,10 +230,10 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
 
       {/* Everything below is inert until previews are on: `display: contents`
           keeps the layout identical, and the native fieldset disables every
-          control however deep — the same trick CapabilityFieldset uses. */}
+          control however deep - the same trick CapabilityFieldset uses. */}
       <fieldset disabled={!enabled} className="contents">
         <div className={enabled ? "space-y-4" : "space-y-4 opacity-50"}>
-          {/* 2 — what comes out: the address, the ceiling, when it rebuilds. */}
+          {/* 2 - what comes out: the address, the ceiling, when it rebuilds. */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
@@ -313,7 +313,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                 <div className="grid gap-1.5">
                   <FieldLabel
                     htmlFor="pv-port"
-                    info={`The port a preview answers on. Empty means the app's own (${props.appPort}), which is what keeps a preview faithful to production — set one only if the branch genuinely listens somewhere else.`}
+                    info={`The port a preview answers on. Empty means the app's own (${props.appPort}), which is what keeps a preview faithful to production - set one only if the branch genuinely listens somewhere else.`}
                     docs="previews.settings"
                   >
                     Port
@@ -332,7 +332,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
             </CardContent>
           </Card>
 
-          {/* 3 — the rest, folded away. Each has an answer that is right for
+          {/* 3 - the rest, folded away. Each has an answer that is right for
               almost everyone, which is exactly what earns it a fold. */}
           <Card>
             <Accordion type="single" collapsible>

@@ -20,6 +20,7 @@ import {
   passkeyError,
   passkeysSupported,
 } from "@/lib/passkey-client";
+import { DocsLink } from "@/components/ui/docs-link";
 
 const LOGIN = /* GraphQL */ `
   mutation Login($email: String!, $password: String!) {
@@ -204,7 +205,8 @@ export default function LoginPage() {
           <CardDescription>
             {useRecovery
               ? "Enter one of the recovery codes you saved when you turned this on."
-              : "Enter the 6-digit code from your authenticator app."}
+              : "Enter the 6-digit code from your authenticator app."}{" "}
+            <DocsLink topic="team.twoFactor" />
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -239,7 +241,7 @@ export default function LoginPage() {
               <OtpInput
                 value={code}
                 onChange={setCode}
-                // Six digits in, there is nothing left to decide — submitting
+                // Six digits in, there is nothing left to decide - submitting
                 // for them saves a reach for the mouse mid-login.
                 onComplete={submitCode}
                 disabled={pending}

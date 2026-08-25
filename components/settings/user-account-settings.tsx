@@ -48,7 +48,7 @@ import type { UserDetailDTO } from "@/lib/data/members";
 /* Instance-wide user editor (shared)                                  */
 /* ------------------------------------------------------------------ */
 
-/** Header/identity seed — the minimum any caller already has on hand. */
+/** Header/identity seed - the minimum any caller already has on hand. */
 export interface EditUserSeedUser {
   userId: string;
   username: string;
@@ -63,7 +63,7 @@ export interface EditUserSeedUser {
  */
 export interface EditUserSeedFlags {
   isInstanceAdmin: boolean;
-  /** Owns the instance — see the owner lock in the component body. */
+  /** Owns the instance - see the owner lock in the component body. */
   isInstanceOwner: boolean;
   suspended: boolean;
   canExposePorts: boolean;
@@ -111,7 +111,7 @@ export function UserAccountSettings({
   /** Present ⇒ a Cancel button sits beside Save (the dialog's escape hatch). */
   onCancel?: () => void;
   onSaved?: () => void;
-  /** The account is gone — the caller decides where the operator lands. */
+  /** The account is gone - the caller decides where the operator lands. */
   onDeleted?: () => void;
 }) {
   const router = useRouter();
@@ -121,7 +121,7 @@ export function UserAccountSettings({
   const [detail, setDetail] = React.useState<UserDetailDTO | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  // Staged form state — committed by "Save changes".
+  // Staged form state - committed by "Save changes".
   const [admin, setAdmin] = React.useState(seed?.isInstanceAdmin ?? false);
   const [exposePorts, setExposePorts] = React.useState(
     seed?.canExposePorts ?? false,
@@ -198,7 +198,7 @@ export function UserAccountSettings({
         setTwoFactorEnabled(res.data.twoFactorEnabled);
         setPasskeyCount(res.data.passkeyCount);
         // …but it seeds the FORM only when the caller had nothing to seed it
-        // with — never clobber a switch the admin just flipped.
+        // with, never clobber a switch the admin just flipped.
         if (!hasSeed) {
           setAdmin(res.data.isInstanceAdmin);
           setExposePorts(res.data.canExposePorts);
@@ -215,14 +215,14 @@ export function UserAccountSettings({
     };
   }, [user.userId, hasSeed]);
 
-  // Ready once the toggles are authoritative — instantly when seeded, otherwise
+  // Ready once the toggles are authoritative - instantly when seeded, otherwise
   // the moment the fetch resolves (setDetail re-renders and flips this true).
   const ready = hasSeed || detail != null;
   const createdAt = seed?.createdAt ?? detail?.createdAt ?? null;
   const teams = detail?.teams ?? null;
   const teamCount = teams?.length ?? seed?.teamCount ?? 0;
 
-  // The instance owner's account is editable only by the owner themselves — no other
+  // The instance owner's account is editable only by the owner themselves, no other
   // admin may demote, suspend, reset or delete them, because all of those are routes
   // to the same takeover (see lib/data/instance-owner.ts).
   const isOwner = seed?.isInstanceOwner ?? detail?.isInstanceOwner ?? false;
@@ -332,7 +332,7 @@ export function UserAccountSettings({
     return { ok: true as const };
   }
 
-  /** Reactivating is safe, so it applies on the spot — no confirm to sit through. */
+  /** Reactivating is safe, so it applies on the spot - no confirm to sit through. */
   function reactivate() {
     startTransition(async () => {
       const res = await commit({ suspended: false });
@@ -397,20 +397,20 @@ export function UserAccountSettings({
       <form className="grid gap-4" onSubmit={onSubmit}>
         {!ready ? (
           // `isSelf` is a prop, so the one section whose presence we can't know
-          // before the fetch is the danger zone on the instance OWNER — one
+          // before the fetch is the danger zone on the instance OWNER - one
           // account out of all of them. Everything else lines up box for box.
           <EditorSkeleton withDanger={!isSelf} />
         ) : (
           <>
             {ownerLocked && (
               <p className="rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
-                This account owns the instance. Only its owner can change it —
+                This account owns the instance. Only its owner can change it -
                 no other admin can demote, suspend, reset or delete them.
                 Ownership moves only when the owner transfers it.
               </p>
             )}
 
-            {/* Who this is — read-only, so it never competes with the
+            {/* Who this is - read-only, so it never competes with the
                 editable sections below. */}
             <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3">
               <Meta
@@ -421,7 +421,7 @@ export function UserAccountSettings({
               <Meta label="Sign-in" value={suspended ? "Blocked" : "Allowed"} />
             </div>
             {/**
-             * The chips need the fetch, but the seed already carries the COUNT — so the row
+             * The chips need the fetch, but the seed already carries the COUNT, so the row
              * that is coming is held open (and the row that isn't never appears) instead of
              * pushing the sections down a second later.
              */}
@@ -482,8 +482,8 @@ export function UserAccountSettings({
                   }
                 >
                   {ownerFlagsLocked
-                    ? "The instance owner is always an instance admin — transfer ownership first."
-                    : "You can't change your own admin status — another instance admin has to."}
+                    ? "The instance owner is always an instance admin - transfer ownership first."
+                    : "You can't change your own admin status - another instance admin has to."}
                 </p>
               )}
 
@@ -516,7 +516,7 @@ export function UserAccountSettings({
                     />
                     {admin && (
                       <p className="text-xs text-muted-foreground">
-                        On because this account is an instance admin — these two
+                        On because this account is an instance admin - these two
                         only matter once that switch is off.
                       </p>
                     )}
@@ -595,7 +595,7 @@ export function UserAccountSettings({
                 icon={AlertTriangle}
                 title="Danger zone"
                 tone="destructive"
-                info="Unlike everything above, these apply the moment you confirm them — they don't wait for Save changes."
+                info="Unlike everything above, these apply the moment you confirm them - they don't wait for Save changes."
                 docs="instance.users"
               >
                 <ActionRow
@@ -633,7 +633,7 @@ export function UserAccountSettings({
                 />
                 <ActionRow
                   title="Delete account"
-                  info="Permanently removes this person and — if you say so — what they own. There is no undo; suspending is the reversible answer."
+                  info="Permanently removes this person and, if you say so, what they own. There is no undo; suspending is the reversible answer."
                   docs="instance.users"
                   action={
                     <Button
@@ -671,7 +671,7 @@ export function UserAccountSettings({
           >
             {/* While the save runs a spinner stands in for the label, which
                 stays mounted (just hidden) so the button keeps its width and
-                the footer doesn't jump — the ConfirmAction idiom. */}
+                the footer doesn't jump - the ConfirmAction idiom. */}
             <span className="grid place-items-center">
               <span
                 className={cn(
@@ -696,7 +696,7 @@ export function UserAccountSettings({
         open={confirmSuspend}
         onOpenChange={setConfirmSuspend}
         title={`Suspend @${user.username}?`}
-        description="They are signed out immediately and can't sign back in until you reactivate them. Team memberships, apps and everything they own are kept — nothing is deleted."
+        description="They are signed out immediately and can't sign back in until you reactivate them. Team memberships, apps and everything they own are kept, nothing is deleted."
         confirmLabel="Suspend account"
         successMessage="Account suspended"
         onConfirm={async () => {
@@ -712,7 +712,7 @@ export function UserAccountSettings({
         open={confirmResetTwoFactor}
         onOpenChange={setConfirmResetTwoFactor}
         title={`Reset two-factor for @${user.username}?`}
-        description="Their next sign-in asks for the password only, and their old authenticator entry and recovery codes stop working. Do this when they have lost the phone AND the codes — check it is really them asking."
+        description="Their next sign-in asks for the password only, and their old authenticator entry and recovery codes stop working. Do this when they have lost the phone AND the codes - check it is really them asking."
         confirmLabel="Reset two-factor"
         variant="default"
         successMessage="Two-factor reset"
@@ -740,7 +740,7 @@ export function UserAccountSettings({
           username={user.username}
           open={confirmDelete}
           onOpenChange={setConfirmDelete}
-          // The account this editor points at no longer exists — the caller
+          // The account this editor points at no longer exists - the caller
           // takes it from here (close the dialog, leave the page).
           onDeleted={() => onDeleted?.()}
         />
@@ -831,7 +831,7 @@ function EditorSkeleton({ withDanger }: { withDanger: boolean }) {
   );
 }
 
-/** A {@link Section}-shaped placeholder — same shell, same inner spacing. */
+/** A {@link Section}-shaped placeholder - same shell, same inner spacing. */
 function SkeletonSection({
   tone = "default",
   children,
@@ -847,7 +847,7 @@ function SkeletonSection({
   );
 }
 
-/** One {@link Row}-shaped placeholder — same shell, same control heights. */
+/** One {@link Row}-shaped placeholder - same shell, same control heights. */
 function SkeletonRow({ button }: { button?: boolean }) {
   return (
     <div className={ROW_SHELL}>
@@ -862,7 +862,7 @@ function SkeletonRow({ button }: { button?: boolean }) {
 /**
  * A bar sitting in a box the height of the text line it replaces. Without the box
  * the placeholder would be its own (shorter) height and every section would come
- * up a few pixels short — which is the jump this whole component exists to remove.
+ * up a few pixels short, which is the jump this whole component exists to remove.
  */
 function TextLine({ box, bar }: { box: string; bar: string }) {
   return (
@@ -986,7 +986,7 @@ function ToggleRow({
       docs={docs}
       control={
         // The title is a <p>, not a <label>, so the switch carries the name
-        // itself — otherwise it announces as a bare "switch, off".
+        // itself, otherwise it announces as a bare "switch, off".
         <Switch
           aria-label={title}
           checked={checked}
@@ -998,7 +998,7 @@ function ToggleRow({
   );
 }
 
-/** A row whose control fires straight away — the danger zone's shape. */
+/** A row whose control fires straight away - the danger zone's shape. */
 function ActionRow({
   title,
   info,

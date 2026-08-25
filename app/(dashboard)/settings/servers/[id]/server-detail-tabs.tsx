@@ -82,7 +82,7 @@ export type ServerSummary = {
   provisioning: boolean;
   /** null when the agent has never reported one. */
   agentVersion: string | null;
-  /** The version "Update agent" would install — the latest agent release. */
+  /** The version "Update agent" would install - the latest agent release. */
   expectedAgentVersion: string;
   /** Whether to offer the update at all. Computed server-side (lib/version.ts is
    *  server-only), and true when the reported version is unknown or unparseable

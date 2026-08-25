@@ -85,7 +85,7 @@ export function BuildMethodFields({
   onMethodChange: (m: BuildMethod) => void;
   onSettingsChange: (patch: Partial<BuildMethodSettings>) => void;
   /**
-   * The framework in force — the user's correction if they made one, else what the
+   * The framework in force - the user's correction if they made one, else what the
    * last deploy read.
    */
   framework?: string | null;
@@ -167,7 +167,7 @@ function MethodCard({
           {meta.blurb}
         </span>
       </span>
-      {/* Radio dot — the unambiguous "this one is selected" cue. */}
+      {/* Radio dot - the unambiguous "this one is selected" cue. */}
       <span
         aria-hidden
         className={cn(
@@ -273,7 +273,7 @@ function MethodSettings({
             placeholder="(auto)"
             value={settings.nixpacksPublishDirectory ?? ""}
             onChange={(v) => onSettingsChange({ nixpacksPublishDirectory: v })}
-            help="After the build finishes, serve just this directory as a static site through NGINX — handy when your build emits static assets to publish. Leave blank to run the app normally."
+            help="After the build finishes, serve just this directory as a static site through NGINX - handy when your build emits static assets to publish. Leave blank to run the app normally."
           />
         </div>
       )}
@@ -300,10 +300,10 @@ function MethodSettings({
   );
 }
 
-/** The Select's stand-in for "no override" — Radix cannot hold an empty value. */
+/** The Select's stand-in for "no override" - Radix cannot hold an empty value. */
 const AUTO = "__auto";
 
-/** The frameworks a user picks from, by display name — a picker is searched
+/** The frameworks a user picks from, by display name - a picker is searched
  * alphabetically, unlike the catalog's detection-priority order. */
 const FRAMEWORK_CHOICES = [...FRAMEWORKS].sort((a, b) =>
   a.name.localeCompare(b.name),
@@ -331,7 +331,7 @@ function FrameworkField({
         info={
           <>
             deplo reads your source on every deploy and names the framework
-            itself. Change it only when it got that wrong — the pick sticks
+            itself. Change it only when it got that wrong - the pick sticks
             through later deploys and sets the container port that
             framework&apos;s server binds.
           </>
@@ -384,12 +384,12 @@ function FrameworkField({
         {overridden ? (
           detectedDef ? (
             <>
-              Your choice, kept through every deploy — deplo detected{" "}
+              Your choice, kept through every deploy - deplo detected{" "}
               {detectedDef.name}.
             </>
           ) : (
             <>
-              Your choice, kept through every deploy — deplo didn&apos;t
+              Your choice, kept through every deploy - deplo didn&apos;t
               recognise a framework.
             </>
           )
@@ -400,7 +400,7 @@ function FrameworkField({
           </>
         ) : (
           <>
-            Nothing recognised yet. Pick one if you already know — otherwise the
+            Nothing recognised yet. Pick one if you already know, otherwise the
             next deploy names it.
           </>
         )}

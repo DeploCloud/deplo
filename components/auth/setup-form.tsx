@@ -17,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DocsLink } from "@/components/ui/docs-link";
 
 const COMPLETE_SETUP = /* GraphQL */ `
   mutation CompleteSetup(
@@ -74,7 +75,7 @@ export function SetupForm() {
         <CardTitle className="text-xl lg:text-xl">Welcome to Deplo</CardTitle>
         <CardDescription>
           Create your workspace and admin account. This runs once, on first
-          launch.
+          launch. <DocsLink topic="install.overview" />
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -102,6 +103,7 @@ export function SetupForm() {
             <FieldLabel
               htmlFor="username"
               info="Your public handle. Lowercase letters, numbers, - and _."
+              docs="install.overview"
             >
               Username
             </FieldLabel>

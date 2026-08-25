@@ -105,7 +105,7 @@ export function ShareFolderDialog({
   const [picked, setPicked] = React.useState<ShareCandidate | null>(null);
   const [caps, setCaps] = React.useState<Set<Capability>>(() => new Set());
 
-  // The grantable set, ordered canonically and with `view` dropped — that one is
+  // The grantable set, ordered canonically and with `view` dropped - that one is
   // always implied by the server, so it's never a togglable box here.
   const togglableCaps = React.useMemo(
     () =>
@@ -180,7 +180,7 @@ export function ShareFolderDialog({
 
   function pickCandidate(c: ShareCandidate) {
     setPicked(c);
-    // Seed with every grantable cap ticked — sharing a folder usually means
+    // Seed with every grantable cap ticked - sharing a folder usually means
     // "give them the same access I have"; the granter can trim before saving.
     setCaps(new Set(togglableCaps));
   }
@@ -196,7 +196,7 @@ export function ShareFolderDialog({
 
   // Enter submits the step the dialog is actually on: `save` no-ops until a
   // candidate is picked, so Enter in the search field just stays put (the
-  // candidate buttons handle their own Enter natively — they're type="button").
+  // candidate buttons handle their own Enter natively - they're type="button").
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     save();
@@ -360,7 +360,7 @@ export function ShareFolderDialog({
                       {g.isOwner ? "Full access" : capSummary(g.capabilities)}
                     </p>
                   </div>
-                  {/* The owner row can't be revoked — ownership isn't a grant. */}
+                  {/* The owner row can't be revoked - ownership isn't a grant. */}
                   {!g.isOwner && (
                     <Button
                       variant="ghost"
@@ -481,7 +481,7 @@ export function ShareFolderDialog({
                   >
                     What can they do?
                   </FieldLabel>
-                  {/* `view` is implied, always on — shown as a fixed, disabled row
+                  {/* `view` is implied, always on - shown as a fixed, disabled row
                       rather than a togglable box. */}
                   <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
                     <input

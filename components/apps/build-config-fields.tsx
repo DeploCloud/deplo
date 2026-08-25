@@ -61,7 +61,7 @@ export function BuildConfigFields({
   }
 
   /** Leaving the field drops the draft, so the box shows the committed port
-   * again — which is what restores it after it was emptied or left invalid. */
+   * again, which is what restores it after it was emptied or left invalid. */
   function onPortBlur() {
     setPortDraft(null);
   }

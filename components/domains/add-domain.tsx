@@ -33,7 +33,7 @@ export interface AddDomainApp {
   id: string;
   name: string;
   compose?: string | null;
-  /** The app's default container port (build.port) — seeds the port field. */
+  /** The app's default container port (build.port) - seeds the port field. */
   defaultPort?: number;
 }
 
@@ -47,7 +47,7 @@ export interface AddDomainProps {
 
 /** App names declared in a compose file, parsed in the browser (js-yaml is
  * a client-safe dep, also used by the compose linter). Returns [] for a missing
- * or malformed compose — the dialog then shows no service selector. */
+ * or malformed compose - the dialog then shows no service selector. */
 function composeServices(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
   try {
@@ -138,11 +138,11 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
         onSuccess: (data) => {
           // DNS was checked as part of the add, so the toast reports the real outcome: a
           // pre-pointed host is already live; an unpointed one is watched automatically from
-          // the domains page — never a generic "now go verify" chore.
+          // the domains page, never a generic "now go verify" chore.
           const status = data?.addDomain.status;
           if (status === "valid")
             toast.success(
-              "Domain added — DNS already points here, routing is live",
+              "Domain added - DNS already points here, routing is live",
             );
           else if (status === "cloudflare")
             toast.success(
@@ -150,11 +150,11 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
             );
           else if (status === "misconfigured")
             toast.warning(
-              "Domain added, but its DNS points at another address — see the hint on its row",
+              "Domain added, but its DNS points at another address - see the hint on its row",
             );
           else
             toast.success(
-              "Domain added — point its DNS at the server and it verifies automatically",
+              "Domain added - point its DNS at the server and it verifies automatically",
             );
         },
         onError: () => {
@@ -193,7 +193,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
           <DialogDescription>
             Point a custom domain at{" "}
             <span className="font-medium">{project.name}</span>. Deplo checks
-            its DNS as you add it — a domain already proxied through Cloudflare
+            its DNS as you add it - a domain already proxied through Cloudflare
             is set up for HTTPS on its own.
           </DialogDescription>
         </DialogHeader>
@@ -215,6 +215,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
                       "The custom hostname to route to this app, e.g. app.example.com. Add its DNS record afterward to verify."
                     )
                   }
+                  docs="domains.noDomainYet"
                 >
                   Domain
                 </FieldLabel>

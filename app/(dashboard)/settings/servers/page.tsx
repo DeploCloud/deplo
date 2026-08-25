@@ -90,7 +90,7 @@ function Spec({
 async function SpecTiles({ specs }: { specs: Promise<Server> }) {
   const server = await specs;
   // Specs are stored capacity (persisted from the agent); 0 means not-yet-measured
-  // or unprovisioned — show an em dash rather than a misleading "0".
+  // or unprovisioned - show an em dash rather than a misleading "0".
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
   const num = (n: number) => (n > 0 ? String(n) : "—");
   return (
@@ -185,7 +185,7 @@ function ServerCard({
               title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
             >
               {/* The Deplo mark itself (currentColor, so it takes the badge's
-                  primary-foreground) — this IS the control-plane host, so brand it. */}
+                  primary-foreground) - this IS the control-plane host, so brand it. */}
               <DeploMark size={12} className="text-current" />
               Deplo host
             </Badge>
@@ -277,7 +277,7 @@ function ServerCard({
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
           <span className="font-mono text-muted-foreground">{server.ip}</span>
-          {/* Reads the SAME live observation as the health chip above — a stored
+          {/* Reads the SAME live observation as the health chip above - a stored
               traefikEnabled rendered on its own would keep claiming "on" for a host
               that has been offline for weeks. */}
           <ServerTraefikBadge
@@ -327,7 +327,7 @@ export default async function ServersPage(
   props: PageProps<"/settings/servers">,
 ) {
   // Server administration is an instance-wide concern, and the management view
-  // lists EVERY server (including ones restricted to other teams) — so it is
+  // lists EVERY server (including ones restricted to other teams), so it is
   // instance-admin-only, not the per-team manage_infra capability. Members reach
   // servers only through the team-scoped deploy pickers, never this page.
   if (!(await isInstanceAdmin())) notFound();
@@ -342,7 +342,7 @@ export default async function ServersPage(
     listAllServers(),
     listAllServerTeamIds(),
     // The team list feeds the per-server "Team access" editor. Read it via the
-    // instance-admin variant so it matches this page's admin-only gate — the
+    // instance-admin variant so it matches this page's admin-only gate - the
     // manage_infra-scoped listAllTeams would reject an admin who isn't a
     // manage_infra member of their active team.
     listAllTeamsForAdmin(),
@@ -368,7 +368,7 @@ export default async function ServersPage(
       : measured.then((m) => m.get(server.id) ?? server);
   const teams: TeamOption[] = teamsRaw.map((t) => ({ id: t.id, name: t.name }));
 
-  // Which server (if any) is the host running Deplo itself — computed once, then
+  // Which server (if any) is the host running Deplo itself - computed once, then
   // used both to pull it to the front and to badge its card. Sorting it first makes
   // the "this is the control-plane box" signal impossible to miss without reordering
   // the interchangeable remotes among themselves (they keep their creation order).
@@ -389,7 +389,7 @@ export default async function ServersPage(
   // The LAST OBSERVED health of each server, handed to the client so the cards paint
   // immediately. It is a seed, not the answer: <ServerHealthProvider> re-probes every
   // agent on mount, and the chip refuses to paint any of this once it is stale. The
-  // probe deliberately does NOT run here — dialing every agent inside the render would
+  // probe deliberately does NOT run here - dialing every agent inside the render would
   // make the one page an operator opens *because* a host is broken as slow as that
   // broken host, on every single load.
   // Straight from the stored rows: the in-render measurement is not folded in
@@ -411,7 +411,7 @@ export default async function ServersPage(
   return (
     <ServerHealthProvider seed={healthSeed}>
       <div className="space-y-6">
-        {/* The install flow is explained ONCE, in the title's InfoTip — it used to live on
+        {/* The install flow is explained ONCE, in the title's InfoTip - it used to live on
             the "Add a server" card, which is gone now that Add is a header action. It stays
             on the page (not inside the dialog) so an operator can read it before they click. */}
         <PageHeader
@@ -425,7 +425,7 @@ export default async function ServersPage(
                     Start with <strong>this host</strong>: add it (use its IP),
                     then run the one-time install command it gives you on the
                     box to install the agent. Add more Linux hosts the same way.
-                    The agent calls home and provisions itself — Deplo never
+                    The agent calls home and provisions itself - Deplo never
                     needs SSH access to your servers.
                   </>
                 }
@@ -471,9 +471,7 @@ export default async function ServersPage(
               Migration sources
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Only used to import from another platform. Nothing is deployed
-              here, and Deplo removes its agent when the migration is done -
-              these are the ones it has not managed to yet.
+              Only used to import from another platform.
             </p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               {migrationSources.map((server) => (

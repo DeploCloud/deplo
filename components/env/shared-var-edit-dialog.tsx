@@ -26,7 +26,7 @@ import type { SharedVarDTO } from "@/lib/data/shared-vars";
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 /**
- * Edit ONE shared variable's value — not who gets it. `targets` is omitted for the
+ * Edit ONE shared variable's value, not who gets it. `targets` is omitted for the
  * same reason: an edit must never widen the deploy runtimes a legacy variable
  * reaches.
  */
@@ -44,7 +44,7 @@ interface SharedVarEditDialogProps {
   onChangeSharing?: () => void;
   /**
    * Opened from a single app's table, where the variable is one row among the
-   * app's own — surface that this edit is NOT local (it lands on every app the
+   * app's own - surface that this edit is NOT local (it lands on every app the
    * variable reaches).
    */
   warnShared?: boolean;
@@ -88,7 +88,7 @@ function SharedVarEditForm({
             teamWide: editing.teamWide,
             environmentIds: editing.environmentIds,
             projectIds: editing.projectIds,
-            // `appIds` is deliberately ABSENT — see the doc comment above.
+            // `appIds` is deliberately ABSENT - see the doc comment above.
           },
         },
       );
@@ -126,7 +126,10 @@ function SharedVarEditForm({
               </div>
             )}
             <div className="space-y-2">
-              <FieldLabel info="The variable's name, exposed to every app it reaches. Renaming it takes effect on their next deploy.">
+              <FieldLabel
+                info="The variable's name, exposed to every app it reaches. Renaming it takes effect on their next deploy."
+                docs="env.shared"
+              >
                 Key
               </FieldLabel>
               <Input
@@ -155,11 +158,12 @@ function SharedVarEditForm({
                     ? "This value is a secret, so it is only ever shown masked. Leave the mask as it is to keep the stored value; type over it to replace it."
                     : "The value every app this variable reaches receives during builds and at runtime."
                 }
+                docs="env.types"
               >
                 Value
               </FieldLabel>
               {/* The key is disabled, so the value is the first thing to put the
-                  caret in — and it keeps the Dialog's initial focus off the info
+                  caret in, and it keeps the Dialog's initial focus off the info
                   button next to the Key label. */}
               <Textarea
                 value={value}

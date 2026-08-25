@@ -9,11 +9,11 @@ import { dstSkipWarning } from "@/lib/crons/cron-tz";
 import { SCHEDULE_OPTIONS, partsFromCron } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
-/** What a schedule keeps when the field is left empty — the server's own default. */
+/** What a schedule keeps when the field is left empty - the server's own default. */
 export const DEFAULT_RETENTION = 7;
 
 /**
- * A name nobody has to invent — "Backup every day", from the frequency itself.
+ * A name nobody has to invent - "Backup every day", from the frequency itself.
  */
 export function suggestScheduleName(cron: string): string {
   const mode = partsFromCron(cron)?.mode;

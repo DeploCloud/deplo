@@ -50,7 +50,7 @@ type LinkableSharedVar = Omit<AppSharedVarDTO, "value">;
 
 /**
  * Add/edit an app's environment variable. Editing shows a single form; adding
- * shows two tabs — "Standalone" (a multi-row editor that also accepts a pasted
+ * shows two tabs - "Standalone" (a multi-row editor that also accepts a pasted
  * `.env`) and "Shared" (link existing shared variables to this app).
  */
 export function EnvVarDialog({
@@ -107,7 +107,7 @@ function EditForm({
 }) {
   // Only a PLAIN var reaches this form (a secret is write-only and frozen), so
   // the value prefills with the real thing. The Secret switch below still
-  // promotes one — hardening is the one type change that stays open.
+  // promotes one - hardening is the one type change that stays open.
   const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
@@ -127,7 +127,7 @@ function EditForm({
     // Closes on the click; a rename that clashes reopens it on what was typed.
     onOpenChange(false);
     startTransition(async () => {
-      // A rename moves the row to its new key FIRST — it's keyed by id, so it can't clash
+      // A rename moves the row to its new key FIRST - it's keyed by id, so it can't clash
       // with the value upsert below (which finds the row by (appId, key), and by then the
       // row already lives at the new key).
       if (renamed) {
@@ -143,8 +143,8 @@ function EditForm({
           return;
         }
       }
-      // No `targets`: an App has no Environment of its own — it inherits exactly
-      // one from its Project — so the server defaults every variable to every runtime.
+      // No `targets`: an App has no Environment of its own - it inherits exactly
+      // one from its Project, so the server defaults every variable to every runtime.
       const res = await gqlAction<{ upsertEnv: { id: string } }>(
         `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
         {
@@ -177,7 +177,10 @@ function EditForm({
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="space-y-4">
             <div className="space-y-2">
-              <FieldLabel info="The variable's name, exposed to your app during builds and at runtime. Renaming it takes effect on the next deploy.">
+              <FieldLabel
+                info="The variable's name, exposed to your app during builds and at runtime. Renaming it takes effect on the next deploy."
+                docs="env.overview"
+              >
                 Key
               </FieldLabel>
               <Input
@@ -202,7 +205,7 @@ function EditForm({
             <div className="space-y-2">
               <Label>Value</Label>
               {/* Focus lands on the value, not the key: an edit far more often
-                  changes the value than renames — and it keeps the Dialog's initial
+                  changes the value than renames, and it keeps the Dialog's initial
                   focus off the info button next to the Key label. */}
               <Textarea
                 value={value}
@@ -242,7 +245,7 @@ type AddTab = (typeof ADD_TABS)[number];
 
 /**
  * Standalone + Shared, as two panels on ONE horizontal track that slides between
- * them when you switch tab — and the modal's height eases to whichever panel is
+ * them when you switch tab, and the modal's height eases to whichever panel is
  * showing, so the slide glides instead of jumping.
  */
 function AddDialog({
@@ -322,8 +325,8 @@ function AddDialog({
           onValueChange={(v) => setTab(v as AddTab)}
           className="flex min-h-0 flex-col"
         >
-          {/* A segmented control on a track — the same shape the app wears
-              elsewhere — so the idle half still reads as a place you can go. */}
+          {/* A segmented control on a track - the same shape the app wears
+              elsewhere, so the idle half still reads as a place you can go. */}
           <div className="border-b border-border px-6 pb-4">
             <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-secondary/40 p-1">
               <TabsTrigger
@@ -391,7 +394,7 @@ function AddDialog({
 
 /** The three columns every row of the key/value editor lines up on. */
 /** Each panel's scrolling body caps here so its footer stays on screen and the
- *  whole modal stays inside its 85vh box — the chrome (header + tabs + footer) is
+ *  whole modal stays inside its 85vh box - the chrome (header + tabs + footer) is
  *  ~14rem, so the body gets the rest. */
 const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
 
@@ -420,8 +423,8 @@ function StandaloneTab({
     // afterwards.
     onDone();
     void (async () => {
-      // No `targets` on either path: an App has no Environment of its own — it
-      // inherits exactly one from its Project — so the server defaults every
+      // No `targets` on either path: an App has no Environment of its own - it
+      // inherits exactly one from its Project, so the server defaults every
       // variable to every runtime.
       if (filled.length === 1) {
         const res = await gqlAction<{ upsertEnv: { id: string } }>(
@@ -470,7 +473,7 @@ function StandaloneTab({
 
   return (
     <form onSubmit={onSubmit}>
-      {/* The body — the only thing that scrolls. */}
+      {/* The body - the only thing that scrolls. */}
       <div
         className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
       >
@@ -480,7 +483,7 @@ function StandaloneTab({
           <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
             <Info className="mt-px size-3.5 shrink-0" />
             <span>
-              Pasted variables are added as plain — flip individual ones to
+              Pasted variables are added as plain - flip individual ones to
               secret from the table.
             </span>
           </p>
@@ -529,7 +532,7 @@ function SharedTab({
   );
   const [query, setQuery] = React.useState("");
 
-  // Lazy-fetch when the caller didn't pass the in-scope set (aggregate view) —
+  // Lazy-fetch when the caller didn't pass the in-scope set (aggregate view),
   // but not before this tab is opened, so a dialog left on Standalone never
   // queries for shared vars it won't show.
   React.useEffect(() => {
@@ -552,7 +555,7 @@ function SharedTab({
   }, [appId, vars, active]);
 
   const q = query.trim().toLowerCase();
-  // Case-insensitive substring match on the key — the only thing a row shows and
+  // Case-insensitive substring match on the key - the only thing a row shows and
   // the only thing you'd search a variable by.
   const filtered = vars?.filter((v) => v.key.toLowerCase().includes(q)) ?? null;
 
@@ -605,7 +608,7 @@ function SharedTab({
         )}
       </div>
 
-      {/* Each toggle already saved itself — Done just closes, it doesn't commit. */}
+      {/* Each toggle already saved itself - Done just closes, it doesn't commit. */}
       <DialogFooter className="border-t border-border px-6 py-4 sm:justify-between">
         <Button variant="outline" asChild>
           <Link href="/variables?tab=shared">
@@ -619,7 +622,7 @@ function SharedTab({
   );
 }
 
-/** Why a not-yet-added variable is suggested here — its availability scope. */
+/** Why a not-yet-added variable is suggested here - its availability scope. */
 const SCOPE_HINT: Record<string, string> = {
   teamWide: "Shared with the whole team",
   project: "Shared with this app's project",

@@ -275,7 +275,7 @@ export function BackupRow({
           />
         )}
         {/* key on `editOpen` so each open remounts the dialog with fresh state
-            seeded from the current schedule — no reset effect needed. */}
+            seeded from the current schedule, no reset effect needed. */}
         <EditBackupDialog
           key={editOpen ? "edit-open" : "edit-closed"}
           backup={backup}

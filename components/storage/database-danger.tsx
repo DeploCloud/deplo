@@ -18,9 +18,9 @@ import type { DatabaseDTO } from "@/lib/data/databases";
 import { DocsLink } from "@/components/ui/docs-link";
 
 /**
- * The database's Danger Zone — two destructive actions, each behind a typed
+ * The database's Danger Zone - two destructive actions, each behind a typed
  * confirmation: - Rebuild: wipe the data volume and re-provision a fresh, empty
- * database from the current settings (same engine/version/credentials — the
+ * database from the current settings (same engine/version/credentials - the
  * connection string keeps working).
  */
 export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
@@ -44,7 +44,7 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
             <p className="text-sm font-medium">Rebuild database</p>
             <p className="text-sm text-muted-foreground">
               Wipe the data volume and provision a fresh, empty database from
-              the current settings — same engine, version and credentials, so
+              the current settings - same engine, version and credentials, so
               the connection string keeps working. All data is erased; restore a
               backup afterwards to bring data back.
             </p>

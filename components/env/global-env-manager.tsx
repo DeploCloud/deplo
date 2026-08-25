@@ -48,7 +48,7 @@ import type { GlobalEnvScope, GlobalEnvVarDTO } from "@/lib/types";
 // an operator flip a secret to plain, or re-save it, without re-entering it.
 const MASK = "••••••••••••";
 
-// GraphQL mutation field names per scope. The `team` scope is GONE — team-global
+// GraphQL mutation field names per scope. The `team` scope is GONE - team-global
 // vars became team-wide SHARED vars (ADR-0010) and their mutations were deleted
 // from the schema; leaving a dead `team` branch here would 500 at runtime.
 const MUTATIONS: Record<
@@ -64,7 +64,7 @@ const MUTATIONS: Record<
 
 /**
  * Manage INSTANCE-wide global variables (every app of every team, admin-only). A
- * flat key/value table with add/edit/delete — no per-app attachment, because a
+ * flat key/value table with add/edit/delete - no per-app attachment, because a
  * global applies to every app automatically.
  */
 export function GlobalEnvManager({
@@ -81,7 +81,7 @@ export function GlobalEnvManager({
   const m = MUTATIONS[scope];
 
   // A deleted variable leaves the table on the click, instead of waiting out the
-  // mutation and then the `router.refresh()` behind it — the window in which a
+  // mutation and then the `router.refresh()` behind it - the window in which a
   // second click on the same row earned a "Not found".
   const {
     visible: rows,
@@ -266,7 +266,7 @@ function GlobalEnvDialog({
   const [key, setKey] = React.useState(editing?.key ?? "");
   // A secret's value is never sent to the client; prefill the MASK sentinel when
   // editing a secret so the operator can re-save it without re-entering it (the
-  // upsert keeps the stored value when it sees the unchanged MASK) — or overwrite it
+  // upsert keeps the stored value when it sees the unchanged MASK), or overwrite it
   const [value, setValue] = React.useState(
     editing ? (editing.masked ? MASK : editing.value) : "",
   );
@@ -320,6 +320,7 @@ function GlobalEnvDialog({
                     can&apos;t be renamed after the variable is created.
                   </>
                 }
+                docs="env.instanceWide"
               >
                 Key
               </FieldLabel>
@@ -343,6 +344,7 @@ function GlobalEnvDialog({
                     ? "Leave the mask to keep the current secret; type to replace it."
                     : undefined
                 }
+                docs="env.types"
               >
                 Value
               </FieldLabel>

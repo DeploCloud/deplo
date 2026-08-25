@@ -27,7 +27,7 @@ import { gqlAction } from "@/lib/graphql-client";
 /**
  * Kicks off GitHub's App Manifest flow: asks the server for a manifest + signed
  * state, then POSTs them to GitHub via a transient form so the browser navigates
- * to GitHub to create (and then install) the App — no manual id/key copy/paste,
+ * to GitHub to create (and then install) the App - no manual id/key copy/paste,
  */
 export function useGithubConnect() {
   const [pending, startTransition] = React.useTransition();

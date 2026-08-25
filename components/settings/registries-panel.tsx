@@ -89,7 +89,7 @@ function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
   const router = useRouter();
   const [addOpen, setAddOpen] = React.useState(false);
   // Bumped after a successful add so the next open starts from blank fields
-  // without an effect — the dialog stays MOUNTED while its creation is in
+  // without an effect - the dialog stays MOUNTED while its creation is in
   // flight, which is what lets a refusal put back what was typed.
   const [addKey, setAddKey] = React.useState(0);
   const [deleting, setDeleting] = React.useState<RegistryDTO | null>(null);

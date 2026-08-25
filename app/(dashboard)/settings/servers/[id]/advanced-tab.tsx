@@ -104,7 +104,7 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
     setLoading(false);
     if (!res.ok) {
       // Includes "the agent on this server is too old for host management",
-      // which is the actionable one — surfaced verbatim, not reworded.
+      // which is the actionable one - surfaced verbatim, not reworded.
       setError(res.error);
       setReading(null);
       return;
@@ -114,7 +114,7 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
   }, [server.id]);
 
   React.useEffect(() => {
-    // Opening the tab IS the read — it synchronises with an external system (the
+    // Opening the tab IS the read - it synchronises with an external system (the
     // owning server's agent) and `load` manages its own state. Same shape, and
     // the same scoped exemption, as the readiness dialog's probe-on-open.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -183,7 +183,7 @@ function HostDetails({
       <CardContent>
         {loading && !info ? (
           <div className="space-y-2">
-            {/* A skeleton, not a spinner — the shape of what is coming. */}
+            {/* A skeleton, not a spinner - the shape of what is coming. */}
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-8 animate-pulse rounded bg-muted/50" />
             ))}
@@ -261,7 +261,7 @@ function ServerClock({
   const [zone, setZone] = React.useState("");
   const info = reading?.info ?? null;
 
-  // `nowMs` is written only by the interval below — never during render, and never
+  // `nowMs` is written only by the interval below, never during render, and never
   // from an effect body.
   const [nowMs, setNowMs] = React.useState(0);
 
@@ -457,7 +457,7 @@ function partsIn(
   return shifted.toLocaleString("en-GB", { timeZone: "UTC", ...opts });
 }
 
-/** "+01:00" / "-03:30" — minutes, because Kathmandu is +05:45. */
+/** "+01:00" / "-03:30" - minutes, because Kathmandu is +05:45. */
 function formatOffset(minutes: number): string {
   const sign = minutes < 0 ? "-" : "+";
   const abs = Math.abs(minutes);
@@ -522,14 +522,14 @@ function TraefikPanel({
   }
 
   // A password is required to publish, but an EDIT that only moves the domain
-  // reuses the stored one — asking for it again would be a reason not to bother.
+  // reuses the stored one - asking for it again would be a reason not to bother.
   const complete =
     domain.trim() !== "" &&
     username.trim() !== "" &&
     (password !== "" || published !== null);
   // What Apply would actually change. Without this the button is armed on a host
-  // with no panel, reading "Turn off panel" and recreating Traefik — every site
-  // here blipping — to turn off something that was never on.
+  // with no panel, reading "Turn off panel" and recreating Traefik - every site
+  // here blipping - to turn off something that was never on.
   const changes = enabled
     ? domain.trim().toLowerCase() !== (published ?? "") ||
       username.trim() !== (server.traefikDashboard?.username ?? "") ||
@@ -636,7 +636,7 @@ function TraefikPanel({
                 </div>
               ) : null}
 
-              {/* Our record and the host disagree — said out loud, because the
+              {/* Our record and the host disagree - said out loud, because the
                   only way here is someone having reconfigured the proxy on the
                   box. Nothing is repaired silently, and the host is believed. */}
               {info && !applied && recorded && recorded !== published ? (
@@ -1109,7 +1109,7 @@ function DangerZone({ server }: { server: ServerSummary }) {
       }
       if (!res.data) return;
       setConfirm(false);
-      toast.success(`${server.name} removed — now clean up the host`);
+      toast.success(`${server.name} removed - now clean up the host`);
       if (res.data.removeServer.warning)
         toast.warning(res.data.removeServer.warning);
       setUninstall(res.data.removeServer.uninstallCommand);
@@ -1132,13 +1132,13 @@ function DangerZone({ server }: { server: ServerSummary }) {
               <div className="text-sm font-medium">Remove this server</div>
               <p className="mt-1 text-sm text-muted-foreground">
                 {server.isDeploHost
-                  ? "This server runs Deplo itself, so it cannot be removed — doing so would cut this dashboard off from its own server."
+                  ? "This server runs Deplo itself, so it cannot be removed - doing so would cut this dashboard off from its own server."
                   : "Deplo stops trusting this server and forgets it. Nothing on the host is uninstalled; you get the command for that."}
               </p>
             </div>
             {/* Disabled rather than hidden on the Deplo host: an operator looking
                 for this needs to know it exists and why it is refused. The data
-                layer refuses it too — this is the explanation, not the guard. */}
+                layer refuses it too - this is the explanation, not the guard. */}
             <SimpleTooltip
               content={
                 server.isDeploHost
@@ -1168,11 +1168,11 @@ function DangerZone({ server }: { server: ServerSummary }) {
             <DialogTitle>Remove {server.name}?</DialogTitle>
             <DialogDescription>
               This revokes the agent&rsquo;s trust and forgets the server.{" "}
-              <strong>It does not uninstall anything on the host</strong> — the
+              <strong>It does not uninstall anything on the host</strong> - the
               Deplo agent, Traefik on :80/:443 and the <code>deplo</code>{" "}
               network all keep running there. We&rsquo;ll give you the command
               to remove them as soon as it&rsquo;s gone. You can&rsquo;t remove
-              a server while apps or databases still live on it — move or delete
+              a server while apps or databases still live on it - move or delete
               those first.
             </DialogDescription>
           </DialogHeader>
@@ -1224,7 +1224,7 @@ function DangerZone({ server }: { server: ServerSummary }) {
               Traefik&rsquo;s issued TLS certs), the <code>deplo-traefik</code>{" "}
               container and the <code>deplo</code> Docker network. It leaves
               Docker itself alone, and it does <strong>not</strong> delete your
-              data — app and database volumes, built images and{" "}
+              data - app and database volumes, built images and{" "}
               <code>/data</code> survive. Add <code>--purge-data</code> to
               delete those too; that is irreversible.
             </p>

@@ -52,7 +52,7 @@ function installationSettingsUrl(inst: GithubInstallationDTO): string {
 
 /**
  * How an installation reads in the switcher: the connected GitHub App's name first
- * (that's what decides which repositories are reachable — the same account can
+ * (that's what decides which repositories are reachable - the same account can
  * host several Apps with different access), with the account it is installed on as
  */
 function InstallationLabel({ inst }: { inst: GithubInstallationDTO }) {
@@ -153,7 +153,7 @@ export function GithubRepoPicker({
 
   return (
     <div className="space-y-3">
-      {/* Connected App — always rendered so the layout is stable and there's
+      {/* Connected App, always rendered so the layout is stable and there's
           always a path to switch, connect, or manage Apps, even with none
           connected. */}
       <div className="space-y-1.5">

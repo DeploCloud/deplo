@@ -108,7 +108,7 @@ export function AddServer({
       }
       if (!res.data) return;
       toast.success(
-        `${name || host} registered — run the install command on it`,
+        `${name || host} registered - run the install command on it`,
       );
       setCommand(res.data.addServer.installCommand);
       router.refresh();
@@ -138,11 +138,11 @@ export function AddServer({
           <DialogDescription>
             {command
               ? role === "storage"
-                ? "Run this once on the server. It installs the Deplo agent only — no Docker, no proxy — and the agent then calls home to finish provisioning."
+                ? "Run this once on the server. It installs the Deplo agent only (no Docker, no proxy), and the agent then calls home to finish provisioning."
                 : role === "build"
                   ? "Run this once on the server. It installs Docker (if needed) and the Deplo agent, but no proxy, and the agent then calls home to finish provisioning."
                   : "Run this once on the server. It installs Docker (if needed) and the Deplo agent, which then calls home to finish provisioning."
-              : "Register the host, then run the install command it gives you on the box. Deplo never SSHes in — the agent connects out to this control plane."}
+              : "Register the host, then run the install command it gives you on the box. Deplo never SSHes in - the agent connects out to this control plane."}
           </DialogDescription>
         </DialogHeader>
 
@@ -184,6 +184,7 @@ export function AddServer({
                 <FieldLabel
                   htmlFor="srv-host"
                   info="The address this control plane will reach the agent at, and where deployed apps for this server will be routed."
+                  docs="servers.address"
                 >
                   Host or IP
                 </FieldLabel>
@@ -205,7 +206,10 @@ export function AddServer({
                * What the box is for.
                */}
               <div className="space-y-2">
-                <FieldLabel info="Changes what the install command sets up on the host. Most servers should do everything.">
+                <FieldLabel
+                  info="Changes what the install command sets up on the host. Most servers should do everything."
+                  docs="servers.role"
+                >
                   What this server is for
                 </FieldLabel>
                 <div className="grid gap-2 sm:grid-cols-3">

@@ -136,7 +136,7 @@ export function DomainRow({
   const middlewares = domain.middlewares ?? [];
   const proxied = domain.status === "cloudflare";
   // A proxied domain is now put on the Cloudflare certificate provider automatically,
-  // so the certificate chip and the DNS chip would BOTH read "Cloudflare" — two
+  // so the certificate chip and the DNS chip would BOTH read "Cloudflare" - two
   // badges, inches apart, saying the same word.
   const oneCloudflareChip = proxied && effectiveProvider === "cloudflare";
 
@@ -150,7 +150,7 @@ export function DomainRow({
       // instantly or deferred to the next deploy), falling back to the caller's.
       if (res.ok) {
         toast.success(res.data ?? ok);
-        // No revalidatePath on the GraphQL API — refresh the RSC tree so the
+        // No revalidatePath on the GraphQL API - refresh the RSC tree so the
         // page re-reads the mutated domain/routing state.
         router.refresh();
       } else toast.error(res.error);
@@ -209,14 +209,14 @@ export function DomainRow({
             stripPrefix: resolved.stripPrefix,
             service: resolved.service,
             // The pairing is derived, so this is the CURRENT value unless the
-            // user changed it — the server no-ops when it already matches.
+            // user changed it - the server no-ops when it already matches.
             www: resolved.www,
           },
         },
       );
       if (res.ok) {
         // A rename re-checks the NEW hostname's DNS server-side, so the toast
-        // reports what the check found — same as the add does. A flat "updated"
+        // reports what the check found - same as the add does. A flat "updated"
         // after typing a hostname nothing points at reads as "and it works".
         const status = res.data?.updateDomain.status;
         if (trimmedName === domain.name || status === "valid")
@@ -237,7 +237,7 @@ export function DomainRow({
         setEditOpen(true);
         toast.error(res.error);
       }
-      // No revalidatePath on the GraphQL API — refresh so the edited row
+      // No revalidatePath on the GraphQL API - refresh so the edited row
       // reflects the new routing config.
       router.refresh();
     });
@@ -262,7 +262,7 @@ export function DomainRow({
             </Badge>
           )}
           {domain.redirectTo && (
-            // This hostname serves nothing — it answers 301 to the canonical half of its www
+            // This hostname serves nothing - it answers 301 to the canonical half of its www
             // pair.
             <SimpleTooltip
               content={`Answers a permanent redirect (301) to ${domain.redirectTo}. Edit ${domain.redirectTo} to change or remove the pair.`}
@@ -278,7 +278,7 @@ export function DomainRow({
             </Badge>
           )}
           {oneCloudflareChip ? (
-            // The merged chip — see `oneCloudflareChip`.
+            // The merged chip - see `oneCloudflareChip`.
             <Badge
               variant="outline"
               className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
@@ -362,7 +362,7 @@ export function DomainRow({
                 </code>
                 <CopyButton value={serverIp} className="size-6" />
                 <span>
-                  — the IP of the server this app runs on (unique to this
+                  - the IP of the server this app runs on (unique to this
                   server). It’s re-checked automatically.
                 </span>
               </>
@@ -456,18 +456,18 @@ export function DomainRow({
                     }
                     const status = res.data?.verifyDomain.status;
                     if (status === "valid")
-                      toast.success("Domain verified — routing is live");
+                      toast.success("Domain verified - routing is live");
                     else if (status === "cloudflare")
                       toast.success(
                         "Cloudflare is proxying this domain. Make sure its record points at this server.",
                       );
                     else if (status === "misconfigured")
                       toast.warning(
-                        "This domain’s DNS points at another address — see the hint on its row",
+                        "This domain’s DNS points at another address - see the hint on its row",
                       );
                     else
                       toast.warning(
-                        "No DNS record found yet — it’s re-checked automatically",
+                        "No DNS record found yet - it’s re-checked automatically",
                       );
                     router.refresh();
                   })
@@ -478,7 +478,7 @@ export function DomainRow({
                 Verify
               </DropdownMenuItem>
             )}
-            {/* A redirecting hostname can never be the canonical host — it
+            {/* A redirecting hostname can never be the canonical host - it
                 serves nothing. The pair is flipped from the Redirect setting of
                 the domain that DOES serve, and the server refuses this too. */}
             {!domain.primary && !domain.redirectTo && (
@@ -495,7 +495,7 @@ export function DomainRow({
                   )
                 }
                 // A misconfigured domain has no working DNS to this server, so it
-                // can't be the canonical host — disabled here, and the server
+                // can't be the canonical host - disabled here, and the server
                 // rejects it too.
                 disabled={
                   pending || !canManage || domain.status === "misconfigured"
@@ -531,7 +531,7 @@ export function DomainRow({
               { id: domain.id },
             );
             if (!res.ok) restore();
-            // No revalidatePath on the GraphQL API — refresh so the row list
+            // No revalidatePath on the GraphQL API - refresh so the row list
             // settles on what the server actually serves.
             router.refresh();
             return res;
@@ -554,6 +554,7 @@ export function DomainRow({
                   <FieldLabel
                     htmlFor={`edit-name-${domain.id}`}
                     info="Fully-qualified hostname, e.g. app.example.com. Its DNS A record must point at this server to verify."
+                    docs="domains.dnsRecord"
                   >
                     Domain
                   </FieldLabel>

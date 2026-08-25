@@ -34,7 +34,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
- * A database's Connection settings — everything about how clients reach it and
+ * A database's Connection settings - everything about how clients reach it and
  * authenticate: public exposure (+ host port), server location / move, and
  * password rotation.
  */
@@ -55,7 +55,7 @@ export function DatabaseConnectionSettings({
   );
 }
 
-/* Exposure + server move — one reroute either way (the data layer's
+/* Exposure + server move - one reroute either way (the data layer's
    updateDatabase applies both). */
 function ExposureCard({
   db,
@@ -212,7 +212,7 @@ function ExposureCard({
                 info={
                   <>
                     Port clients connect to. Use a free unprivileged port
-                    (1024–65535), or click Generate.
+                    (1024-65535), or click Generate.
                     {movingServer &&
                       " On a move it must be free on the new server too."}
                   </>
@@ -262,7 +262,7 @@ function ExposureCard({
   );
 }
 
-/* Password rotation — reveals the NEW connection string once. */
+/* Password rotation - reveals the NEW connection string once. */
 function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -318,7 +318,7 @@ function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
           <div className="space-y-1.5">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Eye className="size-3.5" />
-              New connection string — shown once, copy it now.
+              New connection string - shown once, copy it now.
             </p>
             <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-2.5 py-1.5">
               <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap">

@@ -204,7 +204,7 @@ export function DeploymentSettingsForm({
   /** Whether the app's deploy hook answers at all (Advanced settings). */
   deployHookEnabled: boolean;
   /**
-   * The hook URL with its secret segment dotted out — resolved server-side so the
+   * The hook URL with its secret segment dotted out - resolved server-side so the
    * page can show the link's shape without the token reaching the browser.
    */
   deployHookUrlMasked: string | null;
@@ -225,7 +225,7 @@ export function DeploymentSettingsForm({
     initialFrameworkOverride,
   );
   // The switch answers on the click and snaps back with the server's message if
-  // it is refused — a switch that waits out a round trip reads as a broken one.
+  // it is refused - a switch that waits out a round trip reads as a broken one.
   const [autoDeploy, applyAutoDeploy] = useOptimisticValue(initialAutoDeploy);
   const [pending, startTransition] = React.useTransition();
   // The git deploy-trigger options are advanced and rarely changed, so the whole
@@ -268,7 +268,7 @@ export function DeploymentSettingsForm({
     initialDockerImage ?? "",
   );
 
-  // Git deploy options (trigger type, watch paths, submodules) — persisted with
+  // Git deploy options (trigger type, watch paths, submodules) - persisted with
   // the repo via updateAppSource, so they share the Deploy Source card's Save.
   const [gitOptions, setGitOptions] = React.useState<GitDeployOptionsValue>({
     triggerType: initialRepo?.triggerType ?? "push",
@@ -355,8 +355,8 @@ export function DeploymentSettingsForm({
   );
   const [savedSourceKey, setSavedSourceKey] = React.useState(currentSourceKey);
   // The GitHub repo picker reconciles the seeded selection to actually-available
-  // values on mount — a stored branch deleted upstream falls back to the repo
-  // default, and a reinstalled App re-keys the installation — then bubbles that
+  // values on mount - a stored branch deleted upstream falls back to the repo
+  // default, and a reinstalled App re-keys the installation, then bubbles that
   const ghBaselinedRef = React.useRef(
     !(initialSource === "github" && initialRepo),
   );
@@ -368,7 +368,7 @@ export function DeploymentSettingsForm({
     setSavedSourceKey(currentSourceKey);
   }, [source, ghSelection, currentSourceKey]);
   // The GitHub repo picker owns its selection and re-derives it asynchronously on
-  // mount — it bubbles `null` until its repo list loads, and stays `null` if the
+  // mount - it bubbles `null` until its repo list loads, and stays `null` if the
   // saved repo can't be re-matched (App reinstalled, access revoked).
   const sourceDirty =
     source === "github" && !ghSelection
@@ -390,7 +390,7 @@ export function DeploymentSettingsForm({
         runtimeVersion: build.runtimeVersion,
         port: build.port,
         // Saved by a second mutation, but from the same card and the same
-        // button — so it counts as the same card's dirt.
+        // button, so it counts as the same card's dirt.
         frameworkOverride,
       }),
     [build, frameworkOverride],
@@ -422,14 +422,14 @@ export function DeploymentSettingsForm({
 
   function saveSource() {
     // If only the root directory changed (the deploy source itself is untouched),
-    // persist just that — Root Directory moved into this card, so the single Save
+    // persist just that - Root Directory moved into this card, so the single Save
     // button commits it too, via its own build mutation.
     if (!sourceDirty) {
       if (rootCardVisible && rootDirty) saveRootDir();
       return;
     }
     // The Upload source is committed by the upload control (its own route),
-    // not by this form — and saving source=upload with no archive would break
+    // not by this form, and saving source=upload with no archive would break
     // the next deploy. Block it here so the button can't strand the app.
     if (source === "upload") {
       if (!initialUpload) {
@@ -470,7 +470,7 @@ export function DeploymentSettingsForm({
       };
     }
     // Attach the git deploy options (trigger type / watch paths / submodules) to
-    // whichever repo the active source produced — they persist with the repo.
+    // whichever repo the active source produced - they persist with the repo.
     if (repo) {
       repo = {
         ...repo,
@@ -520,7 +520,7 @@ export function DeploymentSettingsForm({
         return;
       }
       setSavedSourceKey(committedSourceKey);
-      // Persist the root directory in the same round-trip when it also changed —
+      // Persist the root directory in the same round-trip when it also changed -
       // it lives in this card now, so the single Save commits both facets.
       if (rootCardVisible && rootDirty) {
         const rootRes = await gqlAction(
@@ -547,7 +547,7 @@ export function DeploymentSettingsForm({
       return;
     }
     startTransition(async () => {
-      // Commit a server change first — this moves the app and, for a previously-deployed
+      // Commit a server change first - this moves the app and, for a previously-deployed
       // one, marks its data for migration.
       if (serverId !== initialServerId) {
         const moved = await gqlAction(
@@ -577,7 +577,7 @@ export function DeploymentSettingsForm({
   }
 
   // Persist a PARTIAL build config. updateAppBuild merges field-by-field, so each
-  // card sends ONLY its own fields — saving one card never commits the other's
+  // card sends ONLY its own fields - saving one card never commits the other's
   // pending edits (its dirty cue stays put).
   function persistBuildPatch(
     input: Record<string, unknown>,
@@ -670,7 +670,7 @@ export function DeploymentSettingsForm({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Segmented control (app Tabs primitive, no panels — the
+            {/* Segmented control (app Tabs primitive, no panels - the
                 conditional inputs below render off the `source` state). */}
             <Tabs
               value={source}
@@ -694,7 +694,7 @@ export function DeploymentSettingsForm({
             </Tabs>
 
             {usesGithubApp && (
-              // Always render the picker — it owns the account switcher (with a
+              // Always render the picker - it owns the account switcher (with a
               // Manage-connected-apps affordance) and its own connect empty state,
               // so the layout stays put whether or not an App is connected yet.
               <GithubRepoPicker
@@ -758,7 +758,7 @@ export function DeploymentSettingsForm({
             )}
 
             {/**
-             * Git deploy options (trigger type, watch paths, submodules) — for the GitHub App
+             * Git deploy options (trigger type, watch paths, submodules) - for the GitHub App
              * repo picker (once connected) and the plain Git URL.
              */}
             {repoConfigVisible && (
@@ -802,7 +802,7 @@ export function DeploymentSettingsForm({
             )}
 
             {/**
-             * Additional options (Root Directory) — advanced, rarely changed for a
+             * Additional options (Root Directory) - advanced, rarely changed for a
              * single-folder repo, so collapsed by default with the current root shown in the
              * closed header.
              */}
@@ -955,7 +955,7 @@ export function DeploymentSettingsForm({
         </Card>
 
         {/**
-         * Build & Output — single-image builds only.
+         * Build & Output - single-image builds only.
          */}
         {buildCardVisible && (
           <BuildOutputCard
@@ -974,7 +974,7 @@ export function DeploymentSettingsForm({
           />
         )}
 
-        {/* Advanced settings — the deploy controls that are nobody's first-run
+        {/* Advanced settings - the deploy controls that are nobody's first-run
             business: the build cache, and the hook that lets something outside
             deplo trigger a deployment. */}
         <Card>
@@ -986,7 +986,7 @@ export function DeploymentSettingsForm({
           </CardHeader>
           <CardContent className="space-y-3">
             {/* The build cache is a single-image build concern, so it follows the
-                same gate as the Build card. Saves on change — a switch that needs
+                same gate as the Build card. Saves on change - a switch that needs
                 a separate Save is how people think a setting stuck when it didn't. */}
             {buildCardVisible && (
               <BuildCachePanel

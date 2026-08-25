@@ -81,7 +81,7 @@ export function MemberDetailTabs({
   canAssignOwner: boolean;
   /** The viewer is looking at their own membership. */
   isSelf: boolean;
-  /** Instance admin — the link to this person's global account is theirs alone. */
+  /** Instance admin - the link to this person's global account is theirs alone. */
   canManageAccount: boolean;
   /** Their last few events in this team, newest first. */
   activity: Activity[];
@@ -100,7 +100,7 @@ export function MemberDetailTabs({
 
   const tab = params.get("tab") as TabId;
   const active: TabId = TABS.includes(tab) ? tab : "permissions";
-  // Only the editing tab carries the Save — Activity has nothing to save.
+  // Only the editing tab carries the Save - Activity has nothing to save.
   const onTeamTab = active === "permissions";
 
   function selectTab(next: string) {
@@ -155,7 +155,7 @@ export function MemberDetailTabs({
   // rest on save.
   const reachEditable = (role?.scope?.environmentIds.length ?? 0) === 0;
 
-  /** Picking a role re-fills both editors from it — it is the new base. */
+  /** Picking a role re-fills both editors from it - it is the new base. */
   function pickRole(id: string) {
     const next = roles.find((r) => r.id === id) ?? null;
     setRoleId(id);
@@ -166,7 +166,7 @@ export function MemberDetailTabs({
   const ticked = tickedIds(selection);
   // Do the ticks still include everywhere the role reaches? When they don't,
   // THEY are this person's reach from now on and the role stops answering for
-  // them — which is the one act on this page that takes a place away.
+  // them, which is the one act on this page that takes a place away.
   const covers = coversRoleReach(selection, role, tree);
   const granular = reachEditable && !covers;
   // Ticks the role doesn't reach: what an admin added here, plus every folder
@@ -206,7 +206,7 @@ export function MemberDetailTabs({
   const canTransfer = viewerIsPrimaryOwner && !isSelf && !member.isPrimaryOwner;
   // What the ticked nodes can actually carry.
   const onNodes = boundedBy(caps, NODE_GRANTABLE_CAPABILITIES);
-  // They don't reach the whole team — by their role's doing or by an admin's.
+  // They don't reach the whole team - by their role's doing or by an admin's.
   // Same question the server asks before it bounds their set, so a tick the
   // save would drop is struck through here instead of silently disappearing.
   const reachLimited = granular || role?.scope != null;
@@ -309,7 +309,7 @@ export function MemberDetailTabs({
             </p>
           </div>
           {/* The account is instance-wide, so it is edited where every account
-              is — this jumps there with their editor already open. */}
+              is - this jumps there with their editor already open. */}
           {canManageAccount && (
             <Button asChild variant="outline" size="sm" className="ml-auto">
               <Link href={`/settings/users?user=${member.userId}`}>
@@ -549,7 +549,7 @@ export function MemberDetailTabs({
             }
           }}
           title={`Make @${member.username} the primary owner?`}
-          description={`@${member.username} gets the Owner role and full access to this team, and becomes the one person nobody here can remove, demote or edit. You stay an owner — they can take that away, and only they can hand the team back.`}
+          description={`@${member.username} gets the Owner role and full access to this team, and becomes the one person nobody here can remove, demote or edit. You stay an owner - they can take that away, and only they can hand the team back.`}
           confirmLabel="Transfer ownership"
           confirmText={member.username}
           successMessage="Team ownership transferred"
@@ -605,7 +605,7 @@ export function MemberDetailTabs({
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
         title="Remove member?"
-        description={`@${member.username} loses access to this team's apps and resources right away. Their account, and every other team they are in, is untouched — add them back at any time.`}
+        description={`@${member.username} loses access to this team's apps and resources right away. Their account, and every other team they are in, is untouched - add them back at any time.`}
         confirmLabel="Remove member"
         successMessage="Member removed"
         onConfirm={async () => {
@@ -741,7 +741,7 @@ export function groupNodes(nodes: UserTeamAccessDTO["nodes"]): NodeGroup[] {
 }
 
 /**
- * The payload: every node in `selection`, carrying `authored` — except nodes that
+ * The payload: every node in `selection`, carrying `authored` - except nodes that
  * already had a set of their own, which keep it unless the admin edited the
  * permission list (then one set applies everywhere, which is what editing it
  * says).

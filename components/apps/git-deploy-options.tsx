@@ -21,7 +21,7 @@ import type { GitTriggerType } from "@/lib/types";
  */
 export interface GitDeployOptionsValue {
   triggerType: GitTriggerType;
-  /** Raw textarea contents — one glob per line (commas also accepted). */
+  /** Raw textarea contents - one glob per line (commas also accepted). */
   watchPaths: string;
   submodules: boolean;
 }
@@ -55,7 +55,7 @@ export function GitDeployOptions({
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {/* Deploy trigger — push to branch vs any new tag. */}
+      {/* Deploy trigger - push to branch vs any new tag. */}
       <div className="space-y-2">
         <FieldLabel
           info="When automatic deployments are on, deploy on a push to the branch, or on any new tag."
@@ -88,7 +88,7 @@ export function GitDeployOptions({
         </Select>
       </div>
 
-      {/* Include submodules — clone git submodules at build time. */}
+      {/* Include submodules - clone git submodules at build time. */}
       <div className="space-y-2">
         <FieldLabel
           info={
@@ -115,7 +115,7 @@ export function GitDeployOptions({
         </div>
       </div>
 
-      {/* Watch paths — optional path filter for auto-deploys. */}
+      {/* Watch paths - optional path filter for auto-deploys. */}
       <div className="space-y-2 sm:col-span-2">
         <FieldLabel
           info="Only auto-deploy when a changed file matches one of these globs (one per line). Leave empty to deploy on any change."

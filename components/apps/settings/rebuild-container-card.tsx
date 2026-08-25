@@ -64,11 +64,11 @@ export function RebuildContainerCard({
         </CardTitle>
         <CardDescription>
           Rebuild the image from the current source and replace the running
-          container with a fresh one — a full deployment that bakes in your
+          container with a fresh one - a full deployment that bakes in your
           latest code, environment variables and settings. Attached volumes,
           domains and data are untouched; the current container keeps serving
           until the new build is ready. Use it when the container looks stuck or
-          out of sync with its configuration. Cached layers are reused — to
+          out of sync with its configuration. Cached layers are reused - to
           build from scratch, clear the build cache first (Settings → Deployment
           → Build &amp; Output → Advanced). <DocsLink topic="deploy.trace" />
         </CardDescription>

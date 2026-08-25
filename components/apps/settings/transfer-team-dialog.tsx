@@ -94,7 +94,7 @@ export function TransferTeamDialog({
       .then((d) => {
         if (cancelled) return;
         setInfo(d.appTransferInfo);
-        // One candidate is the overwhelmingly common case — preselect it so the
+        // One candidate is the overwhelmingly common case - preselect it so the
         // operator only has to confirm.
         if (d.appTransferInfo.targets.length === 1)
           setTeamId(d.appTransferInfo.targets[0].id);
@@ -119,8 +119,8 @@ export function TransferTeamDialog({
       title={`Transfer ${appName} to another team?`}
       description={
         <>
-          The app moves with everything it owns — variables, domains, volumes,
-          deployment history — and keeps running throughout. Everyone in this
+          The app moves with everything it owns - variables, domains, volumes,
+          deployment history, and keeps running throughout. Everyone in this
           team loses access to it; from here the move is one-way, only a member
           of the destination team can hand it back.
         </>
@@ -207,7 +207,7 @@ export function TransferTeamDialog({
                         "shared variable",
                         "shared variables",
                       )}{" "}
-                      stop being injected — they belong to this team. The change
+                      stop being injected - they belong to this team. The change
                       applies on the next deploy.
                     </li>
                   )}
@@ -230,21 +230,21 @@ export function TransferTeamDialog({
                       </li>
                     ) : (
                       <li>
-                        The repository is disconnected — {target.name} has no
+                        The repository is disconnected - {target.name} has no
                         GitHub App on that account. Auto-deploy turns off.
                         Reconnect the repository from {target.name}.
                       </li>
                     ))}
                   {info.gitConnectionLabel && (
                     <li>
-                      The repository is disconnected — the{" "}
+                      The repository is disconnected - the{" "}
                       {info.gitConnectionLabel} connection belongs to this team.
                       Auto-deploy turns off. Reconnect the repository from{" "}
                       {target.name}.
                     </li>
                   )}
                   <li>
-                    The app keeps running on {info.serverName} — nothing is
+                    The app keeps running on {info.serverName}, nothing is
                     rebuilt or restarted.
                   </li>
                 </>

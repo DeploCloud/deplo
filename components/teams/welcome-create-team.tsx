@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { gqlAction } from "@/lib/graphql-client";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * The create-team form for a user with ZERO teams. The dashboard needs an active
@@ -48,7 +49,8 @@ export function WelcomeCreateTeam({ userName }: { userName: string }) {
           <CardTitle className="text-base">Welcome, {userName}</CardTitle>
           <CardDescription>
             You&apos;re not a member of any team right now. Create one to keep
-            using Deplo, or ask a teammate to invite you.
+            using Deplo, or ask a teammate to invite you.{" "}
+            <DocsLink topic="team.overview" />
           </CardDescription>
         </CardHeader>
         <CardContent>

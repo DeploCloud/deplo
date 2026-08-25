@@ -114,7 +114,7 @@ export function CreateBackup({
    *  (`manage_backup_destinations`). Without it the picker shows the stored
    *  badges instead of firing a mutation the server would refuse. */
   canTestDestinations?: boolean;
-  /** Open on mount — used by the global "New ▸ Schedule backup" menu
+  /** Open on mount - used by the global "New ▸ Schedule backup" menu
    *  (which links to /storage?new=backup). */
   autoOpen?: boolean;
 }) {
@@ -128,14 +128,14 @@ export function CreateBackup({
     if (autoOpen) router.replace("/storage", { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Named after its frequency until the user says otherwise — the same as the
+  // Named after its frequency until the user says otherwise - the same as the
   // per-app dialog, so the two never disagree about what a new schedule is
   // called or about whether Create is reachable on open.
   const [name, setName] = React.useState(() =>
     suggestScheduleName(DEFAULT_SCHEDULE),
   );
   const [nameTouched, setNameTouched] = React.useState(false);
-  // Apps are the common case — a whole app (volumes, files, compose/env snapshot) is
+  // Apps are the common case - a whole app (volumes, files, compose/env snapshot) is
   // what most people come here to protect, and a database that matters usually
   // belongs to one.
   const [targetKind, setTargetKind] = React.useState<TargetKind>(
@@ -160,10 +160,10 @@ export function CreateBackup({
     : noDeps
       ? "Add a backup destination first"
       : null;
-  // The chosen target must have a concrete id selected — otherwise the schedule
+  // The chosen target must have a concrete id selected, otherwise the schedule
   // would point at nothing.
   const targetId = targetKind === "database" ? databaseId : appId;
-  // The server the chosen target runs on — a destination on it is a same-disk copy.
+  // The server the chosen target runs on - a destination on it is a same-disk copy.
   const targetServerId =
     (targetKind === "database" ? databases : services).find(
       (t) => t.id === targetId,
@@ -276,7 +276,7 @@ export function CreateBackup({
 
         <form onSubmit={onSubmit} className="grid gap-4">
           {/* The height is the STEP's, measured, so "what are you backing up?"
-              is a short box and only the schedule step is a tall one — a wizard
+              is a short box and only the schedule step is a tall one - a wizard
               padded to its tallest step spends two thirds of itself on air. */}
           <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
             {/* One heading block, same shape on every step, so the eye lands

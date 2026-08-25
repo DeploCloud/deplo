@@ -23,7 +23,7 @@ import type { DatabaseDTO } from "@/lib/data/databases";
 /**
  * Expert overrides (Advanced): custom image, custom command, and engine
  * version. All applied on the next Redeploy ("the row is truth"). The escape
- * hatch for experts — the warnings live here, but nothing is blocked.
+ * hatch for experts - the warnings live here, but nothing is blocked.
  */
 export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
@@ -71,7 +71,7 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
         },
       );
       if (res.ok) {
-        toast.success("Image settings saved — Redeploy to apply");
+        toast.success("Image settings saved - Redeploy to apply");
         router.refresh();
       } else toast.error(res.error);
     });

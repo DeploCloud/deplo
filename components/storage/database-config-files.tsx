@@ -31,7 +31,7 @@ const TextEditor = dynamic(
   { ssr: false, loading: () => <EditorSkeleton /> },
 );
 
-/** How tall the box is before it scrolls — a config file, not a manuscript. */
+/** How tall the box is before it scrolls - a config file, not a manuscript. */
 const EDITOR_MIN_HEIGHT = 200;
 
 /** A row while it is being edited: the saved shape plus a key React can hold on

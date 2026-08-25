@@ -66,9 +66,9 @@ const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 type StepId = "variable" | "scope" | "details" | "review";
 
-/** The three sharing scopes. Multi-select — a variable may use any combination.
+/** The three sharing scopes. Multi-select - a variable may use any combination.
  *  Team/projects only make the variable AVAILABLE (each app still opts in from
- *  its own Environment tab — ADR-0012); "Specific apps" adds it right away. */
+ *  its own Environment tab - ADR-0012); "Specific apps" adds it right away. */
 type ScopeId = "team" | "projects" | "apps";
 
 const SCOPES: {
@@ -81,14 +81,14 @@ const SCOPES: {
     id: "team",
     title: "The whole team",
     blurb:
-      "Suggested to every app in the team — each app still adds it explicitly, nothing is injected automatically.",
+      "Suggested to every app in the team - each app still adds it explicitly, nothing is injected automatically.",
     icon: Users,
   },
   {
     id: "projects",
     title: "Projects",
     blurb:
-      "Suggested to the apps of the projects you pick (narrowable to single environments) — each app still adds it explicitly.",
+      "Suggested to the apps of the projects you pick (narrowable to single environments) - each app still adds it explicitly.",
     icon: Folders,
   },
   {
@@ -170,7 +170,7 @@ export function SharedVarDialog({
   const [step, setStep] = React.useState<StepId>("variable");
   const [key, setKey] = React.useState(editing?.key ?? "");
   // A secret's DTO value is the MASK, and the server reads that back as "keep
-  // the stored value" — so prefilling it is what lets a scope-only edit save.
+  // the stored value", so prefilling it is what lets a scope-only edit save.
   const [value, setValue] = React.useState(editing?.value ?? "");
   const [secret, setSecret] = React.useState(editing?.type === "secret");
   const [scopes, setScopes] = React.useState<ScopeId[]>(() =>
@@ -242,7 +242,7 @@ export function SharedVarDialog({
       ? checkedProjects.flatMap(([, s]) => (s.mode === "some" ? s.envIds : []))
       : [],
     // Always sent: `saveSharedVar` replaces the whole link set, so an empty
-    // array UNLINKS every app. That is deliberate — the wizard checks the "apps"
+    // array UNLINKS every app. That is deliberate - the wizard checks the "apps"
     // scope whenever the variable has links, so clearing it is an explicit act.
     appIds: picked.apps ? appIds : [],
   };
@@ -309,7 +309,7 @@ export function SharedVarDialog({
             {editing ? "Edit shared variable" : "New shared variable"}
           </DialogTitle>
           <DialogDescription>
-            Write the variable once, then choose who can use it. Apps opt in — a
+            Write the variable once, then choose who can use it. Apps opt in - a
             shared variable is never added to an app automatically.
           </DialogDescription>
         </DialogHeader>
@@ -321,7 +321,7 @@ export function SharedVarDialog({
           <WizardStepper
             steps={steps.map((s) => ({ id: s, label: STEP_LABEL[s] }))}
             current={steps[index]}
-            // A step is reachable once every step before it is complete — which,
+            // A step is reachable once every step before it is complete, which,
             // when editing, is all of them from the first render.
             reachable={(s) =>
               steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
@@ -335,7 +335,10 @@ export function SharedVarDialog({
             {steps[index] === "variable" && (
               <div className="mx-auto w-full max-w-xl space-y-4">
                 <div className="space-y-2">
-                  <FieldLabel info="The variable's name, exposed to apps during builds and at runtime. It can't be renamed once created.">
+                  <FieldLabel
+                    info="The variable's name, exposed to apps during builds and at runtime. It can't be renamed once created."
+                    docs="env.shared"
+                  >
                     Key
                   </FieldLabel>
                   <Input
@@ -399,7 +402,7 @@ export function SharedVarDialog({
             {steps[index] === "scope" && (
               <div className="mx-auto w-full max-w-xl space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Who is this variable for? Pick one or more — you&apos;ll fill
+                  Who is this variable for? Pick one or more - you&apos;ll fill
                   in the details next. Only “Specific apps” adds it somewhere
                   right away; the other scopes suggest it and each app opts in
                   itself.
@@ -529,7 +532,7 @@ function ProjectsSection({
     );
   }, [projects, q]);
 
-  // Search hides rows, never selections — the count is the only thing that can
+  // Search hides rows, never selections - the count is the only thing that can
   // vouch for a checked project the current needle filtered out of view.
   const count = Object.keys(scopes).length;
 
@@ -557,7 +560,7 @@ function ProjectsSection({
       <div>
         <h4 className="text-sm font-medium">Projects</h4>
         <p className="mt-1 text-xs text-muted-foreground">
-          Pick the projects whose apps should see this variable suggested —
+          Pick the projects whose apps should see this variable suggested -
           narrow a project to single environments if you like. Each app still
           adds it itself. {count > 0 && `${count} selected.`}
         </p>
@@ -743,7 +746,7 @@ function AppsSection({
       <div>
         <h4 className="text-sm font-medium">Apps</h4>
         <p className="mt-1 text-xs text-muted-foreground">
-          Pick the apps to add this variable to — it reaches them on their next
+          Pick the apps to add this variable to - it reaches them on their next
           deploy. {selected.length > 0 && `${selected.length} selected.`}
         </p>
       </div>
@@ -886,7 +889,7 @@ function Review({
     ? [
         {
           id: "team",
-          label: `Every app in the team can add it — ${appCount(apps.length)} today`,
+          label: `Every app in the team can add it - ${appCount(apps.length)} today`,
         },
       ]
     : [];
@@ -916,7 +919,7 @@ function Review({
   );
 }
 
-/** One labelled row of scope chips — the label is what tells a project from an app. */
+/** One labelled row of scope chips - the label is what tells a project from an app. */
 function ChipGroup({
   title,
   chips,

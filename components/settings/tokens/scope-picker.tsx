@@ -83,7 +83,7 @@ export function ScopePicker({
    */
   notice?: React.ReactNode;
   /**
-   * An extra control on the right of a row — the per-node affordance the user
+   * An extra control on the right of a row - the per-node affordance the user
    * editor hangs its capability sets off. Rendered OUTSIDE the row's `<label>`,
    * so clicking it doesn't toggle the checkbox next to it.
    */
@@ -108,7 +108,7 @@ export function ScopePicker({
   const [open, setOpen] = React.useState<Set<string>>(() =>
     openForSelection(tree, selection),
   );
-  // While searching every surviving branch is open — a hit three folders deep is
+  // While searching every surviving branch is open - a hit three folders deep is
   // useless if you still have to find and expand its ancestors.
   const isOpen = (id: string) => searching || open.has(id);
   const toggleOpen = (id: string) =>
@@ -505,7 +505,7 @@ export function ScopePicker({
                                   )}
                                   {/**
                                    * When environments are not expressible the rows above are not drawn, so the apps
-                                   * that live in them are folded in here — hiding the level must never hide its
+                                   * that live in them are folded in here - hiding the level must never hide its
                                    * contents.
                                    */}
                                   {(selection.environmentIds === undefined
@@ -582,7 +582,7 @@ export function ScopePicker({
 /* ------------------------------------------------------------------ */
 
 /**
- * Every top-level node of the tree, ticked — "all of it", said in the only
+ * Every top-level node of the tree, ticked - "all of it", said in the only
  * vocabulary a picker with no team checkbox has.
  */
 export function everythingSelection(tree: ScopeTreeTeam[]): ScopeSelection {
@@ -595,7 +595,7 @@ export function everythingSelection(tree: ScopeTreeTeam[]): ScopeSelection {
 }
 
 /**
- * Whether a selection leaves nothing out — which is what gets STORED as
+ * Whether a selection leaves nothing out, which is what gets STORED as
  * unrestricted, so that a project created tomorrow is included too.
  */
 export function coversEverything(
@@ -613,7 +613,7 @@ export function coversEverything(
 }
 
 /**
- * Open whatever already holds a selection, so an edit lands on what it edits —
+ * Open whatever already holds a selection, so an edit lands on what it edits -
  * plus every TEAM, always.
  */
 function openForSelection(
@@ -652,7 +652,7 @@ function openForSelection(
 }
 
 /**
- * A team's picture, or its two-letter monogram — the same mark the topbar
+ * A team's picture, or its two-letter monogram - the same mark the topbar
  * switcher shows, so a team looks the same wherever it is named.
  */
 function TeamMark({

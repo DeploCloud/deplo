@@ -26,7 +26,7 @@ import type {
 } from "@/lib/types";
 
 /**
- * Build & Output — the card that answers "what happens between my code and a
+ * Build & Output - the card that answers "what happens between my code and a
  * running container", laid out as the PIPELINE it actually is. The rail never
  * shows a control that would do nothing.
  */
@@ -46,7 +46,7 @@ export function BuildOutputCard({
 }: {
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
-  /** The framework in force — the user's correction if any, else what the last
+  /** The framework in force - the user's correction if any, else what the last
    * deploy detected. */
   framework: string | null;
   /** What DETECTION read, so the card can say whose answer is showing. */
@@ -68,11 +68,11 @@ export function BuildOutputCard({
     onBuildChange(updater(build));
   }
 
-  // Which overrides the deploy path actually consumes, per builder — a field is shown
+  // Which overrides the deploy path actually consumes, per builder - a field is shown
   // only where the agent-side builder reads it, so nothing here can silently do
   // nothing: - nixpacks / railpack: build + start commands, Node version - static:
   // build command + Node version (the builder stage); nginx serves the output, so
-  // there is no process to start - dockerfile: none — the repo's Dockerfile owns
+  // there is no process to start - dockerfile: none - the repo's Dockerfile owns
   // install/build/run
   const method = build.buildMethod;
   const showBuildCommand =
@@ -94,7 +94,7 @@ export function BuildOutputCard({
   }
 
   /**
-   * Correcting the framework carries the container port with it — that is the
+   * Correcting the framework carries the container port with it - that is the
    * whole reason the setting is worth having (`vite preview` binds 4173 and
    * ignores PORT, so an app mis-read as Next.js deploys green and answers
    * nothing).
@@ -114,7 +114,7 @@ export function BuildOutputCard({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Build &amp; Output
-          <InfoTip content="Every stage between your code and a running container — how the image is built, what runs during the build, and how it comes up." />
+          <InfoTip content="Every stage between your code and a running container - how the image is built, what runs during the build, and how it comes up." />
         </CardTitle>
       </CardHeader>
 
@@ -137,8 +137,8 @@ export function BuildOutputCard({
                   methodSettings: { ...b.methodSettings, ...patch },
                 }))
               }
-              // The framework is one of the BUILDER's settings — only the
-              // auto-detecting ones read the source — so it renders inside their
+              // The framework is one of the BUILDER's settings - only the
+              // auto-detecting ones read the source, so it renders inside their
               // options panel rather than as a stage of its own.
               framework={framework}
               detectedFramework={detectedFramework}

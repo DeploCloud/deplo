@@ -42,7 +42,10 @@ export function ServerTeamAccess({
 
   return (
     <div className="space-y-2">
-      <FieldLabel info="Which teams are allowed to deploy to this server.">
+      <FieldLabel
+        info="Which teams are allowed to deploy to this server."
+        docs="servers.teams"
+      >
         Team access
       </FieldLabel>
       <div className="grid grid-cols-2 gap-2">
@@ -90,7 +93,7 @@ export function ServerTeamAccess({
       {!value.allTeams && teams.length > 0 && (
         <p className="text-xs text-muted-foreground">
           {selected.size === 0
-            ? "No teams selected — no team can deploy here until you pick at least one."
+            ? "No teams selected, no team can deploy here until you pick at least one."
             : `${selected.size} team${selected.size === 1 ? "" : "s"} selected.`}
         </p>
       )}

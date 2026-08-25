@@ -18,6 +18,7 @@ import {
 import { PasswordField } from "@/components/ui/password-field";
 import { passwordMeetsPolicy } from "@/lib/password-policy";
 import { gqlAction } from "@/lib/graphql-client";
+import { DocsLink } from "@/components/ui/docs-link";
 
 const REGISTER = /* GraphQL */ `
   mutation Register(
@@ -78,7 +79,7 @@ export function RegisterForm({
         name: form.name,
         email: form.email,
         password: form.password,
-        // existing_teams links already carry the team(s) — send no name.
+        // existing_teams links already carry the team(s) - send no name.
         teamName: ownTeam ? form.teamName : null,
       });
       if (res.ok) {
@@ -107,13 +108,14 @@ export function RegisterForm({
         <CardDescription>
           {ownTeam
             ? "Pick a username and a team name to get started."
-            : "Pick a username to get started — your teams are already set."}
+            : "Pick a username to get started - your teams are already set."}{" "}
+          <DocsLink topic="team.members" />
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {/* Team already assigned (existing_teams link): show it as additional
-              info, not an input — the registrant can't change it. */}
+              info, not an input - the registrant can't change it. */}
           {!ownTeam && teamNames.length > 0 && (
             <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm">
               <Users className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -130,6 +132,7 @@ export function RegisterForm({
             <FieldLabel
               htmlFor="reg-username"
               info="Your public handle. Lowercase letters, numbers, - and _."
+              docs="team.members"
             >
               Username
             </FieldLabel>
@@ -148,6 +151,7 @@ export function RegisterForm({
               <FieldLabel
                 htmlFor="reg-team"
                 info="Must be unique across the instance."
+                docs="team.members"
               >
                 Team name
               </FieldLabel>

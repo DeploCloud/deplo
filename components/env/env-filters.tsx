@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { InfoTip } from "@/components/ui/info-tip";
+import type { DocsTopic } from "@/lib/docs";
 import { cn } from "@/lib/utils";
 import type { VarAuthor } from "@/lib/types";
 
@@ -66,7 +67,7 @@ export interface FilterableVar {
   updatedBy?: VarAuthor | null;
 }
 
-/** A {@link FilterableVar} that is plain-or-secret — what {@link typeFacet} needs.
+/** A {@link FilterableVar} that is plain-or-secret - what {@link typeFacet} needs.
  *  Split out so rows with no such distinction (credentials) still fit the kit. */
 export interface TypedVar extends FilterableVar {
   type: "plain" | "secret";
@@ -74,13 +75,13 @@ export interface TypedVar extends FilterableVar {
 
 /** One choice inside a facet. `hint` disambiguates repeated labels ("Production"
  *  exists in every project), and is shown greyed next to the label. `author`
- *  marks the option as a person — the menu then leads with their avatar. */
+ *  marks the option as a person - the menu then leads with their avatar. */
 export interface FacetOption {
   value: string;
   label: string;
   hint?: string;
   author?: VarAuthor;
-  /** Classes for the label itself, when the option's own colour IS information —
+  /** Classes for the label itself, when the option's own colour IS information -
    *  a log level reads as its severity in the menu, the same way it does in the
    *  pane. Left unset by every facet whose options are just names. */
   labelClassName?: string;
@@ -88,7 +89,7 @@ export interface FacetOption {
 
 /**
  * One filter dropdown: what it's called, what you may pick, and what picking it
- * means. The predicate is the whole point — a tab knows how its own rows relate to
+ * means. The predicate is the whole point - a tab knows how its own rows relate to
  * a project / an environment / an app, and the toolbar never has to.
  */
 export interface EnvFacet<T> {
@@ -98,10 +99,11 @@ export interface EnvFacet<T> {
   /** The "off" row at the top of the menu, e.g. "All environments". */
   allLabel: string;
   info?: React.ReactNode;
+  docs?: DocsTopic;
   icon?: React.ComponentType<{ className?: string }>;
   options: FacetOption[];
   match: (row: T, value: string) => boolean;
-  /** Show it even with a single option — a filter a team EXPECTS to find (who
+  /** Show it even with a single option - a filter a team EXPECTS to find (who
    *  changed this?) must not vanish just because one person changed everything. */
   persistent?: boolean;
   /** Render the facet as an autocomplete: the toolbar control IS an input you
@@ -109,7 +111,7 @@ export interface EnvFacet<T> {
   searchable?: boolean;
 }
 
-/** How an author reads in the menu — the display name, or the handle when a user
+/** How an author reads in the menu - the display name, or the handle when a user
  *  never set one. Also the sort key, so the list reads in the order shown. */
 function authorLabel(author: VarAuthor): string {
   return author.name.trim() || author.username;
@@ -134,7 +136,7 @@ function matchesFilters<T extends FilterableVar>(
   f: EnvFilterState,
   facets: EnvFacet<T>[],
   extraHaystack?: (row: T) => string,
-  /** Ignore this facet — how a facet counts its OWN options (see {@link facetCounts}). */
+  /** Ignore this facet - how a facet counts its OWN options (see {@link facetCounts}). */
   skipFacetId?: string,
 ): boolean {
   const q = f.q.trim().toLowerCase();
@@ -147,7 +149,7 @@ function matchesFilters<T extends FilterableVar>(
     const values = f.facets[facet.id];
     if (!values?.length) continue;
     // OR within one facet: picking Ada AND Linus means "either of them", not
-    // "both of them" — no row could ever satisfy the latter.
+    // "both of them", no row could ever satisfy the latter.
     if (!values.some((value) => facet.match(row, value))) return false;
   }
   return true;
@@ -169,7 +171,7 @@ export function applyEnvFilters<T extends FilterableVar>(
   );
 
   // A bulk write (.env import / editor save) stamps every row with the SAME
-  // `updatedAt`, so a timestamp sort alone would order those rows arbitrarily —
+  // `updatedAt`, so a timestamp sort alone would order those rows arbitrarily -
   // break the tie on the key to keep the table stable across re-renders.
   out.sort((a, b) => {
     if (f.sort === "key") return a.key.localeCompare(b.key);
@@ -181,7 +183,7 @@ export function applyEnvFilters<T extends FilterableVar>(
 }
 
 /**
- * How many rows each option would leave standing — the number next to every choice
+ * How many rows each option would leave standing - the number next to every choice
  * in the menus.
  */
 export function facetCounts<T extends FilterableVar>(
@@ -192,14 +194,14 @@ export function facetCounts<T extends FilterableVar>(
 ): Record<string, Record<string, number>> {
   const out: Record<string, Record<string, number>> = {};
   for (const facet of facets) {
-    // Seeded at 0 so an option nothing matches still reports a count — that zero
+    // Seeded at 0 so an option nothing matches still reports a count - that zero
     // is what greys it out in the menu instead of leaving it mute.
     const counts: Record<string, number> = {};
     for (const opt of facet.options) counts[opt.value] = 0;
     for (const row of rows) {
       if (!matchesFilters(row, f, facets, extraHaystack, facet.id)) continue;
       // A row may satisfy SEVERAL options of one facet (a variable shared both
-      // team-wide and with an app) — it counts under each.
+      // team-wide and with an app) - it counts under each.
       for (const opt of facet.options) {
         if (facet.match(row, opt.value)) counts[opt.value] += 1;
       }
@@ -222,6 +224,7 @@ export function typeFacet<T extends TypedVar>(rows: T[]): EnvFacet<T> {
     allLabel: "All types",
     icon: KeyRound,
     info: "Secret values are encrypted at rest and never shown again; plain values are readable.",
+    docs: "env.types",
     options: (["plain", "secret"] as const)
       .filter((t) => seen.has(t))
       .map((t) => ({ value: t, label: t === "plain" ? "Plain" : "Secret" })),
@@ -244,7 +247,7 @@ function authorFacet<T extends FilterableVar>(spec: {
   const { rows, pick } = spec;
   const byId = new Map<string, VarAuthor>();
   // Rows written before authorship was recorded (and shared rows whose editor
-  // left the team) carry no author — they get their own bucket rather than
+  // left the team) carry no author - they get their own bucket rather than
   // silently dropping out of every person's filter.
   let anonymous = false;
   for (const row of rows) {
@@ -261,7 +264,7 @@ function authorFacet<T extends FilterableVar>(spec: {
       .map((a) => ({
         value: a.id,
         label: authorLabel(a),
-        // The handle disambiguates two "Ada"s — pointless when it IS the label.
+        // The handle disambiguates two "Ada"s - pointless when it IS the label.
         hint: a.name.trim() ? `@${a.username}` : undefined,
         author: a,
       })),
@@ -282,12 +285,12 @@ function authorFacet<T extends FilterableVar>(spec: {
 }
 
 /**
- * Who touched the row LAST — the person in the "Modified by" column. Tick several
+ * Who touched the row LAST - the person in the "Modified by" column. Tick several
  * people to see everything any of them changed.
  */
 export function editorFacet<T extends FilterableVar>(
   rows: T[],
-  /** What the rows are, for the help text — "variable" (default) or e.g. "credential". */
+  /** What the rows are, for the help text - "variable" (default) or e.g. "credential". */
   noun = "variable",
 ): EnvFacet<T> {
   return authorFacet({
@@ -295,7 +298,7 @@ export function editorFacet<T extends FilterableVar>(
     id: "editor",
     label: "Modified by",
     pick: lastEditor,
-    info: `Who last changed the ${noun} — the user in the “Modified by” column. Type a name straight into the box to narrow the list; pick more than one to see everything any of them touched.`,
+    info: `Who last changed the ${noun} - the user in the “Modified by” column. Type a name straight into the box to narrow the list; pick more than one to see everything any of them touched.`,
   });
 }
 
@@ -315,7 +318,7 @@ export function creatorFacet<T extends FilterableVar>(
     pick: (row) => row.createdBy ?? null,
     info: `Who originally added the ${noun}, even if someone else has changed it since. Type a name straight into the box to narrow the list.`,
     // NOT persistent, unlike "Modified by". On a table where one person added
-    // everything this facet can only answer "yes, them" — it earns its place on
+    // everything this facet can only answer "yes, them" - it earns its place on
     // the toolbar the moment a second person has added something.
     persistent: false,
   });
@@ -375,6 +378,7 @@ export function sourceFacet<T extends FilterableVar & SourceRow>(
     allLabel: "All sources",
     icon: Share2,
     info: "Where the variable comes from: written on the app itself, or a shared variable the app opted into.",
+    docs: "env.shared",
     options,
     match: (row, value) => row.kind === value,
   };
@@ -386,7 +390,7 @@ export function sourceFacet<T extends FilterableVar & SourceRow>(
 
 /**
  * Own the filter state for one variables table: the rows that survive it, and
- * the per-option counts the toolbar shows. `clear` keeps the SORT — an ordering
+ * the per-option counts the toolbar shows. `clear` keeps the SORT - an ordering
  * is not a filter.
  */
 export function useEnvFilters<T extends FilterableVar>(
@@ -430,31 +434,31 @@ export function EnvFilters<T extends FilterableVar>({
   actions,
   className,
   noun = "variables",
-  keySortLabel = "Key (A–Z)",
+  keySortLabel = "Key (A-Z)",
 }: {
   state: EnvFilterState;
   onChange: (next: EnvFilterState) => void;
-  /** Reset every filter but keep the sort — {@link useEnvFilters}'s `clear`. */
+  /** Reset every filter but keep the sort - {@link useEnvFilters}'s `clear`. */
   onClear: () => void;
   facets: EnvFacet<T>[];
-  /** Per-option row counts — {@link facetCounts}. */
+  /** Per-option row counts - {@link facetCounts}. */
   counts?: Record<string, Record<string, number>>;
   /**
-   * The table's own action (an app's "Add"), rendered LAST on the row — after
+   * The table's own action (an app's "Add"), rendered LAST on the row - after
    * the sort, pinned to the toolbar's right edge.
    */
   actions?: React.ReactNode;
   className?: string;
-  /** What this table lists, PLURAL — drives the search placeholder and the
+  /** What this table lists, PLURAL - drives the search placeholder and the
    *  screen-reader labels ("Search credentials"). */
   noun?: string;
-  /** How the A–Z sort names the row's identifying column ("Username (A–Z)"). */
+  /** How the A-Z sort names the row's identifying column ("Username (A-Z)"). */
   keySortLabel?: string;
 }) {
   const picked = Object.values(state.facets).filter((v) => v?.length).length;
   const hasFilter = Boolean(state.q.trim()) || picked > 0;
 
-  // A one-choice facet is noise — unless it declares itself persistent, or is
+  // A one-choice facet is noise, unless it declares itself persistent, or is
   // already filtering (the last secret gets deleted while Type=Secret is on).
   const visible = facets.filter(
     (f) =>
@@ -470,7 +474,7 @@ export function EnvFilters<T extends FilterableVar>({
         className,
       )}
     >
-      {/* The search gets first claim on the width but yields on a crowded row —
+      {/* The search gets first claim on the width but yields on a crowded row -
           a desktop caps it so six dropdowns still fit beside it. */}
       <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[16rem]">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -549,7 +553,7 @@ export function EnvFilters<T extends FilterableVar>({
  * "Environment:" prefix would leave no room for the value.
  */
 function facetSummary<T>(facet: EnvFacet<T>, values: string[]): string {
-  if (facet.options.length === 0) return `${facet.label} — none`;
+  if (facet.options.length === 0) return `${facet.label}, none`;
   if (values.length === 0) return facet.label;
   if (values.length === 1)
     return (
@@ -588,6 +592,7 @@ function FacetPicker<T>(props: {
       {facet.info != null && (
         <InfoTip
           content={facet.info}
+          docs={facet.docs}
           className="shrink-0"
           label={`About the ${facet.label.toLowerCase()} filter`}
         />
@@ -612,7 +617,7 @@ function FacetOptionRow({
   checked: boolean;
   count?: number;
   onToggle: () => void;
-  /** Set by the combobox — the row becomes an aria `option` the input points at. */
+  /** Set by the combobox - the row becomes an aria `option` the input points at. */
   id?: string;
   active?: boolean;
   onActivate?: () => void;
@@ -623,13 +628,13 @@ function FacetOptionRow({
       role={id ? "option" : undefined}
       aria-selected={id ? checked : undefined}
       onMouseEnter={onActivate}
-      // Keep the combobox input focused while ticking — a row must never steal
+      // Keep the combobox input focused while ticking - a row must never steal
       // the caret mid-search.
       onMouseDown={id ? (e) => e.preventDefault() : undefined}
       className={cn(
         "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm",
         active ? "bg-accent" : "hover:bg-accent",
-        // Ticking it would add nothing — shown, so you can see the option
+        // Ticking it would add nothing - shown, so you can see the option
         // exists, greyed, so you know why it's pointless.
         count === 0 && !checked && "opacity-50",
       )}
@@ -661,8 +666,8 @@ function FacetOptionRow({
 }
 
 /**
- * The default facet control: a button stating the filter in its own words —
- * "Modified by: Ada" / "Modified by · 3" — that opens the multi-select menu.
+ * The default facet control: a button stating the filter in its own words -
+ * "Modified by: Ada" / "Modified by · 3" - that opens the multi-select menu.
  */
 export function FacetMenu<T>({
   facet,
@@ -761,7 +766,7 @@ function FacetCombobox<T>({
   const anchorRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [open, setOpen] = React.useState(false);
-  // The autocomplete needle. Reset on close so the menu reopens whole — a stale
+  // The autocomplete needle. Reset on close so the menu reopens whole - a stale
   // needle would read as options having vanished.
   const [query, setQuery] = React.useState("");
   const [active, setActive] = React.useState(0);
@@ -807,13 +812,13 @@ function FacetCombobox<T>({
         ? values.filter((v) => v !== value)
         : [...values, value],
     );
-    // A row is a <label> whose activation forwards to the checkbox button —
+    // A row is a <label> whose activation forwards to the checkbox button -
     // reclaim the caret so the next keystroke keeps narrowing.
     inputRef.current?.focus();
   }
 
   /** Enter / click on row `index`: the clear row clears, an option toggles. The
-   *  menu STAYS open — this is a multi-select, one pick is rarely the last. */
+   *  menu STAYS open - this is a multi-select, one pick is rarely the last. */
   function pick(index: number) {
     if (index === 0) {
       onChange([]);
@@ -841,7 +846,7 @@ function FacetCombobox<T>({
       if (open) pick(activeIndex);
       else setOpen(true);
     } else if (e.key === "Tab") {
-      // Let the Tab through — just don't leave a menu floating behind it.
+      // Let the Tab through - just don't leave a menu floating behind it.
       close();
     }
   }
@@ -886,7 +891,7 @@ function FacetCombobox<T>({
               Icon ? "pl-8" : "pl-3",
               // An active filter wears the same tint as an active FacetMenu
               // button, and its summary-as-placeholder reads as a VALUE, not a
-              // hint — it is what the filter is doing right now.
+              // hint - it is what the filter is doing right now.
               on &&
                 "border-primary/60 bg-primary/[0.06] placeholder:text-foreground",
             )}
@@ -900,7 +905,7 @@ function FacetCombobox<T>({
         style={{ width: "var(--radix-popper-anchor-width)" }}
         // Focus lives in the input for the combobox's whole life: never yank it into the
         // menu on open, never fling it elsewhere on close, and don't treat clicks on the
-        // input (the ANCHOR — outside the content) as a dismissal.
+        // input (the ANCHOR - outside the content) as a dismissal.
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => {

@@ -29,7 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Input } from "@/components/ui/input";
-// Textarea no longer used here — the compose editor replaces it.
+// Textarea no longer used here - the compose editor replaces it.
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ComposeEditor } from "@/components/apps/compose-editor";
@@ -105,7 +105,7 @@ export interface WizardTemplate {
 }
 
 /**
- * Where the new app lands (ADR-0009 — one home only): the folder, or the project
+ * Where the new app lands (ADR-0009 - one home only): the folder, or the project
  * environment, the user had open on the Overview when they hit "New app".
  */
 export interface WizardPlacement {
@@ -209,7 +209,7 @@ export function NewAppWizard({
   );
   const [advanced, setAdvanced] = React.useState(false);
   // What the user has actually chosen. The build config the UI shows and deploys
-  // is `build` below — this with the recognised framework's port layered on.
+  // is `build` below - this with the recognised framework's port layered on.
   const [draftBuild, setDraftBuild] = React.useState(() => buildConfigFor());
 
   // The compose editor is shared by templates (their baked stack) and the
@@ -255,7 +255,7 @@ export function NewAppWizard({
   });
 
   // Once a framework is named, the container port follows ITS server instead of a
-  // hardcoded 3000 — the difference between an Astro or Vite app answering on its own
+  // hardcoded 3000 - the difference between an Astro or Vite app answering on its own
   // port and one that deploys green and serves nothing.
   const [portTouched, setPortTouched] = React.useState(false);
   const build = React.useMemo(
@@ -266,7 +266,7 @@ export function NewAppWizard({
     [draftBuild, framework, portTouched],
   );
 
-  /** Build-config edits made BY THE USER — the fields edit the config they were
+  /** Build-config edits made BY THE USER - the fields edit the config they were
    * SHOWN (port included), so a hand-set port stops being auto-managed. */
   function onBuildChange(next: BuildConfig) {
     if (next.port !== build.port) setPortTouched(true);
@@ -455,18 +455,18 @@ export function NewAppWizard({
       if (!service) return;
 
       // Invalidate the router cache so the shared dashboard layout re-runs on the
-      // destination — otherwise the topbar breadcrumb's team snapshot is stale and
+      // destination, otherwise the topbar breadcrumb's team snapshot is stale and
       // the brand-new app is missing from it until a hard reload.
       router.refresh();
 
       // Upload source with an attached archive: stream it to the freshly-created
-      // (idle) app, then deploy — so creation ends on the live build logs like
+      // (idle) app, then deploy, so creation ends on the live build logs like
       // every other source instead of stranding the user on an empty app.
       if (source === "upload" && uploadFile) {
         try {
           await uploadArchive(service.id, uploadFile);
         } catch (e) {
-          // The app exists but the archive didn't land — send the user to its
+          // The app exists but the archive didn't land - send the user to its
           // settings to retry rather than deploying nothing.
           toast.error(
             `App created, but the upload failed (${
@@ -482,7 +482,7 @@ export function NewAppWizard({
           (d: { redeploy: { id: string } }) => d.redeploy,
         );
         if (dep.ok && dep.data) {
-          toast.success("Uploaded — deploying…");
+          toast.success("Uploaded - deploying…");
           router.push(`/apps/${service.slug}/deployments/${dep.data.id}`);
         } else {
           // The archive is stored; only the deploy kick-off failed. Land on
@@ -494,7 +494,7 @@ export function NewAppWizard({
       }
 
       // Non-upload sources deploy on create; a fileless upload stays idle until the user
-      // uploads from Settings — don't claim it's deploying.
+      // uploads from Settings - don't claim it's deploying.
       const firstDeploymentId = service.latestDeployment?.id;
       toast.success(
         firstDeploymentId
@@ -505,7 +505,7 @@ export function NewAppWizard({
       );
       // A first deployment kicked off inside createApp (startDeployment sets
       // latestDeployment synchronously before it returns) means landing on its live build
-      // logs — the same destination the upload path above uses — instead of a still-empty
+      // logs, the same destination the upload path above uses, instead of a still-empty
       router.push(
         firstDeploymentId
           ? `/apps/${service.slug}/deployments/${firstDeploymentId}`
@@ -514,7 +514,7 @@ export function NewAppWizard({
     });
   }
 
-  // Values surfaced in the sticky summary rail (right column) — the at-a-glance
+  // Values surfaced in the sticky summary rail (right column) - the at-a-glance
   // recap of what will be created, next to the primary deploy action.
   const sourceLabel = isTemplate
     ? template!.variantName
@@ -553,7 +553,7 @@ export function NewAppWizard({
             </div>
 
             {/**
-             * What Deplo recognised in the repository, as soon as one is picked — the app's
+             * What Deplo recognised in the repository, as soon as one is picked - the app's
              * framework named with its own mark, and the container port that framework's server
              * actually binds.
              */}
@@ -569,7 +569,7 @@ export function NewAppWizard({
             )}
 
             {/**
-             * Build & output settings — the same method-aware controls the app settings page
+             * Build & output settings - the same method-aware controls the app settings page
              * shows, kept inside a collapse so creation stays lean.
              */}
             {!locked && buildsImage && (
@@ -620,7 +620,7 @@ export function NewAppWizard({
               </div>
             )}
 
-            {/* Git deploy options — trigger type, watch paths, submodules. Same
+            {/* Git deploy options - trigger type, watch paths, submodules. Same
                 controls the app settings page shows. */}
             {usesGit && (
               <div className="rounded-lg border border-border p-4">
@@ -992,7 +992,7 @@ export function NewAppWizard({
                   {domainSummary}
                 </dd>
               </div>
-              {/* Where it lands — so creating from inside a folder/environment
+              {/* Where it lands, so creating from inside a folder/environment
                   visibly stays there instead of silently going top level. */}
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Location</dt>

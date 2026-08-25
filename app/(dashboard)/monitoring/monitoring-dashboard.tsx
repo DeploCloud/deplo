@@ -65,7 +65,7 @@ export function MonitoringDashboard({
   const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
   const [savingToggle, setSavingToggle] = React.useState(false);
   // Chart history holds live MEASUREMENTS only. The SSR hint (stored status, zeroed
-  // net/load) is a placeholder, not a measurement — charting it would draw a fake dip
+  // net/load) is a placeholder, not a measurement - charting it would draw a fake dip
   // to 0.
   const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>(
     {},
@@ -75,7 +75,7 @@ export function MonitoringDashboard({
   const [now, setNow] = React.useState<number>(() => Date.now());
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
-  // Read the buffer for anything that HAS an agent — not just a server whose last
+  // Read the buffer for anything that HAS an agent, not just a server whose last
   // stored status was `online`.
   const online = Boolean(selected) && selected.status !== "provisioning";
 
@@ -124,7 +124,7 @@ export function MonitoringDashboard({
         setHistory((h) => {
           const prev = h[selectedId] ?? [];
           const byTs = new Map<number, ServerMetrics>();
-          // Buffer samples second so they win a timestamp collision — same
+          // Buffer samples second so they win a timestamp collision - same
           // data, authoritative provenance.
           for (const s of [...prev, ...seeded]) byTs.set(s.ts, s);
           const merged = [...byTs.values()]
@@ -192,7 +192,7 @@ export function MonitoringDashboard({
   }
 
   const samples = history[selectedId] ?? [];
-  // Latest measurement for the tiles — while nothing is arriving they freeze on the
+  // Latest measurement for the tiles, while nothing is arriving they freeze on the
   // last real values (the status line says so) instead of zeroing.
   const cur =
     samples[samples.length - 1] ??
@@ -239,7 +239,7 @@ export function MonitoringDashboard({
   }
 
   // The switch is rendered for everyone (so the page never hides where the
-  // behavior is controlled) but only `manage_infra` can flip it — the tooltip
+  // behavior is controlled) but only `manage_infra` can flip it - the tooltip
   // says so instead of leaving a dead control unexplained.
   const saveSwitch = (
     <div className="flex items-center gap-2">
@@ -254,6 +254,7 @@ export function MonitoringDashboard({
         htmlFor="save-metrics"
         className="text-sm font-normal text-muted-foreground"
         info="Keeps ~16 minutes of history in memory, so charts survive a reload. Never stored in the database; turning it off clears it."
+        docs="monitoring.saveMetrics"
       >
         Save metrics on server
       </FieldLabel>
@@ -523,7 +524,7 @@ function ChartCard({
   children,
 }: {
   title: string;
-  /** Live current-value readout. Multi-series charts omit it — their legend carries the values. */
+  /** Live current-value readout. Multi-series charts omit it - their legend carries the values. */
   caption?: string;
   className?: string;
   children: React.ReactNode;

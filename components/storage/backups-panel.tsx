@@ -82,7 +82,7 @@ export interface BackupTarget {
   kind: "app" | "database";
   id: string;
   name: string;
-  /** The server it runs on — every destination picker flags a destination that
+  /** The server it runs on - every destination picker flags a destination that
    *  sits on that same disk. Null when the target's server is unknown. */
   serverId: string | null;
 }
@@ -98,7 +98,7 @@ function capturedBlurb(target: BackupTarget): string {
 }
 
 /**
- * The Backups tab — schedules, one-off runs, and the artifacts they produced.
+ * The Backups tab - schedules, one-off runs, and the artifacts they produced.
  */
 export function BackupsPanel({
   target,
@@ -114,12 +114,12 @@ export function BackupsPanel({
   schedules: BackupDTO[];
   runs: BackupRun[];
   destinations: Destination[];
-  /** `manage_backups` — schedule, run, edit, delete. */
+  /** `manage_backups` - schedule, run, edit, delete. */
   canManage: boolean;
-  /** `restore_backups` — its own, because a restore overwrites live data (and
+  /** `restore_backups` - its own, because a restore overwrites live data (and
    *  a download hands over every byte, which is the same power). */
   canRestore: boolean;
-  /** `delete_backups` — its own capability, and the only irreversible one on
+  /** `delete_backups` - its own capability, and the only irreversible one on
    *  this screen: the artifact is the last copy of that moment. */
   canDelete: boolean;
   /** `manage_backup_destinations`: whether this user may run the live connection
@@ -252,7 +252,7 @@ export function BackupsPanel({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {/* A deleted schedule leaves the table on the click — see
+                {/* A deleted schedule leaves the table on the click - see
                     `OptimisticList`; the rows ask to be hidden themselves. */}
                 <OptimisticList>
                   {schedules.map((s) => (
@@ -273,7 +273,7 @@ export function BackupsPanel({
         </section>
       )}
 
-      {/* No destination yet — backups have nowhere to go without one. This
+      {/* No destination yet - backups have nowhere to go without one. This
           sits right above the artifacts so the empty state is explained, with a
           link straight to Storage → Destinations (dialog pre-opened). */}
       {noDeps && (
@@ -285,7 +285,7 @@ export function BackupsPanel({
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               Pick a server to keep backups on, or connect an S3 bucket, and
-              backups can run — completed artifacts then appear here.
+              backups can run - completed artifacts then appear here.
             </p>
           </div>
           <Button asChild size="sm" className="shrink-0 sm:ml-auto">
@@ -522,7 +522,7 @@ const STEP_COPY: Record<
 };
 
 /**
- * Schedule a backup of THIS app or database — the Storage wizard without its first
+ * Schedule a backup of THIS app or database - the Storage wizard without its first
  * step, because the page already answers what is being backed up.
  */
 function ScheduleBackup({
@@ -751,7 +751,7 @@ function ScheduleBackup({
   );
 }
 
-/** The schedule's name — one field, shared by the wizard's last step and the
+/** The schedule's name - one field, shared by the wizard's last step and the
  *  edit form, so the two never label or explain it differently. */
 function NameField({
   value,
@@ -781,7 +781,7 @@ function NameField({
   );
 }
 
-/** Where the archives are written — the wizard's first step, and one row of the
+/** Where the archives are written - the wizard's first step, and one row of the
  *  edit form. */
 function DestinationField({
   value,
@@ -971,7 +971,7 @@ function ScheduleRow({
   const { hide, restore } = useOptimisticRow(schedule.id);
   const [editOpen, setEditOpen] = React.useState(false);
   // Locally in flight: the mutation resolves at the END of the dump, and the
-  // stored `lastStatus` only says `running` after the next refresh — so without
+  // stored `lastStatus` only says `running` after the next refresh, so without
   // this the button stays clickable for seconds after it was pressed.
   const [running, setRunning] = React.useState(false);
   const isRunning = running || schedule.lastStatus === "running";
@@ -1081,7 +1081,7 @@ function ScheduleRow({
           </IconAction>
         </div>
         {/* key on `editOpen` so each open remounts the dialog with fresh state
-            seeded from the current schedule — no reset effect needed. */}
+            seeded from the current schedule, no reset effect needed. */}
         <EditScheduleDialog
           key={editOpen ? "edit-open" : "edit-closed"}
           schedule={schedule}
@@ -1202,7 +1202,7 @@ function RunActions({
   ok: boolean;
   canRestore: boolean;
   canDelete?: boolean;
-  /** `manage_backups` — whoever may start a dump may stop it. */
+  /** `manage_backups` - whoever may start a dump may stop it. */
   canManage?: boolean;
   onRestore?: () => void;
   onDelete?: () => void;
@@ -1230,7 +1230,7 @@ function RunActions({
   }
   // Icon + label as DIRECT children of the button, never wrapped: one <span> around
   // them makes the pair a single flex item, and the button's `gap-2` and
-  // `items-center` stop applying — the icon glues to the text and drops onto its
+  // `items-center` stop applying - the icon glues to the text and drops onto its
   const downloadLabel = (
     <>
       <Download className="size-4" />
@@ -1407,7 +1407,7 @@ function RunRow({
                   This overwrites <strong>{target.name}</strong> in place with
                   the backup from {timeAgo(run.startedAt)}. The {noun(target)}{" "}
                   is stopped, its current data is wiped, and the snapshot is
-                  restored — there is downtime and the current state is{" "}
+                  restored - there is downtime and the current state is{" "}
                   <strong>not recoverable</strong>.
                 </span>
               </span>
@@ -1463,7 +1463,7 @@ function TooltipWhenDisabled({
 }: {
   disabled: boolean;
   tooltip: string;
-  /** Exactly one element — `TooltipTrigger asChild` clones it. */
+  /** Exactly one element - `TooltipTrigger asChild` clones it. */
   children: React.ReactElement;
 }) {
   return (

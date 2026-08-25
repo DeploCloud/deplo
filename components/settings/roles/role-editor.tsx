@@ -50,7 +50,7 @@ export function RoleEditor({
   /** The role a new one was started from (chosen in the "New role" menu). */
   basedOn?: TeamRoleDTO | null;
   canManage: boolean;
-  /** The team's projects, folders and apps — the tree the Scope card draws. */
+  /** The team's projects, folders and apps - the tree the Scope card draws. */
   tree: ScopeTreeTeam[];
 }) {
   const router = useRouter();
@@ -93,7 +93,7 @@ export function RoleEditor({
     scope.folderIds.length +
     scope.appIds.length;
   // Untick anything at all and the role is limited; put every top-level node back and
-  // it is unrestricted again — which is stored as no scope at all, so the project
+  // it is unrestricted again, which is stored as no scope at all, so the project
   // somebody creates tomorrow is included.
   const scoped = !coversEverything(tree, scope);
   // What the scope silences.
@@ -163,7 +163,7 @@ export function RoleEditor({
       if (res.ok) {
         toast.success(
           role!.memberCount > 0
-            ? `Saved — ${role!.memberCount} member${role!.memberCount === 1 ? "" : "s"} updated`
+            ? `Saved - ${role!.memberCount} member${role!.memberCount === 1 ? "" : "s"} updated`
             : "Role saved",
         );
         router.refresh();
@@ -198,7 +198,7 @@ export function RoleEditor({
             <div className="grid gap-2">
               <FieldLabel
                 htmlFor="role-name"
-                info="Shown wherever the role is assigned — on the Members page and in the add-member dialog."
+                info="Shown wherever the role is assigned - on the Members page and in the add-member dialog."
                 docs="roles.build"
               >
                 Name
@@ -238,7 +238,7 @@ export function RoleEditor({
                 </p>
                 <p className="mt-1 text-xs leading-snug text-muted-foreground">
                   Members with this role must have 2FA enrolled. Until they do,
-                  they resolve no permissions at all — in the dashboard and over
+                  they resolve no permissions at all - in the dashboard and over
                   the API alike.
                 </p>
               </div>
@@ -289,7 +289,7 @@ export function RoleEditor({
         </Card>
       </div>
 
-      {/* Right rail: what this role will grant, and the primary action —
+      {/* Right rail: what this role will grant, and the primary action -
           sticky on desktop so it stays reachable while scrolling the list. */}
       <aside className="h-fit space-y-4 xl:sticky xl:top-20">
         <Card>
@@ -552,7 +552,7 @@ function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
   );
 }
 
-/** "2 projects and 1 app" — the one-line shape of a scope. */
+/** "2 projects and 1 app" - the one-line shape of a scope. */
 function describeScope(scope: ScopeSelection): string {
   const plural = (n: number, one: string) =>
     `${n} ${n === 1 ? one : `${one}s`}`;

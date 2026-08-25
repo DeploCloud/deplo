@@ -55,7 +55,7 @@ import type { MountPropagation, VolumeMount } from "@/lib/types";
 
 /**
  * The Storage editor: a list of what this app keeps, one collapsed line each,
- * expanding into a form that asks one question — where should this data live?
+ * expanding into a form that asks one question, where should this data live?
  */
 
 const KIND_ICON: Record<VolumeKind, LucideIcon> = {
@@ -65,13 +65,13 @@ const KIND_ICON: Record<VolumeKind, LucideIcon> = {
 };
 
 /**
- * The sentinel the Service dropdown uses for "let deplo pick" — the ABSENCE of a
+ * The sentinel the Service dropdown uses for "let deplo pick" - the ABSENCE of a
  * choice, stored as `""`/absent. Radix forbids an empty item value, which is why a
  * row could never return to the default once a service had been picked.
  */
 const SERVICE_AUTO = "auto";
 
-/** The same sentinel trick for "no propagation" — the stored value is absent,
+/** The same sentinel trick for "no propagation" - the stored value is absent,
  *  and Radix forbids an empty item value. */
 const PROPAGATION_NONE = "none";
 
@@ -93,7 +93,7 @@ export function VolumeFields({
   /** Which service the Automatic option resolves to at deploy. */
   defaultComposeService?: string | null;
   /**
-   * Whether the viewer holds the host-volume grant. COSMETIC only — the
+   * Whether the viewer holds the host-volume grant. COSMETIC only - the
    * authoritative gate is `requireMountHostVolumes()` inside `setAppVolumes`. A
    * Bind stays selectable either way: hiding it would hide why it is unavailable.
    */
@@ -111,12 +111,12 @@ export function VolumeFields({
   /**
    * The content editor for a **File** entry, rendered inside its expanded body.
    * The parent supplies it because the content is the real file on the app's host
-   * — read and written over the agent, which this fetch-free editor does not do.
+   * - read and written over the agent, which this fetch-free editor does not do.
    */
   fileContent?: (mount: VolumeMount) => React.ReactNode;
   onChange: (next: VolumeMount[]) => void;
 }) {
-  // One service (or none) needs no choice — the entry can only go one place, so it
+  // One service (or none) needs no choice - the entry can only go one place, so it
   // stays as simple as a single-container app's.
   const pickService =
     composeServices.length > 1 ||
@@ -124,7 +124,7 @@ export function VolumeFields({
       volumes.some((v) => (v.service ?? "") !== ""));
 
   // Rows the user has actually edited. An entry added a second ago is not "wrong"
-  // for being empty, so its problems stay silent until it is touched — it shows
+  // for being empty, so its problems stay silent until it is touched - it shows
   // what it WILL do instead.
   const [touched, setTouched] = React.useState<Set<string>>(new Set());
   // Single-expansion accordion. A lone entry opens on arrival (nothing to scan,
@@ -298,7 +298,7 @@ function MountRow({
   };
 
   const target = namedVolumeTarget(mount, slug, containerWorkdir);
-  // What "Path inside the app" fills itself with when left empty — the whole
+  // What "Path inside the app" fills itself with when left empty - the whole
   // reason it is not a field you must answer.
   const derived = derivedMountPath(mount, containerWorkdir);
 
@@ -347,7 +347,7 @@ function MountRow({
 
       {expanded && (
         <>
-          {/* Zone 1 — the one question this editor asks. */}
+          {/* Zone 1 - the one question this editor asks. */}
           <div className="space-y-2.5 border-t border-border p-4">
             <FieldLabel
               className="text-xs"
@@ -380,7 +380,7 @@ function MountRow({
             </div>
           </div>
 
-          {/* Zone 2 — the blanks. */}
+          {/* Zone 2 - the blanks. */}
           <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2">
             {blockedBind && (
               <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning sm:col-span-2">
@@ -392,7 +392,7 @@ function MountRow({
             )}
             <Field
               label={meta.sourceLabel}
-              // A Volume's name is optional once the path can supply one — the mirror image of
+              // A Volume's name is optional once the path can supply one - the mirror image of
               // the path being optional once the name can. What is never optional is BOTH: the
               // row would then be nothing at all, and the problem line says so.
               optional={kind === "named" && mount.mountPath.trim() !== ""}
@@ -406,17 +406,17 @@ function MountRow({
             />
             <Field
               label="Path inside the app"
-              // Optional exactly when deplo has something to derive it from —
+              // Optional exactly when deplo has something to derive it from,
               // never a promise it can't keep. See `derivedMountPath`.
               optional={derived !== ""}
               info={
                 containerWorkdir
                   ? kind === "app"
-                    ? `Where the file appears inside the app. Leave it empty and deplo puts it in ${containerWorkdir}, the folder your code runs in — so a file your code opens as ./config.toml needs nothing here. Fill it in when the app wants it elsewhere, like /etc/nginx/nginx.conf.`
-                    : `Where the app finds this storage. Leave it empty and deplo puts it in ${containerWorkdir}, the folder your code runs in — so a folder your code writes to as ./uploads needs nothing here. Fill it in when the app keeps its data elsewhere, like /var/lib/postgresql/data.`
+                    ? `Where the file appears inside the app. Leave it empty and deplo puts it in ${containerWorkdir}, the folder your code runs in, so a file your code opens as ./config.toml needs nothing here. Fill it in when the app wants it elsewhere, like /etc/nginx/nginx.conf.`
+                    : `Where the app finds this storage. Leave it empty and deplo puts it in ${containerWorkdir}, the folder your code runs in, so a folder your code writes to as ./uploads needs nothing here. Fill it in when the app keeps its data elsewhere, like /var/lib/postgresql/data.`
                   : kind === "app"
-                    ? "Where the file appears inside the app, file name included, like /etc/nginx/nginx.conf. deplo can't fill this in for a prebuilt image — the image chose its own working directory — so use the path the app's documentation asks for."
-                    : "Where the app finds this storage, as an absolute path like /data. deplo can't fill this in for a prebuilt image — the image chose its own working directory — so use the path its documentation gives for the data you want to keep."
+                    ? "Where the file appears inside the app, file name included, like /etc/nginx/nginx.conf. deplo can't fill this in for a prebuilt image, the image chose its own working directory, so use the path the app's documentation asks for."
+                    : "Where the app finds this storage, as an absolute path like /data. deplo can't fill this in for a prebuilt image, the image chose its own working directory, so use the path its documentation gives for the data you want to keep."
               }
               docs="storage.mountPath"
               value={mount.mountPath}
@@ -451,7 +451,7 @@ function MountRow({
               <div className="space-y-1.5 sm:col-span-2">
                 <FieldLabel
                   className="text-xs"
-                  info="This app runs several services from its compose file. Only the service you pick can see this data — the other services are untouched."
+                  info="This app runs several services from its compose file. Only the service you pick can see this data - the other services are untouched."
                   docs="storage.container"
                 >
                   Which service uses this data?
@@ -468,8 +468,8 @@ function MountRow({
                   <SelectContent>
                     <SelectItem value={SERVICE_AUTO}>
                       {defaultComposeService
-                        ? `Automatic — ${defaultComposeService}`
-                        : "Automatic — the main service"}
+                        ? `Automatic - ${defaultComposeService}`
+                        : "Automatic - the main service"}
                     </SelectItem>
                     {composeServices.map((s) => (
                       <SelectItem key={s} value={s} className="font-mono">
@@ -545,7 +545,7 @@ function MountRow({
             </div>
           </div>
 
-          {/* Zone 3 — what it will do, or the one thing wrong with it. */}
+          {/* Zone 3 - what it will do, or the one thing wrong with it. */}
           <div className="space-y-1.5 border-t border-border bg-muted/30 px-4 py-2.5">
             {problem ? (
               <p className="flex items-start gap-2 text-xs text-destructive">

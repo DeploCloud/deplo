@@ -10,13 +10,13 @@ import type { StorageFileDraft } from "@/lib/apps/storage-file-model";
 import { cn } from "@/lib/utils";
 
 /**
- * What a **File** storage entry actually contains — the box you write the file in,
+ * What a **File** storage entry actually contains - the box you write the file in,
  * right under the two paths that say where it goes. THE BOX IS ALWAYS THERE.
  */
 
 /**
  * The editor is CodeMirror (~40KB) and most apps have no File entry at all, so
- * it is code-split and never enters SSR — the Storage page pays for it only when
+ * it is code-split and never enters SSR - the Storage page pays for it only when
  * a File entry is actually on screen. Same reasoning as `xterm-lazy.tsx`.
  */
 const TextEditor = dynamic(
@@ -24,7 +24,7 @@ const TextEditor = dynamic(
   { ssr: false, loading: () => <EditorSkeleton /> },
 );
 
-/** How tall the box is before it scrolls — a config file, not a manuscript. */
+/** How tall the box is before it scrolls - a config file, not a manuscript. */
 const EDITOR_MIN_HEIGHT = 220;
 
 export function StorageFileEditor({
@@ -39,7 +39,7 @@ export function StorageFileEditor({
   /** Undefined until the row has either been typed into or read. */
   state: StorageFileDraft | undefined;
   /**
-   * Whether the viewer may read and write this app's files. COSMETIC — the
+   * Whether the viewer may read and write this app's files. COSMETIC - the
    * authoritative gate is the `manage_files` capability on the `appStorageFile`
    * query and the `writeAppFile` mutation.
    */
@@ -69,7 +69,7 @@ export function StorageFileEditor({
     );
   }
 
-  // The read that matches the entry's CURRENT path — undefined while a path edit
+  // The read that matches the entry's CURRENT path - undefined while a path edit
   // is still being re-read, and for an entry that has no path at all.
   const current = state && state.path === path ? state : undefined;
 
@@ -106,7 +106,7 @@ export function StorageFileEditor({
       <Section
         label={label}
         // An entry with no path yet has no file to describe, so it gets no badge
-        // — only the box.
+        // - only the box.
         badge={
           !path ? null : current.exists ? (
             current.draft !== current.saved ? (

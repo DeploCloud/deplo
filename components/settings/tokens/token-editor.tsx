@@ -73,7 +73,7 @@ export function TokenEditor({
   activeTeamId: string;
   /** The template a new token was started from (chosen in the "New token" menu). */
   preset?: TokenPreset | null;
-  /** Every team, project and app the actor can reach — the scope picker's tree. */
+  /** Every team, project and app the actor can reach - the scope picker's tree. */
   tree: ScopeTreeTeam[];
   canManage: boolean;
   /**
@@ -286,7 +286,7 @@ export function TokenEditor({
             {mode === "edit" && (
               <p className="text-xs text-muted-foreground">
                 The full token was shown once when it was created. Deplo keeps
-                only a hash of it, so it can&apos;t be shown again — revoke this
+                only a hash of it, so it can&apos;t be shown again - revoke this
                 one and create another if it was lost.
               </p>
             )}
@@ -305,10 +305,9 @@ export function TokenEditor({
                           Instance admin
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Lets this token administer the whole instance — every
-                          user, every team and every server — not just this
-                          team. Only turn it on for a token that manages Deplo
-                          itself.
+                          Lets this token administer the whole instance - every
+                          user, every team and every server, not just this team.
+                          Only turn it on for a token that manages Deplo itself.
                         </p>
                         {scoped && (
                           <p className="mt-1 text-xs text-muted-foreground">
@@ -348,13 +347,13 @@ export function TokenEditor({
               capabilities={caps}
               onChange={setCaps}
               disabled={readOnly}
-              hint="Every action deplo can gate, one permission each. Tick exactly what this token should be able to do — search by what you want it to reach."
+              hint="Every action deplo can gate, one permission each. Tick exactly what this token should be able to do - search by what you want it to reach."
             />
           </CardContent>
         </Card>
       </div>
 
-      {/* Right rail: what this token will be able to do, and the primary action —
+      {/* Right rail: what this token will be able to do, and the primary action -
           sticky on desktop so it stays reachable while scrolling the list. */}
       <aside className="h-fit space-y-4 lg:sticky lg:top-20">
         <Card>
@@ -583,7 +582,7 @@ function describeScope(scope: ScopeSelection, tree: ScopeTreeTeam[]): string {
   return parts.join(", ");
 }
 
-/** Find any node in the tree by id — teams, projects, folders (nested) or apps. */
+/** Find any node in the tree by id - teams, projects, folders (nested) or apps. */
 function nameOf(tree: ScopeTreeTeam[], id: string): string | null {
   const inFolder = (f: ScopeTreeFolder): string | null => {
     if (f.id === id) return f.name;

@@ -82,7 +82,7 @@ const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
 /**
  * The endpoint to send, or "" when there is nothing usable. Blank means "use the
  * provider's default", which is right for every provider whose hint is a real
- * URL — and wrong for "other", whose hint is a placeholder shape.
+ * URL, and wrong for "other", whose hint is a placeholder shape.
  */
 function endpointOrHint(typed: string, hint: string): string {
   const value = typed.trim() || hint;
@@ -111,7 +111,7 @@ export function CreateDestination({
 }: {
   /** Whether the current user may add a destination (`manage_backup_destinations`).
    *  False shows the button disabled with a tooltip saying so, and nothing can
-   *  open the dialog — not even the ?new=destination deep link. */
+   *  open the dialog, not even the ?new=destination deep link. */
   canCreate: boolean;
   /** Servers this team can already reach, i.e. the same list the deploy picker
    *  offers. A member must not discover a host they cannot otherwise see. */
@@ -143,7 +143,7 @@ export function CreateDestination({
   const [allowPrivate, setAllowPrivate] = React.useState(false);
   const [s3Args, setS3Args] = React.useState("");
   const argsError = validateS3Args(s3Args);
-  // What Advanced holds, without opening it — the disclosure this replaced had
+  // What Advanced holds, without opening it - the disclosure this replaced had
   // the same line, and losing it would make the section look empty.
   const advancedSummary =
     kind === "server"
@@ -223,7 +223,7 @@ export function CreateDestination({
                     kind: "s3",
                     provider: typed.provider.toUpperCase().replace(/-/g, "_"),
                     // The provider hint is a real endpoint for every provider but "other", whose
-                    // placeholder is literally "https://..." — a string that parses as a URL and
+                    // placeholder is literally "https://..." - a string that parses as a URL and
                     // resolves to nothing, so it used to be saved as a destination that could never
                     endpoint: endpointOrHint(typed.endpoint, hint),
                     region: typed.region,
@@ -448,7 +448,7 @@ export function CreateDestination({
             )}
 
             {/**
-             * One Advanced section for both kinds — the server branch used to hand-roll its own
+             * One Advanced section for both kinds - the server branch used to hand-roll its own
              * disclosure next to a checkbox that had none.
              */}
             {(kind === "s3" || isInstanceAdmin) && (

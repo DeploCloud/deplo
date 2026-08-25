@@ -51,12 +51,12 @@ export function CreateDatabase({
   canCreate: boolean;
   /**
    * Whether the current user holds the publish-ports grant. When false the "Expose
-   * publicly" control is shown DISABLED with an explanatory tooltip — the toggle
+   * publicly" control is shown DISABLED with an explanatory tooltip - the toggle
    * can't be turned on, so no port field ever appears.
    */
   canExposePorts?: boolean;
   /**
-   * Open the dialog on mount — used when arriving from the Overview "New
+   * Open the dialog on mount - used when arriving from the Overview "New
    * database" action (which links to /storage?new=database). Ignored when no
    * server is provisioned yet, since the form can't be submitted anyway.
    */
@@ -106,7 +106,7 @@ export function CreateDatabase({
       ? "Provision a server first"
       : null;
   // The useState initializer runs only on mount, but `servers` arrives via a soft
-  // router.refresh() that reconciles this component in place (no remount) — e.g. when
+  // router.refresh() that reconciles this component in place (no remount) - e.g. when
   // a server finishes provisioning while the page is open (0→1).
   const effectiveServerId =
     servers.find((s) => s.id === serverId)?.id ?? servers[0]?.id ?? "";
@@ -141,7 +141,7 @@ export function CreateDatabase({
     });
   }
 
-  // When exposing, the port must be a valid unprivileged port before we submit —
+  // When exposing, the port must be a valid unprivileged port before we submit -
   // the server rejects anything else, but catching it here gives instant feedback.
   const parsedPort = Number.parseInt(port, 10);
   const portValid =
@@ -273,7 +273,7 @@ export function CreateDatabase({
               </div>
               <div className="space-y-2">
                 <FieldLabel
-                  info="Any published Docker Hub tag works — suggestions load as you type. Pick the version your app targets."
+                  info="Any published Docker Hub tag works - suggestions load as you type. Pick the version your app targets."
                   docs="databases.engine"
                 >
                   Version
@@ -408,7 +408,7 @@ export function CreateDatabase({
                 <div className="space-y-1.5">
                   <FieldLabel
                     htmlFor="db-port"
-                    info="The port on the server clients connect to. Use an unprivileged port (1024–65535) that is free on the host, or click Generate."
+                    info="The port on the server clients connect to. Use an unprivileged port (1024-65535) that is free on the host, or click Generate."
                     docs="databases.hostPort"
                   >
                     Host port
@@ -441,7 +441,7 @@ export function CreateDatabase({
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            {/* `pending` is only the port generator now — submitting no longer
+            {/* `pending` is only the port generator now - submitting no longer
                 waits here, it hands the work to the pulsing card in the grid. */}
             <Button
               type="submit"

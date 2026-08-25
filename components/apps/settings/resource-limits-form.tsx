@@ -142,17 +142,17 @@ export function ResourceLimitsForm({
   resources,
   isComposeStack,
   mutationName = "updateAppResources",
-  savedMessage = "Resource limits saved — applied on the next deploy",
+  savedMessage = "Resource limits saved - applied on the next deploy",
 }: {
   appId: string;
   resources: ResourceLimits | null;
   isComposeStack: boolean;
   /**
-   * The GraphQL mutation to save through — the database detail page passes
+   * The GraphQL mutation to save through - the database detail page passes
    * `updateDatabaseResources`.
    */
   mutationName?: "updateAppResources" | "updateDatabaseResources";
-  /** Success toast copy — databases say "applied on the next redeploy". */
+  /** Success toast copy - databases say "applied on the next redeploy". */
   savedMessage?: string;
 }) {
   const router = useRouter();
@@ -268,7 +268,7 @@ export function ResourceLimitsForm({
               placeholder="e.g. 512"
               value={form.memoryMb}
               onChange={set("memoryMb")}
-              info="Hard RAM ceiling. The container is restarted (OOM-killed) if it exceeds this. In MB — 1024 = 1 GB, 2048 = 2 GB."
+              info="Hard RAM ceiling. The container is restarted (OOM-killed) if it exceeds this. In MB - 1024 = 1 GB, 2048 = 2 GB."
               docs="resources.core"
             />
             <LimitField
@@ -326,7 +326,7 @@ export function ResourceLimitsForm({
                     placeholder="1024"
                     value={form.cpuShares}
                     onChange={set("cpuShares")}
-                    info="Relative CPU weight when the host is busy (default 1024) — 2048 gets twice the share of 1024. Doesn't cap idle-time usage."
+                    info="Relative CPU weight when the host is busy (default 1024) - 2048 gets twice the share of 1024. Doesn't cap idle-time usage."
                     docs="resources.advanced"
                   />
                   <LimitField
@@ -348,7 +348,7 @@ export function ResourceLimitsForm({
                     placeholder="e.g. 512"
                     value={form.pidsLimit}
                     onChange={set("pidsLimit")}
-                    info="Maximum number of processes/threads the container may spawn — a guard against fork bombs and runaway workers."
+                    info="Maximum number of processes/threads the container may spawn - a guard against fork bombs and runaway workers."
                     docs="resources.advanced"
                   />
                   <LimitField
@@ -404,7 +404,7 @@ export function ResourceLimitsForm({
                     placeholder="0"
                     value={form.oomScoreAdj}
                     onChange={set("oomScoreAdj")}
-                    info="Range −1000…1000. If the host runs out of memory, higher scores are killed first — negative protects this app"
+                    info="Range −1000…1000. If the host runs out of memory, higher scores are killed first - negative protects this app"
                     docs="resources.advanced"
                   />
                 </LimitGroup>

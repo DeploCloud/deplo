@@ -186,6 +186,7 @@ export function CronJobDialog({
               <FieldLabel
                 htmlFor="cron-name"
                 info="What this job is for, in a few words."
+                docs="cron.create"
               >
                 Name
               </FieldLabel>
@@ -203,6 +204,7 @@ export function CronJobDialog({
                 <FieldLabel
                   htmlFor="cron-service"
                   info="Which container of the stack the command runs in. The service, not the container name - a redeploy renames those."
+                  docs="cron.create"
                 >
                   Container
                 </FieldLabel>
@@ -226,6 +228,7 @@ export function CronJobDialog({
           </div>
 
           <SchedulePicker
+            docs="cron.create"
             id="cron-schedule"
             value={schedule}
             onChange={setSchedule}
@@ -235,6 +238,7 @@ export function CronJobDialog({
                 <FieldLabel
                   htmlFor="cron-timezone"
                   info="The clock this schedule is read on. Defaults to yours, so 03:00 means 03:00 where you are."
+                  docs="cron.create"
                 >
                   Timezone
                 </FieldLabel>
@@ -256,6 +260,7 @@ export function CronJobDialog({
             <FieldLabel
               htmlFor="cron-command"
               info="Run exactly as typed by the chosen shell, so pipes and && work. It cannot see your terminal - anything interactive will hang until the timeout."
+              docs="cron.create"
             >
               Command
             </FieldLabel>
@@ -273,6 +278,7 @@ export function CronJobDialog({
             <FieldLabel
               htmlFor="cron-enabled"
               info="A disabled job keeps its settings and its history, and simply does not fire."
+              docs="cron.create"
             >
               Enabled
             </FieldLabel>
@@ -293,6 +299,7 @@ export function CronJobDialog({
                   <FieldLabel
                     htmlFor="cron-description"
                     info="A note for whoever reads this list next."
+                    docs="cron.create"
                   >
                     Description
                   </FieldLabel>
@@ -309,6 +316,7 @@ export function CronJobDialog({
                     <FieldLabel
                       htmlFor="cron-shell"
                       info="A container without the shell you pick fails the run rather than quietly using the other one - they disagree about pipefail and [[."
+                      docs="cron.create"
                     >
                       Shell
                     </FieldLabel>
@@ -326,6 +334,7 @@ export function CronJobDialog({
                     <FieldLabel
                       htmlFor="cron-overlap"
                       info="What happens when the previous run has not finished yet."
+                      docs="cron.create"
                     >
                       If it is still running
                     </FieldLabel>
@@ -343,6 +352,7 @@ export function CronJobDialog({
                     <FieldLabel
                       htmlFor="cron-timeout"
                       info="How long ONE attempt may take before it is stopped. Per attempt, not per run."
+                      docs="cron.create"
                     >
                       Timeout (minutes)
                     </FieldLabel>
@@ -359,6 +369,7 @@ export function CronJobDialog({
                     <FieldLabel
                       htmlFor="cron-attempts"
                       info="Total launches per scheduled fire, a minute apart. 1 means no retry. Only the last attempt's output is kept."
+                      docs="cron.history"
                     >
                       Attempts
                     </FieldLabel>
@@ -375,6 +386,7 @@ export function CronJobDialog({
                     <FieldLabel
                       htmlFor="cron-keep"
                       info="How many past runs to keep in the history."
+                      docs="cron.history"
                     >
                       Runs kept
                     </FieldLabel>
@@ -391,6 +403,7 @@ export function CronJobDialog({
                     <FieldLabel
                       htmlFor="cron-workdir"
                       info="Where the command starts. Empty ⇒ the image's own."
+                      docs="cron.create"
                     >
                       Working directory
                     </FieldLabel>
@@ -406,6 +419,7 @@ export function CronJobDialog({
                     <FieldLabel
                       htmlFor="cron-user"
                       info="Who the command runs as. Empty ⇒ the image's own user."
+                      docs="cron.create"
                     >
                       User
                     </FieldLabel>
@@ -441,7 +455,10 @@ export function CronJobDialog({
                 )}
 
                 <div className="space-y-2">
-                  <FieldLabel info="Set only for this job, on top of the container's own. Values are write-only - they can be replaced, never read back.">
+                  <FieldLabel
+                    info="Set only for this job, on top of the container's own. Values are write-only - they can be replaced, never read back."
+                    docs="env.overview"
+                  >
                     Variables
                   </FieldLabel>
                   {env.map((row, i) => (

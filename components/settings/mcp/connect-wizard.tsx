@@ -212,7 +212,7 @@ function WizardRun({
   function pick(id: AgentId) {
     const next = AGENTS.find((a) => a.id === id)!;
     setAgentId(id);
-    // Only overwrite a name the reader has not touched — retyping their label
+    // Only overwrite a name the reader has not touched - retyping their label
     // because they went back one step would be the wizard arguing with them.
     setName((current) =>
       current === "" || AGENTS.some((a) => a.label === current)
@@ -309,7 +309,7 @@ function WizardRun({
       {/* First in the DOM on a phone, where the picture on top reads as a
           heading; last on a wide screen, where it belongs on the right. */}
       <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
-        {/* Drawn in the chosen agent's own colour — the same hue its card wears
+        {/* Drawn in the chosen agent's own colour - the same hue its card wears
             when selected, so the picture and the tick agree. */}
         <RobotGraphic
           state={robot}
@@ -754,7 +754,7 @@ function AgentCard({
   canManageTokens: boolean;
   onSelect: () => void;
 }) {
-  // Shown but refused, with the reason — the two branches need different
+  // Shown but refused, with the reason - the two branches need different
   // capabilities, and hiding half the grid would leave a reader wondering
   // whether deplo supports their agent at all.
   const blocked = agent.kind === "web" ? !canManageMcp : !canManageTokens;
@@ -792,7 +792,7 @@ function AgentCard({
         {/**
          * Exactly two lines, reserved AND capped. No `block` here: `line-clamp-2` sets
          * `display: -webkit-box`, and a `block` beside it wins the cascade and silently
-         * turns the clamp off — which is how a four-line ChatGPT card got through.
+         * turns the clamp off, which is how a four-line ChatGPT card got through.
          */}
         <span className="mt-0.5 line-clamp-2 min-h-[2lh] text-xs leading-snug text-muted-foreground">
           {blocked ? note : agent.blurb}
@@ -828,8 +828,8 @@ function DoneStep({
   const [round, setRound] = React.useState(0);
   const [attempt, setAttempt] = React.useState(0);
   // Frozen on mount, via the lazy initialiser. The web branch detects success as "one
-  // more connection than there was", so a baseline that moved under it — any
-  // `router.refresh` elsewhere on the page — would make the comparison meaningless.
+  // more connection than there was", so a baseline that moved under it - any
+  // `router.refresh` elsewhere on the page - would make the comparison meaningless.
   const [baseline] = React.useState(baselineConnections);
 
   React.useEffect(() => {
@@ -933,7 +933,7 @@ async function probe(
 /* Bits                                                                */
 /* ------------------------------------------------------------------ */
 
-/** One line of the summary — a label, what it says now, and a way in. */
+/** One line of the summary - a label, what it says now, and a way in. */
 function SummaryRow({
   label,
   children,

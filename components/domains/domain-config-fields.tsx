@@ -26,8 +26,8 @@ import type { CertProvider, DomainEntrypoint } from "@/lib/types";
 /** The two entrypoints the proxy's static config defines, labelled
  * outcome-first because `websecure` is Traefik vocabulary, not a consequence. */
 export const ENTRYPOINTS: { value: DomainEntrypoint; label: string }[] = [
-  { value: "websecure", label: "HTTPS — websecure (:443)" },
-  { value: "web", label: "HTTP — web (:80)" },
+  { value: "websecure", label: "HTTPS - websecure (:443)" },
+  { value: "web", label: "HTTP - web (:80)" },
 ];
 
 /** Sentinel for "derive the entrypoint from the certificate". NOT a Traefik
@@ -52,7 +52,7 @@ export interface DomainConfigState {
    * the certificate provider; on ⇒ `entrypoint` below is sent verbatim. */
   manualEntrypoint: boolean;
   entrypoint: DomainEntrypoint;
-  /** Certificate provider — the single TLS control. "none" ⇒ plain HTTP. */
+  /** Certificate provider - the single TLS control. "none" ⇒ plain HTTP. */
   certProvider: CertProvider;
   /** Raw comma-separated middlewares text, split on submit. */
   middlewares: string;
@@ -207,7 +207,7 @@ export function advancedSummary(
 }
 
 /**
- * The derived answer to "what will this domain actually do" — the public URL on
+ * The derived answer to "what will this domain actually do" - the public URL on
  * top, where the request lands underneath.
  */
 function RoutePreview({
@@ -229,7 +229,7 @@ function RoutePreview({
     state.manualEntrypoint && state.certProvider !== "none";
   const middlewares = parseMiddlewares(state.middlewares).length;
   // The `www` pair, spelled out: the URL on top is always the hostname that SERVES
-  // the app — which, under `toCounterpart`, is the counterpart rather than the
+  // the app, which, under `toCounterpart`, is the counterpart rather than the
   // hostname being edited.
   const counterpart = wwwCounterpart(host);
   const paired = state.www !== "none" && counterpart != null;
@@ -242,7 +242,7 @@ function RoutePreview({
       : counterpart!;
 
   const target = [
-    // Named only once chosen — "the selected service" while nothing is selected
+    // Named only once chosen - "the selected service" while nothing is selected
     // would be a sentence about a thing that isn't there.
     ...(service ? [service] : []),
     port
@@ -338,7 +338,7 @@ export function DomainConfigFields({
    * name the address the proxied record must point at. */
   serverIp?: string;
   /** The hostname currently typed in the dialog's Domain field, so the route
-   * preview shows the real URL as it is typed. Purely presentational — it never
+   * preview shows the real URL as it is typed. Purely presentational - it never
    * enters `DomainConfigState` nor the mutation payload. */
   hostname?: string;
 }) {
@@ -372,7 +372,7 @@ export function DomainConfigFields({
   const summary = advancedSummary(state, hostname);
 
   // The `www` pair of the hostname currently typed. Null for a hostname that has no
-  // meaningful one (an `api.` subdomain, a generated nip.io host) — the whole group
+  // meaningful one (an `api.` subdomain, a generated nip.io host) - the whole group
   // is then absent rather than offering a choice about a hostname nobody would use.
   const host = (hostname ?? "").trim();
   const counterpart = wwwCounterpart(host);
@@ -408,12 +408,13 @@ export function DomainConfigFields({
       {isCompose && (
         <div className="space-y-2">
           {/**
-           * The stack's containers, by their compose service name — the same names the Logs
+           * The stack's containers, by their compose service name - the same names the Logs
            * and Console pickers list for this app.
            */}
           <FieldLabel
             htmlFor={`${idPrefix}-service`}
             info="Which container of this app's compose stack serves this domain."
+            docs="compose.differences"
           >
             Container
           </FieldLabel>
@@ -443,6 +444,7 @@ export function DomainConfigFields({
               ? "The port the selected container listens on."
               : "The port your app listens on inside its container. Defaults to the app's port."
           }
+          docs="build.port"
         >
           Application port
         </FieldLabel>
@@ -455,7 +457,7 @@ export function DomainConfigFields({
           value={state.port}
           onChange={(e) => set("port", e.target.value)}
           placeholder="e.g. 8080"
-          // Spinner-hiding lifted verbatim from `LimitField` — native arrows
+          // Spinner-hiding lifted verbatim from `LimitField` - native arrows
           // collide with a mono value and nobody steps a port by one.
           className="[appearance:textfield] font-mono text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
@@ -466,6 +468,7 @@ export function DomainConfigFields({
           <FieldLabel
             htmlFor={`${idPrefix}-cert`}
             info="The source of this domain's TLS certificate. A domain proxied through Cloudflare is set to Cloudflare automatically, since Cloudflare already serves it over HTTPS. Pick Installed on the server when you added the certificate yourself under Settings, Servers. Choosing None serves the domain over plain HTTP with no TLS."
+            docs="domains.certificates"
           >
             Certificate
           </FieldLabel>
@@ -507,6 +510,7 @@ export function DomainConfigFields({
                 front already terminates TLS, e.g. Cloudflare in Flexible mode.
               </>
             }
+            docs="domains.certificates"
           >
             Entrypoint
           </FieldLabel>
@@ -533,8 +537,8 @@ export function DomainConfigFields({
             <SelectContent>
               <SelectItem value={ENTRYPOINT_AUTO}>
                 {noCert
-                  ? "Automatic — HTTP on web (:80)"
-                  : "Automatic — HTTPS on websecure (:443)"}
+                  ? "Automatic - HTTP on web (:80)"
+                  : "Automatic - HTTPS on websecure (:443)"}
               </SelectItem>
               {ENTRYPOINTS.map((e) => (
                 <SelectItem key={e.value} value={e.value}>
@@ -580,11 +584,12 @@ export function DomainConfigFields({
                         Sends one of the two spellings of this site to the other
                         with a permanent redirect (301), so visitors and search
                         engines settle on a single address. Deplo adds the other
-                        hostname as a domain of this app — with its own DNS
-                        check and its own certificate — so it shows up in the
+                        hostname as a domain of this app - with its own DNS
+                        check and its own certificate, so it shows up in the
                         list and can be removed there.
                       </>
                     }
+                    docs="domains.redirects"
                   >
                     www redirect
                   </FieldLabel>
@@ -614,7 +619,7 @@ export function DomainConfigFields({
                     <p className="text-xs text-muted-foreground">
                       <span className="font-mono">{redirectingHost}</span> is
                       added as a domain of this app. Point its DNS at this
-                      server too — it is checked automatically and appears in
+                      server too - it is checked automatically and appears in
                       the list with its own status.
                     </p>
                   )}
@@ -627,6 +632,7 @@ export function DomainConfigFields({
                 <FieldLabel
                   htmlFor={`${idPrefix}-path`}
                   info="Only requests under this path are routed to this target. Leave blank to route the whole host."
+                  docs="domains.pathRouting"
                 >
                   Internal path{" "}
                   <span className="text-xs font-normal text-muted-foreground">
@@ -672,6 +678,7 @@ export function DomainConfigFields({
                           <code className="font-mono">stripprefix</code>).
                         </>
                       }
+                      docs="domains.pathRouting"
                     >
                       Strip path before forwarding
                     </FieldLabel>
@@ -706,6 +713,7 @@ export function DomainConfigFields({
                       . Each must already be defined on the proxy.
                     </>
                   }
+                  docs="domains.overview"
                 >
                   Middlewares{" "}
                   <span className="text-xs font-normal text-muted-foreground">
