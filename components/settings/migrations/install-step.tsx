@@ -14,6 +14,7 @@ import { CommandLine } from "@/components/shared/code-block";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
+import type { SourceKind } from "./sources";
 import { AGENT_PORT_NOTICE } from "@/components/shared/agent-reachability";
 import type { PlanServer } from "./types";
 
@@ -163,6 +164,7 @@ function AddressForm({
 }
 
 export function InstallStep({
+  kind,
   machines,
   canAddServers,
   pending,
@@ -171,9 +173,10 @@ export function InstallStep({
   onResolved,
   onDone,
 }: {
+  /** Which panel these machines belong to. */
+  kind: SourceKind | null;
   machines: PlanServer[];
   /** The panel this imports from - the key a corrected address is filed under. */
-  sourceUrl: string;
   /** Registering a host is instance-admin only, like everywhere else. */
   canAddServers: boolean;
   /** Registered, waiting to be heard from. The wizard holds it - see above. */
@@ -218,7 +221,7 @@ export function InstallStep({
         ADD_SERVER,
         {
           input: {
-            name: m.sourceId ? m.name : "dokploy-host",
+            name: m.sourceId ? m.name : `${kind ?? "source"}-host`,
             host: address,
             // A MIGRATION SOURCE, not a server: the install command touches nothing on the box
             // but the agent itself, the host stays out of every picker and every sweep, and
@@ -252,7 +255,7 @@ export function InstallStep({
         },
       }));
     },
-    [attempted, setPending],
+    [attempted, setPending, kind],
   );
 
   // ---- register whatever is not ours yet, once, on arrival ----------

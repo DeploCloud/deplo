@@ -245,7 +245,7 @@ export const SETTINGS_NAV: NavSection[] = [
         label: "Migrations",
         href: "/settings/migrations",
         icon: Cable,
-        tooltip: "Bring projects over from Dokploy",
+        tooltip: "Bring projects over from Dokploy or Coolify",
         // The smallest capability that can produce what an import produces.
         requires: "create_projects",
       },

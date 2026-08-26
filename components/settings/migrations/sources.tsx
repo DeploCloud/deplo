@@ -1,0 +1,191 @@
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+import type { DocsTopic } from "@/lib/docs";
+
+/**
+ * The two panels Deplo migrates from: their marks, and the words each screen uses
+ * for them. One table per thing, both keyed the same way.
+ */
+
+export type SourceKind = "dokploy" | "coolify";
+
+interface MarkPath {
+  d: string;
+  /** The brand colour, verbatim from the upstream file. Absent means the mark is
+   *  monochrome, so it takes `currentColor` and the drawing decides its shade. */
+  fill?: string;
+  /** The upstream artwork's own layering. NOT the banned white-with-alpha: an
+   *  alpha on a genuinely coloured token is allowed, and #8c52ff is one. */
+  fillOpacity?: number;
+  transform?: string;
+}
+
+interface SourceArt {
+  viewBox: string;
+  paths: MarkPath[];
+}
+
+/**
+ * A mark is painted in its own brand colour when it has one, and in
+ * `currentColor` when it is monochrome. Dokploy's upstream file is black - so
+ * `currentColor` is the TRUE rendering of it, not a shortcut - and Coolify's is
+ * three violet layers.
+ *
+ * Both are inlined rather than loaded from `public/`, for the reason
+ * `components/logo.tsx` gives about Deplo's own: an `<image href>` renders the
+ * file's baked-in fill.
+ */
+export const SOURCE_ART: Record<SourceKind, SourceArt> = {
+  // public/migrations/dokploy.svg
+  dokploy: {
+    viewBox: "86 51.88 428.15 363.12",
+    paths: [
+      {
+        d: "M390 56v12c.1 2.3.5 4 1 6a73 73 0 0 0 12 24c2 2.3 5.7 4 7 7 4 3.4 9.6 6.8 14 9 1.7.6 5.7 1.1 7 2 1.9 1.3 2.9 2.3 0 4v1c-.6 1.8-1.9 3.5-3 5q-3 4-7 7c-4.3 3.2-9.5 6.8-15 7h-1q-2 1.6-5 2h-4c-5.2.7-12.9 2.2-18 0h-6c-1.6 0-3-.8-4-1h-3a17 17 0 0 1-6-2h-1c-2.5-.1-4-1.2-6-2l-4-1c-8.4-2-20.3-6.6-27-12h-1c-4.6-1-9.5-4.3-13.7-6.3s-10.5-3-13.3-6.7h-1c-4-1-8.9-3.5-12-6h-1c-6.8-1.6-13.6-6-20-9-6.5-2.8-14.6-5.7-20-10h-1c-7-1.2-15.4-4-22-6h-97c-5.3 4.3-13.7 4.3-18.7 10.3S90.8 101 88 108c-.4 1.5-.8 2.3-1 4-.2 1.6-.8 4-1 5v51c.2 1.2.8 3.2 1 5 .2 2 .5 3.2 1 5a79 79 0 0 0 6 12c.8.7 1.4 2.2 2 3 1.8 2 4.9 3.4 6 6 9.5 8.3 23.5 10.3 33 18h1c5.1 1.2 12 4.8 16 8h1c4 1 8.9 3.5 12 6h1q4.6 1.2 8 4h1c2 .1 2.6 1.3 4 2 1.6.8 2.7.7 4 2h1q2.5.3 4 2h1c3 .7 6.7 2 9 4h1c4.7.8 13.4 3.1 17 6h1c2.5.1 4 1.3 6 2 1.8.4 3 .8 5 1q3 .4 5 1c1.6-.2 2 0 3 1h1q2.5-.5 4 1h1q2.5-.5 4 1h1c2.2-.2 4.5-.3 6 1h1q4-.4 7 1h45c1.2-.2 3.1-1 5-1h6c1.5-.6 2.9-1.3 5-1h1q1.5-1.4 4-1h1q1.5-1.4 4-1h1c2.4-1.3 5-1.6 8-2l5-1c2-.7 3.6-1.6 6-2 4-.7 7.2-1.7 11-3 2.3-1 4.2-2.5 7-3h1q1.5-1.7 4-2h1c1.9-1.5 3.9-2 6-3q2.9-1.6 6-3a95 95 0 0 0 11-5c4.4-2.8 8.9-6 14-8 0 0 .6.2 1 0 1.8-2.8 7-4.8 10-6 0 0 .6.2 1 0 1.5-2.4 5.3-4 8-5 0 0 .6.2 1 0 1.5-2.4 5.3-4 8-5 0 0 .6.2 1 0 1.3-2 3.8-3.1 6-4 0 0 .6.2 1 0 2-3 7.7-5.6 11-7l5-2c6.3-3.8 11.8-9.6 18-14v-1c0-1.9-.4-4.2 0-6-1-4.5-3.9-5.5-7-8h-1c-1.2 0-2.8-.2-4 0-8.9 1.7-16.5 11.3-25.2 14.8-8.8 3.4-16.9 10.7-25.8 14.2h-1c-10.9 10.6-29.2 16-42.7 23.3S343.7 234.6 328 235h-1q-1.5 1.4-4 1h-1q-1.5 1.4-4 1h-1c-1.5 1.3-3.9 1.2-6 1h-1c-1.7 1.3-4.6 1.2-7 1-1 .2-2.4 1-4 1h-5c-6.6 0-13.4.4-20 0-1.9-.1-2.7.3-4-1h-8c-2.8-.2-5.7-1.3-8-2h-2q-5.7.4-10-2h-1q-4.5 0-8-2h-1a10 10 0 0 1-6-2h-1c-5.9-.2-12-3.8-17-6l-4-1c-1.7-.5-2.8-.7-4-2h-1q-2.5-.2-4-2h-1q-3.4-.9-6-3h-1c-3.5-.8-7.3-2.9-10-5h-1c-1.7 0-2.2-.7-3-2h-1c-11.6-2.7-23.2-11.5-34.2-15.8-11-4.2-25.9-9.2-29.8-21.2h4c16.2 0 32.8-1 49 0 1.7.1 3 .8 4 1 2.1.4 3.4-.5 5 1h1c3.6.1 8.4 1.8 11 4h1a45 45 0 0 1 18 8h1q4.6 1.2 8 4h1c4.2 1 8.3 3.4 12 5q3.4 1.2 7 2c5.7 1.3 13 2.3 18 5h1c3.7-.2 7 1.1 10 2h9c1.6 0 3 .8 4 1h32c2.2-1.6 6-1 9-1h1a63 63 0 0 1 22-4 22 22 0 0 1 8-2c1.7-1.4 3.7-1.6 6-2a81 81 0 0 0 12-3c2.3-1 4.2-2.5 7-3h1q1.5-1.7 4-2h1c1.9-1.5 3.6-2.2 6-3l3-1c4.1-2.3 8.4-5.2 13-7 0 0 .6.2 1 0 1.5-2.4 6.3-5 9-6 0 0 .6.2 1 0 5.3-8.1 17.6-12.5 24.8-20.2C439.9 144 445 133 452 126v-1a12 12 0 0 1 2-5c2.1-2.2 8.9-1 12-1q2 .2 4 0c1-.2 2.3-1.2 4-1h1q2.1-1.5 5-2h1q2.1-1.9 5-3s.6.2 1 0c9-9.3 18-15.4 23-28 1.1-2.8 3.5-6.4 4-9 .2-1 .2-3 0-4-1.5-6-12.3-2.4-15.7 2.3S484.7 80 479 80h-7c-7.8 4.3-19.3 5.7-23 16a37 37 0 0 0-22-24c-1.5-.5-2.5-.7-4-1-2.1-.5-3.6-.2-5-2h-1a22 22 0 0 1-12-8c-2-2.9-3.4-6.5-6-9h-1c-3.9-.6-6.1 1-8 4m-181 45h1c2.2-.2 4.5-.3 6 1h1q2.5-.5 4 1h1a33 33 0 0 1 17 7h1c4.4 1 8.2 4.1 12 6 2.1 1 4.1 1.5 6 3h1c4 1 8.9 3.5 12 6h1c4 1 8.9 3.5 12 6h1c4 1 8.9 3.5 12 6h1a61 61 0 0 1 21 10h1c3.5.8 7.3 2.9 10 5h1c6.1 1.4 12.3 5 18 7 1.8.4 3 .8 5 1 1.8.2 3.7.8 5 1q2.5-.5 4 1h6c2.5 0 4 .3 6 1h3q-.7 2.1-3 2a46 46 0 0 1-16 7l-10 3c-2 .8-3.4 1.9-6 2h-1c-2.6 2.1-7.5 3-11 3h-1c-3.1 2.5-10.7 3.5-15 3h-1c-1.5 1.3-3.9 1.2-6 1-1 .2-2.4 1-4 1h-11c-3.8.4-8.3.4-12 0h-9c-2.3 0-4.3-.7-6-1h-3c-1.8 0-2.9-.7-4-1-3.5-.8-7-.7-10-2h-1c-4.1-.7-9.8-1.4-13-4h-1q-4-.6-7-3h-1q-2.5-.2-4-2h-1q-3.4-.9-6-3h-1c-7.2-1.7-13.3-5.9-20.2-8.8-7-2.8-16.2-4.3-22.8-7.2h-11c-14 0-28.9.3-42-1-2.3 0-4.8.3-7 0a6 6 0 0 1-5-5c-1.8-4.8-.4-10.4 0-15 0-4.3-.4-8.7 0-13 .2-3.2 2.2-7.3 4-10q2-3 5-5c2.1-2 5.4-2.3 8-3 15.6-3.9 36.3-1 53-1 5.2 0 12-.5 17 0s12.2-1.8 16 1Z",
+      },
+      {
+        d: "M162 132v1c1.8 2.9 4.5 5.3 8 6 .3-.2 3.7-.2 4 0 7-1.4 9.2-8.8 7-15v-1a14 14 0 0 0-7-4c-.3.2-3.7.2-4 0-6.5 1.3-8.6 6.8-8 13Z",
+      },
+      {
+        d: "M465 211h-1c-18.2 14.6-41.2 24.6-60 39-19 14.2-42.7 29.3-66 34l-4 1c-2.4 1-4 2-7 2h-1q-3.5 2-8 2h-1c-1.3 1.2-3 1.1-5 1h-2q-2.6 1.1-6 1h-2c-3 1.2-6.5 1-10 1-6.3.6-13.8.6-20 0-3.4 0-8.4.9-11-1h-1c-2.2.2-4.5.3-6-1h-1c-2 .2-3.7.2-5-1h-1c-7.6.5-16.5-3.4-23-6l-4-1a129 129 0 0 1-36.2-15.8c-10.4-6.6-23.2-12.8-32.5-20.5-9.2-7.7-23.8-12.8-30.3-22.7h-1c-2.3-1.4-4.5-2.7-6-5h-1c-4-2.5-8.5-5.2-12-8h-9a9 9 0 0 0-6 7c.3 3.3 0 6.7 0 10v9c.2 1.6 1 3.8 1 6v3c.2 1 1.2 2.2 1 4v1c1.2 1.2.8 2.2 1 4 .8 6.7 3 12.6 5 19 1.7 4.3 4.2 9.1 5 14v1q1.8 1.5 2 4v1a36 36 0 0 1 5 10c.7 2 1 3 2 5 8 12.7 15.7 25.5 25.8 37.3 10 11.7 20.8 20.6 32.4 30.4 11.7 9.9 28.3 14 39.8 23.3h1q2.5.3 4 2h1c2.8.4 4.8 2 7 3l7 2c5.7 1.3 13 2.3 18 5h1c2.1-.3 3.6.8 5 1h3c2.8.2 5.8 1 8 2h8c2.1 0 4.6.8 6 1h21c1.2-.2 3.2-1 5-1h9c3.3-1 7-2.4 11-2h1c2.7-2.2 7.4-2.4 11-3a55 55 0 0 0 8-2c6.5-2.6 13.9-6.3 21-8h1c8.5-6.8 20.6-9.7 29.2-16.8 8.7-7 18.3-12.8 26.8-20.2 4.4-3.8 9-9 13-13 14.8-14.8 20.7-34.6 33-50v-1q.9-3.4 3-6v-1q.3-2.5 2-4v-1c.5-3.3 2-8.6 4-11v-1q0-3.5 2-6v-1c1.1-6.7 2.4-15 5-21v-1c-.2-2-.2-3.7 1-5v-8c0-5.3-.5-10.8 0-16a14 14 0 0 0-4-6c-1-.5-1.1-.4-2-1h-6q-2.1 1.5-5 2m-6 38c-2.1 13.4-21.2 20.3-31 30-10 9.5-23.7 19-35 27-11.5 8-25.1 19.7-39 23h-1a22 22 0 0 1-10 4h-1a25 25 0 0 1-12 4h-1q-3.5 2-8 2h-1c-1.1 1.1-2.3 1-4 1h-2c-1.2.4-2.2 1-4 1h-2c-1.8.7-3.6 1.3-6 1h-1c-1.2 1.2-2.3 1-4 1h-5c-5.7.6-12.3.8-18 0h-4c-1.9 0-2.7-.6-4-1h-6c-1.9 0-2.7.3-4-1h-1q-2.5.5-4-1h-1c-8.1.5-16.8-3.6-24.2-5.8S210 329.8 204 325h-1c-12.8-5-27.1-15.6-37.7-24.3S138.8 284.2 131 273c-.3-.2-1 0-1 0-5.7-4.4-16.6-10-19-17-.9-2.6-1-5.4-2-8-.8-2.2-2.5-5-2-8a667 667 0 0 0 88 56h1q3.4.9 6 3h1c2.8.4 4.8 2 7 3q5 1.8 10 3l6 2q2.9.6 6 1 3 .4 5 1c1.6-.2 2 0 3 1h1c2-.2 3.7-.2 5 1h1c2.2-.3 3.4.4 5 1h8c1.6 0 3 .9 4 1h40c1.8-1.3 4.6-1.2 7-1h1c1.2-1.2 3.2-1.2 5-1h1c1.2-1.2 3.2-1.2 5-1h1c1.1-1.1 2.3-1 4-1h2c3.5-1.7 6.9-2.3 11-3l4-1c3.4-1.4 7.1-3 11-4 1.5-.4 2.5-.5 4-1 1.4-.7 2-1.9 4-2h1q2.6-2.1 6-3h1c2.5-2 6-3.8 9-5l3-1c1.4-.9 2-2.5 4-3h1q1.4-2.2 4-3h1c7.3-7.7 19-13.2 27.7-19.3 8.8-6.1 18.2-15 28.3-18.7.4-.2 1 0 1 0q3.8-3.9 9-6c1.3 2.5-.5 6.7-1 10m-20 55c-.2.4 0 1 0 1-3.4 9.6-12.7 19-19 27a88 88 0 0 1-12 12 214 214 0 0 1-26.7 20.3c-9.5 5.8-20 14.8-31.3 16.7h-1a22 22 0 0 1-10 4h-1c-3.2 2.6-8.9 3.3-13 4h-1q-1.5 1.4-4 1h-1q-1.5 1.4-4 1h-1c-4.9 2.3-10.5 1-16 2-1 .2-2.5 1-4 1-6.2.4-12.8.3-19 0-1.8 0-3.8-.8-5-1h-4c-1.6 0-3-.9-4-1h-4c-3.9-.3-8.8-1.3-12-3h-1c-3.3-.5-7.5-1-10-3h-1c-3.6-.1-8.4-1.8-11-4h-1c-3.9-.6-8-2.6-11-5h-1c-16.1-3.8-32.2-18.9-45-29a200 200 0 0 1-40-51c17.7 11.5 35 25.5 52 38h1c4 1.6 12.8 5.4 15 9h1c4.6 1 10.4 4.1 14 7h1q2.5.3 4 2h1c3.3.5 8.6 2 11 4h1q3.5 0 6 2h1q2.5-.5 4 1h1q2.5-.5 4 1h1c3.8-.2 7.9 1 11 2h9c1.6 0 3 .8 4 1h32c1.2-.2 3.2-1 5-1h8a139 139 0 0 1 20-4l5-1c2-.7 3.7-1.5 6-2l4-1c1.5-.6 3-1.7 5-2h1q3-2.4 7-3h1q2.6-2.1 6-3h1c11.7-9.4 27.6-14.6 39-25 11.6-10.3 25-18.5 37-28a15 15 0 0 1-5 10Z",
+      },
+    ],
+  },
+  // public/migrations/coolify.svg
+  coolify: {
+    viewBox: "0 0 512 512",
+    paths: [
+      {
+        d: "M63.7-161.7h-90.9v272.8h90.9zm0 363.7h363.7v-90.9H63.7zm0-363.7h363.7v-90.9H63.7z",
+        fill: "#8c52ff",
+        fillOpacity: 0.302,
+        transform: "translate(84.664 310.016)",
+      },
+      {
+        d: "M48.2-177.1h-90.9V95.6h90.9zm0 363.6h363.7V95.6H48.2zm0-363.6h363.7V-268H48.2z",
+        fill: "#8c52ff",
+        fillOpacity: 0.502,
+        transform: "translate(71.406 296.758)",
+      },
+      {
+        d: "M32.8-192.6h-90.9V80.2h90.9zm0 363.7h363.7V80.2H32.8zm0-363.7h363.7v-90.9H32.8z",
+        fill: "#8c52ff",
+        transform: "translate(58.147 283.5)",
+      },
+    ],
+  },
+};
+
+/**
+ * One mark's paths. `dim` drops the brand colour AND its layering: `--border` is
+ * the token for "drawn, and no longer the subject", and it has nothing below it
+ * to tint with.
+ */
+export function markPaths(art: SourceArt, dim = false): React.ReactNode {
+  return art.paths.map((p, i) => (
+    <path
+      key={i}
+      d={p.d}
+      transform={p.transform}
+      fill={dim ? "currentColor" : (p.fill ?? "currentColor")}
+      fillOpacity={dim ? undefined : p.fillOpacity}
+    />
+  ));
+}
+
+/** One panel's mark, for a line of text. */
+export function SourceMark({
+  kind,
+  className,
+}: {
+  kind: SourceKind;
+  className?: string;
+}) {
+  const art = SOURCE_ART[kind];
+  return (
+    <svg
+      viewBox={art.viewBox}
+      fill="none"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+    >
+      {markPaths(art)}
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* The words                                                           */
+/* ------------------------------------------------------------------ */
+
+interface SourceCopy {
+  /** The product's own name, for a sentence. */
+  name: string;
+  connectTitle: string;
+  urlInfo: string;
+  urlPlaceholder: string;
+  /** Dokploy calls it a key, Coolify calls it a token. Use their word. */
+  tokenLabel: string;
+  tokenInfo: string;
+  /** Where it usually answers from inside a container, for Same machine. */
+  privateHost: string;
+  scanIdle: string;
+  scanBusy: string;
+  docs: DocsTopic;
+}
+
+/**
+ * Three states, not a template: "Check this Dokploy" and "Check this panel" do
+ * not come out of one sentence, and every string here is written for the state it
+ * appears in.
+ */
+export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
+  unknown: {
+    name: "the panel",
+    connectTitle: "Connect to Dokploy or Coolify",
+    urlInfo:
+      "The address you open Dokploy or Coolify on. Not the machine's address - the next step asks for that.",
+    urlPlaceholder: "https://panel.acme.com",
+    tokenLabel: "API token",
+    tokenInfo:
+      "In Dokploy: Settings, Profile, API/CLI. In Coolify: Keys & Tokens, API tokens. Use an owner's or admin's - a member's is refused.",
+    privateHost: "http://172.17.0.1:3000",
+    scanIdle: "Check this panel",
+    scanBusy: "Reading the panel",
+    docs: "migration.run",
+  },
+  dokploy: {
+    name: "Dokploy",
+    connectTitle: "Connect to Dokploy",
+    urlInfo:
+      "The address you open Dokploy on. Deplo adds /api. Not the machine's address - the next step asks for that.",
+    urlPlaceholder: "https://dokploy.acme.com",
+    tokenLabel: "API key",
+    tokenInfo:
+      "In Dokploy: Settings, Profile, API/CLI. Use an owner's or admin's key - a plain member's key is refused on the per-service calls.",
+    privateHost: "http://172.17.0.1:3000",
+    scanIdle: "Check this Dokploy",
+    scanBusy: "Reading Dokploy",
+    docs: "migration.dokploy",
+  },
+  coolify: {
+    name: "Coolify",
+    connectTitle: "Connect to Coolify",
+    urlInfo:
+      "The address you open Coolify on. Deplo adds /api/v1. Not the machine's address - the next step asks for that.",
+    urlPlaceholder: "https://coolify.acme.com",
+    tokenLabel: "API token",
+    tokenInfo:
+      "In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked - without it the variables and database passwords arrive empty. Use an owner's or admin's token.",
+    privateHost: "http://172.17.0.1:8000",
+    scanIdle: "Check this Coolify",
+    scanBusy: "Reading Coolify",
+    docs: "migration.coolify",
+  },
+};
+
+/** The words for what is known so far. */
+export function copyFor(kind: SourceKind | null): SourceCopy {
+  return SOURCE_COPY[kind ?? "unknown"];
+}

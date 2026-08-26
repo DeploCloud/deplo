@@ -992,7 +992,9 @@ async function planMembers(
     .map((m) => ({
       email: (m.user?.email ?? m.email ?? "").trim().toLowerCase(),
       name: (m.user?.name ?? m.name ?? "").trim(),
-      sourceRole: (m.role ?? "member").trim(),
+      // Empty when the panel does not say: Coolify hides the pivot on its team
+      // endpoint, and "member on Coolify" would be a guess printed as a fact.
+      sourceRole: (m.role ?? "").trim(),
     }))
     .filter((p) => p.email.includes("@"));
   if (people.length === 0) return [];

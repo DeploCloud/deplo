@@ -3146,6 +3146,29 @@ p:not([class*="leading-"]) {
   }
 }
 
+/* The source's mark arriving once, when the scan works out which panel it is.
+   An opacity that ANIMATES is movement, not a resting shade. */
+@keyframes deplo-migrate-mark {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.deplo-migrate-mark {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-migrate-mark 420ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .deplo-migrate-mark {
+    animation: none;
+  }
+}
+
 .deplo-migrate-halo {
   transform-box: fill-box;
   transform-origin: center;

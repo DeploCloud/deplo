@@ -26,7 +26,7 @@ export default async function SettingsMigrationsPage() {
     return (
       <OutsideYourAccess
         title="Migrations"
-        description="Bring projects over from Dokploy."
+        description="Bring projects over from Dokploy or Coolify."
         what="Migrations"
       />
     );
@@ -59,7 +59,7 @@ export default async function SettingsMigrationsPage() {
             <BetaChip />
           </span>
         }
-        description="Bring projects, apps and their configuration over from Dokploy."
+        description="Bring projects, apps and their configuration over from Dokploy or Coolify."
       />
       <MigrationsTabs
         teamId={team.id}

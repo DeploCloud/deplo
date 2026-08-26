@@ -17,6 +17,8 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { MigrationGraphic } from "./migration-graphic";
 import { MigrationConsole } from "./migration-console";
 import type { ImportRun } from "./types";
+import { SOURCE_COPY, SourceMark } from "./sources";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 
 /**
  * Every migration this team has run, and the report each one left behind. The
@@ -39,7 +41,7 @@ export function MigrationsHistory({
         graphic={<MigrationGraphic state="connect" className="h-28" />}
         title="No migrations yet"
         docs="migration.dokploy"
-        description="Once you bring a Dokploy over, every run and its log stay here."
+        description="Once you bring a Dokploy or a Coolify over, every run and its log stay here."
       />
     );
 
@@ -59,8 +61,13 @@ export function MigrationsHistory({
             {runs.map((r) => (
               <TableRow key={r.id}>
                 <TableCell className="max-w-[16rem]">
-                  <div className="truncate font-medium">
-                    {r.orgName ?? r.sourceUrl}
+                  <div className="flex items-center gap-2 font-medium">
+                    <SimpleTooltip content={SOURCE_COPY[r.platform].name}>
+                      <span className="inline-flex">
+                        <SourceMark kind={r.platform} />
+                      </span>
+                    </SimpleTooltip>
+                    <span className="truncate">{r.orgName ?? r.sourceUrl}</span>
                   </div>
                   {r.orgName && (
                     <div className="mt-1 truncate text-xs text-muted-foreground">

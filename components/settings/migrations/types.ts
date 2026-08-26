@@ -3,6 +3,10 @@
  * `lib/data/migration-import.ts`.
  */
 
+import type { SourceKind } from "./sources";
+
+export type { SourceKind };
+
 export interface PlanService {
   sourceId: string;
   kind: string;
@@ -58,6 +62,8 @@ export interface PlanMember {
 }
 
 export interface Plan {
+  /** Which product answered. The wizard names it instead of asking. */
+  platform: SourceKind;
   sourceUrl: string;
   orgName: string | null;
   projects: PlanProject[];
@@ -87,6 +93,8 @@ export interface Invite {
 
 export interface ImportRun {
   id: string;
+  /** Which product this run read. */
+  platform: SourceKind;
   sourceUrl: string;
   orgName: string | null;
   actor: string;

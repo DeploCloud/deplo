@@ -10,14 +10,16 @@ import { Input } from "@/components/ui/input";
 import { CopyButton } from "@/components/shared/copy-button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StepShell } from "./step-shell";
+import { copyFor, type SourceKind } from "./sources";
 import type { Invite, PlanMember } from "./types";
 
 /**
- * The people who were on that Dokploy, as the team page draws people. Each link is
+ * The people who were on that panel, as the team page draws people. Each link is
  * single-use and expires on its own, so minting one for somebody who is never
  * invited costs nothing.
  */
 export function PeopleStep({
+  kind,
   people,
   invites,
   inviting,
@@ -28,6 +30,8 @@ export function PeopleStep({
   onMintLink,
   onContinue,
 }: {
+  /** Which panel these people came from. */
+  kind: SourceKind | null;
   people: PlanMember[];
   /** Null until the links have been minted; then one entry per person. */
   invites: Invite[] | null;
@@ -55,7 +59,7 @@ export function PeopleStep({
 
   return (
     <StepShell
-      title="The people who were on Dokploy"
+      title={`The people who were on ${copyFor(kind).name}`}
       docs="migration.people"
       lead="Everyone joins with a single-use link and arrives as a plain member, whatever they were over there. You can invite anyone else later from Members."
     >
@@ -63,7 +67,7 @@ export function PeopleStep({
         <EmptyState
           icon={UserPlus}
           title="Nobody else to bring over"
-          description="That Dokploy organization had no other members."
+          description={`That ${copyFor(kind).name} had no other members.`}
         />
       ) : (
         // Two columns at most: the wizard's column is a fixed measure now, so
@@ -72,6 +76,7 @@ export function PeopleStep({
         <div className="grid gap-3 sm:grid-cols-2">
           {people.map((p) => (
             <PersonCard
+              panel={copyFor(kind).name}
               key={p.email}
               person={p}
               invite={byEmail.get(p.email) ?? null}
@@ -81,7 +86,7 @@ export function PeopleStep({
         </div>
       )}
 
-      {/* For whoever was not on Dokploy at all. Secondary, and below: it is the
+      {/* For whoever was not on that panel at all. Secondary, and below: it is the
           exception, and the cards above are the errand. */}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" onClick={onMintLink} disabled={minting}>
@@ -115,11 +120,14 @@ function PersonCard({
   person,
   invite,
   pending,
+  panel,
 }: {
   person: PlanMember;
   invite: Invite | null;
   /** The links are still being minted, so the foot of the card is not empty. */
   pending: boolean;
+  /** The panel's name. Coolify hides a member's role, so the line goes with it. */
+  panel: string;
 }) {
   return (
     <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4">
@@ -130,9 +138,11 @@ function PersonCard({
         <UserAvatar name={person.name} username={person.email} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{person.email}</p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {person.sourceRole} on Dokploy
-          </p>
+          {person.sourceRole && (
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {person.sourceRole} on {panel}
+            </p>
+          )}
         </div>
       </div>
 

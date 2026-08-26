@@ -12,6 +12,7 @@ import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { TeamTargetGraphic } from "./team-target-graphic";
 import { MigrationTree, type PortConflict } from "./migration-tree";
 import { StepShell } from "./step-shell";
+import { copyFor, type SourceKind } from "./sources";
 import {
   importableOf,
   type Placement,
@@ -74,7 +75,7 @@ function usePortConflicts({
 
   const dbs = React.useMemo(() => databasesWithPorts(plan), [plan]);
 
-  /** The Deplo server that IS the Dokploy machine a service runs on, if we have one. */
+  /** The Deplo server that IS the source machine a service runs on, if we have one. */
   const homeHost = React.useMemo(
     () => new Map(plan.servers.map((m) => [m.sourceId, m.deploServerId])),
     [plan],
@@ -272,6 +273,7 @@ function usePortConflicts({
 /* ------------------------------------------------------------------ */
 
 export function ReviewStep({
+  kind,
   plan,
   teamName,
   teamAvatarUrl,
@@ -286,6 +288,8 @@ export function ReviewStep({
   onBack,
   onStart,
 }: {
+  /** Which panel the plan was read from. */
+  kind: SourceKind | null;
   plan: Plan;
   /** The active team, named in the card at the top: everything lands there. */
   teamName: string;
@@ -359,7 +363,7 @@ export function ReviewStep({
         <EmptyState
           icon={Layers}
           title="Nothing to bring over"
-          description="That Dokploy organization has no projects, or the key cannot see them."
+          description={`That ${copyFor(kind).name} has no projects, or the token cannot see them.`}
         />
       ) : (
         <MigrationTree
@@ -420,7 +424,7 @@ export function ReviewStep({
                 </span>
               </SimpleTooltip>{" "}
               {chosenNames.length === 1 ? "service is" : "services are"} stopped
-              on Dokploy when this starts, and not started again.
+              on {copyFor(kind).name} when this starts, and not started again.
             </p>
           </div>
         )}

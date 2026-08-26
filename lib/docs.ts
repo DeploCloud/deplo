@@ -192,6 +192,7 @@ export const DOCS = {
   "upgrade.overview": "operations/upgrade",
 
   "migration.dokploy": "guides/move-from-dokploy",
+  "migration.coolify": "guides/move-from-coolify",
   "migration.run": "guides/move-from-dokploy#run-a-migration",
   "migration.source":
     "guides/move-from-dokploy#install-the-agent-on-the-source",

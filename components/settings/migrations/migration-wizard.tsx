@@ -9,6 +9,7 @@ import {
   Loader2,
   ScrollText,
   Server as ServerIcon,
+  TriangleAlert,
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
@@ -18,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { KindCard } from "@/components/shared/kind-card";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -33,6 +35,7 @@ import {
 } from "@/components/layout/migration-activity";
 import { InstallStep, type PendingMachine } from "./install-step";
 import { MigrationGraphic, type MigrationState } from "./migration-graphic";
+import { copyFor, SOURCE_COPY, SourceMark, type SourceKind } from "./sources";
 import { RemoveMigrationSources } from "./remove-sources";
 import { ReviewStep } from "./review-step";
 import { PeopleStep } from "./people-step";
@@ -121,6 +124,7 @@ function lastStep(path: string | null | undefined): string {
 const SCAN = /* GraphQL */ `
   mutation ScanMigrationSource($input: MigrationSourceInput!) {
     scanMigrationSource(input: $input) {
+      platform
       sourceUrl
       orgName
       servers {
@@ -289,6 +293,10 @@ export function MigrationWizard({
   const [sameMachine, setSameMachine] = React.useState(false);
   const [scanning, setScanning] = React.useState(false);
   const [plan, setPlan] = React.useState<Plan | null>(null);
+  /** Pinned by the person after a scan that could not identify the panel. */
+  const [forcedKind, setForcedKind] = React.useState<SourceKind | null>(null);
+  /** The last refusal, kept on screen: its fix is in another browser tab. */
+  const [scanError, setScanError] = React.useState<string | null>(null);
 
   const [serverMap, setServerMap] = React.useState<Record<string, string>>({});
   /**
@@ -340,10 +348,23 @@ export function MigrationWizard({
     setUrl(prefill.url);
   }
 
+  /**
+   * What the RUN and the invites are sent with. It carries what the SCAN found,
+   * never what somebody pinned: walking back to Connect after scanning one panel
+   * and typing another address would otherwise fix the wrong platform.
+   */
   const connectInput = React.useMemo(
-    () => ({ url, apiKey, allowPrivate: sameMachine }),
-    [url, apiKey, sameMachine],
+    () => ({
+      url,
+      apiKey,
+      allowPrivate: sameMachine,
+      kind: plan?.platform ?? null,
+    }),
+    [url, apiKey, sameMachine, plan],
   );
+
+  /** What is known about the panel so far: what answered, or what was pinned. */
+  const kind: SourceKind | null = plan?.platform ?? forcedKind;
 
   const STEPS = React.useMemo(
     () => stepsFor(isInstanceAdmin),
@@ -355,14 +376,20 @@ export function MigrationWizard({
   async function scan(e: React.FormEvent) {
     e.preventDefault();
     setScanning(true);
+    setScanError(null);
     const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
       SCAN,
-      { input: connectInput },
+      {
+        input: { url, apiKey, allowPrivate: sameMachine, kind: forcedKind },
+      },
       (d) => d.scanMigrationSource,
     );
     setScanning(false);
     if (!res.ok) {
-      toast.error(res.error);
+      // Kept on screen rather than toasted: for an API that is switched off, an
+      // IP allowlist or a token short of a permission, the fix is minutes away in
+      // another tab, and a toast is gone before anyone gets back.
+      setScanError(res.error);
       return;
     }
     if (!res.data) return;
@@ -500,6 +527,8 @@ export function MigrationWizard({
     setPendingMachines({});
     attemptedMachines.current = new Set();
     setApiKey("");
+    setForcedKind(null);
+    setScanError(null);
     setLogOpen(false);
     setStep("connect");
     router.refresh();
@@ -787,6 +816,7 @@ export function MigrationWizard({
        */}
       {step === "done" ? (
         <DoneStep
+          kind={kind}
           onShowLog={() => setLogOpen(true)}
           onFinish={() => {
             void closeReport();
@@ -796,7 +826,11 @@ export function MigrationWizard({
         />
       ) : (
         <div className="mx-auto flex w-full flex-col items-center gap-8">
-          <MigrationGraphic state={pose} className="h-auto w-full max-w-md" />
+          <MigrationGraphic
+            state={pose}
+            kind={kind}
+            className="h-auto w-full max-w-md"
+          />
 
           {/**
            * One width for every step, and it is the narrow one: a wizard is read top to
@@ -840,6 +874,7 @@ export function MigrationWizard({
                   on it. The step they left is the step they get, Stop and all. */}
               {resumed && (
                 <MovingPanel
+                  kind={kind}
                   progress={
                     feed
                       ? {
@@ -870,14 +905,18 @@ export function MigrationWizard({
                   setSameMachine={setSameMachine}
                   canUsePrivate={isInstanceAdmin}
                   scanning={scanning}
+                  kind={kind}
+                  forcedKind={forcedKind}
+                  setForcedKind={setForcedKind}
+                  scanError={scanError}
                   onSubmit={scan}
                 />
               )}
 
               {!takenOver && step === "install" && plan && (
                 <InstallStep
+                  kind={kind}
                   machines={plan.servers}
-                  sourceUrl={url}
                   canAddServers={isInstanceAdmin}
                   pending={pendingMachines}
                   setPending={setPendingMachines}
@@ -892,6 +931,7 @@ export function MigrationWizard({
                 plan &&
                 (moving ? (
                   <MovingPanel
+                    kind={kind}
                     progress={NO_PROGRESS}
                     startedAt={null}
                     // The start call is in flight in THIS tab: there is no run
@@ -907,6 +947,7 @@ export function MigrationWizard({
                   />
                 ) : (
                   <ReviewStep
+                    kind={kind}
                     plan={plan}
                     teamName={teamName}
                     teamAvatarUrl={teamAvatarUrl}
@@ -925,6 +966,7 @@ export function MigrationWizard({
 
               {!takenOver && step === "people" && (
                 <PeopleStep
+                  kind={kind}
                   people={(plan?.members ?? []).filter((m) => !m.inTeam)}
                   invites={invites}
                   inviting={inviting}
@@ -967,6 +1009,10 @@ function ConnectStep({
   setSameMachine,
   canUsePrivate,
   scanning,
+  kind,
+  forcedKind,
+  setForcedKind,
+  scanError,
   onSubmit,
 }: {
   url: string;
@@ -978,11 +1024,17 @@ function ConnectStep({
   /** Instance admin. Only they may point Deplo at a private address. */
   canUsePrivate: boolean;
   scanning: boolean;
+  /** What is known so far: what answered, or what was pinned. */
+  kind: SourceKind | null;
+  forcedKind: SourceKind | null;
+  setForcedKind: (v: SourceKind | null) => void;
+  scanError: string | null;
   onSubmit: (e: React.FormEvent) => void;
 }) {
+  const copy = copyFor(kind);
   return (
     <StepShell
-      title="Connect to Dokploy"
+      title={copy.connectTitle}
       lead="Nothing is written on either side until you have seen what would come over."
     >
       <form className="grid gap-4" onSubmit={onSubmit}>
@@ -990,22 +1042,14 @@ function ConnectStep({
           {/**
            * "Panel address", not "Address".
            */}
-          <FieldLabel
-            htmlFor="dokploy-url"
-            info="The address you open Dokploy on. Deplo adds /api. Not the machine's address - the next step asks for that."
-            docs="migration.run"
-          >
+          <FieldLabel htmlFor="source-url" info={copy.urlInfo} docs={copy.docs}>
             Panel address
           </FieldLabel>
           <Input
-            id="dokploy-url"
+            id="source-url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={
-              sameMachine
-                ? "http://172.17.0.1:3000"
-                : "https://dokploy.acme.com"
-            }
+            placeholder={sameMachine ? copy.privateHost : copy.urlPlaceholder}
             autoComplete="off"
             spellCheck={false}
           />
@@ -1013,14 +1057,14 @@ function ConnectStep({
 
         <div className="grid gap-2">
           <FieldLabel
-            htmlFor="dokploy-key"
-            info="In Dokploy: Settings, Profile, API/CLI. Use an owner's or admin's key - a plain member's key is refused on the per-service calls."
-            docs="migration.run"
+            htmlFor="source-token"
+            info={copy.tokenInfo}
+            docs={copy.docs}
           >
-            API key
+            {copy.tokenLabel}
           </FieldLabel>
           <Input
-            id="dokploy-key"
+            id="source-token"
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
@@ -1039,9 +1083,9 @@ function ConnectStep({
             className="gap-2"
             info={
               <>
-                Lets Deplo dial a private address. From in here, Dokploy is
-                usually at <code>http://172.17.0.1:3000</code> or on the
-                host&apos;s own IP.
+                Lets Deplo dial a private address. From in here, {copy.name} is
+                usually at <code>{copy.privateHost}</code> or on the host&apos;s
+                own IP.
               </>
             }
             docs="migration.source"
@@ -1064,13 +1108,52 @@ function ConnectStep({
           )}
         </div>
 
+        {/**
+         * The picker appears on ANY failed first read, not on a special "could not
+         * identify" error: if the token is wrong both probes fail on auth, and
+         * Deplo genuinely does not know what that panel is. Picking one re-reads it
+         * as that platform alone, so the second refusal is that platform's own words.
+         */}
+        {scanError && (
+          <div className="grid gap-3 rounded-lg border border-destructive/40 bg-destructive/[0.06] p-3">
+            <div className="flex items-start gap-2">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+              <p className="min-w-0 text-sm text-muted-foreground">
+                {scanError}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Which one is this?</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {(["dokploy", "coolify"] as const).map((k) => (
+                  <KindCard
+                    key={k}
+                    selected={forcedKind === k}
+                    onSelect={() => setForcedKind(k)}
+                    icon={<SourceMark kind={k} />}
+                    title={SOURCE_COPY[k].name}
+                    caption={
+                      k === "dokploy"
+                        ? "Its key comes from Settings, Profile, API/CLI."
+                        : "Its token comes from Keys & Tokens."
+                    }
+                  />
+                ))}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Deplo migrates these two.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-end">
           <Button
             type="submit"
             disabled={scanning || !url.trim() || !apiKey.trim()}
           >
             {scanning && <Loader2 className="size-4 animate-spin" />}
-            {scanning ? "Reading Dokploy" : "Check this Dokploy"}
+            {scanning ? copy.scanBusy : copy.scanIdle}
           </Button>
         </div>
       </form>
@@ -1086,6 +1169,7 @@ function ConnectStep({
  * What the review turns into once the move starts.
  */
 function MovingPanel({
+  kind,
   progress,
   startedAt,
   heartbeatAt,
@@ -1096,6 +1180,8 @@ function MovingPanel({
   onStop,
   onBack,
 }: {
+  /** Which panel this run is reading, for the words that name it. */
+  kind: SourceKind | null;
   progress: MigrationProgress;
   /** Epoch ms the run started, or null when there is no run to time yet. */
   startedAt: number | null;
@@ -1118,6 +1204,7 @@ function MovingPanel({
   // title included.
   const now = useNow(startedAt != null || heartbeatAt != null);
   const driven = isDriven({ heartbeatAt }, now);
+  const panelName = copyFor(kind).name;
 
   // The start call itself failed, so there is no run: nothing was created, and
   // there is nothing to undo or report on. Back to the plan.
@@ -1209,8 +1296,8 @@ function MovingPanel({
                 trust.
                 <br />
                 <br />
-                It does not start Dokploy back up - the services this migration
-                stopped over there stay stopped.
+                It does not start {panelName} back up - the services this
+                migration stopped over there stay stopped.
               </>
             }
             onConfirm={async () => {
@@ -1280,10 +1367,13 @@ function ElapsedLine({
  * are doing.
  */
 function DoneStep({
+  kind,
   onShowLog,
   onFinish,
   isInstanceAdmin,
 }: {
+  /** Which panel this came from, for the drawing's label. */
+  kind: SourceKind | null;
   /** The wizard's own console - the same one the panel opened while it ran. */
   onShowLog: () => void;
   onFinish: () => void;
@@ -1299,7 +1389,7 @@ function DoneStep({
        */}
       <ConfettiBurst rain className="z-50" count={60} />
 
-      <MigrationGraphic state="done" className="h-48 w-auto" />
+      <MigrationGraphic state="done" kind={kind} className="h-48 w-auto" />
 
       <div>
         <h2 className="text-xl font-semibold">You&apos;re on Deplo</h2>
