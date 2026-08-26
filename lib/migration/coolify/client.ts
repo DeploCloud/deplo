@@ -529,7 +529,9 @@ export async function listSharedEnvs(
       ? "team/envs"
       : scope.level === "project"
         ? `projects/${scope.projectUuid}/envs`
-        : `projects/${scope.projectUuid}/environments/${scope.environment}/envs`;
+        : `projects/${scope.projectUuid}/environments/${encodeURIComponent(
+            scope.environment,
+          )}/envs`;
   return asArray<CoolifyEnv>(await getOr<unknown>(c, path, []));
 }
 
