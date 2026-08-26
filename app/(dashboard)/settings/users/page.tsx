@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isInstanceAdmin } from "@/lib/membership";
 import { listAllUsers, listRegistrationLinks } from "@/lib/data/members";
-import { PageHeader } from "@/components/shared/page-header";
 import { UsersPanel } from "@/components/settings/users-panel";
 
 export const metadata = { title: "Settings · Users" };
@@ -19,18 +18,13 @@ export default async function SettingsUsersPage() {
     listRegistrationLinks(),
   ]);
 
+  // The page header lives inside the panel: "Register user" belongs in it, and
+  // only the panel can open the wizard it opens.
   return (
-    <div className="space-y-6">
-      <PageHeader
-        docs="instance.users"
-        title="Users"
-        description="Instance-wide user administration."
-      />
-      <UsersPanel
-        users={users}
-        links={registrationLinks}
-        currentUserId={user?.id ?? ""}
-      />
-    </div>
+    <UsersPanel
+      users={users}
+      links={registrationLinks}
+      currentUserId={user?.id ?? ""}
+    />
   );
 }

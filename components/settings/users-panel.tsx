@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PageHeader } from "@/components/shared/page-header";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,42 +61,45 @@ export function UsersPanel({
   // `?user=<id>` opens that account's editor on arrival - the deep link a
   // member's page uses, since accounts are instance-wide and edited here.
   const focusUserId = useSearchParams().get("user");
+  // No wrapper card: the users ARE the tiles, and a card holding tiles is two
+  // surfaces - and a second "Users" heading - for one list.
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-          <div>
-            <CardTitle className="flex w-fit items-center gap-2 text-base">
-              Users
-              <InfoTip
-                content="Everyone registered on this instance. Click a user to view details and edit their global permissions."
-                docs="instance.users"
-              />
-            </CardTitle>
-          </div>
-          <Button size="sm" onClick={() => setRegisterOpen(true)}>
-            <UserPlus className="size-4" />
-            Register user
-          </Button>
-          <RegisterUserWizard
-            open={registerOpen}
-            onOpenChange={setRegisterOpen}
-            pinActiveTeam={false}
+    <div className="space-y-6">
+      <PageHeader
+        docs="instance.users"
+        title={
+          <span className="flex items-center gap-2">
+            Users
+            <Badge variant="secondary" className="tabular-nums">
+              {users.length}
+            </Badge>
+          </span>
+        }
+        description="Instance-wide user administration."
+        actions={
+          <>
+            <Button size="sm" onClick={() => setRegisterOpen(true)}>
+              <UserPlus className="size-4" />
+              Register user
+            </Button>
+            <RegisterUserWizard
+              open={registerOpen}
+              onOpenChange={setRegisterOpen}
+              pinActiveTeam={false}
+            />
+          </>
+        }
+      />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {users.map((u) => (
+          <UserRow
+            key={u.userId}
+            user={u}
+            isSelf={u.userId === currentUserId}
+            defaultOpen={u.userId === focusUserId}
           />
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {users.map((u) => (
-              <UserRow
-                key={u.userId}
-                user={u}
-                isSelf={u.userId === currentUserId}
-                defaultOpen={u.userId === focusUserId}
-              />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+        ))}
+      </div>
 
       {pendingLinks.length > 0 && (
         <Card>
