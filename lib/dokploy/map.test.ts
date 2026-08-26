@@ -32,6 +32,8 @@ import {
   volumeLabel,
   declaredSourceVolumes,
   pairHostMounts,
+  deploFilesPath,
+  deploEngineFor,
 } from "./map";
 import type { DokployApplication, DokployDatabase } from "./client";
 import { MAX_LOGO_STRING_LEN } from "../apps/logo-shared";
@@ -1696,4 +1698,136 @@ services:
     composeBuildServices("services:\n  a:\n    image: nginx\n"),
     [],
   );
+});
+
+/* ---- a second platform's compose ------------------------------------ */
+
+/** What the Coolify adapter passes: the platform's name, and the per-resource
+ *  network Coolify puts every service of one stack on. */
+const COOLIFY_PLATFORM = { name: "Coolify", networks: ["ewc08w0", "coolify"] };
+
+test("adaptComposeForDeplo removes a per-resource network pointed at by name", () => {
+  const source = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "networks:",
+    "  default:",
+    "    name: ewc08w0",
+    "    external: true",
+  ].join("\n");
+
+  const { compose, changes } = adaptComposeForDeplo(source, COOLIFY_PLATFORM);
+  assert.ok(changes.some((c) => c.startsWith("Coolify's shared network")));
+  const doc = yaml.load(compose) as { networks?: Record<string, unknown> };
+  assert.equal(doc.networks, undefined);
+});
+
+test("adaptComposeForDeplo removes a per-resource network named by its key", () => {
+  const source = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "    networks:",
+    "      - ewc08w0",
+    "networks:",
+    "  ewc08w0:",
+    "    external: true",
+  ].join("\n");
+
+  const { compose } = adaptComposeForDeplo(source, COOLIFY_PLATFORM);
+  const doc = yaml.load(compose) as {
+    services: Record<string, { networks?: unknown }>;
+    networks?: Record<string, unknown>;
+  };
+  assert.equal(doc.networks, undefined);
+  assert.equal("networks" in doc.services.app, false);
+});
+
+// A network the stack declares itself is the stack's, whatever it is called. Only
+// Dokploy's fixed name speaks for itself without `external:`.
+test("adaptComposeForDeplo keeps an internal network that merely shares the name", () => {
+  const source = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "    networks:",
+    "      - coolify",
+    "networks:",
+    "  coolify:",
+    "    driver: bridge",
+  ].join("\n");
+
+  const { compose, changes } = adaptComposeForDeplo(source, COOLIFY_PLATFORM);
+  assert.deepEqual(changes, []);
+  const doc = yaml.load(compose) as { networks: Record<string, unknown> };
+  assert.deepEqual(Object.keys(doc.networks), ["coolify"]);
+});
+
+test("adaptComposeForDeplo names the platform in its own words", () => {
+  const source = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "networks:",
+    "  dokploy-network:",
+    "    external: true",
+  ].join("\n");
+
+  const { changes } = adaptComposeForDeplo(source);
+  assert.ok(changes.some((c) => c.startsWith("Dokploy's shared network")));
+});
+
+test("adaptComposeForDeplo rewrites a mount under the platform's data directory", () => {
+  const source = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "    volumes:",
+    "      - /data/coolify/applications/ewc08w0/nginx.conf:/etc/nginx/nginx.conf",
+  ].join("\n");
+
+  const { compose } = adaptComposeForDeplo(source, COOLIFY_PLATFORM);
+  const doc = yaml.load(compose) as {
+    services: Record<string, { volumes: string[] }>;
+  };
+  assert.deepEqual(doc.services.app.volumes, [
+    "./nginx.conf:/etc/nginx/nginx.conf",
+  ]);
+});
+
+test("deploFilesPath reads both platforms' files directories", () => {
+  assert.equal(deploFilesPath("../files/conf/app.ini"), "./conf/app.ini");
+  assert.equal(deploFilesPath("../files"), ".");
+  assert.equal(
+    deploFilesPath("/data/coolify/services/ewc08w0/redis.conf"),
+    "./redis.conf",
+  );
+  assert.equal(deploFilesPath("/data/coolify/applications/ewc08w0"), ".");
+  // A real host path and a named volume are neither.
+  assert.equal(deploFilesPath("/var/lib/app"), null);
+  assert.equal(deploFilesPath("app-data"), null);
+});
+
+test("deploEngineFor answers for both platforms' spellings", () => {
+  assert.equal(deploEngineFor("postgres"), "postgres");
+  assert.equal(deploEngineFor("postgresql"), "postgres");
+  assert.equal(deploEngineFor("mongo"), "mongodb");
+  assert.equal(deploEngineFor("mongodb"), "mongodb");
+  assert.equal(deploEngineFor("clickhouse"), "clickhouse");
+  // No twin: the report has to say so rather than guess one.
+  assert.equal(deploEngineFor("keydb"), null);
+  assert.equal(deploEngineFor("dragonfly"), null);
+  assert.equal(deploEngineFor("libsql"), null);
+});
+
+test("mapDatabase refuses an engine Deplo does not have", () => {
+  const { value, notes } = mapDatabase(
+    "keydb" as never,
+    {
+      name: "cache",
+    } as DokployDatabase,
+  );
+  assert.equal(value, null);
+  assert.ok(notes[0].includes("no keydb engine"));
 });

@@ -102,7 +102,7 @@ export function envNeedsInterpolation(
 }
 
 /* ------------------------------------------------------------------ */
-/* Compose: drop Dokploy's shared network                              */
+/* Compose: drop the source platform's shared network                  */
 /* ------------------------------------------------------------------ */
 
 const DOKPLOY_NETWORK = "dokploy-network";
@@ -138,28 +138,50 @@ function stringScalar(map: YAMLMap, key: string): Scalar | null {
 }
 
 /**
- * Every top-level network KEY in this compose that resolves to Dokploy's shared
- * network, which is not only the key `dokploy-network`.
+ * The source platform whose compose this is: the name a report says, and the
+ * networks that belong to the platform rather than to the stack.
  */
-function dokployNetworkKeys(doc: { networks?: unknown }): Set<string> {
+export interface SourcePlatformShape {
+  name: string;
+  networks: readonly string[];
+}
+
+export const DOKPLOY_PLATFORM: SourcePlatformShape = {
+  name: "Dokploy",
+  networks: [DOKPLOY_NETWORK],
+};
+
+/**
+ * Every top-level network KEY in this compose that resolves to one of the
+ * platform's own networks - which is not only the key that spells its name.
+ */
+export function platformNetworkKeys(
+  doc: { networks?: unknown },
+  names: readonly string[],
+): Set<string> {
   const keys = new Set<string>();
+  const wanted = new Set(names.map((n) => n.trim()).filter(Boolean));
   const declared = doc.networks;
   if (!declared || typeof declared !== "object" || Array.isArray(declared))
     return keys;
   for (const [key, raw] of Object.entries(
     declared as Record<string, unknown>,
   )) {
-    if (key === DOKPLOY_NETWORK) keys.add(key);
+    // Dokploy's fixed name speaks for itself. Any other name has to say
+    // `external:` or point with `name:`: an internal network someone happened to
+    // call `coolify` is theirs, not the platform's.
+    if (key === DOKPLOY_NETWORK && wanted.has(key)) keys.add(key);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const n = raw as Record<string, unknown>;
     const ext = n.external;
+    const extName =
+      ext != null && typeof ext === "object" && !Array.isArray(ext)
+        ? (ext as Record<string, unknown>).name
+        : null;
     const named =
-      (typeof n.name === "string" && n.name.trim() === DOKPLOY_NETWORK) ||
-      (ext != null &&
-        typeof ext === "object" &&
-        !Array.isArray(ext) &&
-        (ext as Record<string, unknown>).name === DOKPLOY_NETWORK);
-    if (named) keys.add(key);
+      (typeof n.name === "string" && wanted.has(n.name.trim())) ||
+      (typeof extName === "string" && wanted.has(extName.trim()));
+    if (named || (wanted.has(key) && ext === true)) keys.add(key);
   }
   return keys;
 }
@@ -179,7 +201,8 @@ function stripNetworks(holder: YAMLMap, keys: Set<string>): void {
 }
 
 /**
- * Turn a Dokploy compose file into a Deplo one. Left alone, a `../` source is not
+ * Turn the source platform's compose file into a Deplo one. Left alone, a `../`
+ * source is not
  * merely wrong - Deplo reads it as climbing OUT of the sandbox, so the stack would
  * demand the host-volumes grant and then bind a path that holds nothing.
  *
@@ -187,7 +210,10 @@ function stripNetworks(holder: YAMLMap, keys: Set<string>): void {
  * way their author wrote them - and an anchor is edited once, for every service
  * that merges it.
  */
-export function adaptComposeForDeplo(source: string): {
+export function adaptComposeForDeplo(
+  source: string,
+  platform: SourcePlatformShape = DOKPLOY_PLATFORM,
+): {
   compose: string;
   changes: string[];
 } {
@@ -196,7 +222,10 @@ export function adaptComposeForDeplo(source: string): {
   const root = doc.contents as YAMLMap;
 
   const changes: string[] = [];
-  const keys = dokployNetworkKeys({ networks: toPlain(root.get("networks")) });
+  const keys = platformNetworkKeys(
+    { networks: toPlain(root.get("networks")) },
+    platform.networks,
+  );
 
   if (keys.size > 0) {
     const declared = root.get("networks", true);
@@ -205,7 +234,7 @@ export function adaptComposeForDeplo(source: string): {
       if (declared.items.length === 0) root.delete("networks");
     }
     changes.push(
-      "Dokploy's shared network was removed - Deplo attaches the services to its own.",
+      `${platform.name}'s shared network was removed - Deplo attaches the services to its own.`,
     );
   }
 
@@ -381,15 +410,27 @@ function composeFileRefs(root: YAMLMap): [string, Scalar][] {
 }
 
 /**
- * Dokploy's `../files/x` as Deplo spells it, or null when the source is not one
- * of those (a named volume, a real host path, an escape to somewhere else).
+ * Where the other platform keeps a stack's own files. Dokploy writes them beside
+ * the compose (`../files/x`); Coolify writes them under its data directory.
  */
-function deploFilesPath(source: string): string | null {
+const PLATFORM_FILES_RE = [
+  /^\.\.\/files(?:\/(.*))?$/,
+  /^\/data\/coolify\/(?:applications|services)\/[^/]+(?:\/(.*))?$/,
+];
+
+/**
+ * The source platform's own files directory as Deplo spells it, or null when the
+ * source is not one (a named volume, a real host path, an escape to somewhere else).
+ */
+export function deploFilesPath(source: string): string | null {
   const s = source.trim();
-  const m = /^\.\.\/files(?:\/(.*))?$/.exec(s);
-  if (!m) return null;
-  const rest = (m[1] ?? "").replace(/^\/+/, "");
-  return rest ? `./${rest}` : ".";
+  for (const re of PLATFORM_FILES_RE) {
+    const m = re.exec(s);
+    if (!m) continue;
+    const rest = (m[1] ?? "").replace(/^\/+/, "");
+    return rest ? `./${rest}` : ".";
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1028,19 +1069,24 @@ export function mapMounts(
 /* Databases                                                           */
 /* ------------------------------------------------------------------ */
 
-const DB_ENGINE: Partial<Record<DokployDbKind, DatabaseType>> = {
+const DB_ENGINE: Record<string, DatabaseType> = {
   postgres: "postgres",
   mysql: "mysql",
   mariadb: "mariadb",
   mongo: "mongodb",
   redis: "redis",
+  // Coolify's own spellings. keydb and dragonfly speak RESP but store their own
+  // formats, and libsql has no twin at all: all three answer null.
+  postgresql: "postgres",
+  mongodb: "mongodb",
+  clickhouse: "clickhouse",
 };
 
 /**
- * The deplo engine for one of Dokploy's database tables, or null when there is
- * none (libsql).
+ * The deplo engine for one of the source platform's database tables, or null when
+ * there is none (libsql, keydb, dragonfly).
  */
-export function deploEngineFor(kind: DokployDbKind): DatabaseType | null {
+export function deploEngineFor(kind: string): DatabaseType | null {
   return DB_ENGINE[kind] ?? null;
 }
 
@@ -1093,7 +1139,7 @@ export function mapDatabase(
   row: DokployDatabase,
 ): Mapped<MappedDatabase | null> {
   const notes: string[] = [];
-  const type = DB_ENGINE[kind];
+  const type = deploEngineFor(kind);
   if (!type) {
     notes.push(`${row.name}: Deplo has no ${kind} engine - not imported.`);
     return { value: null, notes };
