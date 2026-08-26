@@ -61,17 +61,13 @@ import {
 import type { BuildConfig, VolumeMount } from "../types";
 import { reservedMountPath } from "../apps/volume-model";
 
-import {
-  DOKPLOY_DB_KINDS,
-  DokployDbKind,
-  listMembers,
-  serviceDisplayName,
-} from "../migration/dokploy/client";
+import { listMembers, serviceDisplayName } from "../migration/dokploy/client";
 import { normalizeSourceBaseUrl } from "../migration/transport";
 import { detectMigrationSource } from "../migration/detect";
 import { isMigrationPlatform, sourceClient } from "../migration/source";
 import type { MigrationPlatform } from "../migration/source";
 import type { SourceCredential } from "../migration/source";
+import { SOURCE_DB_KINDS, type SourceDbKind } from "../migration/model";
 import type {
   SourceApplication,
   SourceCompose,
@@ -383,7 +379,7 @@ export async function credentialFor(
  * happened to be projected.
  */
 interface SourceService {
-  kind: "application" | "compose" | DokployDbKind;
+  kind: "application" | "compose" | SourceDbKind;
   id: string;
   /** From the tree when it was there; the authority is the detail row. */
   name: string;
@@ -406,7 +402,7 @@ function servicesOf(env: SourceEnvironment): SourceService[] {
       name: c.name?.trim() ?? "",
       serverId: c.serverId ?? "",
     });
-  for (const kind of DOKPLOY_DB_KINDS)
+  for (const kind of SOURCE_DB_KINDS)
     for (const row of (env[kind] ?? []) as SourceDatabase[]) {
       const id = row[`${kind}Id`];
       if (typeof id !== "string") continue;
@@ -544,7 +540,7 @@ export async function scanMigrationSource(
             // Only a repository source ever reaches the builder; every other kind
             // flips this below or leaves it false.
             buildsFromSource: false,
-            engine: deploEngineFor(svc.kind as DokployDbKind),
+            engine: deploEngineFor(svc.kind as SourceDbKind),
             exposedPort: null,
             domains: [],
             logo: null,
@@ -587,7 +583,7 @@ export async function scanMigrationSource(
           if (line.targetKind === "database") {
             const key = line.name.trim().toLowerCase();
             if (existing.databases.has(key)) line.status = "exists";
-            const mappedDb = mapDatabase(svc.kind as DokployDbKind, {
+            const mappedDb = mapDatabase(svc.kind as SourceDbKind, {
               ...(detail as SourceDatabase),
               name: line.name,
             });
@@ -1676,7 +1672,7 @@ async function runImportMigrationProject(
 
       // An engine Deplo does not have is settled without importing anything,
       // but under its own name, not its id (see the scan for why).
-      if (!isApp && !deploEngineFor(svc.kind as DokployDbKind)) {
+      if (!isApp && !deploEngineFor(svc.kind as SourceDbKind)) {
         const unsupportedName = await nameOfService(c, svc);
         await envReport.at(unsupportedName).add({
           sourceKind: svc.kind,
@@ -2805,7 +2801,7 @@ async function importDatabaseService(
   report: Report,
 ): Promise<void> {
   const { serverId } = opts;
-  const mapped = mapDatabase(svc.kind as DokployDbKind, { ...row, name });
+  const mapped = mapDatabase(svc.kind as SourceDbKind, { ...row, name });
   const notes = [...mapped.notes];
   if (!mapped.value) {
     await report.add({

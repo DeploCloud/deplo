@@ -23,12 +23,10 @@ import { publishDatabaseChanged } from "../graphql/pubsub";
 import { DB_DATA_DIRS } from "../deploy/database-compose";
 import type { DatabaseType } from "../types";
 
-import {
-  DOKPLOY_DB_KINDS,
-  serviceDisplayName,
-} from "../migration/dokploy/client";
+import { serviceDisplayName } from "../migration/dokploy/client";
 import { sourceClient } from "../migration/source";
 import type { SourceCredential } from "../migration/source";
+import { SOURCE_DB_KINDS } from "../migration/model";
 import type { SourceDatabase } from "../migration/model";
 import {
   composeVolumeMounts,
@@ -207,7 +205,7 @@ async function sourceServices(c: SourceCredential): Promise<SourceService[]> {
         stubs.push({ kind: "application", id: a.applicationId, ...where });
       for (const s of env.compose ?? [])
         stubs.push({ kind: "compose", id: s.composeId, ...where });
-      for (const kind of DOKPLOY_DB_KINDS)
+      for (const kind of SOURCE_DB_KINDS)
         for (const row of (env[kind] ?? []) as SourceDatabase[]) {
           const id = row[`${kind}Id`];
           if (typeof id === "string") stubs.push({ kind, id, ...where });

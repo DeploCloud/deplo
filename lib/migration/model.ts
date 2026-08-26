@@ -247,6 +247,24 @@ export interface SourceDatabase {
   [idField: string]: unknown;
 }
 
+/**
+ * Every per-engine key an environment can carry, across both platforms. Deplo's
+ * own spellings win where they differ (`postgres`, `mongo`), so a report and a
+ * pairing read the same whichever panel a run came from.
+ */
+export const SOURCE_DB_KINDS = [
+  "postgres",
+  "mysql",
+  "mariadb",
+  "mongo",
+  "redis",
+  "libsql",
+  "clickhouse",
+  "keydb",
+  "dragonfly",
+] as const;
+export type SourceDbKind = (typeof SOURCE_DB_KINDS)[number];
+
 export interface SourceEnvironment {
   environmentId: string;
   name: string;
@@ -261,6 +279,9 @@ export interface SourceEnvironment {
   mongo?: SourceDatabase[] | null;
   redis?: SourceDatabase[] | null;
   libsql?: SourceDatabase[] | null;
+  clickhouse?: SourceDatabase[] | null;
+  keydb?: SourceDatabase[] | null;
+  dragonfly?: SourceDatabase[] | null;
 }
 
 export interface SourceProject {
@@ -283,6 +304,9 @@ export interface SourceProject {
   mongo?: SourceDatabase[] | null;
   redis?: SourceDatabase[] | null;
   libsql?: SourceDatabase[] | null;
+  clickhouse?: SourceDatabase[] | null;
+  keydb?: SourceDatabase[] | null;
+  dragonfly?: SourceDatabase[] | null;
 }
 
 export interface SourceServer {

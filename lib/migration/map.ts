@@ -27,13 +27,13 @@ import type {
   ResourceLimits,
   VolumeMount,
 } from "../types";
-import type { DokployDbKind } from "./dokploy/client";
 import type {
   HostMount,
   NamedVolume,
   SourceApplication,
   SourceCompose,
   SourceDatabase,
+  SourceDbKind,
   SourceDomain,
   SourceMount,
 } from "./model";
@@ -1146,7 +1146,7 @@ function imageRepo(image: string | null | undefined): string | null {
  * One of Dokploy's five database tables → `createDatabase` input.
  */
 export function mapDatabase(
-  kind: DokployDbKind,
+  kind: SourceDbKind,
   row: SourceDatabase,
 ): Mapped<MappedDatabase | null> {
   const notes: string[] = [];
