@@ -32,6 +32,7 @@ repository root.
 | [0023](0023-the-template-catalog-is-a-remote-service.md)                                  | The template catalogue is a remote service, not repository content                                                          |
 | [0024](0024-a-passkey-is-a-full-sign-in-method-and-satisfies-the-2fa-mandate.md)          | A passkey is a full sign-in method, and it satisfies the two-factor mandate. **Amends 0014**                                |
 | [0025](0025-a-migration-source-is-a-server-that-hosts-nothing.md)                         | A migration source is a server that hosts nothing, and Deplo takes itself back off it                                       |
+| [0026](0026-a-source-platform-is-one-adapter-behind-one-client.md)                        | A source platform is one adapter behind one client interface                                                                |
 
 ## Amended or superseded
 

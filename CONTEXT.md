@@ -659,16 +659,30 @@ not ours).
 Bringing another platform's projects into a team, and the word the UI uses everywhere:
 `Settings → Migrations`, two tabs - the wizard that runs one, and the History of the ones
 already run. A **migration run** is the stored row plus the **report** it leaves behind
-(`dokploy_imports` + `dokploy_import_items`), readable from either tab in the same dialog.
+(`migration_runs` + `migration_run_items`), readable from either tab in the same dialog.
 The wizard is five steps - Connect, Install, Review, People, Done - and Install is where the
 **migration source** gets its agent.
-The API and the data layer keep the older **import** spelling (`scanMigrationSource`,
-`importMigrationProject`, `dokployImports`, `lib/data/migration-import.ts`): renaming a published
-schema to match a label would break every MCP tool that names a field, for nothing. So
-"import" is the wire word and "migration" is the product word, and neither is wrong.
+The whole domain is spelled **migration**, wire included (`scanMigrationSource`,
+`importMigrationProject`, `migrationRuns`, `lib/data/migration-import.ts`). The older `import`
+spelling was kept for a while on the argument that renaming a published schema would break the
+MCP tools; it turned out no MCP tool names a field here, and `scanDokploy` pointed at a Coolify
+panel was a lie, which is worse than an old name.
 _Avoid_: transfer (that is **app transfer**, moving an App between teams), move (that is a
 **server move**, relocating one workload between hosts), sync (nothing here is continuous - a
-migration happens once and stops the source).
+migration happens once and stops the source), import (the old wire word, now retired).
+
+**Platform** (of a migration):
+WHICH product a migration reads - `dokploy` or `coolify`, and nothing else. Worked out from the
+address and the token at Connect (`detectMigrationSource`), written once to
+`migration_runs.platform`, and never re-derived: a run resumes hours later from that row, and a
+detection that answered differently the second time would point the data cutover at the wrong
+API. The wizard asks only when the detection came back empty-handed, and refuses a third product
+by name.
+Each platform is one adapter behind `MigrationSourceClient` (`lib/migration/<name>/`); above that
+seam nothing knows which panel it is reading, which is why a mapper's note writes `{panel}` and
+the report resolves it.
+_Avoid_: source kind (that is `migration_run_items.source_kind` - what an object WAS over there,
+application/compose/postgres), provider (that is a **git provider**), vendor.
 
 **Migration source**:
 A **server** registered ONLY to import from another platform - the machine Deplo is being
@@ -694,9 +708,9 @@ every deploy picker AND every build picker (it HAS Docker - it is the other plat
   or already-de-trusted host ([ADR-0011](../docs/adr/0011-server-removal-is-trust-revocation-not-a-host-uninstall.md),
   which anticipated exactly this shape). Listed apart from the fleet on Settings → Servers, with
   one action: **Uninstall agent**.
-  _Avoid_: import server (ambiguous with an import RUN), Dokploy host (that is the other
-  platform's name for its own machine), source server (that is the volume-copy sense in
-  `resolveSourceServer`).
+  _Avoid_: import server (ambiguous with a migration RUN), Dokploy host / Coolify host (those
+  are the other platforms' names for their own machines), source server (that is the volume-copy
+  sense in `resolveSourceServer`).
 
 **Backup**:
 A **schedule**: a cron expression + **backup destination** + retention (**a count** - how many

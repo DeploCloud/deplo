@@ -5,7 +5,7 @@ templates into Docker stacks fronted by Traefik. Read this before writing code, 
 the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root): authoritative glossary / ubiquitous language. Single-context repo.
-- **`docs/adr/`**: numbered decisions (0001-0025). Contradicting one? Surface it, don't silently override.
+- **`docs/adr/`**: numbered decisions (0001-0026). Contradicting one? Surface it, don't silently override.
 - **`schema.graphql`** (root): generated SDL, the API contract.
 - **The USER manual is NOT in this repo.** It is [`DeploCloud/docs`](https://github.com/DeploCloud/docs),
   served at <https://deplo.build/docs>. Never add a user-facing page here.
