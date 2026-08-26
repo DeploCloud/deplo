@@ -12,7 +12,7 @@ import {
 import { ConnectWizard } from "./connect-wizard";
 import { McpPanel } from "./mcp-panel";
 import { ConnectedClients } from "./connected-clients";
-import { ToolsDialogLink, type McpToolSummary } from "./tools-dialog";
+import type { McpToolSummary } from "./tools-dialog";
 import { RobotMark } from "./robot-graphic";
 import { cn } from "@/lib/utils";
 import type { McpConnectionDTO } from "@/lib/data/mcp-clients";
@@ -120,13 +120,6 @@ export function McpTabs({
             connections={connections}
             canManage={canManageTokens}
           />
-          {/**
-           * The tool list closes the tab as a footnote: it is reference, not a control, and
-           * the person here is auditing access rather than wondering what an agent can reach.
-           */}
-          <p className="border-t border-border pt-4">
-            <ToolsDialogLink tools={tools} />
-          </p>
         </TabsContent>
       )}
     </Tabs>

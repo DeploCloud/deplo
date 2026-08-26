@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, ShieldAlert, Wrench } from "lucide-react";
+import { Search, ShieldAlert } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -173,32 +173,5 @@ function ToolRow({
         )}
       </div>
     </div>
-  );
-}
-
-/** The standing link under the page header. */
-export function ToolsDialogLink({
-  tools,
-  className,
-}: {
-  tools: McpToolSummary[];
-  className?: string;
-}) {
-  return (
-    <ToolsDialog
-      tools={tools}
-      trigger={
-        <button
-          type="button"
-          className={cn(
-            "inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline",
-            className,
-          )}
-        >
-          <Wrench className="size-3.5" />
-          See what an agent can do
-        </button>
-      }
-    />
   );
 }
