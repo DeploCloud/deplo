@@ -3,7 +3,7 @@
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ChevronDown, GripVertical, Pencil, Plus } from "lucide-react";
+import { ChevronDown, GripVertical, Pencil, Plus } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -216,6 +216,9 @@ function TeamRow({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
         "group relative cursor-pointer overflow-hidden",
+        // The active team is the row that is already lit, so it needs no mark of
+        // its own. Same token the sidebar tints its rows with.
+        active && "bg-foreground/10",
         isDragging && "z-10 opacity-80",
       )}
       disabled={disabled}
@@ -235,7 +238,6 @@ function TeamRow({
           </span>
         </span>
         <span className="ml-auto flex items-center gap-1">
-          {active && <Check className="size-4" />}
           {team.canManage && (
             <button
               type="button"
