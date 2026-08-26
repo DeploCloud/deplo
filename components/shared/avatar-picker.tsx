@@ -109,8 +109,8 @@ export function AvatarPicker({
         </span>
         {/* Always on: without it a round picture is just a picture until the
           pointer happens to land on it, and a touch screen never hovers. */}
-        <span className="absolute right-0 bottom-0 flex size-5 items-center justify-center rounded-full border border-border bg-secondary text-secondary-foreground">
-          <Camera className="size-2.5" />
+        <span className="absolute right-0 bottom-0 flex size-7 items-center justify-center rounded-full border border-border bg-secondary text-secondary-foreground">
+          <Camera className="size-3.5" />
         </span>
       </button>
       {hasImage && (
