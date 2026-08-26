@@ -72,8 +72,11 @@ export function TeamSecurityCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3">
+        {/* The box still takes the slack, so the card keeps its neighbour's
+            height; the drawing is capped at its own 80px so a tall card stops
+            blowing it up. */}
         <div className="flex min-h-0 flex-1 items-center justify-center py-2">
-          <TwoFactorGraphic />
+          <TwoFactorGraphic className="max-h-20" />
         </div>
         <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
           <div className="space-y-1">
