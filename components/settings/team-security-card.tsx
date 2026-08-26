@@ -59,7 +59,9 @@ export function TeamSecurityCard({
   }
 
   return (
-    <Card>
+    // A flex column so the illustration takes the slack: the card's height is
+    // set by its neighbour in the row, and the content has to reach the bottom.
+    <Card className="flex flex-col">
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Security
@@ -69,8 +71,8 @@ export function TeamSecurityCard({
           />
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex justify-center py-2">
+      <CardContent className="flex flex-1 flex-col gap-3">
+        <div className="flex min-h-0 flex-1 items-center justify-center py-2">
           <TwoFactorGraphic />
         </div>
         <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
