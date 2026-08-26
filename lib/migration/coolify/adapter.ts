@@ -31,10 +31,12 @@ import {
   listEnvironments,
   listEnvs,
   listProjects,
+  listS3Storages,
   listScheduledTasks,
   listServerResources,
   listServers,
   listServices,
+  listSharedEnvs,
   listStorages,
   listTeamMembers,
   resourceStatus,
@@ -48,6 +50,7 @@ import {
   coolifyDatabase,
   coolifyDbKind,
   coolifyDbSecretsVisible,
+  coolifyDestination,
   coolifyEnvBlob,
   coolifyIsPanelHost,
   coolifyMember,
@@ -126,8 +129,28 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
     ]);
 
   const envsByProject = new Map<string, CoolifyEnvironment[]>();
+  const sharedByProject = new Map<string, string>();
+  const sharedByEnv = new Map<string, string>();
   await mapLimit(projects, CONCURRENCY, async (p) => {
-    envsByProject.set(p.uuid, await listEnvironments(c, p.uuid));
+    const [envs, shared] = await Promise.all([
+      listEnvironments(c, p.uuid),
+      listSharedEnvs(c, { level: "project", projectUuid: p.uuid }),
+    ]);
+    envsByProject.set(p.uuid, envs);
+    sharedByProject.set(p.uuid, coolifyEnvBlob(shared).blob);
+    await mapLimit(envs, CONCURRENCY, async (e) => {
+      const name = e.name?.trim() || String(e.uuid ?? e.id);
+      sharedByEnv.set(
+        `${p.uuid}/${e.id}`,
+        coolifyEnvBlob(
+          await listSharedEnvs(c, {
+            level: "environment",
+            projectUuid: p.uuid,
+            environment: name,
+          }),
+        ).blob,
+      );
+    });
   });
 
   return projects.map((p) => {
@@ -137,6 +160,7 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
       const env: SourceEnvironment = {
         environmentId: String(e.uuid ?? e.id),
         name: e.name?.trim() || "production",
+        env: sharedByEnv.get(`${p.uuid}/${e.id}`) || null,
         applications: [],
         compose: [],
       };
@@ -171,6 +195,7 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
       projectId: p.uuid,
       name: p.name?.trim() || p.uuid,
       description: p.description ?? null,
+      env: sharedByProject.get(p.uuid) || null,
       environments,
     };
   });
@@ -362,6 +387,14 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
       if (group === "databases") return [];
       return (await listScheduledTasks(c, group, id)).map(coolifySchedule);
     },
+
+    teamSharedEnv: async () =>
+      coolifyEnvBlob(await listSharedEnvs(c, { level: "team" })).blob || null,
+
+    listBackupDestinations: async () =>
+      (await listS3Storages(c))
+        .map(coolifyDestination)
+        .filter((d): d is NonNullable<typeof d> => d != null),
 
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),

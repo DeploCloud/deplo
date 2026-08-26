@@ -15,6 +15,7 @@ import type {
   SourceEnvironment,
   SourceMember,
   SourceProject,
+  SourceS3Destination,
   SourceSchedule,
   SourceServer,
 } from "./model";
@@ -85,6 +86,12 @@ export interface MigrationSourceClient {
   listMembers(): Promise<SourceMember[]>;
   organizationName(): Promise<string | null>;
   listSchedules(kind: string, id: string): Promise<SourceSchedule[]>;
+  /** The panel's TEAM-level shared variables as a `KEY=value` blob, or null when
+   *  it has no such level. Project and environment ones ride on the tree. */
+  teamSharedEnv(): Promise<string | null>;
+  /** The S3 stores the panel backs up to, with their credentials. Empty when the
+   *  platform keeps none, or when this credential may not read them. */
+  listBackupDestinations(): Promise<SourceS3Destination[]>;
 
   /**
    * What a service mounts right now. Dokploy answers by inspecting containers,

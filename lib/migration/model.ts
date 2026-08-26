@@ -1,3 +1,5 @@
+import type { HealthCheck } from "../types";
+
 /**
  * The row shapes an import maps, shared by every source platform.
  *
@@ -75,6 +77,8 @@ export interface SourceApplication {
    * goes, like every other note.
    */
   platformNotes?: string[] | null;
+  /** The health check the source ran, when it has a twin here. */
+  healthCheck?: HealthCheck | null;
   applicationId: string;
   /** OPTIONAL because `project.all` is a projection: its rows carry an id and
    *  sometimes a name, and a database row carries only the id. Anything that needs
@@ -375,4 +379,14 @@ export interface NamedVolume {
 export interface HostMount {
   hostPath: string;
   mountPath: string;
+}
+
+/** One S3 store the source platform backs up to. */
+export interface SourceS3Destination {
+  name: string;
+  endpoint: string;
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
 }

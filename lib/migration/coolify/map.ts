@@ -5,6 +5,8 @@
  * works exactly as it does for the other platform.
  */
 
+import { HEALTH_CHECK_DEFAULTS } from "../../deploy/health-check";
+import type { HealthCheck } from "../../types";
 import type {
   SourceApplication,
   SourceBuildType,
@@ -406,6 +408,7 @@ export function coolifyApplication(
   return {
     applicationId: row.uuid,
     platformNotes: coolifyNotes(row),
+    healthCheck: coolifyHealthCheck(row),
     name: row.name ?? null,
     appName: row.name ?? null,
     description: row.description ?? null,
@@ -447,6 +450,32 @@ export function coolifyApplication(
           },
         ]
       : [],
+  };
+}
+
+/**
+ * Coolify's twelve health-check columns → Deplo's eight. What does not fit is a
+ * report line (`coolifyNotes`), never a silent difference.
+ */
+export function coolifyHealthCheck(
+  row: CoolifyApplication,
+): HealthCheck | null {
+  if (!row.health_check_enabled) return null;
+  const interval = row.health_check_interval ?? HEALTH_CHECK_DEFAULTS.intervalS;
+  const timeout = row.health_check_timeout ?? HEALTH_CHECK_DEFAULTS.timeoutS;
+  return {
+    type: row.health_check_type === "cmd" ? "command" : "http",
+    path: row.health_check_path?.trim() || "/",
+    port:
+      Number(row.health_check_port) > 0 ? Number(row.health_check_port) : null,
+    command: row.health_check_command?.trim() || null,
+    intervalS: interval,
+    // Coolify lets these be equal; Deplo refuses it, because a check still running
+    // when the next is due never settles either way.
+    timeoutS: timeout < interval ? timeout : Math.max(1, interval - 1),
+    retries: row.health_check_retries ?? HEALTH_CHECK_DEFAULTS.retries,
+    startPeriodS:
+      row.health_check_start_period ?? HEALTH_CHECK_DEFAULTS.startPeriodS,
   };
 }
 

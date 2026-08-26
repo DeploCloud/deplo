@@ -110,6 +110,9 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     listMembers: () => listMembers(c),
     organizationName: () => activeOrganizationName(c),
     listSchedules: (kind, id) => listSchedules(c, kind, id),
+    // Dokploy shares variables at the project and the environment, never above.
+    teamSharedEnv: async () => null,
+    listBackupDestinations: async () => [],
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),
     // Dokploy puts every stack on one shared network, whatever the stack is.

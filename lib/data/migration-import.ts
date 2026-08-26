@@ -65,6 +65,7 @@ import { listMembers, serviceDisplayName } from "../migration/dokploy/client";
 import { normalizeSourceBaseUrl } from "../migration/transport";
 import { detectMigrationSource } from "../migration/detect";
 import { isMigrationPlatform, sourceClient } from "../migration/source";
+import type { MigrationSourceClient } from "../migration/source";
 import type { MigrationPlatform } from "../migration/source";
 import type { SourceCredential } from "../migration/source";
 import { SOURCE_DB_KINDS, type SourceDbKind } from "../migration/model";
@@ -102,7 +103,12 @@ import {
 
 import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
-import { createApp, setAppVolumes, updateAppResources } from "./apps";
+import {
+  createApp,
+  setAppVolumes,
+  updateAppHealthCheck,
+  updateAppResources,
+} from "./apps";
 import { writeAppFile } from "./app-files";
 import { createCronJob } from "./crons";
 import {
@@ -1802,6 +1808,18 @@ async function runImportMigrationProject(
   // The project-level blob is available to every app of the project, so it links
   // to all of them - the environment ones each linked their own slice above.
   const projectAppIds = await appIdsInProject(teamId, projectId);
+  await importBackupDestinations(c, report);
+
+  // Above the project: a panel that shares variables across the whole team.
+  await importSharedVars(await sourceClient(c).teamSharedEnv(), {
+    teamId,
+    label: "Team",
+    environmentIds: [],
+    projectIds: [],
+    appIds: projectAppIds,
+    teamWide: true,
+    report,
+  });
   await importSharedVars(source.env, {
     teamId,
     label: source.name,
@@ -2650,6 +2668,17 @@ async function importAppService(
     }
   }
 
+  const health = (detail as SourceApplication).healthCheck ?? null;
+  if (health && !isCompose) {
+    try {
+      await updateAppHealthCheck(created.id, health);
+    } catch (e) {
+      notes.push(
+        `Its health check was not imported: ${e instanceof Error ? e.message : "refused"}. Set one under Advanced.`,
+      );
+    }
+  }
+
   // The credential comes across AS IT IS. Measured: a code-server arrived online and
   // open because "CoderPass123" has no special character.
   const security = (detail as SourceApplication).security ?? [];
@@ -3021,6 +3050,86 @@ async function importDatabaseService(
  * A Dokploy project's or environment's own env blob → a deplo shared variable per
  * key, scoped there AND linked to the apps that were in it.
  */
+/**
+ * The S3 stores the panel backed up to, as Deplo's own destinations. Tried at
+ * once, exactly as a hand-made one is: a credential that stopped working over
+ * there should say so now, not at the first backup that needed it.
+ */
+async function importBackupDestinations(
+  c: SourceCredential,
+  report: Report,
+): Promise<void> {
+  let stores: Awaited<
+    ReturnType<MigrationSourceClient["listBackupDestinations"]>
+  >;
+  try {
+    stores = await sourceClient(c).listBackupDestinations();
+  } catch {
+    return;
+  }
+  if (stores.length === 0) return;
+
+  const { createDestination, listDestinations, testDestination } =
+    await import("./destinations");
+  const existing = new Set(
+    (await listDestinations()).map(
+      (d) => `${(d.endpoint ?? "").toLowerCase()}|${d.bucket ?? ""}`,
+    ),
+  );
+
+  for (const store of stores) {
+    const key = `${store.endpoint.toLowerCase()}|${store.bucket}`;
+    if (existing.has(key)) {
+      await report.add({
+        sourceKind: "destination",
+        sourceName: store.name,
+        outcome: "skipped",
+        targetKind: "destination",
+        message:
+          "A backup destination for that bucket is already in this team.",
+      });
+      continue;
+    }
+    try {
+      const created = await createDestination({
+        name: store.name,
+        kind: "s3",
+        endpoint: store.endpoint,
+        region: store.region,
+        bucket: store.bucket,
+        accessKey: store.accessKeyId,
+        secretKey: store.secretAccessKey,
+      });
+      existing.add(key);
+      let failure: string | null = null;
+      try {
+        const { report: probe } = await testDestination(created.id);
+        failure = probe.ok ? null : probe.error || "it did not answer";
+      } catch (e) {
+        failure = e instanceof Error ? e.message : "the test did not run";
+      }
+      await report.add({
+        sourceKind: "destination",
+        sourceName: store.name,
+        outcome: failure ? "manual" : "created",
+        targetKind: "destination",
+        targetId: created.id,
+        message: failure
+          ? `It came across, but it did not answer: ${failure}. Those credentials were already dead on {panel} - fix them under Backups.`
+          : null,
+      });
+    } catch (e) {
+      await report.add({
+        sourceKind: "destination",
+        sourceName: store.name,
+        outcome: "failed",
+        targetKind: "destination",
+        message: e instanceof Error ? e.message : "Could not be created.",
+      });
+    }
+  }
+}
+
 async function importSharedVars(
   blob: string | null | undefined,
   opts: {
@@ -3029,6 +3138,8 @@ async function importSharedVars(
     environmentIds: string[];
     projectIds: string[];
     appIds: string[];
+    /** The scope the variable SUGGESTS. The links above are what injects it. */
+    teamWide?: boolean;
     report: Report;
   },
 ): Promise<void> {
@@ -3065,7 +3176,7 @@ async function importSharedVars(
         // Plain, for the same reason the app's own variables are - see the
         // service import.
         type: "plain",
-        teamWide: false,
+        teamWide: opts.teamWide ?? false,
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
         appIds: opts.appIds,

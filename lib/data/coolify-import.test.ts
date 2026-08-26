@@ -118,6 +118,14 @@ function defaultFixtures(): Record<string, unknown> {
         http_basic_auth_username: "ops",
         http_basic_auth_password: "letmein",
         custom_docker_run_options: "--gpus all",
+        health_check_enabled: true,
+        health_check_path: "/healthz",
+        health_check_port: "3000",
+        health_check_interval: 20,
+        health_check_timeout: 4,
+        health_check_retries: 5,
+        health_check_start_period: 15,
+        health_check_method: "POST",
       },
       {
         uuid: "app-stack",
@@ -190,7 +198,22 @@ function defaultFixtures(): Record<string, unknown> {
     "databases/db-main/storages": {},
     "databases/db-cache/envs": [],
     "databases/db-cache/storages": {},
-    "s3-storages": [],
+    "projects/prj-blink/envs": [{ key: "PROJECT_WIDE", value: "p" }],
+    "projects/prj-blink/environments/production/envs": [
+      { key: "ENV_WIDE", value: "e" },
+    ],
+    "team/envs": [{ key: "TEAM_WIDE", value: "t" }],
+    "s3-storages": [
+      {
+        uuid: "s3-1",
+        name: "nightly",
+        endpoint: "https://s3.acme.test",
+        bucket: "backups",
+        region: "eu-west-1",
+        key: "AK",
+        secret: "SK",
+      },
+    ],
   };
 }
 
@@ -456,4 +479,68 @@ test("nothing is deployed and the source is still running", async () => {
     calls.some((c) => c.includes("/stop")),
     false,
   );
+});
+
+/* ---- what Coolify carries that Deplo now has a home for ------------- */
+
+test("the health check comes across, and what does not fit is a note", async () => {
+  await importAll();
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "web",
+  )!;
+  assert.equal(web.healthCheckEnabled, true);
+  assert.equal(web.healthCheckPath, "/healthz");
+  assert.equal(web.healthCheckPort, 3000);
+  assert.equal(web.healthCheckIntervalS, 20);
+  assert.equal(web.healthCheckRetries, 5);
+
+  // Coolify checks things Deplo's does not, and the report says which.
+  const items = await db.select().from(itemsTable);
+  assert.match(
+    items.map((i) => i.message ?? "").join("\n"),
+    /also checked method POST/,
+  );
+});
+
+test("shared variables come across at all three levels, linked to the apps", async () => {
+  await importAll();
+  const shared = await db.execute(
+    "select key, team_wide from shared_env_vars order by key",
+  );
+  assert.deepEqual(
+    (shared.rows as { key: string; team_wide: boolean }[]).map((r) => [
+      r.key,
+      r.team_wide,
+    ]),
+    [
+      ["ENV_WIDE", false],
+      ["PROJECT_WIDE", false],
+      ["TEAM_WIDE", true],
+    ],
+  );
+  // ADR-0012: a scope only suggests. The LINK is what injects it, and a migration
+  // reproduces the links the source had rather than backfilling any.
+  const links = await db.execute(
+    "select count(*)::int as n from shared_env_var_apps",
+  );
+  assert.ok((links.rows[0] as { n: number }).n > 0);
+});
+
+test("a backup destination comes across and is tried at once", async () => {
+  const runId = await importAll();
+  const dests = await db.execute("select name, bucket from backup_destination");
+  assert.deepEqual(
+    (dests.rows as { name: string; bucket: string }[]).map((d) => [
+      d.name,
+      d.bucket,
+    ]),
+    [["nightly", "backups"]],
+  );
+  // No agent answers in this harness, so it lands with the reason on the report
+  // rather than looking verified.
+  const item = (await db.select().from(itemsTable))
+    .filter((i) => i.runId === runId)
+    .find((i) => i.sourceKind === "destination")!;
+  assert.equal(item.outcome, "manual");
+  assert.match(item.message ?? "", /did not answer/);
 });
