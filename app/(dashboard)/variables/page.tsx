@@ -13,7 +13,6 @@ import {
   isInstanceAdmin,
   reachesWholeTeam,
 } from "@/lib/membership";
-import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Tabs,
@@ -36,19 +35,12 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
   // guard the page too for direct navigation.
   if (!(await hasCapability("manage_env"))) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          docs="env.overview"
-          title="Variables"
-          description="App & shared environment variables."
-        />
-        <EmptyState
-          icon={Lock}
-          title="No access to variables"
-          docs="roles.floorCeiling"
-          description="You don't have permission to view environment variables. Ask a team admin for the “Manage env vars” permission."
-        />
-      </div>
+      <EmptyState
+        icon={Lock}
+        title="No access to variables"
+        docs="roles.floorCeiling"
+        description="You don't have permission to view environment variables. Ask a team admin for the “Manage env vars” permission."
+      />
     );
   }
 
@@ -111,58 +103,50 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
   const defaultTab = allowedTabs.has(tab) ? tab : "app";
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        docs="env.allApps"
-        title="Environment Variables"
-        description="Per-app variables and reusable shared variables across your workspace."
-      />
-
-      {/* `key` forces a remount when ?tab= changes: Radix Tabs is uncontrolled, so
-          a soft-navigation (the "Manage" links → ?tab=shared) would otherwise keep
-          the old panel and the click would appear to do nothing. */}
-      <Tabs key={defaultTab} defaultValue={defaultTab}>
-        <UnderlineTabsList>
-          {/* The value stays `app` - it is what every ?tab= deep link carries. */}
-          <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
-          <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
-          {admin && (
-            <UnderlineTabsTrigger value="instance">
-              All teams
-            </UnderlineTabsTrigger>
-          )}
-        </UnderlineTabsList>
-
-        {/* All: every app's variables (standalone + applied shared), editable */}
-        <TabsContent value="app" className="space-y-4">
-          <AllAppsEnvManager
-            groups={allAppGroups}
-            sharedByApp={sharedByApp}
-            sharedVars={sharedVars}
-            apps={apps}
-            projects={projects}
-            environments={teamEnvironments}
-            canReorderProjects={canReorderProjects}
-          />
-        </TabsContent>
-
-        {/* Shared: individual shared variables + their sharing modes */}
-        <TabsContent value="shared">
-          <SharedVarsManager
-            vars={sharedVars}
-            apps={apps}
-            projects={projects}
-            environments={teamEnvironments}
-          />
-        </TabsContent>
-
-        {/* All teams: instance-wide, admin only */}
+    /* `key` forces a remount when ?tab= changes: Radix Tabs is uncontrolled, so
+       a soft-navigation (the "Manage" links → ?tab=shared) would otherwise keep
+       the old panel and the click would appear to do nothing. */
+    <Tabs key={defaultTab} defaultValue={defaultTab}>
+      <UnderlineTabsList>
+        {/* The value stays `app` - it is what every ?tab= deep link carries. */}
+        <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
         {admin && (
-          <TabsContent value="instance">
-            <GlobalEnvManager scope="instance" vars={instanceGlobals} />
-          </TabsContent>
+          <UnderlineTabsTrigger value="instance">
+            All teams
+          </UnderlineTabsTrigger>
         )}
-      </Tabs>
-    </div>
+      </UnderlineTabsList>
+
+      {/* All: every app's variables (standalone + applied shared), editable */}
+      <TabsContent value="app" className="space-y-4">
+        <AllAppsEnvManager
+          groups={allAppGroups}
+          sharedByApp={sharedByApp}
+          sharedVars={sharedVars}
+          apps={apps}
+          projects={projects}
+          environments={teamEnvironments}
+          canReorderProjects={canReorderProjects}
+        />
+      </TabsContent>
+
+      {/* Shared: individual shared variables + their sharing modes */}
+      <TabsContent value="shared">
+        <SharedVarsManager
+          vars={sharedVars}
+          apps={apps}
+          projects={projects}
+          environments={teamEnvironments}
+        />
+      </TabsContent>
+
+      {/* All teams: instance-wide, admin only */}
+      {admin && (
+        <TabsContent value="instance">
+          <GlobalEnvManager scope="instance" vars={instanceGlobals} />
+        </TabsContent>
+      )}
+    </Tabs>
   );
 }

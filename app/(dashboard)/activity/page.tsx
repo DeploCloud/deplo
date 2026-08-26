@@ -18,7 +18,6 @@ import {
 import { listActivity } from "@/lib/data/activity";
 import { Card, CardContent } from "@/components/ui/card";
 import { UserAvatar } from "@/components/shared/user-avatar";
-import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { timeAgo } from "@/lib/utils";
 import type { Activity, ActivityType } from "@/lib/types";
@@ -91,78 +90,68 @@ export default async function ActivityPage() {
   const now = new Date();
   const groups = groupByDay(activities, now);
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        docs="team.activity"
-        title="Activity"
-        description="A log of everything happening across your workspace."
-      />
+  return activities.length === 0 ? (
+    <EmptyState
+      icon={ActivityIcon}
+      title="No activity yet"
+      docs="team.activity"
+      description="As you deploy apps, manage databases and invite members, everything will show up here."
+    />
+  ) : (
+    <Card>
+      <CardContent className="p-6">
+        <div className="space-y-8">
+          {groups.map((group) => (
+            <section key={group.label} className="space-y-4">
+              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                {group.label}
+              </h2>
 
-      {activities.length === 0 ? (
-        <EmptyState
-          icon={ActivityIcon}
-          title="No activity yet"
-          docs="team.activity"
-          description="As you deploy apps, manage databases and invite members, everything will show up here."
-        />
-      ) : (
-        <Card>
-          <CardContent className="p-6">
-            <div className="space-y-8">
-              {groups.map((group) => (
-                <section key={group.label} className="space-y-4">
-                  <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    {group.label}
-                  </h2>
+              <ol className="relative space-y-5 pl-2">
+                {/* Vertical timeline connector */}
+                <span
+                  aria-hidden
+                  className="absolute top-2 bottom-2 left-[18px] w-px bg-border"
+                />
 
-                  <ol className="relative space-y-5 pl-2">
-                    {/* Vertical timeline connector */}
-                    <span
-                      aria-hidden
-                      className="absolute top-2 bottom-2 left-[18px] w-px bg-border"
-                    />
-
-                    {group.items.map((activity) => {
-                      const Icon = iconFor(activity.type);
-                      return (
-                        <li
-                          key={activity.id}
-                          className="relative flex items-start gap-4"
-                        >
-                          <div className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
-                            <Icon className="size-4 text-muted-foreground" />
-                          </div>
-                          <div className="min-w-0 flex-1 pt-1">
-                            <p className="text-sm text-foreground">
-                              {activity.message}
-                            </p>
-                            {/**
-                             * The circle above says WHAT happened; the mark here says who.
-                             */}
-                            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                              {activity.actorUser && (
-                                <UserAvatar
-                                  name={activity.actorUser.name}
-                                  username={activity.actorUser.username}
-                                  avatarColor={activity.actorUser.avatarColor}
-                                  avatarUrl={activity.actorUser.avatarUrl}
-                                  size="xs"
-                                />
-                              )}
-                              {activity.actor} · {timeAgo(activity.createdAt)}
-                            </p>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </section>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+                {group.items.map((activity) => {
+                  const Icon = iconFor(activity.type);
+                  return (
+                    <li
+                      key={activity.id}
+                      className="relative flex items-start gap-4"
+                    >
+                      <div className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
+                        <Icon className="size-4 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0 flex-1 pt-1">
+                        <p className="text-sm text-foreground">
+                          {activity.message}
+                        </p>
+                        {/**
+                         * The circle above says WHAT happened; the mark here says who.
+                         */}
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                          {activity.actorUser && (
+                            <UserAvatar
+                              name={activity.actorUser.name}
+                              username={activity.actorUser.username}
+                              avatarColor={activity.actorUser.avatarColor}
+                              avatarUrl={activity.actorUser.avatarUrl}
+                              size="xs"
+                            />
+                          )}
+                          {activity.actor} · {timeAgo(activity.createdAt)}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
