@@ -67,6 +67,7 @@ BUILD_ONLY="${DEPLO_BUILD_ONLY:-0}"
 IMPORT_ONLY="${DEPLO_IMPORT_ONLY:-0}"
 
 err()  { printf "\033[31m[!!]\033[0m %s\n" "$1" >&2; }
+warn() { printf "\033[33m[!]\033[0m  %s\n" "$1"; }
 step() { printf "\033[36m[..]\033[0m %s\n" "$1"; }
 ok()   { printf "\033[32m[ok]\033[0m %s\n" "$1"; }
 
@@ -552,9 +553,33 @@ step "Starting the agent..."
 systemctl daemon-reload
 systemctl enable --now deplo-agent
 
+# The panel DIALS the agent on $AGENT_PORT, while the call-home that provisions it
+# is outbound and succeeds either way - so a blocked port reads as a server that
+# provisions and then never comes online. Report it; never edit someone's firewall.
+firewall_fix_command() {
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
+    ufw status 2>/dev/null | grep -qE "(^|[^0-9])$AGENT_PORT/tcp" \
+      || printf 'ufw allow %s/tcp' "$AGENT_PORT"
+  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --list-ports 2>/dev/null | grep -qE "(^| )$AGENT_PORT/tcp" \
+      || printf 'firewall-cmd --permanent --add-port=%s/tcp && firewall-cmd --reload' "$AGENT_PORT"
+  fi
+}
+FIREWALL_FIX="$(firewall_fix_command || true)"
+
 ok "Deplo agent running on port $AGENT_PORT"
 echo ""
-echo "  The agent is calling home to $URL to finish provisioning."
-echo "  Watch the dashboard - this server will switch to 'online' shortly."
+if [ -n "$FIREWALL_FIX" ]; then
+  warn "This host's firewall is blocking TCP $AGENT_PORT - Deplo cannot reach the agent."
+  echo ""
+  echo "  Provisioning still finishes (the agent calls out to $URL), but the server"
+  echo "  stays offline until the port is open. Run:"
+  echo ""
+  echo "      $FIREWALL_FIX"
+  echo ""
+else
+  echo "  The agent is calling home to $URL to finish provisioning."
+  echo "  Watch the dashboard - this server will switch to 'online' shortly."
+fi
 echo "  Logs: journalctl -u deplo-agent -f"
 echo ""
