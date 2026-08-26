@@ -106,6 +106,7 @@ networks:
         forceRecreate: false,
         composeUpArgs: [],
         buildOnly: false,
+        registryAuth: [],
       })) {
         if (ev.result && !ev.result.ready)
           throw new Error("deploy failed: " + ev.result.error);

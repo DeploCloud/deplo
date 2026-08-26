@@ -855,8 +855,8 @@ export interface App {
   /**
    * User-managed persistent volumes for the SINGLE-CONTAINER deploy path
    * (renderCompose) - docker-managed named volumes and (for privileged users) host
-   * bind mounts. null/absent for compose-stack apps and apps that never added one
-   *, so renderCompose emits no `volumes:` keys and the stack stays byte-identical
+   * bind mounts. null/absent for compose-stack apps and apps that never added one,
+   * so renderCompose emits no `volumes:` keys and the stack stays byte-identical
    * (no reroute churn).
    */
   volumes?: VolumeMount[] | null;
@@ -1647,6 +1647,15 @@ export interface SharedVar {
 }
 
 export type RegistryType = "ghcr" | "dockerhub" | "gitlab" | "generic";
+
+/** What the credential field actually holds. Only a self-hosted registry really
+ *  takes a password: GHCR, Docker Hub and GitLab all issue a token. */
+export const REGISTRY_SECRET_LABEL: Record<RegistryType, string> = {
+  ghcr: "Token",
+  dockerhub: "Token",
+  gitlab: "Token",
+  generic: "Password or access token",
+};
 
 /** A container image registry used to pull/push images for deployments. */
 export interface Registry {

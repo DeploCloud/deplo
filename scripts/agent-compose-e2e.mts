@@ -117,6 +117,7 @@ networks:
         forceRecreate: false,
         composeUpArgs: [],
         buildOnly: false,
+        registryAuth: [],
       })) {
         if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
         if (ev.result) {

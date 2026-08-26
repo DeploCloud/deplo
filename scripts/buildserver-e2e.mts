@@ -83,6 +83,7 @@ try {
     forceRecreate: false,
     composeUpArgs: [],
     buildOnly: true,
+    registryAuth: [],
   });
   for await (const ev of stream) {
     if (ev.log) console.log(`   [${ev.log.level}] ${ev.log.text.trimEnd()}`);

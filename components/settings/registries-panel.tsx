@@ -43,31 +43,54 @@ import {
 } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import type { RegistryDTO } from "@/lib/data/registries";
-import type { RegistryType } from "@/lib/types";
+import { REGISTRY_SECRET_LABEL, type RegistryType } from "@/lib/types";
 
 const TYPE_META: Record<
   RegistryType,
-  { label: string; host: string; userPlaceholder: string }
+  {
+    label: string;
+    host: string;
+    userPlaceholder: string;
+    /** Which credential this provider actually issues, named exactly. */
+    secretInfo: React.ReactNode;
+  }
 > = {
   ghcr: {
     label: "GitHub (ghcr.io)",
     host: "ghcr.io",
     userPlaceholder: "github-username",
+    secretInfo: (
+      <>
+        A <strong>classic</strong> personal access token with the{" "}
+        <code className="font-mono">read:packages</code> scope. A fine-grained
+        token or an account password will not pull.
+      </>
+    ),
   },
   dockerhub: {
     label: "Docker Hub",
     host: "docker.io",
     userPlaceholder: "docker-username",
+    secretInfo:
+      "An access token with Read permission, created in your Docker Hub account settings. Use it instead of your password.",
   },
   gitlab: {
     label: "GitLab",
     host: "registry.gitlab.com",
-    userPlaceholder: "gitlab-username",
+    userPlaceholder: "deploy-token-username",
+    secretInfo: (
+      <>
+        A deploy token with the <code className="font-mono">read_registry</code>{" "}
+        scope, with the username GitLab showed when it was created.
+      </>
+    ),
   },
   generic: {
     label: "Generic / self-hosted",
     host: "",
     userPlaceholder: "username",
+    secretInfo:
+      "Whatever this registry issues for read-only pulls: a robot account, an IAM token, or a password.",
   },
 };
 
@@ -275,7 +298,7 @@ function AddRegistryDialog({
         <DialogHeader>
           <DialogTitle>Add registry</DialogTitle>
           <DialogDescription>
-            Use an access token where possible instead of a password.
+            Deplo authenticates with it whenever a deploy pulls a private image.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -354,7 +377,9 @@ function AddRegistryDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Password or access token</Label>
+              <FieldLabel info={meta.secretInfo} docs="registries.add">
+                {REGISTRY_SECRET_LABEL[type]}
+              </FieldLabel>
               <Input
                 type="password"
                 value={password}

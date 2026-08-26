@@ -41,6 +41,7 @@ const ALL_CAPS = [
   "checkport",
   "volume-copy",
   "files-copy",
+  "deploy.registry-auth",
 ];
 
 function hello(over: Partial<HelloResponse> = {}): HelloResponse {

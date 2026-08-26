@@ -607,6 +607,17 @@ export interface MountFile {
   content: string;
 }
 
+/**
+ * One container-registry credential. `host` is the docker config key the CLI
+ * matches an image against ("ghcr.io", "https://index.docker.io/v1/" for the Hub);
+ * the control plane normalises it, the agent writes it verbatim.
+ */
+export interface RegistryAuth {
+  host: string;
+  username: string;
+  password: string;
+}
+
 export interface DeployRequest {
   /**
    * A stable id for this deploy, minted by the control plane (the Deployment row id).
@@ -705,6 +716,13 @@ export interface DeployRequest {
    * host that compiles for machines it does not run on.
    */
   buildOnly: boolean;
+  /**
+   * The team's registry credentials, DECRYPTED by the control plane (same discipline
+   * as `env`). The agent writes them to a 0600 docker config used for this deploy
+   * only, so every pull it makes - image ref, compose images, a Dockerfile's base
+   * image - can authenticate. Empty for a team that connected no registry.
+   */
+  registryAuth: RegistryAuth[];
 }
 
 export interface DeployRequest_EnvEntry {
@@ -3740,6 +3758,98 @@ export const MountFile: MessageFns<MountFile> = {
   },
 };
 
+function createBaseRegistryAuth(): RegistryAuth {
+  return { host: "", username: "", password: "" };
+}
+
+export const RegistryAuth: MessageFns<RegistryAuth> = {
+  encode(message: RegistryAuth, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.host !== "") {
+      writer.uint32(10).string(message.host);
+    }
+    if (message.username !== "") {
+      writer.uint32(18).string(message.username);
+    }
+    if (message.password !== "") {
+      writer.uint32(26).string(message.password);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RegistryAuth {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRegistryAuth();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.host = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.username = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.password = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RegistryAuth {
+    return {
+      host: isSet(object.host) ? globalThis.String(object.host) : "",
+      username: isSet(object.username) ? globalThis.String(object.username) : "",
+      password: isSet(object.password) ? globalThis.String(object.password) : "",
+    };
+  },
+
+  toJSON(message: RegistryAuth): unknown {
+    const obj: any = {};
+    if (message.host !== "") {
+      obj.host = message.host;
+    }
+    if (message.username !== "") {
+      obj.username = message.username;
+    }
+    if (message.password !== "") {
+      obj.password = message.password;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RegistryAuth>, I>>(base?: I): RegistryAuth {
+    return RegistryAuth.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RegistryAuth>, I>>(object: I): RegistryAuth {
+    const message = createBaseRegistryAuth();
+    message.host = object.host ?? "";
+    message.username = object.username ?? "";
+    message.password = object.password ?? "";
+    return message;
+  },
+};
+
 function createBaseDeployRequest(): DeployRequest {
   return {
     deployId: "",
@@ -3762,6 +3872,7 @@ function createBaseDeployRequest(): DeployRequest {
     forceRecreate: false,
     composeUpArgs: [],
     buildOnly: false,
+    registryAuth: [],
   };
 }
 
@@ -3826,6 +3937,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.buildOnly !== false) {
       writer.uint32(160).bool(message.buildOnly);
+    }
+    for (const v of message.registryAuth) {
+      RegistryAuth.encode(v!, writer.uint32(170).fork()).join();
     }
     return writer;
   },
@@ -4000,6 +4114,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           message.buildOnly = reader.bool();
           continue;
         }
+        case 21: {
+          if (tag !== 170) {
+            break;
+          }
+
+          message.registryAuth.push(RegistryAuth.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -4101,6 +4223,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.build_only)
         ? globalThis.Boolean(object.build_only)
         : false,
+      registryAuth: globalThis.Array.isArray(object?.registryAuth)
+        ? object.registryAuth.map((e: any) => RegistryAuth.fromJSON(e))
+        : globalThis.Array.isArray(object?.registry_auth)
+        ? object.registry_auth.map((e: any) => RegistryAuth.fromJSON(e))
+        : [],
     };
   },
 
@@ -4172,6 +4299,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.buildOnly !== false) {
       obj.buildOnly = message.buildOnly;
     }
+    if (message.registryAuth?.length) {
+      obj.registryAuth = message.registryAuth.map((e) => RegistryAuth.toJSON(e));
+    }
     return obj;
   },
 
@@ -4212,6 +4342,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.forceRecreate = object.forceRecreate ?? false;
     message.composeUpArgs = object.composeUpArgs?.map((e) => e) || [];
     message.buildOnly = object.buildOnly ?? false;
+    message.registryAuth = object.registryAuth?.map((e) => RegistryAuth.fromPartial(e)) || [];
     return message;
   },
 };

@@ -11,9 +11,11 @@ import {
   DeployPhase,
   type DeployRequest,
   type DeployEvent,
+  type RegistryAuth,
   type BuildSpec,
 } from "../agent/gen/agent";
 import { connectAgent, agentPreflight } from "../infra/agent-client";
+import { loadRegistryAuthsForApp } from "../data/registries";
 import { generateDockerfile } from "./dockerfile";
 import {
   normalizeBuildConfig,
@@ -257,7 +259,12 @@ export async function runAgentDeploy(opts: {
     );
   }
 
-  const req = await buildDeployRequest(opts);
+  const req = await buildDeployRequest({
+    ...opts,
+    // The team's registry credentials: every pull the agent makes for this deploy
+    // authenticates with them (image ref, compose images, a Dockerfile's base).
+    registryAuth: await loadRegistryAuthsForApp(opts.appId),
+  });
 
   // Cursor: the highest seq we've successfully consumed. A reattach asks the
   // agent to replay everything AFTER this, so a reconnect never double-logs and
@@ -440,6 +447,8 @@ export async function buildDeployRequest(opts: {
   /** Build the image and stop - this host is a BUILD SERVER and runs nothing of
    *  the app. The caller then streams the image to the host that does. */
   buildOnly?: boolean;
+  /** Decrypted registry credentials for this deploy's pulls (loadRegistryAuthsForApp). */
+  registryAuth?: RegistryAuth[];
 }): Promise<DeployRequest> {
   const base: DeployRequest = {
     deployId: opts.deployId,
@@ -468,6 +477,9 @@ export async function buildDeployRequest(opts: {
     // Stop after the build: nothing of this app is written to the stack dir and nothing
     // is brought up here.
     buildOnly: opts.buildOnly ?? false,
+    // Empty for a team that connected no registry, which leaves the host's own
+    // docker config untouched.
+    registryAuth: opts.registryAuth ?? [],
   };
 
   if (opts.plan.kind === "compose") {
