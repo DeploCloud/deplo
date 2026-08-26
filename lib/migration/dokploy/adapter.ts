@@ -99,6 +99,9 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     platform: "dokploy",
     baseUrl: c.baseUrl,
     displayName: DOKPLOY_PLATFORM.name,
+    // Dokploy's key either reads a service or answers 403 on the call itself, so
+    // there is nothing to probe for ahead of time.
+    assertReadable: async () => {},
     listProjects: () => listProjects(c),
     getEnvironment: (id) => getEnvironment(c, id),
     getService: (kind, id) => getService(c, kind, id),

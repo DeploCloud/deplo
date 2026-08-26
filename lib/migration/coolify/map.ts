@@ -99,6 +99,21 @@ const DB_FIELDS: Record<
   libsql: {},
 };
 
+/**
+ * Whether this row still CARRIES its engine's password column.
+ *
+ * Coolify does not blank a secret for a token that may not read it - it drops the
+ * key from the JSON entirely. So the presence of the key, not its value, is what
+ * says whether the token holds `read:sensitive`.
+ */
+export function coolifyDbSecretsVisible(
+  row: CoolifyDatabase,
+  kind: SourceDbKind,
+): boolean {
+  const f = DB_FIELDS[kind];
+  return [...(f.password ?? []), ...(f.root ?? [])].some((k) => k in row);
+}
+
 function pick(row: CoolifyDatabase, keys: string[] | undefined): string | null {
   for (const k of keys ?? []) {
     const v = row[k];
@@ -390,6 +405,7 @@ export function coolifyApplication(
 
   return {
     applicationId: row.uuid,
+    platformNotes: coolifyNotes(row),
     name: row.name ?? null,
     appName: row.name ?? null,
     description: row.description ?? null,
@@ -460,6 +476,7 @@ export function coolifyCompose(
   return {
     value: {
       composeId: row.uuid,
+      platformNotes: [...notes, ...coolifyNotes(app)],
       name: row.name ?? null,
       appName: row.name ?? null,
       description: row.description ?? null,

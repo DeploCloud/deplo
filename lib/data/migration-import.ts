@@ -334,7 +334,7 @@ export interface ConnectInput {
  * The entry gate.
  */
 export async function assertImportGate(): Promise<{ teamId: string }> {
-  await requireTeamWide("import from Dokploy");
+  await requireTeamWide("import from another platform");
   const { teamId } = await requireCapability("create_projects");
   return { teamId };
 }
@@ -489,6 +489,9 @@ export async function scanMigrationSource(
 ): Promise<MigrationPlan> {
   const { teamId } = await assertImportGate();
   const c = await credentialFor(input);
+  // Before anything is read in bulk: can this credential read at all? A panel that
+  // hides values silently would produce a migration that looks like it worked.
+  await sourceClient(c).assertReadable();
 
   const [orgName, servers, projects] = await Promise.all([
     sourceClient(c).organizationName(),
@@ -568,7 +571,7 @@ export async function scanMigrationSource(
             line.notes.push(
               e instanceof Error
                 ? e.message
-                : "Dokploy would not return this service.",
+                : "{panel} would not return this service.",
             );
             services[index] = line;
             return;
@@ -579,6 +582,11 @@ export async function scanMigrationSource(
           // no name at all.
           line.name = nameOf(detail, svc);
           line.logo = mapLogo((detail as SourceApplication).icon);
+          // What the ADAPTER saw and no shared mapper can: a field of its own
+          // platform with no home here.
+          line.notes.push(
+            ...((detail as SourceApplication).platformNotes ?? []),
+          );
 
           if (line.targetKind === "database") {
             const key = line.name.trim().toLowerCase();
@@ -608,7 +616,7 @@ export async function scanMigrationSource(
           );
           if (templated.length > 0)
             line.notes.push(
-              `Deplo does not resolve Dokploy's \`\${{...}}\` templating - these arrive as they are written: ${templated.join(", ")}.`,
+              `Deplo does not resolve {panel}'s \`\${{...}}\` templating - these arrive as they are written: ${templated.join(", ")}.`,
             );
           const domains = mapDomains((detail as SourceApplication).domains, {
             isCompose,
@@ -622,7 +630,7 @@ export async function scanMigrationSource(
             domains.value.filter((d) => d.generated).map((d) => d.host),
           ))
             line.notes.push(
-              `${host} is Dokploy's own temporary address - Deplo cannot take it, so this app gets a temporary address of Deplo's instead, with the same routes.`,
+              `${host} is {panel}'s own temporary address - Deplo cannot take it, so this app gets a temporary address of Deplo's instead, with the same routes.`,
             );
           for (const host of line.domains)
             if (foreignHosts.has(host))
@@ -955,7 +963,7 @@ async function planMachines(
   };
 
   return [
-    machine("", "The Dokploy host", ownAddress),
+    machine("", `The ${sourceClient(c).displayName} host`, ownAddress),
     ...servers.map((s) => machine(s.serverId, s.name, s.ipAddress ?? null)),
   ];
 }
@@ -1699,7 +1707,7 @@ async function runImportMigrationProject(
           outcome: "failed",
           targetKind,
           message:
-            e instanceof Error ? e.message : "Dokploy would not return it.",
+            e instanceof Error ? e.message : "{panel} would not return it.",
         });
         continue;
       }
@@ -1808,7 +1816,7 @@ async function runImportMigrationProject(
   // own connection and would deadlock pglite from inside one.
   await recordActivity(
     "project",
-    `Imported ${source.name} from Dokploy`,
+    `Imported ${source.name} from ${sourceClient(c).displayName}`,
     (await getCurrentUser())?.name ?? "someone",
     null,
     teamId,
@@ -1857,10 +1865,10 @@ async function resolveServers(
       await report.add({
         path: projectName,
         sourceKind: "server",
-        sourceName: from || "the Dokploy host",
+        sourceName: from || "the {panel} host",
         outcome: "manual",
         message:
-          "The server picked for this Dokploy host is not one this team can deploy to - Deplo's default server was used instead.",
+          "The server picked for this {panel} host is not one this team can deploy to - Deplo's default server was used instead.",
       });
   }
   return out;
@@ -1939,7 +1947,7 @@ async function resolvePlacements(
         sourceKind: "server",
         sourceName: p.serviceId,
         outcome: "manual",
-        message: `Port ${exposedPort} is not a port a database can publish (1024-65535) - the one it had on Dokploy was used instead.`,
+        message: `Port ${exposedPort} is not a port a database can publish (1024-65535) - the one it had on {panel} was used instead.`,
       });
       exposedPort = undefined;
     }
@@ -2114,7 +2122,9 @@ async function importAppService(
     return match.id;
   }
 
-  const notes: string[] = [];
+  const notes: string[] = [
+    ...((detail as SourceApplication).platformNotes ?? []),
+  ];
 
   // Env: the service's own blob, plus its build args, which deplo passes to the
   // build as ordinary variables (agent >= 1.9.0) rather than as a second channel.
@@ -2134,7 +2144,7 @@ async function importAppService(
   const interpolated = envNeedsInterpolation(env);
   if (interpolated.length > 0)
     notes.push(
-      `Deplo does not resolve Dokploy's \`\${{...}}\` templating - put the real values in: ${interpolated.join(", ")}.`,
+      `Deplo does not resolve {panel}'s \`\${{...}}\` templating - put the real values in: ${interpolated.join(", ")}.`,
     );
 
   // The compose text, read before anything that depends on the app's SHAPE: it
@@ -2152,7 +2162,7 @@ async function importAppService(
         outcome: "failed",
         targetKind: "app",
         message:
-          "The compose file is in a git repository and Dokploy would not hand over the resolved file. Create the app and paste the compose in.",
+          "The compose file is in a git repository and {panel} would not hand over the resolved file. Create the app and paste the compose in.",
       });
       return null;
     }
@@ -2199,7 +2209,7 @@ async function importAppService(
         : {}),
     };
     notes.push(
-      `On Dokploy this was a compose file in ${repoTarget.repo}, and all it did was build that repository and run it - so it came across as an app built from ${repoTarget.repo}, not as a stack. Pushing to ${repoTarget.branch} deploys it.`,
+      `On {panel} this was a compose file in ${repoTarget.repo}, and all it did was build that repository and run it - so it came across as an app built from ${repoTarget.repo}, not as a stack. Pushing to ${repoTarget.branch} deploys it.`,
     );
   } else if (isCompose) {
     source = "compose";
@@ -2262,7 +2272,7 @@ async function importAppService(
     }
     if (detail.isolatedDeployment)
       notes.push(
-        "Dokploy isolates this stack's network and volume names. Deplo does that for every stack - check the service names it talks to.",
+        "{panel} isolates this stack's network and volume names. Deplo does that for every stack - check the service names it talks to.",
       );
   } else {
     const app = detail as SourceApplication;
@@ -2384,7 +2394,7 @@ async function importAppService(
   const rehosted = new Map<string, string>();
   if (domains.value.length === 0)
     notes.push(
-      "It answered on no address on Dokploy, so it arrives with none here either. Add one under Domains if it should be reachable from outside.",
+      "It answered on no address on {panel}, so it arrives with none here either. Add one under Domains if it should be reachable from outside.",
     );
   if (primary) {
     const landed = await getDb()
@@ -2411,7 +2421,7 @@ async function importAppService(
       rehosted.set(primary.host, row.name);
       notes.push(
         primary.generated
-          ? `${primary.host} was Dokploy's own temporary address, so this app answers on ${row.name} here - same port, same route.`
+          ? `${primary.host} was {panel}'s own temporary address, so this app answers on ${row.name} here - same port, same route.`
           : `${primary.host} could not be taken, so the app answers on ${row.name} instead.`,
       );
     } else if (row) {
@@ -2466,7 +2476,7 @@ async function importAppService(
           rehosted.set(source, host);
           notes.push(
             wasThrowaway.has(source)
-              ? `${source} was Dokploy's own temporary address, so it comes across as ${host} here - same port, same route.`
+              ? `${source} was {panel}'s own temporary address, so it comes across as ${host} here - same port, same route.`
               : `${source} answers on ${host} here instead - same port, same route. Point it at this server and add it under Domains to use the real name.`,
           );
         }
@@ -2538,7 +2548,7 @@ async function importAppService(
         notes.push(
           `${f.filePath} could not be written into this app's Files: ${
             e instanceof Error ? e.message : "refused"
-          }. Dokploy still has it - copy it from there into Files, and mount it under Storage.`,
+          }. {panel} still has it - copy it from there into Files, and mount it under Storage.`,
         );
     }
   }
@@ -2762,7 +2772,7 @@ async function importCrons(
   for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
     const command = (s.command ?? s.script ?? "").trim();
     if (!command) {
-      notes.push(`Cron "${s.name}" has no command on Dokploy - not imported.`);
+      notes.push(`Cron "${s.name}" has no command on {panel} - not imported.`);
       continue;
     }
     try {
@@ -3125,7 +3135,7 @@ export async function importMigrationMembers(
   for (const p of people) {
     const roleNote =
       p.sourceRole && p.sourceRole !== "member"
-        ? ` Was ${p.sourceRole} on Dokploy - promote them in Members if that should carry over.`
+        ? ` Was ${p.sourceRole} on {panel} - promote them in Members if that should carry over.`
         : "";
 
     if (p.inTeam) {

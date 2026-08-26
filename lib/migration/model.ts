@@ -69,6 +69,12 @@ export interface SourceSecurity {
 }
 
 export interface SourceApplication {
+  /**
+   * What the ADAPTER found that no shared mapper can see: a platform-specific
+   * field with no home in Deplo. Written with `{panel}` where the product's name
+   * goes, like every other note.
+   */
+  platformNotes?: string[] | null;
   applicationId: string;
   /** OPTIONAL because `project.all` is a projection: its rows carry an id and
    *  sometimes a name, and a database row carries only the id. Anything that needs
@@ -175,6 +181,12 @@ export interface SourceApplication {
 }
 
 export interface SourceCompose {
+  /**
+   * What the ADAPTER found that no shared mapper can see: a platform-specific
+   * field with no home in Deplo. Written with `{panel}` where the product's name
+   * goes, like every other note.
+   */
+  platformNotes?: string[] | null;
   composeId: string;
   /** Optional for the same reason as {@link SourceApplication.name}. */
   name?: string | null;
@@ -224,6 +236,12 @@ export interface SourceCompose {
 
 /** The five database engines share one shape; only the id field's name differs. */
 export interface SourceDatabase {
+  /**
+   * What the ADAPTER found that no shared mapper can see: a platform-specific
+   * field with no home in Deplo. Written with `{panel}` where the product's name
+   * goes, like every other note.
+   */
+  platformNotes?: string[] | null;
   /** Optional for the same reason as {@link SourceApplication.name}, and a
    *  database row from `project.all` really does carry NOTHING but its id. */
   name?: string | null;

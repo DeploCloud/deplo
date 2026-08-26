@@ -18,6 +18,7 @@ import type {
   SourceSchedule,
   SourceServer,
 } from "./model";
+import { coolifyClient } from "./coolify/adapter";
 import { dokployClient } from "./dokploy/adapter";
 
 /** The products Deplo migrates from. Anything else is refused by that name. */
@@ -64,6 +65,14 @@ export interface MigrationSourceClient {
   /** The platform's name, for a report line a person reads. */
   readonly displayName: string;
 
+  /**
+   * Refuse NOW if this credential cannot read what an import needs. Coolify hides
+   * every variable value and every database password from a token without
+   * `read:sensitive`, and it hides them SILENTLY - the apps would land with empty
+   * variables and look like a migration that worked.
+   */
+  assertReadable(): Promise<void>;
+
   listProjects(): Promise<SourceProject[]>;
   getEnvironment(id: string): Promise<SourceEnvironment | null>;
   getService(
@@ -97,9 +106,5 @@ export interface MigrationSourceClient {
 
 /** The client for one panel. The only place a platform is turned into code. */
 export function sourceClient(c: SourceCredential): MigrationSourceClient {
-  if (c.kind === "coolify")
-    throw new Error(
-      "Deplo can recognise a Coolify panel but cannot import from one yet.",
-    );
-  return dokployClient(c);
+  return c.kind === "coolify" ? coolifyClient(c) : dokployClient(c);
 }
