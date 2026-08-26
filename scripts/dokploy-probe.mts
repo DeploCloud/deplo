@@ -27,6 +27,7 @@ import {
   unsupportedNotes,
 } from "../lib/migration/map";
 import type { DokployDbKind } from "../lib/migration/dokploy/client";
+import { normalizeSourceBaseUrl } from "../lib/migration/transport";
 import type { SourceCredential } from "../lib/migration/source";
 import type {
   SourceApplication,
@@ -41,7 +42,6 @@ import {
   listAppContainers,
   listProjects,
   listServers,
-  normalizeDokployBaseUrl,
   serviceDisplayName,
   type DokployRuntime,
 } from "../lib/migration/dokploy/client";
@@ -54,7 +54,7 @@ if (!url || !apiKey) {
 
 const c: SourceCredential = {
   kind: "dokploy",
-  baseUrl: normalizeDokployBaseUrl(url),
+  baseUrl: normalizeSourceBaseUrl(url),
   apiKey,
 };
 

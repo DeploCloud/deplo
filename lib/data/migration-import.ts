@@ -65,9 +65,9 @@ import {
   DOKPLOY_DB_KINDS,
   DokployDbKind,
   listMembers,
-  normalizeDokployBaseUrl,
   serviceDisplayName,
 } from "../migration/dokploy/client";
+import { normalizeSourceBaseUrl } from "../migration/transport";
 import { isMigrationPlatform, sourceClient } from "../migration/source";
 import type { MigrationPlatform } from "../migration/source";
 import type { SourceCredential } from "../migration/source";
@@ -359,7 +359,7 @@ function composePlatform(
 export async function credentialFor(
   input: ConnectInput,
 ): Promise<SourceCredential> {
-  const baseUrl = normalizeDokployBaseUrl(input.url);
+  const baseUrl = normalizeSourceBaseUrl(input.url);
   if (input.allowPrivate) await requireInstanceAdmin();
   else
     await assertSafeOutboundUrl(baseUrl, "Dokploy address", {
@@ -1041,7 +1041,7 @@ export async function beginMigration(input: {
   await db.insert(runsTable).values({
     id,
     teamId,
-    sourceUrl: normalizeDokployBaseUrl(input.url),
+    sourceUrl: normalizeSourceBaseUrl(input.url),
     platform: input.kind ?? "dokploy",
     orgName: input.orgName?.trim() || null,
     actor: user?.name ?? "someone",

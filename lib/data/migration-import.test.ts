@@ -49,9 +49,9 @@ import {
 } from "./domains";
 import { settleProvisioning } from "./backup-test-helpers";
 import {
-  __setDokployFetchForTest,
-  __resetDokployFetchForTest,
-} from "../migration/dokploy/client";
+  __setMigrationFetchForTest,
+  __resetMigrationFetchForTest,
+} from "../migration/transport";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 import {
   abandonMigration,
@@ -311,7 +311,7 @@ before(async () => {
 after(async () => {
   await settleProvisioning(db);
   __resetDnsResolve4ForTest();
-  __resetDokployFetchForTest();
+  __resetMigrationFetchForTest();
   __setAgentConnectorForTest();
   __resetTestDb();
   await pg.close();
@@ -356,7 +356,7 @@ beforeEach(async () => {
   });
   await seedServer(db);
   fixtures = defaultFixtures();
-  __setDokployFetchForTest(routingFetch());
+  __setMigrationFetchForTest(routingFetch());
   __setAgentConnectorForTest();
   await db.execute("truncate table databases cascade;");
   calls = [];
@@ -830,7 +830,7 @@ test("an icon deplo would refuse is dropped, and the app still lands", async () 
   const web = { ...(APPLICATIONS["dok-app-web"] as Record<string, unknown>) };
   // A remote URL: the shape the dashboard's CSP refuses to load at all.
   web.icon = "https://templates.dokploy.com/blueprints/n8n/logo.png";
-  __setDokployFetchForTest(
+  __setMigrationFetchForTest(
     routingFetch({ applications: { "dok-app-web": web } }),
   );
 
@@ -1083,7 +1083,7 @@ test("running the same import again creates nothing", async () => {
 
 test("one service Dokploy will not return does not stop the others", async () => {
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
-  __setDokployFetchForTest(routingFetch({ failApplication: "dok-app-api" }));
+  __setMigrationFetchForTest(routingFetch({ failApplication: "dok-app-api" }));
   const result = await importProject(runId, "dok-prj-blink");
 
   const apps = await db.select().from(appsTable);

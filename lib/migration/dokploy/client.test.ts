@@ -1,14 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { getConvertedCompose, listProjects } from "./client";
 import {
-  __resetDokployFetchForTest,
-  __setDokployFetchForTest,
-  describeDokployTransportError,
-  getConvertedCompose,
-  listProjects,
-  normalizeDokployBaseUrl,
-} from "./client";
+  __resetMigrationFetchForTest,
+  __setMigrationFetchForTest,
+  describeTransportError,
+  normalizeSourceBaseUrl,
+} from "../transport";
 
 /**
  * The transport half of the import. Both cases here were measured against a real
@@ -23,7 +22,7 @@ const cred = {
 };
 
 function answers(body: unknown): void {
-  __setDokployFetchForTest(
+  __setMigrationFetchForTest(
     async () =>
       new Response(JSON.stringify(body), {
         status: 200,
@@ -33,14 +32,16 @@ function answers(body: unknown): void {
 }
 
 test("a compose Dokploy has not resolved yet is nothing, not the string null", async (t) => {
-  t.after(__resetDokployFetchForTest);
+  t.after(__resetMigrationFetchForTest);
 
   // What the endpoint really answers for a git-backed stack it has not cloned.
   answers(null);
   assert.equal(await getConvertedCompose(cred, "c1"), null);
 
   // The same body arriving as text, which is how a Dokploy behind a proxy sends it.
-  __setDokployFetchForTest(async () => new Response("null\n", { status: 200 }));
+  __setMigrationFetchForTest(
+    async () => new Response("null\n", { status: 200 }),
+  );
   assert.equal(await getConvertedCompose(cred, "c1"), null);
 
   answers("");
@@ -48,7 +49,7 @@ test("a compose Dokploy has not resolved yet is nothing, not the string null", a
 });
 
 test("a real compose comes through, however Dokploy wraps it", async (t) => {
-  t.after(__resetDokployFetchForTest);
+  t.after(__resetMigrationFetchForTest);
 
   answers("services:\n  web:\n    image: nginx\n");
   assert.match((await getConvertedCompose(cred, "c1")) ?? "", /^services:/);
@@ -60,11 +61,15 @@ test("a real compose comes through, however Dokploy wraps it", async (t) => {
   assert.match((await getConvertedCompose(cred, "c1")) ?? "", /^services:/);
 });
 
+/** The panel every message in these tests is about. */
+const DOKPLOY = { name: "Dokploy", portHint: ":3000" };
+
 test("a connection failure says which one it was", () => {
   const withCode = (code: string) =>
-    describeDokployTransportError(
+    describeTransportError(
       Object.assign(new TypeError("fetch failed"), { cause: { code } }),
       "https://dokploy.test",
+      DOKPLOY,
     );
 
   assert.match(withCode("ECONNREFUSED"), /Nothing is listening/);
@@ -73,19 +78,21 @@ test("a connection failure says which one it was", () => {
   assert.match(withCode("ERR_SSL_WRONG_VERSION_NUMBER"), /not over https/);
   assert.match(withCode("CERT_HAS_EXPIRED"), /certificate/);
 
-  const timeout = describeDokployTransportError(
+  const timeout = describeTransportError(
     Object.assign(new Error("The operation was aborted"), {
       name: "TimeoutError",
     }),
     "https://dokploy.test",
+    DOKPLOY,
   );
   assert.match(timeout, /did not answer within/);
 
   // Even an unrecognised one names the address instead of saying "fetch failed".
   assert.match(
-    describeDokployTransportError(
+    describeTransportError(
       new TypeError("fetch failed"),
       "https://dokploy.test",
+      DOKPLOY,
     ),
     /Could not reach Dokploy at https:\/\/dokploy\.test/,
   );
@@ -95,11 +102,12 @@ test("an https IP with a bad certificate is told it is the wrong field", () => {
   // The trap this exists for: the NEXT step asks for the machine's own address, and a
   // fair number of people come back and put it in the PANEL field.
   const certFail = (baseUrl: string) =>
-    describeDokployTransportError(
+    describeTransportError(
       Object.assign(new TypeError("fetch failed"), {
         cause: { code: "DEPTH_ZERO_SELF_SIGNED_CERT" },
       }),
       baseUrl,
+      DOKPLOY,
     );
 
   const onIp = certFail("https://185.58.122.151");
@@ -118,8 +126,8 @@ test("an https IP with a bad certificate is told it is the wrong field", () => {
 });
 
 test("a failure raised by the transport reaches the caller readable", async (t) => {
-  t.after(__resetDokployFetchForTest);
-  __setDokployFetchForTest(async () => {
+  t.after(__resetMigrationFetchForTest);
+  __setMigrationFetchForTest(async () => {
     throw Object.assign(new TypeError("fetch failed"), {
       cause: { code: "ECONNREFUSED" },
     });
@@ -132,7 +140,7 @@ test("a failure raised by the transport reaches the caller readable", async (t) 
 
 test("the address keeps rejecting a key smuggled into it", () => {
   assert.throws(
-    () => normalizeDokployBaseUrl("https://user:pass@dokploy.test"),
+    () => normalizeSourceBaseUrl("https://user:pass@dokploy.test"),
     /API key field/,
   );
 });

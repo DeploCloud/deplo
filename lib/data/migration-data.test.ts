@@ -31,9 +31,9 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import {
-  __setDokployFetchForTest,
-  __resetDokployFetchForTest,
-} from "../migration/dokploy/client";
+  __setMigrationFetchForTest,
+  __resetMigrationFetchForTest,
+} from "../migration/transport";
 import {
   migrationRunItems as itemsTable,
   servers as serversTable,
@@ -423,7 +423,7 @@ before(async () => {
 });
 
 after(async () => {
-  __resetDokployFetchForTest();
+  __resetMigrationFetchForTest();
   __setAgentConnectorForTest();
   __resetTestDb();
   await pg.close();
@@ -437,7 +437,7 @@ beforeEach(async () => {
   await db.execute("truncate table databases cascade;");
   await seedIdentity(db);
   await seedServer(db);
-  __setDokployFetchForTest(fakeSource());
+  __setMigrationFetchForTest(fakeSource());
   calls = [];
   agentCalls = [];
   unreachableAgents.clear();
