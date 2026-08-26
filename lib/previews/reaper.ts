@@ -15,7 +15,7 @@ import {
   teardownPreviewStack,
 } from "../deploy/preview-lifecycle";
 import { drainTeardowns } from "../data/teardown-queue";
-import { drainMigrationSourceUninstalls } from "../data/dokploy-import";
+import { drainMigrationSourceUninstalls } from "../data/migration-import";
 import { getPullRequestState } from "../github/app";
 
 /**

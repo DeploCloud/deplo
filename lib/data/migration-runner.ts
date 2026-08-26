@@ -15,7 +15,7 @@ import { encryptSecret, decryptSecretOrThrow } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
 import { acquireLease, releaseLease } from "../backups/lease";
 import { publishMigrationChanged } from "../graphql/pubsub";
-import type { ServicePlacement } from "./dokploy-import";
+import type { ServicePlacement } from "./migration-import";
 import {
   appendRunItem,
   assertImportGate,
@@ -24,12 +24,12 @@ import {
   importDokployProject,
   stopDokployImport,
   undoDokployImport,
-} from "./dokploy-import";
+} from "./migration-import";
 import {
   abortRunCopy,
   moveDokployServiceData,
   planDokployDataMove,
-} from "./dokploy-data";
+} from "./migration-data";
 import { isCopyAborted } from "./volume-migration";
 import { checkServerHealth } from "./server-health";
 import { listServersForTeam } from "./servers";

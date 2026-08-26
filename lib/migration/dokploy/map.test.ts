@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import yaml from "../yaml";
+import yaml from "../../yaml";
 
 import {
   cloneTarget,
@@ -36,7 +36,7 @@ import {
   deploEngineFor,
 } from "./map";
 import type { DokployApplication, DokployDatabase } from "./client";
-import { MAX_LOGO_STRING_LEN } from "../apps/logo-shared";
+import { MAX_LOGO_STRING_LEN } from "../../apps/logo-shared";
 
 /**
  * The pure half of the Dokploy import.

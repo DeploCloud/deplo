@@ -12,10 +12,10 @@ import yaml, {
   Scalar,
   type Document,
   type YAMLMap,
-} from "../yaml";
+} from "../../yaml";
 
-import { isValidLogoValue } from "../apps/logo-shared";
-import { keepAuthoredEnvText } from "../deploy/compose-lint";
+import { isValidLogoValue } from "../../apps/logo-shared";
+import { keepAuthoredEnvText } from "../../deploy/compose-lint";
 
 import type {
   BuildConfig,
@@ -26,7 +26,7 @@ import type {
   GitRepo,
   ResourceLimits,
   VolumeMount,
-} from "../types";
+} from "../../types";
 import type {
   DokployApplication,
   DokployCompose,

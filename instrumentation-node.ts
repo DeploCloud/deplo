@@ -133,7 +133,8 @@ export async function register(): Promise<void> {
   try {
     // The migration runner, and its boot tick is the load-bearing part: a control plane
     // that restarted mid-import is exactly the case this exists for.
-    const { startMigrationRunner } = await import("./lib/data/dokploy-runner");
+    const { startMigrationRunner } =
+      await import("./lib/data/migration-runner");
     startMigrationRunner();
   } catch (e) {
     console.error("[deplo] migration runner startup failed:", e);
@@ -210,7 +211,7 @@ export async function register(): Promise<void> {
         .catch(() => {});
       // Five leases, not four: the migration runner holds one too, and a
       // migration nobody may drive is worse than a backup nobody may take.
-      void import("./lib/data/dokploy-runner")
+      void import("./lib/data/migration-runner")
         .then(({ releaseMigrationRunnerLease }) =>
           releaseMigrationRunnerLease(),
         )

@@ -34,7 +34,7 @@ import {
   type DokployCredential,
   type DokployDatabase,
   type DokployRuntime,
-} from "../dokploy/client";
+} from "../migration/dokploy/client";
 import {
   composeVolumeMounts,
   declaredSourceBindMounts,
@@ -47,7 +47,7 @@ import {
   sourceVolumesFrom,
   type HostMount,
   type NamedVolume,
-} from "../dokploy/map";
+} from "../migration/dokploy/map";
 
 import { requireAppCapability } from "./node-access";
 import {
@@ -70,7 +70,7 @@ import {
   ownRun,
   refreshCounts,
   type ConnectInput,
-} from "./dokploy-import";
+} from "./migration-import";
 
 /**
  * The one refusal that has to read the same on the review screen and at the

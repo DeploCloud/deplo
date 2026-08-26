@@ -1,7 +1,7 @@
 /**
  * Read a Dokploy instance and print what an import would see. READ ONLY: this only
  * ever issues the GETs the scan issues, never a write, and it touches no Deplo
- * database - it exercises `lib/dokploy/*` alone.
+ * database - it exercises `lib/migration/dokploy/*` alone.
  */
 
 import {
@@ -25,13 +25,13 @@ import {
   portNotes,
   adaptComposeForDeplo,
   unsupportedNotes,
-} from "../lib/dokploy/map";
+} from "../lib/migration/dokploy/map";
 import type {
   DokployApplication,
   DokployCompose,
   DokployDatabase,
   DokployDbKind,
-} from "../lib/dokploy/client";
+} from "../lib/migration/dokploy/client";
 import {
   DOKPLOY_DB_KINDS,
   activeOrganizationName,
@@ -44,7 +44,7 @@ import {
   serviceDisplayName,
   type DokployCredential,
   type DokployRuntime,
-} from "../lib/dokploy/client";
+} from "../lib/migration/dokploy/client";
 
 const [url, apiKey] = process.argv.slice(2);
 if (!url || !apiKey) {

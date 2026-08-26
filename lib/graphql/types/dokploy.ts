@@ -6,7 +6,7 @@ import {
   type DataMoveResult,
   type DataMoveService,
   type DataMoveVolume,
-} from "@/lib/data/dokploy-data";
+} from "@/lib/data/migration-data";
 import {
   abandonDokployImport,
   activeDokployImportForTeam,
@@ -31,11 +31,11 @@ import {
   type RevertResultDTO,
   scanDokploy,
   setDokployMachineAddress,
-} from "@/lib/data/dokploy-import";
+} from "@/lib/data/migration-import";
 import {
   requestStopDokployRun,
   startDokployRun,
-} from "@/lib/data/dokploy-runner";
+} from "@/lib/data/migration-runner";
 
 /**
  * Import from Dokploy - read a Dokploy instance over its API and create the deplo

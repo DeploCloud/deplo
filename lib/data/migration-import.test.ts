@@ -51,7 +51,7 @@ import { settleProvisioning } from "./backup-test-helpers";
 import {
   __setDokployFetchForTest,
   __resetDokployFetchForTest,
-} from "../dokploy/client";
+} from "../migration/dokploy/client";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 import {
   abandonDokployImport,
@@ -69,7 +69,7 @@ import {
   revertDokployImport,
   scanDokploy,
   stopDokployImport,
-} from "./dokploy-import";
+} from "./migration-import";
 import { activeMigrationStream } from "../graphql/types/dokploy";
 import { createProject, renameProject } from "./projects";
 import { startApp } from "./apps";

@@ -17,7 +17,7 @@ import {
   leaseFor,
   releaseMigrationRunnerLease,
   runMigrationTick,
-} from "./dokploy-runner";
+} from "./migration-runner";
 
 /**
  * The runner's lease, which decides whether a migration may move. Per RUN, it

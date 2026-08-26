@@ -9,7 +9,7 @@ import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import {
   listDokployImports,
   resumableDokployImport,
-} from "@/lib/data/dokploy-import";
+} from "@/lib/data/migration-import";
 import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";

@@ -81,7 +81,7 @@ import {
   type DokployDbKind,
   type DokployEnvironment,
   type DokployProject,
-} from "../dokploy/client";
+} from "../migration/dokploy/client";
 import {
   deploEngineFor,
   envNeedsInterpolation,
@@ -103,7 +103,7 @@ import {
   retargetPlatformEnvFiles,
   unsupportedNotes,
   type MappedDomain,
-} from "../dokploy/map";
+} from "../migration/dokploy/map";
 
 import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";

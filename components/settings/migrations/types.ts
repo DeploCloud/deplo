@@ -1,6 +1,6 @@
 /**
  * The wire shapes the import wizard reads, mirroring the DTOs in
- * `lib/data/dokploy-import.ts`.
+ * `lib/data/migration-import.ts`.
  */
 
 export interface PlanService {

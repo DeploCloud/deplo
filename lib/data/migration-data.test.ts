@@ -33,14 +33,14 @@ import {
 import {
   __setDokployFetchForTest,
   __resetDokployFetchForTest,
-} from "../dokploy/client";
+} from "../migration/dokploy/client";
 import {
   dokployImportItems as itemsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
-import { beginDokployImport, finishDokployImport } from "./dokploy-import";
-import { moveDokployServiceData, planDokployDataMove } from "./dokploy-data";
+import { beginDokployImport, finishDokployImport } from "./migration-import";
+import { moveDokployServiceData, planDokployDataMove } from "./migration-data";
 import { acceptDataCopyLoss } from "./data-copy";
 import { startApp } from "./apps";
 import { redeployDatabase, restartDatabase } from "./databases";
