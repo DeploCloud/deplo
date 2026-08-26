@@ -65,7 +65,7 @@ import {
 /**
  * The one refusal that has to read the same on the review screen and at the
  * cutover: Deplo reads a volume by asking the agent ON the machine that holds it,
- * so a Dokploy host with no agent is a host whose data cannot move at all.
+ * so a source host with no agent is a host whose data cannot move at all.
  */
 const UNREACHABLE_SOURCE_HOST =
   "Deplo has no agent on the machine this service's data is on, so its data cannot be copied. Add that machine as a server first - the Connect step lists it and installs the agent for you.";
@@ -94,7 +94,7 @@ async function sourceAgentReachable(serverId: string): Promise<boolean> {
 }
 
 /**
- * The data half of a Dokploy migration: move a service's volumes over, once its
+ * The data half of a migration: move a service's volumes over, once its
  * configuration is already here.
  */
 
@@ -110,7 +110,7 @@ export interface DataMoveVolume {
 }
 
 export interface DataMoveService {
-  /** `Project / Environment / service`, as it reads on Dokploy. */
+  /** `Project / Environment / service`, as it reads on the source panel. */
   path: string;
   /** `application` | `compose` | one of the five engines. */
   sourceKind: string;
@@ -118,7 +118,7 @@ export interface DataMoveService {
   sourceName: string;
   projectName: string;
   environmentName: string;
-  /** The Dokploy server that runs it; empty string is Dokploy's own host. */
+  /** The source machine that runs it; empty string is the panel's own host. */
   sourceServerId: string;
   targetKind: "app" | "database";
   targetId: string;
@@ -163,7 +163,7 @@ function isHostGone(e: unknown): boolean {
 /* The source tree, read once                                          */
 /* ------------------------------------------------------------------ */
 
-/** One Dokploy service, flattened with everything a data move needs about it. */
+/** One source service, flattened with everything a data move needs about it. */
 interface SourceService {
   kind: string;
   id: string;
@@ -173,7 +173,7 @@ interface SourceService {
   serverId: string;
   projectName: string;
   environmentName: string;
-  /** What Dokploy SAYS it mounts, read off the same detail call. The fallback
+  /** What the panel SAYS it mounts, read off the same detail call. The fallback
    *  for a stopped service, which has no container to inspect. */
   declaredVolumes: NamedVolume[];
   /** Same, for the host directories it bind-mounts. */
@@ -263,7 +263,7 @@ interface Landed {
 }
 
 /**
- * What this import run actually created: Dokploy service id → the Deplo resource.
+ * What this import run actually created: source service id → the Deplo resource.
  */
 async function runTargets(
   runId: string,
@@ -540,8 +540,8 @@ async function recordStoppedForCopy(
 }
 
 /**
- * Cut one service's data over: stop it on Dokploy, then copy every paired volume
- * into the app or database that was imported from it.
+ * Cut one service's data over: stop it on the source panel, then copy every
+ * paired volume into the app or database that was imported from it.
  */
 /** The copy stops, starts and rewrites the very rows the import marked. */
 /**
@@ -621,7 +621,7 @@ async function runMoveMigrationServiceData(
       targetId: landed.targetId,
       message:
         notes.join(" ") ||
-        "Nothing to move: this service has no data of its own on Dokploy.",
+        "Nothing to move: this service has no data of its own on {panel}.",
     });
     await refreshCounts(input.runId, teamId);
     return { moved: 0, failed: 0, notes, sourceGone: false };
@@ -682,13 +682,13 @@ async function runMoveMigrationServiceData(
   }
 
   // The point of no return, and what makes the copy trustworthy - EXCEPT for a
-  // service Dokploy will not stop because it was never deployed, which answers 500
-  // to its own `compose.stop`. Nothing is running, so nothing is moving under the
+  // service the panel will not stop because it was never deployed, which answers
+  // 500 to its own stop. Nothing is running, so nothing is moving under the
   // copy; the run has no business ending over it.
   try {
     await sourceClient(c).stopService(input.sourceKind, input.sourceId);
   } catch (e) {
-    const why = e instanceof Error ? e.message : "Dokploy refused";
+    const why = e instanceof Error ? e.message : `${panel} refused`;
     if (state.running) {
       await appendRunItem(input.runId, panel, {
         path,
@@ -698,17 +698,17 @@ async function runMoveMigrationServiceData(
         outcome: "failed",
         targetKind: landed.targetKind,
         targetId: landed.targetId,
-        message: `${svc.name} is still running on Dokploy and would not stop (${why}), so its data was not copied - copying a volume being written to would arrive corrupted. Stop it there and run the copy again.`,
+        message: `${svc.name} is still running on {panel} and would not stop (${why}), so its data was not copied - copying a volume being written to would arrive corrupted. Stop it there and run the copy again.`,
       });
       await markDataCopyFailed(
         { kind: landed.targetKind, id: landed.targetId },
-        `${svc.name} would not stop on Dokploy, so its data was never copied`,
+        `${svc.name} would not stop on ${panel}, so its data was never copied`,
       );
       await refreshCounts(input.runId, teamId);
       return { moved: 0, failed: 1, notes, sourceGone: false };
     }
     notes.push(
-      `Dokploy would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was copied as it is.`,
+      `{panel} would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was copied as it is.`,
     );
   }
 
@@ -763,8 +763,8 @@ async function runMoveMigrationServiceData(
             targetKind: landed.targetKind,
             targetId: landed.targetId,
             message: copied.missing
-              ? `${pair.sourceVolume} is not on Dokploy: ${svc.name} was never started there, so it has no data yet.`
-              : `${pair.sourceVolume} holds nothing on Dokploy, so ${pair.targetVolume} (${pair.mountPath}) was left as it is.`,
+              ? `${pair.sourceVolume} is not on the machine {panel} runs ${svc.name} on, so it was never started there and has no data yet.`
+              : `${pair.sourceVolume} holds nothing on {panel}, so ${pair.targetVolume} (${pair.mountPath}) was left as it is.`,
           });
           continue;
         }
@@ -851,8 +851,8 @@ async function runMoveMigrationServiceData(
             targetKind: landed.targetKind,
             targetId: landed.targetId,
             message: copied.missing
-              ? `${bind.sourcePath} is not on Dokploy: ${svc.name} was never started there, so it has no data yet.`
-              : `${bind.sourcePath} is empty on Dokploy, so ${bind.targetPath} was left as it is.`,
+              ? `${bind.sourcePath} is not on the machine {panel} runs ${svc.name} on, so it was never started there and has no data yet.`
+              : `${bind.sourcePath} is empty on {panel}, so ${bind.targetPath} was left as it is.`,
           });
           continue;
         }
@@ -930,8 +930,8 @@ async function runMoveMigrationServiceData(
   if (empty > 0 && moved === 0)
     notes.push(
       missing === empty
-        ? `Nothing was copied for ${landed.targetName}: it was never started on Dokploy, so it has no data there yet. Press Deploy and it starts fresh.`
-        : `Nothing was copied for ${landed.targetName}: every volume it has on Dokploy is empty.`,
+        ? `Nothing was copied for ${landed.targetName}: it was never started on {panel}, so it has no data there yet. Press Deploy and it starts fresh.`
+        : `Nothing was copied for ${landed.targetName}: every volume it has on {panel} is empty.`,
     );
 
   for (const message of notes)
@@ -948,7 +948,7 @@ async function runMoveMigrationServiceData(
   await refreshCounts(input.runId, teamId);
   await recordActivity(
     landed.targetKind === "app" ? "app" : "database",
-    `Moved ${moved} data volume(s) from Dokploy into ${landed.targetName}`,
+    `Moved ${moved} data volume(s) from ${panel} into ${landed.targetName}`,
     (await getCurrentUser())?.name ?? "someone",
     landed.targetKind === "app" ? landed.targetId : null,
     teamId,
@@ -1146,7 +1146,7 @@ async function setDatabaseRunningAfterCopy(
 }
 
 /**
- * The Deplo server that can read a given Dokploy host's volumes. Derived from the
+ * The Deplo server that can read a given source host's volumes. Derived from the
  * ADDRESS, and never accepted from the caller.
  */
 async function resolveSourceServer(
@@ -1159,7 +1159,7 @@ async function resolveSourceServer(
   );
   if (!machine)
     throw new Error(
-      "Dokploy no longer lists the machine this service runs on, so Deplo cannot tell which host holds its data.",
+      `${sourceClient(c).displayName} no longer lists the machine this service runs on, so Deplo cannot tell which host holds its data.`,
     );
   if (!machine.deploServerId) throw new Error(UNREACHABLE_SOURCE_HOST);
   const usable = (await listServersForTeam(teamId)).some(

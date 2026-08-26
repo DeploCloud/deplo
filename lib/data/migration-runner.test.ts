@@ -39,6 +39,7 @@ after(async () => {
 
 beforeEach(async () => {
   __resetLocalLeases();
+  await harness.db.execute("delete from projects;");
   await harness.db.execute("delete from migration_runs;");
 });
 
@@ -67,6 +68,32 @@ async function statusOf(id: string): Promise<string> {
   );
   return String((r.rows[0] as { status: string }).status);
 }
+
+test("a run that fails hands its services back", async () => {
+  // The marker outlives the run that set it: a data phase that stopped left every
+  // app refusing to deploy with "still being brought over by a migration", and the
+  // only way out was a restart of the control plane.
+  const id = await seedRun("dimp_frozen");
+  await harness.db.execute(
+    `update migration_runs set phase = 'data' where id = '${id}';`,
+  );
+  await harness.db.execute(
+    `insert into projects (id, team_id, name, slug, migration_run_id, created_at, updated_at)
+     values ('prc_frozen', 'team_r', 'Frozen', 'frozen', '${id}', now(), now());`,
+  );
+
+  await runMigrationTick();
+
+  assert.equal(await statusOf(id), "failed");
+  const r = await harness.db.execute(
+    `select migration_run_id from projects where id = 'prc_frozen'`,
+  );
+  assert.equal(
+    (r.rows[0] as { migration_run_id: string | null }).migration_run_id,
+    null,
+    "a finished run holds nothing, however it finished",
+  );
+});
 
 test("a run somebody else is driving does not stop the next one", async () => {
   const held = await seedRun("dimp_held");

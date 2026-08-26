@@ -24,6 +24,7 @@ import {
   beginMigration,
   finishMigration,
   importMigrationProject,
+  releaseMigrating,
   stopMigration,
   undoMigration,
 } from "./migration-import";
@@ -31,7 +32,9 @@ import {
   abortRunCopy,
   moveMigrationServiceData,
   planMigrationDataMove,
+  type DataMoveService,
 } from "./migration-data";
+import { markDataCopyFailed } from "./data-copy";
 import { isCopyAborted } from "./volume-migration";
 import { checkServerHealth } from "./server-health";
 import { listServersForTeam } from "./servers";
@@ -327,13 +330,19 @@ async function failRun(row: RunRow, why: string): Promise<void> {
     .where(and(eq(runsTable.id, row.id), eq(runsTable.status, "running")));
   publishMigrationChanged();
 
+  // Whatever it did, the run is over - so everything it created is the team's
+  // again. Without this the apps stayed frozen behind "still being brought over
+  // by a migration" with no migration left to finish, and only a restart of the
+  // control plane ever let them go.
+  await releaseMigrating(row.id);
+
   if (reached === "data") {
     await appendRunItem(row.id, panelNameFor(row), {
       path: "Migration",
       sourceKind: "run",
       sourceName: "Migration",
       outcome: "manual",
-      message: `The data step stopped: ${why} Everything already created here was kept - nothing was rolled back. Copy the rest from the app's own Storage, or run the migration again for what is missing.`,
+      message: `The data step stopped: ${why} Everything already created here was kept - nothing was rolled back. The lines above name every service whose data did not come across; each one refuses to deploy until you bring its data over yourself or choose "Deploy anyway" on its page.`,
     });
     return;
   }
@@ -598,6 +607,33 @@ async function runConfigPhase(row: RunRow, c: RunCredential): Promise<void> {
   });
 }
 
+/**
+ * Say, on the resource itself and in the report, that a service's data never came
+ * across. A migration that stops part way used to leave every service it had not
+ * reached running on a brand-new empty volume, indistinguishable from one that
+ * worked - which is the shape data loss takes when nobody is told.
+ */
+async function markUncopied(
+  row: RunRow,
+  services: DataMoveService[],
+  why: string,
+): Promise<void> {
+  for (const d of services) {
+    const reason = `${d.sourceName}'s data was not copied: ${why}`;
+    await markDataCopyFailed({ kind: d.targetKind, id: d.targetId }, reason);
+    await appendRunItem(row.id, panelNameFor(row), {
+      path: d.path,
+      sourceKind: d.sourceKind,
+      sourceId: d.sourceId,
+      sourceName: d.sourceName,
+      outcome: "failed",
+      targetKind: d.targetKind,
+      targetId: d.targetId,
+      message: `${reason}. ${d.targetName} is running on the empty storage Deplo created for it - bring the data over before anyone uses it, or choose "Deploy anyway" to accept starting without it.`,
+    });
+  }
+}
+
 async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
   await beat(row.id);
   const planned = await planMigrationDataMove({
@@ -621,18 +657,36 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
 
   const movable = planned.filter((d) => d.volumes.length > 0);
   const unreachable = movable.filter((d) => !d.sourceReachable);
-  if (unreachable.length > 0)
-    throw new Error(
-      `Deplo cannot reach the machine ${unreachable[0].sourceName}'s data is on, so no data was copied and nothing was stopped on Dokploy.`,
+  if (unreachable.length > 0) {
+    // Nothing is copied at all now, so EVERY service is marked - each with the
+    // reason that is true of it.
+    await markUncopied(
+      row,
+      unreachable,
+      "Deplo has no way to reach the machine it is on",
     );
+    await markUncopied(
+      row,
+      movable.filter((d) => d.sourceReachable),
+      `the migration stopped before reaching it: ${unreachable[0].sourceName}'s machine does not answer`,
+    );
+    throw new Error(
+      `Deplo cannot reach the machine ${unreachable[0].sourceName}'s data is on, so no data was copied and nothing was stopped on ${panelNameFor(row)}.`,
+    );
+  }
 
   await getDb()
     .update(runsTable)
     .set({ totalSteps: movable.length, doneSteps: 0 })
     .where(eq(runsTable.id, row.id));
 
+  let failedHere = 0;
   for (const [i, d] of movable.entries()) {
-    if (await stopped(row.id)) return;
+    if (await stopped(row.id)) {
+      // Stopped by hand: the undo has already taken everything back out, so
+      // there is nothing left to mark.
+      return;
+    }
     await beat(row.id);
     await setProgress(row.id, { doneSteps: i, stepLabel: d.sourceName });
     // The bytes, while they cross. One service is ONE step here, so without this
@@ -670,18 +724,38 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
         await stopped(row.id);
         return;
       }
-      throw e;
+      // One service that would not cut over is a line in the report, not the end
+      // of the migration: everything after it used to be left with an empty
+      // volume, a `running` status and nothing anywhere saying so.
+      const why = e instanceof Error ? e.message : String(e);
+      await markUncopied(row, [d], why);
+      failedHere++;
+      continue;
     }
     // A failed VOLUME is a line in the report. A failed MACHINE is the end: every
     // service after this one is on it, and each gets stopped over there before
     // its copy is tried.
-    if (res.sourceGone)
+    if (res.sourceGone) {
+      await markUncopied(
+        row,
+        movable.slice(i + 1),
+        `the migration stopped before reaching it: the machine holding ${d.sourceName}'s data stopped answering`,
+      );
       throw new Error(
         `Lost the connection to the machine ${d.sourceName}'s data is on. Stopped there, and nothing after it was touched.`,
       );
+    }
   }
 
   await setProgress(row.id, { doneSteps: movable.length, stepLabel: null });
+  if (failedHere > 0)
+    await appendRunItem(row.id, panelNameFor(row), {
+      path: "Migration",
+      sourceKind: "run",
+      sourceName: "Migration",
+      outcome: "manual",
+      message: `${failedHere} service(s) could not have their data cut over. Each is named above and refuses to deploy until you bring its data across yourself or choose "Deploy anyway" on its page.`,
+    });
   await finishMigration(row.id);
   await getDb()
     .update(runsTable)

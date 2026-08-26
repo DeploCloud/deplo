@@ -1276,3 +1276,16 @@ test("a run from another team is not a place to write a report", async () => {
     /scoped to a team the user no longer belongs to|does not belong to this team/,
   );
 });
+
+test("the data phase never names a product (ADR-0026)", async () => {
+  // Thirteen hardcoded "Dokploy"s used to reach a Coolify report - "ghost is
+  // still running on Dokploy (Coolify request failed 404)" in one sentence.
+  // `appendRunItem` resolves `{panel}` from the run's own platform, so a mapper
+  // and this file both write the placeholder and neither knows which panel it is.
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("./migration-data.ts", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /Dokploy|Coolify/);
+});

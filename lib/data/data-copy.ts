@@ -26,8 +26,8 @@ export function assertDataCopyIntact(
   if (!dataCopyError) return;
   throw new Error(
     `${name}'s data did not come across: ${dataCopyError}. Starting it now would ` +
-      `run it on empty storage. Copy the data again from Settings → Migrations, ` +
-      `or choose "Deploy anyway" on its page to accept starting without it.`,
+      `run it on empty storage. Bring the data over yourself, or choose ` +
+      `"Deploy anyway" on its page to accept starting without it.`,
   );
 }
 
