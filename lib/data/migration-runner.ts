@@ -12,6 +12,8 @@ import { newId, nowIso } from "../ids";
 import { MIGRATION_HEARTBEAT_STALE_MS } from "../types";
 import { formatBytes } from "../utils";
 import { encryptSecret, decryptSecretOrThrow } from "../crypto";
+import { isMigrationPlatform } from "../migration/source";
+import type { MigrationPlatform } from "../migration/source";
 import { runWithIdentity } from "../auth/request-context";
 import { acquireLease, releaseLease } from "../backups/lease";
 import { publishMigrationChanged } from "../graphql/pubsub";
@@ -61,8 +63,14 @@ const owner = `${process.pid}-${newId("run")}`;
 const inflight = new Set<string>();
 let timer: ReturnType<typeof setInterval> | null = null;
 
-/** What a run needs to talk to Dokploy, decrypted for the length of one step. */
+/** What a run needs to talk to its panel, decrypted for the length of one step. */
 interface RunCredential {
+  /**
+   * Read from the run's row, never re-detected: a resume happens hours later, and
+   * a detection that answered differently would point the data cutover at the
+   * wrong API.
+   */
+  kind: MigrationPlatform;
   url: string;
   apiKey: string;
   allowPrivate: boolean;
@@ -71,6 +79,9 @@ interface RunCredential {
 export interface StartRunInput {
   url: string;
   apiKey: string;
+  /** Which product the scan identified. Recorded once, never re-detected; absent
+   *  only from a caller that predates the second platform. */
+  kind?: MigrationPlatform;
   allowPrivate: boolean;
   orgName?: string | null;
   /** One entry per SERVICE, in the order they should be worked through. */
@@ -99,6 +110,7 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
   const runId = await beginMigration({
     url: input.url,
     orgName: input.orgName ?? null,
+    kind: input.kind,
   });
   const { currentIdentity } = await import("../auth/request-context");
   const { getCurrentUser } = await import("../auth");
@@ -344,8 +356,9 @@ async function credentialFor(row: RunRow): Promise<RunCredential> {
       "This run has no stored key, so Deplo cannot carry on with it. Start it again.",
     );
   return {
+    kind: isMigrationPlatform(row.platform) ? row.platform : "dokploy",
     url: row.sourceUrl,
-    apiKey: decryptSecretOrThrow(row.apiKeyEnc, "the Dokploy API key"),
+    apiKey: decryptSecretOrThrow(row.apiKeyEnc, "the panel's API token"),
     allowPrivate: row.allowPrivate,
   };
 }
@@ -531,6 +544,7 @@ async function runConfigPhase(row: RunRow, c: RunCredential): Promise<void> {
       await importMigrationProject({
         url: c.url,
         apiKey: c.apiKey,
+        kind: c.kind,
         allowPrivate: c.allowPrivate,
         runId: row.id,
         projectId: g.projectId,
@@ -584,6 +598,7 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
   const planned = await planMigrationDataMove({
     url: c.url,
     apiKey: c.apiKey,
+    kind: c.kind,
     allowPrivate: c.allowPrivate,
     runId: row.id,
   });
@@ -625,6 +640,7 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
       res = await moveMigrationServiceData({
         url: c.url,
         apiKey: c.apiKey,
+        kind: c.kind,
         allowPrivate: c.allowPrivate,
         runId: row.id,
         sourceKind: d.sourceKind,

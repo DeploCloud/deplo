@@ -68,7 +68,8 @@ import {
   normalizeDokployBaseUrl,
   serviceDisplayName,
 } from "../migration/dokploy/client";
-import { sourceClient } from "../migration/source";
+import { isMigrationPlatform, sourceClient } from "../migration/source";
+import type { MigrationPlatform } from "../migration/source";
 import type { SourceCredential } from "../migration/source";
 import type {
   SourceApplication,
@@ -226,6 +227,8 @@ export interface PlanMember {
 }
 
 export interface MigrationPlan {
+  /** Which product answered. The wizard names it instead of asking. */
+  platform: MigrationPlatform;
   sourceUrl: string;
   orgName: string | null;
   projects: PlanProject[];
@@ -249,6 +252,8 @@ export interface ImportItemDTO {
 
 export interface ImportRunDTO {
   id: string;
+  /** Which product this run read. */
+  platform: MigrationPlatform;
   sourceUrl: string;
   orgName: string | null;
   actor: string;
@@ -313,6 +318,8 @@ export interface ServerChoice {
 export interface ConnectInput {
   url: string;
   apiKey: string;
+  /** Read the panel as this product. Absent means: work out which it is. */
+  kind?: MigrationPlatform;
   /**
    * Reach an address `lib/outbound-url.ts` would refuse, which is what the
    * internal migration needs (`http://172.17.0.1:3000`). Instance admin only,
@@ -360,7 +367,7 @@ export async function credentialFor(
     });
   const apiKey = input.apiKey.trim();
   if (!apiKey) throw new Error("Paste the Dokploy API key");
-  return { kind: "dokploy", baseUrl, apiKey };
+  return { kind: input.kind ?? "dokploy", baseUrl, apiKey };
 }
 
 /* ------------------------------------------------------------------ */
@@ -684,6 +691,7 @@ export async function scanMigrationSource(
   }
 
   return {
+    platform: c.kind,
     sourceUrl: c.baseUrl,
     orgName,
     projects: planned,
@@ -1012,6 +1020,7 @@ async function teamMemberIds(teamId: string): Promise<string[]> {
 export async function beginMigration(input: {
   url: string;
   orgName?: string | null;
+  kind?: MigrationPlatform;
 }): Promise<string> {
   const { teamId } = await assertImportGate();
   const user = await getCurrentUser();
@@ -1033,6 +1042,7 @@ export async function beginMigration(input: {
     id,
     teamId,
     sourceUrl: normalizeDokployBaseUrl(input.url),
+    platform: input.kind ?? "dokploy",
     orgName: input.orgName?.trim() || null,
     actor: user?.name ?? "someone",
     // The id as well as the display name: it is what says whose wizard opens on
@@ -3498,6 +3508,7 @@ export async function getMigrationRun(
 function toRunDTO(r: typeof runsTable.$inferSelect): ImportRunDTO {
   return {
     id: r.id,
+    platform: isMigrationPlatform(r.platform) ? r.platform : "dokploy",
     sourceUrl: r.sourceUrl,
     orgName: r.orgName,
     actor: r.actor,

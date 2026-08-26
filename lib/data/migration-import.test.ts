@@ -2124,3 +2124,38 @@ test("a remembered address belongs to one team and one panel", async () => {
   );
   assert.equal(other[0]?.ipAddress, "dokploy.other.test");
 });
+
+/* ------------------------------------------------------------------ */
+/* Which platform a run read                                          */
+/* ------------------------------------------------------------------ */
+
+test("a scan reports which product answered", async () => {
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
+  assert.equal(plan.platform, "dokploy");
+});
+
+test("a run records the platform, and defaults to the older one", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const rows = await asOwner(() => listMigrationRuns());
+  assert.equal(rows.find((r) => r.id === runId)?.platform, "dokploy");
+});
+
+test("a run opened as Coolify stays Coolify", async () => {
+  const runId = await asOwner(() =>
+    beginMigration({ url: URL_BASE, kind: "coolify" }),
+  );
+  const rows = await asOwner(() => listMigrationRuns());
+  assert.equal(rows.find((r) => r.id === runId)?.platform, "coolify");
+});
+
+// The row is what a resume reads hours later. Re-detecting then could answer
+// differently and point the data cutover at the wrong API.
+test("the platform is on the row, not derived from the address", async () => {
+  await asOwner(() => beginMigration({ url: URL_BASE, kind: "coolify" }));
+  const [row] = (
+    await db.execute(
+      "select platform from migration_runs order by seq desc limit 1",
+    )
+  ).rows as { platform: string }[];
+  assert.equal(row.platform, "coolify");
+});

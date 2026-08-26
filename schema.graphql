@@ -2091,14 +2091,14 @@ type MigrationDataMoveResult {
 }
 
 """
-An already-imported service whose data can still be moved over from Dokploy.
+An already-imported service whose data can still be moved over from the panel.
 """
 type MigrationDataService {
   notes: [String!]
   path: String
 
   """
-  Still up on Dokploy. Moving the data stops it, which is the point of a cutover.
+  Still up over there. Moving the data stops it, which is the point of a cutover.
   """
   running: Boolean
   sourceId: String
@@ -2132,7 +2132,7 @@ type MigrationDataVolume {
 }
 
 """
-One person from the Dokploy organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.
+One person from the source team or organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.
 """
 type MigrationInvite {
   email: String
@@ -2164,7 +2164,7 @@ input MigrationPlacementInput {
   buildServerId: String
 
   """
-  A database's host port. Omit the field to keep the port it had on Dokploy (what the import has always done); send null to publish nothing; send a number to publish there instead - which is how a review resolves a port something else already holds on the target server. Ignored for anything that is not a database.
+  A database's host port. Omit the field to keep the port it had over there (what the import has always done); send null to publish nothing; send a number to publish there instead - which is how a review resolves a port something else already holds on the target server. Ignored for anything that is not a database.
   """
   exposedPort: Int
   serverId: String!
@@ -2178,9 +2178,12 @@ type MigrationPlan {
   members: [MigrationPlanMember!]
 
   """
-  The Dokploy organization this key reads. An API key belongs to one organization, so importing a second one means a second key.
+  The team or organization this token reads. A token belongs to one, so importing a second one means a second token.
   """
   orgName: String
+
+  """Which product answered at that address."""
+  platform: MigrationPlatform
   projects: [MigrationPlanProject!]
   servers: [MigrationPlanServer!]
   sourceUrl: String
@@ -2188,7 +2191,7 @@ type MigrationPlan {
 
 type MigrationPlanEnvironment {
   """
-  An environment of that name is already in the matching project - Dokploy's `production` maps onto the one every Deplo project starts with.
+  An environment of that name is already in the matching project - the panel's `production` maps onto the one every Deplo project starts with.
   """
   exists: Boolean
   name: String
@@ -2197,7 +2200,7 @@ type MigrationPlanEnvironment {
 }
 
 """
-Someone in the Dokploy organization the API key reads. Empty when the key belongs to a plain member, which cannot list the organization.
+Someone in the team or organization the token reads. Empty when the token belongs to a plain member, which cannot list it.
 """
 type MigrationPlanMember {
   email: String
@@ -2206,7 +2209,7 @@ type MigrationPlanMember {
   name: String
 
   """
-  The role they held on Dokploy. Shown, never applied: everyone arrives as a plain member and is promoted on purpose.
+  The role they held over there. Shown, never applied: everyone arrives as a plain member and is promoted on purpose.
   """
   sourceRole: String
 }
@@ -2233,7 +2236,7 @@ type MigrationPlanServer {
 }
 
 """
-One Dokploy service (an application, a compose stack, or a database) as it would land here.
+One service on the panel (an application, a compose stack, or a database) as it would land here.
 """
 type MigrationPlanService {
   """
@@ -2242,22 +2245,22 @@ type MigrationPlanService {
   buildsFromSource: Boolean
 
   """
-  The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped - Deplo mints its own.
+  The hostnames that would come across. The panel's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped - Deplo mints its own.
   """
   domains: [String!]
 
   """
-  Deplo's own engine id for a database (`mongo` on Dokploy is `mongodb` here), so a client can show the engine's brand mark. Null for anything that is not a database Deplo has.
+  Deplo's own engine id for a database (`mongo` over there is `mongodb` here), so a client can show the engine's brand mark. Null for anything that is not a database Deplo has.
   """
   engine: String
 
   """
-  The host port this database publishes on Dokploy, so a review can say what will be published and offer another port when that one is taken here. Describes the SOURCE: it is reported whether or not the caller holds the publish-ports grant, and null only for something that is not a database or publishes nothing.
+  The host port this database publishes over there, so a review can say what will be published and offer another port when that one is taken here. Describes the SOURCE: it is reported whether or not the caller holds the publish-ports grant, and null only for something that is not a database or publishes nothing.
   """
   exposedPort: Int
 
   """
-  What it is on Dokploy: application, compose, or one of postgres/mysql/mariadb/mongo/redis/libsql.
+  What it is over there: application, compose, or one of the panel's database engines.
   """
   kind: String
 
@@ -2272,7 +2275,7 @@ type MigrationPlanService {
   sourceId: String
 
   """
-  The Dokploy server it runs on. Empty string means Dokploy's own host, which has no server row over there.
+  The panel's server it runs on. Empty string means the panel's own host, which has no server row over there.
   """
   sourceServerId: String
   status: MigrationPlanStatus
@@ -2282,13 +2285,21 @@ type MigrationPlanService {
 }
 
 """
-What the preview thinks will happen to one Dokploy service. new = it will be created. exists = something with that name is already here, so it is left alone. unsupported = Deplo has no such thing (a libsql database, a service Dokploy would not return). needs_grant = it can only be created by someone holding the host-volumes or expose-ports grant.
+What the preview thinks will happen to one service on the panel. new = it will be created. exists = something with that name is already here, so it is left alone. unsupported = Deplo has no such thing (a keydb database, a service the panel would not return). needs_grant = it can only be created by someone holding the host-volumes or expose-ports grant.
 """
 enum MigrationPlanStatus {
   exists
   needs_grant
   new
   unsupported
+}
+
+"""
+Which product a migration reads. Deplo migrates from these two and refuses anything else by name.
+"""
+enum MigrationPlatform {
+  coolify
+  dokploy
 }
 
 type MigrationProjectResult {
@@ -2347,6 +2358,9 @@ type MigrationRun {
   `config` | `data` | `done`. Which half the run is in - the two count different things, so their step numbers are not one scale.
   """
   phase: String
+
+  """Which product this run read. Decided once, when it connected."""
+  platform: MigrationPlatform
   skipped: Int
   sourceUrl: String
   startedAt: String
@@ -2372,7 +2386,7 @@ type MigrationRunItem {
   message: String
   outcome: MigrationOutcome
 
-  """Where it was on Dokploy: `Project / Environment / service`."""
+  """Where it was over there: `Project / Environment / service`."""
   path: String
   sourceKind: String
   sourceName: String
@@ -2398,7 +2412,7 @@ input MigrationRunTargetInput {
 }
 
 """
-Map one Dokploy server onto one of ours. `from` is the Dokploy server id, or the empty string for Dokploy's own host.
+Map one of the panel's servers onto one of ours. `from` is that server's id, or the empty string for the panel's own host.
 """
 input MigrationServerChoiceInput {
   from: String!
@@ -2412,12 +2426,17 @@ input MigrationSourceInput {
   allowPrivate: Boolean
 
   """
-  A Dokploy API key (Settings -> Profile -> API/CLI). Use an owner's or admin's key: a plain member's key answers 403 on the per-service calls. Never stored.
+  The panel's API key or token. Dokploy: Settings -> Profile -> API/CLI. Coolify: Keys & Tokens -> API tokens, with `read:sensitive` ticked, or the values and database passwords arrive empty. Use an owner's or admin's either way: a plain member's is refused. Never stored.
   """
   apiKey: String!
 
   """
-  The Dokploy instance's address. `/api` is added automatically, so paste the address you open in a browser.
+  Read the panel as this product. Omit it and Deplo works out which it is from the address and the token.
+  """
+  kind: MigrationPlatform
+
+  """
+  The panel's address. Deplo appends the API path itself, so paste the address you open in a browser.
   """
   url: String!
 }
@@ -2501,7 +2520,7 @@ type Mutation {
   """
   Open an import run and return its id. Any run this team left open (a closed tab) is closed as failed first, so the history never shows two live imports.
   """
-  beginMigration(orgName: String, url: String!): String
+  beginMigration(kind: MigrationPlatform, orgName: String, url: String!): String
 
   """
   Start, stop or restart EVERY app in one folder (its whole subtree) or one project (every environment). Gated again per app, so it only touches the ones the caller may control; one failure never stops the rest. Give exactly one of folderId / projectId.
@@ -2800,28 +2819,28 @@ type Mutation {
   importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): EnvImportResult
 
   """
-  Bring the Dokploy organization's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there - the report says who was an owner or admin so it can be granted on purpose.
+  Bring the source team's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there - the report says who was an owner or admin so it can be granted on purpose.
   """
   importMigrationMembers(input: MigrationSourceInput!, runId: String!): [MigrationInvite!]
 
   """
-  Import ONE Dokploy project into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed - the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.
+  Import ONE project from the source panel into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed - the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.
   """
   importMigrationProject(
     input: MigrationSourceInput!
 
     """
-    Where each service lands, one entry per service. Wins over `servers`, which stays the fallback for anything not listed here. Both are about where a service RUNS; where its data is READ FROM is derived from the Dokploy machine's own address and is never a caller's choice. A server this team cannot deploy to is refused into a report line, never used.
+    Where each service lands, one entry per service. Wins over `servers`, which stays the fallback for anything not listed here. Both are about where a service RUNS; where its data is READ FROM is derived from that machine's own address and is never a caller's choice. A server this team cannot deploy to is refused into a report line, never used.
     """
     placements: [MigrationPlacementInput!]
 
-    """The Dokploy `projectId` to import."""
+    """The panel's `projectId` to import."""
     projectId: String!
     runId: String!
     servers: [MigrationServerChoiceInput!]
 
     """
-    Which of the project's services to import, by their Dokploy id (the `sourceId` a scan reports). Omit to import all of them. A service left out is left out silently - it is a choice, not an outcome, so it produces no report line. An environment nothing was picked from is not created.
+    Which of the project's services to import, by their id over there (the `sourceId` a scan reports). Omit to import all of them. A service left out is left out silently - it is a choice, not an outcome, so it produces no report line. An environment nothing was picked from is not created.
     """
     serviceIds: [String!]
   ): MigrationProjectResult
@@ -2863,7 +2882,7 @@ type Mutation {
   moveFolder(id: ID!, parentId: ID): Boolean
 
   """
-  Cut ONE service's data over: STOP it on Dokploy (and leave it stopped - a volume read while its container writes cannot be trusted), then copy every paired volume into the app or database imported from it. A database is started again afterwards and checked, so the report says the engine reads the copied data rather than only that bytes moved. Additionally gated on `restore_backups` on the target, which is what overwriting a resource's data already requires. NEITHER side is taken from the caller: the volumes are derived from the service and the app, and the host the data is read from is derived from that machine's address - naming either would be an instruction to copy any volume on any host over any other one.
+  Cut ONE service's data over: STOP it on the panel (and leave it stopped - a volume read while its container writes cannot be trusted), then copy every paired volume into the app or database imported from it. A database is started again afterwards and checked, so the report says the engine reads the copied data rather than only that bytes moved. Additionally gated on `restore_backups` on the target, which is what overwriting a resource's data already requires. NEITHER side is taken from the caller: the volumes are derived from the service and the app, and the host the data is read from is derived from that machine's address - naming either would be an instruction to copy any volume on any host over any other one.
   """
   moveMigrationServiceData(input: MigrationSourceInput!, runId: String!, sourceId: String!, sourceKind: String!): MigrationDataMoveResult
 
@@ -3070,7 +3089,7 @@ type Mutation {
   revealRegistrationLink(id: String!): String
 
   """
-  Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and Dokploy is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.
+  Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and the source is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.
   """
   revertMigration(runId: String!): MigrationRevertResult
 
@@ -3135,7 +3154,7 @@ type Mutation {
   saveSharedVar(input: SaveSharedVarInput!): SharedVar
 
   """
-  Read a Dokploy instance and describe what an import would do. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.
+  Read a source panel and describe what an import would do. Works out which product it is when `kind` is omitted. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.
   """
   scanMigrationSource(input: MigrationSourceInput!): MigrationPlan
 
@@ -3252,14 +3271,14 @@ type Mutation {
   setMemberAccess(input: SetMemberAccessInput!): [UserTeamAccess!]
 
   """
-  Point Deplo at where a machine of this Dokploy really is, and remember it for the next attempt. The address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.
+  Point Deplo at where a machine of this panel really is, and remember it for the next attempt. The address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.
   """
   setMigrationMachineAddress(
     address: String!
     serverId: String!
 
     """
-    Dokploy's own machine id. Empty string for the host Dokploy itself runs on.
+    The panel's own machine id. Empty string for the host the panel itself runs on.
     """
     sourceId: String!
     url: String!
@@ -3345,7 +3364,7 @@ type Mutation {
   ): GithubConnectStart
 
   """
-  Start a migration and hand it to the control plane. Returns the run id as soon as the plan is DURABLE, not when the migration is done: the loop lives here now, under the identity of whoever started it, so the tab can be closed, reloaded or replaced and the run does not notice. The Dokploy key is stored encrypted for the length of the run and wiped the moment it leaves `running` - a deliberate reversal of never storing it, made because the alternative is a migration that cannot survive a page reload.
+  Start a migration and hand it to the control plane. Returns the run id as soon as the plan is DURABLE, not when the migration is done: the loop lives here now, under the identity of whoever started it, so the tab can be closed, reloaded or replaced and the run does not notice. The panel's token is stored encrypted for the length of the run and wiped the moment it leaves `running` - a deliberate reversal of never storing it, made because the alternative is a migration that cannot survive a page reload.
   """
   startMigration(input: MigrationSourceInput!, orgName: String, servers: [MigrationServerChoiceInput!], targets: [MigrationRunTargetInput!]!): String
 
@@ -3503,7 +3522,7 @@ type Mutation {
     id: String!
 
     """
-    Write only where Deplo dials, keeping the address the server was registered at. The migration wizard's flag: a Dokploy panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.
+    Write only where Deplo dials, keeping the address the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.
     """
     keepHost: Boolean
   ): String

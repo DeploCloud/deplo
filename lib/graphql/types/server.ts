@@ -738,7 +738,7 @@ builder.mutationFields((t) => ({
       keepHost: t.arg.boolean({
         required: false,
         description:
-          "Write only where Deplo dials, keeping the address the server was registered at. The migration wizard's flag: a Dokploy panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.",
+          "Write only where Deplo dials, keeping the address the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.",
       }),
     },
     resolve: async (_r, args) =>

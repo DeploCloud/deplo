@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import { MIGRATION_PLATFORMS } from "@/lib/migration/source";
 import { pubSub, MIGRATION_ACTIVITY_TOPIC } from "../pubsub";
 import {
   moveMigrationServiceData,
@@ -38,7 +39,7 @@ import {
 } from "@/lib/data/migration-runner";
 
 /**
- * Import from Dokploy - read a Dokploy instance over its API and create the deplo
+ * Migration - read another platform's panel over its API and create the deplo
  * equivalents in the ACTIVE team.
  */
 
@@ -48,8 +49,14 @@ import {
 
 const MigrationPlanStatusEnum = builder.enumType("MigrationPlanStatus", {
   description:
-    "What the preview thinks will happen to one Dokploy service. new = it will be created. exists = something with that name is already here, so it is left alone. unsupported = Deplo has no such thing (a libsql database, a service Dokploy would not return). needs_grant = it can only be created by someone holding the host-volumes or expose-ports grant.",
+    "What the preview thinks will happen to one service on the panel. new = it will be created. exists = something with that name is already here, so it is left alone. unsupported = Deplo has no such thing (a keydb database, a service the panel would not return). needs_grant = it can only be created by someone holding the host-volumes or expose-ports grant.",
   values: ["new", "exists", "unsupported", "needs_grant"] as const,
+});
+
+const MigrationPlatformEnum = builder.enumType("MigrationPlatform", {
+  description:
+    "Which product a migration reads. Deplo migrates from these two and refuses anything else by name.",
+  values: MIGRATION_PLATFORMS,
 });
 
 const MigrationOutcomeEnum = builder.enumType("MigrationOutcome", {
@@ -66,12 +73,12 @@ const PlanServiceRef = builder
   .objectRef<PlanService>("MigrationPlanService")
   .implement({
     description:
-      "One Dokploy service (an application, a compose stack, or a database) as it would land here.",
+      "One service on the panel (an application, a compose stack, or a database) as it would land here.",
     fields: (t) => ({
       sourceId: t.exposeString("sourceId"),
       kind: t.exposeString("kind", {
         description:
-          "What it is on Dokploy: application, compose, or one of postgres/mysql/mariadb/mongo/redis/libsql.",
+          "What it is over there: application, compose, or one of the panel's database engines.",
       }),
       name: t.exposeString("name"),
       targetKind: t.exposeString("targetKind", {
@@ -84,7 +91,7 @@ const PlanServiceRef = builder
       }),
       sourceServerId: t.exposeString("sourceServerId", {
         description:
-          "The Dokploy server it runs on. Empty string means Dokploy's own host, which has no server row over there.",
+          "The panel's server it runs on. Empty string means the panel's own host, which has no server row over there.",
       }),
       buildsFromSource: t.exposeBoolean("buildsFromSource", {
         description:
@@ -93,16 +100,16 @@ const PlanServiceRef = builder
       engine: t.exposeString("engine", {
         nullable: true,
         description:
-          "Deplo's own engine id for a database (`mongo` on Dokploy is `mongodb` here), so a client can show the engine's brand mark. Null for anything that is not a database Deplo has.",
+          "Deplo's own engine id for a database (`mongo` over there is `mongodb` here), so a client can show the engine's brand mark. Null for anything that is not a database Deplo has.",
       }),
       exposedPort: t.exposeInt("exposedPort", {
         nullable: true,
         description:
-          "The host port this database publishes on Dokploy, so a review can say what will be published and offer another port when that one is taken here. Describes the SOURCE: it is reported whether or not the caller holds the publish-ports grant, and null only for something that is not a database or publishes nothing.",
+          "The host port this database publishes over there, so a review can say what will be published and offer another port when that one is taken here. Describes the SOURCE: it is reported whether or not the caller holds the publish-ports grant, and null only for something that is not a database or publishes nothing.",
       }),
       domains: t.exposeStringList("domains", {
         description:
-          "The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped - Deplo mints its own.",
+          "The hostnames that would come across. The panel's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped - Deplo mints its own.",
       }),
       logo: t.exposeString("logo", {
         nullable: true,
@@ -124,7 +131,7 @@ const PlanEnvironmentRef = builder
       name: t.exposeString("name"),
       exists: t.exposeBoolean("exists", {
         description:
-          "An environment of that name is already in the matching project - Dokploy's `production` maps onto the one every Deplo project starts with.",
+          "An environment of that name is already in the matching project - the panel's `production` maps onto the one every Deplo project starts with.",
       }),
       services: t.field({ type: [PlanServiceRef], resolve: (e) => e.services }),
     }),
@@ -166,13 +173,13 @@ const PlanMemberRef = builder
   .objectRef<PlanMember>("MigrationPlanMember")
   .implement({
     description:
-      "Someone in the Dokploy organization the API key reads. Empty when the key belongs to a plain member, which cannot list the organization.",
+      "Someone in the team or organization the token reads. Empty when the token belongs to a plain member, which cannot list it.",
     fields: (t) => ({
       email: t.exposeString("email"),
       name: t.exposeString("name"),
       sourceRole: t.exposeString("sourceRole", {
         description:
-          "The role they held on Dokploy. Shown, never applied: everyone arrives as a plain member and is promoted on purpose.",
+          "The role they held over there. Shown, never applied: everyone arrives as a plain member and is promoted on purpose.",
       }),
       hasAccount: t.exposeBoolean("hasAccount"),
       inTeam: t.exposeBoolean("inTeam"),
@@ -185,11 +192,16 @@ const MigrationPlanRef = builder
     description:
       "What an import would do, read from the source instance without writing anything.",
     fields: (t) => ({
+      platform: t.field({
+        type: MigrationPlatformEnum,
+        description: "Which product answered at that address.",
+        resolve: (p) => p.platform,
+      }),
       sourceUrl: t.exposeString("sourceUrl"),
       orgName: t.exposeString("orgName", {
         nullable: true,
         description:
-          "The Dokploy organization this key reads. An API key belongs to one organization, so importing a second one means a second key.",
+          "The team or organization this token reads. A token belongs to one, so importing a second one means a second token.",
       }),
       projects: t.field({ type: [PlanProjectRef], resolve: (p) => p.projects }),
       servers: t.field({ type: [PlanServerRef], resolve: (p) => p.servers }),
@@ -207,7 +219,7 @@ const ImportItemRef = builder
     fields: (t) => ({
       path: t.exposeString("path", {
         description:
-          "Where it was on Dokploy: `Project / Environment / service`.",
+          "Where it was over there: `Project / Environment / service`.",
       }),
       sourceKind: t.exposeString("sourceKind"),
       sourceName: t.exposeString("sourceName"),
@@ -233,6 +245,12 @@ const ImportRunRef = builder
       "One import, kept after the tab that started it is gone. The API key is never stored.",
     fields: (t) => ({
       id: t.exposeString("id"),
+      platform: t.field({
+        type: MigrationPlatformEnum,
+        description:
+          "Which product this run read. Decided once, when it connected.",
+        resolve: (r) => r.platform,
+      }),
       sourceUrl: t.exposeString("sourceUrl"),
       orgName: t.exposeString("orgName", { nullable: true }),
       actor: t.exposeString("actor"),
@@ -293,7 +311,7 @@ const InviteRef = builder
   .objectRef<MigrationInvite>("MigrationInvite")
   .implement({
     description:
-      "One person from the Dokploy organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.",
+      "One person from the source team or organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.",
     fields: (t) => ({
       email: t.exposeString("email"),
       name: t.exposeString("name"),
@@ -335,7 +353,7 @@ const DataMoveServiceRef = builder
   .objectRef<DataMoveService>("MigrationDataService")
   .implement({
     description:
-      "An already-imported service whose data can still be moved over from Dokploy.",
+      "An already-imported service whose data can still be moved over from the panel.",
     fields: (t) => ({
       path: t.exposeString("path"),
       sourceKind: t.exposeString("sourceKind"),
@@ -348,7 +366,7 @@ const DataMoveServiceRef = builder
       targetServerId: t.exposeString("targetServerId"),
       running: t.exposeBoolean("running", {
         description:
-          "Still up on Dokploy. Moving the data stops it, which is the point of a cutover.",
+          "Still up over there. Moving the data stops it, which is the point of a cutover.",
       }),
       sourceReachable: t.exposeBoolean("sourceReachable", {
         description:
@@ -423,7 +441,7 @@ const RevertResultRef = builder
 
 const ServerChoiceInput = builder.inputType("MigrationServerChoiceInput", {
   description:
-    "Map one Dokploy server onto one of ours. `from` is the Dokploy server id, or the empty string for Dokploy's own host.",
+    "Map one of the panel's servers onto one of ours. `from` is that server's id, or the empty string for the panel's own host.",
   fields: (t) => ({
     from: t.string({ required: true }),
     to: t.string({ required: true }),
@@ -440,7 +458,7 @@ const PlacementInput = builder.inputType("MigrationPlacementInput", {
     exposedPort: t.int({
       required: false,
       description:
-        "A database's host port. Omit the field to keep the port it had on Dokploy (what the import has always done); send null to publish nothing; send a number to publish there instead - which is how a review resolves a port something else already holds on the target server. Ignored for anything that is not a database.",
+        "A database's host port. Omit the field to keep the port it had over there (what the import has always done); send null to publish nothing; send a number to publish there instead - which is how a review resolves a port something else already holds on the target server. Ignored for anything that is not a database.",
     }),
   }),
 });
@@ -450,12 +468,18 @@ const ConnectInputRef = builder.inputType("MigrationSourceInput", {
     url: t.string({
       required: true,
       description:
-        "The Dokploy instance's address. `/api` is added automatically, so paste the address you open in a browser.",
+        "The panel's address. Deplo appends the API path itself, so paste the address you open in a browser.",
     }),
     apiKey: t.string({
       required: true,
       description:
-        "A Dokploy API key (Settings -> Profile -> API/CLI). Use an owner's or admin's key: a plain member's key answers 403 on the per-service calls. Never stored.",
+        "The panel's API key or token. Dokploy: Settings -> Profile -> API/CLI. Coolify: Keys & Tokens -> API tokens, with `read:sensitive` ticked, or the values and database passwords arrive empty. Use an owner's or admin's either way: a plain member's is refused. Never stored.",
+    }),
+    kind: t.field({
+      type: MigrationPlatformEnum,
+      required: false,
+      description:
+        "Read the panel as this product. Omit it and Deplo works out which it is from the address and the token.",
     }),
     allowPrivate: t.boolean({
       required: false,
@@ -558,12 +582,13 @@ builder.mutationFields((t) => ({
     type: MigrationPlanRef,
     authScopes: { capability: "create_projects" },
     description:
-      "Read a Dokploy instance and describe what an import would do. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.",
+      "Read a source panel and describe what an import would do. Works out which product it is when `kind` is omitted. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.",
     args: { input: t.arg({ type: ConnectInputRef, required: true }) },
     resolve: (_r, { input }) =>
       scanMigrationSource({
         url: input.url,
         apiKey: input.apiKey,
+        kind: input.kind ?? undefined,
         allowPrivate: input.allowPrivate ?? false,
       }),
   }),
@@ -575,32 +600,34 @@ builder.mutationFields((t) => ({
     args: {
       url: t.arg.string({ required: true }),
       orgName: t.arg.string({ required: false }),
+      kind: t.arg({ type: MigrationPlatformEnum, required: false }),
     },
-    resolve: (_r, { url, orgName }) => beginMigration({ url, orgName }),
+    resolve: (_r, { url, orgName, kind }) =>
+      beginMigration({ url, orgName, kind: kind ?? undefined }),
   }),
   importMigrationProject: t.field({
     type: ImportProjectResultRef,
     authScopes: { capability: "create_projects" },
     description:
-      "Import ONE Dokploy project into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed - the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.",
+      "Import ONE project from the source panel into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed - the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.",
     args: {
       input: t.arg({ type: ConnectInputRef, required: true }),
       runId: t.arg.string({ required: true }),
       projectId: t.arg.string({
         required: true,
-        description: "The Dokploy `projectId` to import.",
+        description: "The panel's `projectId` to import.",
       }),
       servers: t.arg({ type: [ServerChoiceInput], required: false }),
       serviceIds: t.arg.stringList({
         required: false,
         description:
-          "Which of the project's services to import, by their Dokploy id (the `sourceId` a scan reports). Omit to import all of them. A service left out is left out silently - it is a choice, not an outcome, so it produces no report line. An environment nothing was picked from is not created.",
+          "Which of the project's services to import, by their id over there (the `sourceId` a scan reports). Omit to import all of them. A service left out is left out silently - it is a choice, not an outcome, so it produces no report line. An environment nothing was picked from is not created.",
       }),
       placements: t.arg({
         type: [PlacementInput],
         required: false,
         description:
-          "Where each service lands, one entry per service. Wins over `servers`, which stays the fallback for anything not listed here. Both are about where a service RUNS; where its data is READ FROM is derived from the Dokploy machine's own address and is never a caller's choice. A server this team cannot deploy to is refused into a report line, never used.",
+          "Where each service lands, one entry per service. Wins over `servers`, which stays the fallback for anything not listed here. Both are about where a service RUNS; where its data is READ FROM is derived from that machine's own address and is never a caller's choice. A server this team cannot deploy to is refused into a report line, never used.",
       }),
     },
     resolve: (
@@ -610,6 +637,7 @@ builder.mutationFields((t) => ({
       importMigrationProject({
         url: input.url,
         apiKey: input.apiKey,
+        kind: input.kind ?? undefined,
         allowPrivate: input.allowPrivate ?? false,
         runId,
         projectId,
@@ -630,7 +658,7 @@ builder.mutationFields((t) => ({
     type: [InviteRef],
     authScopes: { instanceAdmin: true },
     description:
-      "Bring the Dokploy organization's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there - the report says who was an owner or admin so it can be granted on purpose.",
+      "Bring the source team's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there - the report says who was an owner or admin so it can be granted on purpose.",
     args: {
       input: t.arg({ type: ConnectInputRef, required: true }),
       runId: t.arg.string({ required: true }),
@@ -639,6 +667,7 @@ builder.mutationFields((t) => ({
       importMigrationMembers({
         url: input.url,
         apiKey: input.apiKey,
+        kind: input.kind ?? undefined,
         allowPrivate: input.allowPrivate ?? false,
         runId,
       }),
@@ -656,6 +685,7 @@ builder.mutationFields((t) => ({
       planMigrationDataMove({
         url: input.url,
         apiKey: input.apiKey,
+        kind: input.kind ?? undefined,
         allowPrivate: input.allowPrivate ?? false,
         runId,
       }),
@@ -664,7 +694,7 @@ builder.mutationFields((t) => ({
     type: DataMoveResultRef,
     authScopes: { capability: "create_projects" },
     description:
-      "Cut ONE service's data over: STOP it on Dokploy (and leave it stopped - a volume read while its container writes cannot be trusted), then copy every paired volume into the app or database imported from it. A database is started again afterwards and checked, so the report says the engine reads the copied data rather than only that bytes moved. Additionally gated on `restore_backups` on the target, which is what overwriting a resource's data already requires. NEITHER side is taken from the caller: the volumes are derived from the service and the app, and the host the data is read from is derived from that machine's address - naming either would be an instruction to copy any volume on any host over any other one.",
+      "Cut ONE service's data over: STOP it on the panel (and leave it stopped - a volume read while its container writes cannot be trusted), then copy every paired volume into the app or database imported from it. A database is started again afterwards and checked, so the report says the engine reads the copied data rather than only that bytes moved. Additionally gated on `restore_backups` on the target, which is what overwriting a resource's data already requires. NEITHER side is taken from the caller: the volumes are derived from the service and the app, and the host the data is read from is derived from that machine's address - naming either would be an instruction to copy any volume on any host over any other one.",
     args: {
       input: t.arg({ type: ConnectInputRef, required: true }),
       runId: t.arg.string({ required: true }),
@@ -675,6 +705,7 @@ builder.mutationFields((t) => ({
       moveMigrationServiceData({
         url: input.url,
         apiKey: input.apiKey,
+        kind: input.kind ?? undefined,
         allowPrivate: input.allowPrivate ?? false,
         runId,
         sourceKind,
@@ -685,7 +716,7 @@ builder.mutationFields((t) => ({
     type: "String",
     authScopes: { capability: "create_projects" },
     description:
-      "Start a migration and hand it to the control plane. Returns the run id as soon as the plan is DURABLE, not when the migration is done: the loop lives here now, under the identity of whoever started it, so the tab can be closed, reloaded or replaced and the run does not notice. The Dokploy key is stored encrypted for the length of the run and wiped the moment it leaves `running` - a deliberate reversal of never storing it, made because the alternative is a migration that cannot survive a page reload.",
+      "Start a migration and hand it to the control plane. Returns the run id as soon as the plan is DURABLE, not when the migration is done: the loop lives here now, under the identity of whoever started it, so the tab can be closed, reloaded or replaced and the run does not notice. The panel's token is stored encrypted for the length of the run and wiped the moment it leaves `running` - a deliberate reversal of never storing it, made because the alternative is a migration that cannot survive a page reload.",
     args: {
       input: t.arg({ type: ConnectInputRef, required: true }),
       orgName: t.arg.string({ required: false }),
@@ -696,6 +727,7 @@ builder.mutationFields((t) => ({
       startMigrationRun({
         url: input.url,
         apiKey: input.apiKey,
+        kind: input.kind ?? undefined,
         allowPrivate: input.allowPrivate ?? false,
         orgName: orgName ?? null,
         targets: targets.map((t2) => ({
@@ -714,13 +746,13 @@ builder.mutationFields((t) => ({
     nullable: true,
     authScopes: { instanceAdmin: true },
     description:
-      "Point Deplo at where a machine of this Dokploy really is, and remember it for the next attempt. The address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.",
+      "Point Deplo at where a machine of this panel really is, and remember it for the next attempt. The address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.",
     args: {
       url: t.arg.string({ required: true }),
       sourceId: t.arg.string({
         required: true,
         description:
-          "Dokploy's own machine id. Empty string for the host Dokploy itself runs on.",
+          "The panel's own machine id. Empty string for the host the panel itself runs on.",
       }),
       serverId: t.arg.string({ required: true }),
       address: t.arg.string({ required: true }),
@@ -753,7 +785,7 @@ builder.mutationFields((t) => ({
     type: RevertResultRef,
     authScopes: { capability: "create_projects" },
     description:
-      "Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and Dokploy is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.",
+      "Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and the source is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.",
     args: { runId: t.arg.string({ required: true }) },
     resolve: (_r, { runId }) => revertMigration(runId),
   }),
