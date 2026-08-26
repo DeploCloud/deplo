@@ -58,6 +58,51 @@ const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 /* ------------------------------------------------------------------ */
 
 /**
+ * A variable whose NAME says it holds a credential.
+ *
+ * Read on the name alone - the value of a secret looks like the value of
+ * anything else. Everything migrated used to arrive `plain`, which left a whole
+ * panel's passwords readable at the `view` floor and let them ride into the
+ * preview of a fork (that filter discriminates on the type and nothing else).
+ */
+const SECRET_WORDS = new Set([
+  "PASSWORD",
+  "PASSWORDS",
+  "PASSWD",
+  "PASS",
+  "PWD",
+  "SECRET",
+  "SECRETS",
+  "TOKEN",
+  "TOKENS",
+  "KEY",
+  "KEYS",
+  "APIKEY",
+  "CREDENTIAL",
+  "CREDENTIALS",
+  "PASSPHRASE",
+  "SALT",
+  "PRIVATE",
+]);
+
+/** Words that say the value is the PUBLIC half, whatever else the name says. */
+const PUBLIC_WORDS = new Set(["PUBLIC", "PUB", "PUBLISHABLE", "ID"]);
+
+export function looksLikeSecretKey(key: string): boolean {
+  const parts = key
+    .toUpperCase()
+    .split(/[_\-.]/)
+    .filter(Boolean);
+  if (parts.some((p) => PUBLIC_WORDS.has(p))) return false;
+  return parts.some((p) => SECRET_WORDS.has(p));
+}
+
+/** The type a migrated variable lands with. */
+export function migratedEnvType(key: string): "plain" | "secret" {
+  return looksLikeSecretKey(key) ? "secret" : "plain";
+}
+
+/**
  * Dokploy keeps env as one `.env`-shaped text column; deplo keeps rows.
  */
 export function parseEnvBlob(blob: string | null | undefined): {
@@ -249,6 +294,10 @@ export function adaptComposeForDeplo(
     );
   }
 
+  // Every named volume a service mounts, so an undeclared one can be declared
+  // below rather than refused by `docker compose up`.
+  const mounted = new Set<string>();
+
   for (const { map: holder } of serviceLikeMaps(root)) {
     if (keys.size > 0) stripNetworks(holder, keys);
 
@@ -260,6 +309,8 @@ export function adaptComposeForDeplo(
       if (isScalar(entry) && typeof entry.value === "string") {
         const idx = entry.value.indexOf(":");
         if (idx <= 0) continue;
+        if (isNamedVolumeSource(entry.value.slice(0, idx)))
+          mounted.add(entry.value.slice(0, idx).trim());
         const rewritten = deploFilesPath(entry.value.slice(0, idx));
         if (rewritten == null) continue;
         changes.push(
@@ -269,6 +320,12 @@ export function adaptComposeForDeplo(
       } else if (isMap(entry)) {
         const src = stringScalar(entry, "source");
         if (!src) continue;
+        const type = stringScalar(entry, "type")?.value;
+        if (
+          (type === "volume" || type == null) &&
+          isNamedVolumeSource(src.value as string)
+        )
+          mounted.add((src.value as string).trim());
         const rewritten = deploFilesPath(src.value as string);
         if (rewritten == null) continue;
         changes.push(`${src.value} now points at Deplo's files directory.`);
@@ -276,6 +333,8 @@ export function adaptComposeForDeplo(
       }
     }
   }
+
+  declareMissingVolumes(doc, root, mounted, changes);
 
   // The SAME `../files/x` rewrite, everywhere else a compose file can name a file
   // next to itself.
@@ -290,6 +349,49 @@ export function adaptComposeForDeplo(
 
   if (changes.length === 0) return { compose: source, changes: [] };
   return { compose: String(doc), changes };
+}
+
+/**
+ * Docker's own rule for telling a NAMED volume from a path: no separator, and no
+ * leading `.`, `~` or `$`.
+ */
+const NAMED_VOLUME_SOURCE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+
+function isNamedVolumeSource(source: string): boolean {
+  return NAMED_VOLUME_SOURCE.test(source.trim());
+}
+
+/**
+ * Declare every named volume the services mount that the file itself does not.
+ *
+ * A one-click template's compose is a FRAGMENT: the platform synthesises the
+ * top-level `volumes:` block when it renders one, so the file as stored is
+ * refused outright - "service X refers to undefined volume Y: invalid compose
+ * project" - and the stack never starts.
+ */
+function declareMissingVolumes(
+  doc: Document,
+  root: YAMLMap,
+  mounted: Set<string>,
+  changes: string[],
+): void {
+  if (mounted.size === 0) return;
+  const declared = root.get("volumes", true);
+  const known = isMap(declared)
+    ? new Set(declared.items.map((i) => String((i.key as Scalar).value)))
+    : new Set<string>();
+  const missing = [...mounted].filter((v) => !known.has(v));
+  if (missing.length === 0) return;
+
+  if (isMap(declared)) for (const name of missing) declared.set(name, null);
+  else
+    root.set(
+      "volumes",
+      doc.createNode(Object.fromEntries(missing.map((n) => [n, null]))),
+    );
+  changes.push(
+    `${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} declared at the top of the compose file - {panel} added that block when it rendered the stack, and without it the stack will not start.`,
+  );
 }
 
 /**
@@ -595,6 +697,17 @@ export function parseCpuMilli(raw: string | null | undefined): number | null {
   return milli >= 10 ? milli : null;
 }
 
+/**
+ * `0` in any of Docker's limit flags means NO limit, and it is what one panel
+ * writes in every column of every app. Read as an unparsable value it produced
+ * three false alarms per application, which is how a real one goes unread.
+ */
+const NO_LIMIT = /^0+(\.0+)?\s*[a-z]*$/i;
+
+function isNoLimit(raw: string | null | undefined): boolean {
+  return NO_LIMIT.test((raw ?? "").trim());
+}
+
 /** Dokploy's four limit columns → deplo's `resource_*`. Null when nothing was set. */
 export function mapResources(row: {
   memoryLimit?: string | null;
@@ -612,13 +725,13 @@ export function mapResources(row: {
     ["Memory reservation", row.memoryReservation, memoryReservationMb],
     ["CPU limit", row.cpuLimit, cpuMilli],
   ] as const)
-    if (raw?.trim() && parsed == null)
+    if (raw?.trim() && parsed == null && !isNoLimit(raw))
       notes.push(
         `${label} "${raw.trim()}" is not a value Deplo can read - set it by hand.`,
       );
 
   // Dokploy's cpuReservation is a swarm scheduling hint with no deplo column.
-  if (row.cpuReservation?.trim())
+  if (row.cpuReservation?.trim() && !isNoLimit(row.cpuReservation))
     notes.push(
       `CPU reservation "${row.cpuReservation.trim()}" is a Swarm placement hint. Deplo has no equivalent, so it is not imported.`,
     );
@@ -995,13 +1108,16 @@ function uniqueFilePath(base: string, used: Set<string>): string {
  */
 export function mapMounts(
   mounts: SourceMount[] | null | undefined,
-  opts: { isCompose: boolean },
+  opts: { isCompose: boolean; compose?: string | null },
 ): Mapped<MappedMounts> {
   const notes: string[] = [];
   const files: MappedMounts["files"] = [];
   const volumes: Omit<VolumeMount, "id">[] = [];
   const used = new Set<string>();
   const usedFiles = new Set<string>();
+  const composeMounts = new Set(
+    opts.isCompose ? composeMountPaths(opts.compose) : [],
+  );
 
   for (const m of mounts ?? []) {
     const mountPath = m.mountPath?.trim();
@@ -1046,6 +1162,11 @@ export function mapMounts(
       continue;
     }
     if (m.type === "volume") {
+      // The stack's own YAML already binds this path, so a Storage row for it
+      // would be a volume the deploy never mounts - and the one the data copy
+      // then filled, while the stack came up on the empty one beside it.
+      if (opts.isCompose && composeMounts.has(mountPath.replace(/\/+$/, "")))
+        continue;
       const base = volumeLabel(
         m.volumeName ?? "",
         volumeLabel(mountPath, "data"),
@@ -1495,6 +1616,53 @@ export function deploVolumeName(
 /** The data volume of a Deplo database, whose stack slug is its host name. */
 export function deploDatabaseVolumeName(host: string): string {
   return `deplo-${host}_${host}-data`;
+}
+
+/**
+ * Every container path the services of a compose file already mount, in either
+ * shape. The renderer skips a Storage volume whose path the authored file
+ * declares (`injectAppVolumes`), so the mapper has to know the same paths - or it
+ * writes a row the deploy ignores and the data copy fills.
+ */
+export function composeMountPaths(
+  compose: string | null | undefined,
+): string[] {
+  let doc: { services?: Record<string, { volumes?: unknown }> } | null;
+  try {
+    doc = yaml.load(compose ?? "") as typeof doc;
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const svc of Object.values(doc?.services ?? {})) {
+    const mounts = svc?.volumes;
+    if (!Array.isArray(mounts)) continue;
+    for (const raw of mounts) {
+      let dest: string | undefined;
+      if (typeof raw === "string") {
+        // Same rule as `containerPathOf`: one part is an ANONYMOUS volume, and
+        // the path it names is mounted all the same.
+        const parts = raw.split(":");
+        dest = (parts.length > 1 ? parts[1] : parts[0])?.trim();
+      } else if (raw && typeof raw === "object")
+        dest = (raw as { target?: string }).target?.trim();
+      if (dest) out.push(dest.replace(/\/+$/, ""));
+    }
+  }
+  return out;
+}
+
+/** The service names a compose file declares, in the order it declares them. */
+export function composeServices(compose: string | null | undefined): string[] {
+  try {
+    const doc = yaml.load(compose ?? "") as { services?: unknown } | null;
+    const services = doc?.services;
+    if (!services || typeof services !== "object" || Array.isArray(services))
+      return [];
+    return Object.keys(services as Record<string, unknown>);
+  } catch {
+    return [];
+  }
 }
 
 /**

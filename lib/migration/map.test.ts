@@ -20,6 +20,7 @@ import {
   mapDatabase,
   mapDomains,
   mapLogo,
+  looksLikeSecretKey,
   mapMounts,
   mapResources,
   mapSource,
@@ -241,11 +242,44 @@ test("adaptComposeForDeplo maps Dokploy's file mounts onto Deplo's convention", 
 
 test("adaptComposeForDeplo leaves a stack that needs neither rewrite alone", () => {
   const source =
-    "services:\n  web:\n    image: nginx\n    volumes:\n      - data:/data\n";
+    "services:\n  web:\n    image: nginx\n    volumes:\n      - data:/data\nvolumes:\n  data:\n";
   assert.deepEqual(adaptComposeForDeplo(source), {
     compose: source,
     changes: [],
   });
+});
+
+test("adaptComposeForDeplo declares a volume the file only mounts", () => {
+  const source =
+    "services:\n  web:\n    image: nginx\n    volumes:\n      - data:/data\n      - ./conf:/etc/conf\n      - /var/run/docker.sock:/sock\n";
+  const { compose, changes } = adaptComposeForDeplo(source);
+  // The mounts are untouched; only the missing top-level block is added.
+  assert.match(compose, /^volumes:\n  data: null$/m);
+  assert.equal(compose.match(/- data:\/data/g)?.length, 1);
+  assert.equal(changes.length, 1);
+  assert.match(changes[0], /^data is declared at the top/);
+  // A path is not a named volume, and neither is a host bind.
+  assert.doesNotMatch(compose, /\n {2}\.\/conf:/);
+  assert.doesNotMatch(compose, /\n {2}\/var:/);
+});
+
+test("adaptComposeForDeplo declares a long-form volume, never a long-form bind", () => {
+  const source = [
+    "services:",
+    "  web:",
+    "    image: nginx",
+    "    volumes:",
+    "      - type: volume",
+    "        source: mydata",
+    "        target: /var/lib/x",
+    "      - type: bind",
+    "        source: /srv/y",
+    "        target: /y",
+    "",
+  ].join("\n");
+  const { compose } = adaptComposeForDeplo(source);
+  assert.match(compose, /^volumes:\n  mydata: null$/m);
+  assert.doesNotMatch(compose, /\/srv\/y: null/);
 });
 
 /* ---- build settings ------------------------------------------------- */
@@ -1864,4 +1898,89 @@ test("no mapper note names a product", () => {
   ];
   assert.ok(notes.length > 0);
   assert.doesNotMatch(notes.join(" "), /Dokploy|Coolify/);
+});
+
+/* ---- the fixes ------------------------------------------------------- */
+
+test("`0` in a limit column is no limit, not an unreadable value", () => {
+  // Coolify writes 0 in every limit column of every app. Read as unparsable it
+  // produced three false alarms per application - 90 lines on a 30-app move.
+  const { value, notes } = mapResources({
+    memoryLimit: "0",
+    memoryReservation: "0",
+    cpuLimit: "0",
+    cpuReservation: "0",
+  });
+  assert.equal(value, null);
+  assert.deepEqual(notes, []);
+  // A value that genuinely cannot be read still says so.
+  assert.equal(mapResources({ memoryLimit: "lots" }).notes.length, 1);
+});
+
+test("a compose stack gets no Storage row for a path its own YAML mounts", () => {
+  // The renderer skips a Storage volume whose path the authored file declares, so
+  // one written here was a volume the deploy never mounted - and the data copy
+  // filled exactly that one while the stack came up on the empty one beside it.
+  const mounts = [
+    {
+      mountId: "m1",
+      type: "volume" as const,
+      volumeName: "96eqafc7-it-tools-data",
+      mountPath: "/data",
+    },
+    {
+      mountId: "m2",
+      type: "volume" as const,
+      volumeName: "other",
+      mountPath: "/elsewhere",
+    },
+  ];
+  const compose =
+    "services:\n  a:\n    image: x\n    volumes:\n      - d:/data\n";
+  assert.deepEqual(
+    mapMounts(mounts, { isCompose: true, compose }).value.volumes.map(
+      (v) => v.mountPath,
+    ),
+    ["/elsewhere"],
+  );
+  // A single-image app has no YAML of its own, so both rows stay.
+  assert.equal(mapMounts(mounts, { isCompose: false }).value.volumes.length, 2);
+});
+
+test("a domain with no port of its own routes to the port the app listens on", () => {
+  const domains = [
+    { domainId: "d1", host: "web.acme.com", https: true },
+    { domainId: "d2", host: "api.acme.com", https: true, port: 9000 },
+  ];
+  assert.deepEqual(
+    mapDomains(domains, { isCompose: false, fallbackPort: 5006 }).value.map(
+      (d) => d.port,
+    ),
+    [5006, 9000],
+  );
+});
+
+test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
+  for (const key of [
+    "MYSQL_ROOT_PASSWORD",
+    "POSTGRES_PASSWORD",
+    "JWT_SECRET",
+    "STRIPE_KEY",
+    "ADMIN_TOKEN",
+    "NTFY_WEB_PUSH_PRIVATE_KEY",
+    "SERVICE_PASSWORD_GHOST",
+    "LD_SUPERUSER_PASSWORD",
+    "AWS_SECRET_ACCESS_KEY",
+  ])
+    assert.ok(looksLikeSecretKey(key), `${key} should be a secret`);
+  for (const key of [
+    "NODE_ENV",
+    "PORT",
+    "DATABASE_HOST",
+    "NEXT_PUBLIC_STRIPE_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "PUBLIC_KEY",
+    "CLIENT_ID",
+  ])
+    assert.ok(!looksLikeSecretKey(key), `${key} should stay plain`);
 });
