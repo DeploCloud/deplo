@@ -20,6 +20,7 @@ import {
   appVolumes as appVolumesTable,
   apps as appsTable,
   databases as databasesTable,
+  dokployImportItems as itemsTable,
   dokployImports as runsTable,
   domains as domainsTable,
   envVars as envVarsTable,
@@ -328,6 +329,23 @@ beforeEach(async () => {
         role: "member",
         capabilities: ["view", "create_projects"],
       },
+      // An ordinary Member who may migrate: every capability the import needs,
+      // and NEITHER of the two orthogonal grants. This is who most of a company
+      // is, and the shape the compose gates have to answer correctly.
+      {
+        id: USER_3,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: [
+          "view",
+          "create_projects",
+          "create_apps",
+          "create_databases",
+          "manage_env",
+          "manage_domains",
+          "write_app_files",
+        ],
+      },
     ],
   });
   await seedServer(db);
@@ -340,6 +358,8 @@ beforeEach(async () => {
 
 /** A member of team A who may run a migration and nothing destructive. */
 const USER_2 = "user_2";
+/** A member who may migrate, holding neither host-volumes nor expose-ports. */
+const USER_3 = "user_3";
 
 /** Run as the seeded owner of team A, the way a resolver would. */
 function asOwner<T>(fn: () => Promise<T>): Promise<T> {
@@ -915,6 +935,65 @@ test("a compose stack's config file shows up in Storage", async () => {
   assert.equal(vols[0]!.mountPath, "/etc/nginx/nginx.conf");
   assert.equal(vols[0]!.service, "web");
   assert.equal(vols[0]!.readOnly, true);
+});
+
+/** Run as the Member who may start a migration but holds no host grant. */
+function asMember<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithIdentity({ userId: USER_3, teamId: TEAM_A }, fn);
+}
+
+test("a Member migrates a stack whose only host-ish key is env_file", async () => {
+  // `env_file: - .env` is the commonest env pattern there is, and it is exactly
+  // what the other platform writes for a compose stack. Read as a host escape it
+  // made every such stack un-migratable by anybody but an admin.
+  fixtures["compose.one"].composeFile = [
+    "services:",
+    "  web:",
+    "    image: nginx:1.27",
+    "    env_file:",
+    "      - .env",
+    "    volumes:",
+    "      - webdata:/data",
+    "volumes:",
+    "  webdata:",
+  ].join("\n");
+
+  const runId = await asMember(() => beginDokployImport({ url: URL_BASE }));
+  await asMember(() =>
+    importDokployProject({ ...CONNECT, runId, projectId: "dok-prj-other" }),
+  );
+
+  const apps = await db.select().from(appsTable);
+  const stack = apps.find((a) => a.name === "other-stack");
+  assert.ok(stack, apps.map((a) => a.name).join(", "));
+  assert.match(stack.compose ?? "", /env_file/);
+});
+
+test("a stack a Member may not create says what tripped it, and how", async () => {
+  fixtures["compose.one"].composeFile = [
+    "services:",
+    "  ui:",
+    "    image: louislam/uptime-kuma:1",
+    "    volumes:",
+    "      - /var/run/docker.sock:/var/run/docker.sock:ro",
+  ].join("\n");
+
+  const runId = await asMember(() => beginDokployImport({ url: URL_BASE }));
+  await asMember(() =>
+    importDokployProject({ ...CONNECT, runId, projectId: "dok-prj-other" }),
+  );
+
+  const rows = await db
+    .select()
+    .from(itemsTable)
+    .where(eq(itemsTable.runId, runId));
+  const line = rows.find((r) => r.sourceName === "other-stack");
+  assert.ok(line, rows.map((r) => r.sourceName).join(", "));
+  // Not a crash: a permission decision, with the remedy the single-image path
+  // already gives for its dropped bind mount.
+  assert.equal(line.outcome, "manual");
+  assert.match(String(line.message), /bind mount of a folder on the server/);
+  assert.match(String(line.message), /Bind server folders/);
 });
 
 test("the compose file arrives with Dokploy's network taken out", async () => {

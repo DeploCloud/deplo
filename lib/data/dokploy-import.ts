@@ -51,6 +51,7 @@ import {
   composeJoinsForeignNetwork,
   composeMountsForeignStorage,
   composeNeedsHostPrivileges,
+  composeHostReach,
   composePublishesPorts,
   composeFileBindings,
   composeUsesExternalMerge,
@@ -708,16 +709,10 @@ function composeBlockers(
     );
   if (!grants.mayExposePorts && composePublishesPorts(compose))
     out.push("Publishes host ports, which needs the expose-ports grant.");
-  if (
-    !grants.mayMountHost &&
-    (composeHasHostBindMount(compose) ||
-      composeNeedsHostPrivileges(compose) ||
-      composeMountsForeignStorage(compose) ||
-      composeBuildReachesHost(compose) ||
-      composeJoinsForeignNetwork(compose))
-  )
+  const reach = grants.mayMountHost ? [] : composeHostReach(compose);
+  if (reach.length > 0)
     out.push(
-      "Reaches the host (a bind mount, a privilege, an external volume or network), which needs the host-volumes grant.",
+      `Uses ${reach.join(", ")}, which needs the host-volumes grant - without it this stack does not come across at all.`,
     );
   return out;
 }
@@ -2003,6 +1998,23 @@ async function appIdsInProject(
  * config files, primary domain, extra domains, volumes, resource limits,
  * basic-auth users and crons.
  */
+/**
+ * Why this compose cannot be created by the person running the import, or null.
+ * The remedy is the SAME sentence a single-image app's dropped bind mount gets:
+ * a report that names a permission has to say who turns it on.
+ */
+async function composeGrantRefusal(
+  compose: string,
+  name: string,
+): Promise<string | null> {
+  const reach = composeHostReach(compose);
+  if (reach.length > 0 && !(await canMountHostVolumes()))
+    return `${name} uses ${reach.join(", ")}, which needs the host-volumes permission, so its stack did not come across. An admin turns it on with "Bind server folders" in Settings -> Users, then import this app again.`;
+  if (composePublishesPorts(compose) && !(await canExposePorts()))
+    return `${name} publishes ports on the server, which needs the expose-ports permission, so its stack did not come across. An admin turns it on with "Publish ports" in Settings -> Users, then import this app again.`;
+  return null;
+}
+
 async function importAppService(
   c: DokployCredential,
   svc: SourceService,
@@ -2238,6 +2250,25 @@ async function importAppService(
         .map((d) => d.host)
         .join(", ")} came across on a generated address instead.`,
     );
+
+  // A stack that reaches the host cannot be written by somebody without the grant,
+  // and `createApp` is right to refuse it. Said HERE it reads like the answer a
+  // single-image app already gets for its bind mount - a line with the remedy -
+  // rather than a failure that looks like a crash and names the wrong thing.
+  const grantRefusal = compose
+    ? await composeGrantRefusal(compose, name)
+    : null;
+  if (grantRefusal) {
+    await report.add({
+      sourceKind: svc.kind,
+      sourceId: svc.id,
+      sourceName: name,
+      outcome: "manual",
+      targetKind: "app",
+      message: grantRefusal,
+    });
+    return null;
+  }
 
   const created = await createApp({
     name,
