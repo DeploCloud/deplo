@@ -58,9 +58,8 @@ export function Combobox<T>({
   /** What the closed field shows for the selection. */
   displayValue: (item: T) => string;
   id?: string;
-  /** Put the cursor in the field on mount WITHOUT unfurling the menu: a page
-   *  whose whole job is this one field (`/logs`) wants to be typed into, not
-   *  covered by its own dropdown before anyone has asked for it. */
+  /** The field IS the page (`/logs`): it starts focused with the list unfurled,
+   *  and Escape leaves it that way - there is nothing behind it to go back to. */
   autoFocus?: boolean;
   placeholder: string;
   searchPlaceholder: string;
@@ -77,9 +76,6 @@ export function Combobox<T>({
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [highlight, setHighlight] = React.useState(0);
-  // The focus `autoFocus` places is not a user gesture, so it must not open the
-  // menu - the same distinction `isOverlayAutoFocusing` draws for a dialog.
-  const autoFocused = React.useRef(autoFocus);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const fieldRef = React.useRef<HTMLDivElement | null>(null);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
@@ -159,13 +155,16 @@ export function Combobox<T>({
     if (!open) return;
     function onEscape(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
+      // `autoFocus` marks the picker that is the page itself: closing its list
+      // would leave an empty screen and one field with no way back to the tree.
+      if (autoFocus) return;
       e.stopPropagation();
       setOpen(false);
       setQuery("");
     }
     window.addEventListener("keydown", onEscape, true);
     return () => window.removeEventListener("keydown", onEscape, true);
-  }, [open]);
+  }, [open, autoFocus]);
 
   // Close on outside press - the menu lives inside a dialog, so it must not
   // swallow the click that lands on another field. POINTERdown, captured: a
@@ -303,11 +302,7 @@ export function Combobox<T>({
             // A dialog placing focus here as it opens is Radix, not the user,
             // and it is not a reason to unfurl the menu or probe every bucket.
             if (isOverlayAutoFocusing()) return;
-            if (autoFocused.current) {
-              autoFocused.current = false;
-              return;
-            }
-            openMenu();
+            if (!open) openMenu();
           }}
           onMouseDown={() => {
             if (!open) openMenu();
