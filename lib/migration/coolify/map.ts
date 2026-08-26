@@ -175,7 +175,7 @@ export function parseCoolifyFqdns(
   fqdn: string | null | undefined,
   perService?: string | null,
   extra: { url: string; service: string | null; port?: number | null }[] = [],
-): SourceDomain[] {
+): { value: SourceDomain[]; notes: string[] } {
   const entries: {
     url: string;
     service: string | null;
@@ -189,11 +189,16 @@ export function parseCoolifyFqdns(
   entries.push(...extra);
 
   const out: SourceDomain[] = [];
+  const notes: string[] = [];
   const seen = new Set<string>();
   for (const [i, e] of entries.entries()) {
+    // An address that names no scheme claims NEITHER. Reading one as https gave
+    // four one-click services a certificate they never had over there and moved
+    // them off :80, so every link anyone had written answered 404.
+    const said = /^https?:\/\//i.exec(e.url)?.[0] ?? "";
     let u: URL;
     try {
-      u = new URL(/^https?:\/\//i.test(e.url) ? e.url : `https://${e.url}`);
+      u = new URL(said ? e.url : `http://${e.url}`);
     } catch {
       continue;
     }
@@ -202,7 +207,11 @@ export function parseCoolifyFqdns(
     const key = `${host}${path ?? ""}${e.service ?? ""}`;
     if (!host || seen.has(key)) continue;
     seen.add(key);
-    const https = u.protocol === "https:";
+    const https = /^https/i.test(said);
+    if (!said)
+      notes.push(
+        `{panel} recorded ${host} without http:// or https://, so it comes across on plain http exactly as it answered there. Add a certificate under Domains to serve it over https.`,
+      );
     out.push({
       domainId: `cool-fqdn-${i}`,
       host,
@@ -220,7 +229,7 @@ export function parseCoolifyFqdns(
       enabled: true,
     });
   }
-  return out;
+  return { value: out, notes };
 }
 
 /**
@@ -497,11 +506,13 @@ export function coolifyApplication(
     : null;
   const sourceType: SourceOrigin = isImage ? "docker" : "git";
   const git = coolifyGitUrl(row);
+  const domains = parseCoolifyFqdns(row.fqdn, row.docker_compose_domains);
 
   return {
     applicationId: row.uuid,
     platformNotes: [
       ...coolifyNotes(row),
+      ...domains.notes,
       ...(git.assumed
         ? [
             `{panel} kept ${row.git_repository?.trim()} without the server it is on, so it arrives as ${git.url}. Change it under Source if the repository lives somewhere else.`,
@@ -541,7 +552,7 @@ export function coolifyApplication(
     // The port it LISTENS on, so a domain that carries none still routes
     // somewhere - `ports_exposes` is the only column that says.
     routingPort: coolifyFallbackPort(row),
-    domains: parseCoolifyFqdns(row.fqdn, row.docker_compose_domains),
+    domains: domains.value,
     mounts: extras.mounts ?? [],
     ports: coolifyPorts(row.ports_mappings),
     security: extras.basicAuth
@@ -607,10 +618,15 @@ export function coolifyCompose(
   const app = row as CoolifyApplication;
   // A SERVICE has no `fqdn` column: its address lives in SERVICE_FQDN_*.
   const magic = coolifyServiceFqdns(extras.env, composeServices(raw ?? parsed));
+  const domains = parseCoolifyFqdns(
+    app.fqdn,
+    app.docker_compose_domains,
+    magic,
+  );
   return {
     value: {
       composeId: row.uuid,
-      platformNotes: [...notes, ...coolifyNotes(app)],
+      platformNotes: [...notes, ...coolifyNotes(app), ...domains.notes],
       name: row.name ?? null,
       appName: row.name ?? null,
       description: row.description ?? null,
@@ -621,7 +637,7 @@ export function coolifyCompose(
       sourceType: "raw",
       serverId: extras.serverId ?? "",
       environmentId: extras.environmentId ?? null,
-      domains: parseCoolifyFqdns(app.fqdn, app.docker_compose_domains, magic),
+      domains: domains.value,
       mounts: extras.mounts ?? [],
     },
     notes,

@@ -105,7 +105,7 @@ test("a database's credentials are read from its own engine's columns", () => {
 /* ---- domains -------------------------------------------------------- */
 
 test("parseCoolifyFqdns reads the list, its ports and its paths", () => {
-  const d = parseCoolifyFqdns(
+  const { value: d, notes } = parseCoolifyFqdns(
     "https://app.acme.com,https://api.acme.com:3000,http://old.acme.com/v1/",
   );
   assert.deepEqual(
@@ -118,10 +118,24 @@ test("parseCoolifyFqdns reads the list, its ports and its paths", () => {
   );
   // Deplo strips no prefix of its own, because Coolify adds no middleware to undo.
   assert.equal(d[2].stripPath, false);
+  // Every one of them SAID which scheme it was, so there is nothing to warn about.
+  assert.deepEqual(notes, []);
+});
+
+test("an address that names no scheme is not promoted to https", () => {
+  // Four one-click services arrived on letsencrypt this way, off :80, and every
+  // http link anyone had written answered 404.
+  const { value: d, notes } = parseCoolifyFqdns("uptimekuma6.acme.com");
+  assert.deepEqual(
+    d.map((x) => [x.host, x.https, x.certificateType]),
+    [["uptimekuma6.acme.com", false, "none"]],
+  );
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /without http:\/\/ or https:\/\//);
 });
 
 test("parseCoolifyFqdns survives a bare host and refuses nonsense", () => {
-  const d = parseCoolifyFqdns("app.acme.com, , not a url ,,");
+  const { value: d } = parseCoolifyFqdns("app.acme.com, , not a url ,,");
   assert.deepEqual(
     d.map((x) => x.host),
     ["app.acme.com"],
@@ -129,7 +143,7 @@ test("parseCoolifyFqdns survives a bare host and refuses nonsense", () => {
 });
 
 test("parseCoolifyFqdns keeps a compose stack's per-service domains apart", () => {
-  const d = parseCoolifyFqdns(
+  const { value: d } = parseCoolifyFqdns(
     null,
     JSON.stringify({
       app: { domain: "https://app.acme.com:3000" },
@@ -147,7 +161,7 @@ test("parseCoolifyFqdns keeps a compose stack's per-service domains apart", () =
 
 test("parseCoolifyFqdns names the same host once", () => {
   assert.equal(
-    parseCoolifyFqdns("https://a.com,https://a.com,http://a.com").length,
+    parseCoolifyFqdns("https://a.com,https://a.com,http://a.com").value.length,
     1,
   );
 });
