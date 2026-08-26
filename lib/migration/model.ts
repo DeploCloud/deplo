@@ -166,6 +166,11 @@ export interface SourceApplication {
   // placement
   serverId?: string | null;
   environmentId?: string | null;
+  /**
+   * The port the app LISTENS on, when the platform records one of its own. A
+   * domain that carries no port routes here rather than to Deplo's default.
+   */
+  routingPort?: number | null;
   // relations, present on `application.one`
   domains?: SourceDomain[] | null;
   mounts?: SourceMount[] | null;

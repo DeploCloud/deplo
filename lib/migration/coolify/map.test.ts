@@ -6,6 +6,7 @@ import {
   coolifyCompose,
   coolifyDatabase,
   coolifyDbKind,
+  coolifyDbKindOf,
   coolifyDestination,
   coolifyEnvBlob,
   coolifyFallbackPort,
@@ -424,4 +425,118 @@ test("coolifyNotes names everything Deplo has nowhere to put", () => {
 
 test("an application with nothing exotic produces no notes", () => {
   assert.deepEqual(coolifyNotes(APP), []);
+});
+
+/* ---- the fixes ------------------------------------------------------- */
+
+test("the engine is read off `database_type`, which is what the API answers with", () => {
+  // Coolify 4.x spells it `database_type` on the list AND the detail endpoints.
+  // Reading `type` alone found nothing, and every database was dropped in
+  // silence - no import, no report line, nothing.
+  assert.equal(
+    coolifyDbKindOf({ database_type: "standalone-postgresql" }),
+    "postgres",
+  );
+  assert.equal(coolifyDbKindOf({ type: "standalone-redis" }), "redis");
+  assert.equal(coolifyDbKindOf({}), null);
+});
+
+test("a short repository is joined to the host its source lives on", () => {
+  // A public repo carries a whole URL; one behind a source carries `owner/repo`
+  // and `git clone mdn/beginner-html-site` is what that became.
+  const short = coolifyApplication({
+    ...APP,
+    git_repository: "mdn/beginner-html-site",
+    source_type: "App\\Models\\GithubApp",
+  });
+  assert.equal(
+    short.customGitUrl,
+    "https://github.com/mdn/beginner-html-site.git",
+  );
+
+  const gitlab = coolifyApplication({
+    ...APP,
+    git_repository: "group/sub/app",
+    source_type: "App\\Models\\GitlabApp",
+  });
+  assert.equal(gitlab.customGitUrl, "https://gitlab.com/group/sub/app.git");
+
+  // A self-hosted source names its own host, and that always wins.
+  const own = coolifyApplication({
+    ...APP,
+    git_repository: "team/app",
+    source_type: "App\\Models\\GiteaApp",
+    source: { html_url: "https://git.acme.com/" },
+  });
+  assert.equal(own.customGitUrl, "https://git.acme.com/team/app.git");
+
+  // A whole URL is kept byte for byte, and so is an ssh remote.
+  assert.equal(
+    coolifyApplication(APP).customGitUrl,
+    "https://github.com/acme/web",
+  );
+  assert.equal(
+    coolifyApplication({ ...APP, git_repository: "git@git.acme.com:t/a.git" })
+      .customGitUrl,
+    "git@git.acme.com:t/a.git",
+  );
+});
+
+test("a repository with no source at all says github was assumed", () => {
+  const a = coolifyApplication({ ...APP, git_repository: "acme/web" });
+  assert.equal(a.customGitUrl, "https://github.com/acme/web.git");
+  assert.ok(
+    a.platformNotes?.some((n) => n.includes("Change it under Source")),
+    "the guess has to be said out loud",
+  );
+});
+
+test("an application carries the port it listens on", () => {
+  // Without it every migrated app landed on Deplo's default 3000 and answered 502.
+  assert.equal(coolifyApplication(APP).routingPort, 3000);
+  assert.equal(
+    coolifyApplication({ ...APP, ports_exposes: "" }).routingPort,
+    null,
+  );
+});
+
+test("a service's address comes from SERVICE_FQDN_*, which is where Coolify keeps it", () => {
+  // `services` has no fqdn column at all: 25 of 25 one-click services arrived
+  // with no domain while their own variables spelled one out.
+  const raw = [
+    "services:",
+    "  it-tools:",
+    "    image: corentinth/it-tools",
+    "  worker:",
+    "    image: busybox",
+  ].join("\n");
+  const { value } = coolifyCompose(
+    { uuid: "svc-1", name: "it-tools", docker_compose_raw: raw },
+    {
+      env: [
+        "SERVICE_FQDN_ITTOOLS_8080=https://tools.acme.com",
+        "SERVICE_URL_ITTOOLS=tools.acme.com",
+        "NOT_A_DOMAIN=x",
+      ].join("\n"),
+    },
+  );
+  assert.deepEqual(
+    value.domains?.map((d) => [d.host, d.port, d.serviceName, d.https]),
+    [["tools.acme.com", 8080, "it-tools", true]],
+  );
+});
+
+test("a SERVICE_FQDN naming no service still brings the address over", () => {
+  const { value } = coolifyCompose(
+    {
+      uuid: "svc-2",
+      name: "ghost",
+      docker_compose_raw: "services:\n  cms:\n    image: ghost\n",
+    },
+    { env: "SERVICE_FQDN_GHOST=https://blog.acme.com" },
+  );
+  assert.deepEqual(
+    value.domains?.map((d) => [d.host, d.port, d.serviceName]),
+    [["blog.acme.com", null, null]],
+  );
 });

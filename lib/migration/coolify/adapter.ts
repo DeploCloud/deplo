@@ -22,6 +22,7 @@ import type {
 } from "../model";
 import {
   COOLIFY_PANEL,
+  CoolifyHttpError,
   currentTeam,
   getApplication,
   getDatabase,
@@ -48,7 +49,7 @@ import {
   coolifyApplication,
   coolifyCompose,
   coolifyDatabase,
-  coolifyDbKind,
+  coolifyDbKindOf,
   coolifyDbSecretsVisible,
   coolifyDestination,
   coolifyEnvBlob,
@@ -87,6 +88,45 @@ async function serverOfResource(
   return out;
 }
 
+/** Where every resource lives and which of them are one-click services. */
+interface ResourceIndex {
+  serverOf: Map<string, string>;
+  serviceIds: Set<string>;
+}
+
+/**
+ * Read once per scan rather than per resource: the data phase asks about the
+ * placement of every service it touches, and the answer cannot differ between
+ * two questions a minute apart.
+ */
+const INDEX_TTL_MS = 60_000;
+const indexes = new Map<
+  string,
+  { at: number; value: Promise<ResourceIndex> }
+>();
+
+function resourceIndex(c: SourceCredential): Promise<ResourceIndex> {
+  const key = JSON.stringify([c.baseUrl, c.apiKey]);
+  const hit = indexes.get(key);
+  if (hit && Date.now() - hit.at < INDEX_TTL_MS) return hit.value;
+  const value = (async (): Promise<ResourceIndex> => {
+    const [serverOf, services] = await Promise.all([
+      serverOfResource(c),
+      listServices(c),
+    ]);
+    return { serverOf, serviceIds: new Set(services.map((s) => s.uuid)) };
+  })();
+  indexes.set(key, { at: Date.now(), value });
+  // A read that failed must not be the answer for the next minute.
+  value.catch(() => indexes.delete(key));
+  return value;
+}
+
+/** Tests drive several panels through one module; this puts it back. */
+export function __resetCoolifyIndexForTest(): void {
+  indexes.clear();
+}
+
 /** `application` | `compose` | one of the engines → the API path segment. */
 function groupOfKind(kind: string): CoolifyResourceGroup | null {
   if (kind === "application") return "applications";
@@ -96,8 +136,11 @@ function groupOfKind(kind: string): CoolifyResourceGroup | null {
 
 /**
  * A `compose` service is either a one-click SERVICE or an application built from a
- * compose file, and the shared model calls both the same thing. One probe settles
- * it, services first because that is what most Coolify stacks are.
+ * compose file, and the shared model calls both the same thing.
+ *
+ * Settled from the service LIST, never from a probe whose every failure meant
+ * "not a service": a timeout or a 429 then sent the cutover's stop to
+ * `applications/{uuid}/stop`, which answers 404, and the data was not copied.
  */
 async function resolveGroup(
   c: SourceCredential,
@@ -106,11 +149,18 @@ async function resolveGroup(
 ): Promise<CoolifyResourceGroup> {
   const known = groupOfKind(kind);
   if (known) return known;
+  const { serviceIds } = await resourceIndex(c);
+  if (serviceIds.has(id)) return "services";
+  // Not in the list is not proof on its own - a service created since the index
+  // was read is not there either. One probe settles that, and only a refusal
+  // Coolify ANSWERED with counts as "no".
   try {
     await getServiceRow(c, id);
     return "services";
-  } catch {
-    return "applications";
+  } catch (e) {
+    if (e instanceof CoolifyHttpError && e.status === 404)
+      return "applications";
+    throw e;
   }
 }
 
@@ -183,7 +233,7 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
           env.compose!.push(coolifyCompose(s, extras(s.uuid)).value);
       for (const d of databases) {
         if (!here(d.environment_id)) continue;
-        const kind = coolifyDbKind(d.type);
+        const kind = coolifyDbKindOf(d);
         if (!kind) continue;
         const list = (env[kind] ??= []) as SourceDatabase[];
         list.push(coolifyDatabase(d, kind, extras(d.uuid)));
@@ -211,17 +261,26 @@ async function detail(
   id: string,
 ): Promise<SourceApplication | SourceCompose | SourceDatabase> {
   const group = await resolveGroup(c, kind, id);
-  const [envRows, storages] = await Promise.all([
+  const [envRows, storages, index] = await Promise.all([
     listEnvs(c, group, id),
     listStorages(c, group, id),
+    resourceIndex(c),
   ]);
   const env = coolifyEnvBlob(envRows);
   const { mounts } = coolifyMounts(storages);
-  const extras = { env: env.blob, mounts };
+  // The MACHINE this resource runs on. Left out, everything looked like it was
+  // on the panel's own host, and the data phase then asked that host for volumes
+  // living on the second one - which answered "no such volume", and the report
+  // called it a service that had never been started.
+  const extras = {
+    env: env.blob,
+    mounts,
+    serverId: index.serverOf.get(id) ?? "",
+  };
 
   if (group === "databases") {
     const row = await getDatabase(c, id);
-    const engine = coolifyDbKind(row.type) ?? (kind as SourceDbKind);
+    const engine = coolifyDbKindOf(row) ?? (kind as SourceDbKind);
     return coolifyDatabase(row, engine, extras);
   }
   if (group === "services") {
@@ -259,12 +318,10 @@ const READ_SENSITIVE_REFUSAL =
 async function assertReadable(c: SourceCredential): Promise<void> {
   // A database is the sharpest probe: without the scope its password column is not
   // blank, it is ABSENT from the JSON.
-  const databases = (await listDatabases(c)).filter((d) =>
-    coolifyDbKind(d.type),
-  );
+  const databases = (await listDatabases(c)).filter((d) => coolifyDbKindOf(d));
   if (databases.length > 0) {
     const visible = databases.some((d) =>
-      coolifyDbSecretsVisible(d, coolifyDbKind(d.type)!),
+      coolifyDbSecretsVisible(d, coolifyDbKindOf(d)!),
     );
     if (!visible) throw new Error(READ_SENSITIVE_REFUSAL);
     return;

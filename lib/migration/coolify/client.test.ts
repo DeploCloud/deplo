@@ -171,6 +171,37 @@ test("a transport failure arrives readable, naming Coolify", async (t) => {
   });
 });
 
+test("a blip is retried, and a wrong address is not", async (t) => {
+  // A migration reads the panel hundreds of times. One reset used to end the data
+  // phase with every service after it left on empty storage.
+  reset(t);
+  let calls = 0;
+  __setMigrationFetchForTest(async () => {
+    calls++;
+    if (calls < 3)
+      throw Object.assign(new TypeError("fetch failed"), {
+        cause: { code: "ECONNRESET" },
+      });
+    return new Response("[]", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  assert.deepEqual(await listProjects(cred), []);
+  assert.equal(calls, 3);
+
+  // Nothing listening is not a blip: the Connect screen has to say so at once.
+  calls = 0;
+  __setMigrationFetchForTest(async () => {
+    calls++;
+    throw Object.assign(new TypeError("fetch failed"), {
+      cause: { code: "ECONNREFUSED" },
+    });
+  });
+  await assert.rejects(listProjects(cred), /Nothing is listening/);
+  assert.equal(calls, 1);
+});
+
 test("the healthcheck refuses to call somebody's front page a panel", async (t) => {
   reset(t);
   __setMigrationFetchForTest(

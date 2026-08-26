@@ -78,9 +78,16 @@ export interface CoolifyApplication {
   status?: string | null;
   fqdn?: string | null;
   build_pack?: string | null;
+  /**
+   * `owner/repo` for an app behind a git SOURCE, a whole clone URL for a public
+   * one. The host lives in the relation below - see `coolifyGitUrl`.
+   */
   git_repository?: string | null;
   git_branch?: string | null;
   git_full_url?: string | null;
+  /** `App\Models\GithubApp` | `App\Models\GitlabApp` | ... */
+  source_type?: string | null;
+  source?: { html_url?: string | null; api_url?: string | null } | null;
   docker_registry_image_name?: string | null;
   docker_registry_image_tag?: string | null;
   static_image?: string | null;
@@ -155,7 +162,12 @@ export interface CoolifyDatabase {
   description?: string | null;
   environment_id?: number | null;
   status?: string | null;
-  /** `standalone-postgresql`, `standalone-redis`, ... on the list endpoints. */
+  /**
+   * `standalone-postgresql`, `standalone-redis`, ... The API spells it
+   * `database_type` on BOTH the list and the detail endpoints; `type` is read
+   * only because an older instance may still answer with it.
+   */
+  database_type?: string | null;
   type?: string | null;
   image?: string | null;
   is_public?: boolean | null;
@@ -277,6 +289,20 @@ export function __resetCoolifyRateLimitForTest(): void {
 /* Transport                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * A refusal Coolify ANSWERED with, carrying the status that says what it was.
+ * A caller that probes (is this uuid a service?) has to tell a 404 from a 429.
+ */
+export class CoolifyHttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CoolifyHttpError";
+  }
+}
+
 /** Coolify's 4xx bodies are `{"message": "..."}` and mostly already actionable. */
 function refusalMessage(status: number, body: string): string {
   let said = body.trim().slice(0, 300);
@@ -359,7 +385,8 @@ async function get<T>(
 ): Promise<T> {
   const res = await request(c, "GET", path, { params });
   if (!res.ok)
-    throw new Error(
+    throw new CoolifyHttpError(
+      res.status,
       refusalMessage(res.status, await res.text().catch(() => "")),
     );
   return (await res.json()) as T;
@@ -388,7 +415,8 @@ async function post<T>(
 ): Promise<T> {
   const res = await request(c, "POST", path, { body: body ?? {} });
   if (!res.ok)
-    throw new Error(
+    throw new CoolifyHttpError(
+      res.status,
       refusalMessage(res.status, await res.text().catch(() => "")),
     );
   return (await res.json().catch(() => null)) as T;

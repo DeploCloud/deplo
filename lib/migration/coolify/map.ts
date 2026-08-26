@@ -7,6 +7,7 @@
 
 import { HEALTH_CHECK_DEFAULTS } from "../../deploy/health-check";
 import type { HealthCheck } from "../../types";
+import { composeServices, parseEnvBlob } from "../map";
 import type {
   SourceApplication,
   SourceBuildType,
@@ -53,6 +54,16 @@ const DB_KIND: Record<string, SourceDbKind> = {
   keydb: "keydb",
   dragonfly: "dragonfly",
 };
+
+/**
+ * The engine of one database ROW. `database_type` is what the API answers with -
+ * reading `type` alone found nothing and dropped every database in silence.
+ */
+export function coolifyDbKindOf(
+  row: Pick<CoolifyDatabase, "database_type" | "type">,
+): SourceDbKind | null {
+  return coolifyDbKind(row.database_type ?? row.type);
+}
 
 export function coolifyDbKind(
   type: string | null | undefined,
@@ -163,13 +174,19 @@ function composeDomainPairs(
 export function parseCoolifyFqdns(
   fqdn: string | null | undefined,
   perService?: string | null,
+  extra: { url: string; service: string | null; port?: number | null }[] = [],
 ): SourceDomain[] {
-  const entries: { url: string; service: string | null }[] = [];
+  const entries: {
+    url: string;
+    service: string | null;
+    port?: number | null;
+  }[] = [];
   for (const raw of (fqdn ?? "").split(","))
     if (raw.trim()) entries.push({ url: raw.trim(), service: null });
   for (const [service, domains] of composeDomainPairs(perService))
     for (const raw of domains.split(","))
       if (raw.trim()) entries.push({ url: raw.trim(), service });
+  entries.push(...extra);
 
   const out: SourceDomain[] = [];
   const seen = new Set<string>();
@@ -190,7 +207,7 @@ export function parseCoolifyFqdns(
       domainId: `cool-fqdn-${i}`,
       host,
       https,
-      port: u.port ? Number(u.port) : null,
+      port: u.port ? Number(u.port) : (e.port ?? null),
       path,
       // Coolify adds no strip-prefix middleware of its own: the path reaches the
       // container as it was requested.
@@ -201,6 +218,39 @@ export function parseCoolifyFqdns(
       domainType: e.service ? "compose" : "application",
       certificateType: https ? "letsencrypt" : "none",
       enabled: true,
+    });
+  }
+  return out;
+}
+
+/**
+ * `SERVICE_FQDN_<ID>` and `SERVICE_FQDN_<ID>_<PORT>`: where a one-click SERVICE
+ * keeps its address. Coolify's `services` table carries no `fqdn` column at all,
+ * so without this every service arrived with no domain while its own variables
+ * spelled one out.
+ *
+ * The id half names the compose service, written without its separators
+ * (`it-tools` -> `ITTOOLS`); an id that matches nothing leaves the service
+ * unset and Deplo routes to the one that exposes a port.
+ */
+const SERVICE_FQDN_KEY = /^SERVICE_FQDN_(.+?)(?:_(\d+))?$/;
+
+export function coolifyServiceFqdns(
+  env: string | null | undefined,
+  serviceNames: string[],
+): { url: string; service: string | null; port: number | null }[] {
+  const bare = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const byBare = new Map(serviceNames.map((n) => [bare(n), n]));
+  const out: { url: string; service: string | null; port: number | null }[] =
+    [];
+  for (const { key, value } of parseEnvBlob(env)) {
+    const m = SERVICE_FQDN_KEY.exec(key);
+    if (!m || !value.trim()) continue;
+    const port = m[2] ? Number(m[2]) : null;
+    out.push({
+      url: value.trim(),
+      service: byBare.get(bare(m[1])) ?? null,
+      port: Number.isFinite(port) && port ? port : null,
     });
   }
   return out;
@@ -372,6 +422,48 @@ function firstExposed(ports: string | null | undefined): number | null {
 }
 
 /* ------------------------------------------------------------------ */
+/* Git                                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Which host each of Coolify's git source models lives on by default. */
+const SOURCE_HOSTS: Record<string, string> = {
+  githubapp: "https://github.com",
+  gitlabapp: "https://gitlab.com",
+  bitbucketapp: "https://bitbucket.org",
+  giteaapp: "https://gitea.com",
+};
+
+/**
+ * The clone URL for a Coolify application.
+ *
+ * `git_repository` is a whole URL for a PUBLIC repository and a bare
+ * `owner/repo` for one behind a source - Coolify keeps the host on the source
+ * relation and joins the two at deploy time. Taken literally, `owner/repo` is
+ * what `git clone` refuses with "repository does not exist", which is every git
+ * app a migration brought over.
+ */
+export function coolifyGitUrl(row: CoolifyApplication): {
+  url: string | null;
+  assumed: boolean;
+} {
+  const raw = row.git_repository?.trim() ?? "";
+  const full = row.git_full_url?.trim() ?? "";
+  if (/^(https?|ssh|git):\/\//i.test(raw) || /^[^/]+@[^/]+:/.test(raw))
+    return { url: raw, assumed: false };
+  if (full) return { url: full, assumed: false };
+  if (!raw) return { url: null, assumed: false };
+
+  const declared = row.source?.html_url?.trim();
+  const kind = (row.source_type ?? "").split("\\").pop()?.toLowerCase() ?? "";
+  const host = declared || SOURCE_HOSTS[kind];
+  const path = raw.replace(/^\/+/, "").replace(/\.git$/i, "");
+  return {
+    url: `${(host ?? SOURCE_HOSTS.githubapp).replace(/\/+$/, "")}/${path}.git`,
+    assumed: !host,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Applications                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -404,10 +496,18 @@ export function coolifyApplication(
       }`
     : null;
   const sourceType: SourceOrigin = isImage ? "docker" : "git";
+  const git = coolifyGitUrl(row);
 
   return {
     applicationId: row.uuid,
-    platformNotes: coolifyNotes(row),
+    platformNotes: [
+      ...coolifyNotes(row),
+      ...(git.assumed
+        ? [
+            `{panel} kept ${row.git_repository?.trim()} without the server it is on, so it arrives as ${git.url}. Change it under Source if the repository lives somewhere else.`,
+          ]
+        : []),
+    ],
     healthCheck: coolifyHealthCheck(row),
     name: row.name ?? null,
     appName: row.name ?? null,
@@ -428,7 +528,7 @@ export function coolifyApplication(
     dockerBuildStage: row.dockerfile_target_build ?? null,
     publishDirectory: row.publish_directory ?? null,
     isStaticSpa: row.settings?.is_spa ?? null,
-    customGitUrl: row.git_repository ?? null,
+    customGitUrl: git.url,
     customGitBranch: row.git_branch ?? null,
     customGitBuildPath: row.base_directory ?? null,
     isPreviewDeploymentsActive:
@@ -438,6 +538,9 @@ export function coolifyApplication(
     cpuLimit: row.limits_cpus ?? null,
     serverId: extras.serverId ?? "",
     environmentId: extras.environmentId ?? null,
+    // The port it LISTENS on, so a domain that carries none still routes
+    // somewhere - `ports_exposes` is the only column that says.
+    routingPort: coolifyFallbackPort(row),
     domains: parseCoolifyFqdns(row.fqdn, row.docker_compose_domains),
     mounts: extras.mounts ?? [],
     ports: coolifyPorts(row.ports_mappings),
@@ -502,6 +605,8 @@ export function coolifyCompose(
       "The compose file that came across is {panel}'s rendered copy, not the one you wrote - read it before deploying.",
     );
   const app = row as CoolifyApplication;
+  // A SERVICE has no `fqdn` column: its address lives in SERVICE_FQDN_*.
+  const magic = coolifyServiceFqdns(extras.env, composeServices(raw ?? parsed));
   return {
     value: {
       composeId: row.uuid,
@@ -516,7 +621,7 @@ export function coolifyCompose(
       sourceType: "raw",
       serverId: extras.serverId ?? "",
       environmentId: extras.environmentId ?? null,
-      domains: parseCoolifyFqdns(app.fqdn, app.docker_compose_domains),
+      domains: parseCoolifyFqdns(app.fqdn, app.docker_compose_domains, magic),
       mounts: extras.mounts ?? [],
     },
     notes,
