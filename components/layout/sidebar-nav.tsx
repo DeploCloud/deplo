@@ -344,15 +344,37 @@ export function SidebarNav({
   );
 }
 
+// Wait this long before a spinner replaces the icon, then keep it up at least this
+// long: under the first a fast page never flashes it, under the second a click that
+// resolves right after would blink it straight back out.
+const SPINNER_DELAY_MS = 150;
+const SPINNER_HOLD_MS = 300;
+
+/**
+ * Pending, once it has lasted long enough to be worth saying - and then for long
+ * enough to be seen. The icon stays put in between, so nothing blanks out.
+ */
+function useSlowPending(): boolean {
+  const { pending } = useLinkStatus();
+  const [shown, setShown] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(
+      () => setShown(pending),
+      pending ? SPINNER_DELAY_MS : SPINNER_HOLD_MS,
+    );
+    return () => clearTimeout(t);
+  }, [pending]);
+  return shown;
+}
+
 /**
  * The entry's icon, replaced by a spinner while its page loads. Most routes carry
  * no `loading.tsx` (they render in a few ms), so this is the click's only feedback.
- * The 150ms delay is what keeps a fast page from flashing it.
  */
 function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
-  const { pending } = useLinkStatus();
+  const spinning = useSlowPending();
   const Icon = item.icon;
-  if (pending) return <NavSpinner />;
+  if (spinning) return <NavSpinner />;
   if (item.mark) return <NavMark mark={item.mark} />;
   return (
     <Icon
@@ -368,15 +390,14 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
 
 /** The same pending state for a text-only section, which has no icon to swap. */
 function NavPending() {
-  const { pending } = useLinkStatus();
-  return pending ? <NavSpinner className="ml-auto" /> : null;
+  return useSlowPending() ? <NavSpinner className="ml-auto" /> : null;
 }
 
 function NavSpinner({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "flex size-4 shrink-0 animate-in items-center justify-center delay-150 fill-mode-both fade-in",
+        "flex size-4 shrink-0 animate-in items-center justify-center fade-in",
         className,
       )}
     >
