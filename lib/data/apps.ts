@@ -36,12 +36,8 @@ import {
   requireTeamWide,
 } from "../membership";
 import {
-  composeBuildReachesHost,
-  composeJoinsForeignNetwork,
   composeClaimsReservedName,
-  composeHasHostBindMount,
-  composeMountsForeignStorage,
-  composeNeedsHostPrivileges,
+  composeHostReach,
   composeOwnVolumeKeys,
   composePublishesPorts,
   composeUsesExternalMerge,
@@ -798,16 +794,8 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // So does anything else that takes a service out of its sandbox (`privileged`,
   // `cap_add`, `devices`, `pid: host`, …): they reach the host WITHOUT naming a
   // path, so the bind-mount check alone let the same grant be walked around.
-  if (
-    input.compose != null &&
-    (composeHasHostBindMount(input.compose) ||
-      composeNeedsHostPrivileges(input.compose) ||
-      composeMountsForeignStorage(input.compose) ||
-      composeBuildReachesHost(input.compose) ||
-      composeJoinsForeignNetwork(input.compose))
-  ) {
-    await requireMountHostVolumes();
-  }
+  const reach = input.compose != null ? composeHostReach(input.compose) : [];
+  if (reach.length > 0) await requireMountHostVolumes(reach.join(", "));
   // A service that would claim one of Deplo's own DNS names on the shared
   // network. Refused early so the editor says it, rather than at deploy time
   // where `buildComposeStack` makes the same check against the final wiring.
@@ -1422,16 +1410,9 @@ export async function updateAppSource(
   // Saving compose YAML that bind-mounts a host path requires the host grant,
   // and so does asking for host privileges (`privileged`, `cap_add`, `devices`,
   // `pid: host`, …), which reach the host without naming a path at all.
-  if (
-    input.compose != null &&
-    (composeHasHostBindMount(input.compose) ||
-      composeNeedsHostPrivileges(input.compose) ||
-      composeMountsForeignStorage(input.compose) ||
-      composeBuildReachesHost(input.compose) ||
-      composeJoinsForeignNetwork(input.compose))
-  ) {
-    await requireMountHostVolumes();
-  }
+  const editReach =
+    input.compose != null ? composeHostReach(input.compose) : [];
+  if (editReach.length > 0) await requireMountHostVolumes(editReach.join(", "));
   // A service that would claim one of Deplo's own DNS names on the shared
   // network. Refused early so the editor says it, rather than at deploy time
   // where `buildComposeStack` makes the same check against the final wiring.
@@ -2116,8 +2097,8 @@ export async function updateAppLogo(
 
 /**
  * Why detection came up empty, in the terms of where it actually looked. A
- * compose app is read twice - its own files AND the icon the running app serves
- *, so telling that user we found "no file named favicon" would describe half
+ * compose app is read twice - its own files AND the icon the running app serves,
+ * so telling that user we found "no file named favicon" would describe half
  * the search and point them at the wrong thing to fix.
  */
 function noIconFoundMessage(

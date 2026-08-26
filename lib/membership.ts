@@ -543,11 +543,16 @@ export async function canMountHostVolumes(): Promise<boolean> {
 }
 
 /** Throwing variant - gate any host bind mount behind this. */
-export async function requireMountHostVolumes(): Promise<{ userId: string }> {
+export async function requireMountHostVolumes(
+  /** What asked for it, when it was not a Bind. See `composeHostReach`. */
+  reach?: string,
+): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!(await hasGrant(user, "canMountHostVolumes")))
     throw new Error(
-      "You don't have permission to add a Bind (a folder on the server)",
+      reach
+        ? `You don't have permission to let an app reach the server, and this one uses ${reach}. An admin turns it on with "Bind server folders" in Settings -> Users.`
+        : "You don't have permission to add a Bind (a folder on the server)",
     );
   return { userId: user.id };
 }
