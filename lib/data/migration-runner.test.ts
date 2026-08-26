@@ -39,7 +39,7 @@ after(async () => {
 
 beforeEach(async () => {
   __resetLocalLeases();
-  await harness.db.execute("delete from dokploy_imports;");
+  await harness.db.execute("delete from migration_runs;");
 });
 
 /** A run the tick will pick up and drive. With no `actor_user_id` it fails on
@@ -52,7 +52,7 @@ async function seedRun(id: string): Promise<string> {
      on conflict (id) do nothing;`,
   );
   await harness.db.execute(
-    `insert into dokploy_imports
+    `insert into migration_runs
        (id, team_id, source_url, actor, status, created, skipped, failed, manual,
         started_at, api_key_enc, total_steps, done_steps, phase)
      values ('${id}', 'team_r', 'https://dokploy.example', 'tester', 'running', 0, 0, 0, 0,
@@ -63,7 +63,7 @@ async function seedRun(id: string): Promise<string> {
 
 async function statusOf(id: string): Promise<string> {
   const r = await harness.db.execute(
-    `select status from dokploy_imports where id = '${id}'`,
+    `select status from migration_runs where id = '${id}'`,
   );
   return String((r.rows[0] as { status: string }).status);
 }

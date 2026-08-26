@@ -2608,29 +2608,29 @@ export const rateLimits = pgTable(
 );
 
 /* ================================================================== */
-/* Dokploy import                                                      */
+/* Migration                                                           */
 /* ================================================================== */
 
 /**
- * One run of the Dokploy importer - the report, kept. Shaped like {@link
+ * One run of the importer - the report, kept. Shaped like {@link
  * dockerCleanupRuns} because it is the same kind of object: a long operation whose
  * outcome outlives the tab that started it.
  */
 /**
  * Where Deplo dials a machine it imports FROM, remembered across attempts. Keyed
- * by the SOURCE because that is what it is about - this Dokploy, this machine of
+ * by the SOURCE because that is what it is about - this panel, this machine of
  * it, is reached here.
  */
 /**
  * What a person chose to migrate, so the runner can carry it out without them.
  */
-export const dokployRunTargets = pgTable(
-  "dokploy_run_targets",
+export const migrationRunTargets = pgTable(
+  "migration_run_targets",
   {
     id: text("id").primaryKey(),
     runId: text("run_id")
       .notNull()
-      .references(() => dokployImports.id, { onDelete: "cascade" }),
+      .references(() => migrationRuns.id, { onDelete: "cascade" }),
     seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
     projectId: text("project_id").notNull(),
     /** Shown while the run works through it; the API is not re-read for a name. */
@@ -2649,32 +2649,32 @@ export const dokployRunTargets = pgTable(
     /** `'pending'` | `'done'` | `'failed'`. */
     state: text("state").notNull().default("pending"),
   },
-  (t) => [index("dokploy_run_targets_run_idx").on(t.runId, t.seq)],
+  (t) => [index("migration_run_targets_run_idx").on(t.runId, t.seq)],
 );
 
-/** Which Deplo server a whole Dokploy machine's services land on - the fallback
- *  under the per-service placement. `fromId` is `''` for Dokploy's own host. */
-export const dokployRunServers = pgTable(
-  "dokploy_run_servers",
+/** Which Deplo server a whole source machine's services land on - the fallback
+ *  under the per-service placement. `fromId` is `''` for the panel's own host. */
+export const migrationRunServers = pgTable(
+  "migration_run_servers",
   {
     runId: text("run_id")
       .notNull()
-      .references(() => dokployImports.id, { onDelete: "cascade" }),
+      .references(() => migrationRuns.id, { onDelete: "cascade" }),
     fromId: text("from_id").notNull(),
     toId: text("to_id").notNull(),
   },
   (t) => [primaryKey({ columns: [t.runId, t.fromId] })],
 );
 
-export const dokploySourceAddresses = pgTable(
-  "dokploy_source_addresses",
+export const migrationSourceAddresses = pgTable(
+  "migration_source_addresses",
   {
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
     /** The panel origin, normalised: no trailing slash, no `/api`. */
     sourceUrl: text("source_url").notNull(),
-    /** Dokploy's machine id; `''` is the host Dokploy runs on. */
+    /** The panel's machine id; `''` is the host the panel runs on. */
     sourceId: text("source_id").notNull(),
     /** What Deplo dials: an IP, or a name that points straight at the machine. */
     address: text("address").notNull(),
@@ -2683,8 +2683,8 @@ export const dokploySourceAddresses = pgTable(
   (t) => [primaryKey({ columns: [t.teamId, t.sourceUrl, t.sourceId] })],
 );
 
-export const dokployImports = pgTable(
-  "dokploy_imports",
+export const migrationRuns = pgTable(
+  "migration_runs",
   {
     id: text("id").primaryKey(),
     seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
@@ -2693,8 +2693,15 @@ export const dokployImports = pgTable(
       .references(() => teams.id, { onDelete: "cascade" }),
     /** Origin of the source instance, no key, no path. */
     sourceUrl: text("source_url").notNull(),
-    /** The Dokploy organization the key read, when it would say. */
+    /** The source team or organization the token read, when it would say. */
     orgName: text("org_name"),
+    /**
+     * `'dokploy'` | `'coolify'` - which product this run read. Decided once at
+     * Connect and never re-derived: the runner resumes hours later from this row,
+     * and a detection that answered differently would point the data cutover at
+     * the wrong API.
+     */
+    platform: text("platform").notNull().default("dokploy"),
     actor: text("actor").notNull(),
     /** `'running'` | `'done'` | `'failed'`. */
     status: text("status").notNull(),
@@ -2706,7 +2713,7 @@ export const dokployImports = pgTable(
     startedAt: isoTimestamptz("started_at").notNull(),
     finishedAt: isoTimestamptz("finished_at"),
     /**
-     * The Dokploy API key, encrypted, for as long as the run needs it - and NULL
+     * The source panel's API token, encrypted, for as long as the run needs it - NULL
      * the moment it leaves `running`. A deliberate reversal of "the key is never
      * stored".
      */
@@ -2738,7 +2745,7 @@ export const dokployImports = pgTable(
     actorUserId: text("actor_user_id"),
   },
   (t) => [
-    index("dokploy_imports_team_started_idx").on(
+    index("migration_runs_team_started_idx").on(
       t.teamId,
       t.startedAt.desc(),
       t.seq.desc(),
@@ -2751,24 +2758,24 @@ export const dokployImports = pgTable(
  * imported with something left to do by hand. A LIST under a run, so a child table
  * (never a JSONB column).
  */
-export const dokployImportItems = pgTable(
-  "dokploy_import_items",
+export const migrationRunItems = pgTable(
+  "migration_run_items",
   {
     id: text("id").primaryKey(),
     runId: text("run_id")
       .notNull()
-      .references(() => dokployImports.id, { onDelete: "cascade" }),
+      .references(() => migrationRuns.id, { onDelete: "cascade" }),
     seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
-    /** `Project / Environment / service`, as the user saw it on Dokploy. */
+    /** `Project / Environment / service`, as the user saw it on the panel. */
     path: text("path").notNull(),
-    /** What it was on Dokploy: `application` | `compose` | `postgres` | `domain` | ... */
+    /** What it was over there: `application` | `compose` | `postgres` | `domain` | ... */
     sourceKind: text("source_kind").notNull(),
     sourceName: text("source_name").notNull(),
     /** When it happened. A report read afterwards is a list; read WHILE it runs
      *  it is a log, and a log with no times is not one. */
     at: isoTimestamptz("at"),
     /**
-     * The Dokploy service id this row came from, when the row IS a service. Null
+     * The source service id this row came from, when the row IS a service. Null
      * on the rows that are not a service (a project, a domain, a note) and on
      * every row written before it existed.
      */
@@ -2780,5 +2787,5 @@ export const dokployImportItems = pgTable(
     targetId: text("target_id"),
     message: text("message"),
   },
-  (t) => [index("dokploy_import_items_run_idx").on(t.runId, t.seq)],
+  (t) => [index("migration_run_items_run_idx").on(t.runId, t.seq)],
 );

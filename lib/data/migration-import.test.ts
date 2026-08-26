@@ -20,8 +20,8 @@ import {
   appVolumes as appVolumesTable,
   apps as appsTable,
   databases as databasesTable,
-  dokployImportItems as itemsTable,
-  dokployImports as runsTable,
+  migrationRunItems as itemsTable,
+  migrationRuns as runsTable,
   domains as domainsTable,
   envVars as envVarsTable,
   projects as projectsTable,
@@ -322,7 +322,7 @@ beforeEach(async () => {
   await settleProvisioning(db);
   await db.execute(TRUNCATE_PROJECT_GRAPH);
   await db.execute(TRUNCATE_IDENTITY);
-  await db.execute("truncate table dokploy_imports cascade;");
+  await db.execute("truncate table migration_runs cascade;");
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -1519,7 +1519,7 @@ test("the wizard opens on the run you left, until you close its report", async (
 test("a teammate opens on the run in flight, but not on somebody else's report", async () => {
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await db.execute(
-    `update dokploy_imports set actor_user_id = 'someone_else' where id = '${runId}'`,
+    `update migration_runs set actor_user_id = 'someone_else' where id = '${runId}'`,
   );
 
   // Running: it is the TEAM's, and everybody who may open the page gets the same
@@ -1535,7 +1535,7 @@ test("a teammate opens on the run in flight, but not on somebody else's report",
   // otherwise be handed somebody else's report to dismiss - History is where
   // they read it.
   await db.execute(
-    `update dokploy_imports set status = 'done' where id = '${runId}'`,
+    `update migration_runs set status = 'done' where id = '${runId}'`,
   );
   assert.equal(
     await asOwner(() => resumableMigration()),

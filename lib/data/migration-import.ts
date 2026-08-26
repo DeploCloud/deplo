@@ -20,9 +20,9 @@ import { getDb } from "../db/client";
 import {
   apps as appsTable,
   databases as databasesTable,
-  dokployImportItems as itemsTable,
-  dokployImports as runsTable,
-  dokploySourceAddresses as sourceAddressesTable,
+  migrationRunItems as itemsTable,
+  migrationRuns as runsTable,
+  migrationSourceAddresses as sourceAddressesTable,
   domains as domainsTable,
   environments as environmentsTable,
   projects as projectsTable,
@@ -1388,7 +1388,7 @@ class Report {
     sourceKind: string;
     sourceName: string;
     /** The Dokploy service id, when this row IS a service. What the data cutover
-     *  pairs on - see `dokploy_import_items.source_id`. */
+     *  pairs on - see `migration_run_items.source_id`. */
     sourceId?: string | null;
     outcome: "created" | "skipped" | "failed" | "manual" | "unsupported";
     targetKind?: string | null;

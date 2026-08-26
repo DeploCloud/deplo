@@ -883,6 +883,13 @@
       "when": 1784942207006,
       "tag": "0125_app_console_enabled",
       "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1784942208006,
+      "tag": "0126_migration_tables",
+      "breakpoints": true
     }
   ]
 }

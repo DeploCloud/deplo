@@ -35,7 +35,7 @@ import {
   __resetDokployFetchForTest,
 } from "../migration/dokploy/client";
 import {
-  dokployImportItems as itemsTable,
+  migrationRunItems as itemsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
@@ -432,7 +432,7 @@ after(async () => {
 beforeEach(async () => {
   await db.execute(TRUNCATE_PROJECT_GRAPH);
   await db.execute(TRUNCATE_IDENTITY);
-  await db.execute("truncate table dokploy_imports cascade;");
+  await db.execute("truncate table migration_runs cascade;");
   await db.execute("truncate table projects, environments cascade;");
   await db.execute("truncate table databases cascade;");
   await seedIdentity(db);
@@ -762,7 +762,7 @@ test("a source volume that is not on that host wipes nothing and is not a copy",
     "a destination must never be emptied before the source has proven it has data",
   );
   const rows = await db.execute(
-    `select outcome, message from dokploy_import_items where run_id = '${runId}' and source_kind = 'volume'`,
+    `select outcome, message from migration_run_items where run_id = '${runId}' and source_kind = 'volume'`,
   );
   assert.equal(rows.rows[0].outcome, "skipped");
   assert.match(String(rows.rows[0].message), /holds nothing on Dokploy/);
@@ -786,7 +786,7 @@ test("a volume a never-started service has not created yet is not a loss", async
   assert.equal(res.failed, 0, "nothing was lost, so nothing failed");
 
   const rows = await db.execute(
-    `select outcome, message from dokploy_import_items where run_id = '${runId}' and source_kind = 'volume' and source_name = 'blink-web-abc_uploads'`,
+    `select outcome, message from migration_run_items where run_id = '${runId}' and source_kind = 'volume' and source_name = 'blink-web-abc_uploads'`,
   );
   assert.equal(rows.rows[0].outcome, "skipped");
   assert.match(String(rows.rows[0].message), /was never started there/);
@@ -970,7 +970,7 @@ test("a database with nothing to copy is left RUNNING, not stopped", async () =>
   assert.equal(rows.rows[0].data_copy_error, "");
 
   const items = await db.execute(
-    `select message from dokploy_import_items where run_id = '${runId}' order by seq`,
+    `select message from migration_run_items where run_id = '${runId}' order by seq`,
   );
   const messages = items.rows.map((r) => String(r.message ?? ""));
   assert.ok(
@@ -1010,7 +1010,7 @@ test("a copied database is started again and checked, and the report says what l
   assert.ok(agentCalls.includes(`${SERVER_1}:start:db-blink-db`));
 
   const items = await db.execute(
-    `select outcome, message from dokploy_import_items where run_id = '${runId}' order by seq`,
+    `select outcome, message from migration_run_items where run_id = '${runId}' order by seq`,
   );
   const messages = items.rows.map((r) => String(r.message ?? ""));
   // The size is IN the report. A copy that says only "Copied" is exactly what a
@@ -1089,7 +1089,7 @@ test("a bind mount's host directory is copied too, and says it is a directory", 
     Buffer.alloc(2048, 5),
   );
   const items = await db.execute(
-    `select message from dokploy_import_items where run_id = '${runId}' and message like '%host directory%'`,
+    `select message from migration_run_items where run_id = '${runId}' and message like '%host directory%'`,
   );
   assert.equal(
     items.rows.length,
@@ -1123,7 +1123,7 @@ test("a host directory already on this machine is not copied over itself", async
     "a directory must never be emptied to restore itself",
   );
   const items = await db.execute(
-    `select message from dokploy_import_items where run_id = '${runId}' and message like '%already on this machine%'`,
+    `select message from migration_run_items where run_id = '${runId}' and message like '%already on this machine%'`,
   );
   assert.equal(items.rows.length, 1);
 });

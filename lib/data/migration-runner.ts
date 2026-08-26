@@ -4,9 +4,9 @@ import { and, asc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
-  dokployImports as runsTable,
-  dokployRunServers as runServersTable,
-  dokployRunTargets as targetsTable,
+  migrationRuns as runsTable,
+  migrationRunServers as runServersTable,
+  migrationRunTargets as targetsTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { MIGRATION_HEARTBEAT_STALE_MS } from "../types";
@@ -486,7 +486,7 @@ async function pendingGroups(runId: string): Promise<ProjectGroup[]> {
     g.serviceIds.push(r.serviceId);
     // Only a placement with a server is one: `serverId` is what a placement IS,
     // and the per-service map is optional - anything without one falls back to
-    // the machine-wide choice in `dokploy_run_servers`.
+    // the machine-wide choice in `migration_run_servers`.
     if (r.serverId)
       g.placements.push({
         serviceId: r.serviceId,

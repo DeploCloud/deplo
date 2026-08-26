@@ -106,15 +106,15 @@ const CONTROL_PLANE = [
   // import from Dokploy - one run per import plus its report lines, team-scoped and
   // kept: "what came over from the old platform, and what did not" has to be
   // answerable after the tab that started it is gone.
-  "dokploy_imports",
-  "dokploy_import_items",
+  "migration_runs",
+  "migration_run_items",
   // Where a machine of a given Dokploy is actually REACHED, remembered across
   // attempts.
-  "dokploy_source_addresses",
+  "migration_source_addresses",
   // What a person chose to migrate, and where each Dokploy machine lands. Read
   // by the RUNNER, which finishes the job after the tab that started it is gone.
-  "dokploy_run_targets",
-  "dokploy_run_servers",
+  "migration_run_targets",
+  "migration_run_servers",
   // rate limiting - durable fixed-window counters for login, the two-factor challenge
   // and the register link.
   "rate_limits",

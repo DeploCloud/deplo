@@ -7,7 +7,7 @@ import {
   appVolumes as appVolumesTable,
   apps as appsTable,
   databases as databasesTable,
-  dokployImportItems as itemsTable,
+  migrationRunItems as itemsTable,
 } from "../db/schema/control-plane";
 import { formatBytes, mapLimit } from "../utils";
 import { nowIso } from "../ids";
