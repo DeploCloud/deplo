@@ -43,6 +43,7 @@ export function CreateDatabase({
   canCreate,
   canExposePorts = false,
   autoOpen = false,
+  size = "default",
 }: {
   servers: { id: string; name: string }[];
   /**
@@ -61,6 +62,8 @@ export function CreateDatabase({
    * server is provisioned yet, since the form can't be submitted anyway.
    */
   autoOpen?: boolean;
+  /** `sm` outside a toolbar; `default` next to an input, which is h-9. */
+  size?: "sm" | "default";
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(
@@ -216,14 +219,14 @@ export function CreateDatabase({
             // span to keep the tooltip reachable. No DialogTrigger here means a
             // click can never open the dialog while it is blocked.
             <span tabIndex={0}>
-              <Button size="sm" disabled>
+              <Button size={size} disabled>
                 <Plus className="size-4" />
                 New Database
               </Button>
             </span>
           ) : (
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size={size}>
                 <Plus className="size-4" />
                 New Database
               </Button>

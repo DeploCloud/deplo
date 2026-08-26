@@ -49,9 +49,13 @@ export default function Loading() {
 
         {/* Databases tab body (default) */}
         <div className="mt-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-4 w-80" />
-            <Skeleton className="h-8 w-32 rounded-md" />
+          {/* ListToolbar: search · engine · status · view toggle · create */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Skeleton className="h-9 flex-1 rounded-md" />
+            <Skeleton className="h-9 w-full rounded-md sm:w-40" />
+            <Skeleton className="h-9 w-full rounded-md sm:w-36" />
+            <Skeleton className="hidden h-9 w-[74px] rounded-lg sm:block" />
+            <Skeleton className="h-9 w-full rounded-md sm:w-36" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

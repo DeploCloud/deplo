@@ -115,6 +115,9 @@ export interface BackupDTO extends Backup {
   databaseName: string | null;
   serviceName: string | null;
   destinationName: string;
+  /** Size of the newest artifact this schedule still holds, so a card can say how
+   *  big a backup actually is. Null until one succeeds. */
+  lastSizeBytes: number | null;
   /** The server the backed-up app/database runs on, so the edit dialog can flag
    *  a destination sitting on that same disk. Null if the target is gone. */
   targetServerId: string | null;
@@ -171,12 +174,16 @@ async function destinationNameFor(id: string, teamId: string): Promise<string> {
   return rows[0]?.name ?? "";
 }
 
-async function toDTO(b: Backup): Promise<BackupDTO> {
+async function toDTO(
+  b: Backup,
+  lastSizeBytes: number | null = null,
+): Promise<BackupDTO> {
   // Every related collection is relational now: the database/destination names by
   // point lookup, the project name via the project graph (cut-set c).
   const app = b.appId ? await loadAppGraph(b.appId) : null;
   return {
     ...b,
+    lastSizeBytes,
     databaseName: await databaseNameFor(b.databaseId, b.teamId),
     serviceName: app?.name ?? null,
     destinationName: await destinationNameFor(b.destinationId, b.teamId),
@@ -200,7 +207,39 @@ export async function listBackups(): Promise<BackupDTO[]> {
   // database schedule belongs to no Project, and an app outside the scope is
   // invisible to it everywhere else too.
   const scoped = await filterBackupsToScope(rows.map(assembleBackup));
-  return Promise.all(scoped.map((b) => toDTO(b)));
+  const sizes = await newestArtifactSizes(
+    teamId,
+    scoped.map((b) => b.id),
+  );
+  return Promise.all(scoped.map((b) => toDTO(b, sizes.get(b.id) ?? null)));
+}
+
+/**
+ * The newest surviving artifact of each schedule, in one read. Ranked on `seq`
+ * rather than `finished_at`, which is nullable.
+ */
+async function newestArtifactSizes(
+  teamId: string,
+  ids: string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const rows = await getDb()
+    .selectDistinctOn([backupRunsTable.backupId], {
+      backupId: backupRunsTable.backupId,
+      sizeBytes: backupRunsTable.sizeBytes,
+    })
+    .from(backupRunsTable)
+    .where(
+      and(
+        eq(backupRunsTable.teamId, teamId),
+        eq(backupRunsTable.status, "success"),
+        inArray(backupRunsTable.backupId, ids),
+      ),
+    )
+    .orderBy(backupRunsTable.backupId, desc(backupRunsTable.seq));
+  for (const r of rows) if (r.backupId) out.set(r.backupId, r.sizeBytes);
+  return out;
 }
 
 /** Drop the schedules a project-scoped caller can't reach. Inert when unscoped. */

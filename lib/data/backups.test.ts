@@ -35,6 +35,7 @@ import {
   deleteBackupRun,
   downloadBackupArtifact,
   listBackupRuns,
+  listBackups,
   reconcileInFlightBackupRuns,
   runBackup,
   runDatabaseBackup,
@@ -921,5 +922,50 @@ test("stopping a backup needs manage_backups", async () => {
   await asUser1(async () => {
     const [run] = await listBackupRuns({ appId: "prj_1" });
     assert.equal(run!.status, "running");
+  });
+});
+
+test("listBackups carries the size of the newest artifact each schedule still holds", async () => {
+  // The card leads with the last outcome and how big it was. Ranked on `seq`,
+  // which the DB assigns in insert order - `finished_at` is nullable.
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
+  await seedBackup(db, {
+    id: "bkp_2",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
+  await seedRun(db, {
+    id: "r_old",
+    backupId: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    sizeBytes: 1024,
+  });
+  await seedRun(db, {
+    id: "r_new",
+    backupId: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    sizeBytes: 4096,
+  });
+  // A failed run left no file, so it must not become the reported size.
+  await seedRun(db, {
+    id: "r_bad",
+    backupId: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    sizeBytes: 9999,
+    status: "failed",
+  });
+
+  await asUser1(async () => {
+    const byId = new Map((await listBackups()).map((b) => [b.id, b]));
+    assert.equal(byId.get("bkp_1")!.lastSizeBytes, 4096);
+    // Never run: null, not zero - "no backup yet" is not "an empty backup".
+    assert.equal(byId.get("bkp_2")!.lastSizeBytes, null);
   });
 });

@@ -24,28 +24,19 @@ import {
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { CreateDatabase } from "@/components/storage/create-database";
 import { DatabaseGraphic } from "@/components/storage/database-graphic";
 import { DestinationGraphic } from "@/components/storage/destination-graphic";
 import { BackupScheduleGraphic } from "@/components/storage/backup-schedule-graphic";
 import { DatabasesGrid } from "@/components/storage/databases-grid";
 import { CreateDestination } from "@/components/storage/create-destination";
-import { DestinationCard } from "@/components/storage/destination-card";
+import { DestinationsView } from "@/components/storage/destinations-view";
 import { CreateBackup } from "@/components/storage/create-backup";
-import { BackupRow } from "@/components/storage/backup-row";
+import { BackupsView } from "@/components/storage/backups-view";
 import {
-  PendingCards,
   PendingCreateProvider,
   PendingList,
 } from "@/components/shared/pending-create";
-import { OptimisticList } from "@/components/shared/optimistic-list";
 
 export const metadata = { title: "Storage" };
 
@@ -148,6 +139,32 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     .filter((s) => Boolean(s.agent?.certFingerprint) && !s.importOnly)
     .map((s) => ({ id: s.id, name: s.name, storageOnly: s.storageOnly }));
 
+  // Named once: the schedule dialog appears both in the toolbar and in the empty
+  // state, and only one of the two is ever on screen.
+  const createBackupProps = {
+    databases: databases.map((d) => ({
+      id: d.id,
+      name: d.name,
+      // The engine under the name, and the second thing the picker's search
+      // matches on.
+      detail: d.type,
+      type: d.type,
+      logo: d.logo,
+      serverId: d.serverId,
+    })),
+    services: services.map((p) => ({
+      id: p.id,
+      name: p.name,
+      detail: p.slug,
+      logo: p.logo,
+      serverId: p.serverId,
+    })),
+    destinations: destinations.map(toDestinationOption),
+    canCreate: canManageBackups,
+    canTestDestinations: canManageDestinations,
+    autoOpen: autoOpenBackup,
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -186,18 +203,6 @@ export default async function StoragePage(props: PageProps<"/storage">) {
            * takes over and reports provisioning live.
            */}
           <PendingCreateProvider count={databases.length}>
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                PostgreSQL, MySQL, MongoDB, Redis and more provisioned on your
-                servers.
-              </p>
-              <CreateDatabase
-                servers={dbServers}
-                canCreate={canCreateDatabase}
-                canExposePorts={mayExposePorts}
-                autoOpen={autoOpenDatabase}
-              />
-            </div>
             <PendingList
               empty={databases.length === 0}
               emptyState={
@@ -205,13 +210,25 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                   graphic={<DatabaseGraphic />}
                   title="No databases yet"
                   docs="databases.overview"
-                  // No button: the heading row above carries Create database
-                  // already. When the actor cannot create one, say which
+                  // The toolbar that carries Create database is hidden while the
+                  // list is empty, so the button lives here instead - exactly one
+                  // at any moment. When the actor cannot create one, say which
                   // permission is missing rather than leaving them guessing.
                   description={
                     canCreateDatabase
                       ? "Create a managed database to connect to your apps."
                       : "You don't have permission to create databases. Ask a team admin for the “Create databases” permission."
+                  }
+                  action={
+                    canCreateDatabase ? (
+                      <CreateDatabase
+                        servers={dbServers}
+                        canCreate={canCreateDatabase}
+                        canExposePorts={mayExposePorts}
+                        autoOpen={autoOpenDatabase}
+                        size="sm"
+                      />
+                    ) : undefined
                   }
                 />
               }
@@ -229,6 +246,14 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 canReveal={canManageDatabases}
                 canControl={canControlDatabases}
                 canDelete={canDeleteDatabases}
+                createButton={
+                  <CreateDatabase
+                    servers={dbServers}
+                    canCreate={canCreateDatabase}
+                    canExposePorts={mayExposePorts}
+                    autoOpen={autoOpenDatabase}
+                  />
+                }
               />
             </PendingList>
           </PendingCreateProvider>
@@ -240,18 +265,6 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               in the grid while it is verified. Its own provider, so a pending
               database never leaks into this grid. */}
           <PendingCreateProvider count={destinations.length}>
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Keep backups on one of your servers, or in any S3-compatible
-                bucket.
-              </p>
-              <CreateDestination
-                canCreate={canManageDestinations}
-                servers={destinationServers}
-                isInstanceAdmin={mayUseCustomPath}
-                autoOpen={wantsDestination}
-              />
-            </div>
             <PendingList
               empty={destinations.length === 0}
               emptyState={
@@ -259,112 +272,78 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                   graphic={<DestinationGraphic />}
                   title="No backup destinations"
                   docs="backups.destinations"
-                  // No button: the heading row above carries Add destination
-                  // already.
+                  // The toolbar that carries Add destination is hidden while the
+                  // list is empty, so the button lives here instead.
                   description={
                     canManageDestinations
                       ? "Pick a server to keep backups on, or connect an S3 bucket."
                       : "You don't have permission to add backup destinations. Ask a team admin for the “Manage backup destinations” permission."
                   }
+                  action={
+                    canManageDestinations ? (
+                      <CreateDestination
+                        canCreate={canManageDestinations}
+                        servers={destinationServers}
+                        isInstanceAdmin={mayUseCustomPath}
+                        autoOpen={wantsDestination}
+                        size="sm"
+                      />
+                    ) : undefined
+                  }
                 />
               }
             >
-              <div className="grid gap-4 md:grid-cols-2">
-                {/* Removing one takes its card off the grid on the click; the
-                    row is dropped server-side before the artifacts are swept. */}
-                <OptimisticList>
-                  {destinations.map((dest) => (
-                    <DestinationCard
-                      key={dest.id}
-                      dest={{
-                        ...dest,
-                        where: destinationWhere(dest),
-                        freeBytes: dest.lastFreeBytes,
-                        totalBytes: dest.lastTotalBytes,
-                        encrypted: Boolean(dest.ageRecipient),
-                      }}
-                      canManage={canManageDestinations}
-                    />
-                  ))}
-                </OptimisticList>
-                <PendingCards />
-              </div>
+              <DestinationsView
+                destinations={destinations.map((dest) => ({
+                  ...dest,
+                  where: destinationWhere(dest),
+                  freeBytes: dest.lastFreeBytes,
+                  totalBytes: dest.lastTotalBytes,
+                  encrypted: Boolean(dest.ageRecipient),
+                }))}
+                canManage={canManageDestinations}
+                createButton={
+                  <CreateDestination
+                    canCreate={canManageDestinations}
+                    servers={destinationServers}
+                    isInstanceAdmin={mayUseCustomPath}
+                    autoOpen={wantsDestination}
+                  />
+                }
+              />
             </PendingList>
           </PendingCreateProvider>
         </TabsContent>
 
         {/* Backups */}
         <TabsContent value="backups" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Scheduled backups of your databases and apps.
-            </p>
-            <CreateBackup
-              databases={databases.map((d) => ({
-                id: d.id,
-                name: d.name,
-                // The engine under the name, and the second thing the picker's
-                // search matches on.
-                detail: d.type,
-                type: d.type,
-                logo: d.logo,
-                serverId: d.serverId,
-              }))}
-              services={services.map((p) => ({
-                id: p.id,
-                name: p.name,
-                detail: p.slug,
-                logo: p.logo,
-                serverId: p.serverId,
-              }))}
-              destinations={destinations.map(toDestinationOption)}
-              canCreate={canManageBackups}
-              canTestDestinations={canManageDestinations}
-              autoOpen={autoOpenBackup}
-            />
-          </div>
           {backups.length === 0 ? (
             <EmptyState
               graphic={<BackupScheduleGraphic />}
               title="No backups scheduled"
               docs="backups.schedule"
+              // The toolbar that carries Schedule backup is hidden while the list
+              // is empty, so the button lives here instead.
               description={
                 canManageBackups
                   ? "Schedule automatic backups of your databases and apps."
                   : "You don't have permission to schedule backups. Ask a team admin for the “Manage backups” permission."
               }
+              action={
+                canManageBackups ? (
+                  <CreateBackup {...createBackupProps} size="sm" />
+                ) : undefined
+              }
             />
           ) : (
-            <div className="rounded-xl border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Target</TableHead>
-                    <TableHead>Destination</TableHead>
-                    <TableHead>Schedule</TableHead>
-                    <TableHead>Retention</TableHead>
-                    <TableHead>Last run</TableHead>
-                    <TableHead>Enabled</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <OptimisticList>
-                    {backups.map((b) => (
-                      <BackupRow
-                        key={b.id}
-                        backup={b}
-                        destinations={destinations.map(toDestinationOption)}
-                        canManage={canManageBackups}
-                        canRestore={canRestoreBackups}
-                        canTestDestinations={canManageDestinations}
-                      />
-                    ))}
-                  </OptimisticList>
-                </TableBody>
-              </Table>
-            </div>
+            <BackupsView
+              backups={backups}
+              destinations={destinations.map(toDestinationOption)}
+              canManage={canManageBackups}
+              canRestore={canRestoreBackups}
+              canTestDestinations={canManageDestinations}
+              createButton={<CreateBackup {...createBackupProps} />}
+            />
           )}
         </TabsContent>
       </Tabs>

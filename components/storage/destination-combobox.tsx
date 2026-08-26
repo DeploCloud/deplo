@@ -5,7 +5,7 @@ import { AlertTriangle, Cloud, Loader2, Server } from "lucide-react";
 
 import { Combobox } from "@/components/shared/combobox";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { gqlAction } from "@/lib/graphql-client";
+import { probeDestinations } from "@/lib/destination-probe";
 import type { DestinationStatus } from "@/lib/types";
 import type { DestinationOption } from "@/lib/data/destinations";
 
@@ -14,16 +14,6 @@ interface LiveStatus {
   status: DestinationStatus;
   error: string | null;
 }
-
-/**
- * Don't re-probe if one finished this recently. A per-instance guard meant every
- * picker on the page, and every reopened dialog, started its own round.
- */
-const PROBE_MIN_INTERVAL_MS = 30_000;
-
-/** Shared across every picker on the page - see above. */
-let lastProbeAt = 0;
-let probeInFlight = false;
 
 /**
  * Pick a backup destination by typing, with the list proving itself as it opens.
@@ -70,42 +60,22 @@ export function DestinationCombobox({
   /** Re-probe every destination and repaint the badges from the verdicts. */
   const probe = React.useCallback(() => {
     if (!canProbe) return;
-    if (probeInFlight) return;
-    if (Date.now() - lastProbeAt < PROBE_MIN_INTERVAL_MS) return;
-    probeInFlight = true;
     setProbing(true);
-    void gqlAction<
-      {
-        testDestinations: {
-          id: string;
-          status: DestinationStatus;
-          lastTestError: string | null;
-        }[];
-      },
-      { id: string; status: DestinationStatus; lastTestError: string | null }[]
-    >(
-      `mutation { testDestinations { id status lastTestError } }`,
-      {},
-      (d) => d.testDestinations,
-    )
-      .then((res) => {
-        // A failed call leaves the stored badges in place - opening a dropdown
-        // is not the place to raise an error the user did not ask for.
-        if (!res.ok || !res.data) return;
+    void probeDestinations()
+      .then((rows) => {
+        // A skipped or failed round leaves the stored badges in place - opening a
+        // dropdown is not the place to raise an error the user did not ask for.
+        if (!rows) return;
         setLive(
           Object.fromEntries(
-            res.data.map((d) => [
+            rows.map((d) => [
               d.id,
               { status: d.status, error: d.lastTestError },
             ]),
           ),
         );
       })
-      .finally(() => {
-        probeInFlight = false;
-        lastProbeAt = Date.now();
-        setProbing(false);
-      });
+      .finally(() => setProbing(false));
   }, [canProbe]);
 
   return (

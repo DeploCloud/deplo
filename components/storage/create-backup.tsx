@@ -100,6 +100,7 @@ export function CreateBackup({
   canCreate = true,
   canTestDestinations = false,
   autoOpen = false,
+  size = "default",
 }: {
   /** `serverId` is only used to flag a destination sitting on the target's own
    *  disk; leave it out and the picker simply says nothing. */
@@ -117,6 +118,8 @@ export function CreateBackup({
   /** Open on mount - used by the global "New ▸ Schedule backup" menu
    *  (which links to /storage?new=backup). */
   autoOpen?: boolean;
+  /** `sm` outside a toolbar; `default` next to an input, which is h-9. */
+  size?: "sm" | "default";
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen && canCreate);
@@ -233,14 +236,14 @@ export function CreateBackup({
             // span to keep the tooltip reachable. No DialogTrigger here means a
             // click can never open the dialog while it is blocked.
             <span tabIndex={0}>
-              <Button size="sm" disabled>
+              <Button size={size} disabled>
                 <Plus className="size-4" />
                 New Backup
               </Button>
             </span>
           ) : (
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size={size}>
                 <Plus className="size-4" />
                 New Backup
               </Button>

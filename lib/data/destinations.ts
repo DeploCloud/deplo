@@ -2,7 +2,7 @@ import "server-only";
 
 // https://deplo.build/docs/guides/data/backups-and-restore
 
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sum } from "drizzle-orm";
 
 import { listAllServers, listServersForCurrentTeam } from "./servers";
 import { getDb } from "../db/client";
@@ -59,6 +59,11 @@ export interface DestinationDTO extends Omit<
   accessKeyMasked: string | null;
   /** Name of the server holding the artifacts (`server` kind), for the card. */
   serverName: string | null;
+  /** Bytes of artifacts this destination holds right now. A pruned artifact takes
+   *  its run row with it, so a `success` row means the file is still there. */
+  storedBytes: number;
+  /** How many artifacts those bytes are. 0, never null: none is a count. */
+  storedCount: number;
 }
 
 /**
@@ -116,6 +121,7 @@ export function destinationWhere(d: DestinationDTO): string {
 function toDTO(
   d: BackupDestination,
   serverName: string | null,
+  stored: Stored = EMPTY_STORED,
 ): DestinationDTO {
   const { accessKeyEnc, secretKeyEnc, ageIdentityEnc, ...rest } = d;
   void secretKeyEnc;
@@ -124,8 +130,18 @@ function toDTO(
     ...rest,
     accessKeyMasked: accessKeyEnc ? "••••••••" : null,
     serverName,
+    storedBytes: stored.bytes,
+    storedCount: stored.count,
   };
 }
+
+/** What a destination holds, as {@link storedPerDestination} reports it. */
+interface Stored {
+  bytes: number;
+  count: number;
+}
+
+const EMPTY_STORED: Stored = { bytes: 0, count: 0 };
 
 export const S3_PROVIDERS: {
   id: S3Provider;
@@ -329,20 +345,67 @@ export async function listDestinations(): Promise<DestinationDTO[]> {
     .from(destTable)
     .where(eq(destTable.teamId, teamId))
     .orderBy(desc(destTable.createdAt));
-  return withServerNames(rows.map(assembleDestination));
+  const destinations = rows.map(assembleDestination);
+  return withServerNames(
+    destinations,
+    await storedPerDestination(
+      teamId,
+      destinations.map((d) => d.id),
+    ),
+  );
+}
+
+/**
+ * How much each destination holds, in one grouped read. `pruneRetention` deletes
+ * the run row with the artifact, so a `success` row is a file that still exists.
+ */
+async function storedPerDestination(
+  teamId: string,
+  ids: string[],
+): Promise<Map<string, Stored>> {
+  const out = new Map<string, Stored>();
+  if (ids.length === 0) return out;
+  const rows = await getDb()
+    .select({
+      destinationId: backupRunsTable.destinationId,
+      bytes: sum(backupRunsTable.sizeBytes),
+      runs: count(),
+    })
+    .from(backupRunsTable)
+    .where(
+      and(
+        eq(backupRunsTable.teamId, teamId),
+        eq(backupRunsTable.status, "success"),
+        inArray(backupRunsTable.destinationId, ids),
+      ),
+    )
+    .groupBy(backupRunsTable.destinationId);
+  for (const r of rows) {
+    // `sum` comes back as a string (bigint), and as null for a group of NULLs.
+    out.set(r.destinationId, {
+      bytes: Number(r.bytes ?? 0),
+      count: Number(r.runs ?? 0),
+    });
+  }
+  return out;
 }
 
 /** Attach each `server` destination's host name in one lookup, not N. */
 async function withServerNames(
   destinations: BackupDestination[],
+  stored: Map<string, Stored> = new Map(),
 ): Promise<DestinationDTO[]> {
   if (!destinations.some((d) => d.serverId)) {
-    return destinations.map((d) => toDTO(d, null));
+    return destinations.map((d) => toDTO(d, null, stored.get(d.id)));
   }
   const servers = await listAllServers();
   const byId = new Map(servers.map((s) => [s.id, serverLabel(s)]));
   return destinations.map((d) =>
-    toDTO(d, d.serverId ? (byId.get(d.serverId) ?? null) : null),
+    toDTO(
+      d,
+      d.serverId ? (byId.get(d.serverId) ?? null) : null,
+      stored.get(d.id),
+    ),
   );
 }
 
@@ -765,9 +828,12 @@ async function probeAndRecord(
       lastTestError: ok ? null : error || "The destination probe failed.",
       lastTestServerId: serverId,
       lastTestMs: durationMs,
-      lastFreeBytes: freeBytes,
-      lastTotalBytes: totalBytes,
-      resolvedPath,
+      // A probe that could not reach the host measured nothing, and nothing is
+      // not zero: keep the last real figures so an unreachable destination still
+      // says how full it was, rather than losing its folder and its bar.
+      lastFreeBytes: freeBytes ?? d.lastFreeBytes,
+      lastTotalBytes: totalBytes ?? d.lastTotalBytes,
+      resolvedPath: resolvedPath ?? d.resolvedPath,
     })
     .where(and(eq(destTable.id, id), eq(destTable.teamId, teamId)))
     .returning();

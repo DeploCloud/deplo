@@ -259,6 +259,7 @@ export interface SeedRunOpts {
   appId?: string | null;
   targetKind?: BackupRun["targetKind"];
   targetId?: string;
+  sizeBytes?: number;
   sha256?: string | null;
   decryptedSizeBytes?: number | null;
   orphanedAt?: string | null;
@@ -286,7 +287,7 @@ export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
       opts.targetId ??
       "t",
     objectKey: opts.objectKey ?? `deplo/team_a/${targetKind}/t/${opts.id}.gz`,
-    sizeBytes: 1024,
+    sizeBytes: opts.sizeBytes ?? 1024,
     decryptedSizeBytes: opts.decryptedSizeBytes ?? null,
     sha256: opts.sha256 ?? null,
     orphanedAt: opts.orphanedAt ?? null,

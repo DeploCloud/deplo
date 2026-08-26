@@ -108,6 +108,7 @@ export function CreateDestination({
   servers,
   isInstanceAdmin,
   autoOpen = false,
+  size = "default",
 }: {
   /** Whether the current user may add a destination (`manage_backup_destinations`).
    *  False shows the button disabled with a tooltip saying so, and nothing can
@@ -120,6 +121,8 @@ export function CreateDestination({
    *  privilege, an arbitrary absolute path on a shared host does. */
   isInstanceAdmin: boolean;
   autoOpen?: boolean;
+  /** `sm` outside a toolbar; `default` next to an input, which is h-9. */
+  size?: "sm" | "default";
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen && canCreate);
@@ -274,7 +277,7 @@ export function CreateDestination({
         <TooltipTrigger asChild>
           {canCreate ? (
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size={size}>
                 <Plus className="size-4" />
                 Add Destination
               </Button>
@@ -284,7 +287,7 @@ export function CreateDestination({
             // span to keep the tooltip reachable. No DialogTrigger here means a
             // click can never open a dialog the server would refuse.
             <span tabIndex={0}>
-              <Button size="sm" disabled>
+              <Button size={size} disabled>
                 <Plus className="size-4" />
                 Add Destination
               </Button>

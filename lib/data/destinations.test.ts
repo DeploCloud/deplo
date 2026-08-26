@@ -971,3 +971,83 @@ test("deleteDestination can take the backup files with it, or leave them", async
     "nothing is dropped while its file is still out there",
   );
 });
+
+test("listDestinations reports what each destination actually holds", async () => {
+  // The card's space bar splits a disk into "our backups" and "everything else",
+  // so the backups half has to be a real figure. A pruned artifact takes its run
+  // row with it, which is why only `success` rows count.
+  await seedDestination(db, { id: "dst_1", kind: "s3" });
+  await seedDestination(db, { id: "dst_2", kind: "s3", name: "Other" });
+  await seedDatabase(db, { id: "db_1", name: "main" });
+  await seedRun(db, {
+    id: "r_1",
+    destinationId: "dst_1",
+    databaseId: "db_1",
+    sizeBytes: 1024,
+  });
+  await seedRun(db, {
+    id: "r_2",
+    destinationId: "dst_1",
+    databaseId: "db_1",
+    sizeBytes: 2048,
+  });
+  // A failed run wrote nothing, and a run at the OTHER destination is not ours.
+  await seedRun(db, {
+    id: "r_3",
+    destinationId: "dst_1",
+    databaseId: "db_1",
+    sizeBytes: 9999,
+    status: "failed",
+  });
+  await seedRun(db, {
+    id: "r_4",
+    destinationId: "dst_2",
+    databaseId: "db_1",
+    sizeBytes: 4096,
+  });
+
+  await asUser1(async () => {
+    const byId = new Map((await listDestinations()).map((d) => [d.id, d]));
+    assert.equal(byId.get("dst_1")!.storedBytes, 3072);
+    assert.equal(byId.get("dst_1")!.storedCount, 2);
+    assert.equal(byId.get("dst_2")!.storedBytes, 4096);
+    assert.equal(byId.get("dst_2")!.storedCount, 1);
+  });
+});
+
+test("a destination that has never been written to holds nothing, not null", async () => {
+  await seedDestination(db, { id: "dst_1", kind: "s3" });
+  await asUser1(async () => {
+    const [d] = await listDestinations();
+    assert.equal(d.storedBytes, 0);
+    assert.equal(d.storedCount, 0);
+  });
+});
+
+test("a probe that cannot reach the host keeps the last measurement", async () => {
+  // The destinations tab probes on open, so a host that is down for a minute
+  // used to erase the folder and the free-space figure from every card.
+  await seedDestination(db, {
+    id: "dst_1",
+    kind: "server",
+    serverId: SERVER_1,
+  });
+  await db
+    .update(destTable)
+    .set({
+      lastFreeBytes: 331_000_000_000,
+      lastTotalBytes: 431_000_000_000,
+      resolvedPath: "/var/lib/deplo/backups",
+    })
+    .where(eq(destTable.id, "dst_1"));
+
+  await asUser1(async () => {
+    // No agent is reachable from the test harness, so this probe fails.
+    await testDestinations();
+    const [d] = await listDestinations();
+    assert.equal(d.status, "error");
+    assert.equal(d.lastFreeBytes, 331_000_000_000);
+    assert.equal(d.lastTotalBytes, 431_000_000_000);
+    assert.equal(d.resolvedPath, "/var/lib/deplo/backups");
+  });
+});
