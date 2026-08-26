@@ -307,19 +307,35 @@ export function adaptComposeForDeplo(
     if (!isSeq(vols)) continue;
     for (const entry of vols.items) {
       if (isScalar(entry) && typeof entry.value === "string") {
-        const idx = entry.value.indexOf(":");
+        const spec: string = entry.value;
+        const idx = spec.indexOf(":");
         if (idx <= 0) continue;
-        if (isNamedVolumeSource(entry.value.slice(0, idx)))
-          mounted.add(entry.value.slice(0, idx).trim());
-        const rewritten = deploFilesPath(entry.value.slice(0, idx));
+        let source = spec.slice(0, idx);
+        const rest = spec.slice(idx);
+
+        const trimmed = trailingSlashOffVolume(source);
+        if (trimmed) {
+          changes.push(
+            `${source} is a volume name with a slash on the end, which compose refuses - it is ${trimmed} here.`,
+          );
+          source = trimmed;
+          entry.value = `${source}${rest}`;
+        }
+        if (isNamedVolumeSource(source)) mounted.add(source.trim());
+        const rewritten = deploFilesPath(source);
         if (rewritten == null) continue;
-        changes.push(
-          `${entry.value.slice(0, idx)} now points at Deplo's files directory.`,
-        );
-        entry.value = `${rewritten}${entry.value.slice(idx)}`;
+        changes.push(`${source} now points at Deplo's files directory.`);
+        entry.value = `${rewritten}${rest}`;
       } else if (isMap(entry)) {
         const src = stringScalar(entry, "source");
         if (!src) continue;
+        const trimmed = trailingSlashOffVolume(src.value as string);
+        if (trimmed) {
+          changes.push(
+            `${src.value} is a volume name with a slash on the end, which compose refuses - it is ${trimmed} here.`,
+          );
+          src.value = trimmed;
+        }
         const type = stringScalar(entry, "type")?.value;
         if (
           (type === "volume" || type == null) &&
@@ -359,6 +375,19 @@ const NAMED_VOLUME_SOURCE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 
 function isNamedVolumeSource(source: string): boolean {
   return NAMED_VOLUME_SOURCE.test(source.trim());
+}
+
+/**
+ * A volume NAME somebody typed a slash onto (`memos/`). Compose reads a source
+ * with no leading `./`, `../` or `/` as a volume name, so this is not a path -
+ * it is a name it will then refuse the whole stack over, undeclared and
+ * undeclarable. The platform that stored it normalises it on render; Deplo has
+ * the file as written, so it normalises it here.
+ */
+const VOLUME_NAME_WITH_SLASH = /^([A-Za-z0-9][A-Za-z0-9_.-]*)\/+$/;
+
+function trailingSlashOffVolume(source: string): string | null {
+  return VOLUME_NAME_WITH_SLASH.exec(source.trim())?.[1] ?? null;
 }
 
 /**

@@ -1984,3 +1984,48 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
   ])
     assert.ok(!looksLikeSecretKey(key), `${key} should stay plain`);
 });
+
+test("adaptComposeForDeplo takes the slash off a volume NAME", () => {
+  // `memos/` has no leading ./ or /, so compose reads it as a volume name and
+  // then refuses the whole stack for never declaring one by that name.
+  const source =
+    "services:\n  memos:\n    image: memos\n    volumes:\n      - 'memos/:/var/opt/memos'\n";
+  const { compose, changes } = adaptComposeForDeplo(source);
+  const doc = yaml.load(compose) as {
+    services: Record<string, { volumes: string[] }>;
+    volumes: Record<string, unknown>;
+  };
+  assert.deepEqual(doc.services.memos.volumes, ["memos:/var/opt/memos"]);
+  assert.deepEqual(Object.keys(doc.volumes), ["memos"]);
+  assert.ok(changes.some((c) => c.startsWith("memos/ is a volume name")));
+  // And the pairing target is now the volume the stack really mounts.
+  assert.deepEqual(composeVolumeMounts(compose), [
+    { name: "memos", mountPath: "/var/opt/memos" },
+  ]);
+});
+
+test("a path is never mistaken for a slashed volume name", () => {
+  const source = [
+    "services:",
+    "  a:",
+    "    image: x",
+    "    volumes:",
+    "      - ./conf/:/etc/conf",
+    "      - /srv/data/:/data",
+    "      - type: volume",
+    "        source: cache/",
+    "        target: /cache",
+    "",
+  ].join("\n");
+  const { compose } = adaptComposeForDeplo(source);
+  const doc = yaml.load(compose) as {
+    services: Record<string, { volumes: unknown[] }>;
+    volumes?: Record<string, unknown>;
+  };
+  assert.deepEqual(doc.services.a.volumes, [
+    "./conf/:/etc/conf",
+    "/srv/data/:/data",
+    { type: "volume", source: "cache", target: "/cache" },
+  ]);
+  assert.deepEqual(Object.keys(doc.volumes ?? {}), ["cache"]);
+});
