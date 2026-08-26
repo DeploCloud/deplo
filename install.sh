@@ -344,7 +344,7 @@ $TRAEFIK_FILE_PROVIDER
       # router of its own at a priority nothing can outrank (measured: a route at
       # MaxInt32 still gets the 301), so without this every plain-HTTP route on
       # this host is answered with a redirect to an https it has no certificate
-      # for - the panel when its HTTPS is off, and EVERY app domain on the `none`
+      # for - the panel when its HTTPS is off, and EVERY app domain on the \`none\`
       # certificate provider, which is the default a new domain is born with.
       # A host with no route of its own still redirects, which is the job.
       - --entrypoints.web.http.redirections.entrypoint.priority=1

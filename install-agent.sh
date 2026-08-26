@@ -522,7 +522,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# `-` prefix: once host cleanup has cleared the data dir, a restart of a
+# The \`-\` prefix: once host cleanup has cleared the data dir, a restart of a
 # not-yet-removed unit must still start rather than fail on the missing file
 # (a provisioned agent skips bootstrap and needs none of these anyway).
 EnvironmentFile=-$BOOTSTRAP_ENV
