@@ -584,6 +584,15 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           if (homeKey && existing.apps.has(homeKey)) line.status = "exists";
 
           const isCompose = svc.kind === "compose";
+          // The scan has to say what the import would say. This one is worth
+          // knowing BEFORE pressing the button: the values arrive literally.
+          const templated = envNeedsInterpolation(
+            parseEnvBlob((detail as DokployApplication).env),
+          );
+          if (templated.length > 0)
+            line.notes.push(
+              `Deplo does not resolve Dokploy's \`\${{...}}\` templating - these arrive as they are written: ${templated.join(", ")}.`,
+            );
           const domains = mapDomains((detail as DokployApplication).domains, {
             isCompose,
           });
@@ -2219,8 +2228,12 @@ async function importAppService(
       // deplo will not take). The app is still worth creating: its variables,
       // domains, mounts and limits are the part that takes an afternoon to retype.
       source = "upload";
+      const watched = (app.watchPaths ?? []).filter((p) => p.trim());
       notes.push(
-        "Set the source under the app's Source settings before deploying.",
+        "Set the source under the app's Source settings before deploying." +
+          (watched.length > 0
+            ? ` It only deployed on changes under ${watched.join(", ")} - set those again once the repository is there.`
+            : ""),
       );
     }
     const mappedBuild = mapBuildSettings(app);
@@ -2458,7 +2471,13 @@ async function importAppService(
   const unwritten = new Set<string>();
   for (const f of mounts.value.files) {
     try {
-      await writeAppFile(created.id, f.filePath, f.content);
+      // Retried once on purpose: it is a single call to a host that answered a
+      // moment ago, and this content lives nowhere else on this side.
+      try {
+        await writeAppFile(created.id, f.filePath, f.content);
+      } catch {
+        await writeAppFile(created.id, f.filePath, f.content);
+      }
     } catch (e) {
       unwritten.add(f.filePath);
       // Only worth saying for a single-image app: there, a file that was not
@@ -2468,7 +2487,7 @@ async function importAppService(
         notes.push(
           `${f.filePath} could not be written into this app's Files: ${
             e instanceof Error ? e.message : "refused"
-          }. Add it under Files and mount it under Storage.`,
+          }. Dokploy still has it - copy it from there into Files, and mount it under Storage.`,
         );
     }
   }
