@@ -5,7 +5,6 @@ import {
   reachesWholeTeam,
 } from "@/lib/membership";
 import { listMembers } from "@/lib/data/members";
-import { PageHeader } from "@/components/shared/page-header";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { MembersManager } from "@/components/members/members-manager";
 
@@ -30,19 +29,14 @@ export default async function MembersPage() {
     isInstanceAdmin(),
   ]);
 
+  // The page header lives inside the manager: "Add member" belongs in it, and
+  // only the manager can open the dialog it opens.
   return (
-    <div className="space-y-6">
-      <PageHeader
-        docs="team.members"
-        title="Members"
-        description="People who can access this team's apps and resources."
-      />
-      <MembersManager
-        members={members}
-        currentUserId={user?.id ?? ""}
-        canManage={canManage}
-        isAdmin={isAdmin}
-      />
-    </div>
+    <MembersManager
+      members={members}
+      currentUserId={user?.id ?? ""}
+      canManage={canManage}
+      isAdmin={isAdmin}
+    />
   );
 }

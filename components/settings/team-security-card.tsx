@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { InfoTip } from "@/components/ui/info-tip";
+import { TwoFactorGraphic } from "@/components/settings/two-factor-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -69,6 +70,9 @@ export function TeamSecurityCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="flex justify-center py-2">
+          <TwoFactorGraphic />
+        </div>
         <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
           <div className="space-y-1">
             <p className="text-sm font-medium">

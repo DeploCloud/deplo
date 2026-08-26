@@ -26,6 +26,7 @@ export function AvatarPicker({
   onSave,
   disabled,
   label = "Change picture",
+  children,
 }: {
   /** The avatar to render - the caller's own `<UserAvatar>` / `<TeamAvatar>`. */
   preview: React.ReactNode;
@@ -35,6 +36,8 @@ export function AvatarPicker({
   onSave: (image: string | null) => Promise<{ ok: boolean; error?: string }>;
   disabled?: boolean;
   label?: string;
+  /** What sits beside the picture. Remove lands under it. */
+  children?: React.ReactNode;
 }) {
   const router = useRouter();
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -69,7 +72,7 @@ export function AvatarPicker({
   }
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-4">
       <button
         type="button"
         disabled={busy}
@@ -104,17 +107,25 @@ export function AvatarPicker({
         >
           <Camera className="size-4 text-foreground" />
         </span>
+        {/* Always on: without it a round picture is just a picture until the
+            pointer happens to land on it, and a touch screen never hovers. */}
+        <span className="absolute right-0 bottom-0 flex size-5 items-center justify-center rounded-full border border-border bg-secondary text-secondary-foreground">
+          <Camera className="size-2.5" />
+        </span>
       </button>
-      {hasImage && (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          onClick={() => commit(null)}
-        >
-          Remove
-        </Button>
-      )}
+      <div className="min-w-0 space-y-2">
+        {children}
+        {hasImage && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => commit(null)}
+          >
+            Remove
+          </Button>
+        )}
+      </div>
       <ImageCropDialog
         file={picked}
         variant="avatar"

@@ -17,67 +17,74 @@ export default function Loading() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        {/* Team card */}
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-16" />
-            <Skeleton className="h-4 w-36" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-9 w-full rounded-md" />
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          {/* Team card: picture row, then the two stacked fields */}
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-16" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4">
+                <Skeleton className="size-16 shrink-0 rounded-full" />
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-56" />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-10" />
-                <Skeleton className="h-9 w-full rounded-md" />
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-9 w-full rounded-md" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-10" />
+                  <Skeleton className="h-9 w-full rounded-md" />
+                </div>
               </div>
-            </div>
-            <div className="flex justify-end">
-              <Skeleton className="h-8 w-28 rounded-md" />
-            </div>
-          </CardContent>
-        </Card>
+              <div className="flex justify-end">
+                <Skeleton className="h-8 w-28 rounded-md" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Appearance card */}
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-24" />
-            <Skeleton className="h-4 w-48" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div className="space-y-1.5">
-                <Skeleton className="h-4 w-12" />
-                <Skeleton className="h-3 w-64" />
-              </div>
-              <Skeleton className="size-8 rounded-md" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Updates card */}
-        <Card>
-          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-            <div className="space-y-1.5">
+        <div className="space-y-4">
+          {/* Security card: the 2FA mark, then the switch row */}
+          <Card>
+            <CardHeader>
               <Skeleton className="h-5 w-20" />
-              <Skeleton className="h-4 w-80" />
-            </div>
-            <Skeleton className="h-8 w-28 rounded-md" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-5 w-16 rounded-md" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Skeleton className="size-4 rounded-full" />
-              <Skeleton className="h-4 w-44" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex justify-center py-2">
+                <Skeleton className="size-24 rounded-lg" />
+              </div>
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-52" />
+                  <Skeleton className="h-3 w-64" />
+                </div>
+                <Skeleton className="h-5 w-9 rounded-full" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Appearance card */}
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-24" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-12" />
+                  <Skeleton className="h-3 w-56" />
+                </div>
+                <Skeleton className="size-8 rounded-md" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

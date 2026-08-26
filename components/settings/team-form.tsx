@@ -45,33 +45,42 @@ export function TeamForm({
   const teamMark = (
     <TeamAvatar name={initialName} avatarUrl={avatarUrl} size="2xl" />
   );
+  const pictureText = (
+    <div>
+      <p className="text-sm font-medium">Team picture</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {canManage
+          ? "Click the picture or drop an image on it. PNG, JPEG or WebP."
+          : "Shown before the team's name everywhere it appears."}
+      </p>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        {canManage ? (
-          <AvatarPicker
-            label="Change the team picture"
-            hasImage={Boolean(avatarUrl)}
-            preview={teamMark}
-            onSave={(image) =>
-              gqlAction(
-                `mutation($image: String) { updateTeamAvatar(image: $image) { id } }`,
-                { image },
-              )
-            }
-          />
-        ) : (
-          teamMark
-        )}
-        <div>
-          <p className="text-sm font-medium">Team picture</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Shown before the team&apos;s name everywhere it appears.
-          </p>
+      {canManage ? (
+        <AvatarPicker
+          label="Change the team picture"
+          hasImage={Boolean(avatarUrl)}
+          preview={teamMark}
+          onSave={(image) =>
+            gqlAction(
+              `mutation($image: String) { updateTeamAvatar(image: $image) { id } }`,
+              { image },
+            )
+          }
+        >
+          {pictureText}
+        </AvatarPicker>
+      ) : (
+        <div className="flex items-center gap-4">
+          {teamMark}
+          {pictureText}
         </div>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      )}
+      {/* Stacked: the card is half a page wide now, and two inputs in 480px
+          is two half-inputs. */}
+      <div className="grid gap-4">
         <div className="space-y-2">
           <Label htmlFor="team-name">Team name</Label>
           <Input

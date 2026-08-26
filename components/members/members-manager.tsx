@@ -10,7 +10,7 @@ import {
   FolderTree,
   ShieldCheck,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/shared/page-header";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,6 @@ import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AccessDeltaBadge } from "@/components/members/access-delta-badge";
-import { InfoTip } from "@/components/ui/info-tip";
 import type { MemberDTO } from "@/lib/data/members";
 
 export function MembersManager({
@@ -41,72 +40,67 @@ export function MembersManager({
   const viewerIsOwner = members.some(
     (m) => m.userId === currentUserId && m.role === "owner",
   );
+  const actions = (isAdmin || canManage) && (
+    <>
+      {/* Instance admins get a shortcut into instance-wide user
+          administration, sitting just before the team-scoped add. */}
+      {isAdmin && (
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/settings/users">
+            <UserCog className="size-4" />
+            Manage users
+          </Link>
+        </Button>
+      )}
+      {canManage && (
+        <>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <UserPlus className="size-4" />
+            Add member
+          </Button>
+          <AddMemberDialog
+            open={addOpen}
+            onOpenChange={setAddOpen}
+            canCreateUser={isAdmin}
+            canAssignOwner={viewerIsOwner}
+            onCreateUser={() => setUserOpen(true)}
+          />
+          {isAdmin && (
+            <RegisterUserWizard open={userOpen} onOpenChange={setUserOpen} />
+          )}
+        </>
+      )}
+    </>
+  );
+
+  // No wrapper card: the members ARE the tiles, and a card holding tiles is two
+  // surfaces - and a second "Members" heading - for one list.
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <div>
-          <CardTitle className="flex w-fit items-center gap-2 text-base">
+    <div className="space-y-6">
+      <PageHeader
+        docs="team.members"
+        title={
+          <span className="flex items-center gap-2">
             Members
-            <InfoTip
-              content={
-                <>
-                  {members.length} member{members.length === 1 ? "" : "s"} in
-                  this team.
-                </>
-              }
-              docs="team.members"
-            />
-          </CardTitle>
-        </div>
-        {(isAdmin || canManage) && (
-          <div className="flex items-center gap-2">
-            {/* Instance admins get a shortcut into instance-wide user
-                administration, sitting just before the team-scoped add. */}
-            {isAdmin && (
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/settings/users">
-                  <UserCog className="size-4" />
-                  Manage users
-                </Link>
-              </Button>
-            )}
-            {canManage && (
-              <>
-                <Button size="sm" onClick={() => setAddOpen(true)}>
-                  <UserPlus className="size-4" />
-                  Add member
-                </Button>
-                <AddMemberDialog
-                  open={addOpen}
-                  onOpenChange={setAddOpen}
-                  canCreateUser={isAdmin}
-                  canAssignOwner={viewerIsOwner}
-                  onCreateUser={() => setUserOpen(true)}
-                />
-                {isAdmin && (
-                  <RegisterUserWizard
-                    open={userOpen}
-                    onOpenChange={setUserOpen}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {members.map((m) => (
-            <MemberCard
-              key={m.userId}
-              member={m}
-              isSelf={m.userId === currentUserId}
-              canManage={canManage}
-            />
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+            <Badge variant="secondary" className="tabular-nums">
+              {members.length}
+            </Badge>
+          </span>
+        }
+        description="People who can access this team's apps and resources."
+        actions={actions}
+      />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {members.map((m) => (
+          <MemberCard
+            key={m.userId}
+            member={m}
+            isSelf={m.userId === currentUserId}
+            canManage={canManage}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 

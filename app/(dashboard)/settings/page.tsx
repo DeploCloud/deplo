@@ -39,14 +39,18 @@ export default async function SettingsGeneralPage() {
         description="Your workspace details and appearance."
       />
 
-      <div className="space-y-4">
-        {settings ? (
-          <>
+      {settings ? (
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          {/* The team and the way it is taken apart belong on the same side. */}
+          <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex w-fit items-center gap-2 text-base">
                   Team
-                  <InfoTip content="Your workspace details." />
+                  <InfoTip
+                    content="Your workspace details."
+                    docs="team.overview"
+                  />
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -59,6 +63,16 @@ export default async function SettingsGeneralPage() {
               </CardContent>
             </Card>
 
+            {deletion.allowed && (
+              <DeleteTeamCard
+                teamId={team.id}
+                teamName={team.name}
+                onlyTeam={deletion.onlyTeam}
+              />
+            )}
+          </div>
+
+          <div className="space-y-4">
             <TeamSecurityCard
               name={team.name}
               slug={team.slug}
@@ -67,44 +81,44 @@ export default async function SettingsGeneralPage() {
               without={twoFactor.without}
               total={twoFactor.total}
             />
-          </>
-        ) : (
+            <AppearanceCard />
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
           <EmptyState
             icon={Lock}
             title="Outside your access"
             docs="roles.floorCeiling"
             description="Your role reaches part of this team, so its settings aren't yours to see."
           />
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex w-fit items-center gap-2 text-base">
-              Appearance
-              <InfoTip content="Switch between light and dark." />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm font-medium">Theme</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Defaults to dark, matches your system if enabled.
-                </p>
-              </div>
-              <ThemeToggle />
-            </div>
-          </CardContent>
-        </Card>
-
-        {deletion.allowed && (
-          <DeleteTeamCard
-            teamId={team.id}
-            teamName={team.name}
-            onlyTeam={deletion.onlyTeam}
-          />
-        )}
-      </div>
+          <AppearanceCard />
+        </div>
+      )}
     </div>
+  );
+}
+
+function AppearanceCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
+          Appearance
+          <InfoTip content="Switch between light and dark." />
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between rounded-lg border border-border p-3">
+          <div>
+            <p className="text-sm font-medium">Theme</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Defaults to dark, matches your system if enabled.
+            </p>
+          </div>
+          <ThemeToggle />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
