@@ -58,8 +58,8 @@ export function SidebarNav({
   // running deploy is visible from anywhere in the dashboard.
   const deploying = useActiveDeployments();
 
-  // A "back" escape hatch leaves the whole current section via the browser's history
-  //, jumping to the last page you were on *outside* it, so it lands where you came
+  // A "back" escape hatch leaves the whole current section via the browser's history,
+  // jumping to the last page you were on *outside* it, so it lands where you came
   // from instead of stepping between sibling pages.
   function handleNavClick(
     item: NavItem,

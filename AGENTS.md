@@ -34,7 +34,7 @@ Consequences that bind every design and review decision:
   "Generally useful, obvious, and safe for a non-expert" is the bar. Half a feature that assumes
   operator expertise is a regression against the mission.
 - **Favor derived / live / automatic over manual.** Disaster recovery, backups, secrets, status,
-  URLs: the platform should do the operator's job for them, using infrastructure they already
+  URLs - the platform should do the operator's job for them, using infrastructure they already
   have (e.g. the fleet itself), not ask them to stand up more (an S3 bucket, an external DB) as a
   precondition.
 - **Every feature must earn its place in the UX and name its audience - one of exactly two.**
@@ -88,7 +88,7 @@ so anything only a company needs obeys the first-run rule above and stays out of
 ### Everything must be easy to turn into a managed service
 
 Beyond self-hosted, where deplo aims at enterprise-grade, more scalable features than the
-competition: the intent is to eventually run **deplo's own proprietary cloud**. The idea is still
+competition - the intent is to eventually run **deplo's own proprietary cloud**. The idea is still
 rough, but the constraint it puts on today's code is concrete: **whatever we build should one day be
 easy to offer as a managed service.** In practice that means multi-tenant-safe by construction, no
 assumption that the operator and the end user are the same person, and no dependence on the user
@@ -266,8 +266,8 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `lib/attach/session.ts`), `github/webhook|callback|setup`, `auth/[...all]`, `agent/bootstrap`,
   `health`, `node-versions`, `railpack-versions`, `registry/images`.
   **Two exceptions to the cookie rule**, both authenticating with an API token
-  (`Authorization: Bearer deplo_…`) and both re-entering the normal gates via `runWithIdentity`
-  , never bypass them with a hand-rolled capability check:
+  (`Authorization: Bearer deplo_…`) and both re-entering the normal gates via `runWithIdentity`,
+  never bypass them with a hand-rolled capability check:
   - `apps/[id]/deploy-hook/[token]` (the **deploy hook**): a webhook sender can't compose a
     GraphQL query, so it POSTs a URL and lets `redeploy` apply the gates.
   - `mcp` (the **MCP server**, ADR-0021): JSON-RPC, not GraphQL, because that is what AI agents
@@ -290,7 +290,7 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `nowIso()`; multi-row writes in `getDb().transaction`.
 - **Keep BOTH gates (defense in depth):** the field `authScopes` (introspectable contract) AND the
   `requireCapability` / `requireInstanceAdmin` call inside the `lib/data` function (the real
-  boundary: `lib/graphql/context.ts` is a convenience snapshot, not the boundary). Resources
+  boundary - `lib/graphql/context.ts` is a convenience snapshot, not the boundary). Resources
   under a **folder** need a second gate: `await requireFolderCapabilityForApp(appId, cap)`.
 - Auth helpers: `getCurrentUser()` (nullable), `assertUser()` (**throws** - resolvers/data),
   `requireUser()` (**redirects** - RSC/pages). `recordActivity(...)` runs **outside** any open
@@ -367,7 +367,7 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   an expired row, because the list has to be able to say _why_ a credential stopped.
 - **`teams.mcp_enabled` defaults to FALSE for a new team** (migration 0106; existing teams keep
   whatever they have). A token is required either way, so this was never what made `/api/mcp`
-  safe: but "may an AI agent act in this company's infrastructure" is a decision to make, not
+  safe, but "may an AI agent act in this company's infrastructure" is a decision to make, not
   one to inherit from a default.
 - **id prefixes not to confuse:** `prc_` = Project _container_, `prj_` = **App** (the deployable
   app, legacy mint); `environ_` = Environment, `env_` = env-**var** row; `role_` = a team Role;
@@ -485,8 +485,8 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   it** (`grep` the string across `components/`) and match the existing spelling - the same control
   must not be called two things in two places. Only invent a word when the thing itself is genuinely
   new, and then put it in `CONTEXT.md` so it stays the only spelling.
-- **Field help lives in the tooltip:** `FieldLabel info={…}` / `InfoTip` (`components/ui/info-tip.tsx`)
-  - don't duplicate it as helper text below the input.
+- **Field help lives in the tooltip:** `FieldLabel info={…}` / `InfoTip` (`components/ui/info-tip.tsx`) -
+  don't duplicate it as helper text below the input.
 - **A description under a title always gets a gap.** Any muted description stacked under its own
   title (setting rows, card subtitles, list rows, empty states) carries **`mt-1`**, or its wrapper
   carries `space-y-1`, never both. Two stacked lines with no spacing read as one cramped block; the
@@ -559,7 +559,7 @@ container-folder, never container/group/folder) · **Capability** (never permiss
 **server agent** / "the owning server" (never bare agent/node/worker/daemon) · **Plugin** (an
 installed catalog feature, never an App - deferred, see ADR-0013) · **active team** (never current/selected) ·
 **Environment** (never "env target"). If a concept isn't in the glossary, you're probably inventing
-language: reconsider, or note the gap.
+language - reconsider, or note the gap.
 
 ## Working rules
 

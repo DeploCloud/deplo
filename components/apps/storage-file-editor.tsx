@@ -105,8 +105,8 @@ export function StorageFileEditor({
     return (
       <Section
         label={label}
-        // An entry with no path yet has no file to describe, so it gets no badge
-        // - only the box.
+        // An entry with no path yet has no file to describe, so it gets no badge -
+        // only the box.
         badge={
           !path ? null : current.exists ? (
             current.draft !== current.saved ? (

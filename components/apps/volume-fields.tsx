@@ -111,8 +111,8 @@ export function VolumeFields({
   revealProblems?: boolean;
   /**
    * The content editor for a **File** entry, rendered inside its expanded body.
-   * The parent supplies it because the content is the real file on the app's host
-   * - read and written over the agent, which this fetch-free editor does not do.
+   * The parent supplies it because the content is the real file on the app's host -
+   * read and written over the agent, which this fetch-free editor does not do.
    */
   fileContent?: (mount: VolumeMount) => React.ReactNode;
   onChange: (next: VolumeMount[]) => void;
