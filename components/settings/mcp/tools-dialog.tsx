@@ -176,7 +176,7 @@ function ToolRow({
   );
 }
 
-/** The standing link under the page header: says the size of the answer. */
+/** The standing link under the page header. */
 export function ToolsDialogLink({
   tools,
   className,
@@ -196,7 +196,7 @@ export function ToolsDialogLink({
           )}
         >
           <Wrench className="size-3.5" />
-          {tools.length} tools. See what an agent can do
+          See what an agent can do
         </button>
       }
     />
