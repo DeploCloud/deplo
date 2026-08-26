@@ -7,8 +7,8 @@ import {
 import { getTeamIdentity } from "@/lib/data/teams";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import {
-  listDokployImports,
-  resumableDokployImport,
+  listMigrationRuns,
+  resumableMigration,
 } from "@/lib/data/migration-import";
 import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
@@ -38,10 +38,10 @@ export default async function SettingsMigrationsPage() {
       // A second, wider list: a build-only host cannot RUN anything, which is
       // exactly why it belongs in the other column.
       listBuildServerChoices(),
-      listDokployImports(),
+      listMigrationRuns(),
       // The run to open on, if any: the team's one in flight, or one this person has not
       // closed the report of.
-      resumableDokployImport(),
+      resumableMigration(),
       isInstanceAdmin(),
       // A migrated database keeps the host port it had over there, and that is a
       // published port like any other - so the review only offers to sort one out

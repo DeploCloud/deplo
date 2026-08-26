@@ -88,13 +88,13 @@ const OWN_HOST = "";
  * which is what lets this page be closed.
  */
 const START = /* GraphQL */ `
-  mutation StartDokployImport(
-    $input: DokployConnectInput!
+  mutation StartMigration(
+    $input: MigrationSourceInput!
     $orgName: String
-    $targets: [DokployRunTargetInput!]!
-    $servers: [DokployServerChoiceInput!]
+    $targets: [MigrationRunTargetInput!]!
+    $servers: [MigrationServerChoiceInput!]
   ) {
-    startDokployImport(
+    startMigration(
       input: $input
       orgName: $orgName
       targets: $targets
@@ -119,8 +119,8 @@ function lastStep(path: string | null | undefined): string {
 /* ------------------------------------------------------------------ */
 
 const SCAN = /* GraphQL */ `
-  mutation ScanDokploy($input: DokployConnectInput!) {
-    scanDokploy(input: $input) {
+  mutation ScanMigrationSource($input: MigrationSourceInput!) {
+    scanMigrationSource(input: $input) {
       sourceUrl
       orgName
       servers {
@@ -168,11 +168,11 @@ const SCAN = /* GraphQL */ `
 /**
  * Stop, which is the same word the server means by it: undo the whole migration.
  * There is no second call - nothing to keep, nothing to choose. See
- * `stopDokployImport`.
+ * `stopMigration`.
  */
 const STOP = /* GraphQL */ `
-  mutation StopDokployImport($runId: String!) {
-    stopDokployImport(runId: $runId)
+  mutation StopMigration($runId: String!) {
+    stopMigration(runId: $runId)
   }
 `;
 
@@ -187,20 +187,23 @@ const STOP = /* GraphQL */ `
  * itself - this is the one thing only a person can say.
  */
 const DISMISS = /* GraphQL */ `
-  mutation DismissDokployReport($runId: String!) {
-    dismissDokployReport(runId: $runId)
+  mutation DismissMigrationReport($runId: String!) {
+    dismissMigrationReport(runId: $runId)
   }
 `;
 
 const ABANDON = /* GraphQL */ `
-  mutation AbandonDokployImport {
-    abandonDokployImport
+  mutation AbandonMigration {
+    abandonMigration
   }
 `;
 
 const IMPORT_MEMBERS = /* GraphQL */ `
-  mutation ImportDokployMembers($input: DokployConnectInput!, $runId: String!) {
-    importDokployMembers(input: $input, runId: $runId) {
+  mutation ImportMigrationMembers(
+    $input: MigrationSourceInput!
+    $runId: String!
+  ) {
+    importMigrationMembers(input: $input, runId: $runId) {
       email
       name
       link
@@ -313,7 +316,7 @@ export function MigrationWizard({
   );
   const [runId, setRunId] = React.useState<string | null>(null);
   const [failure, setFailure] = React.useState<string | null>(null);
-  /** The `startDokployImport` call is in flight. It is over in about a second,
+  /** The `startMigration` call is in flight. It is over in about a second,
    *  and from then on the run is the server's and the live feed is the truth. */
   const [running, setRunning] = React.useState(false);
   /** A Stop is in flight: the server is taking the migration back out. It ends
@@ -352,10 +355,10 @@ export function MigrationWizard({
   async function scan(e: React.FormEvent) {
     e.preventDefault();
     setScanning(true);
-    const res = await gqlAction<{ scanDokploy: Plan }, Plan>(
+    const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
       SCAN,
       { input: connectInput },
-      (d) => d.scanDokploy,
+      (d) => d.scanMigrationSource,
     );
     setScanning(false);
     if (!res.ok) {
@@ -451,7 +454,7 @@ export function MigrationWizard({
     setFailure(null);
     setUndoing(false);
     setRunning(true);
-    const res = await gqlAction<{ startDokployImport: string }, string>(
+    const res = await gqlAction<{ startMigration: string }, string>(
       START,
       {
         input: connectInput,
@@ -461,7 +464,7 @@ export function MigrationWizard({
           .filter(([, to]) => to)
           .map(([from, to]) => ({ from, to })),
       },
-      (d) => d.startDokployImport,
+      (d) => d.startMigration,
     );
     setRunning(false);
     if (!res.ok) {
@@ -530,10 +533,10 @@ export function MigrationWizard({
     async (id: string) => {
       const res = await gqlAction<
         {
-          dokployImport: { status: string; error: string | null } | null;
+          migrationRun: { status: string; error: string | null } | null;
         },
         { status: string; error: string | null } | null
-      >(RUN_LOG, { id }, (d) => d.dokployImport);
+      >(RUN_LOG, { id }, (d) => d.migrationRun);
       if (!res.ok || !res.data) return;
       // Still moving: the live feed owns the screen. Only the arrival path gets
       // here - the edge below fires when the feed has already gone quiet.
@@ -575,10 +578,10 @@ export function MigrationWizard({
   async function inviteMembers() {
     if (!runId) return;
     setInviting(true);
-    const res = await gqlAction<{ importDokployMembers: Invite[] }, Invite[]>(
+    const res = await gqlAction<{ importMigrationMembers: Invite[] }, Invite[]>(
       IMPORT_MEMBERS,
       { input: connectInput, runId },
-      (d) => d.importDokployMembers,
+      (d) => d.importMigrationMembers,
     );
     setInviting(false);
     if (!res.ok) {
@@ -898,7 +901,7 @@ export function MigrationWizard({
                     running={running}
                     undoing={false}
                     onShowLog={() => setLogOpen(true)}
-                    // No Stop: this is the second the `startDokployImport` call
+                    // No Stop: this is the second the `startMigration` call
                     // is in flight, and there is no run id to stop yet.
                     onBack={() => setFailure(null)}
                   />

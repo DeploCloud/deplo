@@ -39,8 +39,11 @@ import {
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
-import { beginDokployImport, finishDokployImport } from "./migration-import";
-import { moveDokployServiceData, planDokployDataMove } from "./migration-data";
+import { beginMigration, finishMigration } from "./migration-import";
+import {
+  moveMigrationServiceData,
+  planMigrationDataMove,
+} from "./migration-data";
 import { acceptDataCopyLoss } from "./data-copy";
 import { startApp } from "./apps";
 import { redeployDatabase, restartDatabase } from "./databases";
@@ -163,7 +166,7 @@ const CONTAINERS: Record<
   "ghost-xyz": [],
 };
 
-function fakeDokploy() {
+function fakeSource() {
   return async (input: string, init?: RequestInit): Promise<Response> => {
     const url = new URL(input);
     const procedure = url.pathname.replace(/^\/api\//, "");
@@ -369,7 +372,7 @@ async function seedRunItems(
 
 /** A run holding everything the fixture imported. */
 async function openRun(): Promise<string> {
-  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  const runId = await asOwner(() => beginMigration({ url: CONNECT.url }));
   await seedRunItems(runId, [
     {
       sourceKind: "application",
@@ -391,11 +394,11 @@ async function openRun(): Promise<string> {
 
 /** Register the Deplo server that sits at the Dokploy address, which is the only
  *  thing that makes a copy possible - it is derived, never chosen. */
-async function seedDokployHostServer(): Promise<void> {
+async function seedMigrationHostServer(): Promise<void> {
   await db
     .insert(serversTable)
     .values({
-      id: "srv_dokploy_host",
+      id: "srv_migration_host",
       name: "dokploy-host",
       host: "dokploy.acme.test",
       type: "remote",
@@ -434,7 +437,7 @@ beforeEach(async () => {
   await db.execute("truncate table databases cascade;");
   await seedIdentity(db);
   await seedServer(db);
-  __setDokployFetchForTest(fakeDokploy());
+  __setDokployFetchForTest(fakeSource());
   calls = [];
   agentCalls = [];
   unreachableAgents.clear();
@@ -443,10 +446,12 @@ beforeEach(async () => {
   notFoundVolumes = new Set();
   sourceRunning = true;
   stopRefusal = "";
-  hostPaths = { srv_dokploy_host: { "/etc/dokploy/x": Buffer.alloc(2048, 5) } };
+  hostPaths = {
+    srv_migration_host: { "/etc/dokploy/x": Buffer.alloc(2048, 5) },
+  };
   // The Dokploy host holds both source volumes, with real content in them.
   volumes = {
-    srv_dokploy_host: {
+    srv_migration_host: {
       "blink-web-abc_uploads": Buffer.alloc(4096, 7),
       "blink-db-abc_data": Buffer.alloc(8192, 9),
     },
@@ -552,7 +557,9 @@ function asOwner<T>(fn: () => Promise<T>): Promise<T> {
 
 test("the plan pairs an imported app's volume with the one Deplo will mount", async () => {
   const runId = await openRun();
-  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
   const web = plan.find((s) => s.sourceName === "blink-web");
   assert.ok(web, JSON.stringify(plan.map((s) => s.sourceName)));
   assert.equal(web.path, "Blink / production / blink-web");
@@ -576,7 +583,9 @@ test("the plan pairs an imported app's volume with the one Deplo will mount", as
 
 test("a service that was never imported is not listed at all", async () => {
   const runId = await openRun();
-  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
   assert.equal(
     plan.some((s) => s.sourceName === "never-imported"),
     false,
@@ -585,7 +594,9 @@ test("a service that was never imported is not listed at all", async () => {
 
 test("a database pairs 1:1 and says the data directory moved", async () => {
   const runId = await openRun();
-  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
   const database = plan.find((s) => s.targetKind === "database");
   assert.ok(database);
   assert.equal(database.targetId, "db_blink");
@@ -599,7 +610,7 @@ test("a database pairs 1:1 and says the data directory moved", async () => {
 
 test("the plan reads both sides and writes to neither", async () => {
   const runId = await openRun();
-  await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  await asOwner(() => planMigrationDataMove({ ...CONNECT, runId }));
   assert.equal(
     calls.some((p) => p.endsWith(".stop")),
     false,
@@ -610,7 +621,9 @@ test("the plan reads both sides and writes to neither", async () => {
 
 test("the plan says so when Deplo has no agent on the machine holding the data", async () => {
   const runId = await openRun();
-  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
   // No Deplo server sits at the Dokploy address in this fixture, so every service
   // on it carries the warning - on the REVIEW screen, not at the cutover with the
   // old platform already stopped.
@@ -625,11 +638,11 @@ test("the plan says so when Deplo has no agent on the machine holding the data",
 test("the plan tells an enrolled-but-unreachable machine apart from a missing one", async () => {
   // Two different problems with two different fixes: "no agent here at all" means
   // install one, "the agent will not answer us" means the address or the firewall.
-  await seedDokployHostServer();
-  unreachableAgents.add("srv_dokploy_host");
+  await seedMigrationHostServer();
+  unreachableAgents.add("srv_migration_host");
   const runId = await openRun();
 
-  const bad = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  const bad = await asOwner(() => planMigrationDataMove({ ...CONNECT, runId }));
   assert.ok(bad.length > 0);
   assert.ok(
     bad.every((svc) => svc.sourceReachable === false),
@@ -640,15 +653,17 @@ test("the plan tells an enrolled-but-unreachable machine apart from a missing on
     JSON.stringify(bad.map((s) => s.notes)),
   );
 
-  unreachableAgents.delete("srv_dokploy_host");
-  const good = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  unreachableAgents.delete("srv_migration_host");
+  const good = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
   assert.ok(good.every((svc) => svc.sourceReachable === true));
 });
 
 test("a resource this run did not create is not reachable at all", async () => {
   // The database is here and its name matches a Dokploy service exactly, which is
   // all the old name-matching needed to offer it up for a copy that WIPES it.
-  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  const runId = await asOwner(() => beginMigration({ url: CONNECT.url }));
   await seedRunItems(runId, [
     {
       sourceKind: "application",
@@ -658,7 +673,9 @@ test("a resource this run did not create is not reachable at all", async () => {
       targetId: "prj_web",
     },
   ]);
-  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
   assert.equal(
     plan.some((s) => s.targetKind === "database"),
     false,
@@ -667,7 +684,7 @@ test("a resource this run did not create is not reachable at all", async () => {
 });
 
 test("a resource the run only SKIPPED is left alone, data included", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  const runId = await asOwner(() => beginMigration({ url: CONNECT.url }));
   await seedRunItems(runId, [
     {
       sourceKind: "postgres",
@@ -679,19 +696,21 @@ test("a resource the run only SKIPPED is left alone, data included", async () =>
       outcome: "skipped",
     },
   ]);
-  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
   assert.deepEqual(plan, []);
 });
 
 /* ---- the copy -------------------------------------------------------- */
 
 test("the copy reads the source host, and the bytes land in the target volume", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   const runId = await openRun();
   agentCalls = [];
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -703,7 +722,7 @@ test("the copy reads the source host, and the bytes land in the target volume", 
   assert.equal(res.failed, 0);
   // Read from the machine that HOLDS it, written to the one that runs the app.
   assert.ok(
-    agentCalls.includes("srv_dokploy_host:export:blink-web-abc_uploads"),
+    agentCalls.includes("srv_migration_host:export:blink-web-abc_uploads"),
     agentCalls.join(" | "),
   );
   assert.ok(agentCalls.includes(`${SERVER_1}:import:deplo-blink-web-uploads`));
@@ -715,16 +734,16 @@ test("the copy reads the source host, and the bytes land in the target volume", 
 });
 
 test("a source volume that is not on that host wipes nothing and is not a copy", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   // The volume is missing where the export runs: Docker answers with an empty
   // archive instead of failing, which is the whole bug this guards.
-  delete volumes.srv_dokploy_host["blink-web-abc_uploads"];
+  delete volumes.srv_migration_host["blink-web-abc_uploads"];
   const before = volumes[SERVER_1]["deplo-blink-web-uploads"];
   const runId = await openRun();
   agentCalls = [];
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -750,14 +769,14 @@ test("a source volume that is not on that host wipes nothing and is not a copy",
 });
 
 test("a volume a never-started service has not created yet is not a loss", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   // The measured shape: created from a template, never deployed, so the volume it
   // declares does not exist on that host at all.
   notFoundVolumes.add("blink-web-abc_uploads");
   const runId = await openRun();
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -781,13 +800,13 @@ test("a volume a never-started service has not created yet is not a loss", async
 });
 
 test("a stop Dokploy refuses does not end the run when nothing is running", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   stopRefusal = "Command execution failed: spawn /bin/sh ENOENT";
   sourceRunning = false;
 
   const runId = await openRun();
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -800,13 +819,13 @@ test("a stop Dokploy refuses does not end the run when nothing is running", asyn
 });
 
 test("a stop Dokploy refuses on a RUNNING service copies nothing", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   stopRefusal = "Command execution failed";
   const before = volumes[SERVER_1]["deplo-blink-web-uploads"];
 
   const runId = await openRun();
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -823,12 +842,12 @@ test("a stop Dokploy refuses on a RUNNING service copies nothing", async () => {
 });
 
 test("a copy that fails marks the app, and the marker holds the deploy", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   importRefusal = "no space left on device";
   const runId = await openRun();
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -847,7 +866,7 @@ test("a copy that fails marks the app, and the marker holds the deploy", async (
   // Close the run first: while it is open the app is the migration's and every
   // door refuses for THAT reason. This is about the reason that outlives it.
   // `finish`, not `stop`: stopping means undoing, and this app has to survive.
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
 
   // And that is what refuses the deploy, from every door.
   await assert.rejects(
@@ -861,11 +880,11 @@ test("a copy that fails marks the app, and the marker holds the deploy", async (
 });
 
 test("a copy that works clears a marker an earlier attempt left", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   importRefusal = "the stream was truncated";
   const runId = await openRun();
   await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -877,7 +896,7 @@ test("a copy that works clears a marker an earlier attempt left", async () => {
   // block - otherwise the only way out would be accepting the loss.
   importRefusal = "";
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -892,11 +911,11 @@ test("a copy that works clears a marker an earlier attempt left", async () => {
 });
 
 test("accepting the loss unblocks the app, and says so in the trail", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   importRefusal = "the source host is gone";
   const runId = await openRun();
   await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -906,7 +925,7 @@ test("accepting the loss unblocks the app, and says so in the trail", async () =
 
   // `finish`, not `stop`: stopping a run deletes what it created, and the whole
   // point here is the app that outlives the migration.
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
   await asOwner(() => acceptDataCopyLoss({ kind: "app", id: "prj_web" }));
 
   const rows = await db.execute(
@@ -920,14 +939,14 @@ test("accepting the loss unblocks the app, and says so in the trail", async () =
 });
 
 test("a database with nothing to copy is left RUNNING, not stopped", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   // Never started on Dokploy, so the data volume it declares is not there.
   notFoundVolumes.add("blink-db-abc_data");
   const runId = await openRun();
   agentCalls = [];
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "postgres",
@@ -966,12 +985,12 @@ test("a database with nothing to copy is left RUNNING, not stopped", async () =>
 });
 
 test("a copied database is started again and checked, and the report says what landed", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   const runId = await openRun();
   agentCalls = [];
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "postgres",
@@ -1015,12 +1034,12 @@ test("a copied database is started again and checked, and the report says what l
 });
 
 test("a database whose data did not arrive refuses to be restarted", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   importRefusal = "the stream was truncated";
   const runId = await openRun();
 
   await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "postgres",
@@ -1045,12 +1064,12 @@ test("a database whose data did not arrive refuses to be restarted", async () =>
 });
 
 test("a bind mount's host directory is copied too, and says it is a directory", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   const runId = await openRun();
   agentCalls = [];
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -1062,7 +1081,7 @@ test("a bind mount's host directory is copied too, and says it is a directory", 
   // names what is missing.
   assert.equal(res.moved, 2, JSON.stringify(res));
   assert.ok(
-    agentCalls.includes("srv_dokploy_host:export-path:/etc/dokploy/x"),
+    agentCalls.includes("srv_migration_host:export-path:/etc/dokploy/x"),
     agentCalls.join(" | "),
   );
   assert.deepEqual(
@@ -1090,7 +1109,7 @@ test("a host directory already on this machine is not copied over itself", async
   agentCalls = [];
 
   await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -1119,7 +1138,7 @@ test("nothing is stopped until Deplo knows which server holds the data", async (
   await assert.rejects(
     () =>
       asOwner(() =>
-        moveDokployServiceData({
+        moveMigrationServiceData({
           ...CONNECT,
           runId,
           sourceKind: "application",
@@ -1139,14 +1158,14 @@ test("nothing is stopped until Deplo knows which server holds the data", async (
 test("a source that is enrolled but will not answer US stops nothing and copies nothing", async () => {
   // The row says `online`, because that is what the CALL-HOME sets and the call-home
   // is the agent dialing OUT.
-  await seedDokployHostServer();
-  unreachableAgents.add("srv_dokploy_host");
+  await seedMigrationHostServer();
+  unreachableAgents.add("srv_migration_host");
   const runId = await openRun();
   calls = [];
   agentCalls = [];
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -1162,7 +1181,7 @@ test("a source that is enrolled but will not answer US stops nothing and copies 
   );
   assert.deepEqual(
     agentCalls,
-    ["srv_dokploy_host:hello:"],
+    ["srv_migration_host:hello:"],
     "one question, and it gave up on the answer",
   );
 
@@ -1174,12 +1193,12 @@ test("a source that is enrolled but will not answer US stops nothing and copies 
 test("a source that dies MID-COPY says so, so the caller can stop the whole run", async () => {
   // The pre-flight cannot see this one: the machine answered, the service was stopped
   // on Dokploy, and the connection died with bytes in flight.
-  await seedDokployHostServer();
-  hostDiesMidCopy.add("srv_dokploy_host");
+  await seedMigrationHostServer();
+  hostDiesMidCopy.add("srv_migration_host");
   const runId = await openRun();
 
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -1193,11 +1212,11 @@ test("a source that dies MID-COPY says so, so the caller can stop the whole run"
 test("an ordinary failed copy does NOT claim the machine went away", async () => {
   // The other half of the flag, and the half that keeps it meaningful: a volume that
   // is simply not on that host is one report line and the run carries on.
-  await seedDokployHostServer();
-  delete volumes.srv_dokploy_host["blink-web-abc_uploads"];
+  await seedMigrationHostServer();
+  delete volumes.srv_migration_host["blink-web-abc_uploads"];
   const runId = await openRun();
   const res = await asOwner(() =>
-    moveDokployServiceData({
+    moveMigrationServiceData({
       ...CONNECT,
       runId,
       sourceKind: "application",
@@ -1208,12 +1227,12 @@ test("an ordinary failed copy does NOT claim the machine went away", async () =>
 });
 
 test("a service this run did not import cannot be moved into anything", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   const runId = await openRun();
   await assert.rejects(
     () =>
       asOwner(() =>
-        moveDokployServiceData({
+        moveMigrationServiceData({
           ...CONNECT,
           runId,
           sourceKind: "application",
@@ -1225,12 +1244,12 @@ test("a service this run did not import cannot be moved into anything", async ()
 });
 
 test("a service Dokploy no longer has is refused before anything else", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   const runId = await openRun();
   await assert.rejects(
     () =>
       asOwner(() =>
-        moveDokployServiceData({
+        moveMigrationServiceData({
           ...CONNECT,
           runId,
           sourceKind: "application",
@@ -1242,12 +1261,12 @@ test("a service Dokploy no longer has is refused before anything else", async ()
 });
 
 test("a run from another team is not a place to write a report", async () => {
-  await seedDokployHostServer();
+  await seedMigrationHostServer();
   const runId = await openRun();
   await assert.rejects(
     () =>
       runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
-        moveDokployServiceData({
+        moveMigrationServiceData({
           ...CONNECT,
           runId,
           sourceKind: "application",

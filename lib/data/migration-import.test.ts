@@ -54,23 +54,23 @@ import {
 } from "../migration/dokploy/client";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 import {
-  abandonDokployImport,
+  abandonMigration,
   appendRunItem,
-  beginDokployImport,
-  dismissDokployReport,
-  resumableDokployImport,
-  dokployMachines,
-  setDokployMachineAddress,
+  beginMigration,
+  dismissMigrationReport,
+  resumableMigration,
+  migrationMachines,
+  setMigrationMachineAddress,
   drainMigrationSourceUninstalls,
-  finishDokployImport,
-  getDokployImport,
-  importDokployProject,
-  listDokployImports,
-  revertDokployImport,
-  scanDokploy,
-  stopDokployImport,
+  finishMigration,
+  getMigrationRun,
+  importMigrationProject,
+  listMigrationRuns,
+  revertMigration,
+  scanMigrationSource,
+  stopMigration,
 } from "./migration-import";
-import { activeMigrationStream } from "../graphql/types/dokploy";
+import { activeMigrationStream } from "../graphql/types/migration";
 import { createProject, renameProject } from "./projects";
 import { startApp } from "./apps";
 import { startDeployment } from "../deploy/build";
@@ -374,7 +374,9 @@ function asOwner<T>(fn: () => Promise<T>): Promise<T> {
 
 /** Import one project as the owner. */
 function importProject(runId: string, projectId: string) {
-  return asOwner(() => importDokployProject({ ...CONNECT, runId, projectId }));
+  return asOwner(() =>
+    importMigrationProject({ ...CONNECT, runId, projectId }),
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -382,7 +384,7 @@ function importProject(runId: string, projectId: string) {
 /* ------------------------------------------------------------------ */
 
 test("scan describes the whole tree without writing anything", async () => {
-  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
 
   assert.equal(plan.orgName, "Acme Inc");
   assert.deepEqual(
@@ -433,7 +435,7 @@ test("a Dokploy machine Deplo already manages is recognised by its address", asy
     .set({ ip: "dokploy.acme.test", host: "dokploy.acme.test" })
     .where(eq(serversTable.id, SERVER_1));
 
-  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
   const own = plan.servers.find((s) => s.sourceId === "")!;
   assert.equal(own.ipAddress, "dokploy.acme.test");
   assert.equal(own.deploServerId, SERVER_1);
@@ -459,7 +461,7 @@ test("a machine already registered as a MIGRATION SOURCE is still recognised", a
     })
     .where(eq(serversTable.id, SERVER_1));
 
-  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
   assert.equal(
     plan.servers.find((s) => s.sourceId === "")!.deploServerId,
     SERVER_1,
@@ -482,7 +484,7 @@ test("Dokploy on the machine Deplo runs on resolves to the agent already there",
     // ...and the Dokploy URL names the same box by a name nothing on the row
     // mentions. Address matching alone cannot see it.
     delete process.env.DEPLO_PUBLIC_URL;
-    const plan = await asOwner(() => scanDokploy(CONNECT));
+    const plan = await asOwner(() => scanMigrationSource(CONNECT));
     assert.equal(
       plan.servers.find((s) => s.sourceId === "")!.deploServerId,
       null,
@@ -491,7 +493,7 @@ test("Dokploy on the machine Deplo runs on resolves to the agent already there",
     // Once that name is one of THIS instance's own addresses, the two are the
     // same machine and the agent to use is the one already installed here.
     process.env.DEPLO_PUBLIC_URL = URL_BASE;
-    const again = await asOwner(() => scanDokploy(CONNECT));
+    const again = await asOwner(() => scanMigrationSource(CONNECT));
     assert.equal(
       again.servers.find((s) => s.sourceId === "")!.deploServerId,
       SERVER_1,
@@ -517,9 +519,9 @@ test("a placement naming a migration source is refused, on both axes", async () 
     .set({ importOnly: true })
     .where(eq(serversTable.id, SOURCE));
 
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   const result = await asOwner(() =>
-    importDokployProject({
+    importMigrationProject({
       ...CONNECT,
       runId,
       projectId: "dok-prj-blink",
@@ -546,7 +548,7 @@ test("a placement naming a migration source is refused, on both axes", async () 
 });
 
 test("a database the tree gives only an id for is still named, not a crash", async () => {
-  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
   const db = plan.projects[0].environments[0].services.find(
     (s) => s.kind === "postgres",
   )!;
@@ -558,7 +560,7 @@ test("a database the tree gives only an id for is still named, not a crash", asy
 });
 
 test("scan marks a libsql database unsupported and never asks for its detail", async () => {
-  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
   const other = plan.projects[1].environments[0].services;
   const libsql = other.find((s) => s.kind === "libsql")!;
   assert.equal(libsql.status, "unsupported");
@@ -567,7 +569,7 @@ test("scan marks a libsql database unsupported and never asks for its detail", a
 });
 
 test("scan reports the compose rewrite and the missing git credential up front", async () => {
-  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
   const stack = plan.projects[1].environments[0].services[0];
   assert.match(stack.notes.join(" "), /shared network was removed/);
 
@@ -600,7 +602,7 @@ test("scan warns when a hostname already belongs to another team", async () => {
     createdAt: "2026-01-01T00:00:00.000Z",
   });
 
-  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
   const web = plan.projects[0].environments[0].services[0];
   assert.match(web.notes.join(" "), /already routed by another team/);
 });
@@ -609,7 +611,7 @@ test("scan warns when a hostname already belongs to another team", async () => {
 // machine the app just LEFT. Rewriting it is the difference between a migration
 // that works and one that looks like it worked.
 test("a variable that names the old address is moved to the new one", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   const apps = await db.select().from(appsTable);
   const web = apps.find((a) => a.name === "blink-web")!;
@@ -651,7 +653,7 @@ test("an app never arrives with fewer addresses than it had", async () => {
     createdAt: "2026-01-01T00:00:00.000Z",
   });
 
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   const apps = await db.select().from(appsTable);
   const web = apps.find((a) => a.name === "blink-web")!;
@@ -675,7 +677,9 @@ test("an app never arrives with fewer addresses than it had", async () => {
 test("scan refuses an address that is not this team's business", async () => {
   await assert.rejects(
     () =>
-      asOwner(() => scanDokploy({ url: "http://127.0.0.1:3000", apiKey: "k" })),
+      asOwner(() =>
+        scanMigrationSource({ url: "http://127.0.0.1:3000", apiKey: "k" }),
+      ),
     /private or internal address/,
   );
 });
@@ -683,7 +687,7 @@ test("scan refuses an address that is not this team's business", async () => {
 test("scan surfaces Dokploy's own words when the key is wrong", async () => {
   fixtures["project.all"] = { __status: 401, body: "Invalid API key" };
   await assert.rejects(
-    () => asOwner(() => scanDokploy(CONNECT)),
+    () => asOwner(() => scanMigrationSource(CONNECT)),
     /Dokploy request failed \(401\) on project.all: Invalid API key/,
   );
 });
@@ -694,7 +698,7 @@ test("scan surfaces Dokploy's own words when the key is wrong", async () => {
 
 test("a project lands complete: project, environment, apps, variables", async () => {
   const runId = await asOwner(() =>
-    beginDokployImport({ url: URL_BASE, orgName: "Acme Inc" }),
+    beginMigration({ url: URL_BASE, orgName: "Acme Inc" }),
   );
 
   const result = await importProject(runId, "dok-prj-blink");
@@ -735,14 +739,14 @@ test("a project lands complete: project, environment, apps, variables", async ()
 
   // The database could not be created against a host with no agent, and that is
   // a REPORT row carrying the host's own words - not a failed import.
-  const report = await asOwner(() => getDokployImport(runId));
+  const report = await asOwner(() => getMigrationRun(runId));
   const dbRow = report!.items.find((i) => i.sourceKind === "postgres")!;
   assert.equal(dbRow.outcome, "failed");
   assert.match(dbRow.message!, /not provisioned yet/);
 });
 
 test("what a running migration created is nobody else's to touch", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
   const rows = await db.execute(
@@ -778,9 +782,9 @@ test("what a running migration created is nobody else's to touch", async () => {
 });
 
 test("finishing the migration hands everything back", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
 
   const rows = await db.execute("select migration_run_id from apps");
   for (const r of rows.rows) assert.equal(r.migration_run_id, null);
@@ -791,17 +795,17 @@ test("finishing the migration hands everything back", async () => {
 });
 
 test("stopping it hands everything back too, and so does the next run", async () => {
-  const first = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const first = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(first, "dok-prj-blink");
-  await asOwner(() => stopDokployImport(first));
+  await asOwner(() => stopMigration(first));
   let rows = await db.execute("select migration_run_id from apps");
   for (const r of rows.rows) assert.equal(r.migration_run_id, null);
 
   // And the abandoned-tab case: a run left `running` is closed as Interrupted by
   // the next one, which must let go of everything it was holding.
-  const second = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const second = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(second, "dok-prj-other");
-  await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await asOwner(() => beginMigration({ url: URL_BASE }));
   rows = await db.execute(
     "select migration_run_id from apps where migration_run_id is not null",
   );
@@ -809,7 +813,7 @@ test("stopping it hands everything back too, and so does the next run", async ()
 });
 
 test("an app keeps the icon it had, and one without stays iconless", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
   const apps = await db.select().from(appsTable);
@@ -830,7 +834,7 @@ test("an icon deplo would refuse is dropped, and the app still lands", async () 
     routingFetch({ applications: { "dok-app-web": web } }),
   );
 
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
   const apps = await db.select().from(appsTable);
@@ -841,7 +845,7 @@ test("an icon deplo would refuse is dropped, and the app still lands", async () 
 });
 
 test("the primary domain is the real hostname, not Dokploy's throwaway one", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
   const apps = await db.select().from(appsTable);
@@ -872,7 +876,7 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
   assert.equal(rehosted.status, "valid");
   assert.equal(rehosted.certProvider, "none");
   // And the report names both ends, so the change is legible without opening the app.
-  const report = await asOwner(() => getDokployImport(runId));
+  const report = await asOwner(() => getMigrationRun(runId));
   assert.match(
     report!.items.map((i) => i.message ?? "").join(" "),
     /blink-web-abc\.traefik\.me was Dokploy's own temporary address/,
@@ -882,11 +886,11 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
 // Dismissing is per app and it is what CLEARS the provenance - the message
 // exists for that column, and the import report keeps the permanent record.
 test("dismissing the notice clears it for that app only", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   // Finished, because that is when somebody reads this notice: while the run is
   // open its apps are the migration's, and every mutation on them is refused.
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
   const apps = await db.select().from(appsTable);
   const web = apps.find((a) => a.name === "blink-web")!;
 
@@ -914,7 +918,7 @@ test("dismissing the notice clears it for that app only", async () => {
 // Storage described it and the page showed an empty list for an app that plainly
 // had one - while the platform it came from showed the file, with its contents, in
 test("a compose stack's config file shows up in Storage", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-other");
   const apps = await db.select().from(appsTable);
   const stack = apps.find((a) => a.name === "other-stack")!;
@@ -964,9 +968,9 @@ test("a Member migrates a stack whose only host-ish key is env_file", async () =
     "  webdata:",
   );
 
-  const runId = await asMember(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asMember(() => beginMigration({ url: URL_BASE }));
   await asMember(() =>
-    importDokployProject({ ...CONNECT, runId, projectId: "dok-prj-other" }),
+    importMigrationProject({ ...CONNECT, runId, projectId: "dok-prj-other" }),
   );
 
   const apps = await db.select().from(appsTable);
@@ -984,9 +988,9 @@ test("a stack a Member may not create says what tripped it, and how", async () =
     "      - /var/run/docker.sock:/var/run/docker.sock:ro",
   );
 
-  const runId = await asMember(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asMember(() => beginMigration({ url: URL_BASE }));
   await asMember(() =>
-    importDokployProject({ ...CONNECT, runId, projectId: "dok-prj-other" }),
+    importMigrationProject({ ...CONNECT, runId, projectId: "dok-prj-other" }),
   );
 
   const rows = await db
@@ -1003,7 +1007,7 @@ test("a stack a Member may not create says what tripped it, and how", async () =
 });
 
 test("the compose file arrives with Dokploy's network taken out", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-other");
 
   const apps = await db.select().from(appsTable);
@@ -1032,7 +1036,7 @@ test("the compose file arrives with Dokploy's network taken out", async () => {
 });
 
 test("a project's and an environment's own variables become linked shared variables", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
   const shared = await db.select().from(sharedVarsTable);
@@ -1051,7 +1055,7 @@ test("a project's and an environment's own variables become linked shared variab
 });
 
 test("an environment Dokploy calls production reuses the one Deplo already made", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
   const projectId = (await db.select().from(appsTable))[0].projectId!;
@@ -1065,11 +1069,11 @@ test("an environment Dokploy calls production reuses the one Deplo already made"
 });
 
 test("running the same import again creates nothing", async () => {
-  const first = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const first = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(first, "dok-prj-blink");
   const appsAfterFirst = (await db.select().from(appsTable)).length;
 
-  const second = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const second = await asOwner(() => beginMigration({ url: URL_BASE }));
   const result = await importProject(second, "dok-prj-blink");
 
   assert.equal((await db.select().from(appsTable)).length, appsAfterFirst);
@@ -1078,7 +1082,7 @@ test("running the same import again creates nothing", async () => {
 });
 
 test("one service Dokploy will not return does not stop the others", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   __setDokployFetchForTest(routingFetch({ failApplication: "dok-app-api" }));
   const result = await importProject(runId, "dok-prj-blink");
 
@@ -1097,7 +1101,7 @@ test("one service Dokploy will not return does not stop the others", async () =>
 });
 
 test("an engine Deplo does not have is settled without asking Dokploy about it", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   calls = [];
   const result = await importProject(runId, "dok-prj-other");
 
@@ -1109,10 +1113,10 @@ test("an engine Deplo does not have is settled without asking Dokploy about it",
 });
 
 test("only the picked services come over, and the rest are not even read", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   calls = [];
   const result = await asOwner(() =>
-    importDokployProject({
+    importMigrationProject({
       ...CONNECT,
       runId,
       projectId: "dok-prj-blink",
@@ -1140,9 +1144,9 @@ test("only the picked services come over, and the rest are not even read", async
 test("each app lands on the server it was placed on, and builds where it was told", async () => {
   const SERVER_2 = "srv_2";
   await seedServer(db, SERVER_2);
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await asOwner(() =>
-    importDokployProject({
+    importMigrationProject({
       ...CONNECT,
       runId,
       projectId: "dok-prj-blink",
@@ -1168,9 +1172,9 @@ test("each app lands on the server it was placed on, and builds where it was tol
 });
 
 test("a placement naming a server this team cannot reach is refused, not used", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   const result = await asOwner(() =>
-    importDokployProject({
+    importMigrationProject({
       ...CONNECT,
       runId,
       projectId: "dok-prj-blink",
@@ -1194,9 +1198,9 @@ test("a placement naming a server this team cannot reach is refused, not used", 
 });
 
 test("a build server this team cannot reach falls back to Automatic", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   const result = await asOwner(() =>
-    importDokployProject({
+    importMigrationProject({
       ...CONNECT,
       runId,
       projectId: "dok-prj-blink",
@@ -1222,7 +1226,7 @@ test("a build server this team cannot reach falls back to Automatic", async () =
 
 test("a project that is already here is reused, not duplicated", async () => {
   await asOwner(() => createProject("Blink"));
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   const result = await importProject(runId, "dok-prj-blink");
 
   const projectItem = result.items.find((i) => i.sourceKind === "project")!;
@@ -1236,12 +1240,12 @@ test("a project that is already here is reused, not duplicated", async () => {
 
 test("the run keeps the report after the tab is gone", async () => {
   const runId = await asOwner(() =>
-    beginDokployImport({ url: URL_BASE, orgName: "Acme Inc" }),
+    beginMigration({ url: URL_BASE, orgName: "Acme Inc" }),
   );
   await importProject(runId, "dok-prj-blink");
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
 
-  const runs = await asOwner(() => listDokployImports());
+  const runs = await asOwner(() => listMigrationRuns());
   assert.equal(runs.length, 1);
   assert.equal(runs[0].status, "done");
   assert.equal(runs[0].orgName, "Acme Inc");
@@ -1249,7 +1253,7 @@ test("the run keeps the report after the tab is gone", async () => {
   assert.ok(runs[0].manual > 0, "the things needing a person are counted");
   assert.ok(runs[0].finishedAt);
 
-  const full = await asOwner(() => getDokployImport(runId));
+  const full = await asOwner(() => getMigrationRun(runId));
   assert.equal(full!.items.length > 0, true);
   // The breadcrumb reads correctly with no source instance to look at.
   assert.ok(full!.items.some((i) => i.path.startsWith("Blink / production /")));
@@ -1276,9 +1280,9 @@ async function seedSource(name: string, host: string, withAgent = false) {
 
 test("finishing an import takes Deplo's agent back off the migration source", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.70");
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
 
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
 
   assert.equal(
     await asOwner(() => getServerById(id)),
@@ -1289,7 +1293,7 @@ test("finishing an import takes Deplo's agent back off the migration source", as
 
 test("data that did not copy KEEPS the source, agent and all", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.71");
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await appendRunItem(runId, {
     path: "Blink / production / api",
     sourceKind: "volume",
@@ -1298,13 +1302,13 @@ test("data that did not copy KEEPS the source, agent and all", async () => {
     message: "the copy failed",
   });
 
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
 
   assert.ok(
     await asOwner(() => getServerById(id)),
     "the only way back to the bytes was uninstalled",
   );
-  const full = await asOwner(() => getDokployImport(runId));
+  const full = await asOwner(() => getMigrationRun(runId));
   assert.match(
     full!.items.find((i) => i.sourceKind === "server")!.message!,
     /still on dokploy-host: data that did not copy/,
@@ -1340,9 +1344,9 @@ async function uninstallState(id: string) {
 test("a host that will not let go is retried later, and says nothing yet", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.72", true);
   refusingAgent();
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
 
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
 
   assert.ok(await asOwner(() => getServerById(id)), "the row must survive");
   const state = await uninstallState(id);
@@ -1351,7 +1355,7 @@ test("a host that will not let go is retried later, and says nothing yet", async
   // Nothing is asked of anyone while Deplo is still trying: the card on the
   // migration screen reads `uninstallError`, and it is empty until it gives up.
   assert.equal(state.uninstall_error, "");
-  const full = await asOwner(() => getDokployImport(runId));
+  const full = await asOwner(() => getMigrationRun(runId));
   assert.equal(
     full!.items.some((i) => i.sourceKind === "server"),
     false,
@@ -1362,8 +1366,8 @@ test("a host that will not let go is retried later, and says nothing yet", async
 test("after the third try Deplo gives up, and only then asks a person", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.73", true);
   refusingAgent();
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
-  await asOwner(() => finishDokployImport(runId));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await asOwner(() => finishMigration(runId));
 
   // The sweep, twice, each time past the row's own next-attempt stamp.
   const later = new Date(Date.now() + 10 * 60_000);
@@ -1377,7 +1381,7 @@ test("after the third try Deplo gives up, and only then asks a person", async ()
   assert.match(String(state.uninstall_error), /too old to uninstall itself/);
   assert.ok(await asOwner(() => getServerById(id)), "the row must survive");
   // NOW the report says so, and the trail carries it too.
-  const full = await asOwner(() => getDokployImport(runId));
+  const full = await asOwner(() => getMigrationRun(runId));
   assert.match(
     full!.items.find((i) => i.sourceKind === "server")!.message!,
     /could not remove its own agent from dokploy-host after 3 tries/,
@@ -1391,8 +1395,8 @@ test("after the third try Deplo gives up, and only then asks a person", async ()
 test("a source that is not due yet is left alone by the sweep", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.74", true);
   refusingAgent();
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
-  await asOwner(() => finishDokployImport(runId));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await asOwner(() => finishMigration(runId));
 
   // A tick that arrives before the ladder's next rung must not burn an attempt:
   // otherwise three ticks in the same minute would spend the whole budget on a
@@ -1403,7 +1407,7 @@ test("a source that is not due yet is left alone by the sweep", async () => {
 
 test("the sweep finishes what a dead process started, with nobody signed in", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.75");
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   // The state a control plane that died mid-finish leaves behind: the intent is
   // on the row, nothing has been retried, and there is no request to hang it off.
   await db.execute(
@@ -1425,7 +1429,7 @@ test("the sweep finishes what a dead process started, with nobody signed in", as
 test("leaving the wizard takes Deplo's agent off the source it registered", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.76");
 
-  assert.equal(await asOwner(() => abandonDokployImport()), 1);
+  assert.equal(await asOwner(() => abandonMigration()), 1);
 
   assert.equal(
     await asOwner(() => getServerById(id)),
@@ -1438,16 +1442,16 @@ test("leaving does not touch the sources a run in flight is reading", async () =
   const id = await seedSource("dokploy-host", "192.0.2.77");
   // A second tab on the same team, closed while the run is mid-flight: the run
   // copies volumes THROUGH these agents, and it removes them itself when it ends.
-  await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await asOwner(() => beginMigration({ url: URL_BASE }));
 
-  assert.equal(await asOwner(() => abandonDokployImport()), 0);
+  assert.equal(await asOwner(() => abandonMigration()), 0);
 
   assert.ok(await asOwner(() => getServerById(id)));
 });
 
 test("leaving keeps the source that still holds data nothing could copy", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.78");
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await appendRunItem(runId, {
     path: "Blink / production / api",
     sourceKind: "volume",
@@ -1455,9 +1459,9 @@ test("leaving keeps the source that still holds data nothing could copy", async 
     outcome: "failed",
     message: "the copy failed",
   });
-  await asOwner(() => finishDokployImport(runId));
+  await asOwner(() => finishMigration(runId));
 
-  assert.equal(await asOwner(() => abandonDokployImport()), 0);
+  assert.equal(await asOwner(() => abandonMigration()), 0);
 
   assert.ok(
     await asOwner(() => getServerById(id)),
@@ -1467,12 +1471,12 @@ test("leaving keeps the source that still holds data nothing could copy", async 
 
 test("a stopped run has already handed its sources back", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.79");
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
-  await asOwner(() => stopDokployImport(runId));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await asOwner(() => stopMigration(runId));
 
   // Nothing left for leaving the page to do: stopping IS the undoing, agents
   // included, so the source is on the uninstall ladder before anybody walks out.
-  assert.equal(await asOwner(() => abandonDokployImport()), 0);
+  assert.equal(await asOwner(() => abandonMigration()), 0);
   const [source] = await db
     .select()
     .from(serversTable)
@@ -1488,32 +1492,32 @@ test("a stopped run has already handed its sources back", async () => {
 /* ------------------------------------------------------------------ */
 
 test("the wizard opens on the run you left, until you close its report", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
 
   // Leaving the page and coming back is this read: the run, not an empty form.
-  const open = await asOwner(() => resumableDokployImport());
+  const open = await asOwner(() => resumableMigration());
   assert.equal(open?.id, runId);
   assert.equal(open?.status, "running");
   assert.equal(open?.reportSeenAt, null);
 
-  await asOwner(() => finishDokployImport(runId));
-  const finished = await asOwner(() => resumableDokployImport());
+  await asOwner(() => finishMigration(runId));
+  const finished = await asOwner(() => resumableMigration());
   assert.equal(
     finished?.id,
     runId,
     "a run that ended while you were away still owes you its report",
   );
 
-  await asOwner(() => dismissDokployReport(runId));
+  await asOwner(() => dismissMigrationReport(runId));
   assert.equal(
-    await asOwner(() => resumableDokployImport()),
+    await asOwner(() => resumableMigration()),
     null,
     "the wizard must be startable again once the report is closed",
   );
 });
 
 test("a teammate opens on the run in flight, but not on somebody else's report", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await db.execute(
     `update dokploy_imports set actor_user_id = 'someone_else' where id = '${runId}'`,
   );
@@ -1522,7 +1526,7 @@ test("a teammate opens on the run in flight, but not on somebody else's report",
   // panel on it - the same Stop included, which is what the server has always
   // allowed. A screen that hides a button the server would honour is a lie.
   assert.equal(
-    (await asOwner(() => resumableDokployImport()))?.id,
+    (await asOwner(() => resumableMigration()))?.id,
     runId,
     "a run in flight must reach every member of the team, not only its actor",
   );
@@ -1534,36 +1538,36 @@ test("a teammate opens on the run in flight, but not on somebody else's report",
     `update dokploy_imports set status = 'done' where id = '${runId}'`,
   );
   assert.equal(
-    await asOwner(() => resumableDokployImport()),
+    await asOwner(() => resumableMigration()),
     null,
     "a finished run belongs to whoever started it until they close its report",
   );
 
   await assert.rejects(() =>
     runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
-      dismissDokployReport(runId),
+      dismissMigrationReport(runId),
     ),
   );
 });
 
 test("undoing a migration is being done with it", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
-  await asOwner(() => revertDokployImport(runId));
+  await asOwner(() => revertMigration(runId));
 
   assert.equal(
-    await asOwner(() => resumableDokployImport()),
+    await asOwner(() => resumableMigration()),
     null,
     "the wizard would open on a run whose work has just been taken back out",
   );
 });
 
 test("a run left open by a closed tab is closed as interrupted by the next one", async () => {
-  const abandoned = await asOwner(() => beginDokployImport({ url: URL_BASE }));
-  await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const abandoned = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await asOwner(() => beginMigration({ url: URL_BASE }));
 
-  const runs = await asOwner(() => listDokployImports());
+  const runs = await asOwner(() => listMigrationRuns());
   const old = runs.find((r) => r.id === abandoned)!;
   assert.equal(old.status, "failed");
   assert.equal(old.error, "Interrupted");
@@ -1571,11 +1575,15 @@ test("a run left open by a closed tab is closed as interrupted by the next one",
 });
 
 test("an import run belongs to its team", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await assert.rejects(
     () =>
       runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
-        importDokployProject({ ...CONNECT, runId, projectId: "dok-prj-blink" }),
+        importMigrationProject({
+          ...CONNECT,
+          runId,
+          projectId: "dok-prj-blink",
+        }),
       ),
     /scoped to a team the user no longer belongs to|does not belong to this team/,
   );
@@ -1690,7 +1698,7 @@ const dbRowOf = async (name: string) =>
   (await db.select().from(databasesTable)).find((d) => d.name === name);
 
 const notesOf = async (runId: string) =>
-  (await asOwner(() => getDokployImport(runId)))!.items
+  (await asOwner(() => getMigrationRun(runId)))!.items
     .filter((i) => i.sourceKind === "postgres")
     .map((i) => i.message ?? "")
     .join(" | ");
@@ -1698,7 +1706,7 @@ const notesOf = async (runId: string) =>
 test("a database keeps the host port it published on Dokploy", async () => {
   await provisionServer1();
   await grantExposePorts();
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   // Provisioning is floated, and the runner blames the test that started work
   // still in flight when it returns - so every one of these drains its own.
@@ -1715,9 +1723,9 @@ test("the review can move that port, or refuse to publish it at all", async () =
   await provisionServer1();
   await grantExposePorts();
 
-  const runA = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runA = await asOwner(() => beginMigration({ url: URL_BASE }));
   await asOwner(() =>
-    importDokployProject({
+    importMigrationProject({
       ...CONNECT,
       runId: runA,
       projectId: "dok-prj-blink",
@@ -1733,9 +1741,9 @@ test("the review can move that port, or refuse to publish it at all", async () =
   assert.match(await notesOf(runA), /instead of 5432/);
 
   await db.execute("truncate table databases cascade;");
-  const runB = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runB = await asOwner(() => beginMigration({ url: URL_BASE }));
   await asOwner(() =>
-    importDokployProject({
+    importMigrationProject({
       ...CONNECT,
       runId: runB,
       projectId: "dok-prj-blink",
@@ -1764,7 +1772,7 @@ test("the source holding the port is not a reason to drop it - it is stopped", a
   await provisionServer1([5432]);
   await grantExposePorts();
 
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
   await settleProvisioning(db);
@@ -1789,13 +1797,13 @@ test("without the publish-ports grant the port is dropped, and the report says w
   // The plan still SAYS what the source publishes - that is a fact about the other
   // platform, and the review needs it to count how many databases are about to lose
   // theirs - but the import says the true reason rather than blaming the old
-  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
   const planned = plan.projects
     .flatMap((p) => p.environments.flatMap((e) => e.services))
     .find((s) => s.sourceId === "dok-pg-1")!;
   assert.equal(planned.exposedPort, 5432);
 
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await settleProvisioning(db);
   const row = await dbRowOf("blink-db");
@@ -1812,7 +1820,7 @@ test("without the publish-ports grant the port is dropped, and the report says w
  */
 
 test("a revert removes what the run created", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await settleProvisioning(db);
   assert.ok(
@@ -1820,7 +1828,7 @@ test("a revert removes what the run created", async () => {
     "nothing was imported",
   );
 
-  const result = await asOwner(() => revertDokployImport(runId));
+  const result = await asOwner(() => revertMigration(runId));
   await settleProvisioning(db);
 
   assert.ok(result.apps > 0, `removed ${result.apps} apps`);
@@ -1838,7 +1846,7 @@ test("a revert removes what the run created", async () => {
 });
 
 test("what a revert could not remove is written into the run's log", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await settleProvisioning(db);
 
@@ -1846,7 +1854,7 @@ test("what a revert could not remove is written into the run's log", async () =>
   // Every delete keeps its own gate, so what they may not remove comes back as
   // a leftover rather than as a thrown error.
   const result = await runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () =>
-    revertDokployImport(runId),
+    revertMigration(runId),
   );
   await settleProvisioning(db);
 
@@ -1863,7 +1871,7 @@ test("what a revert could not remove is written into the run's log", async () =>
   // The reason used to be appended to a client-side array that the same
   // function cleared three lines later, so "this is still here, and here is
   // why" reached nobody at all.
-  const report = await asOwner(() => getDokployImport(runId));
+  const report = await asOwner(() => getMigrationRun(runId));
   const leftovers = report!.items.filter((i) => i.sourceKind === "undo");
   assert.equal(leftovers.length, result.failed.length);
   assert.ok(
@@ -1878,11 +1886,11 @@ test("a revert never touches a project the run only reused", async () => {
   const mine = await asOwner(() => createProject("Blink"));
   await seedApp(db, { id: "prj_keep", projectId: mine.id });
 
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await settleProvisioning(db);
 
-  const result = await asOwner(() => revertDokployImport(runId));
+  const result = await asOwner(() => revertMigration(runId));
   await settleProvisioning(db);
 
   assert.equal(result.projects, 0, "it deleted a project it did not create");
@@ -1900,14 +1908,14 @@ test("a revert never touches a project the run only reused", async () => {
 });
 
 test("a revert of somebody else's run is not found", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await settleProvisioning(db);
 
   await assert.rejects(
     () =>
       runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
-        revertDokployImport(runId),
+        revertMigration(runId),
       ),
     /no longer belongs|not found|permission/i,
   );
@@ -1925,13 +1933,13 @@ test("stopping a run undoes it whole: what it made here, and the agent over ther
     .set({ importOnly: true })
     .where(eq(serversTable.id, SOURCE));
 
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await settleProvisioning(db);
   const landed = await db.select().from(appsTable);
   assert.ok(landed.length > 0, "the import has to have made something to undo");
 
-  await asOwner(() => stopDokployImport(runId));
+  await asOwner(() => stopMigration(runId));
 
   // There is no half-migrated state to keep: a stop lands mid-copy far more
   // often than not, and a volume 60% across is not 60% of an app.
@@ -1952,7 +1960,7 @@ test("stopping a run undoes it whole: what it made here, and the agent over ther
   );
 
   // Idempotent: a second call finds nothing left to delete.
-  await asOwner(() => stopDokployImport(runId));
+  await asOwner(() => stopMigration(runId));
   const again = await db
     .select()
     .from(runsTable)
@@ -1975,7 +1983,7 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
 
   const pending = gen.next();
   const runId = await asOwner(() =>
-    beginDokployImport({ url: URL_BASE, orgName: "Acme Inc" }),
+    beginMigration({ url: URL_BASE, orgName: "Acme Inc" }),
   );
   const started = await pending;
   assert.equal(started.value?.id, runId);
@@ -1993,7 +2001,7 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
   assert.equal((await activeMigrationStream(TEAM_B).next()).value, null);
 
   const ending = gen.next();
-  await asOwner(() => stopDokployImport(runId));
+  await asOwner(() => stopMigration(runId));
   assert.equal((await ending).value, null, "a stopped run is not in progress");
 
   await gen.return(undefined as never);
@@ -2012,7 +2020,7 @@ test("a corrected dial address keeps the machine recognisable by the one it came
     addServer({ name: "dokploy-host", host: panelHost, importOnly: true }),
   );
 
-  const before = await asOwner(() => dokployMachines(credential, TEAM_A));
+  const before = await asOwner(() => migrationMachines(credential, TEAM_A));
   assert.equal(before[0]?.sourceId, "", "the Dokploy host itself comes first");
   assert.equal(before[0]?.deploServerId, added.server.id);
 
@@ -2028,7 +2036,7 @@ test("a corrected dial address keeps the machine recognisable by the one it came
   assert.equal(server?.ip, "203.0.113.7", "we dial the machine");
   assert.equal(server?.host, panelHost, "we remember where it came from");
 
-  const after = await asOwner(() => dokployMachines(credential, TEAM_A));
+  const after = await asOwner(() => migrationMachines(credential, TEAM_A));
   assert.equal(
     after[0]?.deploServerId,
     added.server.id,
@@ -2047,7 +2055,7 @@ test("a corrected address outlives the server row it was made on", async () => {
   );
 
   await asOwner(() =>
-    setDokployMachineAddress({
+    setMigrationMachineAddress({
       sourceUrl: URL_BASE,
       sourceId: "",
       serverId: added.server.id,
@@ -2056,7 +2064,7 @@ test("a corrected address outlives the server row it was made on", async () => {
   );
 
   // Still one machine, still matched: `keepHost` left the panel name on the row.
-  const during = await asOwner(() => dokployMachines(credential, TEAM_A));
+  const during = await asOwner(() => migrationMachines(credential, TEAM_A));
   assert.equal(during[0]?.deploServerId, added.server.id);
   assert.equal(during[0]?.ipAddress, "203.0.113.7");
 
@@ -2064,7 +2072,7 @@ test("a corrected address outlives the server row it was made on", async () => {
   // everything Deplo knew about that machine used to go with it.
   await asOwner(() => removeServer(added.server.id));
 
-  const after = await asOwner(() => dokployMachines(credential, TEAM_A));
+  const after = await asOwner(() => migrationMachines(credential, TEAM_A));
   assert.equal(after[0]?.sourceId, "");
   assert.equal(
     after[0]?.ipAddress,
@@ -2087,7 +2095,7 @@ test("a remembered address belongs to one team and one panel", async () => {
     }),
   );
   await asOwner(() =>
-    setDokployMachineAddress({
+    setMigrationMachineAddress({
       sourceUrl: URL_BASE,
       sourceId: "",
       serverId: added.server.id,
@@ -2097,7 +2105,7 @@ test("a remembered address belongs to one team and one panel", async () => {
   // A DIFFERENT Dokploy, same team: its host is its own machine, and borrowing
   // this address would point a migration at the wrong box.
   const other = await asOwner(() =>
-    dokployMachines(
+    migrationMachines(
       { baseUrl: "https://dokploy.other.test", apiKey: "k" },
       TEAM_A,
     ),

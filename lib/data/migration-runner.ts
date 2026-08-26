@@ -19,16 +19,16 @@ import type { ServicePlacement } from "./migration-import";
 import {
   appendRunItem,
   assertImportGate,
-  beginDokployImport,
-  finishDokployImport,
-  importDokployProject,
-  stopDokployImport,
-  undoDokployImport,
+  beginMigration,
+  finishMigration,
+  importMigrationProject,
+  stopMigration,
+  undoMigration,
 } from "./migration-import";
 import {
   abortRunCopy,
-  moveDokployServiceData,
-  planDokployDataMove,
+  moveMigrationServiceData,
+  planMigrationDataMove,
 } from "./migration-data";
 import { isCopyAborted } from "./volume-migration";
 import { checkServerHealth } from "./server-health";
@@ -91,12 +91,12 @@ export interface StartRunInput {
 /**
  * Open a run, write down everything needed to finish it, and start it moving.
  */
-export async function startDokployRun(input: StartRunInput): Promise<string> {
+export async function startMigrationRun(input: StartRunInput): Promise<string> {
   const { teamId } = await assertImportGate();
   if (input.targets.length === 0)
     throw new Error("Nothing is selected, so there is nothing to migrate.");
 
-  const runId = await beginDokployImport({
+  const runId = await beginMigration({
     url: input.url,
     orgName: input.orgName ?? null,
   });
@@ -149,7 +149,7 @@ export async function startDokployRun(input: StartRunInput): Promise<string> {
 }
 
 /** Ask a run to stop. It notices between steps; nothing is abandoned mid-call. */
-export async function requestStopDokployRun(runId: string): Promise<void> {
+export async function requestStopMigrationRun(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
   const [row] = await getDb()
     .update(runsTable)
@@ -167,7 +167,7 @@ export async function requestStopDokployRun(runId: string): Promise<void> {
   // successor, looks like.
   const beatAt = row.heartbeatAt ? Date.parse(row.heartbeatAt) : 0;
   if (Date.now() - beatAt < STALE_MS) return;
-  await stopDokployImport(runId);
+  await stopMigration(runId);
   await getDb()
     .update(runsTable)
     .set({ apiKeyEnc: null, runnerOwner: null, phase: "done" })
@@ -331,7 +331,7 @@ async function failRun(row: RunRow, why: string): Promise<void> {
   if (!row.actorUserId) return;
   try {
     await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
-      undoDokployImport(row.id),
+      undoMigration(row.id),
     );
   } catch (e) {
     console.error("[migration] undo after failure", row.id, "failed:", e);
@@ -409,8 +409,8 @@ async function stopped(runId: string): Promise<boolean> {
   if (r.status !== "running") return true;
   if (!r.stop) return false;
   // Total: apps, databases, projects, variables, and Deplo's agent off the
-  // source machines. See `stopDokployImport`.
-  await stopDokployImport(runId);
+  // source machines. See `stopMigration`.
+  await stopMigration(runId);
   await getDb()
     .update(runsTable)
     .set({ apiKeyEnc: null, runnerOwner: null, phase: "done" })
@@ -528,7 +528,7 @@ async function runConfigPhase(row: RunRow, c: RunCredential): Promise<void> {
     await beat(row.id);
     await setProgress(row.id, { stepLabel: g.projectName });
     try {
-      await importDokployProject({
+      await importMigrationProject({
         url: c.url,
         apiKey: c.apiKey,
         allowPrivate: c.allowPrivate,
@@ -581,7 +581,7 @@ async function runConfigPhase(row: RunRow, c: RunCredential): Promise<void> {
 
 async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
   await beat(row.id);
-  const planned = await planDokployDataMove({
+  const planned = await planMigrationDataMove({
     url: c.url,
     apiKey: c.apiKey,
     allowPrivate: c.allowPrivate,
@@ -620,9 +620,9 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
     // indistinguishable from a run that died, and got read as one.
     let copied = 0;
     let shownAt = 0;
-    let res: Awaited<ReturnType<typeof moveDokployServiceData>>;
+    let res: Awaited<ReturnType<typeof moveMigrationServiceData>>;
     try {
-      res = await moveDokployServiceData({
+      res = await moveMigrationServiceData({
         url: c.url,
         apiKey: c.apiKey,
         allowPrivate: c.allowPrivate,
@@ -661,7 +661,7 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
   }
 
   await setProgress(row.id, { doneSteps: movable.length, stepLabel: null });
-  await finishDokployImport(row.id);
+  await finishMigration(row.id);
   await getDb()
     .update(runsTable)
     .set({ apiKeyEnc: null, runnerOwner: null, phase: "done" })

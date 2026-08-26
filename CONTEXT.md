@@ -662,8 +662,8 @@ already run. A **migration run** is the stored row plus the **report** it leaves
 (`dokploy_imports` + `dokploy_import_items`), readable from either tab in the same dialog.
 The wizard is five steps - Connect, Install, Review, People, Done - and Install is where the
 **migration source** gets its agent.
-The API and the data layer keep the older **import** spelling (`scanDokploy`,
-`importDokployProject`, `dokployImports`, `lib/data/migration-import.ts`): renaming a published
+The API and the data layer keep the older **import** spelling (`scanMigrationSource`,
+`importMigrationProject`, `dokployImports`, `lib/data/migration-import.ts`): renaming a published
 schema to match a label would break every MCP tool that names a field, for nothing. So
 "import" is the wire word and "migration" is the product word, and neither is wrong.
 _Avoid_: transfer (that is **app transfer**, moving an App between teams), move (that is a

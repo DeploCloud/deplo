@@ -28,7 +28,7 @@ import {
   getService,
   inspectContainer,
   listAppContainers,
-  listProjects as listDokployProjects,
+  listProjects as listSourceProjects,
   serviceDisplayName,
   stopService,
   type DokployCredential,
@@ -66,7 +66,7 @@ import {
   appendRunItem,
   assertImportGate,
   credentialFor,
-  dokployMachines,
+  migrationMachines,
   ownRun,
   refreshCounts,
   type ConnectInput,
@@ -205,7 +205,7 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
     projectName: string;
     environmentName: string;
   }[] = [];
-  for (const p of await listDokployProjects(c))
+  for (const p of await listSourceProjects(c))
     for (const env of p.environments ?? []) {
       const where = {
         projectName: p.name ?? "",
@@ -492,7 +492,7 @@ async function landedFor(
  * the tens of services a migration has; a fleet with hundreds wants the container
  * list cached per HOST instead of per service.
  */
-export async function planDokployDataMove(
+export async function planMigrationDataMove(
   input: ConnectInput & { runId: string },
 ): Promise<DataMoveService[]> {
   const { teamId } = await assertImportGate();
@@ -503,7 +503,7 @@ export async function planDokployDataMove(
   const targets = await runTargets(input.runId);
   if (targets.size === 0) return [];
 
-  const machines = await dokployMachines(c, teamId);
+  const machines = await migrationMachines(c, teamId);
   const out: DataMoveService[] = [];
   // One Hello per distinct machine, not per service: several services share a host
   // and the answer cannot differ between them.
@@ -640,13 +640,13 @@ export function abortRunCopy(runId: string): void {
   inFlightCopies.get(runId)?.abort();
 }
 
-export async function moveDokployServiceData(
+export async function moveMigrationServiceData(
   input: MoveInput,
 ): Promise<DataMoveResult> {
-  return runAsMigration(() => runMoveDokployServiceData(input));
+  return runAsMigration(() => runMoveMigrationServiceData(input));
 }
 
-async function runMoveDokployServiceData(
+async function runMoveMigrationServiceData(
   input: MoveInput,
 ): Promise<DataMoveResult> {
   const { teamId } = await assertImportGate();
@@ -1243,10 +1243,10 @@ async function setDatabaseRunningAfterCopy(
 async function resolveSourceServer(
   c: DokployCredential,
   teamId: string,
-  dokployServerId: string,
+  platformServerId: string,
 ): Promise<string> {
-  const machine = (await dokployMachines(c, teamId)).find(
-    (m) => m.sourceId === dokployServerId,
+  const machine = (await migrationMachines(c, teamId)).find(
+    (m) => m.sourceId === platformServerId,
   );
   if (!machine)
     throw new Error(

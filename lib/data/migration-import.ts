@@ -68,7 +68,7 @@ import {
   getEnvironment,
   getService,
   listMembers,
-  listProjects as listDokployProjects,
+  listProjects as listSourceProjects,
   listSchedules,
   listServers,
   normalizeDokployBaseUrl,
@@ -229,7 +229,7 @@ export interface PlanMember {
   inTeam: boolean;
 }
 
-export interface DokployPlan {
+export interface MigrationPlan {
   sourceUrl: string;
   orgName: string | null;
   projects: PlanProject[];
@@ -299,7 +299,7 @@ export interface ImportProjectResult {
   items: ImportItemDTO[];
 }
 
-export interface DokployInvite {
+export interface MigrationInvite {
   email: string;
   name: string;
   /** The single-use registration link, or null when they were added directly. */
@@ -471,14 +471,16 @@ function nameOf(
  * Read the source instance and describe what an import would do - without writing
  * anything.
  */
-export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
+export async function scanMigrationSource(
+  input: ConnectInput,
+): Promise<MigrationPlan> {
   const { teamId } = await assertImportGate();
   const c = await credentialFor(input);
 
   const [orgName, servers, projects] = await Promise.all([
     activeOrganizationName(c),
     listServers(c).catch(() => []),
-    listDokployProjects(c),
+    listSourceProjects(c),
   ]);
 
   const existing = await existingNames(teamId);
@@ -783,7 +785,7 @@ async function hostnamesOwnedElsewhere(teamId: string): Promise<Set<string>> {
  * Every machine behind that Dokploy, each paired with the Deplo server at the same
  * address - or nothing, when Deplo has no agent there.
  */
-export async function dokployMachines(
+export async function migrationMachines(
   c: DokployCredential,
   teamId: string,
 ): Promise<PlanServer[]> {
@@ -817,7 +819,7 @@ async function rememberedAddresses(
  * registers it there instead of at the panel's name. Overwrites: the last answer
  * is the one somebody just proved.
  */
-export async function rememberDokployMachineAddress(
+export async function rememberMigrationMachineAddress(
   sourceUrl: string,
   sourceId: string,
   address: string,
@@ -847,7 +849,7 @@ export async function rememberDokployMachineAddress(
 /**
  * Point Deplo at where a machine of this Dokploy really is, and REMEMBER it.
  */
-export async function setDokployMachineAddress(input: {
+export async function setMigrationMachineAddress(input: {
   sourceUrl: string;
   sourceId: string;
   serverId: string;
@@ -860,7 +862,7 @@ export async function setDokployMachineAddress(input: {
     // Dokploy machine on a second pass. See the flag's own doc.
     keepHost: true,
   });
-  await rememberDokployMachineAddress(
+  await rememberMigrationMachineAddress(
     input.sourceUrl,
     input.sourceId,
     input.address,
@@ -990,7 +992,7 @@ async function teamMemberIds(teamId: string): Promise<string[]> {
  * way one stays open is a tab that went away, and a history with two live runs in
  * it cannot be read. That is also why there is no boot reconcile to add.
  */
-export async function beginDokployImport(input: {
+export async function beginMigration(input: {
   url: string;
   orgName?: string | null;
 }): Promise<string> {
@@ -1017,7 +1019,7 @@ export async function beginDokployImport(input: {
     orgName: input.orgName?.trim() || null,
     actor: user?.name ?? "someone",
     // The id as well as the display name: it is what says whose wizard opens on
-    // this run again (`resumableDokployImport`), and the runner overwrites it
+    // this run again (`resumableMigration`), and the runner overwrites it
     // with the same value when it takes the plan.
     actorUserId: user?.id ?? null,
     status: "running",
@@ -1151,7 +1153,7 @@ async function scheduleSourceUninstalls(
  * else's. The wizard calls it on the way out; the identity is the person leaving,
  * and the capability is the one that registered the sources in the first place.
  */
-export async function abandonDokployImport(): Promise<number> {
+export async function abandonMigration(): Promise<number> {
   const { teamId } = await requireCapability("create_projects");
   const actor = (await getCurrentUser())?.name ?? "the migration";
 
@@ -1162,7 +1164,7 @@ export async function abandonDokployImport(): Promise<number> {
     .orderBy(desc(runsTable.seq))
     .limit(1);
   // `stopped` is a pause, not an ending: re-running is how a stopped migration is
-  // resumed (see `stopDokployImport`), and it can only be resumed through the
+  // resumed (see `stopMigration`), and it can only be resumed through the
   // agents that are still on those machines.
   if (latest?.status === "running" || latest?.status === "stopped") return 0;
   if (latest && (await hasStrandedVolume(latest.id))) return 0;
@@ -1301,7 +1303,7 @@ export async function drainMigrationSourceUninstalls(
 /**
  * Close a run. Counts come last, because the sweep writes report rows.
  */
-export async function finishDokployImport(runId: string): Promise<void> {
+export async function finishMigration(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
   const closed = await getDb()
     .update(runsTable)
@@ -1523,13 +1525,13 @@ export interface ImportProjectInput extends ConnectInput {
  * The import's own writes are exempt from the marker they set. Without this the
  * run would be refused by its own marker on everything after the first write.
  */
-export async function importDokployProject(
+export async function importMigrationProject(
   input: ImportProjectInput,
 ): Promise<ImportProjectResult> {
-  return runAsMigration(() => runImportDokployProject(input));
+  return runAsMigration(() => runImportMigrationProject(input));
 }
 
-async function runImportDokployProject(
+async function runImportMigrationProject(
   input: ImportProjectInput,
 ): Promise<ImportProjectResult> {
   const { teamId } = await assertImportGate();
@@ -1537,7 +1539,7 @@ async function runImportDokployProject(
   if (!(await ownRun(input.runId, teamId)))
     throw new Error("That import run does not belong to this team.");
 
-  const projects = await listDokployProjects(c);
+  const projects = await listSourceProjects(c);
   const source = projects.find((p) => p.projectId === input.projectId);
   if (!source)
     throw new Error("That project is no longer on the Dokploy instance.");
@@ -1572,7 +1574,7 @@ async function runImportDokployProject(
   const hostOfMachine = async (sourceServerId: string) => {
     if (!machineHosts)
       machineHosts = new Map(
-        (await dokployMachines(c, teamId)).map((m) => [
+        (await migrationMachines(c, teamId)).map((m) => [
           m.sourceId,
           m.deploServerId,
         ]),
@@ -3043,9 +3045,9 @@ async function importSharedVars(
  * either direction: Dokploy's API never exposes them and its hashes are not
  * deplo's.
  */
-export async function importDokployMembers(
+export async function importMigrationMembers(
   input: ConnectInput & { runId: string },
-): Promise<DokployInvite[]> {
+): Promise<MigrationInvite[]> {
   const { teamId } = await assertImportGate();
   await requireInstanceAdmin();
   const c = await credentialFor(input);
@@ -3054,7 +3056,7 @@ export async function importDokployMembers(
 
   const report = new Report(input.runId).at("Members");
   const people = await planMembers(c, teamId);
-  const out: DokployInvite[] = [];
+  const out: MigrationInvite[] = [];
 
   const accounts = new Map<string, string>();
   if (people.length > 0)
@@ -3163,7 +3165,7 @@ function revertError(e: unknown): string {
  * left as the migration left it - services it stopped over there stay stopped,
  * which the wizard says before it asks.
  */
-export async function stopDokployImport(runId: string): Promise<void> {
+export async function stopMigration(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
   await getDb()
     .update(runsTable)
@@ -3175,17 +3177,17 @@ export async function stopDokployImport(runId: string): Promise<void> {
         eq(runsTable.status, "running"),
       ),
     );
-  await undoDokployImport(runId);
+  await undoMigration(runId);
 }
 
 /**
  * Take a run back out whole: what it created HERE, and the agent Deplo put over
  * THERE to read it. The uninstall is FORCED past its usual guard.
  */
-export async function undoDokployImport(runId: string): Promise<void> {
+export async function undoMigration(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
   await releaseMigrating(runId);
-  await revertDokployImport(runId);
+  await revertMigration(runId);
   await removeMigrationSources(runId, teamId, { force: true });
   await refreshCounts(runId, teamId);
 }
@@ -3207,13 +3209,11 @@ export interface RevertResultDTO {
  * unreachable host must not strand the other ten objects.
  */
 /** Undoing a migration deletes the very rows it marked, so it is exempt too. */
-export async function revertDokployImport(
-  runId: string,
-): Promise<RevertResultDTO> {
-  return runAsMigration(() => runRevertDokployImport(runId));
+export async function revertMigration(runId: string): Promise<RevertResultDTO> {
+  return runAsMigration(() => runRevertMigration(runId));
 }
 
-async function runRevertDokployImport(runId: string): Promise<RevertResultDTO> {
+async function runRevertMigration(runId: string): Promise<RevertResultDTO> {
   const { teamId } = await assertImportGate();
   if (!(await ownRun(runId, teamId))) throw new Error("Migration not found");
 
@@ -3372,7 +3372,7 @@ async function environmentIsGone(id: string): Promise<boolean> {
 /**
  * The run the wizard should OPEN on, or null for an empty connect form.
  */
-export async function resumableDokployImport(): Promise<ImportRunDTO | null> {
+export async function resumableMigration(): Promise<ImportRunDTO | null> {
   const teamId = await requireActiveTeamId();
   const user = await getCurrentUser();
   if (!user) return null;
@@ -3394,7 +3394,7 @@ export async function resumableDokployImport(): Promise<ImportRunDTO | null> {
 /**
  * "I am done looking at this run" - the wizard stops opening on it.
  */
-export async function dismissDokployReport(runId: string): Promise<void> {
+export async function dismissMigrationReport(runId: string): Promise<void> {
   const { teamId } = await requireCapability("create_projects");
   await getDb()
     .update(runsTable)
@@ -3405,9 +3405,9 @@ export async function dismissDokployReport(runId: string): Promise<void> {
 /**
  * The team's migration in flight, or null. There is at most one: opening a run
  * marks any older `running` row of the team Interrupted (see {@link
- * beginDokployImport}), so this is a fact, not a first-of-many.
+ * beginMigration}), so this is a fact, not a first-of-many.
  */
-export async function activeDokployImportForTeam(
+export async function activeMigrationForTeam(
   teamId: string,
 ): Promise<ImportRunDTO | null> {
   const rows = await getDb()
@@ -3427,7 +3427,7 @@ export async function activeDokployImportForTeam(
   return { ...toRunDTO(rows[0]), lastPath: last?.path ?? null };
 }
 
-export async function listDokployImports(): Promise<ImportRunDTO[]> {
+export async function listMigrationRuns(): Promise<ImportRunDTO[]> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
     .select()
@@ -3444,7 +3444,7 @@ export async function listDokployImports(): Promise<ImportRunDTO[]> {
     .map(toRunDTO);
 }
 
-export async function getDokployImport(
+export async function getMigrationRun(
   id: string,
 ): Promise<(ImportRunDTO & { items: ImportItemDTO[] }) | null> {
   const teamId = await requireActiveTeamId();

@@ -1,40 +1,40 @@
 import { builder } from "../builder";
 import { pubSub, MIGRATION_ACTIVITY_TOPIC } from "../pubsub";
 import {
-  moveDokployServiceData,
-  planDokployDataMove,
+  moveMigrationServiceData,
+  planMigrationDataMove,
   type DataMoveResult,
   type DataMoveService,
   type DataMoveVolume,
 } from "@/lib/data/migration-data";
 import {
-  abandonDokployImport,
-  activeDokployImportForTeam,
-  dismissDokployReport,
-  beginDokployImport,
-  type DokployInvite,
-  type DokployPlan,
-  finishDokployImport,
-  getDokployImport,
-  importDokployMembers,
-  importDokployProject,
+  abandonMigration,
+  activeMigrationForTeam,
+  dismissMigrationReport,
+  beginMigration,
+  type MigrationInvite,
+  type MigrationPlan,
+  finishMigration,
+  getMigrationRun,
+  importMigrationMembers,
+  importMigrationProject,
   type ImportItemDTO,
   type ImportProjectResult,
   type ImportRunDTO,
-  listDokployImports,
+  listMigrationRuns,
   type PlanEnvironment,
   type PlanMember,
   type PlanProject,
   type PlanServer,
   type PlanService,
-  revertDokployImport,
+  revertMigration,
   type RevertResultDTO,
-  scanDokploy,
-  setDokployMachineAddress,
+  scanMigrationSource,
+  setMigrationMachineAddress,
 } from "@/lib/data/migration-import";
 import {
-  requestStopDokployRun,
-  startDokployRun,
+  requestStopMigrationRun,
+  startMigrationRun,
 } from "@/lib/data/migration-runner";
 
 /**
@@ -46,13 +46,13 @@ import {
 /* Enums                                                              */
 /* ------------------------------------------------------------------ */
 
-const DokployPlanStatusEnum = builder.enumType("DokployPlanStatus", {
+const MigrationPlanStatusEnum = builder.enumType("MigrationPlanStatus", {
   description:
     "What the preview thinks will happen to one Dokploy service. new = it will be created. exists = something with that name is already here, so it is left alone. unsupported = Deplo has no such thing (a libsql database, a service Dokploy would not return). needs_grant = it can only be created by someone holding the host-volumes or expose-ports grant.",
   values: ["new", "exists", "unsupported", "needs_grant"] as const,
 });
 
-const DokployOutcomeEnum = builder.enumType("DokployImportOutcome", {
+const MigrationOutcomeEnum = builder.enumType("MigrationOutcome", {
   description:
     "One line of the report. created = it is in Deplo now. skipped = already here, or left out on purpose. failed = refused, with the server's own message. manual = it came across, but something needs a person (a private repo with no credential, a database whose host name changed, a compose file that was rewritten). unsupported = there is no Deplo equivalent.",
   values: ["created", "skipped", "failed", "manual", "unsupported"] as const,
@@ -63,7 +63,7 @@ const DokployOutcomeEnum = builder.enumType("DokployImportOutcome", {
 /* ------------------------------------------------------------------ */
 
 const PlanServiceRef = builder
-  .objectRef<PlanService>("DokployPlanService")
+  .objectRef<PlanService>("MigrationPlanService")
   .implement({
     description:
       "One Dokploy service (an application, a compose stack, or a database) as it would land here.",
@@ -79,7 +79,7 @@ const PlanServiceRef = builder
         description: "app or database, or null when Deplo has no equivalent.",
       }),
       status: t.field({
-        type: DokployPlanStatusEnum,
+        type: MigrationPlanStatusEnum,
         resolve: (s) => s.status,
       }),
       sourceServerId: t.exposeString("sourceServerId", {
@@ -117,7 +117,7 @@ const PlanServiceRef = builder
   });
 
 const PlanEnvironmentRef = builder
-  .objectRef<PlanEnvironment>("DokployPlanEnvironment")
+  .objectRef<PlanEnvironment>("MigrationPlanEnvironment")
   .implement({
     fields: (t) => ({
       sourceId: t.exposeString("sourceId"),
@@ -131,7 +131,7 @@ const PlanEnvironmentRef = builder
   });
 
 const PlanProjectRef = builder
-  .objectRef<PlanProject>("DokployPlanProject")
+  .objectRef<PlanProject>("MigrationPlanProject")
   .implement({
     fields: (t) => ({
       sourceId: t.exposeString("sourceId"),
@@ -145,7 +145,7 @@ const PlanProjectRef = builder
   });
 
 const PlanServerRef = builder
-  .objectRef<PlanServer>("DokployPlanServer")
+  .objectRef<PlanServer>("MigrationPlanServer")
   .implement({
     description:
       "One machine behind the source instance. The FIRST entry is always the host the source instance itself runs on, whose `sourceId` is the empty string - the same key the server mapping and the data cutover use for it.",
@@ -163,7 +163,7 @@ const PlanServerRef = builder
   });
 
 const PlanMemberRef = builder
-  .objectRef<PlanMember>("DokployPlanMember")
+  .objectRef<PlanMember>("MigrationPlanMember")
   .implement({
     description:
       "Someone in the Dokploy organization the API key reads. Empty when the key belongs to a plain member, which cannot list the organization.",
@@ -179,28 +179,30 @@ const PlanMemberRef = builder
     }),
   });
 
-const DokployPlanRef = builder.objectRef<DokployPlan>("DokployPlan").implement({
-  description:
-    "What an import would do, read from the source instance without writing anything.",
-  fields: (t) => ({
-    sourceUrl: t.exposeString("sourceUrl"),
-    orgName: t.exposeString("orgName", {
-      nullable: true,
-      description:
-        "The Dokploy organization this key reads. An API key belongs to one organization, so importing a second one means a second key.",
+const MigrationPlanRef = builder
+  .objectRef<MigrationPlan>("MigrationPlan")
+  .implement({
+    description:
+      "What an import would do, read from the source instance without writing anything.",
+    fields: (t) => ({
+      sourceUrl: t.exposeString("sourceUrl"),
+      orgName: t.exposeString("orgName", {
+        nullable: true,
+        description:
+          "The Dokploy organization this key reads. An API key belongs to one organization, so importing a second one means a second key.",
+      }),
+      projects: t.field({ type: [PlanProjectRef], resolve: (p) => p.projects }),
+      servers: t.field({ type: [PlanServerRef], resolve: (p) => p.servers }),
+      members: t.field({ type: [PlanMemberRef], resolve: (p) => p.members }),
     }),
-    projects: t.field({ type: [PlanProjectRef], resolve: (p) => p.projects }),
-    servers: t.field({ type: [PlanServerRef], resolve: (p) => p.servers }),
-    members: t.field({ type: [PlanMemberRef], resolve: (p) => p.members }),
-  }),
-});
+  });
 
 /* ------------------------------------------------------------------ */
 /* The report                                                         */
 /* ------------------------------------------------------------------ */
 
 const ImportItemRef = builder
-  .objectRef<ImportItemDTO>("DokployImportItem")
+  .objectRef<ImportItemDTO>("MigrationRunItem")
   .implement({
     fields: (t) => ({
       path: t.exposeString("path", {
@@ -210,7 +212,7 @@ const ImportItemRef = builder
       sourceKind: t.exposeString("sourceKind"),
       sourceName: t.exposeString("sourceName"),
       outcome: t.field({
-        type: DokployOutcomeEnum,
+        type: MigrationOutcomeEnum,
         resolve: (i) => i.outcome as never,
       }),
       targetKind: t.exposeString("targetKind", { nullable: true }),
@@ -225,7 +227,7 @@ const ImportItemRef = builder
   });
 
 const ImportRunRef = builder
-  .objectRef<ImportRunDTO & { items?: ImportItemDTO[] }>("DokployImport")
+  .objectRef<ImportRunDTO & { items?: ImportItemDTO[] }>("MigrationRun")
   .implement({
     description:
       "One import, kept after the tab that started it is gone. The API key is never stored.",
@@ -275,7 +277,7 @@ const ImportRunRef = builder
   });
 
 const ImportProjectResultRef = builder
-  .objectRef<ImportProjectResult>("DokployImportProjectResult")
+  .objectRef<ImportProjectResult>("MigrationProjectResult")
   .implement({
     fields: (t) => ({
       projectName: t.exposeString("projectName"),
@@ -287,31 +289,33 @@ const ImportProjectResultRef = builder
     }),
   });
 
-const InviteRef = builder.objectRef<DokployInvite>("DokployInvite").implement({
-  description:
-    "One person from the Dokploy organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.",
-  fields: (t) => ({
-    email: t.exposeString("email"),
-    name: t.exposeString("name"),
-    link: t.exposeString("link", {
-      nullable: true,
-      description:
-        "The single-use registration link to send them, or null when they were added directly.",
+const InviteRef = builder
+  .objectRef<MigrationInvite>("MigrationInvite")
+  .implement({
+    description:
+      "One person from the Dokploy organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.",
+    fields: (t) => ({
+      email: t.exposeString("email"),
+      name: t.exposeString("name"),
+      link: t.exposeString("link", {
+        nullable: true,
+        description:
+          "The single-use registration link to send them, or null when they were added directly.",
+      }),
+      outcome: t.field({
+        type: MigrationOutcomeEnum,
+        resolve: (i) => i.outcome as never,
+      }),
+      message: t.exposeString("message", { nullable: true }),
     }),
-    outcome: t.field({
-      type: DokployOutcomeEnum,
-      resolve: (i) => i.outcome as never,
-    }),
-    message: t.exposeString("message", { nullable: true }),
-  }),
-});
+  });
 
 /* ------------------------------------------------------------------ */
 /* The data cutover                                                    */
 /* ------------------------------------------------------------------ */
 
 const DataMoveVolumeRef = builder
-  .objectRef<DataMoveVolume>("DokployDataVolume")
+  .objectRef<DataMoveVolume>("MigrationDataVolume")
   .implement({
     description:
       "One source volume and the Deplo volume it would be copied into, paired by the path they are mounted at.",
@@ -328,7 +332,7 @@ const DataMoveVolumeRef = builder
   });
 
 const DataMoveServiceRef = builder
-  .objectRef<DataMoveService>("DokployDataService")
+  .objectRef<DataMoveService>("MigrationDataService")
   .implement({
     description:
       "An already-imported service whose data can still be moved over from Dokploy.",
@@ -362,7 +366,7 @@ const DataMoveServiceRef = builder
  * One SERVICE to bring over, and where it lands. The grain the runner works at,
  * and the grain a resume has to be honest about.
  */
-const RunTargetInput = builder.inputType("DokployRunTargetInput", {
+const RunTargetInput = builder.inputType("MigrationRunTargetInput", {
   fields: (t) => ({
     projectId: t.string({ required: true }),
     projectName: t.string({
@@ -382,7 +386,7 @@ const RunTargetInput = builder.inputType("DokployRunTargetInput", {
 });
 
 const DataMoveResultRef = builder
-  .objectRef<DataMoveResult>("DokployDataMoveResult")
+  .objectRef<DataMoveResult>("MigrationDataMoveResult")
   .implement({
     fields: (t) => ({
       moved: t.exposeInt("moved"),
@@ -396,7 +400,7 @@ const DataMoveResultRef = builder
   });
 
 const RevertResultRef = builder
-  .objectRef<RevertResultDTO>("DokployRevertResult")
+  .objectRef<RevertResultDTO>("MigrationRevertResult")
   .implement({
     description:
       "What a revert took back out of Deplo, and what is still here because it could not be removed.",
@@ -417,7 +421,7 @@ const RevertResultRef = builder
 /* Inputs                                                             */
 /* ------------------------------------------------------------------ */
 
-const ServerChoiceInput = builder.inputType("DokployServerChoiceInput", {
+const ServerChoiceInput = builder.inputType("MigrationServerChoiceInput", {
   description:
     "Map one Dokploy server onto one of ours. `from` is the Dokploy server id, or the empty string for Dokploy's own host.",
   fields: (t) => ({
@@ -426,7 +430,7 @@ const ServerChoiceInput = builder.inputType("DokployServerChoiceInput", {
   }),
 });
 
-const PlacementInput = builder.inputType("DokployPlacementInput", {
+const PlacementInput = builder.inputType("MigrationPlacementInput", {
   description:
     "Where one service lands. `serviceId` is the `sourceId` a scan reports. Omit `buildServerId` (or send null) for Automatic - Deplo uses a build server if the fleet has one, and compiles where the app runs otherwise.",
   fields: (t) => ({
@@ -441,7 +445,7 @@ const PlacementInput = builder.inputType("DokployPlacementInput", {
   }),
 });
 
-const ConnectInputRef = builder.inputType("DokployConnectInput", {
+const ConnectInputRef = builder.inputType("MigrationSourceInput", {
   fields: (t) => ({
     url: t.string({
       required: true,
@@ -466,20 +470,20 @@ const ConnectInputRef = builder.inputType("DokployConnectInput", {
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
-  dokployImports: t.field({
+  migrationRuns: t.field({
     type: [ImportRunRef],
     authScopes: { capability: "create_projects" },
     description:
       "This team's import history, newest first. Without the per-run report - read one run for that.",
-    resolve: () => listDokployImports(),
+    resolve: () => listMigrationRuns(),
   }),
-  dokployImport: t.field({
+  migrationRun: t.field({
     type: ImportRunRef,
     nullable: true,
     authScopes: { capability: "create_projects" },
     description: "One import with its full report.",
     args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => getDokployImport(id),
+    resolve: (_r, { id }) => getMigrationRun(id),
   }),
 }));
 
@@ -508,7 +512,7 @@ export async function* activeMigrationStream(
   teamId: string | null,
 ): AsyncGenerator<ImportRunDTO | null> {
   if (!teamId) throw new Error("Not signed in");
-  let last = await activeDokployImportForTeam(teamId);
+  let last = await activeMigrationForTeam(teamId);
   yield last;
   for await (const ping of pubSub.subscribe(
     "migrationActivity",
@@ -517,7 +521,7 @@ export async function* activeMigrationStream(
     // The channel is instance-wide (a team-wide feed has no per-resource key),
     // so the payload says nothing this team cares about - re-read instead.
     void ping;
-    const next = await activeDokployImportForTeam(teamId);
+    const next = await activeMigrationForTeam(teamId);
     if (sameRun(last, next)) continue;
     last = next;
     yield next;
@@ -550,20 +554,20 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
-  scanDokploy: t.field({
-    type: DokployPlanRef,
+  scanMigrationSource: t.field({
+    type: MigrationPlanRef,
     authScopes: { capability: "create_projects" },
     description:
       "Read a Dokploy instance and describe what an import would do. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.",
     args: { input: t.arg({ type: ConnectInputRef, required: true }) },
     resolve: (_r, { input }) =>
-      scanDokploy({
+      scanMigrationSource({
         url: input.url,
         apiKey: input.apiKey,
         allowPrivate: input.allowPrivate ?? false,
       }),
   }),
-  beginDokployImport: t.field({
+  beginMigration: t.field({
     type: "String",
     authScopes: { capability: "create_projects" },
     description:
@@ -572,9 +576,9 @@ builder.mutationFields((t) => ({
       url: t.arg.string({ required: true }),
       orgName: t.arg.string({ required: false }),
     },
-    resolve: (_r, { url, orgName }) => beginDokployImport({ url, orgName }),
+    resolve: (_r, { url, orgName }) => beginMigration({ url, orgName }),
   }),
-  importDokployProject: t.field({
+  importMigrationProject: t.field({
     type: ImportProjectResultRef,
     authScopes: { capability: "create_projects" },
     description:
@@ -603,7 +607,7 @@ builder.mutationFields((t) => ({
       _r,
       { input, runId, projectId, servers, serviceIds, placements },
     ) =>
-      importDokployProject({
+      importMigrationProject({
         url: input.url,
         apiKey: input.apiKey,
         allowPrivate: input.allowPrivate ?? false,
@@ -622,7 +626,7 @@ builder.mutationFields((t) => ({
         })),
       }),
   }),
-  importDokployMembers: t.field({
+  importMigrationMembers: t.field({
     type: [InviteRef],
     authScopes: { instanceAdmin: true },
     description:
@@ -632,14 +636,14 @@ builder.mutationFields((t) => ({
       runId: t.arg.string({ required: true }),
     },
     resolve: (_r, { input, runId }) =>
-      importDokployMembers({
+      importMigrationMembers({
         url: input.url,
         apiKey: input.apiKey,
         allowPrivate: input.allowPrivate ?? false,
         runId,
       }),
   }),
-  planDokployDataMove: t.field({
+  planMigrationDataMove: t.field({
     type: [DataMoveServiceRef],
     authScopes: { capability: "create_projects" },
     description:
@@ -649,14 +653,14 @@ builder.mutationFields((t) => ({
       runId: t.arg.string({ required: true }),
     },
     resolve: (_r, { input, runId }) =>
-      planDokployDataMove({
+      planMigrationDataMove({
         url: input.url,
         apiKey: input.apiKey,
         allowPrivate: input.allowPrivate ?? false,
         runId,
       }),
   }),
-  moveDokployServiceData: t.field({
+  moveMigrationServiceData: t.field({
     type: DataMoveResultRef,
     authScopes: { capability: "create_projects" },
     description:
@@ -668,7 +672,7 @@ builder.mutationFields((t) => ({
       sourceId: t.arg.string({ required: true }),
     },
     resolve: (_r, { input, runId, sourceKind, sourceId }) =>
-      moveDokployServiceData({
+      moveMigrationServiceData({
         url: input.url,
         apiKey: input.apiKey,
         allowPrivate: input.allowPrivate ?? false,
@@ -677,7 +681,7 @@ builder.mutationFields((t) => ({
         sourceId,
       }),
   }),
-  startDokployImport: t.field({
+  startMigration: t.field({
     type: "String",
     authScopes: { capability: "create_projects" },
     description:
@@ -689,7 +693,7 @@ builder.mutationFields((t) => ({
       servers: t.arg({ type: [ServerChoiceInput], required: false }),
     },
     resolve: (_r, { input, orgName, targets, servers }) =>
-      startDokployRun({
+      startMigrationRun({
         url: input.url,
         apiKey: input.apiKey,
         allowPrivate: input.allowPrivate ?? false,
@@ -706,7 +710,7 @@ builder.mutationFields((t) => ({
         servers: (servers ?? []).map((x) => ({ from: x.from, to: x.to })),
       }),
   }),
-  setDokployMachineAddress: t.string({
+  setMigrationMachineAddress: t.string({
     nullable: true,
     authScopes: { instanceAdmin: true },
     description:
@@ -723,7 +727,7 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, args) =>
       (
-        await setDokployMachineAddress({
+        await setMigrationMachineAddress({
           sourceUrl: args.url,
           sourceId: args.sourceId,
           serverId: args.serverId,
@@ -731,7 +735,7 @@ builder.mutationFields((t) => ({
         })
       ).warning,
   }),
-  stopDokployImport: t.field({
+  stopMigration: t.field({
     type: "Boolean",
     authScopes: { capability: "create_projects" },
     description:
@@ -741,44 +745,44 @@ builder.mutationFields((t) => ({
       // A REQUEST, not a return from a loop: the thing that stops now runs in
       // the control plane and checks between steps, never mid-call. A run with
       // no live runner is closed on the spot instead - see the function.
-      await requestStopDokployRun(runId);
+      await requestStopMigrationRun(runId);
       return true;
     },
   }),
-  revertDokployImport: t.field({
+  revertMigration: t.field({
     type: RevertResultRef,
     authScopes: { capability: "create_projects" },
     description:
       "Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and Dokploy is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.",
     args: { runId: t.arg.string({ required: true }) },
-    resolve: (_r, { runId }) => revertDokployImport(runId),
+    resolve: (_r, { runId }) => revertMigration(runId),
   }),
-  abandonDokployImport: t.field({
+  abandonMigration: t.field({
     type: "Int",
     authScopes: { capability: "create_projects" },
     description:
       "Leaving the wizard behind: take Deplo's agent back off the machines it registered to read, exactly the way finishing does. No-op while a run is in flight (it owns those agents) and after one whose volume copy failed (the bytes are still over there). Returns how many sources it is removing.",
-    resolve: () => abandonDokployImport(),
+    resolve: () => abandonMigration(),
   }),
-  dismissDokployReport: t.field({
+  dismissMigrationReport: t.field({
     type: "Boolean",
     authScopes: { capability: "create_projects" },
     description:
       '"I am done looking at this run": the migration wizard stops opening on it and shows an empty connect form again. Pressing Finish on the report is what sends it.',
     args: { runId: t.arg.string({ required: true }) },
     resolve: async (_r, { runId }) => {
-      await dismissDokployReport(runId);
+      await dismissMigrationReport(runId);
       return true;
     },
   }),
-  finishDokployImport: t.field({
+  finishMigration: t.field({
     type: "Boolean",
     authScopes: { capability: "create_projects" },
     description:
       "Close the run and settle its totals. Idempotent - a finished run is left alone.",
     args: { runId: t.arg.string({ required: true }) },
     resolve: async (_r, { runId }) => {
-      await finishDokployImport(runId);
+      await finishMigration(runId);
       return true;
     },
   }),

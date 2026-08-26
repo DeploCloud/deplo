@@ -42,7 +42,7 @@ import type { ReportItem } from "./types";
  */
 export const RUN_LOG = /* GraphQL */ `
   query MigrationLog($id: String!) {
-    dokployImport(id: $id) {
+    migrationRun(id: $id) {
       id
       status
       error
@@ -169,12 +169,12 @@ export function MigrationConsole({
     let alive = true;
     const read = async () => {
       try {
-        const d = await gql<{ dokployImport: RunLog | null }>(RUN_LOG, {
+        const d = await gql<{ migrationRun: RunLog | null }>(RUN_LOG, {
           id: runId,
         });
         if (!alive) return;
         setError(null);
-        setFetched({ runId, log: d.dokployImport });
+        setFetched({ runId, log: d.migrationRun });
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       }
