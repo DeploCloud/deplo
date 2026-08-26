@@ -489,9 +489,9 @@ export function lintCompose(source: string): LintDiagnostic[] {
     });
   }
 
-  // Top-level `secrets:`/`configs:` sourced from a host `file:` read that file
+  // Top-level `secrets:`/`configs:` sourced from a file on the SERVER read it
   // into the container - same host-file access as a service `env_file`, gated on
-  // the same permission.
+  // the same permission. A relative name is the app's own file.
   for (const block of ["secrets", "configs"] as const) {
     const raw = doc[block];
     const map =
@@ -910,19 +910,20 @@ function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
 }
 
 /**
- * Top-level `secrets:`/`configs:` keys whose source is a host FILE (`file: …`).
- * Docker mounts that file into the container (at `/run/secrets|configs/<key>`);
- * the path resolves against the SHARED stack directory on the host, so even a
- * relative name reaches another tenant's rendered env-file - the same host-file
- * read as a service `env_file`, one level up. Gated the same way. An
- * `environment:`-sourced secret carries no host path and is left alone.
+ * Top-level `secrets:`/`configs:` keys sourced from a file on the SERVER
+ * (`file: /etc/…`, or one climbing out with `..`). Docker mounts it into the
+ * container, so it is the same host-file read a service `env_file` is, one level
+ * up, and it takes the same grant - by the same rule: a relative name resolves
+ * inside the stack's own project directory and is the app's own file. An
+ * `environment:`-sourced secret carries no path at all and is left alone.
  */
 function fileSourcedKeys(entries: Record<string, unknown>): string[] {
   const out: string[] = [];
   for (const [key, raw] of Object.entries(entries)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const v = raw as Record<string, unknown>;
-    if (typeof v.file === "string" && v.file.trim() !== "") out.push(key);
+    if (typeof v.file === "string" && isHostBindSource(v.file.trim()))
+      out.push(key);
   }
   return out;
 }
@@ -1286,7 +1287,7 @@ const SAFE_SECURITY_OPTS = /^no-new-privileges\b/i;
  * limited to this stack) - both escape, so both are flagged. An ordinary value (a
  * bridge network name, a real hostname for uts, `cgroup: private`) is left alone.
  * `volumes_from` flags only the `container:<name>` form (a foreign container's
- * volumes); `env_file` flags any non-empty value (it reads a host file).
+ * volumes); `env_file` flags only a path that leaves the stack's own directory.
  */
 function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -1374,15 +1375,17 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       continue;
     }
     if (key === "env_file") {
-      // Any non-empty value reads a host file into the container's env; the path
-      // resolves against the shared stack dir, so a bare name is cross-tenant.
+      // The same rule its bind-mount twin gets: an absolute or `..` path reads a
+      // file on the SERVER, a relative name reads one inside the stack's own
+      // project directory, which is the app's own. `env_file: - .env` is the
+      // commonest env pattern there is, and gating it gated the whole feature.
       const list = Array.isArray(v) ? v : [v];
       const names = list.map((e) =>
         e && typeof e === "object"
           ? String((e as Record<string, unknown>).path ?? "")
           : String(e),
       );
-      if (names.some((n) => n.trim() !== "")) out.push(key);
+      if (names.some((n) => isHostBindSource(n.trim()))) out.push(key);
       continue;
     }
     if (key === "security_opt") {
@@ -1413,22 +1416,51 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
  * the authoritative one.
  */
 export function composeNeedsHostPrivileges(composeYaml: string): boolean {
+  return composeHostPrivilegeKeys(composeYaml).length > 0;
+}
+
+/**
+ * The privilege keys this whole file sets, deduped and in declaration order, so a
+ * refusal can name what tripped it instead of guessing at a bind mount.
+ */
+export function composeHostPrivilegeKeys(composeYaml: string): string[] {
   let doc: { services?: Record<string, unknown> } | null;
   try {
     doc = yaml.load(composeYaml) as {
       services?: Record<string, unknown>;
     } | null;
   } catch {
-    return false;
+    return [];
   }
   const services = doc?.services;
-  if (!services || typeof services !== "object") return false;
+  if (!services || typeof services !== "object") return [];
+  const out = new Set<string>();
   for (const svc of Object.values(services)) {
     if (!svc || typeof svc !== "object" || Array.isArray(svc)) continue;
-    if (hostPrivilegeKeys(svc as Record<string, unknown>).length > 0)
-      return true;
+    for (const key of hostPrivilegeKeys(svc as Record<string, unknown>))
+      out.add(key);
   }
-  return false;
+  return [...out];
+}
+
+/**
+ * What in this compose reaches PAST the container, in words. One list, so the
+ * gate, the import preview and the refusal can never name it differently - the
+ * refusal used to say "a Bind" whatever had actually tripped it.
+ */
+export function composeHostReach(composeYaml: string): string[] {
+  const out: string[] = [];
+  if (composeHasHostBindMount(composeYaml))
+    out.push("a bind mount of a folder on the server");
+  const keys = composeHostPrivilegeKeys(composeYaml);
+  if (keys.length > 0) out.push(keys.map((k) => `\`${k}\``).join(", "));
+  if (composeMountsForeignStorage(composeYaml))
+    out.push("a volume it did not declare");
+  if (composeBuildReachesHost(composeYaml))
+    out.push("a build that reads a path on the server");
+  if (composeJoinsForeignNetwork(composeYaml))
+    out.push("a network outside this app");
+  return out;
 }
 
 /**

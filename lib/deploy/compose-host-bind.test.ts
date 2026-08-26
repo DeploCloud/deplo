@@ -7,6 +7,7 @@ import {
   composeJoinsForeignNetwork,
   composeClaimsReservedName,
   composeHasHostBindMount,
+  composeHostReach,
   composeMountsForeignStorage,
   composeNeedsHostPrivileges,
   composeUsesExternalMerge,
@@ -320,8 +321,10 @@ networks:
  * `privileged`, no host bind, no top-level pinned volume) and so were ungated:
  * `env_file` reads a host file into env; `secrets`/`configs` with a `file:` source
  */
-test("composeNeedsHostPrivileges: env_file reads a host file (abs or bare name)", () => {
-  for (const ef of ["/data/stacks/victim.env", "victim.env"]) {
+test("composeNeedsHostPrivileges: env_file is gated by its PATH, like a bind", () => {
+  // A path that leaves the stack's own project directory reads a file on the
+  // server, and takes the grant.
+  for (const ef of ["/data/stacks/victim.env", "../victim/.env"]) {
     const yaml = `services:\n  a:\n    image: x\n    env_file:\n      - ${ef}`;
     assert.equal(composeNeedsHostPrivileges(yaml), true, `env_file ${ef}`);
   }
@@ -331,6 +334,36 @@ test("composeNeedsHostPrivileges: env_file reads a host file (abs or bare name)"
       `services:\n  a:\n    image: x\n    env_file:\n      - path: /etc/secret\n        required: false`,
     ),
     true,
+  );
+  // A relative name is the app's OWN file, inside the project directory the
+  // agent gives every stack - the same answer `./data:/data` already gets, and
+  // `env_file: - .env` is the commonest env pattern there is.
+  for (const ef of [".env", "./stack.env", "config/app.env"]) {
+    const yaml = `services:\n  a:\n    image: x\n    env_file:\n      - ${ef}`;
+    assert.equal(composeNeedsHostPrivileges(yaml), false, `env_file ${ef}`);
+  }
+  assert.equal(
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    env_file:\n      - path: .env\n        required: false`,
+    ),
+    false,
+  );
+});
+
+test("composeHostReach names what tripped it, so a refusal can too", () => {
+  assert.deepEqual(
+    composeHostReach(`services:\n  a:\n    image: x\n    privileged: true`),
+    ["`privileged`"],
+  );
+  assert.deepEqual(
+    composeHostReach(
+      `services:\n  a:\n    image: x\n    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]`,
+    ),
+    ["a bind mount of a folder on the server"],
+  );
+  assert.deepEqual(
+    composeHostReach(`services:\n  a:\n    image: x\n    env_file: [.env]`),
+    [],
   );
 });
 
@@ -374,10 +407,21 @@ test("composeMountsForeignStorage: a top-level secrets/configs file: source is a
   );
   assert.equal(
     composeMountsForeignStorage(
-      `services:\n  a:\n    image: x\nconfigs:\n  c:\n    file: victim.env`,
+      `services:\n  a:\n    image: x\nconfigs:\n  c:\n    file: ../victim/.env`,
     ),
     true,
   );
+  // A relative name is the app's OWN file, inside the project directory the agent
+  // gives every stack - the same rule its `env_file` twin gets, and `file: ./x`
+  // is how every stack with a secret is written.
+  for (const f of ["./db_pw.txt", "db_pw.txt", "conf/app.yml"])
+    assert.equal(
+      composeMountsForeignStorage(
+        `services:\n  a:\n    image: x\nsecrets:\n  s:\n    file: ${f}`,
+      ),
+      false,
+      f,
+    );
   // An `environment:`-sourced secret carries no host path - left alone.
   assert.equal(
     composeMountsForeignStorage(
