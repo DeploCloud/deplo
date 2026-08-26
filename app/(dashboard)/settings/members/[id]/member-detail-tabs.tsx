@@ -474,7 +474,7 @@ export function MemberDetailTabs({
             not edits, they have no Save, and one of them hands the team over. */}
         <TabsContent value="advanced" className="space-y-4 pt-4">
           {canTransfer && (
-            <Card>
+            <Card className="border-destructive/40">
               <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Transfer team ownership</p>
@@ -488,6 +488,7 @@ export function MemberDetailTabs({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => setConfirmTransfer(true)}
                 >
                   <Crown className="size-4" />
