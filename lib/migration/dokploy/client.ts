@@ -2,255 +2,17 @@
  * Read-only client for a Dokploy instance's HTTP API.
  */
 
-/** A Dokploy instance and the key that reads it. */
-export interface DokployCredential {
-  /** Origin with no trailing slash and no `/api`, e.g. https://dokploy.acme.com. */
-  baseUrl: string;
-  /** The `x-api-key` value, minted in Dokploy under Settings → Profile → API/CLI. */
-  apiKey: string;
-}
-
-/* ------------------------------------------------------------------ */
-/* Row shapes - only the fields the import actually maps               */
-/* ------------------------------------------------------------------ */
-
-/** Dokploy's build packs. `heroku_buildpacks`/`paketo_buildpacks` have no deplo twin. */
-export type DokployBuildType =
-  | "dockerfile"
-  | "heroku_buildpacks"
-  | "paketo_buildpacks"
-  | "nixpacks"
-  | "static"
-  | "railpack";
-
-/** Where an application's code comes from. `drop` is an uploaded archive. */
-export type DokploySourceType =
-  "docker" | "git" | "github" | "gitlab" | "bitbucket" | "gitea" | "drop";
-
-export interface DokployDomain {
-  domainId: string;
-  host: string;
-  https?: boolean | null;
-  port?: number | null;
-  path?: string | null;
-  stripPath?: boolean | null;
-  /**
-   * The path the request is rewritten TO before it reaches the container
-   * (Dokploy's own middleware). Deplo strips a prefix or forwards it whole and has
-   * no third answer, so a real rewrite is reported rather than silently dropped.
-   */
-  internalPath?: string | null;
-  serviceName?: string | null;
-  /** The Traefik entrypoint the route was bound to over there. Deplo has two
-   *  (web, websecure), so anything else is reported, not silently replaced. */
-  customEntrypoint?: string | null;
-  domainType?: "application" | "compose" | "preview" | null;
-  certificateType?: "letsencrypt" | "none" | "custom" | null;
-  enabled?: boolean | null;
-}
-
-export interface DokployMount {
-  mountId: string;
-  type: "bind" | "volume" | "file";
-  hostPath?: string | null;
-  volumeName?: string | null;
-  filePath?: string | null;
-  content?: string | null;
-  mountPath: string;
-}
-
-export interface DokployPort {
-  portId: string;
-  publishedPort: number;
-  targetPort: number;
-  protocol?: string | null;
-}
-
-/** One basic-auth credential. Dokploy stores the password in the clear. */
-export interface DokploySecurity {
-  securityId: string;
-  username: string;
-  password: string;
-}
-
-export interface DokployApplication {
-  applicationId: string;
-  /** OPTIONAL because `project.all` is a projection: its rows carry an id and
-   *  sometimes a name, and a database row carries only the id. Anything that needs
-   *  a real value reads the DETAIL row (`getService`). */
-  name?: string | null;
-  appName?: string | null;
-  description?: string | null;
-  env?: string | null;
-  buildArgs?: string | null;
-  /**
-   * The service's icon, and ALWAYS a base64 data-URI rather than a URL: Dokploy
-   * inlines a template's logo server-side when the service is created, an upload
-   * is read with `FileReader`, and its bundled icon set is an SVG built in the
-   * browser.
-   */
-  icon?: string | null;
-  sourceType: DokploySourceType;
-  buildType: DokployBuildType;
-  applicationStatus?: string | null;
-  autoDeploy?: boolean | null;
-  triggerType?: "push" | "tag" | null;
-  watchPaths?: string[] | null;
-  enableSubmodules?: boolean | null;
-  replicas?: number | null;
-  command?: string | null;
-  // docker source
-  dockerImage?: string | null;
-  registryUrl?: string | null;
-  registryId?: string | null;
-  /** The docker-provider credentials typed onto the app itself. The password is
-   *  excluded from the API, so only the fact that there IS one comes across. */
-  username?: string | null;
-  // dockerfile / static build settings
-  dockerfile?: string | null;
-  dockerContextPath?: string | null;
-  dockerBuildStage?: string | null;
-  publishDirectory?: string | null;
-  isStaticSpa?: boolean | null;
-  railpackVersion?: string | null;
-  // github
-  repository?: string | null;
-  owner?: string | null;
-  branch?: string | null;
-  buildPath?: string | null;
-  githubId?: string | null;
-  // gitlab
-  gitlabRepository?: string | null;
-  gitlabOwner?: string | null;
-  gitlabBranch?: string | null;
-  gitlabBuildPath?: string | null;
-  gitlabPathNamespace?: string | null;
-  gitlabId?: string | null;
-  // gitea
-  giteaRepository?: string | null;
-  giteaOwner?: string | null;
-  giteaBranch?: string | null;
-  giteaBuildPath?: string | null;
-  giteaId?: string | null;
-  // bitbucket
-  bitbucketRepository?: string | null;
-  bitbucketRepositorySlug?: string | null;
-  bitbucketOwner?: string | null;
-  bitbucketBranch?: string | null;
-  bitbucketBuildPath?: string | null;
-  bitbucketId?: string | null;
-  // plain git
-  customGitUrl?: string | null;
-  customGitBranch?: string | null;
-  customGitBuildPath?: string | null;
-  customGitSSHKeyId?: string | null;
-  // preview deployments (deplo has the same feature)
-  isPreviewDeploymentsActive?: boolean | null;
-  previewPort?: number | null;
-  previewLimit?: number | null;
-  // swarm-only knobs, reported rather than imported
-  healthCheckSwarm?: unknown;
-  placementSwarm?: unknown;
-  labelsSwarm?: unknown;
-  ulimitsSwarm?: unknown;
-  // limits
-  memoryLimit?: string | null;
-  memoryReservation?: string | null;
-  cpuLimit?: string | null;
-  cpuReservation?: string | null;
-  // placement
-  serverId?: string | null;
-  environmentId?: string | null;
-  // relations, present on `application.one`
-  domains?: DokployDomain[] | null;
-  mounts?: DokployMount[] | null;
-  ports?: DokployPort[] | null;
-  security?: DokploySecurity[] | null;
-  redirects?: { redirectId: string }[] | null;
-  registry?: { registryId: string; registryName?: string | null } | null;
-  /**
-   * The git provider rows, with every credential column excluded server-side
-   * (`columns: { accessToken: false, … }`). They carry the one thing the import
-   * needs and cannot guess: the HOST of a self-hosted GitLab/Gitea.
-   */
-  github?: { githubId?: string; githubAppName?: string | null } | null;
-  gitlab?: { gitlabId?: string; gitlabUrl?: string | null } | null;
-  gitea?: { giteaId?: string; giteaUrl?: string | null } | null;
-  bitbucket?: { bitbucketId?: string } | null;
-}
-
-export interface DokployCompose {
-  composeId: string;
-  /** Optional for the same reason as {@link DokployApplication.name}. */
-  name?: string | null;
-  appName?: string | null;
-  description?: string | null;
-  env?: string | null;
-  composeFile?: string | null;
-  /**
-   * The service's icon, and ALWAYS a base64 data-URI rather than a URL: Dokploy
-   * inlines a template's logo server-side when the service is created, an upload
-   * is read with `FileReader`, and its bundled icon set is an SVG built in the
-   * browser.
-   */
-  icon?: string | null;
-  composeType?: "docker-compose" | "stack" | null;
-  sourceType: "git" | "github" | "gitlab" | "bitbucket" | "gitea" | "raw";
-  composePath?: string | null;
-  suffix?: string | null;
-  randomize?: boolean | null;
-  isolatedDeployment?: boolean | null;
-  command?: string | null;
-  autoDeploy?: boolean | null;
-  serverId?: string | null;
-  environmentId?: string | null;
-  // git fields, same per-provider spread as an application
-  repository?: string | null;
-  owner?: string | null;
-  branch?: string | null;
-  gitlabRepository?: string | null;
-  gitlabOwner?: string | null;
-  gitlabBranch?: string | null;
-  giteaRepository?: string | null;
-  giteaOwner?: string | null;
-  giteaBranch?: string | null;
-  bitbucketRepository?: string | null;
-  bitbucketOwner?: string | null;
-  bitbucketBranch?: string | null;
-  customGitUrl?: string | null;
-  customGitBranch?: string | null;
-  domains?: DokployDomain[] | null;
-  mounts?: DokployMount[] | null;
-  github?: { githubId?: string; githubAppName?: string | null } | null;
-  gitlab?: { gitlabId?: string; gitlabUrl?: string | null } | null;
-  gitea?: { giteaId?: string; giteaUrl?: string | null } | null;
-  bitbucket?: { bitbucketId?: string } | null;
-}
-
-/** The five database engines share one shape; only the id field's name differs. */
-export interface DokployDatabase {
-  /** Optional for the same reason as {@link DokployApplication.name}, and a
-   *  database row from `project.all` really does carry NOTHING but its id. */
-  name?: string | null;
-  appName?: string | null;
-  description?: string | null;
-  dockerImage?: string | null;
-  databaseName?: string | null;
-  databaseUser?: string | null;
-  databasePassword?: string | null;
-  databaseRootPassword?: string | null;
-  env?: string | null;
-  command?: string | null;
-  externalPort?: number | null;
-  memoryLimit?: string | null;
-  memoryReservation?: string | null;
-  cpuLimit?: string | null;
-  cpuReservation?: string | null;
-  serverId?: string | null;
-  environmentId?: string | null;
-  mounts?: DokployMount[] | null;
-  [idField: string]: unknown;
-}
+import type { SourceCredential } from "../source";
+import type {
+  SourceApplication,
+  SourceCompose,
+  SourceDatabase,
+  SourceEnvironment,
+  SourceMember,
+  SourceProject,
+  SourceSchedule,
+  SourceServer,
+} from "../model";
 
 /** Which of Dokploy's per-engine tables a database row came from. */
 export const DOKPLOY_DB_KINDS = [
@@ -262,78 +24,6 @@ export const DOKPLOY_DB_KINDS = [
   "libsql",
 ] as const;
 export type DokployDbKind = (typeof DOKPLOY_DB_KINDS)[number];
-
-export interface DokployEnvironment {
-  environmentId: string;
-  name: string;
-  description?: string | null;
-  env?: string | null;
-  isDefault?: boolean | null;
-  applications?: DokployApplication[] | null;
-  compose?: DokployCompose[] | null;
-  postgres?: DokployDatabase[] | null;
-  mysql?: DokployDatabase[] | null;
-  mariadb?: DokployDatabase[] | null;
-  mongo?: DokployDatabase[] | null;
-  redis?: DokployDatabase[] | null;
-  libsql?: DokployDatabase[] | null;
-}
-
-export interface DokployProject {
-  projectId: string;
-  name: string;
-  description?: string | null;
-  env?: string | null;
-  createdAt?: string | null;
-  environments?: DokployEnvironment[] | null;
-  /**
-   * Pre-environments Dokploy hung services straight off the project. Kept so an
-   * older instance still scans; `listProjects` folds them into a synthetic
-   * environment.
-   */
-  applications?: DokployApplication[] | null;
-  compose?: DokployCompose[] | null;
-  postgres?: DokployDatabase[] | null;
-  mysql?: DokployDatabase[] | null;
-  mariadb?: DokployDatabase[] | null;
-  mongo?: DokployDatabase[] | null;
-  redis?: DokployDatabase[] | null;
-  libsql?: DokployDatabase[] | null;
-}
-
-export interface DokployServer {
-  serverId: string;
-  name: string;
-  ipAddress?: string | null;
-  description?: string | null;
-}
-
-/** A member of the organization the API key belongs to. */
-export interface DokployMember {
-  id?: string;
-  userId?: string;
-  role?: string | null;
-  user?: {
-    id?: string;
-    email?: string | null;
-    name?: string | null;
-    image?: string | null;
-  } | null;
-  email?: string | null;
-  name?: string | null;
-}
-
-export interface DokploySchedule {
-  scheduleId: string;
-  name: string;
-  cronExpression: string;
-  shellType?: string | null;
-  command?: string | null;
-  script?: string | null;
-  serviceName?: string | null;
-  scheduleType?: string | null;
-  enabled?: boolean | null;
-}
 
 /* ------------------------------------------------------------------ */
 /* Transport                                                           */
@@ -458,7 +148,7 @@ export function normalizeDokployBaseUrl(raw: string): string {
  * One GET against Dokploy, with a readable failure.
  */
 async function get<T>(
-  c: DokployCredential,
+  c: SourceCredential,
   procedure: string,
   params: Record<string, string | undefined> = {},
 ): Promise<T> {
@@ -501,7 +191,7 @@ async function get<T>(
  * only read" stays true of everything else and it keeps working as the rollback.
  */
 async function post<T>(
-  c: DokployCredential,
+  c: SourceCredential,
   procedure: string,
   body: Record<string, unknown>,
 ): Promise<T> {
@@ -534,9 +224,9 @@ async function post<T>(
 const SERVICE_KEYS = ["applications", "compose", ...DOKPLOY_DB_KINDS] as const;
 
 /** True when a project row carries services directly (pre-environments Dokploy). */
-function hasLooseServices(p: DokployProject): boolean {
+function hasLooseServices(p: SourceProject): boolean {
   return SERVICE_KEYS.some((k) => {
-    const v = p[k as keyof DokployProject];
+    const v = p[k as keyof SourceProject];
     return Array.isArray(v) && v.length > 0;
   });
 }
@@ -545,15 +235,15 @@ function hasLooseServices(p: DokployProject): boolean {
  * Every project of the key's organization, with environments and their services.
  */
 export async function listProjects(
-  c: DokployCredential,
-): Promise<DokployProject[]> {
-  const projects = await get<DokployProject[]>(c, "project.all");
+  c: SourceCredential,
+): Promise<SourceProject[]> {
+  const projects = await get<SourceProject[]>(c, "project.all");
   if (!Array.isArray(projects)) return [];
   return projects.map((p) => {
     const envs = Array.isArray(p.environments) ? p.environments : [];
     if (envs.length > 0 || !hasLooseServices(p))
       return { ...p, environments: envs };
-    const synthetic: DokployEnvironment = {
+    const synthetic: SourceEnvironment = {
       environmentId: `legacy-${p.projectId}`,
       name: "production",
       isDefault: true,
@@ -575,11 +265,11 @@ export async function listProjects(
  * One environment's own row, for the variable blob `project.all` never carries.
  */
 export async function getEnvironment(
-  c: DokployCredential,
+  c: SourceCredential,
   environmentId: string,
-): Promise<DokployEnvironment | null> {
+): Promise<SourceEnvironment | null> {
   try {
-    return await get<DokployEnvironment>(c, "environment.one", {
+    return await get<SourceEnvironment>(c, "environment.one", {
       environmentId,
     });
   } catch {
@@ -591,37 +281,37 @@ export async function getEnvironment(
 
 /** One application WITH its domains, mounts, ports and basic-auth users. */
 export function getApplication(
-  c: DokployCredential,
+  c: SourceCredential,
   applicationId: string,
-): Promise<DokployApplication> {
-  return get<DokployApplication>(c, "application.one", { applicationId });
+): Promise<SourceApplication> {
+  return get<SourceApplication>(c, "application.one", { applicationId });
 }
 
 /** One compose stack WITH its domains and mounts. */
 export function getCompose(
-  c: DokployCredential,
+  c: SourceCredential,
   composeId: string,
-): Promise<DokployCompose> {
-  return get<DokployCompose>(c, "compose.one", { composeId });
+): Promise<SourceCompose> {
+  return get<SourceCompose>(c, "compose.one", { composeId });
 }
 
 /** One database WITH its mounts. `kind` picks the table and the id parameter. */
 export function getDatabase(
-  c: DokployCredential,
+  c: SourceCredential,
   kind: DokployDbKind,
   id: string,
-): Promise<DokployDatabase> {
-  return get<DokployDatabase>(c, `${kind}.one`, { [`${kind}Id`]: id });
+): Promise<SourceDatabase> {
+  return get<SourceDatabase>(c, `${kind}.one`, { [`${kind}Id`]: id });
 }
 
 /**
  * The detail call for any kind of service, picked by kind.
  */
 export function getService(
-  c: DokployCredential,
+  c: SourceCredential,
   kind: string,
   id: string,
-): Promise<DokployApplication | DokployCompose | DokployDatabase> {
+): Promise<SourceApplication | SourceCompose | SourceDatabase> {
   if (kind === "application") return getApplication(c, id);
   if (kind === "compose") return getCompose(c, id);
   return getDatabase(c, kind as DokployDbKind, id);
@@ -650,7 +340,7 @@ function composeOrNull(body: string): string | null {
  * repo-backed stack has nothing to import without this.
  */
 export async function getConvertedCompose(
-  c: DokployCredential,
+  c: SourceCredential,
   composeId: string,
 ): Promise<string | null> {
   try {
@@ -673,17 +363,17 @@ export async function getConvertedCompose(
 /** The fleet the source instance deploys to. `serverId: null` on a service means
  *  Dokploy's own host, which has no row here. */
 export async function listServers(
-  c: DokployCredential,
-): Promise<DokployServer[]> {
-  const rows = await get<DokployServer[]>(c, "server.all");
+  c: SourceCredential,
+): Promise<SourceServer[]> {
+  const rows = await get<SourceServer[]>(c, "server.all");
   return Array.isArray(rows) ? rows : [];
 }
 
 /** Everyone in the key's organization, for the registration-link step. */
 export async function listMembers(
-  c: DokployCredential,
-): Promise<DokployMember[]> {
-  const rows = await get<DokployMember[]>(c, "user.all");
+  c: SourceCredential,
+): Promise<SourceMember[]> {
+  const rows = await get<SourceMember[]>(c, "user.all");
   return Array.isArray(rows) ? rows : [];
 }
 
@@ -693,7 +383,7 @@ export async function listMembers(
  * knowing the name must not stop an import.
  */
 export async function activeOrganizationName(
-  c: DokployCredential,
+  c: SourceCredential,
 ): Promise<string | null> {
   try {
     const org = await get<{ name?: string | null } | null>(
@@ -725,7 +415,7 @@ export type DokployRuntime = "swarm" | "standalone";
 
 /** The containers of one service, by its `appName`. */
 export async function listAppContainers(
-  c: DokployCredential,
+  c: SourceCredential,
   appName: string,
   type: DokployRuntime,
 ): Promise<DokployContainer[]> {
@@ -754,7 +444,7 @@ export interface DokployInspect {
  * (`docker.getConfig` is literally that command).
  */
 export function inspectContainer(
-  c: DokployCredential,
+  c: SourceCredential,
   containerId: string,
 ): Promise<DokployInspect> {
   return get<DokployInspect>(c, "docker.getConfig", { containerId });
@@ -776,7 +466,7 @@ const STOP_PROCEDURE: Record<string, string> = {
  * before the button is pressed.
  */
 export async function stopService(
-  c: DokployCredential,
+  c: SourceCredential,
   kind: string,
   id: string,
 ): Promise<void> {
@@ -787,12 +477,12 @@ export async function stopService(
 
 /** The cron jobs attached to one service. Best-effort, same reasoning as above. */
 export async function listSchedules(
-  c: DokployCredential,
+  c: SourceCredential,
   scheduleType: string,
   id: string,
-): Promise<DokploySchedule[]> {
+): Promise<SourceSchedule[]> {
   try {
-    const rows = await get<DokploySchedule[]>(c, "schedule.list", {
+    const rows = await get<SourceSchedule[]>(c, "schedule.list", {
       scheduleType,
       id,
     });

@@ -12,10 +12,10 @@ import yaml, {
   Scalar,
   type Document,
   type YAMLMap,
-} from "../../yaml";
+} from "../yaml";
 
-import { isValidLogoValue } from "../../apps/logo-shared";
-import { keepAuthoredEnvText } from "../../deploy/compose-lint";
+import { isValidLogoValue } from "../apps/logo-shared";
+import { keepAuthoredEnvText } from "../deploy/compose-lint";
 
 import type {
   BuildConfig,
@@ -26,15 +26,17 @@ import type {
   GitRepo,
   ResourceLimits,
   VolumeMount,
-} from "../../types";
+} from "../types";
+import type { DokployDbKind } from "./dokploy/client";
 import type {
-  DokployApplication,
-  DokployCompose,
-  DokployDatabase,
-  DokployDbKind,
-  DokployDomain,
-  DokployMount,
-} from "./client";
+  HostMount,
+  NamedVolume,
+  SourceApplication,
+  SourceCompose,
+  SourceDatabase,
+  SourceDomain,
+  SourceMount,
+} from "./model";
 
 /** Same shape as `ResourceLimitsInput` in lib/data/apps.ts, without importing a
  *  `server-only` module into a file that must stay client-safe. */
@@ -453,7 +455,7 @@ const BUILD_METHOD: Record<string, BuildMethod> = {
  * Dokploy's per-service build fields → deplo's `BuildConfig`.
  */
 export function mapBuildSettings(
-  app: DokployApplication,
+  app: SourceApplication,
 ): Mapped<Partial<BuildConfig>> {
   const notes: string[] = [];
   const buildMethod = BUILD_METHOD[app.buildType] ?? "nixpacks";
@@ -514,13 +516,13 @@ export function mapBuildSettings(
 }
 
 /** The repo subdirectory to build from, whichever provider the app uses. */
-function buildPathFor(app: DokployApplication | DokployCompose): string | null {
+function buildPathFor(app: SourceApplication | SourceCompose): string | null {
   const candidates = [
-    (app as DokployApplication).buildPath,
-    (app as DokployApplication).gitlabBuildPath,
-    (app as DokployApplication).giteaBuildPath,
-    (app as DokployApplication).bitbucketBuildPath,
-    (app as DokployApplication).customGitBuildPath,
+    (app as SourceApplication).buildPath,
+    (app as SourceApplication).gitlabBuildPath,
+    (app as SourceApplication).giteaBuildPath,
+    (app as SourceApplication).bitbucketBuildPath,
+    (app as SourceApplication).customGitBuildPath,
   ];
   for (const c of candidates) {
     const v = c?.trim();
@@ -663,7 +665,7 @@ const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/;
 /**
  * Where the app's code comes from.
  */
-export function mapSource(app: DokployApplication): Mapped<MappedSource> {
+export function mapSource(app: SourceApplication): Mapped<MappedSource> {
   const notes: string[] = [];
 
   if (app.sourceType === "docker") {
@@ -734,9 +736,9 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
 
 /** The `owner/name`, branch and https URL for whichever provider is configured. */
 export function cloneTarget(
-  app: DokployApplication | DokployCompose,
+  app: SourceApplication | SourceCompose,
 ): GitRepo | null {
-  const a = app as DokployApplication;
+  const a = app as SourceApplication;
   // Origin AND path: a self-hosted GitLab or Gitea behind a reverse proxy lives at
   // `https://acme.com/gitlab`, and dropping the prefix clones a 404.
   const host = (raw: string | null | undefined, fallback: string): string => {
@@ -864,7 +866,7 @@ export interface MappedDomain {
  * deplo's primary).
  */
 export function mapDomains(
-  domains: DokployDomain[] | null | undefined,
+  domains: SourceDomain[] | null | undefined,
   opts: { isCompose: boolean; fallbackPort?: number | null },
 ): Mapped<MappedDomain[]> {
   const notes: string[] = [];
@@ -983,7 +985,7 @@ function uniqueFilePath(base: string, used: Set<string>): string {
  * Dokploy's three mount kinds -> deplo's writers.
  */
 export function mapMounts(
-  mounts: DokployMount[] | null | undefined,
+  mounts: SourceMount[] | null | undefined,
   opts: { isCompose: boolean },
 ): Mapped<MappedMounts> {
   const notes: string[] = [];
@@ -1136,7 +1138,7 @@ function imageRepo(image: string | null | undefined): string | null {
  */
 export function mapDatabase(
   kind: DokployDbKind,
-  row: DokployDatabase,
+  row: SourceDatabase,
 ): Mapped<MappedDatabase | null> {
   const notes: string[] = [];
   const type = deploEngineFor(kind);
@@ -1239,15 +1241,6 @@ export function mapDatabase(
 /* The data cutover: pairing volumes                                   */
 /* ------------------------------------------------------------------ */
 
-/** One named volume a container is using, on either side. */
-export interface NamedVolume {
-  /** The volume's real name on the host. */
-  name: string;
-  /** Where it is mounted INSIDE the container - the only identity the two
-   *  platforms share, since neither's volume names mean anything to the other. */
-  mountPath: string;
-}
-
 /** A source volume matched to the deplo volume it should be copied into. */
 export interface VolumePair {
   sourceVolume: string;
@@ -1290,13 +1283,6 @@ export function sourceVolumesFrom(inspect: {
   return out.filter(
     (v) => !out.some((o) => o !== v && isUnderPath(o.mountPath, v.mountPath)),
   );
-}
-
-/** One host directory a container mounts: where it is on the host, and where the
- *  container sees it. The bind-mount counterpart of a NamedVolume. */
-export interface HostMount {
-  hostPath: string;
-  mountPath: string;
 }
 
 /**
@@ -1557,7 +1543,7 @@ function truncate(s: string, n: number): string {
 }
 
 /** Published host ports on an application, which deplo does not do for apps. */
-export function portNotes(app: DokployApplication): string[] {
+export function portNotes(app: SourceApplication): string[] {
   const ports = app.ports ?? [];
   if (ports.length === 0) return [];
   const list = ports
@@ -1572,7 +1558,7 @@ export function portNotes(app: DokployApplication): string[] {
 }
 
 /** Everything else on a Dokploy service with no deplo column at all. */
-export function unsupportedNotes(app: DokployApplication): string[] {
+export function unsupportedNotes(app: SourceApplication): string[] {
   const notes: string[] = [];
   if ((app.redirects ?? []).length > 0)
     notes.push(

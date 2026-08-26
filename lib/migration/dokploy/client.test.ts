@@ -16,7 +16,11 @@ import {
  * "fetch failed" every connection problem used to arrive as.
  */
 
-const cred = { baseUrl: "http://dokploy.test:3000", apiKey: "k" };
+const cred = {
+  kind: "dokploy" as const,
+  baseUrl: "http://dokploy.test:3000",
+  apiKey: "k",
+};
 
 function answers(body: unknown): void {
   __setDokployFetchForTest(

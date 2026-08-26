@@ -63,26 +63,28 @@ import { reservedMountPath } from "../apps/volume-model";
 
 import {
   DOKPLOY_DB_KINDS,
-  activeOrganizationName,
-  getConvertedCompose,
-  getEnvironment,
-  getService,
+  DokployDbKind,
   listMembers,
-  listProjects as listSourceProjects,
-  listSchedules,
-  listServers,
   normalizeDokployBaseUrl,
   serviceDisplayName,
-  stopService,
-  type DokployApplication,
-  type DokployCompose,
-  type DokployCredential,
-  type DokployDatabase,
-  type DokployDbKind,
-  type DokployEnvironment,
-  type DokployProject,
 } from "../migration/dokploy/client";
+import { sourceClient } from "../migration/source";
+import type { SourceCredential } from "../migration/source";
+import type {
+  SourceApplication,
+  SourceCompose,
+  SourceDatabase,
+  SourceEnvironment,
+  SourceProject,
+} from "../migration/model";
 import {
+  type MappedDomain,
+  type SourcePlatformShape,
+  adaptComposeForDeplo,
+  cloneTarget,
+  composeAsRepoApp,
+  composeBuildServices,
+  composeVolumeMounts,
   deploEngineFor,
   envNeedsInterpolation,
   mapBuildSettings,
@@ -92,18 +94,12 @@ import {
   mapMounts,
   mapResources,
   mapSource,
-  cloneTarget,
-  composeAsRepoApp,
-  composeBuildServices,
-  composeVolumeMounts,
-  volumeLabel,
   parseEnvBlob,
   portNotes,
-  adaptComposeForDeplo,
   retargetPlatformEnvFiles,
   unsupportedNotes,
-  type MappedDomain,
-} from "../migration/dokploy/map";
+  volumeLabel,
+} from "../migration/map";
 
 import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
@@ -343,9 +339,19 @@ export async function assertImportGate(): Promise<{ teamId: string }> {
  * not dial. Same shape as `connectGitProvider`: the private-address escape hatch
  * asserts instance admin AT the decision, never inherits it from a caller.
  */
+/** What the compose adapter needs to know about the platform this service is on:
+ *  the name a note says, and the networks that are the platform's, not the stack's. */
+function composePlatform(
+  c: SourceCredential,
+  svc: { kind: string; id: string },
+): SourcePlatformShape {
+  const src = sourceClient(c);
+  return { name: src.displayName, networks: src.platformNetworks(svc) };
+}
+
 export async function credentialFor(
   input: ConnectInput,
-): Promise<DokployCredential> {
+): Promise<SourceCredential> {
   const baseUrl = normalizeDokployBaseUrl(input.url);
   if (input.allowPrivate) await requireInstanceAdmin();
   else
@@ -354,7 +360,7 @@ export async function credentialFor(
     });
   const apiKey = input.apiKey.trim();
   if (!apiKey) throw new Error("Paste the Dokploy API key");
-  return { baseUrl, apiKey };
+  return { kind: "dokploy", baseUrl, apiKey };
 }
 
 /* ------------------------------------------------------------------ */
@@ -373,7 +379,7 @@ interface SourceService {
   serverId: string;
 }
 
-function servicesOf(env: DokployEnvironment): SourceService[] {
+function servicesOf(env: SourceEnvironment): SourceService[] {
   const out: SourceService[] = [];
   for (const a of env.applications ?? [])
     out.push({
@@ -390,7 +396,7 @@ function servicesOf(env: DokployEnvironment): SourceService[] {
       serverId: c.serverId ?? "",
     });
   for (const kind of DOKPLOY_DB_KINDS)
-    for (const row of (env[kind] ?? []) as DokployDatabase[]) {
+    for (const row of (env[kind] ?? []) as SourceDatabase[]) {
       const id = row[`${kind}Id`];
       if (typeof id !== "string") continue;
       out.push({
@@ -405,16 +411,16 @@ function servicesOf(env: DokployEnvironment): SourceService[] {
 
 /** The detail call for one service - the only shape difference between kinds. */
 function loadService(
-  c: DokployCredential,
+  c: SourceCredential,
   svc: SourceService,
-): Promise<DokployApplication | DokployCompose | DokployDatabase> {
-  return getService(c, svc.kind, svc.id);
+): Promise<SourceApplication | SourceCompose | SourceDatabase> {
+  return sourceClient(c).getService(svc.kind, svc.id);
 }
 
 /** What to call a service Deplo will NOT import: worth one detail call, since
  *  the tree carries no name for a database and an id names nothing to anybody. */
 async function nameOfService(
-  c: DokployCredential,
+  c: SourceCredential,
   svc: SourceService,
 ): Promise<string> {
   if (svc.name?.trim()) return svc.name;
@@ -478,9 +484,11 @@ export async function scanMigrationSource(
   const c = await credentialFor(input);
 
   const [orgName, servers, projects] = await Promise.all([
-    activeOrganizationName(c),
-    listServers(c).catch(() => []),
-    listSourceProjects(c),
+    sourceClient(c).organizationName(),
+    sourceClient(c)
+      .listServers()
+      .catch(() => []),
+    sourceClient(c).listProjects(),
   ]);
 
   const existing = await existingNames(teamId);
@@ -545,7 +553,7 @@ export async function scanMigrationSource(
             return;
           }
 
-          let detail: DokployApplication | DokployCompose | DokployDatabase;
+          let detail: SourceApplication | SourceCompose | SourceDatabase;
           try {
             detail = await loadService(c, svc);
           } catch (e) {
@@ -563,13 +571,13 @@ export async function scanMigrationSource(
           // gives a database nothing but its id, so until now this line may have had
           // no name at all.
           line.name = nameOf(detail, svc);
-          line.logo = mapLogo((detail as DokployApplication).icon);
+          line.logo = mapLogo((detail as SourceApplication).icon);
 
           if (line.targetKind === "database") {
             const key = line.name.trim().toLowerCase();
             if (existing.databases.has(key)) line.status = "exists";
             const mappedDb = mapDatabase(svc.kind as DokployDbKind, {
-              ...(detail as DokployDatabase),
+              ...(detail as SourceDatabase),
               name: line.name,
             });
             // The port the review needs to talk about.
@@ -589,13 +597,13 @@ export async function scanMigrationSource(
           // The scan has to say what the import would say. This one is worth
           // knowing BEFORE pressing the button: the values arrive literally.
           const templated = envNeedsInterpolation(
-            parseEnvBlob((detail as DokployApplication).env),
+            parseEnvBlob((detail as SourceApplication).env),
           );
           if (templated.length > 0)
             line.notes.push(
               `Deplo does not resolve Dokploy's \`\${{...}}\` templating - these arrive as they are written: ${templated.join(", ")}.`,
             );
-          const domains = mapDomains((detail as DokployApplication).domains, {
+          const domains = mapDomains((detail as SourceApplication).domains, {
             isCompose,
           });
           line.domains = domains.value.map((d) => d.host);
@@ -616,8 +624,11 @@ export async function scanMigrationSource(
               );
 
           if (isCompose) {
-            const yamlText = (detail as DokployCompose).composeFile ?? "";
-            const adapted = adaptComposeForDeplo(yamlText);
+            const yamlText = (detail as SourceCompose).composeFile ?? "";
+            const adapted = adaptComposeForDeplo(
+              yamlText,
+              composePlatform(c, svc),
+            );
             const blocked = composeBlockers(adapted.compose, {
               mayMountHost,
               mayExposePorts,
@@ -633,7 +644,7 @@ export async function scanMigrationSource(
               line.notes.push(...blocked);
             }
           } else {
-            const app = detail as DokployApplication;
+            const app = detail as SourceApplication;
             // The same call the notes come from: a git source is the only one Deplo
             // builds, so this costs nothing beyond keeping the result.
             const src = mapSource(app);
@@ -786,10 +797,16 @@ async function hostnamesOwnedElsewhere(teamId: string): Promise<Set<string>> {
  * address - or nothing, when Deplo has no agent there.
  */
 export async function migrationMachines(
-  c: DokployCredential,
+  c: SourceCredential,
   teamId: string,
 ): Promise<PlanServer[]> {
-  return planMachines(c, teamId, await listServers(c).catch(() => []));
+  return planMachines(
+    c,
+    teamId,
+    await sourceClient(c)
+      .listServers()
+      .catch(() => []),
+  );
 }
 
 /**
@@ -871,7 +888,7 @@ export async function setMigrationMachineAddress(input: {
 }
 
 async function planMachines(
-  c: DokployCredential,
+  c: SourceCredential,
   teamId: string,
   servers: { serverId: string; name: string; ipAddress?: string | null }[],
 ): Promise<PlanServer[]> {
@@ -929,12 +946,12 @@ async function planMachines(
 
 /** Dokploy's members, told apart by whether they already exist here. */
 async function planMembers(
-  c: DokployCredential,
+  c: SourceCredential,
   teamId: string,
 ): Promise<PlanMember[]> {
   let rows: Awaited<ReturnType<typeof listMembers>>;
   try {
-    rows = await listMembers(c);
+    rows = await sourceClient(c).listMembers();
   } catch {
     // A member-scoped key cannot list the organization. Not knowing who is on the
     // other side must not stop a project import.
@@ -1539,7 +1556,7 @@ async function runImportMigrationProject(
   if (!(await ownRun(input.runId, teamId)))
     throw new Error("That import run does not belong to this team.");
 
-  const projects = await listSourceProjects(c);
+  const projects = await sourceClient(c).listProjects();
   const source = projects.find((p) => p.projectId === input.projectId);
   if (!source)
     throw new Error("That project is no longer on the Dokploy instance.");
@@ -1642,7 +1659,7 @@ async function runImportMigrationProject(
       // where the service's real name lives: `project.all` gives a database nothing but
       // its id, so a report scoped before this call would have an empty breadcrumb for
       // exactly the objects hardest to identify.
-      let detail: DokployApplication | DokployCompose | DokployDatabase;
+      let detail: SourceApplication | SourceCompose | SourceDatabase;
       try {
         detail = await loadService(c, svc);
       } catch (e) {
@@ -1679,7 +1696,7 @@ async function runImportMigrationProject(
           const appId = await importAppService(
             c,
             svc,
-            detail as DokployApplication & DokployCompose,
+            detail as SourceApplication & SourceCompose,
             name,
             {
               projectId,
@@ -1699,7 +1716,7 @@ async function runImportMigrationProject(
           await importDatabaseService(
             c,
             svc,
-            detail as DokployDatabase,
+            detail as SourceDatabase,
             name,
             {
               serverId,
@@ -1732,7 +1749,9 @@ async function runImportMigrationProject(
     // `project.all` is a projection: an environment's variable blob is ALWAYS
     // null there, however much it holds, so this asks for the row itself.
     const envBlob =
-      env.env ?? (await getEnvironment(c, env.environmentId))?.env ?? null;
+      env.env ??
+      (await sourceClient(c).getEnvironment(env.environmentId))?.env ??
+      null;
     await importSharedVars(envBlob, {
       teamId,
       label: `${source.name} / ${env.name}`,
@@ -1901,7 +1920,7 @@ async function resolvePlacements(
 }
 
 async function ensureProject(
-  source: DokployProject,
+  source: SourceProject,
   report: Report,
 ): Promise<string | null> {
   const key = source.name.trim().toLowerCase();
@@ -1944,7 +1963,7 @@ async function ensureProject(
  */
 async function ensureEnvironment(
   projectId: string,
-  env: DokployEnvironment,
+  env: SourceEnvironment,
   report: Report,
 ): Promise<string | null> {
   const key = env.name.trim().toLowerCase();
@@ -2027,9 +2046,9 @@ async function composeGrantRefusal(
 }
 
 async function importAppService(
-  c: DokployCredential,
+  c: SourceCredential,
   svc: SourceService,
-  detail: DokployApplication & DokployCompose,
+  detail: SourceApplication & SourceCompose,
   name: string,
   home: {
     projectId: string;
@@ -2072,7 +2091,7 @@ async function importAppService(
   // build as ordinary variables (agent >= 1.9.0) rather than as a second channel.
   const envEntries = parseEnvBlob(detail.env);
   const argEntries = parseEnvBlob(
-    (detail as DokployApplication).buildArgs,
+    (detail as SourceApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));
   // Every migrated variable comes across PLAIN, whatever it is called.
   const env = [...envEntries, ...argEntries].map((e) => ({
@@ -2094,7 +2113,8 @@ async function importAppService(
   let yamlText = "";
   if (isCompose) {
     const inline = (detail.composeFile ?? "").trim();
-    yamlText = inline || (await getConvertedCompose(c, svc.id)) || "";
+    yamlText =
+      inline || (await sourceClient(c).getResolvedCompose(svc.id)) || "";
     if (!yamlText.trim()) {
       await report.add({
         sourceKind: svc.kind,
@@ -2159,7 +2179,7 @@ async function importAppService(
       notes.push(
         "The compose file is kept inline from now on, so changes in the repository will not follow.",
       );
-    const adapted = adaptComposeForDeplo(yamlText);
+    const adapted = adaptComposeForDeplo(yamlText, composePlatform(c, svc));
     // An `env_file` naming a file this stack does not carry is the other platform's own
     // env file under its own name (`stack.env` and friends).
     const retargeted = retargetPlatformEnvFiles(
@@ -2216,7 +2236,7 @@ async function importAppService(
         "Dokploy isolates this stack's network and volume names. Deplo does that for every stack - check the service names it talks to.",
       );
   } else {
-    const app = detail as DokployApplication;
+    const app = detail as SourceApplication;
     const mapped = mapSource(app);
     notes.push(...mapped.notes);
     if (mapped.value.kind === "git") {
@@ -2593,7 +2613,7 @@ async function importAppService(
 
   // The credential comes across AS IT IS. Measured: a code-server arrived online and
   // open because "CoderPass123" has no special character.
-  const security = (detail as DokployApplication).security ?? [];
+  const security = (detail as SourceApplication).security ?? [];
   for (const s of security) {
     try {
       await addBasicAuthUser(created.id, s.username, s.password, {
@@ -2612,7 +2632,7 @@ async function importAppService(
 
   // Preview deployments.
   if (!isCompose) {
-    const app = detail as DokployApplication;
+    const app = detail as SourceApplication;
     if (app.isPreviewDeploymentsActive) {
       try {
         const { setAppPreviewSettings } = await import("./previews");
@@ -2704,13 +2724,13 @@ async function addExtraDomain(
 
 /** Dokploy's schedules for one service → deplo cron jobs. */
 async function importCrons(
-  c: DokployCredential,
+  c: SourceCredential,
   scheduleType: "application" | "compose",
   sourceId: string,
   appId: string,
   notes: string[],
 ): Promise<void> {
-  for (const s of await listSchedules(c, scheduleType, sourceId)) {
+  for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
     const command = (s.command ?? s.script ?? "").trim();
     if (!command) {
       notes.push(`Cron "${s.name}" has no command on Dokploy - not imported.`);
@@ -2738,9 +2758,9 @@ async function importCrons(
  * One Dokploy database → one deplo Database.
  */
 async function importDatabaseService(
-  c: DokployCredential,
+  c: SourceCredential,
   svc: SourceService,
-  row: DokployDatabase,
+  row: SourceDatabase,
   name: string,
   opts: {
     serverId: string | undefined;
@@ -2848,7 +2868,7 @@ async function importDatabaseService(
   // The port is held by the very container we are importing.
   if (!created && publishPort != null && opts.sourceIsTargetHost) {
     try {
-      await stopService(c, svc.kind, svc.id);
+      await sourceClient(c).stopService(svc.kind, svc.id);
       created = await attempt({ ...withPassword, ...withPort });
     } catch {
       /* Dokploy would not stop it; the data phase tries again and says so. */

@@ -2015,7 +2015,11 @@ test("a corrected dial address keeps the machine recognisable by the one it came
   // A Dokploy panel behind Cloudflare (or any reverse proxy) answers on the proxy's
   // address, so the row the wizard registers is unreachable and has to be corrected.
   const panelHost = new URL(URL_BASE).hostname;
-  const credential = { baseUrl: URL_BASE, apiKey: CONNECT.apiKey };
+  const credential = {
+    kind: "dokploy" as const,
+    baseUrl: URL_BASE,
+    apiKey: CONNECT.apiKey,
+  };
   const added = await asOwner(() =>
     addServer({ name: "dokploy-host", host: panelHost, importOnly: true }),
   );
@@ -2049,7 +2053,11 @@ test("a corrected address outlives the server row it was made on", async () => {
   // migrate, revert - and the source row is removed, on purpose, because a migration
   // source is not a server anyone keeps.
   const panelHost = new URL(URL_BASE).hostname;
-  const credential = { baseUrl: URL_BASE, apiKey: CONNECT.apiKey };
+  const credential = {
+    kind: "dokploy" as const,
+    baseUrl: URL_BASE,
+    apiKey: CONNECT.apiKey,
+  };
   const added = await asOwner(() =>
     addServer({ name: "dokploy-host", host: panelHost, importOnly: true }),
   );
@@ -2106,7 +2114,11 @@ test("a remembered address belongs to one team and one panel", async () => {
   // this address would point a migration at the wrong box.
   const other = await asOwner(() =>
     migrationMachines(
-      { baseUrl: "https://dokploy.other.test", apiKey: "k" },
+      {
+        kind: "dokploy" as const,
+        baseUrl: "https://dokploy.other.test",
+        apiKey: "k",
+      },
       TEAM_A,
     ),
   );

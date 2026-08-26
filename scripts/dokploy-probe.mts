@@ -25,13 +25,14 @@ import {
   portNotes,
   adaptComposeForDeplo,
   unsupportedNotes,
-} from "../lib/migration/dokploy/map";
+} from "../lib/migration/map";
+import type { DokployDbKind } from "../lib/migration/dokploy/client";
+import type { SourceCredential } from "../lib/migration/source";
 import type {
-  DokployApplication,
-  DokployCompose,
-  DokployDatabase,
-  DokployDbKind,
-} from "../lib/migration/dokploy/client";
+  SourceApplication,
+  SourceCompose,
+  SourceDatabase,
+} from "../lib/migration/model";
 import {
   DOKPLOY_DB_KINDS,
   activeOrganizationName,
@@ -42,7 +43,6 @@ import {
   listServers,
   normalizeDokployBaseUrl,
   serviceDisplayName,
-  type DokployCredential,
   type DokployRuntime,
 } from "../lib/migration/dokploy/client";
 
@@ -52,7 +52,11 @@ if (!url || !apiKey) {
   process.exit(1);
 }
 
-const c: DokployCredential = { baseUrl: normalizeDokployBaseUrl(url), apiKey };
+const c: SourceCredential = {
+  kind: "dokploy",
+  baseUrl: normalizeDokployBaseUrl(url),
+  apiKey,
+};
 
 console.log(`source      ${c.baseUrl}`);
 console.log(
@@ -127,7 +131,7 @@ function describe(
   const notes: string[] = [];
 
   if (kind === "application" || kind === "compose") {
-    const detail = row as unknown as DokployApplication & DokployCompose;
+    const detail = row as unknown as SourceApplication & SourceCompose;
     const env = parseEnvBlob(detail.env);
     const args = parseEnvBlob(detail.buildArgs).filter(
       (a) => !env.some((e) => e.key === a.key),
@@ -223,7 +227,7 @@ function describe(
       return;
     }
     const mapped = mapDatabase(kind as DokployDbKind, {
-      ...(row as unknown as DokployDatabase),
+      ...(row as unknown as SourceDatabase),
       name,
     });
     if (mapped.value)

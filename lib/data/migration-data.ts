@@ -25,16 +25,11 @@ import type { DatabaseType } from "../types";
 
 import {
   DOKPLOY_DB_KINDS,
-  getService,
-  inspectContainer,
-  listAppContainers,
-  listProjects as listSourceProjects,
   serviceDisplayName,
-  stopService,
-  type DokployCredential,
-  type DokployDatabase,
-  type DokployRuntime,
 } from "../migration/dokploy/client";
+import { sourceClient } from "../migration/source";
+import type { SourceCredential } from "../migration/source";
+import type { SourceDatabase } from "../migration/model";
 import {
   composeVolumeMounts,
   declaredSourceBindMounts,
@@ -43,11 +38,8 @@ import {
   deploVolumeName,
   pairHostMounts,
   pairVolumes,
-  sourceBindMountsFrom,
-  sourceVolumesFrom,
-  type HostMount,
-  type NamedVolume,
-} from "../migration/dokploy/map";
+} from "../migration/map";
+import type { HostMount, NamedVolume } from "../migration/model";
 
 import { requireAppCapability } from "./node-access";
 import {
@@ -196,7 +188,7 @@ interface SourceService {
  * Read once and passed around rather than re-fetched per lookup: the alternative
  * (a helper per field) turned one call into three for the same answer.
  */
-async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
+async function sourceServices(c: SourceCredential): Promise<SourceService[]> {
   // `project.all` gives ids, not rows: an application arrives as {applicationId,
   // name, applicationStatus} and a database as {postgresId} and nothing else.
   const stubs: {
@@ -205,7 +197,7 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
     projectName: string;
     environmentName: string;
   }[] = [];
-  for (const p of await listSourceProjects(c))
+  for (const p of await sourceClient(c).listProjects())
     for (const env of p.environments ?? []) {
       const where = {
         projectName: p.name ?? "",
@@ -216,7 +208,7 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
       for (const s of env.compose ?? [])
         stubs.push({ kind: "compose", id: s.composeId, ...where });
       for (const kind of DOKPLOY_DB_KINDS)
-        for (const row of (env[kind] ?? []) as DokployDatabase[]) {
+        for (const row of (env[kind] ?? []) as SourceDatabase[]) {
           const id = row[`${kind}Id`];
           if (typeof id === "string") stubs.push({ kind, id, ...where });
         }
@@ -227,7 +219,9 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
     stubs.map((stub, index) => ({ stub, index })),
     5,
     async ({ stub, index }) => {
-      const detail = await getService(c, stub.kind, stub.id).catch(() => null);
+      const detail = await sourceClient(c)
+        .getService(stub.kind, stub.id)
+        .catch(() => null);
       if (!detail) return;
       const appName = detail.appName?.trim() ?? "";
       out[index] = {
@@ -250,78 +244,6 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
     },
   );
   return out.filter((s): s is SourceService => s != null);
-}
-
-/**
- * Which containers a service runs, and the volumes they mount.
- */
-async function sourceState(
-  c: DokployCredential,
-  appName: string,
-  kind: string,
-  declared: NamedVolume[],
-  declaredBinds: HostMount[] = [],
-): Promise<{
-  volumes: NamedVolume[];
-  hostMounts: HostMount[];
-  running: boolean;
-  notes: string[];
-}> {
-  // A compose stack's containers are plain ones named after the stack; an application
-  // or a database is a swarm service.
-  const order: DokployRuntime[] =
-    kind === "compose" ? ["standalone", "swarm"] : ["swarm", "standalone"];
-
-  let containers: { containerId: string }[] = [];
-  for (const type of order) {
-    containers = await listAppContainers(c, appName, type).catch(() => []);
-    if (containers.length > 0) break;
-  }
-  // No container is the NORMAL state of a platform someone is leaving (Dokploy stops
-  // a service by scaling it to 0 replicas), and the volume is still on the host.
-  if (containers.length === 0)
-    return {
-      volumes: declared,
-      hostMounts: declaredBinds,
-      running: false,
-      // The count is volumes AND host binds: a service with only a bind mount
-      // used to be told it "declares no volume", right beside the bind mount the
-      // plan had already paired for it.
-      notes:
-        declared.length + declaredBinds.length > 0
-          ? [
-              `${appName} is stopped on Dokploy, so its data comes from what Dokploy says it mounts rather than from a live container.`,
-            ]
-          : [
-              `Dokploy has no container for ${appName} and declares nothing it mounts, so there is nothing to copy.`,
-            ],
-    };
-
-  const volumes: NamedVolume[] = [];
-  const hostMounts: HostMount[] = [];
-  const seen = new Set<string>();
-  const seenBind = new Set<string>();
-  const notes: string[] = [];
-  let running = false;
-  await mapLimit(containers, 4, async (ct) => {
-    const info = await inspectContainer(c, ct.containerId).catch(() => null);
-    if (!info) {
-      notes.push(`Dokploy would not inspect container ${ct.containerId}.`);
-      return;
-    }
-    if (info.State?.Running) running = true;
-    for (const v of sourceVolumesFrom(info))
-      if (!seen.has(v.name)) {
-        seen.add(v.name);
-        volumes.push(v);
-      }
-    for (const m of sourceBindMountsFrom(info))
-      if (!seenBind.has(m.mountPath)) {
-        seenBind.add(m.mountPath);
-        hostMounts.push(m);
-      }
-  });
-  return { volumes, hostMounts, running, notes };
 }
 
 /* ------------------------------------------------------------------ */
@@ -523,13 +445,7 @@ export async function planMigrationDataMove(
     const landed = await landedFor(teamId, target);
     if (!landed) continue;
 
-    const state = await sourceState(
-      c,
-      svc.appName,
-      svc.kind,
-      svc.declaredVolumes,
-      svc.declaredBindMounts,
-    );
+    const state = await sourceClient(c).serviceRuntime(svc);
     const paired = pairVolumes(state.volumes, landed.volumes, {
       singleData: landed.targetKind === "database",
     });
@@ -681,13 +597,7 @@ async function runMoveMigrationServiceData(
   // Which Deplo server holds the Dokploy volumes.
   const sourceServerId = await resolveSourceServer(c, teamId, svc.serverId);
 
-  const state = await sourceState(
-    c,
-    svc.appName,
-    svc.kind,
-    svc.declaredVolumes,
-    svc.declaredBindMounts,
-  );
+  const state = await sourceClient(c).serviceRuntime(svc);
   const paired = pairVolumes(state.volumes, landed.volumes, {
     singleData: landed.targetKind === "database",
   });
@@ -777,7 +687,7 @@ async function runMoveMigrationServiceData(
   // to its own `compose.stop`. Nothing is running, so nothing is moving under the
   // copy; the run has no business ending over it.
   try {
-    await stopService(c, input.sourceKind, input.sourceId);
+    await sourceClient(c).stopService(input.sourceKind, input.sourceId);
   } catch (e) {
     const why = e instanceof Error ? e.message : "Dokploy refused";
     if (state.running) {
@@ -1241,7 +1151,7 @@ async function setDatabaseRunningAfterCopy(
  * ADDRESS, and never accepted from the caller.
  */
 async function resolveSourceServer(
-  c: DokployCredential,
+  c: SourceCredential,
   teamId: string,
   platformServerId: string,
 ): Promise<string> {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import yaml from "../../yaml";
+import yaml from "../yaml";
 
 import {
   cloneTarget,
@@ -35,15 +35,15 @@ import {
   deploFilesPath,
   deploEngineFor,
 } from "./map";
-import type { DokployApplication, DokployDatabase } from "./client";
-import { MAX_LOGO_STRING_LEN } from "../../apps/logo-shared";
+import type { SourceApplication, SourceDatabase } from "./model";
+import { MAX_LOGO_STRING_LEN } from "../apps/logo-shared";
 
 /**
  * The pure half of the Dokploy import.
  */
 
 /** A minimal application row; each test overrides what it cares about. */
-function app(over: Partial<DokployApplication> = {}): DokployApplication {
+function app(over: Partial<SourceApplication> = {}): SourceApplication {
   return {
     applicationId: "app-1",
     name: "web",
@@ -937,7 +937,7 @@ test("mapMounts reports a mount it had to drop", () => {
 
 /* ---- databases ------------------------------------------------------ */
 
-function db(over: Partial<DokployDatabase> = {}): DokployDatabase {
+function db(over: Partial<SourceDatabase> = {}): SourceDatabase {
   return {
     name: "main",
     appName: "acme-main-abc",
@@ -1826,7 +1826,7 @@ test("mapDatabase refuses an engine Deplo does not have", () => {
     "keydb" as never,
     {
       name: "cache",
-    } as DokployDatabase,
+    } as SourceDatabase,
   );
   assert.equal(value, null);
   assert.ok(notes[0].includes("no keydb engine"));
