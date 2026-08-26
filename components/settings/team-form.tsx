@@ -47,8 +47,8 @@ export function TeamForm({
   );
   const pictureText = (
     <div>
-      <p className="text-sm font-medium">Team picture</p>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="text-base font-medium">Team picture</p>
+      <p className="mt-1.5 text-xs text-muted-foreground">
         {canManage
           ? "Click the picture or drop an image on it. PNG, JPEG or WebP."
           : "Shown before the team's name everywhere it appears."}
