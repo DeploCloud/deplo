@@ -13,7 +13,7 @@ export const AGENT_REPO = "DeploCloud/deplo-agent";
  * Fallback agent version reported as "expected" when GitHub can't be reached
  * (offline, rate-limited, no releases yet).
  */
-export const FALLBACK_AGENT_VERSION = "0.1.2";
+export const FALLBACK_AGENT_VERSION = "0.2.0";
 
 /** The asset basename the install script downloads, per Linux architecture. */
 function assetName(arch: "amd64" | "arm64"): string {
