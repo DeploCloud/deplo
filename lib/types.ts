@@ -287,6 +287,8 @@ export type TeamIdentity = Pick<Team, "id" | "name" | "slug" | "avatarUrl">;
 export interface TeamSummary extends Team {
   role: string;
   memberCount: number;
+  /** Whether this person may change anything in that team's settings. */
+  canManage: boolean;
 }
 
 /**

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   currentIdentity,
@@ -103,9 +103,18 @@ export async function getTeam(): Promise<Team> {
   return rowToTeam(t);
 }
 
+/** The "team" browse category of lib/capabilities.ts: holding any of these means
+ *  something in that team's settings is actually this person's to change. */
+const TEAM_SETTINGS_CAPS = [
+  "manage_team",
+  "manage_members",
+  "manage_roles",
+  "delete_team",
+];
+
 /** Every team the current user belongs to (for the team switcher). */
 export async function listMyTeams(): Promise<
-  (Team & { role: string; memberCount: number })[]
+  (Team & { role: string; memberCount: number; canManage: boolean })[]
 > {
   const user = await assertUser();
   const db = getDb();
@@ -131,6 +140,23 @@ export async function listMyTeams(): Promise<
     mine.map((m) => [m.teamId, m.switcherPosition]),
   );
 
+  // Cosmetic only, like every UI capability check: it decides whether the switcher
+  // offers a shortcut into a team's settings, never what that page then allows.
+  const manageable = await db
+    .select({ teamId: membershipsTable.teamId })
+    .from(membershipCapabilitiesTable)
+    .innerJoin(
+      membershipsTable,
+      eq(membershipsTable.id, membershipCapabilitiesTable.membershipId),
+    )
+    .where(
+      and(
+        eq(membershipsTable.userId, user.id),
+        inArray(membershipCapabilitiesTable.capability, TEAM_SETTINGS_CAPS),
+      ),
+    );
+  const canManageTeam = new Set(manageable.map((m) => m.teamId));
+
   const counts = await db
     .select({ teamId: membershipsTable.teamId, n: count() })
     .from(membershipsTable)
@@ -143,6 +169,7 @@ export async function listMyTeams(): Promise<
         ...t,
         role: roleByTeam.get(t.id) ?? "member",
         memberCount: countByTeam.get(t.id) ?? 0,
+        canManage: canManageTeam.has(t.id),
       }))
       // NULLS LAST, stable within each group: a team the user has never dragged
       // keeps the order `teamsForUser` already returned it in, so somebody who

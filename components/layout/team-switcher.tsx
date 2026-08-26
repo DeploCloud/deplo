@@ -3,7 +3,7 @@
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ChevronDown, GripVertical, Plus } from "lucide-react";
+import { Check, ChevronDown, GripVertical, Pencil, Plus } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -44,6 +44,9 @@ export function TeamSwitcher({
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = React.useTransition();
+  // Controlled only so the pencil can shut it: Radix closes on select, and the
+  // pencil deliberately does not select the row.
+  const [open, setOpen] = React.useState(false);
   // The reorder gets its OWN transition: sharing `pending` with switchTo dimmed every
   // row to 50% (data-[disabled]:opacity-50) while the mutation and the refresh ran,
   // which is the one thing an optimistic reorder must not do - the list has already
@@ -93,8 +96,12 @@ export function TeamSwitcher({
   }
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  function switchTo(teamId: string) {
-    if (teamId === team.id) return;
+  /** `to` overrides where we land - the pencil always wants that team's settings. */
+  function switchTo(teamId: string, to?: string) {
+    if (teamId === team.id) {
+      if (to) router.push(to);
+      return;
+    }
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($teamId: String!) { switchTeam(teamId: $teamId) }`,
@@ -107,7 +114,7 @@ export function TeamSwitcher({
       // Sections (Variables, Storage, Templates, …) exist in every team, so
       // stay on the open page and let it re-read under the new team; only a
       // page naming one team's App/Database/Project has to be left behind.
-      const dest = teamSwitchDestination(pathname);
+      const dest = to ?? teamSwitchDestination(pathname);
       // REPLACE, never push: the entry we'd leave behind points at the team we
       // just left, so "back" would land on a page that no longer resolves.
       if (dest !== window.location.pathname + window.location.search) {
@@ -121,7 +128,7 @@ export function TeamSwitcher({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
@@ -151,6 +158,10 @@ export function TeamSwitcher({
                   sortable={sortable}
                   disabled={pending}
                   onSelect={() => switchTo(t.id)}
+                  onEdit={() => {
+                    setOpen(false);
+                    switchTo(t.id, "/settings");
+                  }}
                 />
               ))}
             </SortableContext>
@@ -180,12 +191,15 @@ function TeamRow({
   sortable,
   disabled,
   onSelect,
+  onEdit,
 }: {
   team: TeamSummary;
   active: boolean;
   sortable: boolean;
   disabled: boolean;
   onSelect: () => void;
+  /** Switch to this team and open its settings. */
+  onEdit: () => void;
 }) {
   const {
     attributes,
@@ -207,28 +221,10 @@ function TeamRow({
       disabled={disabled}
       onSelect={onSelect}
     >
-      {sortable && (
-        <span
-          {...attributes}
-          {...listeners}
-          // The handle drags; it must never also switch team - and stopping the CLICK is the
-          // whole of what that takes.
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Reorder ${team.name}`}
-          className="absolute left-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
-        >
-          <GripVertical className="size-3.5" />
-        </span>
-      )}
-      {/* The content slides right to uncover the handle. `pr-4` is the same 16px
-          the hover translate adds, so the Check ends up exactly where a row with
-          no handle puts it and a long name never runs under it. */}
+      {/* The gutter the handle fades into. Reserved rather than uncovered by a
+          slide, so the picture and the name never move under the pointer. */}
       <span
-        className={cn(
-          "flex w-full items-center gap-2 transition-transform",
-          sortable &&
-            "pr-4 group-focus-within:translate-x-4 group-hover:translate-x-4",
-        )}
+        className={cn("flex w-full items-center gap-2", sortable && "pr-5")}
       >
         <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
         <span className="flex min-w-0 flex-col">
@@ -238,8 +234,38 @@ function TeamRow({
             {team.memberCount === 1 ? "" : "s"}
           </span>
         </span>
-        {active && <Check className="ml-auto size-4" />}
+        <span className="ml-auto flex items-center gap-1">
+          {active && <Check className="size-4" />}
+          {team.canManage && (
+            <button
+              type="button"
+              // Same reason as the handle below: this is its own action, not a
+              // way of picking the row.
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              aria-label={`Settings for ${team.name}`}
+              className="cursor-pointer rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+          )}
+        </span>
       </span>
+      {sortable && (
+        <span
+          {...attributes}
+          {...listeners}
+          // The handle drags; it must never also switch team - and stopping the CLICK is the
+          // whole of what that takes.
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Reorder ${team.name}`}
+          className="absolute right-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
+        >
+          <GripVertical className="size-3.5" />
+        </span>
+      )}
     </DropdownMenuItem>
   );
 }
