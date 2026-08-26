@@ -18,11 +18,11 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
-  Tabs,
   TabsContent,
   UnderlineTabsList,
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
+import { StorageTabs } from "@/components/storage/storage-tabs";
 import { Badge } from "@/components/ui/badge";
 import { CreateDatabase } from "@/components/storage/create-database";
 import { DatabaseGraphic } from "@/components/storage/database-graphic";
@@ -173,7 +173,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
         description="Managed databases, backup destinations and scheduled backups."
       />
 
-      <Tabs defaultValue={initialTab}>
+      <StorageTabs defaultTab={initialTab}>
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="databases">
             Databases
@@ -346,7 +346,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
             />
           )}
         </TabsContent>
-      </Tabs>
+      </StorageTabs>
     </div>
   );
 }
