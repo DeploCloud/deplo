@@ -113,18 +113,67 @@ export class PanelUnreachableError extends Error {
   }
 }
 
-/** Every call goes out through here so no caller can leak a bare "fetch failed". */
+/**
+ * A failure the next attempt may not hit. Kept narrow on purpose: a wrong address
+ * (DNS, nothing listening) or a certificate this machine will not trust has to
+ * fail on the Connect screen, not three attempts later.
+ */
+const TRANSIENT_CODES = new Set([
+  "ECONNRESET",
+  "EPIPE",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+/** How long to wait before each extra attempt. Length = how many there are. */
+const RETRY_DELAYS_MS = [300, 1_200];
+
+function isTransient(err: unknown): boolean {
+  if (
+    err instanceof Error &&
+    (err.name === "TimeoutError" || err.name === "AbortError")
+  )
+    return true;
+  const cause =
+    err instanceof Error
+      ? (err.cause as { code?: string } | undefined)
+      : undefined;
+  return typeof cause?.code === "string" && TRANSIENT_CODES.has(cause.code);
+}
+
+/**
+ * Every call goes out through here so no caller can leak a bare "fetch failed" -
+ * and so one blip does not end a migration. A run reads the panel hundreds of
+ * times; a single reset used to fail the data phase with every service after it
+ * left empty.
+ */
 export async function sendRequest(
   baseUrl: string,
   url: string,
   init: RequestInit,
   panel: PanelIdentity,
 ): Promise<Response> {
-  try {
-    return await doFetch(url, init);
-  } catch (e) {
-    throw new PanelUnreachableError(describeTransportError(e, baseUrl, panel));
+  let last: unknown;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      // A retry needs its OWN deadline: `AbortSignal.timeout` fires once and stays
+      // aborted, so reusing the caller's would abort the second attempt instantly.
+      return await doFetch(
+        url,
+        attempt === 0
+          ? init
+          : { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
+      );
+    } catch (e) {
+      last = e;
+      if (attempt >= RETRY_DELAYS_MS.length || !isTransient(e)) break;
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+    }
   }
+  throw new PanelUnreachableError(describeTransportError(last, baseUrl, panel));
 }
 
 /** Origin with no trailing slash and no trailing `/api`, however it was typed. */
