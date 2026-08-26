@@ -328,7 +328,7 @@ async function failRun(row: RunRow, why: string): Promise<void> {
   publishMigrationChanged();
 
   if (reached === "data") {
-    await appendRunItem(row.id, {
+    await appendRunItem(row.id, panelNameFor(row), {
       path: "Migration",
       sourceKind: "run",
       sourceName: "Migration",
@@ -348,6 +348,11 @@ async function failRun(row: RunRow, why: string): Promise<void> {
   } catch (e) {
     console.error("[migration] undo after failure", row.id, "failed:", e);
   }
+}
+
+/** The source product's name, for the `{panel}` a mapper's note carries. */
+function panelNameFor(row: { platform: string }): string {
+  return row.platform === "coolify" ? "Coolify" : "Dokploy";
 }
 
 async function credentialFor(row: RunRow): Promise<RunCredential> {
@@ -557,7 +562,7 @@ async function runConfigPhase(row: RunRow, c: RunCredential): Promise<void> {
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       await markTargets(g.rowIds, "failed");
-      await appendRunItem(row.id, {
+      await appendRunItem(row.id, panelNameFor(row), {
         path: g.projectName,
         sourceKind: "project",
         sourceName: g.projectName,
@@ -606,7 +611,7 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
   // are the whole value of the report.
   for (const d of planned)
     for (const note of d.notes)
-      await appendRunItem(row.id, {
+      await appendRunItem(row.id, panelNameFor(row), {
         path: d.path,
         sourceKind: "data",
         sourceName: d.sourceName,

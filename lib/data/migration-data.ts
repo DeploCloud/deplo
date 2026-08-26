@@ -504,7 +504,7 @@ export async function planMigrationDataMove(
 
 export interface MoveInput extends ConnectInput {
   runId: string;
-  /** The Dokploy service to cut over. Its volumes are DERIVED, never passed in. */
+  /** The source service to cut over. Its volumes are DERIVED, never passed in. */
   sourceKind: string;
   sourceId: string;
   /** Bytes as they cross, for a caller that shows progress while this runs. */
@@ -567,6 +567,7 @@ async function runMoveMigrationServiceData(
 ): Promise<DataMoveResult> {
   const { teamId } = await assertImportGate();
   const c = await credentialFor(input);
+  const panel = sourceClient(c).displayName;
   if (!(await ownRun(input.runId, teamId)))
     throw new Error("That import run does not belong to this team.");
 
@@ -574,7 +575,7 @@ async function runMoveMigrationServiceData(
     (s) => s.kind === input.sourceKind && s.id === input.sourceId,
   );
   if (!svc)
-    throw new Error("That service is no longer on the Dokploy instance.");
+    throw new Error(`That service is no longer on the ${panel} instance.`);
 
   const target = (await runTargets(input.runId)).get(svc.id);
   const landed = target ? await landedFor(teamId, target) : null;
@@ -594,7 +595,7 @@ async function runMoveMigrationServiceData(
     await requireCapability("restore_backups");
   }
 
-  // Which Deplo server holds the Dokploy volumes.
+  // Which Deplo server holds the source volumes.
   const sourceServerId = await resolveSourceServer(c, teamId, svc.serverId);
 
   const state = await sourceClient(c).serviceRuntime(svc);
@@ -613,7 +614,7 @@ async function runMoveMigrationServiceData(
   if (paired.value.length === 0 && binds.length === 0) {
     // Nothing to copy means nothing is stopped either: a cutover that would move
     // no bytes has no business taking the source down.
-    await appendRunItem(input.runId, {
+    await appendRunItem(input.runId, panel, {
       path,
       sourceKind: input.sourceKind,
       sourceName: svc.name,
@@ -632,7 +633,7 @@ async function runMoveMigrationServiceData(
   // `stopService` a few lines down is the point of no return. The machine that
   // holds the bytes has to answer FIRST - see `sourceAgentReachable`.
   if (!(await sourceAgentReachable(sourceServerId))) {
-    await appendRunItem(input.runId, {
+    await appendRunItem(input.runId, panel, {
       path,
       sourceKind: input.sourceKind,
       sourceName: svc.name,
@@ -663,7 +664,7 @@ async function runMoveMigrationServiceData(
   if (landed.targetKind === "database") {
     const settled = await waitForProvision(landed.targetId, teamId);
     if (!settled) {
-      await appendRunItem(input.runId, {
+      await appendRunItem(input.runId, panel, {
         path,
         sourceKind: input.sourceKind,
         sourceName: svc.name,
@@ -691,7 +692,7 @@ async function runMoveMigrationServiceData(
   } catch (e) {
     const why = e instanceof Error ? e.message : "Dokploy refused";
     if (state.running) {
-      await appendRunItem(input.runId, {
+      await appendRunItem(input.runId, panel, {
         path,
         sourceKind: input.sourceKind,
         sourceName: svc.name,
@@ -756,7 +757,7 @@ async function runMoveMigrationServiceData(
         if (copied.empty) {
           empty++;
           if (copied.missing) missing++;
-          await appendRunItem(input.runId, {
+          await appendRunItem(input.runId, panel, {
             path,
             sourceKind: "volume",
             sourceName: pair.sourceVolume,
@@ -770,7 +771,7 @@ async function runMoveMigrationServiceData(
           continue;
         }
         moved++;
-        await appendRunItem(input.runId, {
+        await appendRunItem(input.runId, panel, {
           path,
           sourceKind: "volume",
           sourceName: pair.sourceVolume,
@@ -790,7 +791,7 @@ async function runMoveMigrationServiceData(
         const message = e instanceof Error ? e.message : "the copy failed";
         notes.push(`${pair.sourceVolume}: ${message}`);
         lost.push(`${pair.sourceVolume} (${pair.mountPath}): ${message}`);
-        await appendRunItem(input.runId, {
+        await appendRunItem(input.runId, panel, {
           path,
           sourceKind: "volume",
           sourceName: pair.sourceVolume,
@@ -803,7 +804,7 @@ async function runMoveMigrationServiceData(
     }
     for (const bind of binds) {
       if (!mayCopyHostPaths) {
-        await appendRunItem(input.runId, {
+        await appendRunItem(input.runId, panel, {
           path,
           sourceKind: "volume",
           sourceName: bind.sourcePath,
@@ -821,7 +822,7 @@ async function runMoveMigrationServiceData(
         sourceServerId === landed.targetServerId &&
         bind.sourcePath === bind.targetPath
       ) {
-        await appendRunItem(input.runId, {
+        await appendRunItem(input.runId, panel, {
           path,
           sourceKind: "volume",
           sourceName: bind.sourcePath,
@@ -844,7 +845,7 @@ async function runMoveMigrationServiceData(
         if (copied.empty) {
           empty++;
           if (copied.missing) missing++;
-          await appendRunItem(input.runId, {
+          await appendRunItem(input.runId, panel, {
             path,
             sourceKind: "volume",
             sourceName: bind.sourcePath,
@@ -858,7 +859,7 @@ async function runMoveMigrationServiceData(
           continue;
         }
         moved++;
-        await appendRunItem(input.runId, {
+        await appendRunItem(input.runId, panel, {
           path,
           sourceKind: "volume",
           sourceName: bind.sourcePath,
@@ -874,7 +875,7 @@ async function runMoveMigrationServiceData(
         const message = e instanceof Error ? e.message : "the copy failed";
         notes.push(`${bind.sourcePath}: ${message}`);
         lost.push(`${bind.sourcePath} (${bind.mountPath}): ${message}`);
-        await appendRunItem(input.runId, {
+        await appendRunItem(input.runId, panel, {
           path,
           sourceKind: "volume",
           sourceName: bind.sourcePath,
@@ -897,7 +898,7 @@ async function runMoveMigrationServiceData(
   // had no data to move is not a reason to leave somebody's database down.
   if (landed.targetKind === "database" && failed === 0) {
     const verdict = await startAndVerifyDatabase(landed, teamId, moved > 0);
-    await appendRunItem(input.runId, {
+    await appendRunItem(input.runId, panel, {
       path,
       sourceKind: input.sourceKind,
       sourceName: svc.name,
@@ -936,7 +937,7 @@ async function runMoveMigrationServiceData(
     );
 
   for (const message of notes)
-    await appendRunItem(input.runId, {
+    await appendRunItem(input.runId, panel, {
       path,
       sourceKind: input.sourceKind,
       sourceName: svc.name,

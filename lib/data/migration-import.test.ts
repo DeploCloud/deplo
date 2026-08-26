@@ -1315,7 +1315,7 @@ test("finishing an import takes Deplo's agent back off the migration source", as
 test("data that did not copy KEEPS the source, agent and all", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.71");
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
-  await appendRunItem(runId, {
+  await appendRunItem(runId, "Dokploy", {
     path: "Blink / production / api",
     sourceKind: "volume",
     sourceName: "api-data",
@@ -1473,7 +1473,7 @@ test("leaving does not touch the sources a run in flight is reading", async () =
 test("leaving keeps the source that still holds data nothing could copy", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.78");
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
-  await appendRunItem(runId, {
+  await appendRunItem(runId, "Dokploy", {
     path: "Blink / production / api",
     sourceKind: "volume",
     sourceName: "api-data",

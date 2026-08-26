@@ -148,6 +148,15 @@ export interface SourcePlatformShape {
   networks: readonly string[];
 }
 
+/**
+ * A note written by a mapper says `{panel}` where the source product's name goes.
+ * The mappers do not know which panel they are reading, and a report that told a
+ * Coolify user what happened "on Dokploy" would simply be wrong.
+ */
+export function withPanel(text: string, panel: string): string {
+  return text.split("{panel}").join(panel);
+}
+
 export const DOKPLOY_PLATFORM: SourcePlatformShape = {
   name: "Dokploy",
   networks: [DOKPLOY_NETWORK],
@@ -464,7 +473,7 @@ export function mapBuildSettings(
     app.buildType === "paketo_buildpacks"
   )
     notes.push(
-      `Built with ${app.buildType.replace("_", " ")} on Dokploy. Set to Nixpacks - check the build.`,
+      `Built with ${app.buildType.replace("_", " ")} on {panel}. Set to Nixpacks - check the build.`,
     );
 
   const build: Partial<BuildConfig> = { buildMethod };
@@ -509,7 +518,7 @@ export function mapBuildSettings(
 
   if ((app.replicas ?? 1) > 1)
     notes.push(
-      `Runs ${app.replicas} replicas on Dokploy. Deplo runs one container per app, so it arrives as one.`,
+      `Runs ${app.replicas} replicas on {panel}. Deplo runs one container per app, so it arrives as one.`,
     );
 
   return { value: build, notes };
@@ -624,7 +633,7 @@ export function mapResources(row: {
       : memoryReservationMb;
   if (reservation !== memoryReservationMb)
     notes.push(
-      "Memory reservation is above the limit on Dokploy - not imported.",
+      "Memory reservation is above the limit on {panel} - not imported.",
     );
 
   if (memoryMb == null && reservation == null && cpuMilli == null)
@@ -671,7 +680,7 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
   if (app.sourceType === "docker") {
     const image = app.dockerImage?.trim();
     if (!image) {
-      notes.push("Docker source with no image set on Dokploy - pick an image.");
+      notes.push("Docker source with no image set on {panel} - pick an image.");
       return { value: { kind: "none" }, notes };
     }
     if (!IMAGE_REF_RE.test(image)) {
@@ -684,21 +693,21 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
     // username/password/URL typed straight onto the application (`saveDockerProvider`).
     if (app.registryId || app.registry || app.username || app.registryUrl)
       notes.push(
-        "From a private registry. Add it under Registries and reselect it - Dokploy never exposes the password.",
+        "From a private registry. Add it under Registries and reselect it - {panel} never exposes the password.",
       );
     // A registry running ON the source host. The reference is perfectly valid over
     // there and means nothing here, and the failure it produces later ("pull
     // access denied") points at the image rather than at the move.
     if (/^(localhost|127\.0\.0\.1|::1|host\.docker\.internal)[:/]/i.test(image))
       notes.push(
-        `${image} is in a registry on the Dokploy machine. Push it somewhere Deplo can reach, or build from source.`,
+        `${image} is in a registry on the {panel} machine. Push it somewhere Deplo can reach, or build from source.`,
       );
     return { value: { kind: "docker-image", image }, notes };
   }
 
   if (app.sourceType === "drop") {
     notes.push(
-      "Its code is an archive somebody uploaded to Dokploy, and the API will not hand the file over. Upload it again here.",
+      "Its code is an archive somebody uploaded to {panel}, and the API will not hand the file over. Upload it again here.",
     );
     return { value: { kind: "none" }, notes };
   }
@@ -706,14 +715,14 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
   const repo = cloneTarget(app);
   if (!repo) {
     notes.push(
-      "Could not work out the repository from Dokploy - set the source by hand.",
+      "Could not work out the repository from {panel} - set the source by hand.",
     );
     return { value: { kind: "none" }, notes };
   }
 
   if (app.customGitSSHKeyId)
     notes.push(
-      "Clones over SSH with a key stored in Dokploy. Deplo clones over https, so add a git connection for this host.",
+      "Clones over SSH with a key stored in {panel}. Deplo clones over https, so add a git connection for this host.",
     );
   else
     notes.push(
@@ -881,7 +890,7 @@ export function mapDomains(
     if (d.certificateType === "letsencrypt") certProvider = "letsencrypt";
     else if (d.certificateType === "custom")
       notes.push(
-        `${host} uses a custom certificate resolver on Dokploy. Imported without a certificate - pick one in Domains.`,
+        `${host} uses a custom certificate resolver on {panel}. Imported without a certificate - pick one in Domains.`,
       );
 
     const path = (d.path ?? "/").trim();
@@ -897,7 +906,7 @@ export function mapDomains(
     const custom = (d.customEntrypoint ?? "").trim();
     if (custom && custom !== "web" && custom !== "websecure")
       notes.push(
-        `${host} answered on Dokploy's "${custom}" entrypoint. Deplo has only web and websecure, so it comes across on websecure - open that port on this app if it needs one.`,
+        `${host} answered on {panel}'s "${custom}" entrypoint. Deplo has only web and websecure, so it comes across on websecure - open that port on this app if it needs one.`,
       );
     const port = d.port ?? opts.fallbackPort ?? null;
     if (opts.isCompose && port == null)
@@ -1006,7 +1015,7 @@ export function mapMounts(
       const wanted = declared || fileNameFromMountPath(mountPath ?? "");
       if (!wanted || wanted.split("/").includes("..")) {
         notes.push(
-          "A file mount has no usable path on Dokploy - not imported.",
+          "A file mount has no usable path on {panel} - not imported.",
         );
         continue;
       }
@@ -1033,7 +1042,7 @@ export function mapMounts(
       continue;
     }
     if (!mountPath) {
-      notes.push("A mount has no container path on Dokploy - not imported.");
+      notes.push("A mount has no container path on {panel} - not imported.");
       continue;
     }
     if (m.type === "volume") {
@@ -1051,7 +1060,7 @@ export function mapMounts(
     const hostPath = m.hostPath?.trim();
     if (!hostPath) {
       notes.push(
-        `Bind mount at ${mountPath} has no host path on Dokploy - not imported.`,
+        `Bind mount at ${mountPath} has no host path on {panel} - not imported.`,
       );
       continue;
     }
@@ -1154,7 +1163,7 @@ export function mapDatabase(
   const version = tag ?? "latest";
   if (!tag)
     notes.push(
-      `Dokploy runs ${customImage} with no version pinned, so what it resolves to can change under the data. Pin a version under Advanced.`,
+      `{panel} runs ${customImage} with no version pinned, so what it resolves to can change under the data. Pin a version under Advanced.`,
     );
   const repo = imageRepo(row.dockerImage);
   const canonical =
@@ -1165,7 +1174,7 @@ export function mapDatabase(
     (kind === "mongo" && repo === "mongo");
   if (!canonical)
     notes.push(
-      `Runs ${customImage} on Dokploy instead of a plain ${type}. Kept as it is - check that it starts.`,
+      `Runs ${customImage} on {panel} instead of a plain ${type}. Kept as it is - check that it starts.`,
     );
 
   // A multi-line command is not something Deplo's column takes (it renders as a
@@ -1173,7 +1182,7 @@ export function mapDatabase(
   const command = row.command?.trim() || null;
   if (command && /[\r\n\t]/.test(command))
     notes.push(
-      `Custom start command on Dokploy ("${truncate(command, 60)}") spans more than one line - set it under Advanced if you still need it.`,
+      `Custom start command on {panel} ("${truncate(command, 60)}") spans more than one line - set it under Advanced if you still need it.`,
     );
   // Dokploy models a database's own DATA volume as a mount row, so counting every
   // mount announced "extra files that are not imported" about the one thing the Data
@@ -1186,7 +1195,7 @@ export function mapDatabase(
   const binds = (row.mounts ?? []).filter((m) => m.type === "bind");
   if (binds.length > 0)
     notes.push(
-      `This database bind-mounts ${binds.length === 1 ? "a folder" : "folders"} from its host on Dokploy (${binds
+      `This database bind-mounts ${binds.length === 1 ? "a folder" : "folders"} from its host on {panel} (${binds
         .map((m) => m.hostPath || m.mountPath)
         .join(
           ", ",
@@ -1198,7 +1207,7 @@ export function mapDatabase(
   const envKeys = parseEnvBlob(row.env).map((e) => e.key);
   if (envKeys.length > 0)
     notes.push(
-      `Carried ${envKeys.length} environment variable(s) on Dokploy (${envKeys.join(", ")}). A Deplo database has none - fold what matters into the image, the start command or a config file under Settings -> Advanced.`,
+      `Carried ${envKeys.length} environment variable(s) on {panel} (${envKeys.join(", ")}). A Deplo database has none - fold what matters into the image, the start command or a config file under Settings -> Advanced.`,
     );
 
   const rootPassword =
@@ -1207,7 +1216,7 @@ export function mapDatabase(
       : null;
   if (rootPassword && rootPassword !== row.databasePassword?.trim())
     notes.push(
-      `Connects as root, because that is the login Deplo's own backups and console use and the copied data keeps Dokploy's users. "${row.databaseUser?.trim() || "the application user"}" still works from inside the database.`,
+      `Connects as root, because that is the login Deplo's own backups and console use and the copied data keeps {panel}'s users. "${row.databaseUser?.trim() || "the application user"}" still works from inside the database.`,
     );
 
   return {
@@ -1448,7 +1457,7 @@ export function pairVolumes(
       targetVolume: target[0].name,
       mountPath: target[0].mountPath,
       note:
-        `The data directory moved: Dokploy mounted it at ${source[0].mountPath}, Deplo mounts ${target[0].mountPath}. ` +
+        `The data directory moved: {panel} mounted it at ${source[0].mountPath}, Deplo mounts ${target[0].mountPath}. ` +
         "The copy is still the right one - one data volume on each side, and Deplo pins the engine's data path to where it mounts it.",
     });
   }
@@ -1461,12 +1470,12 @@ export function pairVolumes(
       !isAnonymousVolume(s.name)
     )
       notes.push(
-        `${s.name} is mounted at ${s.mountPath} on Dokploy, but no volume of this app mounts that path.`,
+        `${s.name} is mounted at ${s.mountPath} on {panel}, but no volume of this app mounts that path.`,
       );
   for (const t of target)
     if (!pairs.some((p) => p.targetVolume === t.name))
       notes.push(
-        `${t.name} (${t.mountPath}) stays empty - nothing on Dokploy is mounted there.`,
+        `${t.name} (${t.mountPath}) stays empty - nothing on {panel} is mounted there.`,
       );
 
   return { value: pairs, notes };
@@ -1553,7 +1562,7 @@ export function portNotes(app: SourceApplication): string[] {
     )
     .join(", ");
   return [
-    `Published host ports on Dokploy (${list}). Deplo routes apps through its proxy instead - use a domain, or a compose stack if the port must be published.`,
+    `Published host ports on {panel} (${list}). Deplo routes apps through its proxy instead - use a domain, or a compose stack if the port must be published.`,
   ];
 }
 
@@ -1562,7 +1571,7 @@ export function unsupportedNotes(app: SourceApplication): string[] {
   const notes: string[] = [];
   if ((app.redirects ?? []).length > 0)
     notes.push(
-      `${app.redirects!.length} redirect rule(s) on Dokploy - Deplo has no redirect list, use a domain per host.`,
+      `${app.redirects!.length} redirect rule(s) on {panel} - Deplo has no redirect list, use a domain per host.`,
     );
   // Swarm's own service spec.
   const swarm = (
@@ -1575,7 +1584,7 @@ export function unsupportedNotes(app: SourceApplication): string[] {
   ).filter(([key]) => hasSwarmValue(app[key]));
   if (swarm.length > 0)
     notes.push(
-      `Swarm settings on Dokploy (${swarm.map(([, label]) => label).join(", ")}) have no equivalent here - Deplo runs one container per app through compose.`,
+      `Swarm settings on {panel} (${swarm.map(([, label]) => label).join(", ")}) have no equivalent here - Deplo runs one container per app through compose.`,
     );
   return notes;
 }

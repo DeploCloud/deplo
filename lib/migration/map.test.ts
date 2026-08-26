@@ -34,6 +34,8 @@ import {
   pairHostMounts,
   deploFilesPath,
   deploEngineFor,
+  withPanel,
+  unsupportedNotes,
 } from "./map";
 import type { SourceApplication, SourceDatabase } from "./model";
 import { MAX_LOGO_STRING_LEN } from "../apps/logo-shared";
@@ -577,7 +579,7 @@ test("mapSource flags an image that only exists on the source machine", () => {
     kind: "docker-image",
     image: "localhost:5000/database-fdo:1.0",
   });
-  assert.match(notes.join(" "), /on the Dokploy machine/);
+  assert.match(notes.join(" "), /on the \{panel\} machine/);
 });
 
 test("mapSource cannot import an uploaded archive", () => {
@@ -1105,7 +1107,7 @@ test("mapDatabase does not call the data volume an extra file mount", () => {
     }),
   );
   assert.equal(
-    notes.join(" ").includes("mounted on Dokploy"),
+    notes.join(" ").includes("mounted on {panel}"),
     false,
     notes.join(" "),
   );
@@ -1830,4 +1832,36 @@ test("mapDatabase refuses an engine Deplo does not have", () => {
   );
   assert.equal(value, null);
   assert.ok(notes[0].includes("no keydb engine"));
+});
+
+/* ---- the panel's name is not the mapper's to know ------------------- */
+
+test("withPanel puts the source product's name in every slot", () => {
+  assert.equal(
+    withPanel("Runs on {panel}. {panel} never says the password.", "Coolify"),
+    "Runs on Coolify. Coolify never says the password.",
+  );
+  assert.equal(withPanel("no slot here", "Coolify"), "no slot here");
+});
+
+// A mapper reads rows, not a panel. Writing a product's name into a note is how a
+// Coolify migration ends up telling somebody what happened "on Dokploy".
+test("no mapper note names a product", () => {
+  const notes = [
+    ...mapSource({ sourceType: "drop" } as SourceApplication).notes,
+    ...mapSource({ sourceType: "docker" } as SourceApplication).notes,
+    ...mapDatabase("postgres", {
+      name: "db",
+      dockerImage: "postgres",
+    } as SourceDatabase).notes,
+    ...portNotes({
+      ports: [{ portId: "p1", publishedPort: 8080, targetPort: 80 }],
+    } as SourceApplication),
+    ...unsupportedNotes({
+      replicas: 3,
+      placementSwarm: { x: 1 },
+    } as SourceApplication),
+  ];
+  assert.ok(notes.length > 0);
+  assert.doesNotMatch(notes.join(" "), /Dokploy|Coolify/);
 });

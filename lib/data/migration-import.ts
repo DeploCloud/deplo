@@ -101,6 +101,7 @@ import {
   retargetPlatformEnvFiles,
   unsupportedNotes,
   volumeLabel,
+  withPanel,
 } from "../migration/map";
 
 import { addBasicAuthUser } from "./basic-auth";
@@ -693,6 +694,14 @@ export async function scanMigrationSource(
     });
   }
 
+  // The mappers write `{panel}`; the preview is the first place a person reads
+  // one, so it is resolved here rather than in every push above.
+  const panel = sourceClient(c).displayName;
+  for (const p of planned)
+    for (const env of p.environments)
+      for (const svc of env.services)
+        svc.notes = svc.notes.map((n) => withPanel(n, panel));
+
   return {
     platform: c.kind,
     sourceUrl: c.baseUrl,
@@ -1102,7 +1111,7 @@ async function removeMigrationSources(
 
   if (!opts.force && (await hasStrandedVolume(runId))) {
     for (const s of sources)
-      await appendRunItem(runId, {
+      await appendRunItem(runId, "the panel", {
         path: s.name,
         sourceKind: "server",
         sourceName: s.name,
@@ -1259,7 +1268,7 @@ async function attemptSourceUninstall(
     })
     .where(eq(serversTable.id, source.id));
   if (source.runId) {
-    await appendRunItem(source.runId, {
+    await appendRunItem(source.runId, "the panel", {
       path: source.name,
       sourceKind: "server",
       sourceName: source.name,
@@ -1404,13 +1413,21 @@ export async function refreshCounts(
 class Report {
   constructor(
     private readonly runId: string | null,
+    /** The source product's name. A mapper writes `{panel}`; this is what it
+     *  becomes, so a Coolify run never says what happened "on Dokploy". */
+    private readonly panel: string,
     private readonly path: string[] = [],
     readonly items: ImportItemDTO[] = [],
   ) {}
 
   /** A child collector one level deeper in the breadcrumb, same run, same list. */
   at(segment: string): Report {
-    return new Report(this.runId, [...this.path, segment], this.items);
+    return new Report(
+      this.runId,
+      this.panel,
+      [...this.path, segment],
+      this.items,
+    );
   }
 
   async add(entry: {
@@ -1433,7 +1450,7 @@ class Report {
       outcome: entry.outcome,
       targetKind: entry.targetKind ?? null,
       targetId: entry.targetId ?? null,
-      message: entry.message ?? null,
+      message: entry.message ? withPanel(entry.message, this.panel) : null,
       // Stamped here, once, so the in-memory copy the caller reads and the row
       // the log reads agree on when it happened.
       at: nowIso(),
@@ -1475,6 +1492,7 @@ class Report {
  */
 export async function appendRunItem(
   runId: string,
+  panel: string,
   entry: {
     path: string;
     sourceKind: string;
@@ -1486,7 +1504,7 @@ export async function appendRunItem(
     message?: string | null;
   },
 ): Promise<void> {
-  await new Report(runId).add(entry);
+  await new Report(runId, panel).add(entry);
 }
 
 /** Which table holds a target of each kind. Unknown kinds are simply not marked. */
@@ -1572,9 +1590,11 @@ async function runImportMigrationProject(
   const projects = await sourceClient(c).listProjects();
   const source = projects.find((p) => p.projectId === input.projectId);
   if (!source)
-    throw new Error("That project is no longer on the Dokploy instance.");
+    throw new Error("That project is no longer on the source instance.");
 
-  const report = new Report(input.runId).at(source.name);
+  const report = new Report(input.runId, sourceClient(c).displayName).at(
+    source.name,
+  );
   const serverMap = await resolveServers(
     teamId,
     input.servers ?? [],
@@ -3087,7 +3107,9 @@ export async function importMigrationMembers(
   if (!(await ownRun(input.runId, teamId)))
     throw new Error("That import run does not belong to this team.");
 
-  const report = new Report(input.runId).at("Members");
+  const report = new Report(input.runId, sourceClient(c).displayName).at(
+    "Members",
+  );
   const people = await planMembers(c, teamId);
   const out: MigrationInvite[] = [];
 
@@ -3361,7 +3383,7 @@ async function runRevertMigration(runId: string): Promise<RevertResultDTO> {
   // place anybody looks afterwards.
   for (const line of failed) {
     const [head, ...rest] = line.split(": ");
-    await appendRunItem(runId, {
+    await appendRunItem(runId, "the panel", {
       path: `Undo / ${head}`,
       sourceKind: "undo",
       sourceName: head,
