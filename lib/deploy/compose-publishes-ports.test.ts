@@ -5,7 +5,8 @@ import { composePublishesPorts } from "./compose-lint";
 
 /**
  * The server gates compose stacks that publish ports behind the `canExposePorts`
- * grant.
+ * grant. "Publishing a port" means one thing: a service declares host-mapped
+ * `ports:`.
  */
 
 test("composePublishesPorts: true for a short-form host port", () => {
@@ -38,16 +39,29 @@ test("composePublishesPorts: true for a long-form port mapping", () => {
   assert.equal(composePublishesPorts(yaml), true);
 });
 
-test("composePublishesPorts: true for an `expose:` declaration", () => {
+// `expose:` binds nothing on the host, so it must not cost the grant.
+test("composePublishesPorts: false for an `expose:`-only stack", () => {
   const yaml = `services:
   app:
     image: nginx
     expose:
       - 3901`;
+  assert.equal(composePublishesPorts(yaml), false);
+});
+
+// The real shape it used to be confused with: same stack, a `ports:` entry.
+test("composePublishesPorts: true when the same stack also binds a host port", () => {
+  const yaml = `services:
+  app:
+    image: nginx
+    expose:
+      - 3901
+    ports:
+      - 8080:3901`;
   assert.equal(composePublishesPorts(yaml), true);
 });
 
-test("composePublishesPorts: false when no service declares ports/expose", () => {
+test("composePublishesPorts: false when no service declares ports", () => {
   const yaml = `services:
   garage:
     image: dxflrs/garage
@@ -59,7 +73,7 @@ volumes:
   assert.equal(composePublishesPorts(yaml), false);
 });
 
-test("composePublishesPorts: empty ports:/expose: lists publish nothing", () => {
+test("composePublishesPorts: an empty ports: list publishes nothing", () => {
   const yaml = `services:
   app:
     image: nginx
