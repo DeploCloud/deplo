@@ -2902,6 +2902,11 @@ type Mutation {
   redeployPreview(id: ID!): AppPreview
 
   """
+  Drop the cached template catalog so the next read hits the catalog service.
+  """
+  refreshTemplates: Boolean
+
+  """
   Replace every recovery code with a fresh set, returned once. Requires the password AND a current code.
   """
   regenerateRecoveryCodes(code: String!, password: String!): [String!]

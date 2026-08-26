@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
-import { refreshTemplates } from "@/app/(dashboard)/templates/actions";
+import { gqlAction } from "@/lib/graphql-client";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DocsLink } from "@/components/ui/docs-link";
 import { Button } from "@/components/ui/button";
@@ -169,17 +169,15 @@ function TemplateRefreshButton() {
   const [pending, startTransition] = React.useTransition();
 
   function refresh() {
-    startTransition(() =>
-      refreshTemplates()
-        .then(() => router.refresh())
-        .catch((error: unknown) => {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "Could not refresh templates",
-          );
-        }),
-    );
+    startTransition(async () => {
+      const res = await gqlAction(/* GraphQL */ `
+        mutation RefreshTemplates {
+          refreshTemplates
+        }
+      `);
+      if (res.ok) router.refresh();
+      else toast.error(res.error);
+    });
   }
 
   return (
@@ -188,6 +186,7 @@ function TemplateRefreshButton() {
         variant="outline"
         size="icon"
         aria-label="Refresh templates"
+        className="size-10 shrink-0"
         onClick={refresh}
         disabled={pending}
       >

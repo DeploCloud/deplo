@@ -41,6 +41,7 @@ import "./types/server";
 import "./types/session";
 import "./types/shared-env";
 import "./types/team";
+import "./types/templates";
 import "./types/token";
 import "./types/two-factor";
 import "./types/updates";
