@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Database as DatabaseIcon, Boxes, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { StatusDot } from "@/components/shared/status-badge";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
+import { BackupTarget } from "@/components/storage/backup-target";
 import { selectableProps } from "@/components/shared/card-selection";
 import {
   useBackupActions,
@@ -37,9 +38,6 @@ export function BackupRow({
     canTestDestinations,
   });
 
-  const isApp = backup.targetKind === "app";
-  const targetName = isApp ? backup.serviceName : backup.databaseName;
-
   return (
     <TableRow
       {...selectableProps(backup.id, (e) => onSelect(backup.id, e))}
@@ -50,14 +48,7 @@ export function BackupRow({
       <AutoRefresh active={isRunning} />
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          {isApp ? (
-            <Boxes className="size-3.5 shrink-0" />
-          ) : (
-            <DatabaseIcon className="size-3.5 shrink-0" />
-          )}
-          {targetName ?? <span className="italic">deleted</span>}
-        </span>
+        <BackupTarget backup={backup} size={18} />
       </TableCell>
       <TableCell className="text-muted-foreground">
         {backup.destinationName}

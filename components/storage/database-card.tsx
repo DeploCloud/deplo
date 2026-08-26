@@ -30,6 +30,7 @@ import {
   DatabaseStatusBadge,
   DatabaseStatusDot,
 } from "@/components/storage/database-status-badge";
+import { OverlayLink } from "@/components/shared/overlay-link";
 import { cn } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import { DatabaseLogo } from "./database-logo";
@@ -144,7 +145,7 @@ function DatabaseCardGrid({
     <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20">
       {/* Stretched link: the whole card is clickable. Interactive controls
           below opt back into pointer events and sit above this overlay. */}
-      <OverlayLink href={href} label={db.name} dragActive={dragActive} />
+      <OverlayLink href={href} label={db.name} inert={dragActive} />
 
       <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
@@ -198,7 +199,7 @@ function DatabaseCardList({
   const href = `/storage/databases/${db.id}`;
   return (
     <Card className="group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20">
-      <OverlayLink href={href} label={db.name} dragActive={dragActive} />
+      <OverlayLink href={href} label={db.name} inert={dragActive} />
       <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
         <DatabaseLogo type={db.type} logo={db.logo} size={36} />
         <div className="min-w-0 flex-1">
@@ -227,34 +228,6 @@ function DatabaseCardList({
       </div>
       <CardActions db={db} dragHandle={dragHandle} pollMs={pollMs} listView />
     </Card>
-  );
-}
-
-/** The whole-card click target (stretched over everything at z-0). The content
- *  layer above it is `pointer-events-none`, so every pixel of the card shows the
- *  pointer cursor and clicks fall through to this link; controls opt back in. */
-function OverlayLink({
-  href,
-  label,
-  dragActive,
-}: {
-  href: string;
-  label: string;
-  dragActive: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-label={`Open ${label}`}
-      // Inert during a reorder drag so a drop never navigates, and not
-      // focusable so keyboard users can't fall through to it mid-reorder.
-      tabIndex={dragActive ? -1 : undefined}
-      aria-hidden={dragActive || undefined}
-      className={cn(
-        "absolute inset-0 z-0 rounded-xl",
-        dragActive ? "pointer-events-none cursor-default" : "cursor-pointer",
-      )}
-    />
   );
 }
 

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarClock, Pause, Play, Trash2 } from "lucide-react";
+import { CalendarClock, Ban, Play, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -274,12 +274,12 @@ export function BackupsView({
                 void bulkRun(
                   TOGGLE_BACKUP,
                   (id) => ({ id, enabled: false }),
-                  `${selectionNoun} paused`,
+                  `${selectionNoun} disabled`,
                 )
               }
             >
-              <Pause className="size-4" />
-              Pause
+              <Ban className="size-4" />
+              Disable
             </Button>
             <Button
               variant="ghost"

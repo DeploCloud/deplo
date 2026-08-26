@@ -964,6 +964,10 @@ test("listBackups carries the size of the newest artifact each schedule still ho
 
   await asUser1(async () => {
     const byId = new Map((await listBackups()).map((b) => [b.id, b]));
+    // The list also carries what the target IS, so a row can wear its logo and
+    // link to that target's own Backups tab.
+    assert.equal(byId.get("bkp_1")!.databaseType, "postgres");
+    assert.equal(byId.get("bkp_1")!.databaseName, "main");
     assert.equal(byId.get("bkp_1")!.lastSizeBytes, 4096);
     // Never run: null, not zero - "no backup yet" is not "an empty backup".
     assert.equal(byId.get("bkp_2")!.lastSizeBytes, null);
