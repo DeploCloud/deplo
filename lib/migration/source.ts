@@ -97,5 +97,9 @@ export interface MigrationSourceClient {
 
 /** The client for one panel. The only place a platform is turned into code. */
 export function sourceClient(c: SourceCredential): MigrationSourceClient {
+  if (c.kind === "coolify")
+    throw new Error(
+      "Deplo can recognise a Coolify panel but cannot import from one yet.",
+    );
   return dokployClient(c);
 }

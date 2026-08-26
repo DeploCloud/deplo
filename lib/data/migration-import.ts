@@ -68,6 +68,7 @@ import {
   serviceDisplayName,
 } from "../migration/dokploy/client";
 import { normalizeSourceBaseUrl } from "../migration/transport";
+import { detectMigrationSource } from "../migration/detect";
 import { isMigrationPlatform, sourceClient } from "../migration/source";
 import type { MigrationPlatform } from "../migration/source";
 import type { SourceCredential } from "../migration/source";
@@ -362,12 +363,14 @@ export async function credentialFor(
   const baseUrl = normalizeSourceBaseUrl(input.url);
   if (input.allowPrivate) await requireInstanceAdmin();
   else
-    await assertSafeOutboundUrl(baseUrl, "Dokploy address", {
+    await assertSafeOutboundUrl(baseUrl, "The panel address", {
       allowHttp: true,
     });
   const apiKey = input.apiKey.trim();
-  if (!apiKey) throw new Error("Paste the Dokploy API key");
-  return { kind: input.kind ?? "dokploy", baseUrl, apiKey };
+  if (!apiKey) throw new Error("Paste the panel's API key");
+  // The SSRF gate is above, so the detection's own request is behind it too.
+  const kind = input.kind ?? (await detectMigrationSource(baseUrl, apiKey));
+  return { kind, baseUrl, apiKey };
 }
 
 /* ------------------------------------------------------------------ */

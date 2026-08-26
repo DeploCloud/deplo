@@ -101,6 +101,18 @@ export function describeTransportError(
   }
 }
 
+/**
+ * The panel never answered at all: DNS, refused, TLS, timeout. Told apart from a
+ * refusal because detection must stop on one and carry on past the other - a
+ * machine that does not answer will not answer the second guess either.
+ */
+export class PanelUnreachableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PanelUnreachableError";
+  }
+}
+
 /** Every call goes out through here so no caller can leak a bare "fetch failed". */
 export async function sendRequest(
   baseUrl: string,
@@ -111,7 +123,7 @@ export async function sendRequest(
   try {
     return await doFetch(url, init);
   } catch (e) {
-    throw new Error(describeTransportError(e, baseUrl, panel));
+    throw new PanelUnreachableError(describeTransportError(e, baseUrl, panel));
   }
 }
 

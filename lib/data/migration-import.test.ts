@@ -684,12 +684,33 @@ test("scan refuses an address that is not this team's business", async () => {
   );
 });
 
-test("scan surfaces Dokploy's own words when the key is wrong", async () => {
+// A token nothing accepts is also a panel Deplo cannot identify, so the refusal
+// carries BOTH attempts - and each one keeps the panel's own words.
+test("scan surfaces the panel's own words when the key is wrong", async () => {
   fixtures["project.all"] = { __status: 401, body: "Invalid API key" };
   await assert.rejects(
     () => asOwner(() => scanMigrationSource(CONNECT)),
-    /Dokploy request failed \(401\) on project.all: Invalid API key/,
+    (e: Error) => {
+      assert.match(
+        e.message,
+        /Dokploy request failed \(401\) on project.all: Invalid API key/,
+      );
+      assert.match(e.message, /could not read/);
+      return true;
+    },
   );
+});
+
+// Naming the platform skips the probe entirely: the wizard already knows after a
+// scan, and re-detecting on every later call would be a request per project.
+test("a named platform is taken, not re-detected", async () => {
+  fixtures["project.all"] = { __status: 401, body: "Invalid API key" };
+  await assert.rejects(
+    () => asOwner(() => scanMigrationSource({ ...CONNECT, kind: "dokploy" })),
+    /Dokploy request failed \(401\) on project.all/,
+  );
+  // Once, for the scan itself. A detection probe would have asked a second time.
+  assert.equal(calls.filter((c) => c === "project.all").length, 1);
 });
 
 /* ------------------------------------------------------------------ */
@@ -1608,12 +1629,14 @@ function routingFetch(
 ) {
   return async (input: string, init?: RequestInit): Promise<Response> => {
     const url = new URL(input);
+    // A Dokploy serves neither Coolify's `/api/v1` nor its healthcheck, so the
+    // detection probe gets what a real one gives it.
+    if (/^\/api\/(v1|health)\b/.test(url.pathname))
+      return new Response("not found", { status: 404 });
+
     const procedure = url.pathname.replace(/^\/api\//, "");
     calls.push(procedure);
-    assert.equal(
-      (init?.headers as Record<string, string>)["x-api-key"],
-      CONNECT.apiKey,
-    );
+    assert.equal(new Headers(init?.headers).get("x-api-key"), CONNECT.apiKey);
 
     if (procedure === "application.one") {
       const id = url.searchParams.get("applicationId") ?? "";
