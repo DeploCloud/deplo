@@ -2,8 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { RefreshCw } from "lucide-react";
+import { refreshTemplates } from "@/app/(dashboard)/templates/actions";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DocsLink } from "@/components/ui/docs-link";
+import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CategoryChips } from "@/components/templates/category-chips";
 import { NoResultsGraphic } from "@/components/templates/no-results-graphic";
 import { StoreRailsSkeleton } from "@/components/templates/store-skeleton";
@@ -125,14 +130,17 @@ export function TemplateStore({
             {templates.length} apps, databases and services, ready to run on
             your own servers. <DocsLink topic="deploy.fromTemplate" />
           </p>
-          <TemplateSearchField
-            value={q}
-            onChange={(next) => {
-              typed.current = true;
-              setQ(next);
-            }}
-            className="mt-5"
-          />
+          <div className="mt-5 flex items-center gap-2">
+            <TemplateSearchField
+              value={q}
+              onChange={(next) => {
+                typed.current = true;
+                setQ(next);
+              }}
+              className="min-w-0 flex-1"
+            />
+            <TemplateRefreshButton />
+          </div>
         </div>
       </div>
 
@@ -153,6 +161,39 @@ export function TemplateStore({
         />
       </React.Suspense>
     </div>
+  );
+}
+
+function TemplateRefreshButton() {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+
+  function refresh() {
+    startTransition(() =>
+      refreshTemplates()
+        .then(() => router.refresh())
+        .catch((error: unknown) => {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Could not refresh templates",
+          );
+        }),
+    );
+  }
+
+  return (
+    <SimpleTooltip content="Refresh templates">
+      <Button
+        variant="outline"
+        size="icon"
+        aria-label="Refresh templates"
+        onClick={refresh}
+        disabled={pending}
+      >
+        <RefreshCw className={pending ? "size-4 animate-spin" : "size-4"} />
+      </Button>
+    </SimpleTooltip>
   );
 }
 
