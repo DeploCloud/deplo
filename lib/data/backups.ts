@@ -7,6 +7,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   inArray,
   isNotNull,
   isNull,
@@ -118,23 +119,37 @@ export interface BackupDTO extends Backup {
   /** Size of the newest artifact this schedule still holds, so a card can say how
    *  big a backup actually is. Null until one succeeds. */
   lastSizeBytes: number | null;
+  /** The target's own display logo and, for a database, its engine - so the list
+   *  shows the thing being backed up, not a generic glyph. */
+  databaseType: DatabaseType | null;
+  databaseLogo: string | null;
+  serviceLogo: string | null;
+  /** The app's slug, the address of its own Backups tab. Null if it is gone. */
+  serviceSlug: string | null;
   /** The server the backed-up app/database runs on, so the edit dialog can flag
    *  a destination sitting on that same disk. Null if the target is gone. */
   targetServerId: string | null;
 }
 
 /** Resolve the display name of a database by id (team-scoped), or null. */
-async function databaseNameFor(
+async function databaseFor(
   id: string | null,
   teamId: string,
-): Promise<string | null> {
+): Promise<{ name: string; type: DatabaseType; logo: string | null } | null> {
   if (!id) return null;
   const rows = await getDb()
-    .select({ name: databasesTable.name })
+    .select({
+      name: databasesTable.name,
+      type: databasesTable.type,
+      logo: databasesTable.logo,
+    })
     .from(databasesTable)
     .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)))
     .limit(1);
-  return rows[0]?.name ?? null;
+  const row = rows[0];
+  return row
+    ? { name: row.name, type: row.type as DatabaseType, logo: row.logo }
+    : null;
 }
 
 /** The owning server of a team's database `id`, or null. */
@@ -181,11 +196,16 @@ async function toDTO(
   // Every related collection is relational now: the database/destination names by
   // point lookup, the project name via the project graph (cut-set c).
   const app = b.appId ? await loadAppGraph(b.appId) : null;
+  const database = await databaseFor(b.databaseId, b.teamId);
   return {
     ...b,
     lastSizeBytes,
-    databaseName: await databaseNameFor(b.databaseId, b.teamId),
+    databaseName: database?.name ?? null,
+    databaseType: database?.type ?? null,
+    databaseLogo: database?.logo ?? null,
     serviceName: app?.name ?? null,
+    serviceLogo: app?.logo ?? null,
+    serviceSlug: app?.slug ?? null,
     destinationName: await destinationNameFor(b.destinationId, b.teamId),
     targetServerId: b.appId
       ? (app?.serverId ?? null)
@@ -356,10 +376,7 @@ export async function createBackup(input: {
     // can't schedule a dump of one either - same answer their own reads give
     // (`loadDatabase`), and the same one for a narrowed token and a member on a limited
     // role.
-    if (
-      !(await reachesWholeTeam()) ||
-      !(await databaseNameFor(databaseId, teamId))
-    )
+    if (!(await reachesWholeTeam()) || !(await databaseFor(databaseId, teamId)))
       throw new Error("Database not found");
   } else {
     if (!appId) throw new Error("Select a project to back up");
@@ -513,6 +530,41 @@ async function resolveTarget(
 }
 
 /**
+ * Refuse to dump a workload that is already being dumped.
+ *
+ * Two runs five seconds apart tarred one 61 GB volume in parallel: twice the read,
+ * twice the host load, for one artifact's worth of value. Read from the ROW rather
+ * than from memory, so a second control plane on the same database is caught too -
+ * which is what two schedulers double-firing looks like. Bounded by the same
+ * window `reconcileInFlightBackupRuns` uses, so a run left `running` by a dead
+ * process cannot block this target for good.
+ */
+async function assertNotAlreadyBackingUp(
+  teamId: string,
+  targetId: string,
+): Promise<void> {
+  const [busy] = await getDb()
+    .select({ id: backupRunsTable.id })
+    .from(backupRunsTable)
+    .where(
+      and(
+        eq(backupRunsTable.teamId, teamId),
+        eq(backupRunsTable.targetId, targetId),
+        eq(backupRunsTable.status, "running"),
+        gt(
+          backupRunsTable.startedAt,
+          new Date(Date.now() - BACKUP_RUN_MAX_MS).toISOString(),
+        ),
+      ),
+    )
+    .limit(1);
+  if (busy)
+    throw new Error(
+      "A backup of this one is already running. Wait for it to finish, or stop it from the Backups tab.",
+    );
+}
+
+/**
  * The ONE executor every real backup goes through - a schedule's "Run now"
  * (`runBackup`), an ad-hoc project run (`runAppBackup`), and (Step 6) the
  * scheduler.
@@ -531,6 +583,9 @@ async function executeBackup(
 ): Promise<BackupRun> {
   const startedAt = nowIso();
   const runId = newId("brun");
+  const targetKey =
+    (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "";
+  if (targetKey) await assertNotAlreadyBackingUp(teamId, targetKey);
   // The target id is known up front (it IS the database/project id), so the run
   // record can be appended BEFORE the expensive resolution (descriptor build, which
   // for a project dials the agent).
@@ -945,7 +1000,7 @@ async function runAdHocBackup(
     // A principal who reaches only part of the team can't see any database, so
     // they can't dump one either - the same answer their own reads give.
     !(await reachesWholeTeam()) ||
-    !(await databaseNameFor(targetId, teamId))
+    !(await databaseFor(targetId, teamId))
   ) {
     throw new Error("Database not found");
   }
