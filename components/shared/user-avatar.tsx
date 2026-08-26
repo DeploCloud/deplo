@@ -18,6 +18,7 @@ const SIZE = {
   lg: "size-8 text-xs",
   xl: "size-10 text-sm",
   "2xl": "size-12 text-base",
+  "3xl": "size-16 text-lg",
 } as const;
 
 export type AvatarSize = keyof typeof SIZE;

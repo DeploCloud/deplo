@@ -43,7 +43,7 @@ export function TeamForm({
   }
 
   const teamMark = (
-    <TeamAvatar name={initialName} avatarUrl={avatarUrl} size="2xl" />
+    <TeamAvatar name={initialName} avatarUrl={avatarUrl} size="3xl" />
   );
   const pictureText = (
     <div>

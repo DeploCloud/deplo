@@ -36,7 +36,7 @@ export function AvatarPicker({
   onSave: (image: string | null) => Promise<{ ok: boolean; error?: string }>;
   disabled?: boolean;
   label?: string;
-  /** What sits beside the picture. Remove lands under it. */
+  /** What sits beside the picture. Remove lands under the picture itself. */
   children?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -73,52 +73,53 @@ export function AvatarPicker({
 
   return (
     <div className="flex items-center gap-4">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          pick(e.dataTransfer.files?.[0]);
-        }}
-        aria-label={label}
-        className={cn(
-          "group relative cursor-pointer rounded-full transition outline-none",
-          "focus-visible:ring-2 focus-visible:ring-ring",
-          dragging && "ring-2 ring-ring",
-          busy && "cursor-not-allowed opacity-60",
-        )}
-      >
-        {preview}
-        {/* The affordance: the picture is a control, which nothing about a round
-            image says on its own until you are already hovering it. */}
-        <span
+      <div className="flex flex-col items-center gap-1.5">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            pick(e.dataTransfer.files?.[0]);
+          }}
+          aria-label={label}
           className={cn(
-            "absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 transition",
-            !busy && "group-hover:opacity-100 group-focus-visible:opacity-100",
-            dragging && "opacity-100",
+            "group relative cursor-pointer rounded-full transition outline-none",
+            "focus-visible:ring-2 focus-visible:ring-ring",
+            dragging && "ring-2 ring-ring",
+            busy && "cursor-not-allowed opacity-60",
           )}
         >
-          <Camera className="size-4 text-foreground" />
-        </span>
-        {/* Always on: without it a round picture is just a picture until the
+          {preview}
+          {/* The affordance: the picture is a control, which nothing about a round
+            image says on its own until you are already hovering it. */}
+          <span
+            className={cn(
+              "absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 transition",
+              !busy &&
+                "group-hover:opacity-100 group-focus-visible:opacity-100",
+              dragging && "opacity-100",
+            )}
+          >
+            <Camera className="size-4 text-foreground" />
+          </span>
+          {/* Always on: without it a round picture is just a picture until the
             pointer happens to land on it, and a touch screen never hovers. */}
-        <span className="absolute right-0 bottom-0 flex size-5 items-center justify-center rounded-full border border-border bg-secondary text-secondary-foreground">
-          <Camera className="size-2.5" />
-        </span>
-      </button>
-      <div className="min-w-0 space-y-2">
-        {children}
+          <span className="absolute right-0 bottom-0 flex size-5 items-center justify-center rounded-full border border-border bg-secondary text-secondary-foreground">
+            <Camera className="size-2.5" />
+          </span>
+        </button>
         {hasImage && (
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             disabled={busy}
             onClick={() => commit(null)}
           >
@@ -126,6 +127,7 @@ export function AvatarPicker({
           </Button>
         )}
       </div>
+      {children ? <div className="min-w-0">{children}</div> : null}
       <ImageCropDialog
         file={picked}
         variant="avatar"
