@@ -33,7 +33,6 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   rectSortingStrategy,
   verticalListSortingStrategy,
   sortableKeyboardCoordinates,
@@ -58,7 +57,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DragStack } from "@/components/shared/drag-stack";
 import { scopeListenersToSubtree } from "@/lib/portal-event-scope";
+import { reorderBlock } from "@/lib/reorder-block";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { AppSummary } from "@/lib/data/apps";
@@ -634,6 +635,27 @@ function SortableGrid({
     [effectiveSelected, folderIdSet, projectIdSet],
   );
 
+  // The cards that travel with a lifted one: its own kind's slice of the
+  // selection when it belongs to it, otherwise just itself - so a mixed
+  // selection moves only the kind the drag started from.
+  const dragGroup = React.useCallback(
+    (id: string): string[] => {
+      const kin = projectIdSet.has(id)
+        ? selectedProjectIds
+        : folderIdSet.has(id)
+          ? selectedFolderIds
+          : selectedAppIds;
+      return kin.length >= 2 && kin.includes(id) ? kin : [id];
+    },
+    [
+      projectIdSet,
+      folderIdSet,
+      selectedProjectIds,
+      selectedFolderIds,
+      selectedAppIds,
+    ],
+  );
+
   // Deleting apps/folders is the team-wide super-user action; deleting a project
   // container needs `deploy` (the same gate as its own ⋯ menu).
   const canDeleteSelection =
@@ -800,27 +822,38 @@ function SortableGrid({
     });
   }
 
-  // Move a nested SUB-FOLDER out one level - to the open folder's own parent, or to
-  // the top level when that parent is a root.
-  function moveFolderOut(folderId: string) {
+  // Move nested SUB-FOLDERS out one level - to the open folder's own parent, or to
+  // the top level when that parent is a root. One call each (no bulk endpoint),
+  // settled with a single toast + refresh.
+  function moveFoldersOut(ids: string[]) {
+    if (ids.length === 0) return;
     const dest = openFolder?.parentId ?? null;
-    setMovedIds((prev) => new Set(prev).add(folderId));
+    setMovedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
     startTransition(async () => {
-      const res = await gqlAction(MOVE_FOLDER, {
-        id: folderId,
-        parentId: dest,
-      });
-      if (res.ok) {
-        toast.success("Moved out of folder");
-        router.refresh();
+      const results = await Promise.all(
+        ids.map((id) => gqlAction(MOVE_FOLDER, { id, parentId: dest })),
+      );
+      const failed = results.find((r) => !r.ok);
+      if (!failed) {
+        toast.success(
+          ids.length === 1
+            ? "Moved out of folder"
+            : `Moved ${ids.length} folders out`,
+        );
+        if (ids.length > 1) clearSelection();
       } else {
-        toast.error(res.error);
+        toast.error(failed.error);
         setMovedIds((prev) => {
           const next = new Set(prev);
-          next.delete(folderId);
+          ids.forEach((id) => next.delete(id));
           return next;
         });
       }
+      router.refresh();
     });
   }
 
@@ -884,52 +917,46 @@ function SortableGrid({
     });
   }
 
-  function reorderAppList(activeId: string, overId: string) {
-    const oldIndex = order.indexOf(activeId);
-    const newIndex = order.indexOf(overId);
-    if (oldIndex < 0 || newIndex < 0) return;
+  // The three reorders share one rule: the lifted card carries its whole
+  // multi-selection (`block`), and moves alone when it isn't part of one.
+  function reorderAppList(activeId: string, overId: string, block: string[]) {
+    const next = reorderBlock(order, activeId, overId, block);
+    if (!next) return;
     const previous = order;
-    const next = arrayMove(order, oldIndex, newIndex);
     setOrder(next);
     persistReorder(REORDER_SERVICES, next, () => setOrder(previous));
   }
 
-  // Reorder a whole multi-selection together: lift every selected project out of
-  // the order (keeping their relative order) and re-insert the block at the drop
-  // target, so a marquee/ctrl-selected group can be repositioned in one drag.
-  function reorderAppGroup(activeId: string, overId: string, selIds: string[]) {
-    const selSet = new Set(selIds);
-    if (selSet.has(overId)) return; // dropped onto a group member → no-op
-    const rest = order.filter((id) => !selSet.has(id));
-    let target = rest.indexOf(overId);
-    if (target < 0) return;
-    // Dragging downward (active was before the target) → land AFTER the target,
-    // matching single-item arrayMove semantics.
-    if (order.indexOf(activeId) < order.indexOf(overId)) target += 1;
-    const previous = order;
-    const next = [...rest.slice(0, target), ...selIds, ...rest.slice(target)];
-    setOrder(next);
-    persistReorder(REORDER_SERVICES, next, () => setOrder(previous));
-  }
-
-  function reorderFolderList(activeId: string, overId: string) {
-    const ids = folderItems.map((f) => f.id);
-    const oldIndex = ids.indexOf(activeId);
-    const newIndex = ids.indexOf(overId);
-    if (oldIndex < 0 || newIndex < 0) return;
+  function reorderFolderList(
+    activeId: string,
+    overId: string,
+    block: string[],
+  ) {
+    const next = reorderBlock(
+      folderItems.map((f) => f.id),
+      activeId,
+      overId,
+      block,
+    );
+    if (!next) return;
     const previous = folderOrder;
-    const next = arrayMove(ids, oldIndex, newIndex);
     setFolderOrder(next);
     persistReorder(REORDER_FOLDERS, next, () => setFolderOrder(previous));
   }
 
-  function reorderProjectList(activeId: string, overId: string) {
-    const ids = projectItems.map((p) => p.id);
-    const oldIndex = ids.indexOf(activeId);
-    const newIndex = ids.indexOf(overId);
-    if (oldIndex < 0 || newIndex < 0) return;
+  function reorderProjectList(
+    activeId: string,
+    overId: string,
+    block: string[],
+  ) {
+    const next = reorderBlock(
+      projectItems.map((p) => p.id),
+      activeId,
+      overId,
+      block,
+    );
+    if (!next) return;
     const previous = projectOrder;
-    const next = arrayMove(ids, oldIndex, newIndex);
     setProjectOrder(next);
     persistReorder(REORDER_PROJECT_CONTAINERS, next, () =>
       setProjectOrder(previous),
@@ -989,13 +1016,10 @@ function SortableGrid({
     const aIsFolder = folderIdSet.has(a);
     const aIsProject = projectIdSet.has(a);
 
-    // The dragged card belongs to a multi-selection of ≥2 apps → the whole
-    // group moves together (reorder, into a folder/project, or out of one).
-    const selApps = order.filter(
-      (id) => selected.has(id) && !folderIdSet.has(id),
-    );
-    const groupDrag =
-      !aIsFolder && !aIsProject && selected.has(a) && selApps.length >= 2;
+    // The block that moves with the lifted card (see dragGroup): its own kind's
+    // slice of the selection, or just itself.
+    const group = dragGroup(a);
+    const groupDrag = group.length >= 2;
 
     // Drop onto the breadcrumb zone → move OUT one level: to the open folder's
     // own parent, or out of the open project, back to the top level.
@@ -1003,9 +1027,9 @@ function SortableGrid({
       if (!canMoveApps) return;
       if (aIsProject) return; // projects live only at the top level
       if (aIsFolder) {
-        // A nested folder climbs out to its parent's level (top level when the
+        // Nested folders climb out to their parent's level (top level when the
         // open folder is itself a root). Only meaningful with a folder open.
-        if (openFolder) moveFolderOut(a);
+        if (openFolder) moveFoldersOut(group);
         return;
       }
       if (openFolder) {
@@ -1013,10 +1037,10 @@ function SortableGrid({
         if (groupDrag) bulkMoveTo(dest);
         else moveApp(a, dest);
       } else if (openProject) {
-        // selectedAppIds (not the raw selection) so a stale off-screen id
-        // left in `selected` by a concurrent move is never dragged along - the
-        // same visibility guard every other bulk action routes through.
-        if (groupDrag) moveAppsToProject(selectedAppIds, null);
+        // `group` (not the raw selection) so a stale off-screen id left in
+        // `selected` by a concurrent move is never dragged along - the same
+        // visibility guard every other bulk action routes through.
+        if (groupDrag) moveAppsToProject(group, null);
         else moveAppToProject(a, null);
       }
       return;
@@ -1028,16 +1052,14 @@ function SortableGrid({
     if (aIsProject) {
       // Projects only reorder among themselves (collision detection already
       // restricts their targets, this is the belt to those braces).
-      if (oIsProject && canReorder) reorderProjectList(a, o);
+      if (oIsProject && canReorder) reorderProjectList(a, o, group);
     } else if (aIsFolder) {
-      if (oIsFolder && canReorder) reorderFolderList(a, o); // reorder among folders
+      if (oIsFolder && canReorder) reorderFolderList(a, o, group); // among folders
       // (folder onto an app/project: ignored - folders don't nest there)
     } else if (oIsProject) {
-      // App(s) dropped onto a project container card. The group path uses
-      // selectedAppIds, the visibility-guarded selection, not the raw
-      // `selApps` (see the breadcrumb branch above).
+      // App(s) dropped onto a project container card.
       if (!canMoveApps) return;
-      if (groupDrag) moveAppsToProject(selectedAppIds, o);
+      if (groupDrag) moveAppsToProject(group, o);
       else moveAppToProject(a, o);
     } else if (oIsFolder) {
       // App(s) dropped onto a folder → move the whole selection (or just the
@@ -1048,8 +1070,7 @@ function SortableGrid({
     } else {
       // Reorder among apps - the whole selected group when multi-selecting.
       if (!canReorder) return;
-      if (groupDrag) reorderAppGroup(a, o, selApps);
-      else reorderAppList(a, o);
+      reorderAppList(a, o, group);
     }
   }
 
@@ -1069,18 +1090,10 @@ function SortableGrid({
     moveTargets: allFolders,
     onMoveTo: bulkMoveTo,
   };
-  // The selected apps in the team-wide `order`, so a group drag keeps their
-  // relative order. A multi-selection drag (≥2 selected apps, the dragged
-  // one among them) reorders / moves the whole group together.
-  const selectedAppOrder = order.filter(
-    (id) => selected.has(id) && !folderIdSet.has(id),
-  );
-  const activeIsSelectedMulti =
-    activeId != null &&
-    !folderIdSet.has(activeId) &&
-    !projectIdSet.has(activeId) &&
-    selected.has(activeId) &&
-    selectedAppOrder.length >= 2;
+  // The block travelling with the lifted card: drives the stacked drag clone and
+  // dims every sibling moving with it, so the whole group reads as picked up.
+  const activeGroup = activeId ? dragGroup(activeId) : [];
+  const groupDragIds = new Set(activeGroup.length >= 2 ? activeGroup : []);
   return (
     <DndContext
       sensors={sensors}
@@ -1134,6 +1147,7 @@ function SortableGrid({
                       id={p.id}
                       dragging={dragging}
                       selected={selected.has(p.id)}
+                      groupDragging={groupDragIds.has(p.id)}
                       dataKind="project"
                       onSelect={(e) => onItemClick(p.id, e)}
                     >
@@ -1164,6 +1178,7 @@ function SortableGrid({
                       id={f.id}
                       dragging={dragging}
                       selected={selected.has(f.id)}
+                      groupDragging={groupDragIds.has(f.id)}
                       dataKind="folder"
                       onSelect={(e) => onItemClick(f.id, e)}
                     >
@@ -1199,9 +1214,7 @@ function SortableGrid({
                   dragging={dragging}
                   scaleOut={draggedOverFolder}
                   selected={selected.has(p.id)}
-                  // During a group drag, dim every selected project (not just the
-                  // lifted one) so the whole moving group reads as picked up.
-                  groupDragging={activeIsSelectedMulti}
+                  groupDragging={groupDragIds.has(p.id)}
                   dataKind="service"
                   onSelect={(e) => onItemClick(p.id, e)}
                 >
@@ -1236,26 +1249,27 @@ function SortableGrid({
           overflow/stacking. The original card stays as a dimmed placeholder. */}
       <DragOverlay dropAnimation={DRAG_DROP_ANIMATION}>
         {activeProject ? (
-          <div className="pointer-events-none rotate-[1.5deg] cursor-grabbing rounded-xl shadow-2xl ring-1 ring-border/60">
+          <DragStack count={activeGroup.length}>
             <ProjectContainerCard
               project={activeProject}
               view={view}
               canManage={canManageProjects}
             />
-          </div>
+          </DragStack>
         ) : activeFolder ? (
-          <div className="pointer-events-none rotate-[1.5deg] cursor-grabbing rounded-xl shadow-2xl ring-1 ring-border/60">
+          <DragStack count={activeGroup.length}>
             <FolderCard
               folder={activeFolder}
               view={view}
               isAdminOverride={canManageAllFolders}
               folders={allFolders}
             />
-          </div>
+          </DragStack>
         ) : activeApp ? (
-          <div
+          <DragStack
+            count={activeGroup.length}
             className={cn(
-              "pointer-events-none relative rotate-[1.5deg] cursor-grabbing rounded-xl shadow-2xl ring-1 ring-border/60 transition-transform duration-200 ease-out",
+              "transition-transform duration-200 ease-out",
               // Hovering a folder or project → the floating clone shrinks as a
               // preview of being absorbed into it.
               draggedOverFolder && "scale-50 opacity-80",
@@ -1267,13 +1281,7 @@ function SortableGrid({
               folders={allFolders}
               canMoveApps={canMoveApps}
             />
-            {/* Dragging a multi-selection → a badge with how many move together. */}
-            {activeIsSelectedMulti && (
-              <span className="absolute -top-2 -right-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground shadow-md ring-2 ring-background">
-                {selectionCount}
-              </span>
-            )}
-          </div>
+          </DragStack>
         ) : null}
       </DragOverlay>
 
@@ -1371,8 +1379,8 @@ function SortableItem({
   scaleOut?: boolean;
   /** Whether this card is part of the current multi-selection (shows a ring). */
   selected?: boolean;
-  /** A multi-selection group drag is in flight → dim every selected card (not
-   *  only the lifted one) so the whole moving group reads as picked up. */
+  /** This card travels with the lifted one (multi-selection drag) → dim it too,
+   *  so the whole moving group reads as picked up. */
   groupDragging?: boolean;
   /** "project" | "folder" | "service" - surfaced as data-card-kind for marquee
    *  hit-testing. */
@@ -1510,11 +1518,9 @@ function SortableItem({
           "rounded-xl",
           dragging && !isDragging && "animate-jiggle",
           isDragging && "opacity-40 transition-transform duration-200 ease-out",
-          // A selected sibling during a group drag also dims (held in place),
-          // so the whole moving group reads as picked up, not just the lifted one.
+          // A sibling moving with the lifted card dims too (held in place).
           !isDragging &&
             groupDragging &&
-            selected &&
             "opacity-40 transition-opacity duration-150",
           // Hovering a folder → the placeholder slot collapses to nothing as the
           // floating clone is absorbed; it grows back the moment it leaves.

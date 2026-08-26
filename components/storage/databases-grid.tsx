@@ -5,17 +5,20 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
+  defaultDropAnimationSideEffects,
   type DragEndEvent,
+  type DragStartEvent,
+  type DropAnimation,
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   rectSortingStrategy,
   useSortable,
 } from "@dnd-kit/sortable";
@@ -47,6 +50,7 @@ import { scopeListenersToSubtree } from "@/lib/portal-event-scope";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useCardSelection } from "@/components/shared/use-card-selection";
+import { DragStack } from "@/components/shared/drag-stack";
 import {
   PendingCards,
   usePendingCreate,
@@ -55,6 +59,7 @@ import { DatabaseCard } from "@/components/storage/database-card";
 import { DB_TYPES } from "@/components/storage/db-engines";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { gqlAction } from "@/lib/graphql-client";
+import { reorderBlock } from "@/lib/reorder-block";
 import { cn } from "@/lib/utils";
 import type { DatabaseDTO } from "@/lib/data/databases";
 import type { DatabaseStatus, DatabaseType } from "@/lib/types";
@@ -197,6 +202,15 @@ export function DatabasesGrid({
     return () => window.removeEventListener("keydown", onKey);
   }, [selectionCount, selectAll, clearSelection, canDelete]);
 
+  // The card under the cursor, and the block travelling with it: a selection of
+  // ≥2 that the lifted card belongs to moves together.
+  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const dragGroup = (id: string) =>
+    selectedIds.length >= 2 && selectedIds.includes(id) ? selectedIds : [id];
+  const activeGroup = activeId ? dragGroup(activeId) : [];
+  const groupDragIds = new Set(activeGroup.length >= 2 ? activeGroup : []);
+  const activeDb = activeId ? byId.get(activeId) : undefined;
+
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, {
@@ -207,12 +221,18 @@ export function DatabasesGrid({
 
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
+    setActiveId(null);
     if (!over || active.id === over.id) return;
-    const from = order.indexOf(String(active.id));
-    const to = order.indexOf(String(over.id));
-    if (from < 0 || to < 0) return;
+    // The lifted card carries its whole multi-selection; a card outside the
+    // selection moves alone.
+    const next = reorderBlock(
+      order,
+      String(active.id),
+      String(over.id),
+      dragGroup(String(active.id)),
+    );
+    if (!next) return;
     const prev = order;
-    const next = arrayMove(order, from, to);
     setOrder(next);
     void gqlAction(
       `mutation($ids: [ID!]!) { reorderDatabases(databaseIds: $ids) }`,
@@ -262,7 +282,11 @@ export function DatabasesGrid({
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            onDragStart={(e: DragStartEvent) =>
+              setActiveId(String(e.active.id))
+            }
             onDragEnd={onDragEnd}
+            onDragCancel={() => setActiveId(null)}
           >
             <SortableContext
               items={filtered.map((d) => d.id)}
@@ -274,6 +298,7 @@ export function DatabasesGrid({
                     key={d.id}
                     id={d.id}
                     selected={selected.has(d.id)}
+                    groupDragging={groupDragIds.has(d.id)}
                     onSelect={(e) => onItemClick(d.id, e)}
                   >
                     {({ handle, dragActive }) => (
@@ -292,6 +317,21 @@ export function DatabasesGrid({
                 <PendingCards />
               </div>
             </SortableContext>
+            {/* The lifted card that follows the cursor, portalled above the grid
+                so it is never clipped; the original stays as a dimmed slot. */}
+            <DragOverlay dropAnimation={DRAG_DROP_ANIMATION}>
+              {activeDb ? (
+                <DragStack count={activeGroup.length}>
+                  <DatabaseCard
+                    db={activeDb}
+                    serverName={serverNames[activeDb.serverId]}
+                    view={view}
+                    dragActive
+                    canReveal={canReveal}
+                  />
+                </DragStack>
+              ) : null}
+            </DragOverlay>
           </DndContext>
         ) : (
           <div className={gridClass(view)}>
@@ -359,6 +399,14 @@ export function DatabasesGrid({
 }
 
 const DELETE_DATABASE = `mutation($id: String!) { deleteDatabase(id: $id) }`;
+
+// The lifted clone eases back into the settled slot while the placeholder
+// (held at opacity-40) cross-fades back in.
+const DRAG_DROP_ANIMATION: DropAnimation = {
+  sideEffects: defaultDropAnimationSideEffects({
+    styles: { active: { opacity: "0.4" } },
+  }),
+};
 
 /** The multi-selection highlight, shared by both card wrappers below. */
 const SELECTED_RING =
@@ -594,11 +642,14 @@ function Toolbar({
 function SortableCard({
   id,
   selected,
+  groupDragging = false,
   onSelect,
   children,
 }: {
   id: string;
   selected: boolean;
+  /** This card travels with the lifted one (multi-selection drag) → dim it too. */
+  groupDragging?: boolean;
   onSelect: (e: {
     metaKey: boolean;
     ctrlKey: boolean;
@@ -699,7 +750,11 @@ function SortableCard({
       className={cn(
         "touch-manipulation rounded-xl select-none [-webkit-touch-callout:none]",
         selected && SELECTED_RING,
-        isDragging && "relative z-10 opacity-80",
+        // The lifted card and every sibling moving with it dim in place, so the
+        // whole group reads as picked up.
+        (isDragging || groupDragging) &&
+          "opacity-40 transition-opacity duration-150",
+        isDragging && "relative z-10",
       )}
       {...wrapperAttributes}
       {...pointerListeners}
