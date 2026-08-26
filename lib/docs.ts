@@ -193,12 +193,20 @@ export const DOCS = {
 
   "migration.dokploy": "guides/move-from-dokploy",
   "migration.coolify": "guides/move-from-coolify",
+  // One guide per panel, section by section: a Coolify migration that sent people
+  // to the Dokploy page described a wizard they were not looking at.
   "migration.run": "guides/move-from-dokploy#run-a-migration",
   "migration.source":
     "guides/move-from-dokploy#install-the-agent-on-the-source",
   "migration.people": "guides/move-from-dokploy#handle-the-people",
   "migration.changes":
     "guides/move-from-dokploy#what-changes-on-the-way-across",
+  "migration.coolify.run": "guides/move-from-coolify#run-a-migration",
+  "migration.coolify.source":
+    "guides/move-from-coolify#install-the-agent-on-each-source-machine",
+  "migration.coolify.people": "guides/move-from-coolify#handle-the-people",
+  "migration.coolify.changes":
+    "guides/move-from-coolify#what-changes-on-the-way-across",
 } as const;
 
 export type DocsTopic = keyof typeof DOCS;

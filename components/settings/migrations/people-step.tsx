@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { CopyButton } from "@/components/shared/copy-button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StepShell } from "./step-shell";
-import { copyFor, type SourceKind } from "./sources";
+import { copyFor, type SourceKind, stepDocs } from "./sources";
 import type { Invite, PlanMember } from "./types";
 
 /**
@@ -60,7 +60,7 @@ export function PeopleStep({
   return (
     <StepShell
       title={`The people who were on ${copyFor(kind).name}`}
-      docs="migration.people"
+      docs={stepDocs(kind, "people")}
       lead="Everyone joins with a single-use link and arrives as a plain member, whatever they were over there. You can invite anyone else later from Members."
     >
       {people.length === 0 ? (

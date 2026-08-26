@@ -155,7 +155,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     urlPlaceholder: "https://panel.acme.com",
     tokenLabel: "API token",
     tokenInfo:
-      "In Dokploy: Settings, Profile, API/CLI. In Coolify: Keys & Tokens, API tokens. Use an owner's or admin's - a member's is refused.",
+      "In Dokploy: Settings, Profile, API/CLI. In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked. It reads whatever its owner can see, so mint it from an account that sees everything you want to move.",
     privateHost: "http://172.17.0.1:3000",
     scanIdle: "Check this panel",
     scanBusy: "Reading the panel",
@@ -169,7 +169,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     urlPlaceholder: "https://dokploy.acme.com",
     tokenLabel: "API key",
     tokenInfo:
-      "In Dokploy: Settings, Profile, API/CLI. Use an owner's or admin's key - a plain member's key is refused on the per-service calls.",
+      "In Dokploy: Settings, Profile, API/CLI. It reads whatever its owner can see, so mint it from an account that sees every project you want to move.",
     privateHost: "http://172.17.0.1:3000",
     scanIdle: "Check this Dokploy",
     scanBusy: "Reading Dokploy",
@@ -194,4 +194,14 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
 /** The words for what is known so far. */
 export function copyFor(kind: SourceKind | null): SourceCopy {
   return SOURCE_COPY[kind ?? "unknown"];
+}
+
+/** The guide for this panel, at the section a step is about. */
+export function stepDocs(
+  kind: SourceKind | null,
+  step: "run" | "source" | "people" | "changes",
+): DocsTopic {
+  return kind === "coolify"
+    ? (`migration.coolify.${step}` as const)
+    : (`migration.${step}` as const);
 }

@@ -40,6 +40,7 @@ import {
   SOURCE_COPY,
   SOURCE_KINDS,
   SourceMark,
+  stepDocs,
   type SourceKind,
 } from "./sources";
 import { RemoveMigrationSources } from "./remove-sources";
@@ -1094,7 +1095,7 @@ function ConnectStep({
                 own IP.
               </>
             }
-            docs="migration.source"
+            docs={stepDocs(kind, "source")}
           >
             <ServerIcon className="size-4 text-muted-foreground" />
             Same machine

@@ -12,7 +12,7 @@ import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { TeamTargetGraphic } from "./team-target-graphic";
 import { MigrationTree, type PortConflict } from "./migration-tree";
 import { StepShell } from "./step-shell";
-import { copyFor, type SourceKind } from "./sources";
+import { copyFor, type SourceKind, stepDocs } from "./sources";
 import {
   importableOf,
   type Placement,
@@ -329,7 +329,7 @@ export function ReviewStep({
   return (
     <StepShell
       title="What comes over"
-      docs="migration.changes"
+      docs={stepDocs(kind, "changes")}
       lead="Pick what to bring and where it lands. Nothing is deployed yet."
     >
       {/* Said once, at the top, instead of on every database it applies to: it
