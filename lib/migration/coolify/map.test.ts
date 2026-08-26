@@ -554,3 +554,62 @@ test("a SERVICE_FQDN naming no service still brings the address over", () => {
     [["blog.acme.com", null, null]],
   );
 });
+
+test("two variables for one host are merged, whichever order they arrive in", () => {
+  // Coolify keeps SERVICE_FQDN_X and SERVICE_FQDN_X_<PORT> for the same address.
+  // Taking the first meant linkding drew the one without a port, its domain
+  // landed with none, and Traefik had nowhere to send it: 502.
+  const withPort = { url: "linkding.acme.com:9090", service: null, port: 9090 };
+  const without = { url: "linkding.acme.com", service: null, port: null };
+
+  for (const order of [
+    [without, withPort],
+    [withPort, without],
+  ]) {
+    const { value } = parseCoolifyFqdns(null, null, order);
+    assert.deepEqual(
+      value.map((d) => [d.host, d.port]),
+      [["linkding.acme.com", 9090]],
+      `order ${order === undefined ? "" : JSON.stringify(order.map((o) => o.url))}`,
+    );
+  }
+});
+
+test("a scheme on either spelling is believed for the merged host", () => {
+  const bare = { url: "app.acme.com", service: null, port: null };
+  const secure = {
+    url: "https://app.acme.com:8443",
+    service: null,
+    port: 8443,
+  };
+
+  for (const order of [
+    [bare, secure],
+    [secure, bare],
+  ]) {
+    const { value, notes } = parseCoolifyFqdns(null, null, order);
+    assert.deepEqual(
+      value.map((d) => [d.host, d.port, d.https, d.certificateType]),
+      [["app.acme.com", 8443, true, "letsencrypt"]],
+    );
+    // One of them DID say https, so there is nothing to warn about.
+    assert.deepEqual(notes, []);
+  }
+});
+
+test("SERVICE_FQDN_X and SERVICE_FQDN_X_PORT reach one domain with the port", () => {
+  const raw = "services:\n  linkding:\n    image: sissbruecker/linkding\n";
+  const { value } = coolifyCompose(
+    { uuid: "svc-ld", name: "linkding", docker_compose_raw: raw },
+    {
+      env: [
+        "SERVICE_FQDN_LINKDING=linkding.acme.com",
+        "SERVICE_FQDN_LINKDING_9090=linkding.acme.com:9090",
+      ].join("\n"),
+    },
+  );
+  assert.deepEqual(
+    value.domains?.map((d) => [d.host, d.port, d.serviceName]),
+    [["linkding.acme.com", 9090, "linkding"]],
+  );
+});

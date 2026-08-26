@@ -188,9 +188,13 @@ export function parseCoolifyFqdns(
       if (raw.trim()) entries.push({ url: raw.trim(), service });
   entries.push(...extra);
 
-  const out: SourceDomain[] = [];
-  const notes: string[] = [];
-  const seen = new Set<string>();
+  // One route per host+path+service. Coolify keeps TWO variables for the same
+  // address - SERVICE_FQDN_X and SERVICE_FQDN_X_<PORT> - so "first one wins" made
+  // the port depend on the order the variables happened to arrive in: linkding
+  // drew the one without a port, its domain landed with none, and Traefik had
+  // nowhere to send it. They are merged instead, and each is believed about what
+  // it actually says.
+  const merged = new Map<string, { domain: SourceDomain; said: boolean }>();
   for (const [i, e] of entries.entries()) {
     // An address that names no scheme claims NEITHER. Reading one as https gave
     // four one-click services a certificate they never had over there and moved
@@ -203,33 +207,53 @@ export function parseCoolifyFqdns(
       continue;
     }
     const host = u.hostname.toLowerCase();
+    if (!host) continue;
     const path = u.pathname === "/" ? null : u.pathname.replace(/\/+$/, "");
     const key = `${host}${path ?? ""}${e.service ?? ""}`;
-    if (!host || seen.has(key)) continue;
-    seen.add(key);
     const https = /^https/i.test(said);
-    if (!said)
-      notes.push(
-        `{panel} recorded ${host} without http:// or https://, so it comes across on plain http exactly as it answered there. Add a certificate under Domains to serve it over https.`,
-      );
-    out.push({
-      domainId: `cool-fqdn-${i}`,
-      host,
-      https,
-      port: u.port ? Number(u.port) : (e.port ?? null),
-      path,
-      // Coolify adds no strip-prefix middleware of its own: the path reaches the
-      // container as it was requested.
-      stripPath: false,
-      internalPath: null,
-      serviceName: e.service,
-      customEntrypoint: null,
-      domainType: e.service ? "compose" : "application",
-      certificateType: https ? "letsencrypt" : "none",
-      enabled: true,
+    const port = u.port ? Number(u.port) : (e.port ?? null);
+
+    const already = merged.get(key);
+    if (already) {
+      // A port is knowledge the other spelling did not carry, and so is a scheme.
+      if (already.domain.port == null && port != null)
+        already.domain.port = port;
+      if (!already.said && said) {
+        already.said = true;
+        already.domain.https = https;
+        already.domain.certificateType = https ? "letsencrypt" : "none";
+      }
+      continue;
+    }
+
+    merged.set(key, {
+      said: Boolean(said),
+      domain: {
+        domainId: `cool-fqdn-${i}`,
+        host,
+        https,
+        port,
+        path,
+        // Coolify adds no strip-prefix middleware of its own: the path reaches the
+        // container as it was requested.
+        stripPath: false,
+        internalPath: null,
+        serviceName: e.service,
+        customEntrypoint: null,
+        domainType: e.service ? "compose" : "application",
+        certificateType: https ? "letsencrypt" : "none",
+        enabled: true,
+      },
     });
   }
-  return { value: out, notes };
+
+  const notes: string[] = [];
+  for (const { domain, said } of merged.values())
+    if (!said)
+      notes.push(
+        `{panel} recorded ${domain.host} without http:// or https://, so it comes across on plain http exactly as it answered there. Add a certificate under Domains to serve it over https.`,
+      );
+  return { value: [...merged.values()].map((r) => r.domain), notes };
 }
 
 /**
