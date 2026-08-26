@@ -1,7 +1,14 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { LOGO_PATH, MARK_VIEWBOX } from "@/components/logo";
-import { markPaths, SOURCE_ART, SOURCE_COPY, type SourceKind } from "./sources";
+import {
+  markPaths,
+  SOURCE_ART,
+  SOURCE_COPY,
+  SOURCE_KINDS,
+  SWAP_HALF_MS,
+  type SourceKind,
+} from "./sources";
 
 /**
  * The migration wizard's illustration: two servers and the cable between them. One
@@ -14,7 +21,8 @@ export type MigrationState =
 
 function graphicLabel(state: MigrationState, kind: SourceKind | null): string {
   // Only `connect` is reachable before a scan has said which panel it is.
-  if (!kind) return "An unidentified server and a Deplo server, not yet linked";
+  if (!kind)
+    return "A Dokploy or a Coolify server and a Deplo server, not yet linked";
   const n = SOURCE_COPY[kind].name;
   switch (state) {
     case "connect":
@@ -92,22 +100,28 @@ export function MigrationGraphic({
       {/* ---- the source, on the left. It dims at the end: the whole point of
               the drawing is that it stops being the one that serves. ---- */}
       <Machine x={4} dim={done}>
-        {kind && (
+        {kind ? (
           // Keyed on the kind so the mark plays its arrival once, when it is found.
-          <svg
+          <SourceFace
             key={kind}
-            x="16"
-            y="42"
-            width="18"
-            height="18"
-            viewBox={SOURCE_ART[kind].viewBox}
+            kind={kind}
+            dim={done}
             className={cn(
               "deplo-migrate-mark",
               done ? "text-border" : "text-foreground",
             )}
-          >
-            {markPaths(SOURCE_ART[kind], done)}
-          </svg>
+          />
+        ) : (
+          // Nothing has answered yet, so the face shows what it could be. Both
+          // marks are drawn; the CSS trades them, half a cycle apart.
+          SOURCE_KINDS.map((k, i) => (
+            <SourceFace
+              key={k}
+              kind={k}
+              className="deplo-migrate-swap text-foreground"
+              style={{ animationDelay: `${-i * SWAP_HALF_MS}ms` }}
+            />
+          ))
         )}
       </Machine>
 
@@ -178,6 +192,36 @@ export function MigrationGraphic({
         </svg>
       </Machine>
     </svg>
+  );
+}
+
+/**
+ * One mark on a machine's face. The group is what the scale animates, because a
+ * `fill-box` origin needs a bounding box and a nested `<svg>` does not give one.
+ */
+function SourceFace({
+  kind,
+  dim = false,
+  className,
+  style,
+}: {
+  kind: SourceKind;
+  dim?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <g className={className} style={style}>
+      <svg
+        x="16"
+        y="42"
+        width="18"
+        height="18"
+        viewBox={SOURCE_ART[kind].viewBox}
+      >
+        {markPaths(SOURCE_ART[kind], dim)}
+      </svg>
+    </g>
   );
 }
 

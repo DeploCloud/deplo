@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as React from "react";
 
 import { MigrationGraphic } from "./migration-graphic";
-import { copyFor, SOURCE_ART, SOURCE_COPY } from "./sources";
+import { copyFor, SOURCE_ART, SOURCE_COPY, SWAP_HALF_MS } from "./sources";
 
 /**
  * The marks and the words. Only what the type checker cannot already prove.
@@ -35,11 +35,20 @@ test("before the scan, nothing is named a product", () => {
   assert.match(SOURCE_COPY.unknown.tokenInfo, /Coolify/);
 });
 
-test("the illustration draws no mark until it knows which panel it is", () => {
+// Before anything has answered, the face shows what it COULD be rather than
+// nothing: both marks, traded by CSS half a cycle apart.
+test("the illustration offers both marks until it knows which panel it is", () => {
   const blank = html({ state: "connect" });
-  assert.doesNotMatch(blank, /#8c52ff/);
-  assert.equal(blank.includes(SOURCE_ART.dokploy.paths[0].d), false);
-  assert.match(blank, /An unidentified server/);
+  assert.ok(blank.includes(SOURCE_ART.dokploy.paths[0].d));
+  assert.ok(blank.includes(SOURCE_ART.coolify.paths[0].d));
+
+  // Two swapping layers, and the second one runs behind the first - without the
+  // offset they would scale in and out together and the face would just blink.
+  const swaps = blank.match(/deplo-migrate-swap/g) ?? [];
+  assert.equal(swaps.length, 2);
+  assert.match(blank, new RegExp(`animation-delay:\\s*-${SWAP_HALF_MS}ms`));
+
+  assert.match(blank, /A Dokploy or a Coolify server/);
 });
 
 test("the mark that lands is the one the scan found", () => {

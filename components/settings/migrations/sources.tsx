@@ -8,7 +8,13 @@ import type { DocsTopic } from "@/lib/docs";
  * for them. One table per thing, both keyed the same way.
  */
 
-export type SourceKind = "dokploy" | "coolify";
+export const SOURCE_KINDS = ["dokploy", "coolify"] as const;
+export type SourceKind = (typeof SOURCE_KINDS)[number];
+
+/** Half of one swap cycle, in ms. The second mark runs this far behind the
+ *  first, so one is scaling in while the other scales out. Matches
+ *  `deplo-migrate-swap` in globals.css. */
+export const SWAP_HALF_MS = 2600;
 
 interface MarkPath {
   d: string;

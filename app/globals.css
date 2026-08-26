@@ -3169,6 +3169,39 @@ p:not([class*="leading-"]) {
   }
 }
 
+/* Before anything has answered, the source's face shows what it COULD be: the two
+   marks trading places, one scaling out as the other scales in. The second layer
+   runs the same cycle half a period behind, so they cross rather than blink. */
+@keyframes deplo-migrate-swap {
+  0%,
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  48%,
+  92% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.deplo-migrate-swap {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-migrate-swap 5.2s ease-in-out infinite;
+}
+/* Nothing to swap to without motion, and two marks stacked at rest would be a
+   smudge - so the face goes back to empty, which is what it said before. */
+@media (prefers-reduced-motion: reduce) {
+  .deplo-migrate-swap {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 .deplo-migrate-halo {
   transform-box: fill-box;
   transform-origin: center;

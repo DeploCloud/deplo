@@ -35,7 +35,13 @@ import {
 } from "@/components/layout/migration-activity";
 import { InstallStep, type PendingMachine } from "./install-step";
 import { MigrationGraphic, type MigrationState } from "./migration-graphic";
-import { copyFor, SOURCE_COPY, SourceMark, type SourceKind } from "./sources";
+import {
+  copyFor,
+  SOURCE_COPY,
+  SOURCE_KINDS,
+  SourceMark,
+  type SourceKind,
+} from "./sources";
 import { RemoveMigrationSources } from "./remove-sources";
 import { ReviewStep } from "./review-step";
 import { PeopleStep } from "./people-step";
@@ -1125,7 +1131,7 @@ function ConnectStep({
             <div>
               <p className="text-sm font-medium">Which one is this?</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {(["dokploy", "coolify"] as const).map((k) => (
+                {SOURCE_KINDS.map((k) => (
                   <KindCard
                     key={k}
                     selected={forcedKind === k}
