@@ -9,14 +9,6 @@ export default function Loading() {
       aria-busy
       aria-label="Loading monitoring"
     >
-      {/* PageHeader */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <Skeleton className="h-7 w-32" />
-          <Skeleton className="h-4 w-96" />
-        </div>
-      </div>
-
       {/* MonitoringDashboard (default: server online, live metrics) */}
       <div className="space-y-6">
         {/* Server selector */}

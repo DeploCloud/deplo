@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import {
   NAV,
   SETTINGS_NAV,
@@ -309,20 +310,9 @@ export function SidebarNav({
                         : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5",
                     )}
                   >
-                    {showIcon &&
-                      (item.mark ? (
-                        <NavMark mark={item.mark} />
-                      ) : (
-                        <Icon
-                          className={cn(
-                            "size-4 shrink-0",
-                            active
-                              ? "text-foreground"
-                              : "text-muted-foreground group-hover:text-foreground",
-                          )}
-                        />
-                      ))}
+                    {showIcon && <NavIcon item={item} active={active} />}
                     {!collapsed && item.label}
+                    {!showIcon && <NavPending />}
                     {deployingTip &&
                       (collapsed ? (
                         // No room for a number next to the icon: the pulsing dot
@@ -351,6 +341,47 @@ export function SidebarNav({
         </div>
       ))}
     </nav>
+  );
+}
+
+/**
+ * The entry's icon, replaced by a spinner while its page loads. Most routes carry
+ * no `loading.tsx` (they render in a few ms), so this is the click's only feedback.
+ * The 150ms delay is what keeps a fast page from flashing it.
+ */
+function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
+  const { pending } = useLinkStatus();
+  const Icon = item.icon;
+  if (pending) return <NavSpinner />;
+  if (item.mark) return <NavMark mark={item.mark} />;
+  return (
+    <Icon
+      className={cn(
+        "size-4 shrink-0",
+        active
+          ? "text-foreground"
+          : "text-muted-foreground group-hover:text-foreground",
+      )}
+    />
+  );
+}
+
+/** The same pending state for a text-only section, which has no icon to swap. */
+function NavPending() {
+  const { pending } = useLinkStatus();
+  return pending ? <NavSpinner className="ml-auto" /> : null;
+}
+
+function NavSpinner({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "flex size-4 shrink-0 animate-in items-center justify-center delay-150 fill-mode-both fade-in",
+        className,
+      )}
+    >
+      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+    </span>
   );
 }
 
