@@ -19,6 +19,10 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
+/** Both actions are outline-destructive: neither is the one you reach for. */
+const dangerButton =
+  "self-start border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive";
+
 /** A member this team could be handed to. */
 export interface TransferCandidate {
   userId: string;
@@ -75,17 +79,20 @@ export function TeamDangerZone({
         )}
         {canDelete && (
           <div className="flex flex-col justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              {onlyTeam
-                ? "You can't delete your only team - create another team first."
-                : "Every app and database stack is torn down (data volumes included). This cannot be undone."}
-            </p>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Delete team</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {onlyTeam
+                  ? "You can't delete your only team - create another team first."
+                  : "Every app and database stack is torn down (data volumes included). This cannot be undone."}
+              </p>
+            </div>
             <ConfirmAction
               trigger={
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   size="sm"
-                  className="self-start"
+                  className={dangerButton}
                   disabled={onlyTeam}
                 >
                   <Trash2 className="size-4" />
@@ -135,17 +142,20 @@ function TransferOwnership({
 
   return (
     <div className="flex flex-col justify-between gap-3">
-      <p className="text-xs text-muted-foreground">
-        {alone
-          ? "You're the only member of this team - invite someone first."
-          : "Another member becomes the primary owner. You stay an owner, and only they can hand the team back."}
-      </p>
+      <div className="min-w-0">
+        <p className="text-sm font-medium">Transfer ownership</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {alone
+            ? "You're the only member of this team - invite someone first."
+            : "Another member becomes the primary owner. You stay an owner, and only they can hand the team back."}
+        </p>
+      </div>
       <ConfirmAction
         trigger={
           <Button
             variant="outline"
             size="sm"
-            className="self-start border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className={dangerButton}
             disabled={alone}
           >
             <Crown className="size-4" />
