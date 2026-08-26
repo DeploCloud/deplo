@@ -90,7 +90,7 @@ export function UsersPanel({
           </>
         }
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {users.map((u) => (
           <UserRow
             key={u.userId}
