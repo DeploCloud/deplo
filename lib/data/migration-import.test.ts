@@ -1068,11 +1068,9 @@ test("a project's and an environment's own variables become linked shared variab
   // The LINK is what injects (ADR-0012) - a scope alone would inject nothing.
   const links = await db.select().from(sharedVarAppsTable);
   assert.ok(links.length >= 2, `expected app links, got ${links.length}`);
-  assert.equal(
-    shared.find((s) => s.key === "SHARED_TOKEN")!.type,
-    "plain",
-    "a migrated variable is never masked, whatever it is called",
-  );
+  // A name that says credential arrives write-only; anything else stays readable.
+  assert.equal(shared.find((s) => s.key === "SHARED_TOKEN")!.type, "secret");
+  assert.equal(shared.find((s) => s.key === "ENV_LEVEL")!.type, "plain");
 });
 
 test("an environment Dokploy calls production reuses the one Deplo already made", async () => {

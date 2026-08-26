@@ -58,6 +58,7 @@ import {
   lintCompose,
   composeHostPorts,
 } from "../deploy/compose-lint";
+import { MIGRATION_HEARTBEAT_STALE_MS } from "../types";
 import type { BuildConfig, VolumeMount } from "../types";
 import { reservedMountPath } from "../apps/volume-model";
 
@@ -89,6 +90,7 @@ import {
   mapBuildSettings,
   mapDatabase,
   mapDomains,
+  migratedEnvType,
   mapLogo,
   mapMounts,
   mapResources,
@@ -626,6 +628,7 @@ export async function scanMigrationSource(
             );
           const domains = mapDomains((detail as SourceApplication).domains, {
             isCompose,
+            fallbackPort: (detail as SourceApplication).routingPort,
           });
           line.domains = domains.value.map((d) => d.host);
           line.notes.push(...domains.notes);
@@ -1050,6 +1053,37 @@ export async function beginMigration(input: {
   const user = await getCurrentUser();
   const db = getDb();
   const now = nowIso();
+
+  // A run that is STILL BEING DRIVEN is not debris to clear: two of them creating
+  // the same projects at once produced the same app twice and a pile of orphans,
+  // because the second one's "is this already here?" read ran before the first
+  // had written. A double click on Start is exactly that.
+  const live = await db
+    .select({
+      id: runsTable.id,
+      actor: runsTable.actor,
+      startedAt: runsTable.startedAt,
+      heartbeatAt: runsTable.heartbeatAt,
+    })
+    .from(runsTable)
+    .where(
+      and(
+        eq(runsTable.teamId, teamId),
+        eq(runsTable.status, "running"),
+        // A stored key is what says the RUNNER owns this one. A run without it
+        // is a tab that went away, and clearing it is the whole point below.
+        isNotNull(runsTable.apiKeyEnc),
+      ),
+    );
+  const alive = live.find(
+    (r) =>
+      Date.now() - Date.parse(r.heartbeatAt ?? r.startedAt) <
+      MIGRATION_HEARTBEAT_STALE_MS,
+  );
+  if (alive)
+    throw new Error(
+      `${alive.actor} already has a migration running in this team. Wait for it to finish, or stop it from Settings → Migrations.`,
+    );
 
   const interrupted = await db
     .update(runsTable)
@@ -1542,9 +1576,11 @@ async function markMigrating(
 }
 
 /**
- * Hand everything this run created back to the people who own it.
+ * Hand everything this run created back to the people who own it. Exported for
+ * the runner: a run that FAILS has to let go too, or its apps are frozen for
+ * good - the marker outlives the run that set it.
  */
-async function releaseMigrating(runId: string): Promise<void> {
+export async function releaseMigrating(runId: string): Promise<void> {
   for (const table of Object.values(MIGRATING_TABLES))
     await getDb()
       .update(table)
@@ -2152,11 +2188,20 @@ async function importAppService(
   const argEntries = parseEnvBlob(
     (detail as SourceApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));
-  // Every migrated variable comes across PLAIN, whatever it is called.
+  // A variable whose NAME says it is a credential comes across write-only.
   const env = [...envEntries, ...argEntries].map((e) => ({
     ...e,
-    type: "plain" as const,
+    type: migratedEnvType(e.key),
   }));
+  const secrets = env.filter((e) => e.type === "secret").map((e) => e.key);
+  if (secrets.length > 0)
+    notes.push(
+      `${secrets.length} variable(s) arrived as secrets, because their names say they hold credentials: ${secrets
+        .slice(0, 8)
+        .join(
+          ", ",
+        )}${secrets.length > 8 ? ` and ${secrets.length - 8} more` : ""}. A secret is write-only here - change any of them to a plain value under Variables.`,
+    );
   if (argEntries.length > 0)
     notes.push(
       `${argEntries.length} build argument(s) became environment variables - that is how Deplo passes values to a build.`,
@@ -2195,7 +2240,10 @@ async function importAppService(
   const asRepoApp = repoTarget ? composeAsRepoApp(yamlText) : null;
   if (asRepoApp) isCompose = false;
 
-  const domains = mapDomains(detail.domains, { isCompose });
+  const domains = mapDomains(detail.domains, {
+    isCompose,
+    fallbackPort: (detail as SourceApplication).routingPort,
+  });
   notes.push(...domains.notes);
   // The app's own address wins the primary slot over a temporary one, whatever order
   // the source kept them in: a throwaway host is first over there simply because
@@ -2203,7 +2251,7 @@ async function importAppService(
   // actually type to a secondary row.
   const primary =
     domains.value.find((d) => !d.generated) ?? domains.value[0] ?? null;
-  const mounts = mapMounts(detail.mounts, { isCompose });
+  const mounts = mapMounts(detail.mounts, { isCompose, compose: yamlText });
   notes.push(...mounts.notes);
 
   // What createApp needs to know about the source.
@@ -2326,8 +2374,11 @@ async function importAppService(
 
   // Routing port: Dokploy keeps it on the domain, deplo on the build config (a
   // domain may still override it). Taking the primary domain's port keeps the two
-  // consistent from the start.
-  if (primary?.port) build.port = primary.port;
+  // consistent from the start; a platform that records the port on the app itself
+  // answers when there is no domain to read it off.
+  const routingPort =
+    primary?.port ?? (detail as SourceApplication).routingPort ?? null;
+  if (routingPort) build.port = routingPort;
 
   // Claiming a hostname needs `manage_domains`, and an import must not turn a missing
   // permission into a failed app: without it the app comes across on a generated host
@@ -3175,9 +3226,9 @@ async function importSharedVars(
       await saveSharedVar({
         key,
         value,
-        // Plain, for the same reason the app's own variables are - see the
-        // service import.
-        type: "plain",
+        // Write-only when the name says credential, exactly as a service's own
+        // variables are - see the service import.
+        type: migratedEnvType(key),
         teamWide: opts.teamWide ?? false,
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
