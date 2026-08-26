@@ -202,6 +202,11 @@ type App {
   What the LAST DEPLOY actually read from the source, ignoring any correction. Equals `framework` unless the user overrode it.
   """
   frameworkDetected: String
+
+  """
+  The health check baked into this app's compose, or null when it has none.
+  """
+  healthCheck: HealthCheck
   id: ID
   latestDeployment: Deployment
   logo: String
@@ -1922,6 +1927,44 @@ type GlobalUser {
   username: String
 }
 
+"""
+What Deplo writes into the app's compose `healthcheck:`. Docker runs it inside the container and the agent reports the verdict, which is what the status dot follows. Null on an app that has none.
+"""
+type HealthCheck {
+  command: String
+  intervalS: Int
+  path: String
+
+  """The port INSIDE the container. Null means the app's own port."""
+  port: Int
+  retries: Int
+  startPeriodS: Int
+  timeoutS: Int
+  type: HealthCheckType
+}
+
+"""
+A health check to save. Send null instead to turn it off. An http check needs curl or wget in the image; one that has neither cannot answer, and the container would sit unhealthy.
+"""
+input HealthCheckInput {
+  command: String
+  intervalS: Int!
+  path: String
+  port: Int
+  retries: Int!
+  startPeriodS: Int!
+  timeoutS: Int!
+  type: HealthCheckType!
+}
+
+"""
+How the check asks. http requests a path over localhost inside the container; command runs a shell line and reads its exit code.
+"""
+enum HealthCheckType {
+  command
+  http
+}
+
 """The answer to 'are these host ports free on that server?'."""
 type HostPortCheck {
   """
@@ -3439,6 +3482,11 @@ type Mutation {
   """Forget this browser's push registration."""
   unsubscribeWebPush(endpoint: String!): Boolean
   updateAppBuild(build: BuildConfigInput!, id: String!): App
+
+  """
+  Save the app's health check, or send no input to turn it off. Applied on the next deploy, because the block is baked into the rendered compose. Refused for a compose stack: that YAML is its author's, and a `healthcheck:` written there is the one that runs.
+  """
+  updateAppHealthCheck(id: String!, input: HealthCheckInput): App
   updateAppLogo(id: String!, logo: String): App
 
   """

@@ -827,6 +827,20 @@ export const apps = pgTable(
     resourceUlimitNofile: integer("resource_ulimit_nofile"),
     resourceUlimitNproc: integer("resource_ulimit_nproc"),
     resourceOomScoreAdj: integer("resource_oom_score_adj"),
+    // Per-app health check (migration 0127), flattened like resource_* for the
+    // same reason: a nested shape would be a JSONB column, and there are none.
+    healthCheckEnabled: boolean("health_check_enabled")
+      .notNull()
+      .default(false),
+    /** `'http'` | `'command'`. NULL only on a row that never turned it on. */
+    healthCheckType: text("health_check_type"),
+    healthCheckPath: text("health_check_path"),
+    healthCheckPort: integer("health_check_port"),
+    healthCheckCommand: text("health_check_command"),
+    healthCheckIntervalS: integer("health_check_interval_s"),
+    healthCheckTimeoutS: integer("health_check_timeout_s"),
+    healthCheckRetries: integer("health_check_retries"),
+    healthCheckStartPeriodS: integer("health_check_start_period_s"),
     // Pull request previews (one ephemeral stack per open pull request), flattened like
     // resource_*: NULL ⇒ the platform default, so an app that never opened the setting
     // behaves identically to one that did.

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { healthCheckProblem } from "../apps/health-check-model";
+
 import { cache } from "react";
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 
@@ -67,16 +69,17 @@ import { teardownOrQueue } from "./teardown-queue";
 import { matchesQuery } from "./match-query";
 import { buildConfigFor } from "../frameworks";
 import type {
+  App,
+  AppStatus,
   BuildConfig,
   BuildMethod,
   Capability,
-  Deployment,
   DeploySource,
+  Deployment,
   EnvTarget,
   EnvVar,
   GitRepo,
-  App,
-  AppStatus,
+  HealthCheck,
   ResourceLimits,
   UploadArchive,
   VolumeMount,
@@ -153,6 +156,7 @@ import {
   mountsToRows,
   appToRow,
   resourceLimitsToRow,
+  healthCheckToRow,
   volumesToRows,
 } from "./app-graph-rows";
 import { detectDefaultApp } from "../deploy/compose-stack";
@@ -285,8 +289,8 @@ export function reconcileStatus(
 }
 
 /**
- * Fold a (relational, already-normalized) project into a {@link AppSummary}
- * - a PURE function over preloaded latest-deployment + domain-count maps (PLAN §6
+ * Fold a (relational, already-normalized) project into a {@link AppSummary} -
+ * a PURE function over preloaded latest-deployment + domain-count maps (PLAN §6
  * "`summarize` becomes a pure function over preloaded data"). No DB access, so a
  * list of N apps costs the bounded batch-load below, not N×(deployment +
  * domain) round-trips. `reconcileStatus` still self-heals a wedged "stopping".
@@ -985,6 +989,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     rollbackKeep: DEFAULT_ROLLBACK_KEEP,
     // New apps start uncapped; limits are set later from Settings → Resources.
     resources: null,
+    healthCheck: null,
     latestDeploymentId: null,
     createdAt: nowIso(),
     updatedAt: nowIso(),
@@ -1993,6 +1998,43 @@ export async function updateAppResources(
 }
 
 /**
+ * Save an app's health check (Settings → Advanced). Same `configure_apps` +
+ * folder gate as every other app-settings write; it takes effect on the NEXT
+ * deploy, because the block is baked into the rendered compose.
+ *
+ * A compose stack is refused: that YAML is its author's, and a `healthcheck:` they
+ * wrote there is the one that runs.
+ */
+export async function updateAppHealthCheck(
+  id: string,
+  input: HealthCheck | null,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const [app] = await getDb()
+    .select({ source: appsTable.source })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
+  if (!app) throw new Error("App not found");
+  if (app.source === "compose")
+    throw new Error(
+      "A compose stack's health check belongs in its own compose file.",
+    );
+  const problem = healthCheckProblem(input);
+  if (problem) throw new Error(problem);
+  await updateAppOwned(id, membership.teamId, {
+    ...healthCheckToRow(input),
+    updatedAt: nowIso(),
+  });
+  await recordActivity(
+    "app",
+    input ? "Turned on the health check" : "Turned off the health check",
+    user.name,
+    id,
+  );
+}
+
+/**
  * Point a project at a freshly uploaded archive and switch its source to
  * "upload". Called by the upload route handler after the file is on disk; the
  * route then triggers a deploy that extracts and builds it. Forgets any repo /
@@ -2609,8 +2651,8 @@ export async function startAppDelete(id: string): Promise<void> {
 /**
  * Bulk-delete several apps. Tears down each project's stack with BOUNDED
  * concurrency (so a large multi-select can't flood one server's agent with
- * simultaneous teardowns), then removes ALL their records in a SINGLE store write
- * - one document persist + one activity row, instead of N independent
+ * simultaneous teardowns), then removes ALL their records in a SINGLE store write -
+ * one document persist + one activity row, instead of N independent
  * `deleteApp` round-trips. Team-scoped; unknown/foreign ids are ignored.
  * Returns the number actually deleted.
  */

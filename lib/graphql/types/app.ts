@@ -2,6 +2,7 @@ import { builder } from "../builder";
 import { VarAuthorRef } from "./env";
 import { remapBuildInput } from "./build-input";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
+import { HealthCheckRef, HealthCheckInputType } from "./health-check";
 import {
   DeploySourceEnum,
   DeploymentStatusEnum,
@@ -30,6 +31,7 @@ import {
   reorderApps,
   setAppVolumes,
   updateAppResources,
+  updateAppHealthCheck,
   findAppSummaryBySlugForTeam,
   summarizeForTeam,
   previewRepoFramework,
@@ -287,6 +289,13 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         "Per-app resource caps applied at deploy time, or null when the app " +
         "has no limits set.",
       resolve: (p) => p.resources,
+    }),
+    healthCheck: t.field({
+      type: HealthCheckRef,
+      nullable: true,
+      description:
+        "The health check baked into this app's compose, or null when it has none.",
+      resolve: (p) => p.healthCheck,
     }),
     productionUrl: t.exposeString("productionUrl", { nullable: true }),
     status: t.field({ type: AppStatusEnum, resolve: (p) => p.status }),
@@ -869,6 +878,34 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, limits }) => {
       await updateAppResources(id, limits as ResourceLimitsInput);
+      return reloadApp(id);
+    },
+  }),
+  updateAppHealthCheck: t.field({
+    type: AppRef,
+    description:
+      "Save the app's health check, or send no input to turn it off. Applied on the next deploy, because the block is baked into the rendered compose. Refused for a compose stack: that YAML is its author's, and a `healthcheck:` written there is the one that runs.",
+    authScopes: { capability: "configure_apps" },
+    args: {
+      id: t.arg.string({ required: true }),
+      input: t.arg({ type: HealthCheckInputType, required: false }),
+    },
+    resolve: async (_r, { id, input }) => {
+      await updateAppHealthCheck(
+        id,
+        input
+          ? {
+              type: input.type,
+              path: input.path ?? null,
+              port: input.port ?? null,
+              command: input.command ?? null,
+              intervalS: input.intervalS,
+              timeoutS: input.timeoutS,
+              retries: input.retries,
+              startPeriodS: input.startPeriodS,
+            }
+          : null,
+      );
       return reloadApp(id);
     },
   }),

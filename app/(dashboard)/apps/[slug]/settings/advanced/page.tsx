@@ -7,6 +7,7 @@ import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
+import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import {
@@ -63,6 +64,15 @@ export default async function AppAdvancedSettingsPage(
               canConsole={canConsole}
             />
           </CapabilityFieldset>
+
+          {project.source !== "compose" && (
+            <CapabilityFieldset cap="configure_apps">
+              <HealthCheckForm
+                appId={project.id}
+                healthCheck={project.healthCheck}
+              />
+            </CapabilityFieldset>
+          )}
 
           <CapabilityFieldset cap="manage_crons">
             <CronSettingsForm

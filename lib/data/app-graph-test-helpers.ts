@@ -17,7 +17,7 @@ import {
 } from "./app-graph-rows";
 import type { TestDb } from "../db/test-harness";
 import { DEFAULT_ROLLBACK_KEEP } from "../types";
-import type { Deployment, App } from "../types";
+import type { App, Deployment, HealthCheck } from "../types";
 import { TEAM_A, USER_1 } from "./identity-test-helpers";
 
 /**
@@ -103,6 +103,7 @@ export interface SeedAppOpts {
   buildServerId?: string | null;
   /** Turn OFF "build here if the build server is unreachable". */
   buildFallbackLocal?: boolean;
+  healthCheck?: HealthCheck | null;
 }
 
 /** Seed one project + its 1-to-1 build / method-settings rows. Returns the id. */
@@ -144,6 +145,7 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     composeUpArgs: null,
     rollbackKeep: opts.rollbackKeep ?? DEFAULT_ROLLBACK_KEEP,
     resources: opts.resources ?? null,
+    healthCheck: opts.healthCheck ?? null,
     latestDeploymentId: null,
     createdAt: T0,
     updatedAt: T0,

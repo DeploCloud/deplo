@@ -23,6 +23,7 @@ import "./types/global-env";
 import "./types/folder";
 import "./types/git";
 import "./types/github";
+import "./types/health-check";
 import "./types/instance";
 import "./types/mcp";
 import "./types/member";

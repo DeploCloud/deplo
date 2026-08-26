@@ -890,6 +890,13 @@
       "when": 1784942208006,
       "tag": "0126_migration_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1784942209006,
+      "tag": "0127_app_health_check",
+      "breakpoints": true
     }
   ]
 }

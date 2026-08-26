@@ -763,6 +763,30 @@ export interface ResourceLimits {
   oomScoreAdj: number | null;
 }
 
+/**
+ * A per-app health check → the compose `healthcheck:` block. Docker runs it inside
+ * the container, the agent reports what it says, and the status dot follows.
+ * See https://deplo.build/docs/guides/observability/monitoring
+ */
+export interface HealthCheck {
+  /** `http` asks the app over localhost; `command` runs whatever you give it. */
+  type: "http" | "command";
+  /** http only. The path to request, e.g. `/healthz`. */
+  path: string | null;
+  /** http only. The port INSIDE the container; the app's own port when null. */
+  port: number | null;
+  /** command only. Run through a shell, so a pipe or a `||` works. */
+  command: string | null;
+  /** Seconds between checks. */
+  intervalS: number;
+  /** Seconds one check may take before it counts as a failure. */
+  timeoutS: number;
+  /** Consecutive failures before the container is called unhealthy. */
+  retries: number;
+  /** Seconds of grace while the app starts, during which a failure does not count. */
+  startPeriodS: number;
+}
+
 export interface App {
   id: ID;
   name: string;
@@ -899,6 +923,8 @@ export interface App {
    * limits set (the default). See {@link ResourceLimits}.
    */
   resources: ResourceLimits | null;
+  /** Null when the app has no health check - which is the default. */
+  healthCheck: HealthCheck | null;
   latestDeploymentId: ID | null;
   /**
    * When someone confirmed this app's deletion, or null (every app that is not on
