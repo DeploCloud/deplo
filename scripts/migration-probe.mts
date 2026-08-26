@@ -1,7 +1,7 @@
 /**
- * Read a Dokploy instance and print what an import would see. READ ONLY: this only
+ * Read a source panel and print what an import would see. READ ONLY: this only
  * ever issues the GETs the scan issues, never a write, and it touches no Deplo
- * database - it exercises `lib/migration/dokploy/*` alone.
+ * database - it exercises `lib/migration/*` alone.
  */
 
 import {
@@ -13,7 +13,6 @@ import {
 } from "../lib/deploy/compose-lint";
 import {
   deploEngineFor,
-  sourceVolumesFrom,
   envNeedsInterpolation,
   mapBuildSettings,
   mapDatabase,
@@ -29,46 +28,41 @@ import {
 import type { DokployDbKind } from "../lib/migration/dokploy/client";
 import { normalizeSourceBaseUrl } from "../lib/migration/transport";
 import type { SourceCredential } from "../lib/migration/source";
+import { isMigrationPlatform, sourceClient } from "../lib/migration/source";
+import { detectMigrationSource } from "../lib/migration/detect";
+import { SOURCE_DB_KINDS } from "../lib/migration/model";
 import type {
   SourceApplication,
   SourceCompose,
   SourceDatabase,
 } from "../lib/migration/model";
-import {
-  DOKPLOY_DB_KINDS,
-  activeOrganizationName,
-  getService,
-  inspectContainer,
-  listAppContainers,
-  listProjects,
-  listServers,
-  serviceDisplayName,
-  type DokployRuntime,
-} from "../lib/migration/dokploy/client";
 
-const [url, apiKey] = process.argv.slice(2);
+const [url, apiKey, forced] = process.argv.slice(2);
 if (!url || !apiKey) {
-  console.error("usage: dokploy-probe.mts <url> <api-key>");
+  console.error("usage: migration-probe.mts <url> <api-key> [dokploy|coolify]");
   process.exit(1);
 }
 
-const c: SourceCredential = {
-  kind: "dokploy",
-  baseUrl: normalizeSourceBaseUrl(url),
-  apiKey,
-};
+const baseUrl = normalizeSourceBaseUrl(url);
+const kind = isMigrationPlatform(forced)
+  ? forced
+  : await detectMigrationSource(baseUrl, apiKey);
+const c: SourceCredential = { kind, baseUrl, apiKey };
+const src = sourceClient(c);
+
+console.log(`platform    ${kind}`);
 
 console.log(`source      ${c.baseUrl}`);
 console.log(
-  `organization ${(await activeOrganizationName(c)) ?? "(not reported)"}`,
+  `organization ${(await src.organizationName()) ?? "(not reported)"}`,
 );
 
-const servers = await listServers(c).catch(() => []);
+const servers = await src.listServers().catch(() => []);
 console.log(
-  `servers      ${servers.length === 0 ? "none (everything is on the Dokploy host)" : servers.map((s) => `${s.name} ${s.ipAddress ?? ""}`).join(", ")}`,
+  `servers      ${servers.length === 0 ? "none (everything is on the panel's own host)" : servers.map((s) => `${s.name} ${s.ipAddress ?? ""}`).join(", ")}`,
 );
 
-for (const p of await listProjects(c)) {
+for (const p of await src.listProjects()) {
   console.log(`\n${p.name}`);
   for (const env of p.environments ?? []) {
     console.log(`  ${env.name}`);
@@ -78,7 +72,7 @@ for (const p of await listProjects(c)) {
         id: a.applicationId,
       })),
       ...(env.compose ?? []).map((s) => ({ kind: "compose", id: s.composeId })),
-      ...DOKPLOY_DB_KINDS.flatMap((kind) =>
+      ...SOURCE_DB_KINDS.flatMap((kind) =>
         ((env[kind] ?? []) as Record<string, unknown>[])
           .map((row) => ({ kind, id: String(row[`${kind}Id`] ?? "") }))
           .filter((s) => s.id),
@@ -86,11 +80,11 @@ for (const p of await listProjects(c)) {
     ];
     for (const stub of stubs) {
       try {
-        const detail = (await getService(c, stub.kind, stub.id)) as Record<
+        const detail = (await src.getService(stub.kind, stub.id)) as Record<
           string,
           unknown
         >;
-        const name = serviceDisplayName(detail, stub.id);
+        const name = String(detail.name ?? "").trim() || stub.id;
         const extra =
           stub.kind === "application"
             ? `${detail.sourceType}/${detail.buildType}`
@@ -101,11 +95,12 @@ for (const p of await listProjects(c)) {
         const mounts = (detail.mounts as unknown[] | undefined)?.length ?? 0;
         console.log(
           `    ${stub.kind.padEnd(11)} ${name.padEnd(24)} ${String(extra).padEnd(22)} ` +
-            `appName=${detail.appName ?? "-"} server=${detail.serverId ?? "(dokploy host)"} ` +
+            `appName=${detail.appName ?? "-"} server=${detail.serverId || "(panel host)"} ` +
             `domains=${domains} mounts=${mounts}`,
         );
         if (process.env.PROBE_MAP) describe(stub.kind, detail, name);
-        if (process.env.PROBE_DATA) await describeVolumes(stub.kind, detail);
+        if (process.env.PROBE_DATA)
+          await describeVolumes(stub.kind, stub.id, detail);
       } catch (e) {
         console.log(
           `    ${stub.kind.padEnd(11)} ${stub.id.padEnd(24)} FAILED: ${e instanceof Error ? e.message : e}`,
@@ -246,35 +241,33 @@ function describe(
 /* ------------------------------------------------------------------ */
 
 /**
- * The containers of a service and the volumes they mount - the discovery half of
- * a data cutover, run without moving anything.
+ * What the cutover would find: what the service mounts, and whether it is still
+ * up. Asked through the same client the cutover uses, so it is the same answer.
  */
 async function describeVolumes(
   kind: string,
+  id: string,
   detail: Record<string, unknown>,
 ): Promise<void> {
-  const appName = String(detail.appName ?? "");
-  if (!appName) return;
-  const order: DokployRuntime[] =
-    kind === "compose" ? ["standalone", "swarm"] : ["swarm", "standalone"];
-  let containers: { containerId: string; name: string; state: string }[] = [];
-  let found: DokployRuntime | null = null;
-  for (const type of order) {
-    containers = await listAppContainers(c, appName, type).catch(() => []);
-    if (containers.length > 0) {
-      found = type;
-      break;
-    }
-  }
-  if (containers.length === 0) {
-    console.log("        volumes      no container running - nothing to read");
-    return;
-  }
-  console.log(`        containers   ${containers.length} (${found})`);
-  for (const ct of containers) {
-    const info = await inspectContainer(c, ct.containerId).catch(() => null);
-    if (!info) continue;
-    for (const v of sourceVolumesFrom(info))
-      console.log(`        volume       ${v.name} @ ${v.mountPath}`);
-  }
+  const state = await src
+    .serviceRuntime({
+      kind,
+      id,
+      appName: String(detail.appName ?? detail.name ?? id),
+      declaredVolumes: [],
+      declaredBindMounts: [],
+    })
+    .catch((e: unknown) => {
+      console.log(
+        `        volumes      could not be read: ${e instanceof Error ? e.message : e}`,
+      );
+      return null;
+    });
+  if (!state) return;
+  console.log(`        running      ${state.running}`);
+  for (const v of state.volumes)
+    console.log(`        volume       ${v.name} @ ${v.mountPath}`);
+  for (const m of state.hostMounts)
+    console.log(`        host path    ${m.hostPath} @ ${m.mountPath}`);
+  for (const n of state.notes) console.log(`        note         ${n}`);
 }
