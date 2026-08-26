@@ -746,19 +746,23 @@ export function DeploymentsTable({
     showStatusFilter ||
     showEnvFilter ||
     showDateFilter;
-  const showFilters = showNarrowers || showSearch || showSort;
+  const showStopAll = canManage && inProgressCount > 0;
+  // Bulk delete sits with the sort, not in the header: it acts on what the row
+  // above it narrowed down to.
+  const showDeleteAll = canManage && selectableIds.length > 0;
+  const showFilters = showNarrowers || showSearch || showSort || showDeleteAll;
 
   return (
     <div className="space-y-4">
       {/* Header: title/subtitle on the left, `actions` then the bulk-action
           buttons on the right. The buttons are hidden when the caller can't manage. */}
-      {(header || actions || canManage) && (
+      {(header || actions || showStopAll) && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">{header}</div>
-          {(actions || canManage) && (
+          {(actions || showStopAll) && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               {actions}
-              {canManage && inProgressCount > 0 && (
+              {showStopAll && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -769,17 +773,6 @@ export function DeploymentsTable({
                   <span className="text-muted-foreground">
                     ({inProgressCount})
                   </span>
-                </Button>
-              )}
-              {canManage && selectableIds.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setDeleteAllOpen(true)}
-                >
-                  <Trash2 className="size-4" />
-                  Delete all
                 </Button>
               )}
             </div>
@@ -915,31 +908,51 @@ export function DeploymentsTable({
             </Select>
           )}
           {hasFilter && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
+            <Button variant="ghost" onClick={clearFilters}>
               Clear filters
             </Button>
           )}
-          {showSort && (
-            <Select value={sortDir} onValueChange={applySort}>
-              <SelectTrigger
-                className={cn("w-[150px]", showNarrowers && "sm:ml-auto")}
-                aria-label="Sort by created date"
-              >
-                {/**
-                 * `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1` to its
-                 * direct-child spans, whose `display:-webkit-box` outranks a plain `flex` class
-                 * (the `>span` selector is more specific) and would stack the icon above the value.
-                 */}
-                <span className="flex! items-center gap-2">
-                  <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-                  <SelectValue />
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">Newest first</SelectItem>
-                <SelectItem value="oldest">Oldest first</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Delete all + the sort travel together to the right edge. */}
+          {(showDeleteAll || showSort) && (
+            <div
+              className={cn(
+                "flex items-center gap-2",
+                showNarrowers && "sm:ml-auto",
+              )}
+            >
+              {showDeleteAll && (
+                <Button
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setDeleteAllOpen(true)}
+                >
+                  <Trash2 className="size-4" />
+                  Delete all
+                </Button>
+              )}
+              {showSort && (
+                <Select value={sortDir} onValueChange={applySort}>
+                  <SelectTrigger
+                    className="w-[150px]"
+                    aria-label="Sort by created date"
+                  >
+                    {/**
+                     * `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1` to its
+                     * direct-child spans, whose `display:-webkit-box` outranks a plain `flex` class
+                     * (the `>span` selector is more specific) and would stack the icon above the value.
+                     */}
+                    <span className="flex! items-center gap-2">
+                      <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+                      <SelectValue />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest first</SelectItem>
+                    <SelectItem value="oldest">Oldest first</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           )}
         </div>
       )}
