@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/deploy-from-a-template
+// https://deplo.build/docs/guides/deploy/from-template
 
 import { z } from "zod";
 import { MAX_LOGO_BYTES } from "@/lib/apps/logo-shared";
