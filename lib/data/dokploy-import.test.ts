@@ -103,6 +103,12 @@ let fixtures: Fixtures = {};
 /** Every procedure the importer called, in order - the calls are the contract. */
 let calls: string[] = [];
 
+/** Swap the compose stack's yaml in the fake instance. */
+function setComposeFile(...lines: string[]): void {
+  (fixtures["compose.one"] as { composeFile: string }).composeFile =
+    lines.join("\n");
+}
+
 const DOKPLOY_ICON = `data:image/svg+xml;base64,${Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>',
 ).toString("base64")}`;
@@ -946,7 +952,7 @@ test("a Member migrates a stack whose only host-ish key is env_file", async () =
   // `env_file: - .env` is the commonest env pattern there is, and it is exactly
   // what the other platform writes for a compose stack. Read as a host escape it
   // made every such stack un-migratable by anybody but an admin.
-  fixtures["compose.one"].composeFile = [
+  setComposeFile(
     "services:",
     "  web:",
     "    image: nginx:1.27",
@@ -956,7 +962,7 @@ test("a Member migrates a stack whose only host-ish key is env_file", async () =
     "      - webdata:/data",
     "volumes:",
     "  webdata:",
-  ].join("\n");
+  );
 
   const runId = await asMember(() => beginDokployImport({ url: URL_BASE }));
   await asMember(() =>
@@ -970,13 +976,13 @@ test("a Member migrates a stack whose only host-ish key is env_file", async () =
 });
 
 test("a stack a Member may not create says what tripped it, and how", async () => {
-  fixtures["compose.one"].composeFile = [
+  setComposeFile(
     "services:",
     "  ui:",
     "    image: louislam/uptime-kuma:1",
     "    volumes:",
     "      - /var/run/docker.sock:/var/run/docker.sock:ro",
-  ].join("\n");
+  );
 
   const runId = await asMember(() => beginDokployImport({ url: URL_BASE }));
   await asMember(() =>
