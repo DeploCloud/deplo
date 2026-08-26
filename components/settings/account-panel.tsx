@@ -172,19 +172,24 @@ function ProfileCard({ user }: { user: PublicUser }) {
               >
                 Handle
               </FieldLabel>
-              <Input
-                id="acct-handle"
-                value={handle}
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                className="font-mono text-sm"
-                onChange={(e) =>
-                  setHandle(
-                    e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
-                  )
-                }
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+                  @
+                </span>
+                <Input
+                  id="acct-handle"
+                  value={handle}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="pl-7 font-mono text-sm"
+                  onChange={(e) =>
+                    setHandle(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+                    )
+                  }
+                />
+              </div>
             </div>
           </div>
           <div className="flex justify-end">
