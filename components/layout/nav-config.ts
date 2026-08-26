@@ -236,7 +236,7 @@ export const SETTINGS_NAV: NavSection[] = [
         label: "MCP Server",
         href: "/settings/mcp",
         icon: Bot,
-        tooltip: "AI agents that can drive this team",
+        tooltip: "Let AI agents drive this team over MCP",
         // TWO capabilities open a real half of this page, so naming one hid it from people
         // with work to do there.
         requiresAny: ["manage_mcp", "manage_tokens"],

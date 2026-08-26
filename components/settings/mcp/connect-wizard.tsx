@@ -343,7 +343,7 @@ function WizardRun({
         <div>
           {step === "enable" && (
             <StepShell
-              title="AI agents are switched off for this team"
+              title="The MCP Server is off for this team"
               lead="Turning it on lets an agent act here with an API token you control. What it may actually do is that token's permissions, and nothing else."
             >
               {canManageMcp ? (

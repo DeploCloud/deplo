@@ -38,8 +38,8 @@ export function McpPanel({
         ),
       {
         success: next
-          ? "AI agents can now drive this team"
-          : "MCP access is off for this team",
+          ? "MCP Server is on for this team"
+          : "MCP Server is off for this team",
       },
     );
   }
@@ -58,7 +58,7 @@ export function McpPanel({
       <CardContent>
         <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
           <div className="space-y-1">
-            <p className="text-sm font-medium">Allow AI agents</p>
+            <p className="text-sm font-medium">Enable MCP Server</p>
             <p className="text-xs text-muted-foreground">
               Off means the MCP endpoint refuses every request for this team,
               whatever the token can do.
@@ -68,7 +68,7 @@ export function McpPanel({
             checked={enabled}
             onCheckedChange={toggle}
             disabled={!canManage}
-            aria-label="Allow AI agents"
+            aria-label="Enable MCP Server"
           />
         </div>
       </CardContent>

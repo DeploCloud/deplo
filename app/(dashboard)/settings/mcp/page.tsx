@@ -32,7 +32,7 @@ export default async function McpSettingsPage() {
     return (
       <OutsideYourAccess
         title="MCP Server"
-        description="Let AI agents drive this team through Deplo's API, using an API token you control."
+        description="Let AI agents drive this team over MCP, using an API token you control."
         what="The team's MCP settings"
       />
     );
@@ -68,7 +68,7 @@ export default async function McpSettingsPage() {
             <BetaChip />
           </span>
         }
-        description="Let AI agents drive this team through Deplo's API, using an API token you control."
+        description="Let AI agents drive this team over MCP, using an API token you control."
       />
       <McpTabs
         enabled={settings.enabled}
