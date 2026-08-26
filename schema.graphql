@@ -3552,8 +3552,10 @@ type Mutation {
   """
   updateMyAvatar(image: String): Boolean
 
-  """Update the current user's display name. Returns true."""
-  updateProfile(name: String!): Boolean
+  """
+  Update the current user's display name, and their handle when one is given. The handle is the instance-wide public username: lowercase letters, numbers, - and _, 3-32 characters, unique. Returns true.
+  """
+  updateProfile(name: String!, username: String): Boolean
 
   """
   Rename and/or re-scope a role. Every member holding it gets the new capability set immediately. Returns true.

@@ -19,10 +19,14 @@ builder.mutationFields((t) => ({
   updateProfile: t.field({
     type: "Boolean",
     authScopes: { loggedIn: true },
-    description: "Update the current user's display name. Returns true.",
-    args: { name: t.arg.string({ required: true }) },
-    resolve: async (_r, { name }) => {
-      await updateProfile({ name });
+    description:
+      "Update the current user's display name, and their handle when one is given. The handle is the instance-wide public username: lowercase letters, numbers, - and _, 3-32 characters, unique. Returns true.",
+    args: {
+      name: t.arg.string({ required: true }),
+      username: t.arg.string({ required: false }),
+    },
+    resolve: async (_r, { name, username }) => {
+      await updateProfile({ name, username: username ?? undefined });
       return true;
     },
   }),

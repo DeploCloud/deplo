@@ -18,21 +18,45 @@ import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { rateLimit } from "../security";
 import { isValidAvatarValue } from "../apps/avatar-shared";
+import { normalizeUsername, validateUsername } from "../username";
 
 /**
  * The current user's own account. Every function here is USER-scoped: no team, and
  * therefore no capability to gate on.
  */
 
-/** Update the current user's display name. */
-export async function updateProfile(input: { name: string }): Promise<void> {
+/** Update the current user's display name, and their handle when one is given. */
+export async function updateProfile(input: {
+  name: string;
+  username?: string;
+}): Promise<void> {
   requirePersonalSession("your account settings");
   const user = await assertUser();
   const name = input.name.trim();
   if (!name) throw new Error("Name is required");
-  const updated = await getDb()
+  const db = getDb();
+  const patch: { name: string; username?: string } = { name };
+  if (input.username !== undefined) {
+    const username = normalizeUsername(input.username);
+    const invalid = validateUsername(username);
+    if (invalid) throw new Error(invalid);
+    if (username !== user.username) {
+      // `users_username_uq` is the real guard; this only turns the collision
+      // into a sentence instead of a Postgres error.
+      const taken = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(
+          and(ne(usersTable.id, user.id), eq(usersTable.username, username)),
+        )
+        .limit(1);
+      if (taken[0]) throw new Error("That handle is already taken");
+      patch.username = username;
+    }
+  }
+  const updated = await db
     .update(usersTable)
-    .set({ name })
+    .set(patch)
     .where(eq(usersTable.id, user.id))
     .returning({ id: usersTable.id });
   if (updated.length === 0) throw new Error("User not found");

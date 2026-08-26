@@ -20,9 +20,31 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { InfoTip } from "@/components/ui/info-tip";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
+import { normalizeUsername, validateUsername } from "@/lib/username";
+import { cn } from "@/lib/utils";
 import type { PublicUser } from "@/lib/types";
+
+/** The label stays mounted while the spinner runs, so the button keeps its width. */
+function PendingLabel({
+  pending,
+  children,
+}: {
+  pending: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="grid place-items-center">
+      <span className={cn("col-start-1 row-start-1", pending && "invisible")}>
+        {children}
+      </span>
+      {pending && (
+        <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+      )}
+    </span>
+  );
+}
 
 export function AccountPanel({
   user,
@@ -54,14 +76,21 @@ function ProfileCard({ user }: { user: PublicUser }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState(user.name);
-  const dirty = name.trim() !== user.name;
+  const [handle, setHandle] = React.useState(user.username);
+  const dirty = name.trim() !== user.name || handle !== user.username;
+  // The same rules the server applies, so Save is closed on a handle it would
+  // only bounce back.
+  const canSave =
+    dirty &&
+    Boolean(name.trim()) &&
+    !validateUsername(normalizeUsername(handle));
 
   function save(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation ($name: String!) { updateProfile(name: $name) }`,
-        { name },
+        `mutation ($name: String!, $username: String) { updateProfile(name: $name, username: $username) }`,
+        { name, username: handle },
       );
       if (res.ok) {
         toast.success("Profile updated");
@@ -104,8 +133,11 @@ function ProfileCard({ user }: { user: PublicUser }) {
           }
         >
           <div className="min-w-0">
-            <p className="truncate text-base font-medium">@{user.username}</p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <p className="truncate text-base font-medium">{user.name}</p>
+            <p className="mt-1 truncate text-sm text-muted-foreground">
+              @{user.username}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {user.isInstanceAdmin && (
                 <Badge variant="secondary" className="gap-1 px-1.5 py-0">
                   <ShieldCheck className="size-3" />
@@ -122,19 +154,44 @@ function ProfileCard({ user }: { user: PublicUser }) {
             </div>
           </div>
         </AvatarPicker>
-        <form className="mt-auto flex items-end gap-2" onSubmit={save}>
-          <div className="flex-1 space-y-2">
-            <Label htmlFor="acct-name">Name</Label>
-            <Input
-              id="acct-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
+        <form className="mt-auto space-y-4" onSubmit={save}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="acct-name">Display name</Label>
+              <Input
+                id="acct-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="acct-handle"
+                info="Your public handle across the instance. Lowercase letters, numbers, - and _."
+                docs="team.security"
+              >
+                Handle
+              </FieldLabel>
+              <Input
+                id="acct-handle"
+                value={handle}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="font-mono text-sm"
+                onChange={(e) =>
+                  setHandle(
+                    e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+                  )
+                }
+              />
+            </div>
           </div>
-          <Button type="submit" disabled={pending || !dirty || !name.trim()}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Save
-          </Button>
+          <div className="flex justify-end">
+            <Button type="submit" size="sm" disabled={pending || !canSave}>
+              <PendingLabel pending={pending}>Save</PendingLabel>
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>
@@ -204,8 +261,7 @@ function EmailCard({ user }: { user: PublicUser }) {
               size="sm"
               disabled={pending || !dirty || !password}
             >
-              {pending && <Loader2 className="size-4 animate-spin" />}
-              Update email
+              <PendingLabel pending={pending}>Update email</PendingLabel>
             </Button>
           </div>
         </form>
