@@ -56,6 +56,7 @@ import {
 import { isDockerLevelStderr } from "../infra/docker";
 import { stackFilesDir } from "../deploy/deploy-key";
 import { isValidLogoValue } from "../apps/logo-shared";
+import { MIN_USER_PORT, MAX_PORT, isValidExposePort } from "../databases/ports";
 import { withKeyedLock } from "./keyed-mutex";
 import { enqueueTeardowns } from "./teardown-queue";
 import { assertDataCopyIntact, clearDataCopyError } from "./data-copy";
@@ -82,16 +83,6 @@ const DEFAULT_PORTS: Record<DatabaseType, number> = {
 // database is exposed publicly.
 const EXPOSE_PORT_MIN = 20000;
 const EXPOSE_PORT_MAX = 40000;
-// A user-supplied port must be a real, unprivileged TCP port. Privileged ports
-// (<1024) are rejected: the DB container runs unprivileged and binding them on
-// the host is both a footgun and a collision magnet.
-const MIN_USER_PORT = 1024;
-const MAX_PORT = 65535;
-
-/** Whether a host port is a valid, unprivileged TCP port a user may request. */
-export function isValidExposePort(port: number): boolean {
-  return Number.isInteger(port) && port >= MIN_USER_PORT && port <= MAX_PORT;
-}
 
 /** The engine login used when the caller doesn't supply a custom username -
  *  matches the historical per-engine hardcode (redis 'default', else 'app'). */

@@ -113,11 +113,8 @@ import {
 } from "./apps";
 import { writeAppFile } from "./app-files";
 import { createCronJob } from "./crons";
-import {
-  createDatabase,
-  isValidExposePort,
-  setDatabaseMounts,
-} from "./databases";
+import { createDatabase, setDatabaseMounts } from "./databases";
+import { isValidExposePort } from "../databases/ports";
 import {
   type DomainPatch,
   addDomain,
