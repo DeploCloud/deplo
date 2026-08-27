@@ -19,9 +19,12 @@ import type {
 export function BuildConfigFields({
   build,
   onBuildChange,
+  commands = true,
 }: {
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
+  /** False where the card already asks for them at its own level. */
+  commands?: boolean;
 }) {
   function setBuild(updater: (b: BuildConfig) => BuildConfig) {
     onBuildChange(updater(build));
@@ -46,7 +49,7 @@ export function BuildConfigFields({
   const showStartCommand = method === "nixpacks" || method === "railpack";
   const showNodeVersion =
     method === "nixpacks" || method === "railpack" || method === "static";
-  const showCommands = showBuildCommand || showStartCommand;
+  const showCommands = commands && (showBuildCommand || showStartCommand);
 
   // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);

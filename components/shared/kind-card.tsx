@@ -17,6 +17,7 @@ export function KindCard({
   badge,
   disabled = false,
   disabledNote,
+  className,
 }: {
   selected: boolean;
   onSelect: () => void;
@@ -27,6 +28,8 @@ export function KindCard({
   disabled?: boolean;
   /** Shown instead of the caption while disabled - say WHY, not that it is off. */
   disabledNote?: string;
+  /** Grid placement from the caller (e.g. a last tile spanning both columns). */
+  className?: string;
 }) {
   return (
     <button
@@ -40,6 +43,7 @@ export function KindCard({
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent",
         selected && "border-primary bg-primary/[0.06] ring-1 ring-primary/60",
+        className,
       )}
     >
       <span className="flex items-center gap-2 text-sm font-medium">

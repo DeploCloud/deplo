@@ -683,9 +683,13 @@ export function NewAppWizard({
 
       {buildsImage && (
         <>
-          <AdvancedGroup title="Build & output">
-            <BuildConfigFields build={build} onBuildChange={onBuildChange} />
-          </AdvancedGroup>
+          {/* No wrapper title: these fields carry their own headings, and the
+              commands are only here when no step of the wizard asked for them. */}
+          <BuildConfigFields
+            build={build}
+            onBuildChange={onBuildChange}
+            commands={!usesGit}
+          />
           <AdvancedGroup title="Build path">
             <RootDirectoryFields build={build} onBuildChange={onBuildChange} />
           </AdvancedGroup>

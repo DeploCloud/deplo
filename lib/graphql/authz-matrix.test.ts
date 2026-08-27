@@ -309,9 +309,10 @@ const refused = (messages: string[]): boolean =>
   messages.some((m) => REFUSED.test(m));
 
 /**
- * Endpoints that legitimately need MORE than their declared capability, listed one
- * by one so "this one takes two gates" is a decision somebody wrote down rather
- * than a hole the matrix stopped noticing.
+ * Endpoints that legitimately need MORE than their declared capability - an
+ * instance grant, a per-app switch, or a second capability an OPTIONAL argument
+ * asks for - listed one by one so "this one takes two gates" is a decision
+ * somebody wrote down rather than a hole the matrix stopped noticing.
  */
 const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["M.generateAvailableDbPort", /permission to publish ports/i],
@@ -319,6 +320,9 @@ const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["Q.databaseCronJobs", /database.*console/i],
   ["M.createCronJob", /database.*console/i],
   ["M.setCronEnabled", /database.*console/i],
+  // `sharedVarIds` links a team's shared variables to the new app, which is an
+  // env act; creating an app without that argument needs only `create_apps`.
+  ["M.createApp", /permission to manage environment variables/i],
 ]);
 
 /** True if the refusal is the documented non-capability one for this endpoint. */
