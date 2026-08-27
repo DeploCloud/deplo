@@ -242,6 +242,13 @@ p:not([class*="leading-"]) {
        where they are set. */
     overflow-wrap: break-word;
   }
+  /* The document is what scrolls, so a page tall enough to need a bar was 8px
+     narrower than one that is not - and every sidebar link jumped sideways on
+     the way between them. Reserve the gutter always: it costs 8px on the short
+     pages and buys a column that never moves. */
+  html {
+    scrollbar-gutter: stable;
+  }
   /* Thin scrollbars */
   * {
     scrollbar-width: thin;
