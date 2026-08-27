@@ -114,7 +114,9 @@ export function WizardCard({
   backLabel?: string;
   onBack: () => void;
   nextLabel?: string;
-  onNext: () => void;
+  /** Omitted on a step that advances on the choice itself - then the footer
+   *  carries only the way back. */
+  onNext?: () => void;
   nextDisabled?: boolean;
   /** The last step: the button becomes the rocket. */
   deploy?: boolean;
@@ -142,32 +144,34 @@ export function WizardCard({
           <ArrowLeft className="size-4" />
           {backLabel}
         </Button>
-        <Button
-          type="button"
-          onClick={onNext}
-          disabled={nextDisabled || pending}
-        >
-          {/* The label stays mounted while pending so the button keeps its
-              width and the footer doesn't jump. */}
-          <span className="grid place-items-center">
-            <span
-              className={cn(
-                "col-start-1 row-start-1 flex items-center gap-2",
-                pending && "invisible",
+        {onNext && (
+          <Button
+            type="button"
+            onClick={onNext}
+            disabled={nextDisabled || pending}
+          >
+            {/* The label stays mounted while pending so the button keeps its
+                width and the footer doesn't jump. */}
+            <span className="grid place-items-center">
+              <span
+                className={cn(
+                  "col-start-1 row-start-1 flex items-center gap-2",
+                  pending && "invisible",
+                )}
+              >
+                {deploy ? (
+                  <Rocket className="size-4" />
+                ) : (
+                  <ArrowRight className="order-last size-4" />
+                )}
+                {nextLabel}
+              </span>
+              {pending && (
+                <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
               )}
-            >
-              {deploy ? (
-                <Rocket className="size-4" />
-              ) : (
-                <ArrowRight className="order-last size-4" />
-              )}
-              {nextLabel}
             </span>
-            {pending && (
-              <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
-            )}
-          </span>
-        </Button>
+          </Button>
+        )}
       </div>
     </div>
   );

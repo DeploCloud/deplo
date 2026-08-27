@@ -386,12 +386,11 @@ export function NewAppWizard({
     return false;
   }
 
+  // Step one has no button to disable - it advances on the choice itself.
   const nextDisabled =
-    step === "source"
-      ? !source
-      : step === "details"
-        ? !sourceReady() || (!usesGit && !name.trim())
-        : !name.trim();
+    step === "details"
+      ? !sourceReady() || (!usesGit && !name.trim())
+      : !name.trim();
 
   function onBack() {
     if (step === "source" || isTemplate) {
@@ -402,10 +401,6 @@ export function NewAppWizard({
   }
 
   function onNext() {
-    if (step === "source") {
-      go("details", "forward");
-      return;
-    }
     if (step === "details" && usesGit) {
       go("configure", "forward");
       return;
@@ -802,10 +797,16 @@ export function NewAppWizard({
             meta={meta}
             backLabel="Cancel"
             onBack={onBack}
-            onNext={onNext}
-            nextDisabled={nextDisabled}
           >
-            <SourceTiles value={source} onSelect={setSource} />
+            {/* No Next here: picking the source IS the answer, so the choice
+                carries the card forward on its own. */}
+            <SourceTiles
+              value={source}
+              onSelect={(next) => {
+                setSource(next);
+                go("details", "forward");
+              }}
+            />
           </WizardCard>
         ) : step === "details" ? (
           <WizardCard

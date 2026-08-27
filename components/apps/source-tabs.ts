@@ -33,7 +33,7 @@ export const SOURCE_TABS: SourceTab[] = [
     id: "github",
     label: "GitHub",
     icon: GitHubIcon,
-    blurb: "Pick a repository and deploy on every push.",
+    blurb: "Deploy a repository on every push.",
     brand: { bg: "#181717", fg: "#FFFFFF" },
     veil: { tone: "dark" },
   },
