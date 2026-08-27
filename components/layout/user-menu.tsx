@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, User as UserIcon, LifeBuoy } from "lucide-react";
+import {
+  LogOut,
+  User as UserIcon,
+  Fingerprint,
+  KeyRound,
+  BookOpen,
+  ExternalLink,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,8 +19,27 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { DiscordIcon, GitHubIcon } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
+import { docsUrl } from "@/lib/docs";
 import type { PublicUser } from "@/lib/types";
+
+const DISCORD_URL = "https://ds.deplo.build";
+const GITHUB_URL = "https://github.com/DeploCloud/deplo";
+
+/** The account's own settings - the same three the Settings sidebar groups under "Account". */
+const ACCOUNT_LINKS = [
+  { href: "/settings/account", icon: UserIcon, label: "Account" },
+  { href: "/settings/security", icon: Fingerprint, label: "Security" },
+  { href: "/settings/tokens", icon: KeyRound, label: "API tokens" },
+];
+
+/** The manual, the room where questions get answered, and the source. */
+const EXTERNAL_LINKS = [
+  { href: docsUrl("docs.home"), icon: BookOpen, label: "Documentation" },
+  { href: DISCORD_URL, icon: DiscordIcon, label: "Discord" },
+  { href: GITHUB_URL, icon: GitHubIcon, label: "GitHub" },
+];
 
 export function UserMenu({ user }: { user: PublicUser }) {
   const router = useRouter();
@@ -54,18 +80,29 @@ export function UserMenu({ user }: { user: PublicUser }) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/settings/account" className="cursor-pointer">
-            <UserIcon className="size-4" />
-            Account
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/templates" className="cursor-pointer">
-            <LifeBuoy className="size-4" />
-            Help & Templates
-          </Link>
-        </DropdownMenuItem>
+        {ACCOUNT_LINKS.map(({ href, icon: Icon, label }) => (
+          <DropdownMenuItem key={href} asChild>
+            <Link href={href} className="cursor-pointer">
+              <Icon className="size-4" />
+              {label}
+            </Link>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        {EXTERNAL_LINKS.map(({ href, icon: Icon, label }) => (
+          <DropdownMenuItem key={href} asChild>
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="cursor-pointer"
+            >
+              <Icon className="size-4" />
+              {label}
+              <ExternalLink className="ml-auto size-4 text-muted-foreground" />
+            </a>
+          </DropdownMenuItem>
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"
