@@ -105,6 +105,7 @@ export function DomainRow({
   // the app the moment the mutation is sent and the routing reload follows it.
   const { hide, restore } = useOptimisticRow(domain.id);
   const [editOpen, setEditOpen] = React.useState(false);
+  const [verifying, setVerifying] = React.useState(false);
   const services = React.useMemo(() => composeServices(compose), [compose]);
 
   // What this hostname's router actually reaches.
@@ -242,41 +243,52 @@ export function DomainRow({
   // domain can settle on pending/misconfigured and the toast must say so (the
   // page keeps re-checking it automatically either way).
   function verify() {
+    // Its own flag, not the row's `pending`: that one is shared with Set as
+    // primary and Save, and an icon spinning for someone else's work is a lie.
+    // Set before the transition so the spin starts on the click, not after it.
+    setVerifying(true);
     startTransition(async () => {
-      const res = await gqlAction<{
-        verifyDomain: { id: string; status: string };
-      }>(
-        /* GraphQL */ `
-          mutation ($id: String!) {
-            verifyDomain(id: $id) {
-              id
-              status
-            }
-          }
-        `,
-        { id: domain.id },
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
+      try {
+        await runVerify();
+      } finally {
+        setVerifying(false);
       }
-      const status = res.data?.verifyDomain.status;
-      if (status === "valid")
-        toast.success("Domain verified - routing is live");
-      else if (status === "cloudflare")
-        toast.success(
-          "Cloudflare is proxying this domain. Make sure its record points at this server.",
-        );
-      else if (status === "misconfigured")
-        toast.warning(
-          "This domain\u2019s DNS points at another address - see the hint on its row",
-        );
-      else
-        toast.warning(
-          "No DNS record found yet - it\u2019s re-checked automatically",
-        );
-      router.refresh();
     });
+  }
+
+  async function runVerify() {
+    const res = await gqlAction<{
+      verifyDomain: { id: string; status: string };
+    }>(
+      /* GraphQL */ `
+        mutation ($id: String!) {
+          verifyDomain(id: $id) {
+            id
+            status
+          }
+        }
+      `,
+      { id: domain.id },
+    );
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    const status = res.data?.verifyDomain.status;
+    if (status === "valid") toast.success("Domain verified - routing is live");
+    else if (status === "cloudflare")
+      toast.success(
+        "Cloudflare is proxying this domain. Make sure its record points at this server.",
+      );
+    else if (status === "misconfigured")
+      toast.warning(
+        "This domain\u2019s DNS points at another address - see the hint on its row",
+      );
+    else
+      toast.warning(
+        "No DNS record found yet - it\u2019s re-checked automatically",
+      );
+    router.refresh();
   }
 
   return (
@@ -457,7 +469,9 @@ export function DomainRow({
                 onClick={verify}
                 disabled={pending || !canManage}
               >
-                <RefreshCw className="size-3.5" />
+                <RefreshCw
+                  className={cn("size-3.5", verifying && "animate-spin")}
+                />
               </Button>
             </SimpleTooltip>
           )}
