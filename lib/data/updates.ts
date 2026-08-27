@@ -70,6 +70,25 @@ function normalizeTag(tag: string): string {
   return tag.trim().replace(/^v/i, "");
 }
 
+/**
+ * GitHub answers 60 unauthenticated calls an hour per IP, shared by every check
+ * this instance makes. Exhausting it is a wait, not a fault, and "403" alone
+ * reads like a permission problem.
+ */
+function describeFailure(res: Response): string {
+  if (res.headers.get("x-ratelimit-remaining") === "0") {
+    const reset = Number(res.headers.get("x-ratelimit-reset"));
+    const minutes = Number.isFinite(reset)
+      ? Math.max(1, Math.ceil((reset * 1000 - Date.now()) / 60_000))
+      : null;
+    const wait = minutes
+      ? ` It resets in ${minutes} minute${minutes === 1 ? "" : "s"}.`
+      : "";
+    return `GitHub's hourly limit for this instance is used up.${wait}`;
+  }
+  return `GitHub API returned ${res.status}`;
+}
+
 async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
   const base: UpdateInfo = {
     current: DEPLO_VERSION,
@@ -92,7 +111,7 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
     );
 
     if (res.status === 404) return base; // no releases published yet
-    if (!res.ok) return { ...base, error: `GitHub API returned ${res.status}` };
+    if (!res.ok) return { ...base, error: describeFailure(res) };
 
     const json = (await res.json()) as GitHubRelease;
     const tag = typeof json.tag_name === "string" ? json.tag_name : null;
@@ -157,8 +176,7 @@ export async function listDeploReleases(): Promise<{
     );
 
     if (res.status === 404) return { releases: [] }; // nothing published yet
-    if (!res.ok)
-      return { releases: [], error: `GitHub API returned ${res.status}` };
+    if (!res.ok) return { releases: [], error: describeFailure(res) };
 
     const json = (await res.json()) as GitHubRelease[];
     if (!Array.isArray(json)) return { releases: [] };
