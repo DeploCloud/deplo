@@ -6,8 +6,6 @@ import {
   Plus,
   ChevronDown,
   Rocket,
-  Sparkles,
-  LayoutTemplate,
   FolderPlus,
   Boxes,
   Database,
@@ -20,9 +18,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -35,11 +30,7 @@ import { CreateFolderDialog } from "@/components/apps/create-folder-dialog";
 import { CreateProjectDialog } from "@/components/apps/create-project-dialog";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
-import {
-  newAppHref,
-  templatesHref,
-  type OverviewPlacement,
-} from "@/lib/overview-links";
+import { newAppHref, type OverviewPlacement } from "@/lib/overview-links";
 
 /**
  * Overview "Add new" menu: a single entry point to create an app, a database, a
@@ -123,30 +114,15 @@ export function AddNewMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
+          {/* Flat, not a submenu: the fork it used to ask about is the wizard's
+              own first step, which offers the five sources AND the catalogue. */}
           {canCreateApp && (
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="cursor-pointer">
+            <DropdownMenuItem asChild>
+              <Link href={newAppHref(placement)} className="cursor-pointer">
                 <Rocket className="size-4" />
                 New app
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem asChild>
-                  <Link href={newAppHref(placement)} className="cursor-pointer">
-                    <Sparkles className="size-4" />
-                    From Scratch
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link
-                    href={templatesHref(placement)}
-                    className="cursor-pointer"
-                  >
-                    <LayoutTemplate className="size-4" />
-                    From Template
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+              </Link>
+            </DropdownMenuItem>
           )}
           {canCreateDatabase && (
             <DropdownMenuItem asChild>

@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { ArrowRight, LayoutTemplate } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { veilProps } from "@/components/templates/veil";
 import { SOURCE_TABS, type SourceTab } from "@/components/apps/source-tabs";
@@ -14,9 +17,12 @@ import { cn } from "@/lib/utils";
 export function SourceTiles({
   value,
   onSelect,
+  templatesHref,
 }: {
   value: DeploySource | null;
   onSelect: (source: DeploySource) => void;
+  /** The catalogue, carrying this wizard's placement. */
+  templatesHref: string;
 }) {
   const lead = SOURCE_TABS.slice(0, 2);
   const rest = SOURCE_TABS.slice(2);
@@ -46,7 +52,33 @@ export function SourceTiles({
           />
         ))}
       </div>
+      <TemplateTile href={templatesHref} />
     </div>
+  );
+}
+
+/**
+ * The sixth way in, and the only one that is not a source: a template becomes a
+ * compose App, so it leaves for the catalogue instead of selecting one here - a link
+ * outside the radio group, in the platform's own ink rather than a brand's.
+ */
+function TemplateTile({ href }: { href: string }) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none"
+    >
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground ring-1 ring-border">
+        <LayoutTemplate className="size-4.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">Template</span>
+        <span className="mt-1 block text-xs leading-snug text-muted-foreground">
+          Start from a ready-made stack.
+        </span>
+      </span>
+      <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
+    </Link>
   );
 }
 

@@ -61,6 +61,7 @@ import {
   useStepSwap,
 } from "@/components/apps/wizard/wizard-card";
 import { SourceMark, SourceTiles } from "@/components/apps/wizard/source-tiles";
+import { templatesHref } from "@/lib/overview-links";
 import { ComposeDialog } from "@/components/apps/wizard/compose-dialog";
 import {
   EnvDraftDialog,
@@ -805,6 +806,7 @@ export function NewAppWizard({
                 setSource(next);
                 go("details", "forward");
               }}
+              templatesHref={templatesHref(placement)}
             />
           </WizardCard>
         ) : step === "details" ? (

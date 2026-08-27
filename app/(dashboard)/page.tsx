@@ -444,7 +444,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
                     <Button asChild>
                       <Link href={newAppHref(placement)}>
                         <Plus className="size-4" />
-                        Import App
+                        New app
                       </Link>
                     </Button>
                     <Button asChild variant="outline">
