@@ -430,7 +430,7 @@ export function NotificationsPanel({
               )}
             </div>
 
-            <DialogFooter className="items-center gap-1.5 border-t border-border p-4 sm:justify-between">
+            <DialogFooter className="items-center gap-1.5 border-t border-border p-4">
               <div className="flex flex-wrap items-center gap-1.5">
                 {/* Only in the add flow: picking a kind replaced the picker
                     with this form, so there is a screen to go back to. An

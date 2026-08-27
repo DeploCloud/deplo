@@ -95,7 +95,7 @@ export function UnsavedChangesGuard({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <DialogFooter className="sm:justify-between">
+        <DialogFooter>
           <Button variant="outline" onClick={() => setPendingHref(null)}>
             {cancelLabel}
           </Button>

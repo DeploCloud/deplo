@@ -440,7 +440,7 @@ export function TwoFactorWizard({
             </div>
           </div>
 
-          <DialogFooter className="sm:justify-between">
+          <DialogFooter>
             <Button
               type="button"
               variant="ghost"

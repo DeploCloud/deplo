@@ -130,17 +130,33 @@ const DialogHeader = ({
 );
 DialogHeader.displayName = "DialogHeader";
 
+/**
+ * A footer of exactly TWO controls is the one-primary-one-secondary shape, and
+ * there the secondary (Cancel) sits at the far LEFT, apart from the action it
+ * is not. Anything else - a third button, a hint beside the buttons - keeps
+ * them together on the right, where a row of peers belongs.
+ *
+ * Counted with `toArray`, which drops the null a `{cond && <Button/>}` leaves
+ * behind, so a conditional button that is absent does not split the row.
+ * A caller that needs the other shape passes `sm:justify-end` and wins.
+ */
 const DialogFooter = ({
   className,
+  children,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+      "flex flex-col-reverse gap-2 sm:flex-row",
+      React.Children.toArray(children).length === 2
+        ? "sm:justify-between"
+        : "sm:justify-end",
       className,
     )}
     {...props}
-  />
+  >
+    {children}
+  </div>
 );
 DialogFooter.displayName = "DialogFooter";
 

@@ -394,7 +394,7 @@ export function ImageCropDialog({
             />
             <ZoomIn className="size-4 shrink-0 text-muted-foreground" />
           </div>
-          <DialogFooter className="sm:justify-between">
+          <DialogFooter>
             <Button
               variant="ghost"
               className="text-muted-foreground"

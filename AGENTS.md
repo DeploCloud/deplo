@@ -514,6 +514,14 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `Button` defaults to `type="button"`, so Cancel never submits by accident; a raw `<button>` you
   add inside a form must spell out `type="button"` itself. Pattern reference:
   `components/apps/create-folder-dialog.tsx`.
+- **A dialog footer with exactly two controls SPLITS: the secondary far left, the primary far
+  right.** Cancel is not a peer of the thing it cancels, and sitting next to it is how a stray
+  click lands on the wrong one. Any other footer - a third button, a hint beside the buttons -
+  keeps them together on the right, where a row of peers belongs. **`DialogFooter` does this
+  itself**, by counting its children (`React.Children.toArray`, so a `{cond && <Button/>}` that
+  renders nothing does not count): never hand it `sm:justify-between`, and pass `sm:justify-end`
+  only to opt a two-control footer out. A primary that appears on a condition would move the
+  secondary across the footer, so mount it always and disable it instead.
 - **Status is shown LIVE** via `AppStatusBadge`/`AppStatusDot` (a `useLiveStatus`
   subscription), not the raw stored `status`. `idle`/`stopped` render **grey ("Stopped")**; red is
   reserved for `error`/`failed`.

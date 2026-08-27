@@ -301,7 +301,7 @@ function CronJobRow({
               finish.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="sm:justify-between">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDelete(false)}>
               Cancel
             </Button>

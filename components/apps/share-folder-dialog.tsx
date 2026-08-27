@@ -3,7 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Search, Check, X } from "lucide-react";
+import { Search, Check, Loader2, X } from "lucide-react";
+
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -538,18 +540,25 @@ export function ShareFolderDialog({
             >
               Close
             </Button>
-            {picked && (
-              <Button type="submit" disabled={pending}>
-                {pending ? (
-                  "Sharing…"
-                ) : (
-                  <>
-                    <Check className="size-4" />
-                    Share
-                  </>
+            {/* Always mounted, disabled until there is someone to share with:
+                a button that appears on the pick would move Close across the
+                footer, and the disabled state says the action exists. */}
+            <Button type="submit" disabled={pending || !picked}>
+              <span className="grid place-items-center">
+                <span
+                  className={cn(
+                    "col-start-1 row-start-1 flex items-center gap-2",
+                    pending && "invisible",
+                  )}
+                >
+                  <Check className="size-4" />
+                  Share
+                </span>
+                {pending && (
+                  <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
                 )}
-              </Button>
-            )}
+              </span>
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

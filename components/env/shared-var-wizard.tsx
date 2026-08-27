@@ -475,7 +475,7 @@ export function SharedVarDialog({
             )}
           </div>
 
-          <DialogFooter className="sm:justify-between">
+          <DialogFooter>
             <Button
               variant="ghost"
               onClick={() => setStep(steps[index - 1])}

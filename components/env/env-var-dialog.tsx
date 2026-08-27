@@ -609,7 +609,7 @@ function SharedTab({
       </div>
 
       {/* Each toggle already saved itself - Done just closes, it doesn't commit. */}
-      <DialogFooter className="border-t border-border px-6 py-4 sm:justify-between">
+      <DialogFooter className="border-t border-border px-6 py-4">
         <Button variant="outline" asChild>
           <Link href="/variables?tab=shared">
             Create &amp; manage

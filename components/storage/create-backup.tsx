@@ -406,7 +406,7 @@ export function CreateBackup({
             )}
           </AnimatedHeight>
 
-          <DialogFooter className="flex-row items-center justify-between sm:justify-between">
+          <DialogFooter className="flex-row items-center justify-between">
             <Button
               type="button"
               variant="ghost"
