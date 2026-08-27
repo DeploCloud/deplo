@@ -35,6 +35,7 @@ import {
   listDatabases,
   deleteDatabase,
   dbVolumeHostName,
+  updateDatabase,
   updateDatabaseResources,
   updateDatabaseImage,
   restartDatabase,
@@ -78,6 +79,14 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
+      // Holds the Capability but not the instance grant - an owner holds
+      // canExposePorts implicitly, so only a member can prove that gate.
+      {
+        id: USER_MEMBER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "configure_databases"],
+      },
     ],
   });
   await seedServer(db);
@@ -85,6 +94,9 @@ beforeEach(async () => {
 
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+
+/** A member who may configure databases but may not publish a host port. */
+const USER_MEMBER = "user_member";
 
 test("listDatabases is team-scoped, newest-first, and masks the connection string", async () => {
   await seedDatabase(db, { id: "db_old", name: "old" });
@@ -1076,4 +1088,26 @@ test("clearing the config files reroutes a stack with none", async () => {
   } finally {
     __setAgentConnectorForTest(undefined);
   }
+});
+
+test("publishing a port is refused without the canExposePorts grant", async () => {
+  await seedDatabase(db, { id: "db_1", name: "one" });
+
+  await runWithIdentity({ userId: USER_MEMBER, teamId: TEAM_A }, async () => {
+    await assert.rejects(
+      () =>
+        updateDatabase("db_1", {
+          exposedPublicly: true,
+          exposedPort: 25432,
+        }),
+      /permission to publish ports/i,
+    );
+  });
+
+  const [row] = await db
+    .select()
+    .from(databasesTable)
+    .where(eq(databasesTable.id, "db_1"));
+  assert.equal(row.exposedPublicly, false);
+  assert.equal(row.exposedPort, null);
 });
