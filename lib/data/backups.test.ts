@@ -34,6 +34,7 @@ import {
   deleteBackup,
   deleteBackupRun,
   downloadBackupArtifact,
+  getDatabaseBackupSummary,
   listBackupRuns,
   listBackups,
   reconcileInFlightBackupRuns,
@@ -971,5 +972,85 @@ test("listBackups carries the size of the newest artifact each schedule still ho
     assert.equal(byId.get("bkp_1")!.lastSizeBytes, 4096);
     // Never run: null, not zero - "no backup yet" is not "an empty backup".
     assert.equal(byId.get("bkp_2")!.lastSizeBytes, null);
+  });
+});
+
+test("getDatabaseBackupSummary carries only this database's schedules and runs", async () => {
+  await seedDatabase(db, { id: "db_2", name: "other" });
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
+  await seedBackup(db, {
+    id: "bkp_other",
+    destinationId: "s3_1",
+    databaseId: "db_2",
+  });
+  await seedRun(db, {
+    id: "r_1",
+    backupId: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    startedAt: "2026-02-01T00:00:00.000Z",
+  });
+  // The neighbour's run is newer; reading db_1 must not pick it up.
+  await seedRun(db, {
+    id: "r_other",
+    backupId: "bkp_other",
+    destinationId: "s3_1",
+    databaseId: "db_2",
+    startedAt: "2026-03-01T00:00:00.000Z",
+  });
+
+  await asUser1(async () => {
+    const s = await getDatabaseBackupSummary("db_1");
+    assert.deepEqual(
+      s.schedules.map((b) => b.id),
+      ["bkp_1"],
+    );
+    assert.equal(s.lastRunAt, "2026-02-01T00:00:00.000Z");
+    assert.equal(s.lastStatus, "success");
+  });
+});
+
+test("getDatabaseBackupSummary is empty for a database with nothing", async () => {
+  await asUser1(async () => {
+    const s = await getDatabaseBackupSummary("db_1");
+    assert.deepEqual(s.schedules, []);
+    // null, not a zero date: "nothing has run" is not "it ran at the epoch".
+    assert.equal(s.lastRunAt, null);
+    assert.equal(s.lastStatus, null);
+  });
+});
+
+test("getDatabaseBackupSummary counts an ad-hoc run as the last run", async () => {
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
+  await seedRun(db, {
+    id: "r_sched",
+    backupId: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    startedAt: "2026-02-01T00:00:00.000Z",
+  });
+  // backupId null = someone pressed "Run backup now". Reading the SCHEDULES
+  // alone would still say the last run was the scheduled one.
+  await seedRun(db, {
+    id: "r_adhoc",
+    backupId: null,
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    startedAt: "2026-02-02T00:00:00.000Z",
+    status: "failed",
+  });
+
+  await asUser1(async () => {
+    const s = await getDatabaseBackupSummary("db_1");
+    assert.equal(s.lastRunAt, "2026-02-02T00:00:00.000Z");
+    assert.equal(s.lastStatus, "failed");
   });
 });
