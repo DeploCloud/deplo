@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases";
+import { getDatabaseBackupSummary } from "@/lib/data/backups";
+import { getDatabaseMetrics } from "@/lib/data/container-metrics";
 import { getServerById } from "@/lib/data/servers";
-import { hasCapability } from "@/lib/membership";
+import { canExposePorts, currentCapabilities } from "@/lib/membership";
 import { DatabaseOverview } from "@/components/storage/database-overview";
+import { DataStat } from "@/components/storage/database-stats";
+import { DatabaseRelabelNotice } from "@/components/storage/database-health-stat";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
 
 export default async function DatabaseOverviewPage(
@@ -12,14 +16,16 @@ export default async function DatabaseOverviewPage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  // `revealConnection` is gated on manage_infra; without it the connection
-  // string stays masked with no reveal affordance (cosmetic - the mutation is
-  // the real gate).
-  const [server, canReveal, canControl] = await Promise.all([
+  const [server, caps, mayExposePorts, backups, metrics] = await Promise.all([
     getServerById(db.serverId),
-    hasCapability("reveal_secrets"),
-    hasCapability("control_databases"),
+    // One membership read instead of four hasCapability() calls.
+    currentCapabilities(),
+    canExposePorts(),
+    getDatabaseBackupSummary(db.id),
+    // null when the viewer lacks view_metrics - that null IS the gate.
+    getDatabaseMetrics(db.id),
   ]);
+  const can = new Set(caps);
 
   return (
     <div className="space-y-6">
@@ -31,12 +37,26 @@ export default async function DatabaseOverviewPage(
         id={db.id}
         name={db.name}
         error={db.dataCopyError}
-        canAccept={canControl}
+        canAccept={can.has("control_databases")}
       />
+      <DatabaseRelabelNotice id={db.id} status={db.status} />
       <DatabaseOverview
         db={db}
         serverName={server?.name ?? db.serverId}
-        canReveal={canReveal}
+        serverHost={server?.host ?? server?.ip ?? ""}
+        canReveal={can.has("reveal_secrets")}
+        canConfigure={can.has("configure_databases")}
+        canExposePorts={mayExposePorts}
+        canViewBackups={can.has("manage_backups")}
+        backups={backups}
+        dataStat={
+          <DataStat
+            db={db}
+            metrics={metrics}
+            bytes={null}
+            href={`/storage/databases/${db.id}/monitoring`}
+          />
+        }
       />
     </div>
   );

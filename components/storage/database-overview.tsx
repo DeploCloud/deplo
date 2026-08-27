@@ -1,119 +1,105 @@
-"use client";
-
 import * as React from "react";
-import { Server as ServerIcon, TriangleAlert } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { SettingsShortcut } from "@/components/shared/settings-shortcut";
+import { Server as ServerIcon } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
-import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
-import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
+import { DatabaseNetworkingCard } from "@/components/storage/database-networking-card";
+import { DatabaseHealthStat } from "@/components/storage/database-health-stat";
+import { BackupsStat } from "@/components/storage/database-stats";
 import { timeAgoShort } from "@/lib/utils";
 import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
+import type { DatabaseBackupSummary } from "@/lib/data/backups";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
- * The database detail Overview: the connection string as a click-to-reveal chip
- * (the same one the Variables page uses for a value), the create-only engine
- * facts, network/exposure, a LIVE data size and container summary from the runtime
+ * The database Overview: what it is and how to reach it, side by side, with the
+ * one control worth having here (publishing the port) inline.
+ * https://deplo.build/docs/guides/data/databases
  */
 export function DatabaseOverview({
   db,
   serverName,
+  serverHost,
   canReveal,
+  canConfigure,
+  canExposePorts,
+  canViewBackups,
+  backups,
+  dataStat,
 }: {
   db: DatabaseDTO;
   serverName: string;
-  /** The viewer holds `manage_infra` - the capability `revealConnection` needs. */
+  serverHost: string;
+  /** The viewer holds `reveal_secrets` - what `revealConnection` needs. */
   canReveal: boolean;
+  canConfigure: boolean;
+  canExposePorts: boolean;
+  canViewBackups: boolean;
+  backups: DatabaseBackupSummary;
+  /** Streamed in its own boundary: measuring a volume walks it. */
+  dataStat: React.ReactNode;
 }) {
-  const status = useLiveDatabaseStatus(db.status);
-  const runtime = useDatabaseRuntime(db.id, { enabled: status === "running" });
   const creds = ENGINE_CREDS[db.type];
-
-  // A database the row calls running but the agent can't see any container for
-  // was almost certainly provisioned before the deplo.* labels existed - the
-  // agent's label check finds nothing. Redeploy stamps the labels.
-  const needsRelabel =
-    status === "running" &&
-    !!runtime &&
-    !runtime.unreachable &&
-    runtime.total === 0;
 
   return (
     <div className="space-y-5">
-      {needsRelabel && (
-        <div className="flex items-start gap-2 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-3 text-sm">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
-          <div>
-            <p className="font-medium">Redeploy to enable live tools</p>
-            <p className="mt-1 text-muted-foreground">
-              This database was created before live status, logs and the
-              terminal were available. Click{" "}
-              <strong className="font-medium text-foreground">Redeploy</strong>{" "}
-              above to enable them - the data volume is preserved.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <Card>
-        <CardContent className="space-y-4 p-5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground">Connection string</p>
-              <SettingsShortcut
-                href={`/storage/databases/${db.id}/settings/connection`}
-                label="Connection settings"
-                className="-my-1.5"
-              />
-            </div>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Connection</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <DatabaseConnectionString
               id={db.id}
               masked={db.connectionStringMasked}
               canReveal={canReveal}
             />
-          </div>
-
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-            <Field label="Engine">
-              {/* Engine display name, not the raw id - `capitalize` used to
-                  render "Mysql · V8.4" (it title-cases the version's "v" too). */}
-              <span>
-                {DB_NAMES[db.type] ?? db.type} · v{db.version}
-              </span>
-            </Field>
-            {creds.username && (
-              <Field label="Username">
-                <code className="font-mono text-xs">{db.username}</code>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              <Field label="Engine">
+                {/* Display name, not the raw id - `capitalize` used to render
+                    "Mysql · V8.4" (it title-cases the version's "v" too). */}
+                <span>
+                  {DB_NAMES[db.type] ?? db.type} · v{db.version}
+                </span>
               </Field>
-            )}
-            {creds.dbName && (
-              <Field label="Database">
-                <code className="font-mono text-xs">{db.dbName}</code>
-              </Field>
-            )}
-            <Field label="Server">
-              <span className="flex items-center gap-1">
-                <ServerIcon className="size-3.5 text-muted-foreground" />
-                {serverName}
-              </span>
-            </Field>
-            <Field label="Endpoint">
-              <code className="font-mono text-xs">
-                {db.host}:{db.port}
-              </code>
-            </Field>
-            <Field label="Exposure">
-              {db.exposedPublicly && db.exposedPort ? (
-                <span>Public · port {db.exposedPort}</span>
-              ) : (
-                <span className="text-muted-foreground">Internal only</span>
+              {creds.username && (
+                <Field label="Username">
+                  <code className="font-mono text-xs">{db.username}</code>
+                </Field>
               )}
-            </Field>
-            <Field label="Created">{timeAgoShort(db.createdAt)}</Field>
-          </dl>
-        </CardContent>
-      </Card>
+              {creds.dbName && (
+                <Field label="Database">
+                  <code className="font-mono text-xs">{db.dbName}</code>
+                </Field>
+              )}
+              <Field label="Server">
+                <span className="flex items-center gap-1">
+                  <ServerIcon className="size-3.5 text-muted-foreground" />
+                  {serverName}
+                </span>
+              </Field>
+              <Field label="Created">{timeAgoShort(db.createdAt)}</Field>
+            </dl>
+          </CardContent>
+        </Card>
+
+        <DatabaseNetworkingCard
+          db={db}
+          serverHost={serverHost}
+          canExposePorts={canExposePorts}
+          canConfigure={canConfigure}
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <DatabaseHealthStat id={db.id} status={db.status} />
+        {dataStat}
+        <BackupsStat
+          summary={backups}
+          href={
+            canViewBackups ? `/storage/databases/${db.id}/backups` : undefined
+          }
+        />
+      </div>
     </div>
   );
 }
