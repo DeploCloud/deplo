@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Archive, Hammer, Plus, ServerCog } from "lucide-react";
+import { Plus, ServerCog } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,14 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
-import { BetaChip } from "@/components/shared/beta-chip";
 import { gqlAction } from "@/lib/graphql-client";
 import {
-  AccessOption,
   ServerTeamAccess,
   type ServerAccess,
   type TeamOption,
 } from "./server-team-access";
+import { ServerRoleOptions } from "./server-role-options";
 
 /**
  * Register a remote server. No SSH-in: the operator names the host and gets a
@@ -212,33 +211,11 @@ export function AddServer({
                 >
                   What this server is for
                 </FieldLabel>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <AccessOption
-                    icon={ServerCog}
-                    title="Everything"
-                    description="Runs apps and builds them"
-                    selected={role === "everything"}
-                    disabled={pending}
-                    onSelect={() => setRole("everything")}
-                  />
-                  <AccessOption
-                    icon={Hammer}
-                    title="Only build"
-                    description="Builds for other servers"
-                    selected={role === "build"}
-                    disabled={pending}
-                    onSelect={() => setRole("build")}
-                    badge={<BetaChip />}
-                  />
-                  <AccessOption
-                    icon={Archive}
-                    title="Only backups"
-                    description="Holds backup files"
-                    selected={role === "storage"}
-                    disabled={pending}
-                    onSelect={() => setRole("storage")}
-                  />
-                </div>
+                <ServerRoleOptions
+                  value={role}
+                  onChange={setRole}
+                  disabled={() => pending}
+                />
                 {role !== "everything" && (
                   <p className="text-xs text-muted-foreground">
                     {role === "build"

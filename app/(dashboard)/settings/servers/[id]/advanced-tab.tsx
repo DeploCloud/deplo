@@ -4,7 +4,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Archive,
   Check,
   Clock,
   Hammer,
@@ -14,7 +13,6 @@ import {
   KeyRound,
   Loader2,
   RefreshCw,
-  ServerCog,
   ShieldAlert,
   Sparkles,
   Trash2,
@@ -40,7 +38,10 @@ import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { TimezonePicker } from "@/components/servers/timezone-picker";
-import { AccessOption } from "@/components/servers/server-team-access";
+import {
+  ServerRoleOptions,
+  type ServerRole,
+} from "@/components/servers/server-role-options";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { gqlAction } from "@/lib/graphql-client";
 import { regenerateNipDomain } from "@/lib/nip-suggestion";
@@ -1182,7 +1183,7 @@ function DangerZone({ server }: { server: ServerSummary }) {
               those first.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="sm:justify-between">
+          <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setConfirm(false)}
@@ -1307,33 +1308,14 @@ function ServerRolePanel({ server }: { server: ServerSummary }) {
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={save}>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <AccessOption
-              icon={ServerCog}
-              title="Everything"
-              description="Runs apps and builds them"
-              selected={role === "everything"}
-              disabled={pending || stuckOnStorage}
-              onSelect={() => setRole("everything")}
-            />
-            <AccessOption
-              icon={Hammer}
-              title="Only build"
-              description="Builds for other servers"
-              selected={role === "build"}
-              disabled={pending || stuckOnStorage}
-              onSelect={() => setRole("build")}
-              badge={<BetaChip />}
-            />
-            <AccessOption
-              icon={Archive}
-              title="Only backups"
-              description="Holds backup files"
-              selected={role === "storage"}
-              disabled={pending}
-              onSelect={() => setRole("storage")}
-            />
-          </div>
+          <ServerRoleOptions
+            value={role}
+            onChange={setRole}
+            // A host installed without Docker can only hold backups.
+            disabled={(r: ServerRole) =>
+              r === "storage" ? pending : pending || stuckOnStorage
+            }
+          />
           {stuckOnStorage && (
             <Badge variant="warning">
               This server was installed without Docker, so it can only hold

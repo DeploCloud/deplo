@@ -4,6 +4,7 @@ import * as React from "react";
 import { Check, Globe, Users } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FieldLabel } from "@/components/ui/info-tip";
+import { veilProps } from "@/components/templates/veil";
 import { cn } from "@/lib/utils";
 
 export interface TeamOption {
@@ -112,6 +113,7 @@ export function AccessOption({
   disabled,
   onSelect,
   badge,
+  accent,
 }: {
   icon: React.ElementType;
   title: string;
@@ -121,7 +123,17 @@ export function AccessOption({
   onSelect: () => void;
   /** A short chip beside the title, e.g. "Beta". */
   badge?: React.ReactNode;
+  /**
+   * Give the option a colour of its own: the icon wears the token, the card
+   * wears the same hue as a wash. Omitted, the option stays neutral - which is
+   * right where the choice is one thing or its opposite.
+   */
+  accent?: { hue: number; iconClassName: string };
 }) {
+  // The wash the template store, the MCP wizard and the deploy sources share.
+  const veil = accent
+    ? veilProps({ hue: accent.hue }, selected ? "on" : "hover")
+    : {};
   return (
     <button
       type="button"
@@ -129,16 +141,20 @@ export function AccessOption({
       aria-checked={selected}
       disabled={disabled}
       onClick={onSelect}
+      style={veil.style}
       className={cn(
         "flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
         selected
-          ? "border-primary bg-accent"
+          ? accent
+            ? "border-primary ring-1 ring-primary/60"
+            : "border-primary bg-accent"
           : "border-border hover:bg-accent/50",
         disabled && "cursor-not-allowed opacity-50",
+        veil.className,
       )}
     >
       <span className="flex items-center gap-1.5 text-sm font-medium">
-        <Icon className="size-4" />
+        <Icon className={cn("size-4", accent?.iconClassName)} />
         {title}
         {badge}
         {selected && <Check className="ml-auto size-4 text-primary" />}
