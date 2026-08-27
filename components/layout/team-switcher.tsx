@@ -267,7 +267,7 @@ function TeamRow({
                   "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
               )}
             >
-              <Pencil className="size-3.5" />
+              <Pencil className="size-3" />
             </button>
           )}
         </span>
