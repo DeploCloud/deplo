@@ -19,7 +19,7 @@ import {
   coolifyServer,
   parseCoolifyFqdns,
 } from "./map";
-import { parseEnvBlob } from "../map";
+import { mapMounts, parseEnvBlob } from "../map";
 import type { CoolifyApplication, CoolifyDatabase } from "./client";
 
 /**
@@ -195,6 +195,37 @@ test("coolifyMounts splits volumes, binds and files", () => {
   assert.equal(notes.length, 2);
   assert.match(notes[0], /mounted DIRECTORY/);
   assert.match(notes[1], /did not come with its contents/);
+});
+
+// The name on the host has to stay whole - it is what the data copy reads - and
+// the name the owner sees has to lose the panel's own id.
+test("a volume keeps its host name and loses the panel's id", () => {
+  const uuid = "q70abqiwnol18hhjwtxp1hnf";
+  const { mounts } = coolifyMounts(
+    {
+      persistent_storages: [
+        { uuid: "s1", name: `${uuid}-tinydata`, mount_path: "/data" },
+        { uuid: "s2", name: `${uuid}_underscored`, mount_path: "/var/lib/x" },
+        { uuid: "s3", name: "chosen-by-hand", mount_path: "/srv" },
+      ],
+    },
+    uuid,
+  );
+  assert.deepEqual(
+    mounts.map((m) => [m.volumeName, m.volumeAlias]),
+    [
+      [`${uuid}-tinydata`, "tinydata"],
+      [`${uuid}_underscored`, "underscored"],
+      ["chosen-by-hand", null],
+    ],
+  );
+
+  // And it is the alias that becomes the volume this app mounts here.
+  const { value } = mapMounts(mounts, { isCompose: false });
+  assert.deepEqual(
+    value.volumes.map((v) => v.name),
+    ["tinydata", "underscored", "chosen-by-hand"],
+  );
 });
 
 /* ---- environment variables ------------------------------------------ */

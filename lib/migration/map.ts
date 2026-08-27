@@ -1278,7 +1278,7 @@ export function mapMounts(
       if (opts.isCompose && composeMounts.has(mountPath.replace(/\/+$/, "")))
         continue;
       const base = volumeLabel(
-        m.volumeName ?? "",
+        m.volumeAlias ?? m.volumeName ?? "",
         volumeLabel(mountPath, "data"),
       );
       let name = base;

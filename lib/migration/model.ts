@@ -51,6 +51,9 @@ export interface SourceMount {
   type: "bind" | "volume" | "file";
   hostPath?: string | null;
   volumeName?: string | null;
+  /** The same volume without the panel's own id in front of it: what the owner
+   *  reads in Storage. `volumeName` stays the name on the SOURCE host. */
+  volumeAlias?: string | null;
   filePath?: string | null;
   content?: string | null;
   mountPath: string;

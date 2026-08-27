@@ -294,11 +294,29 @@ export function coolifyServiceFqdns(
 /* ------------------------------------------------------------------ */
 
 /**
+ * Coolify names a volume `<resource uuid>-<what you called it>`. The uuid is its
+ * own bookkeeping, and it would otherwise be the name in Storage here forever.
+ */
+function withoutResourceUuid(
+  name: string | undefined,
+  uuid: string | undefined,
+): string | null {
+  if (!name || !uuid) return null;
+  const head = name.slice(0, uuid.length);
+  const sep = name[uuid.length];
+  if (head !== uuid || (sep !== "-" && sep !== "_")) return null;
+  return name.slice(uuid.length + 1) || null;
+}
+
+/**
  * `GET /{kind}/{uuid}/storages` → the mounts the shared mapper reads. A row with
  * a `host_path` is a bind mount; without one, `name` is already the volume's real
  * name on the host, which is more than the other platform hands over.
  */
-export function coolifyMounts(st: CoolifyStorages | null | undefined): {
+export function coolifyMounts(
+  st: CoolifyStorages | null | undefined,
+  resourceUuid?: string,
+): {
   mounts: SourceMount[];
   notes: string[];
 } {
@@ -322,6 +340,7 @@ export function coolifyMounts(st: CoolifyStorages | null | undefined): {
             mountId: s.uuid ?? `cool-mnt-${n++}`,
             type: "volume",
             volumeName: s.name?.trim() || null,
+            volumeAlias: withoutResourceUuid(s.name?.trim(), resourceUuid),
             mountPath,
           },
     );

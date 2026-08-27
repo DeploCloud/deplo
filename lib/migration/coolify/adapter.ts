@@ -267,7 +267,7 @@ async function detail(
     resourceIndex(c),
   ]);
   const env = coolifyEnvBlob(envRows);
-  const { mounts } = coolifyMounts(storages);
+  const { mounts } = coolifyMounts(storages, id);
   // A variable the panel would not answer for arrives EMPTY. Said here, or the
   // report reads as a clean import of nine variables when four of them are gone.
   const envNotes =
@@ -367,7 +367,7 @@ async function serviceRuntime(
 ): Promise<ServiceRuntime> {
   const group = await resolveGroup(c, svc.kind, svc.id);
   const storages = await listStorages(c, group, svc.id);
-  const { mounts } = coolifyMounts(storages);
+  const { mounts } = coolifyMounts(storages, svc.id);
   const volumes = mounts
     .filter((m) => m.type === "volume" && m.volumeName)
     .map((m) => ({ name: m.volumeName!, mountPath: m.mountPath }));
