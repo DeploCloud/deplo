@@ -56,11 +56,6 @@ export function MigrationsTabs({
    * picking the SAME run twice still land in the field - the wizard reacts to
    * the object identity, and a bare string would look unchanged.
    */
-  const [prefill, setPrefill] = React.useState<{
-    url: string;
-    nonce: number;
-  } | null>(null);
-
   function selectTab(tab: string) {
     const next = new URLSearchParams(params.toString());
     if (tab === "migrate") next.delete("tab");
@@ -105,21 +100,11 @@ export function MigrationsTabs({
           isInstanceAdmin={isInstanceAdmin}
           canExposePorts={canExposePorts}
           resumable={resumable}
-          prefill={prefill}
         />
       </TabsContent>
 
       <TabsContent value="history">
-        <MigrationsHistory
-          runs={runs}
-          onUseAddress={(run) => {
-            setPrefill((p) => ({
-              url: run.sourceUrl,
-              nonce: (p?.nonce ?? 0) + 1,
-            }));
-            selectTab("migrate");
-          }}
-        />
+        <MigrationsHistory runs={runs} />
       </TabsContent>
     </Tabs>
   );

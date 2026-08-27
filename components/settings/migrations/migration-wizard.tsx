@@ -147,6 +147,8 @@ const SCAN = /* GraphQL */ `
         name
         sourceRole
         hasAccount
+        avatarUrl
+        avatarColor
         inTeam
       }
       projects {
@@ -272,7 +274,6 @@ export function MigrationWizard({
   isInstanceAdmin,
   canExposePorts,
   resumable,
-  prefill,
 }: {
   teamId: string;
   teamName: string;
@@ -291,7 +292,6 @@ export function MigrationWizard({
    * An address handed over from the History tab. The nonce is what makes
    * picking the same run twice still land in the field.
    */
-  prefill: { url: string; nonce: number } | null;
 }) {
   const router = useRouter();
 
@@ -346,15 +346,6 @@ export function MigrationWizard({
   const [inviting, setInviting] = React.useState(false);
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
   const [minting, setMinting] = React.useState(false);
-
-  // An address picked in History. Adjusted during RENDER rather than in an effect -
-  // React's own answer for "a prop changed, derive some state from it" - so the field
-  // is already filled on the first paint of the tab instead of flashing empty.
-  const [prefilled, setPrefilled] = React.useState(prefill?.nonce ?? 0);
-  if (prefill && prefill.nonce !== prefilled) {
-    setPrefilled(prefill.nonce);
-    setUrl(prefill.url);
-  }
 
   /**
    * What the RUN and the invites are sent with. It carries what the SCAN found,

@@ -19,20 +19,14 @@ import { MigrationConsole } from "./migration-console";
 import type { ImportRun } from "./types";
 import { SOURCE_COPY, SourceMark } from "./sources";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { UserAvatar } from "@/components/shared/user-avatar";
 
 /**
  * Every migration this team has run, and the report each one left behind. The
  * wizard next door is where you start one, so this tab never offers to.
  */
 
-export function MigrationsHistory({
-  runs,
-  onUseAddress,
-}: {
-  runs: ImportRun[];
-  /** Take that address back to the wizard. The key was never stored. */
-  onUseAddress: (run: ImportRun) => void;
-}) {
+export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
   const [open, setOpen] = React.useState<ImportRun | null>(null);
 
   if (runs.length === 0)
@@ -82,8 +76,15 @@ export function MigrationsHistory({
                     dateStyle: "medium",
                     timeStyle: "short",
                   })}
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    by {r.actor}
+                  <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <UserAvatar
+                      name={r.actor}
+                      username={r.actorUsername}
+                      avatarColor={r.actorAvatarColor}
+                      avatarUrl={r.actorAvatarUrl}
+                      size="xs"
+                    />
+                    {r.actor}
                   </div>
                 </TableCell>
                 <TableCell>
@@ -101,23 +102,14 @@ export function MigrationsHistory({
                   </div>
                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setOpen(r)}
-                    >
-                      <ScrollText className="size-4" />
-                      Show log
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onUseAddress(r)}
-                    >
-                      Use this address
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setOpen(r)}
+                  >
+                    <ScrollText className="size-4" />
+                    Show log
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
