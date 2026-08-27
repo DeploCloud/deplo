@@ -2188,15 +2188,15 @@ async function importAppService(
   const argEntries = parseEnvBlob(
     (detail as SourceApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));
-  // A variable whose NAME says it is a credential comes across write-only.
+  // A variable that looks like a credential comes across write-only.
   const env = [...envEntries, ...argEntries].map((e) => ({
     ...e,
-    type: migratedEnvType(e.key),
+    type: migratedEnvType(e.key, e.value),
   }));
   const secrets = env.filter((e) => e.type === "secret").map((e) => e.key);
   if (secrets.length > 0)
     notes.push(
-      `${secrets.length} variable(s) arrived as secrets, because their names say they hold credentials: ${secrets
+      `${secrets.length} variable(s) arrived as secrets, because they look like credentials: ${secrets
         .slice(0, 8)
         .join(
           ", ",
@@ -3226,9 +3226,9 @@ async function importSharedVars(
       await saveSharedVar({
         key,
         value,
-        // Write-only when the name says credential, exactly as a service's own
-        // variables are - see the service import.
-        type: migratedEnvType(key),
+        // Write-only when it looks like a credential, exactly as a service's
+        // own variables are - see the service import.
+        type: migratedEnvType(key, value),
         teamWide: opts.teamWide ?? false,
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,

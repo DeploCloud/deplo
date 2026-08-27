@@ -83,10 +83,31 @@ const SECRET_WORDS = new Set([
   "PASSPHRASE",
   "SALT",
   "PRIVATE",
+  // An address is a credential when it is the one that CARRIES the credential:
+  // a connection string, a DSN, a signed webhook endpoint. `NEXT_PUBLIC_*` and
+  // friends still come out plain on the veto below.
+  "URL",
+  "URI",
+  "DSN",
+  "CONNECTION",
+  "CONNECTIONSTRING",
+  "SIGNING",
+  "SIGNATURE",
+  "WEBHOOK",
+  "HMAC",
+  "SEED",
 ]);
 
 /** Words that say the value is the PUBLIC half, whatever else the name says. */
-const PUBLIC_WORDS = new Set(["PUBLIC", "PUB", "PUBLISHABLE", "ID"]);
+const PUBLIC_WORDS = new Set(["PUBLIC", "PUB", "PUBLISHABLE"]);
+
+/**
+ * A value that carries a credential whatever its name says: a URL with a
+ * `user:pass@`, or a PEM private key. The name heuristic can only ever cover the
+ * names people happen to use; this covers the rest.
+ */
+const CREDENTIAL_VALUE =
+  /^[a-z][a-z0-9+.-]*:\/\/[^/\s@]+:[^/\s@]+@|-----BEGIN [A-Z ]*PRIVATE KEY-----/i;
 
 export function looksLikeSecretKey(key: string): boolean {
   const parts = key
@@ -97,9 +118,14 @@ export function looksLikeSecretKey(key: string): boolean {
   return parts.some((p) => SECRET_WORDS.has(p));
 }
 
-/** The type a migrated variable lands with. */
-export function migratedEnvType(key: string): "plain" | "secret" {
-  return looksLikeSecretKey(key) ? "secret" : "plain";
+/** The type a migrated variable lands with - on its name, or on a value that is
+ *  self-evidently a credential. */
+export function migratedEnvType(
+  key: string,
+  value?: string,
+): "plain" | "secret" {
+  if (looksLikeSecretKey(key)) return "secret";
+  return value && CREDENTIAL_VALUE.test(value.trim()) ? "secret" : "plain";
 }
 
 /**

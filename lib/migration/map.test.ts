@@ -21,6 +21,7 @@ import {
   mapDomains,
   mapLogo,
   looksLikeSecretKey,
+  migratedEnvType,
   mapMounts,
   mapResources,
   mapSource,
@@ -1971,6 +1972,12 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
     "SERVICE_PASSWORD_GHOST",
     "LD_SUPERUSER_PASSWORD",
     "AWS_SECRET_ACCESS_KEY",
+    // The credential-bearing half the ID veto used to hand out at the `view` floor.
+    "AWS_ACCESS_KEY_ID",
+    "DATABASE_URL",
+    "SENTRY_DSN",
+    "REDIS_CONNECTION_STRING",
+    "STRIPE_WEBHOOK_SIGNING_SECRET",
   ])
     assert.ok(looksLikeSecretKey(key), `${key} should be a secret`);
   for (const key of [
@@ -1978,11 +1985,24 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
     "PORT",
     "DATABASE_HOST",
     "NEXT_PUBLIC_STRIPE_KEY",
-    "AWS_ACCESS_KEY_ID",
+    "NEXT_PUBLIC_API_URL",
     "PUBLIC_KEY",
     "CLIENT_ID",
   ])
     assert.ok(!looksLikeSecretKey(key), `${key} should stay plain`);
+});
+
+test("migratedEnvType also reads a value that IS a credential", () => {
+  assert.equal(
+    migratedEnvType("MY_STORE", "postgres://joe:hunter2@db:5432/app"),
+    "secret",
+  );
+  assert.equal(
+    migratedEnvType("SERVER_PEM", "-----BEGIN RSA PRIVATE KEY-----\nMII..."),
+    "secret",
+  );
+  assert.equal(migratedEnvType("MY_STORE", "https://example.com/x"), "plain");
+  assert.equal(migratedEnvType("PORT", "3000"), "plain");
 });
 
 test("adaptComposeForDeplo takes the slash off a volume NAME", () => {
