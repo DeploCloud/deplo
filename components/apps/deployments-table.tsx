@@ -292,8 +292,9 @@ export function DeploymentsTable({
   /** Title/subtitle block rendered on the left of the header row, opposite the
    *  bulk-action buttons. Plain markup - passed straight through from the RSC page. */
   header?: React.ReactNode;
-  /** Rendered first in the header row's right-hand cluster, before the bulk
-   *  actions - an app's page puts its settings shortcut there. */
+  /** Rendered LAST in the header row's right-hand cluster, after the bulk
+   *  actions - an app's page puts its settings shortcut there, and a way to the
+   *  settings page belongs past the buttons that act on this one. */
   actions?: React.ReactNode;
   /** Show the owning-app column (the global page). Off on an app's page. */
   showApp?: boolean;
@@ -747,21 +748,19 @@ export function DeploymentsTable({
     showEnvFilter ||
     showDateFilter;
   const showStopAll = canManage && inProgressCount > 0;
-  // Bulk delete sits with the sort, not in the header: it acts on what the row
-  // above it narrowed down to.
   const showDeleteAll = canManage && selectableIds.length > 0;
-  const showFilters = showNarrowers || showSearch || showSort || showDeleteAll;
+  const showFilters = showNarrowers || showSearch || showSort;
 
   return (
     <div className="space-y-4">
-      {/* Header: title/subtitle on the left, `actions` then the bulk-action
-          buttons on the right. The buttons are hidden when the caller can't manage. */}
-      {(header || actions || showStopAll) && (
+      {/* Header: title/subtitle on the left, the bulk-action buttons then
+          `actions` on the right. The buttons are hidden when the caller can't
+          manage. */}
+      {(header || actions || showStopAll || showDeleteAll) && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">{header}</div>
-          {(actions || showStopAll) && (
+          {(actions || showStopAll || showDeleteAll) && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {actions}
               {showStopAll && (
                 <Button
                   variant="outline"
@@ -775,6 +774,18 @@ export function DeploymentsTable({
                   </span>
                 </Button>
               )}
+              {showDeleteAll && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setDeleteAllOpen(true)}
+                >
+                  <Trash2 className="size-4" />
+                  Delete all
+                </Button>
+              )}
+              {actions}
             </div>
           )}
         </div>
@@ -912,24 +923,13 @@ export function DeploymentsTable({
               Clear filters
             </Button>
           )}
-          {/* Delete all + the sort travel together to the right edge. */}
-          {(showDeleteAll || showSort) && (
+          {showSort && (
             <div
               className={cn(
                 "flex items-center gap-2",
                 showNarrowers && "sm:ml-auto",
               )}
             >
-              {showDeleteAll && (
-                <Button
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setDeleteAllOpen(true)}
-                >
-                  <Trash2 className="size-4" />
-                  Delete all
-                </Button>
-              )}
               {showSort && (
                 <Select value={sortDir} onValueChange={applySort}>
                   <SelectTrigger
