@@ -92,6 +92,7 @@ export function WizardStage({
  */
 export function WizardCard({
   title,
+  icon,
   description,
   meta,
   children,
@@ -104,6 +105,8 @@ export function WizardCard({
   pending = false,
 }: {
   title: string;
+  /** Rendered before the title - the mark of the source this step is about. */
+  icon?: React.ReactNode;
   description?: React.ReactNode;
   /** A line under the description - where the app lands, which template it is. */
   meta?: React.ReactNode;
@@ -120,10 +123,17 @@ export function WizardCard({
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm">
       <div className="px-6 pt-6 pb-4">
-        <h1 className="text-base font-semibold lg:text-lg">{title}</h1>
-        {description && (
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        )}
+        <div className="flex items-start gap-3">
+          {icon}
+          <div className="min-w-0 flex-1">
+            <h1 className="text-base font-semibold lg:text-lg">{title}</h1>
+            {description && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {description}
+              </p>
+            )}
+          </div>
+        </div>
         {meta && <div className="mt-3">{meta}</div>}
       </div>
       <div className="space-y-5 px-6 pb-6">{children}</div>

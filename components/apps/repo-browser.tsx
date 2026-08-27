@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldLabel } from "@/components/ui/info-tip";
+import { RepoSearchGraphic } from "@/components/apps/repo-search-graphic";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -378,7 +379,7 @@ export function RepoBrowser({
         </p>
       )}
 
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
+      <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
         {loadingRepos ? (
           REPO_SKELETON_WIDTHS.map((width, i) => (
             <div key={i} className="flex w-full items-center gap-2 px-3 py-2">
@@ -387,6 +388,9 @@ export function RepoBrowser({
           ))
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 p-4 text-center">
+            {/* Only for a search that found nothing: with no repositories at
+                all nothing was searched, and the message carries an action. */}
+            {repos.length > 0 && <RepoSearchGraphic className="size-20" />}
             <p className="text-sm text-muted-foreground">
               {repos.length === 0
                 ? (emptyMessage ?? "No repositories to show.")

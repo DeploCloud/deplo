@@ -60,7 +60,7 @@ import {
   WizardStage,
   useStepSwap,
 } from "@/components/apps/wizard/wizard-card";
-import { SourceTiles } from "@/components/apps/wizard/source-tiles";
+import { SourceMark, SourceTiles } from "@/components/apps/wizard/source-tiles";
 import { ComposeDialog } from "@/components/apps/wizard/compose-dialog";
 import {
   EnvDraftDialog,
@@ -798,7 +798,7 @@ export function NewAppWizard({
         {step === "source" ? (
           <WizardCard
             title="New app"
-            description="Where does it come from? Deplo builds it and configures Docker and Traefik for you."
+            description="Where does your code live? Deplo takes it from there and puts it online."
             meta={meta}
             backLabel="Cancel"
             onBack={onBack}
@@ -813,6 +813,11 @@ export function NewAppWizard({
               isTemplate
                 ? templateTitle(template!)
                 : `Deploy from ${sourceLabelFor(source!)}`
+            }
+            icon={
+              isTemplate ? undefined : (
+                <SourceMark tab={SOURCE_TABS.find((t) => t.id === source)!} />
+              )
             }
             description={
               isTemplate ? template!.description : detailsDescription(source!)
