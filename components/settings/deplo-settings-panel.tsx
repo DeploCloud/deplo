@@ -38,7 +38,6 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
-import { DeploInstanceGraphic } from "@/components/settings/deplo-instance-graphic";
 import {
   DeploUpdatesTab,
   type FleetSummary,
@@ -136,8 +135,7 @@ export function DeploSettingsPanel({
         </UnderlineTabsTrigger>
       </UnderlineTabsList>
 
-      <TabsContent value="general" className="space-y-4">
-        <InstanceHero settings={settings} />
+      <TabsContent value="general">
         {/* Direct grid children, so the address and the certificates share one
             row's height instead of each ending wherever its own content stops. */}
         <div className="grid gap-4 lg:grid-cols-2">
@@ -187,53 +185,6 @@ export function DeploSettingsPanel({
         />
       </TabsContent>
     </Tabs>
-  );
-}
-
-/**
- * What this instance IS, above the settings that change it: the version it runs,
- * the host it runs on, and the address it answers at.
- */
-function InstanceHero({ settings }: { settings: InstanceSettings }) {
-  return (
-    <Card>
-      <CardContent className="flex flex-col items-start gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-medium">
-              v{settings.version}
-            </span>
-            {/* Derived from the version, not a flag: the badge disappears on its
-                own the day 1.0.0 ships. */}
-            {settings.version.startsWith("0.") ? (
-              <Badge variant="secondary">Beta</Badge>
-            ) : null}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {settings.deploHostId ? (
-              <>
-                Runs on{" "}
-                <Link
-                  href={`/settings/servers/${settings.deploHostId}`}
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  {settings.deploHostName}
-                </Link>
-              </>
-            ) : (
-              "Runs on a server not added here yet"
-            )}
-            , and answers at{" "}
-            <span className="font-mono text-foreground">
-              {settings.panelUrl}
-            </span>
-          </p>
-        </div>
-        <div className="flex w-full min-w-0 items-center justify-center lg:flex-1">
-          <DeploInstanceGraphic className="max-h-20" />
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
