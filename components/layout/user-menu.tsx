@@ -66,17 +66,22 @@ export function UserMenu({ user }: { user: PublicUser }) {
           />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <div className="flex flex-col">
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel className="flex items-center gap-3 py-2">
+          <UserAvatar
+            name={user.name}
+            username={user.username}
+            avatarColor={user.avatarColor}
+            avatarUrl={user.avatarUrl}
+            size="xl"
+          />
+          <div className="flex min-w-0 flex-col">
             <span className="truncate text-sm font-medium text-foreground">
-              {user.name || `@${user.username}`}
+              {user.name || user.username}
             </span>
-            {user.name && user.name !== user.username && (
-              <span className="truncate text-xs text-muted-foreground">
-                @{user.username}
-              </span>
-            )}
+            <span className="truncate text-xs font-normal text-muted-foreground">
+              @{user.username}
+            </span>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
