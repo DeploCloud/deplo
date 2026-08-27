@@ -9,6 +9,7 @@ import {
   SETTINGS_NAV,
   appNav,
   appSettingsNav,
+  sidebarMenuFor,
   databaseNav,
   databaseSettingsNav,
   type NavItem,
@@ -92,26 +93,8 @@ export function SidebarNav({
   // The same sidebar shows one of four navigations depending on where you are: inside
   // an app it becomes that app's sub-menu; one level deeper, under that app's
   // /settings, its settings sub-menu; under the top-level /settings the settings
-  const appSlug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
-  // A database detail page swaps to its own sub-menu, one level deeper again
-  // under /settings - the DB twin of the app nav swap.
-  const dbId = pathname.match(/^\/storage\/databases\/([^/]+)/)?.[1] ?? null;
-  const inDbSettings =
-    dbId != null &&
-    /^\/storage\/databases\/[^/]+\/settings(?:\/|$)/.test(pathname);
-  // An app's own settings live one level deeper than its main nav, so the
-  // sidebar swaps again once you're under /apps/<slug>/settings.
-  const inAppSettings =
-    appSlug != null && /^\/apps\/[^/]+\/settings(?:\/|$)/.test(pathname);
-  const inSettings = pathname.startsWith("/settings");
-  const menu: "service-settings" | "service" | "settings" | "main" =
-    appSlug || dbId
-      ? inAppSettings || inDbSettings
-        ? "service-settings"
-        : "service"
-      : inSettings
-        ? "settings"
-        : "main";
+  const { appSlug, dbId, inAppSettings, inDbSettings, inSettings, menu } =
+    sidebarMenuFor(pathname);
 
   // Inside an app, the gate is what the viewer holds on THAT app (published by the
   // app layout), not the team-wide union this sidebar is handed - that union is

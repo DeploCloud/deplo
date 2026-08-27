@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+
+import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpen,
   PanelLeftClose,
@@ -11,6 +12,7 @@ import {
   Settings,
 } from "lucide-react";
 import { DeploLogo, DeploMark } from "@/components/logo";
+import { sidebarMenuFor } from "@/components/layout/nav-config";
 import { SidebarNav } from "./sidebar-nav";
 import { useSidebar } from "./sidebar-state";
 import { Button } from "@/components/ui/button";
@@ -41,6 +43,8 @@ export function Sidebar({
   isAdmin?: boolean;
 }) {
   const router = useRouter();
+  // The footer stands down inside a drill-in; the nav there has its own way out.
+  const { menu } = sidebarMenuFor(usePathname());
   const { collapsed, hydrated, width, dragging, toggle, startResize } =
     useSidebar();
   const [query, setQuery] = React.useState("");
@@ -137,42 +141,46 @@ export function Sidebar({
       {/* Outside the scroller: the manual and the way into Settings are both
           reachable from any page, however far down the nav has been scrolled.
           Settings sits here rather than in the workspace nav because it is a
-          way OUT of the workspace, not a place in it. */}
-      <div
-        className={cn(
-          "space-y-0.5 border-t border-border p-2",
-          collapsed && "px-1.5",
-        )}
-      >
-        <Tooltip delayDuration={collapsed ? 0 : 400}>
-          <TooltipTrigger asChild>
-            <a
-              href={docsUrl("docs.home")}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Documentation"
-              className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
-            >
-              <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
-              {!collapsed && "Documentation"}
-            </a>
-          </TooltipTrigger>
-          <TooltipContent side="right">Documentation</TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={collapsed ? 0 : 400}>
-          <TooltipTrigger asChild>
-            <Link
-              href="/settings"
-              aria-label="Settings"
-              className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
-            >
-              <Settings className="size-4 shrink-0 group-hover:text-foreground" />
-              {!collapsed && "Settings"}
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="right">Settings</TooltipContent>
-        </Tooltip>
-      </div>
+          way OUT of the workspace, not a place in it - and for the same reason
+          it is gone inside a drill-in, where the nav's own first row is the way
+          back and a second exit underneath only competes with it. */}
+      {menu === "main" && (
+        <div
+          className={cn(
+            "space-y-0.5 border-t border-border p-2",
+            collapsed && "px-1.5",
+          )}
+        >
+          <Tooltip delayDuration={collapsed ? 0 : 400}>
+            <TooltipTrigger asChild>
+              <a
+                href={docsUrl("docs.home")}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Documentation"
+                className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
+              >
+                <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
+                {!collapsed && "Documentation"}
+              </a>
+            </TooltipTrigger>
+            <TooltipContent side="right">Documentation</TooltipContent>
+          </Tooltip>
+          <Tooltip delayDuration={collapsed ? 0 : 400}>
+            <TooltipTrigger asChild>
+              <Link
+                href="/settings"
+                aria-label="Settings"
+                className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
+              >
+                <Settings className="size-4 shrink-0 group-hover:text-foreground" />
+                {!collapsed && "Settings"}
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right">Settings</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
 
       {/* Drag-to-resize handle on the right edge */}
       <div

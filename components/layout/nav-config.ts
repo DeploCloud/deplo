@@ -168,6 +168,42 @@ export const NAV: NavSection[] = [
   },
 ];
 
+/** Which of the four navigations the sidebar shows, and the ids it needs to
+ *  build it. One derivation, read by the nav AND by the sidebar's footer - which
+ *  hides itself in every drill-in, where the way back is the nav's own first row. */
+export function sidebarMenuFor(pathname: string): {
+  appSlug: string | null;
+  dbId: string | null;
+  inAppSettings: boolean;
+  inDbSettings: boolean;
+  inSettings: boolean;
+  menu: "main" | "service" | "service-settings" | "settings";
+} {
+  const appSlug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
+  const dbId = pathname.match(/^\/storage\/databases\/([^/]+)/)?.[1] ?? null;
+  const inAppSettings =
+    appSlug != null && /^\/apps\/[^/]+\/settings(?:\/|$)/.test(pathname);
+  const inDbSettings =
+    dbId != null &&
+    /^\/storage\/databases\/[^/]+\/settings(?:\/|$)/.test(pathname);
+  const inSettings = pathname.startsWith("/settings");
+  return {
+    appSlug,
+    dbId,
+    inAppSettings,
+    inDbSettings,
+    inSettings,
+    menu:
+      appSlug || dbId
+        ? inAppSettings || inDbSettings
+          ? "service-settings"
+          : "service"
+        : inSettings
+          ? "settings"
+          : "main",
+  };
+}
+
 /**
  * Settings navigation. The first item is a "back to dashboard" escape hatch.
  */

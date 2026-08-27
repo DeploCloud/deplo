@@ -8,6 +8,7 @@ import {
   databaseSettingsNav,
   SETTINGS_NAV,
   type AppNavFlags,
+  sidebarMenuFor,
 } from "./nav-config";
 
 /**
@@ -165,4 +166,26 @@ test("the Console chip follows the app's own switch, not just a running containe
   assert.ok(!labels(flags({ consoleEnabled: false })).includes("Console"));
   // On but stopped: nothing to attach to until it runs again.
   assert.ok(!labels(flags({ running: false })).includes("Console"));
+});
+
+test("the sidebar swaps to a sub-menu only where there is one", () => {
+  const at = (p: string) => sidebarMenuFor(p).menu;
+  // The workspace itself, and every page that is still the workspace.
+  assert.equal(at("/"), "main");
+  assert.equal(at("/deployments"), "main");
+  assert.equal(at("/storage"), "main");
+  // A drill-in, and the level below it.
+  assert.equal(at("/apps/shop"), "service");
+  assert.equal(at("/apps/shop/logs"), "service");
+  assert.equal(at("/apps/shop/settings"), "service-settings");
+  assert.equal(at("/apps/shop/settings/deployments"), "service-settings");
+  assert.equal(at("/storage/databases/db_1"), "service");
+  assert.equal(at("/storage/databases/db_1/settings"), "service-settings");
+  assert.equal(at("/settings"), "settings");
+  assert.equal(at("/settings/servers"), "settings");
+  // A path that merely STARTS like one is not one: the segment has to end.
+  assert.equal(at("/apps/shop/settings-preview"), "service");
+  assert.equal(sidebarMenuFor("/apps/shop/settings").appSlug, "shop");
+  assert.equal(sidebarMenuFor("/storage/databases/db_1").dbId, "db_1");
+  assert.equal(sidebarMenuFor("/").appSlug, null);
 });
