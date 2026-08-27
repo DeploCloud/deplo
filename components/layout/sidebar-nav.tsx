@@ -269,7 +269,7 @@ export function SidebarNav({
                       aria-label={item.label}
                       className={cn(
                         "group relative z-10 flex cursor-default items-center gap-2.5 rounded-md text-sm text-muted-foreground/50",
-                        collapsed ? "h-9 w-9 justify-center" : "px-3 py-1.5",
+                        collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
                       )}
                     >
                       {showIcon && <Icon className="size-4 shrink-0" />}
@@ -304,7 +304,7 @@ export function SidebarNav({
                     className={cn(
                       // relative z-10 keeps the label/icon above the sliding pill.
                       "group relative z-10 flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
-                      collapsed ? "h-9 w-9 justify-center" : "px-3 py-1.5",
+                      collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
                       active
                         ? "text-foreground"
                         : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5",

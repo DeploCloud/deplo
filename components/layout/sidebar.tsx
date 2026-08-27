@@ -3,7 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpen, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import {
+  BookOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings,
+} from "lucide-react";
 import { DeploLogo, DeploMark } from "@/components/logo";
 import { SidebarNav } from "./sidebar-nav";
 import { useSidebar } from "./sidebar-state";
@@ -22,6 +28,11 @@ import { docsUrl } from "@/lib/docs";
  * persists them; the width transition is suppressed during a drag and on first
  * paint so neither animates unexpectedly.
  */
+/** The two rows in the sidebar's footer wear one shape. */
+const FOOTER_LINK =
+  "group flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5";
+const FOOTER_LINK_COLLAPSED = "h-9 w-9 justify-center px-0";
+
 export function Sidebar({
   capabilities = [],
   isAdmin = false,
@@ -123,9 +134,16 @@ export function Sidebar({
         />
       </div>
 
-      {/* Outside the scroller: the manual is reachable from any page, however
-          far down the nav has been scrolled. */}
-      <div className={cn("border-t border-border p-2", collapsed && "px-1.5")}>
+      {/* Outside the scroller: the manual and the way into Settings are both
+          reachable from any page, however far down the nav has been scrolled.
+          Settings sits here rather than in the workspace nav because it is a
+          way OUT of the workspace, not a place in it. */}
+      <div
+        className={cn(
+          "space-y-0.5 border-t border-border p-2",
+          collapsed && "px-1.5",
+        )}
+      >
         <Tooltip delayDuration={collapsed ? 0 : 400}>
           <TooltipTrigger asChild>
             <a
@@ -133,16 +151,26 @@ export function Sidebar({
               target="_blank"
               rel="noreferrer"
               aria-label="Documentation"
-              className={cn(
-                "group flex cursor-pointer items-center gap-2.5 rounded-md text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5",
-                collapsed ? "h-9 w-9 justify-center" : "px-3 py-1.5",
-              )}
+              className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
             >
               <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
               {!collapsed && "Documentation"}
             </a>
           </TooltipTrigger>
           <TooltipContent side="right">Documentation</TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={collapsed ? 0 : 400}>
+          <TooltipTrigger asChild>
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
+            >
+              <Settings className="size-4 shrink-0 group-hover:text-foreground" />
+              {!collapsed && "Settings"}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right">Settings</TooltipContent>
         </Tooltip>
       </div>
 

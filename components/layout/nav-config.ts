@@ -161,12 +161,9 @@ export const NAV: NavSection[] = [
         tooltip: "Real-time server metrics",
         requires: "view_metrics",
       },
-      {
-        label: "Settings",
-        href: "/settings",
-        icon: Settings,
-        tooltip: "Account, servers, registries & tokens",
-      },
+      // Settings is NOT here: it sits in the sidebar's own footer, under
+      // Documentation, because it is a way OUT of the workspace rather than a
+      // place in it.
     ],
   },
 ];
