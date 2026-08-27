@@ -10,13 +10,7 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Combobox } from "@/components/shared/combobox";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
@@ -93,26 +87,41 @@ export function InstanceOwnerCard({
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-56 flex-1 space-y-2">
               <Label htmlFor="instance-successor">Hand it to</Label>
-              <Select value={successor} onValueChange={setSuccessor}>
-                <SelectTrigger id="instance-successor" className="w-full">
-                  <SelectValue placeholder="Pick an instance admin" />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidates.map((c) => (
-                    <SelectItem key={c.userId} value={c.userId}>
-                      <span className="flex items-center gap-2">
-                        <UserAvatar
-                          username={c.username}
-                          avatarColor={c.avatarColor}
-                          avatarUrl={c.avatarUrl}
-                          size="sm"
-                        />
-                        @{c.username}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Typed, not picked: an instance with many admins is a list to
+                  scroll, and the name is the thing the operator already knows. */}
+              <Combobox<OwnerCandidate>
+                id="instance-successor"
+                items={candidates}
+                value={successor}
+                onChange={setSuccessor}
+                getKey={(c) => c.userId}
+                matches={(c, q) => c.username.toLowerCase().includes(q)}
+                displayValue={(c) => `@${c.username}`}
+                placeholder="Pick an instance admin"
+                searchPlaceholder="Search admins"
+                emptyLabel={(hasItems) =>
+                  hasItems ? "No admin matches that" : "No other instance admin"
+                }
+                renderLeading={(c) => (
+                  <UserAvatar
+                    username={c.username}
+                    avatarColor={c.avatarColor}
+                    avatarUrl={c.avatarUrl}
+                    size="sm"
+                  />
+                )}
+                renderOption={(c) => (
+                  <span className="flex items-center gap-2">
+                    <UserAvatar
+                      username={c.username}
+                      avatarColor={c.avatarColor}
+                      avatarUrl={c.avatarUrl}
+                      size="sm"
+                    />
+                    @{c.username}
+                  </span>
+                )}
+              />
             </div>
             <Button
               variant="destructive"
