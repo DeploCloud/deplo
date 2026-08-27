@@ -2976,6 +2976,11 @@ type Mutation {
   moveMigrationServiceData(input: MigrationSourceInput!, runId: String!, sourceId: String!, sourceKind: String!): MigrationDataMoveResult
 
   """
+  Resolve the panel's own hostname and classify it the way a custom domain is classified: `valid` when its A records include this host's public IPv4, `cloudflare` when they are Cloudflare's anycast addresses and the origin cannot be read from DNS, `misconfigured` when it answers with something else, `pending` when it does not resolve, and `unknown` when there is nothing to check (a bare IP, or no host address on record). A mutation despite writing nothing, for the same reason panelHttps is one: it leaves the process.
+  """
+  panelDns: PanelDns
+
+  """
   Read how the panel is served off the proxy that publishes it, live. A mutation despite writing nothing, for the same reason serverCertificateAccounts is one: it dials a server.
   """
   panelHttps: PanelHttps
@@ -3715,6 +3720,13 @@ type PanelAddressImpact {
   sessionPeople: Int
   sessions: Int
   url: String
+}
+
+"""What DNS says about the address the panel answers on."""
+type PanelDns {
+  host: String
+  resolved: [String!]
+  status: String
 }
 
 """

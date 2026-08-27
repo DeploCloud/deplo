@@ -8,10 +8,12 @@ import {
   setPanelHttps,
   setGravatarEnabled,
   setLogMaxDays,
+  checkPanelDns,
   setPanelUrl,
   type CertificateAccount,
   type InstanceSettings,
   type PanelAddressImpact,
+  type PanelDns,
   type PanelHttps,
 } from "@/lib/data/instance-settings";
 
@@ -159,6 +161,15 @@ builder.queryFields((t) => ({
   }),
 }));
 
+const PanelDnsRef = builder.objectRef<PanelDns>("PanelDns").implement({
+  description: "What DNS says about the address the panel answers on.",
+  fields: (t) => ({
+    status: t.exposeString("status"),
+    host: t.exposeString("host"),
+    resolved: t.exposeStringList("resolved"),
+  }),
+});
+
 /* ------------------------------------------------------------------ */
 /* Mutations                                                           */
 /* ------------------------------------------------------------------ */
@@ -171,6 +182,13 @@ builder.mutationFields((t) => ({
       "Set the address this Deplo answers on, or pass no url to fall back to DEPLO_PUBLIC_URL. A bare domain becomes https://. The value is validated as a hostname with no path, no credentials and no shell metacharacters, because it is interpolated into copy-and-run strings such as a server's install command. On a Deplo that publishes itself through its own proxy this MOVES the panel's route too, and puts the old one back if the new address does not answer; DNS still has to point at the server first.",
     args: { url: t.arg.string({ required: false }) },
     resolve: (_r, { url }) => setPanelUrl(url ?? null),
+  }),
+  panelDns: t.field({
+    type: PanelDnsRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Resolve the panel's own hostname and classify it the way a custom domain is classified: `valid` when its A records include this host's public IPv4, `cloudflare` when they are Cloudflare's anycast addresses and the origin cannot be read from DNS, `misconfigured` when it answers with something else, `pending` when it does not resolve, and `unknown` when there is nothing to check (a bare IP, or no host address on record). A mutation despite writing nothing, for the same reason panelHttps is one: it leaves the process.",
+    resolve: () => checkPanelDns(),
   }),
   panelHttps: t.field({
     type: PanelHttpsRef,

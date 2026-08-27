@@ -64,6 +64,8 @@ import { instanceOwnerUserId } from "./instance-owner";
 // imports `getCurrentUser` from `lib/auth`, and `lib/auth` needs the flag to
 // build its own DTO - reading it here would close an import cycle.
 import { gravatarEnabled } from "../avatar";
+import { classifyDomainDns } from "../deploy/cloudflare";
+import { resolveHostIpv4 } from "./domains";
 
 /**
  * Instance-wide settings: the two facts about a Deplo that are neither a team's
@@ -333,6 +335,43 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
     deploHostName: host ? serverLabel(host) : null,
     ownerName,
   };
+}
+
+/** What DNS says about the address the panel answers on. */
+export type PanelDnsStatus =
+  "valid" | "cloudflare" | "misconfigured" | "pending" | "unknown";
+
+export interface PanelDns {
+  status: PanelDnsStatus;
+  /** The hostname that was resolved, or "" when there was nothing to resolve. */
+  host: string;
+  /** The addresses it answered with - what a misconfigured record is pointing at. */
+  resolved: string[];
+}
+
+/**
+ * Resolve the panel's own hostname and say what it found. The same classification
+ * a custom domain gets, on the one address the instance calls itself by; `unknown`
+ * covers the cases there is nothing to check (a bare IP, or no host recorded).
+ */
+export async function checkPanelDns(): Promise<PanelDns> {
+  await requireInstanceAdmin();
+  const settings = await getInstanceSettings();
+  let host = "";
+  try {
+    host = new URL(settings.panelUrl).hostname;
+  } catch {
+    host = "";
+  }
+  const target = settings.deploHostIp;
+  // A literal address needs no record, and without the host's own IP there is
+  // nothing to compare against.
+  if (!host || isIpv4(host) || !target)
+    return { status: "unknown", host, resolved: [] };
+
+  const resolved = await resolveHostIpv4(host);
+  if (resolved.length === 0) return { status: "pending", host, resolved };
+  return { status: classifyDomainDns(resolved, target), host, resolved };
 }
 
 /**

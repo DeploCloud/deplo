@@ -92,6 +92,16 @@ export function __resetDnsResolve4ForTest(): void {
   dnsResolve4 = resolve4;
 }
 
+/** The A records of a hostname, or [] when it does not resolve. Exported so the
+ *  panel's own address goes through the same swappable resolver domains use. */
+export async function resolveHostIpv4(name: string): Promise<string[]> {
+  try {
+    return await dnsResolve4(name);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * A per-domain port override applies to every project: on a single-image project
  * it picks the container port this host routes to; on a compose stack it overrides

@@ -13,6 +13,8 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
+import { seedServerRow, TRUNCATE_INFRA } from "./infra-test-helpers";
+import { __setDnsResolve4ForTest, __resetDnsResolve4ForTest } from "./domains";
 import {
   getInstanceSettings,
   getPanelAddressImpact,
@@ -24,6 +26,7 @@ import {
   setPanelHttps,
   setPanelUrl,
   setGravatarEnabled,
+  checkPanelDns,
 } from "./instance-settings";
 import { gravatarEnabled } from "../avatar";
 
@@ -402,4 +405,47 @@ test("setGravatarEnabled round-trips, and the read is ungated", async () => {
 
   await asUser(ADMIN, () => setGravatarEnabled(true));
   assert.equal(await asUser(MEMBER, () => gravatarEnabled()), true);
+});
+
+/* ---- Where the panel's own address points ------------------------- */
+
+const HOST_IP = "203.0.113.10";
+
+test("the panel's DNS check classifies the address the instance answers on", async () => {
+  const prevIp = process.env.DEPLO_SERVER_IP;
+  process.env.DEPLO_SERVER_IP = HOST_IP;
+  await pg.exec(TRUNCATE_INFRA);
+  await seedServerRow(db, { id: "srv_self", ip: HOST_IP, host: HOST_IP });
+  await asUser(ADMIN, () => setPanelUrl("https://panel.example.com"));
+
+  const at = async (ips: string[]) => {
+    __setDnsResolve4ForTest(async () => ips);
+    return asUser(ADMIN, checkPanelDns);
+  };
+
+  try {
+    // Points straight here.
+    assert.equal((await at([HOST_IP])).status, "valid");
+    // Cloudflare's anycast range: routed, but the origin is not readable.
+    assert.equal((await at(["104.16.0.1"])).status, "cloudflare");
+    // Somewhere else entirely - the one case that still needs the A record.
+    const off = await at(["198.51.100.7"]);
+    assert.equal(off.status, "misconfigured");
+    assert.deepEqual(off.resolved, ["198.51.100.7"]);
+    // Nothing answered yet.
+    assert.equal((await at([])).status, "pending");
+    assert.equal((await at([])).host, "panel.example.com");
+
+    // A bare address needs no record, so there is nothing to check.
+    await asUser(ADMIN, () => setPanelUrl(`http://${HOST_IP}:3000`));
+    assert.equal((await at([HOST_IP])).status, "unknown");
+  } finally {
+    __resetDnsResolve4ForTest();
+    if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;
+    else process.env.DEPLO_SERVER_IP = prevIp;
+  }
+});
+
+test("only an instance admin may ask", async () => {
+  await assert.rejects(() => asUser(MEMBER, checkPanelDns));
 });

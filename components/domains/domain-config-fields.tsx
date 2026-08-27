@@ -3,8 +3,7 @@
 import * as React from "react";
 import { CornerDownRight, Lock, Route, Signpost } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { CloudflareIcon } from "@/components/shared/brand-icons";
-import { CopyButton } from "@/components/shared/copy-button";
+import { CloudflareNote } from "@/components/domains/cloudflare-note";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -382,29 +381,7 @@ export function DomainConfigFields({
 
   return (
     <>
-      {proxied && (
-        <div className="flex items-start gap-3 rounded-md border border-[#f38020]/30 bg-[#f38020]/10 px-3 py-2.5">
-          <CloudflareIcon className="mt-0.5 size-5 shrink-0 text-[#f38020]" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Cloudflare detected</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Cloudflare serves this domain and its HTTPS, so there is nothing
-              else to set up here. Just keep its A record pointed at{" "}
-              {serverIp ? (
-                <span className="inline-flex items-baseline gap-1">
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-                    {serverIp}
-                  </code>
-                  <CopyButton value={serverIp} className="size-5" />
-                </span>
-              ) : (
-                "this app's server"
-              )}{" "}
-              with the proxy on.
-            </p>
-          </div>
-        </div>
-      )}
+      {proxied && <CloudflareNote serverIp={serverIp} />}
       {isCompose && (
         <div className="space-y-2">
           {/**

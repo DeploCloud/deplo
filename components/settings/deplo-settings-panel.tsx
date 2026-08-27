@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
+  CheckCircle2,
   CircleFadingArrowUp,
   Globe,
   LifeBuoy,
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/tabs";
 import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
+import { CloudflareNote } from "@/components/domains/cloudflare-note";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
 import {
@@ -53,7 +55,7 @@ import {
   type OwnerCandidate,
 } from "@/components/settings/instance-owner-card";
 import { gqlAction } from "@/lib/graphql-client";
-import type { InstanceSettings } from "@/lib/data/instance-settings";
+import type { InstanceSettings, PanelDns } from "@/lib/data/instance-settings";
 
 /**
  * Settings, Deplo: the instance itself. Two knobs live here because they are the
@@ -198,19 +200,6 @@ const SOURCE_LABEL: Record<InstanceSettings["panelUrlSource"], string> = {
   request: "Guessed from your browser",
 };
 
-/** The hostname inside whatever the operator has typed so far, or "". */
-function hostFromInput(value: string): string {
-  const raw = value.trim();
-  if (!raw) return "";
-  try {
-    return new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).hostname;
-  } catch {
-    return "";
-  }
-}
-
-const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
-
 function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const router = useRouter();
   const [value, setValue] = React.useState(
@@ -228,15 +217,36 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
 
   const target = value.trim();
   const dirty = target !== (settings.storedPanelUrl ?? settings.panelUrl);
-  const typedHost = hostFromInput(target);
-  const wantsRecord = typedHost !== "" && !IPV4.test(typedHost);
+
+  // What DNS says about the address the panel actually answers on. Read once on
+  // open and again after a save, never while typing: the answer is about the
+  // stored address, and resolving on every keystroke would answer about neither.
+  const [dns, setDns] = React.useState<PanelDns | null>(null);
+  const checkDns = React.useCallback(async () => {
+    const res = await gqlAction<{ panelDns: PanelDns }, PanelDns | null>(
+      `mutation PanelDns { panelDns { status host resolved } }`,
+      undefined,
+      (d) => d.panelDns,
+    );
+    if (res.ok && res.data) setDns(res.data);
+  }, []);
+
+  React.useEffect(() => {
+    // Opening the page IS the read - the same scoped exemption the certificate
+    // accounts and the https row below take.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void checkDns();
+  }, [checkDns]);
 
   async function save() {
     const res = await gqlAction(
       `mutation SetPanelUrl($url: String) { setPanelUrl(url: $url) { panelUrl } }`,
       { url: target },
     );
-    if (res.ok) router.refresh();
+    if (res.ok) {
+      router.refresh();
+      void checkDns();
+    }
     return res;
   }
 
@@ -279,47 +289,7 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
           </Button>
         </form>
 
-        {/**
-         * The question an operator actually has in front of this field, which the card used
-         * to leave them to guess: WHERE does the domain point.
-         */}
-        <div>
-          <p className="text-sm font-medium">
-            {wantsRecord
-              ? "Create this DNS record first"
-              : "Point a domain at this server first"}
-          </p>
-          {!settings.deploHostIp ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add this server on Settings, Servers and Deplo can tell you which
-              address to point it at.
-            </p>
-          ) : wantsRecord ? (
-            <div className="mt-1 overflow-x-auto rounded-lg border border-border">
-              <div className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] gap-x-4 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
-                <span>Type</span>
-                <span>Name</span>
-                <span>Value</span>
-              </div>
-              <div className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] items-center gap-x-4 px-3 py-1.5 font-mono text-sm">
-                <span>A</span>
-                <span className="truncate">{typedHost}</span>
-                <span className="flex items-center gap-1">
-                  {settings.deploHostIp}
-                  <CopyButton value={settings.deploHostIp} className="size-6" />
-                </span>
-              </div>
-            </div>
-          ) : (
-            <p className="mt-1 flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-              Its A record goes to
-              <span className="font-mono text-foreground">
-                {settings.deploHostIp}
-              </span>
-              <CopyButton value={settings.deploHostIp} className="size-6" />
-            </p>
-          )}
-        </div>
+        <PanelDnsBlock dns={dns} serverIp={settings.deploHostIp} />
 
         <PanelHttpsRow />
         <PanelIpAddressRow
@@ -342,6 +312,85 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
         />
       )}
     </Card>
+  );
+}
+
+/**
+ * Where the panel's address actually points, so the DNS instruction appears only
+ * when there is a record to create - and never in front of one that already works.
+ */
+function PanelDnsBlock({
+  dns,
+  serverIp,
+}: {
+  dns: PanelDns | null;
+  serverIp: string | null;
+}) {
+  if (!dns)
+    return (
+      <p className="text-sm text-muted-foreground">
+        Checking where this address points
+      </p>
+    );
+
+  if (dns.status === "cloudflare")
+    return <CloudflareNote serverIp={serverIp} />;
+
+  if (dns.status === "valid")
+    return (
+      <p className="flex flex-wrap items-center gap-1.5 text-sm">
+        <CheckCircle2 className="size-4 text-[var(--success)]" />
+        <span className="font-mono">{dns.host}</span>
+        <span className="text-muted-foreground">points at this server</span>
+      </p>
+    );
+
+  // Nothing to check: a bare IP needs no record, and without the host's own
+  // address Deplo cannot say which one to point at.
+  if (dns.status === "unknown")
+    return serverIp ? null : (
+      <p className="text-sm text-muted-foreground">
+        Add this server on Settings, Servers and Deplo can tell you which
+        address to point it at.
+      </p>
+    );
+
+  const off = dns.status === "misconfigured";
+  return (
+    <div>
+      <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
+        {off && <TriangleAlert className="size-4 text-[var(--warning)]" />}
+        {off ? "It resolves somewhere else" : "It does not resolve yet"}
+      </p>
+      {off && dns.resolved.length > 0 && (
+        <p className="mt-1 text-sm text-muted-foreground">
+          Answers with{" "}
+          <span className="font-mono">{dns.resolved.join(", ")}</span>
+        </p>
+      )}
+      {serverIp ? (
+        <div className="mt-1 overflow-x-auto rounded-lg border border-border">
+          <div className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] gap-x-4 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+            <span>Type</span>
+            <span>Name</span>
+            <span>Value</span>
+          </div>
+          <div className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] items-center gap-x-4 px-3 py-1.5 font-mono text-sm">
+            <span>A</span>
+            <span className="truncate">{dns.host}</span>
+            <span className="flex items-center gap-1">
+              {serverIp}
+              <CopyButton value={serverIp} className="size-6" />
+            </span>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">
+          Add this server on Settings, Servers and Deplo can tell you which
+          address to point it at.
+        </p>
+      )}
+    </div>
   );
 }
 
