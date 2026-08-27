@@ -168,6 +168,14 @@ export const NAV: NavSection[] = [
   },
 ];
 
+/** The gear icons, so the nav can give them the turn-on-hover class the rest of
+ *  the product's gears wear. Identity, not a name: these ARE the components. */
+const GEARS: readonly unknown[] = [Settings, Settings2];
+
+export function isGearIcon(icon: unknown): boolean {
+  return GEARS.includes(icon);
+}
+
 /** Which of the four navigations the sidebar shows, and the ids it needs to
  *  build it. One derivation, read by the nav AND by the sidebar's footer - which
  *  hides itself in every drill-in, where the way back is the nav's own first row. */

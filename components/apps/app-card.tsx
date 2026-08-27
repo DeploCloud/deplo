@@ -396,7 +396,7 @@ export function AppCard({
       <SimpleTooltip content="Open this app's settings" side="left">
         <K.Item asChild>
           <Link href={`${href}/settings`} className="cursor-pointer">
-            <Settings className="size-4" />
+            <Settings className="deplo-gear size-4" />
             Settings
           </Link>
         </K.Item>

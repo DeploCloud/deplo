@@ -600,6 +600,43 @@ p:not([class*="leading-"]) {
   animation: deplo-step-out-down 0.16s ease-in both;
 }
 
+/* A gear turns once when you point at it - at the icon itself, or anywhere on
+   the control it sits in, which is what the pointer is actually aiming at. The
+   contexts are listed rather than a bare descendant selector: `*:hover .gear`
+   matches through every ancestor up to <body>, so the icon would spin on any
+   pointer movement on the page. */
+@keyframes deplo-gear-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.deplo-gear {
+  transform-origin: 50% 50%;
+}
+
+.deplo-gear:hover,
+button:hover .deplo-gear,
+a:hover .deplo-gear,
+label:hover .deplo-gear,
+[role="button"]:hover .deplo-gear,
+[role="menuitem"]:hover .deplo-gear,
+[role="tab"]:hover .deplo-gear {
+  animation: deplo-gear-turn 0.45s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deplo-gear:hover,
+  button:hover .deplo-gear,
+  a:hover .deplo-gear,
+  label:hover .deplo-gear,
+  [role="button"]:hover .deplo-gear,
+  [role="menuitem"]:hover .deplo-gear,
+  [role="tab"]:hover .deplo-gear {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-step-in-up,
   .animate-step-in-down,

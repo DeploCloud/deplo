@@ -267,7 +267,7 @@ function ServerCard({
                 />
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/settings/servers/${server.id}`}>
-                    <Settings2 className="size-4" />
+                    <Settings2 className="deplo-gear size-4" />
                     Manage
                   </Link>
                 </Button>

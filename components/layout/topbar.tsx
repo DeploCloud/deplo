@@ -79,7 +79,7 @@ export function Topbar({
           which act outside any single team. */}
       {hideTeam ? (
         <span className="flex items-center gap-2 text-sm font-medium">
-          <Settings className="size-4 text-muted-foreground" />
+          <Settings className="deplo-gear size-4 text-muted-foreground" />
           Settings
         </span>
       ) : (

@@ -60,7 +60,7 @@ export function RoleSelect({
           href="/settings/roles"
           className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          <Settings2 className="size-3" aria-hidden />
+          <Settings2 className="deplo-gear size-3" aria-hidden />
           Manage roles
         </Link>
       </div>
