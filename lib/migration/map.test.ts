@@ -1978,6 +1978,10 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
     "SENTRY_DSN",
     "REDIS_CONNECTION_STRING",
     "STRIPE_WEBHOOK_SIGNING_SECRET",
+    // The abbreviations people actually type.
+    "STRIPE_SK",
+    "WG_PSK",
+    "GITHUB_PAT",
   ])
     assert.ok(looksLikeSecretKey(key), `${key} should be a secret`);
   for (const key of [
@@ -1988,6 +1992,7 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
     "NEXT_PUBLIC_API_URL",
     "PUBLIC_KEY",
     "CLIENT_ID",
+    "STRIPE_PK",
   ])
     assert.ok(!looksLikeSecretKey(key), `${key} should stay plain`);
 });

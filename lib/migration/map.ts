@@ -96,6 +96,12 @@ const SECRET_WORDS = new Set([
   "WEBHOOK",
   "HMAC",
   "SEED",
+  // The abbreviations, which are how half of them are actually spelled: a Stripe
+  // secret key is `STRIPE_SK`, never `STRIPE_SECRET_KEY`. `PK` is deliberately
+  // absent - it is the publishable half as often as it is a private key.
+  "SK",
+  "PSK",
+  "PAT",
 ]);
 
 /** Words that say the value is the PUBLIC half, whatever else the name says. */

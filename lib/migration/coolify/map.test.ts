@@ -613,3 +613,26 @@ test("SERVICE_FQDN_X and SERVICE_FQDN_X_PORT reach one domain with the port", ()
     [["linkding.acme.com", 9090, "linkding"]],
   );
 });
+
+test("the port survives when only the variable NAME carries it", () => {
+  // What Coolify actually stores: it resolves BOTH spellings to the same URL, so
+  // the port exists nowhere but the key. Whichever order they arrive in, the
+  // domain must land with 9090 - a portless compose domain falls back to the
+  // stack's default port and answers 502.
+  const raw = "services:\n  linkding:\n    image: sissbruecker/linkding\n";
+  const vars = [
+    "SERVICE_FQDN_LINKDING=https://linkding.acme.com",
+    "SERVICE_FQDN_LINKDING_9090=https://linkding.acme.com",
+  ];
+  for (const env of [vars.join("\n"), [...vars].reverse().join("\n")]) {
+    const { value } = coolifyCompose(
+      { uuid: "svc-ld", name: "linkding", docker_compose_raw: raw },
+      { env },
+    );
+    assert.deepEqual(
+      value.domains?.map((d) => [d.host, d.port, d.serviceName]),
+      [["linkding.acme.com", 9090, "linkding"]],
+      env,
+    );
+  }
+});
