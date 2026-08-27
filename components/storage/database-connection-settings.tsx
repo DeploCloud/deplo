@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
@@ -23,12 +22,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/shared/copy-button";
+import {
+  useDatabaseExposure,
+  ExposureSwitch,
+  ExposurePortRow,
+} from "@/components/storage/database-exposure";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
@@ -42,14 +41,21 @@ export function DatabaseConnectionSettings({
   db,
   servers,
   canExposePorts,
+  canConfigure,
 }: {
   db: DatabaseDTO;
   servers: { id: string; name: string }[];
   canExposePorts: boolean;
+  canConfigure: boolean;
 }) {
   return (
     <div className="space-y-6">
-      <ExposureCard db={db} servers={servers} canExposePorts={canExposePorts} />
+      <ExposureCard
+        db={db}
+        servers={servers}
+        canExposePorts={canExposePorts}
+        canConfigure={canConfigure}
+      />
       <RotatePasswordCard db={db} />
     </div>
   );
@@ -61,24 +67,16 @@ function ExposureCard({
   db,
   servers,
   canExposePorts,
+  canConfigure,
 }: {
   db: DatabaseDTO;
   servers: { id: string; name: string }[];
   canExposePorts: boolean;
+  canConfigure: boolean;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  const [exposed, setExposed] = React.useState(db.exposedPublicly);
-  const [port, setPort] = React.useState(
-    db.exposedPort ? String(db.exposedPort) : "",
-  );
+  const exposure = useDatabaseExposure(db);
   const [serverId, setServerId] = React.useState(db.serverId);
-  const [generatingPort, setGeneratingPort] = React.useState(false);
 
-  const parsedPort = Number.parseInt(port, 10);
-  const portValid =
-    Number.isInteger(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535;
-  const exposeReady = !exposed || portValid;
   const movingServer = serverId !== db.serverId;
   const canPickServer = servers.length > 1;
   const currentServerName =
@@ -86,45 +84,13 @@ function ExposureCard({
   const targetServerName =
     servers.find((s) => s.id === serverId)?.name ?? "the selected server";
 
-  const dirty =
-    movingServer ||
-    exposed !== db.exposedPublicly ||
-    (exposed && parsedPort !== db.exposedPort);
-  const saveReady = exposeReady && dirty;
-
-  function generatePort() {
-    setGeneratingPort(true);
-    startTransition(async () => {
-      const res = await gqlAction<{ generateAvailableDbPort: number }, number>(
-        `mutation($serverId: ID) { generateAvailableDbPort(serverId: $serverId) }`,
-        { serverId },
-        (d) => d.generateAvailableDbPort,
-      );
-      setGeneratingPort(false);
-      if (res.ok) setPort(String(res.data));
-      else toast.error(res.error);
-    });
-  }
+  const dirty = movingServer || exposure.dirty;
+  const saveReady = exposure.ready && dirty;
 
   function save() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: String!, $input: UpdateDatabaseInput!) {
-          updateDatabase(id: $id, input: $input) { id }
-        }`,
-        {
-          id: db.id,
-          input: {
-            exposedPublicly: exposed,
-            exposedPort: exposed ? parsedPort : null,
-            serverId: movingServer ? serverId : null,
-          },
-        },
-      );
-      if (res.ok) {
-        toast.success(movingServer ? "Database moved" : "Database updated");
-        router.refresh();
-      } else toast.error(res.error);
+    exposure.save({
+      serverId: movingServer ? serverId : null,
+      success: movingServer ? "Database moved" : "Database updated",
     });
   }
 
@@ -190,69 +156,37 @@ function ExposureCard({
                 Publish the port to the internet. Keep off unless required.
               </p>
             </div>
-            {canExposePorts ? (
-              <Switch checked={exposed} onCheckedChange={setExposed} />
-            ) : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span tabIndex={0}>
-                    <Switch checked={exposed} disabled />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  You don&apos;t have permission to publish ports
-                </TooltipContent>
-              </Tooltip>
-            )}
+            <ExposureSwitch
+              checked={exposure.exposed}
+              onCheckedChange={exposure.setExposed}
+              canExposePorts={canExposePorts}
+              canConfigure={canConfigure}
+            />
           </div>
-          {exposed && (
-            <div className="space-y-1.5">
-              <FieldLabel
-                htmlFor="db-port"
-                info={
-                  <>
-                    Port clients connect to. Use a free unprivileged port
-                    (1024-65535), or click Generate.
-                    {movingServer &&
-                      " On a move it must be free on the new server too."}
-                  </>
-                }
-                docs="databases.hostPort"
-              >
-                Host port
-              </FieldLabel>
-              <div className="flex gap-2">
-                <Input
-                  id="db-port"
-                  inputMode="numeric"
-                  value={port}
-                  onChange={(e) =>
-                    setPort(e.target.value.replace(/[^0-9]/g, ""))
-                  }
-                  placeholder="e.g. 25432"
-                  aria-invalid={port !== "" && !portValid}
-                  disabled={!canExposePorts}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={generatePort}
-                  disabled={generatingPort || pending || !canExposePorts}
-                >
-                  {generatingPort ? "Finding…" : "Generate"}
-                </Button>
-              </div>
-            </div>
+          {exposure.exposed && (
+            <ExposurePortRow
+              exposure={exposure}
+              canExposePorts={canExposePorts}
+              canConfigure={canConfigure}
+              serverId={serverId}
+              extraInfo={
+                movingServer &&
+                " On a move it must be free on the new server too."
+              }
+            />
           )}
         </div>
       </CardContent>
       <CardFooter className="justify-between">
         <DirtyHint dirty={dirty} />
-        <Button onClick={save} disabled={pending || !saveReady}>
-          {pending
+        <Button
+          onClick={save}
+          disabled={exposure.pending || !saveReady || !canConfigure}
+        >
+          {exposure.pending
             ? movingServer
-              ? "Moving…"
-              : "Saving…"
+              ? "Moving"
+              : "Saving"
             : movingServer
               ? "Move & save"
               : "Save changes"}
@@ -335,7 +269,7 @@ function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
           disabled={!running || pending}
           variant="outline"
         >
-          {pending ? "Rotating…" : "Rotate password"}
+          {pending ? "Rotating" : "Rotate password"}
         </Button>
       </CardFooter>
     </Card>

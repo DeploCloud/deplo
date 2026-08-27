@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Network } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
-import { canExposePorts } from "@/lib/membership";
+import { canExposePorts, hasCapability } from "@/lib/membership";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DatabaseConnectionSettings } from "@/components/storage/database-connection-settings";
 
@@ -16,10 +16,11 @@ export default async function DatabaseConnectionSettingsPage(
   props: PageProps<"/storage/databases/[id]/settings/connection">,
 ) {
   const { id } = await props.params;
-  const [db, servers, mayExposePorts] = await Promise.all([
+  const [db, servers, mayExposePorts, canConfigure] = await Promise.all([
     getDatabase(id),
     listServersForCurrentTeam(),
     canExposePorts(),
+    hasCapability("configure_databases"),
   ]);
   if (!db) notFound();
 
@@ -45,6 +46,7 @@ export default async function DatabaseConnectionSettingsPage(
         db={db}
         servers={dbServers}
         canExposePorts={mayExposePorts}
+        canConfigure={canConfigure}
       />
     </section>
   );
