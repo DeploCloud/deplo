@@ -260,7 +260,7 @@ export async function ensureAutoDomain(
   const preferredOk =
     !!preferred &&
     (nipEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
-  const preferredPath = (opts.preferredPath ?? "").trim();
+  const preferredPath = normalizePath(opts.preferredPath);
   const name =
     preferredOk && !(await domainNameExists(preferred!, preferredPath))
       ? preferred!
@@ -394,6 +394,7 @@ export async function addImportedDomains(
   );
 
   for (const route of routes) {
+    const pathPrefix = normalizePath(route.pathPrefix);
     // One mint per source host; every later row on that host joins it.
     let name = landed.get(route.sourceHost);
     if (!name) {
@@ -406,7 +407,7 @@ export async function addImportedDomains(
       );
       landed.set(route.sourceHost, name);
     }
-    const key = `${name}\u0000${route.pathPrefix}`;
+    const key = `${name}\u0000${pathPrefix}`;
     if (taken.has(key)) continue; // idempotent re-run, or a duplicate source row
     taken.add(key);
 
@@ -427,8 +428,8 @@ export async function addImportedDomains(
       ...(route.service ? { service: route.service } : {}),
       certProvider: route.certProvider,
       entrypoint: route.entrypoint,
-      ...(route.pathPrefix ? { pathPrefix: route.pathPrefix } : {}),
-      ...(route.stripPrefix ? { stripPrefix: true } : {}),
+      ...(pathPrefix ? { pathPrefix } : {}),
+      ...(pathPrefix && route.stripPrefix ? { stripPrefix: true } : {}),
       importedFrom: route.sourceHost,
       createdAt: nowIso(),
     };
@@ -445,6 +446,7 @@ export async function applyImportedRoute(
   domainId: string,
   route: ImportedRoute,
 ): Promise<void> {
+  const pathPrefix = normalizePath(route.pathPrefix);
   await getDb()
     .update(domainsTable)
     .set({
@@ -452,8 +454,8 @@ export async function applyImportedRoute(
       service: route.service,
       certProvider: route.certProvider,
       entrypoint: route.entrypoint,
-      pathPrefix: route.pathPrefix || null,
-      stripPrefix: route.stripPrefix || null,
+      pathPrefix: pathPrefix || null,
+      stripPrefix: (pathPrefix && route.stripPrefix) || null,
       ssl: route.certProvider !== "none",
       importedFrom: route.sourceHost,
     })

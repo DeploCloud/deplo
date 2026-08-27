@@ -197,3 +197,22 @@ test("dismissing clears the provenance and keeps the addresses", async () => {
     before.map((d) => d.name),
   );
 });
+
+test("an imported path is stored canonical, backtick and all", async () => {
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    addImportedDomains(
+      "prj_web",
+      [
+        route({
+          pathPrefix: "api`) || Host(`victim.example.com",
+          stripPrefix: true,
+        }),
+      ],
+      { slug: "web", ip: IP },
+    ),
+  );
+  const [row] = await rows();
+  // The router rule interpolates this into a backtick literal; the writers used
+  // to store whatever the source panel said.
+  assert.equal(row.pathPrefix, "/api) || Host(victim.example.com");
+});
