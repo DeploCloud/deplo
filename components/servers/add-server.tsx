@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, ServerCog } from "lucide-react";
+import { Loader2, Plus, ServerCog } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import {
   ServerTeamAccess,
   type ServerAccess,
@@ -227,24 +228,38 @@ export function AddServer({
             </div>
           )}
 
-          <DialogFooter>
-            {command ? (
+          {/* One footer per phase rather than a fragment inside one: a footer
+              counts its own children to place them, and a fragment hides them. */}
+          {command ? (
+            <DialogFooter>
               <Button onClick={() => setOpen(false)}>Done</Button>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => setOpen(false)}
-                  disabled={pending}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={pending || !host.trim()}>
-                  {pending ? "Registering…" : "Register server"}
-                </Button>
-              </>
-            )}
-          </DialogFooter>
+            </DialogFooter>
+          ) : (
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !host.trim()}>
+                <span className="grid place-items-center">
+                  <span
+                    className={cn(
+                      "col-start-1 row-start-1",
+                      pending && "invisible",
+                    )}
+                  >
+                    Register server
+                  </span>
+                  {pending && (
+                    <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+                  )}
+                </span>
+              </Button>
+            </DialogFooter>
+          )}
         </form>
       </DialogContent>
     </Dialog>
