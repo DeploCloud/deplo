@@ -66,7 +66,6 @@ export default async function OverviewPage(props: PageProps<"/">) {
     activity,
     isAdmin,
     canManageTeam,
-    canManageMembers,
     canDeploy,
     canCreateDatabase,
     canCreateFolder,
@@ -79,10 +78,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
     listActivity(6),
     isInstanceAdmin(),
     hasCapability("manage_team"),
-    hasCapability("manage_members"),
     hasCapability("create_apps"),
-    // The "Add New ▸ New database" entry links to the Storage page's create
-    // dialog, so it is offered only to someone who may actually create one.
+    // The "Add New ▸ Database" entry links to the Storage page's create dialog,
+    // so it is offered only to someone who may actually create one.
     hasCapability("create_databases"),
     // Folders and projects each have their OWN create capability, and
     // `requireCapability` gives an instance admin no bypass, so asking for exactly
@@ -302,11 +300,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
             <AddNewMenu
               canCreateApp={canDeploy}
               canCreateDatabase={canCreateDatabase}
-              canManageMembers={canManageMembers}
               canCreateFolder={canCreateFolder}
               canCreateProject={canCreateProject}
-              isAdmin={isAdmin}
-              // Drill-in context so "New folder" nests under the folder currently open (ADR-0009:
+              // Drill-in context so "Folder" nests under the folder currently open (ADR-0009:
               // folders nest via parentId). Null inside a project - folders never live in a
               // project, so a folder made there stays at the top level.
               parentFolder={

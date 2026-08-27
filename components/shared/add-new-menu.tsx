@@ -9,15 +9,11 @@ import {
   FolderPlus,
   Boxes,
   Database,
-  UserPlus,
-  UserCog,
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -28,8 +24,6 @@ import {
 } from "@/components/ui/tooltip";
 import { CreateFolderDialog } from "@/components/apps/create-folder-dialog";
 import { CreateProjectDialog } from "@/components/apps/create-project-dialog";
-import { AddMemberDialog } from "@/components/members/add-member-dialog";
-import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import { newAppHref, type OverviewPlacement } from "@/lib/overview-links";
 
 /**
@@ -39,10 +33,8 @@ import { newAppHref, type OverviewPlacement } from "@/lib/overview-links";
 export function AddNewMenu({
   canCreateApp,
   canCreateDatabase,
-  canManageMembers,
   canCreateFolder,
   canCreateProject,
-  isAdmin,
   parentFolder = null,
   placement = null,
 }: {
@@ -51,13 +43,11 @@ export function AddNewMenu({
   canCreateApp: boolean;
   /** Whether the viewer may create databases (`create_databases`). */
   canCreateDatabase: boolean;
-  canManageMembers: boolean;
   /** Whether the viewer may create folders (`create_folders`). */
   canCreateFolder: boolean;
   /** Whether the viewer may create projects (`create_projects`) - a separate
    *  permission from folders, so the two entries appear separately. */
   canCreateProject: boolean;
-  isAdmin: boolean;
   /**
    * The folder currently open on the Overview, if any. Null at the top level, or
    * inside a project - folders never live in a project, so one made there stays at
@@ -71,8 +61,6 @@ export function AddNewMenu({
 }) {
   const [folderOpen, setFolderOpen] = React.useState(false);
   const [projectOpen, setProjectOpen] = React.useState(false);
-  const [memberOpen, setMemberOpen] = React.useState(false);
-  const [userOpen, setUserOpen] = React.useState(false);
 
   // Nothing this menu offers is available: show the button disabled with the
   // reason rather than a menu that opens onto nothing.
@@ -80,9 +68,7 @@ export function AddNewMenu({
     !canCreateApp &&
     !canCreateDatabase &&
     !canCreateFolder &&
-    !canCreateProject &&
-    !canManageMembers &&
-    !isAdmin
+    !canCreateProject
   )
     return (
       <Tooltip>
@@ -120,7 +106,7 @@ export function AddNewMenu({
             <DropdownMenuItem asChild>
               <Link href={newAppHref(placement)} className="cursor-pointer">
                 <Rocket className="size-4" />
-                New app
+                Application
               </Link>
             </DropdownMenuItem>
           )}
@@ -130,7 +116,7 @@ export function AddNewMenu({
                   page (the databases tab) via the ?new=database param. */}
               <Link href="/storage?new=database" className="cursor-pointer">
                 <Database className="size-4" />
-                New database
+                Database
               </Link>
             </DropdownMenuItem>
           )}
@@ -140,7 +126,7 @@ export function AddNewMenu({
               onSelect={() => setFolderOpen(true)}
             >
               <FolderPlus className="size-4" />
-              {parentFolder ? "New subfolder" : "New folder"}
+              {parentFolder ? "Subfolder" : "Folder"}
             </DropdownMenuItem>
           )}
           {canCreateProject && (
@@ -149,36 +135,8 @@ export function AddNewMenu({
               onSelect={() => setProjectOpen(true)}
             >
               <Boxes className="size-4" />
-              New project
+              Project
             </DropdownMenuItem>
-          )}
-
-          {canManageMembers && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Team</DropdownMenuLabel>
-              <DropdownMenuItem
-                className="cursor-pointer"
-                onSelect={() => setMemberOpen(true)}
-              >
-                <UserPlus className="size-4" />
-                New team member
-              </DropdownMenuItem>
-            </>
-          )}
-
-          {isAdmin && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Instance</DropdownMenuLabel>
-              <DropdownMenuItem
-                className="cursor-pointer"
-                onSelect={() => setUserOpen(true)}
-              >
-                <UserCog className="size-4" />
-                New user
-              </DropdownMenuItem>
-            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -197,17 +155,6 @@ export function AddNewMenu({
       )}
       {canCreateProject && (
         <CreateProjectDialog open={projectOpen} onOpenChange={setProjectOpen} />
-      )}
-      {canManageMembers && (
-        <AddMemberDialog
-          open={memberOpen}
-          onOpenChange={setMemberOpen}
-          canCreateUser={isAdmin}
-          onCreateUser={() => setUserOpen(true)}
-        />
-      )}
-      {isAdmin && (
-        <RegisterUserWizard open={userOpen} onOpenChange={setUserOpen} />
       )}
     </>
   );

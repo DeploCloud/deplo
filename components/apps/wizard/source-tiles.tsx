@@ -63,10 +63,17 @@ export function SourceTiles({
  * outside the radio group, in the platform's own ink rather than a brand's.
  */
 function TemplateTile({ href }: { href: string }) {
+  // The neutral wash, not a hue: the mark is a single ink, which is the case
+  // that veil was written for. Lit on hover and on keyboard focus, like the
+  // template cards this leads to.
+  const veil = veilProps({ tone: "dark" }, "hover");
   return (
     <Link
       href={href}
-      className="group flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none"
+      className={cn(
+        "group flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
+        veil.className,
+      )}
     >
       <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground ring-1 ring-border">
         <LayoutTemplate className="size-4.5" />
