@@ -162,11 +162,15 @@ export function MigrationConsole({
   const [query, setQuery] = React.useState("");
   const [levels, setLevels] = React.useState<string[]>([]);
   const [follow, setFollow] = React.useState(true);
+  // Whether lines are still arriving, by the freshest answer rather than the
+  // prop, which is only what was true when the dialog opened.
+  const streaming = log ? log.status === "running" : live;
   const bottom = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     if (!open || !runId) return;
     let alive = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
     const read = async () => {
       try {
         const d = await gql<{ migrationRun: RunLog | null }>(RUN_LOG, {
@@ -175,19 +179,21 @@ export function MigrationConsole({
         if (!alive) return;
         setError(null);
         setFetched({ runId, log: d.migrationRun });
+        // `live` was the answer when this opened. A run that ends while it is
+        // still open stops the poll with it, rather than asking forever.
+        if (timer && d.migrationRun && d.migrationRun.status !== "running") {
+          clearInterval(timer);
+          timer = null;
+        }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       }
     };
     void read();
-    if (!live)
-      return () => {
-        alive = false;
-      };
-    const t = setInterval(read, POLL_MS);
+    if (live) timer = setInterval(read, POLL_MS);
     return () => {
       alive = false;
-      clearInterval(t);
+      if (timer) clearInterval(timer);
     };
   }, [open, runId, live]);
 
@@ -294,15 +300,19 @@ export function MigrationConsole({
               onChange={setLevels}
             />
           </div>
-          <Button
-            type="button"
-            variant={follow ? "secondary" : "outline"}
-            onClick={() => setFollow((f) => !f)}
-            title="Keep the newest line in view"
-          >
-            <ArrowDownToLine className="size-4" />
-            Follow
-          </Button>
+          {/* Nothing left to follow once the run is over: the log is whole, and
+              a toggle that cannot change what you see is a control to explain. */}
+          {streaming && (
+            <Button
+              type="button"
+              variant={follow ? "secondary" : "outline"}
+              onClick={() => setFollow((f) => !f)}
+              title="Keep the newest line in view"
+            >
+              <ArrowDownToLine className="size-4" />
+              Follow
+            </Button>
+          )}
         </div>
 
         <div
