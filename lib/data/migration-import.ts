@@ -2672,7 +2672,11 @@ async function importAppService(
       .map((r) => r.key);
     if (touched.length > 0) {
       try {
-        await setAppEnv(created.id, rewritten);
+        // Secrets included: an address arrives write-only as often as not, and this
+        // is the import correcting a value it wrote itself a moment ago.
+        await setAppEnv(created.id, rewritten, undefined, {
+          overwriteSecrets: true,
+        });
         notes.push(
           `${touched.join(", ")} named the old address, so ${
             touched.length === 1 ? "it now names" : "they now name"
@@ -3180,7 +3184,10 @@ async function importDatabaseService(
   notes.push(
     `Empty until the data copy runs, a moment from now in this same import. It answers as "${created.host}", not "${row.appName}", so update the connection strings.`,
   );
-  if (row.appName?.trim()) opts.dbHosts.set(row.appName.trim(), created.host);
+  // Both names an app can reach it by: the container's label (Dokploy) and the
+  // service's own id, which is what Coolify hands out as the internal URL.
+  for (const from of [row.appName, svc.id])
+    if (from?.trim()) opts.dbHosts.set(from.trim(), created.host);
   await report.notes(
     svc.kind,
     name,

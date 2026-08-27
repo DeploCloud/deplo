@@ -341,6 +341,7 @@ export async function setAppEnv(
   appId: string,
   entries: { key: string; value: string }[],
   defaultTargets?: EnvTarget[],
+  opts?: { overwriteSecrets?: boolean },
 ): Promise<number> {
   const { userId } = await requireAppCapability(appId, "manage_env");
   const user = (await getCurrentUser())!;
@@ -365,7 +366,8 @@ export async function setAppEnv(
       if (e) {
         // A secret is frozen: skip it unconditionally. Comparing against the MASK
         // used to be the whole guard, so any OTHER string overwrote the value.
-        if (e.type === "secret") continue;
+        // `overwriteSecrets` is the import correcting a value it wrote itself.
+        if (e.type === "secret" && !opts?.overwriteSecrets) continue;
         await tx
           .update(envVarsTable)
           .set({

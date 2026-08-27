@@ -245,9 +245,14 @@ const APPLICATIONS: Record<string, unknown> = {
     buildPath: "apps/web",
     env:
       "DATABASE_URL=postgres://blink:pw@blink-db-abc:5432/blink\nNODE_ENV=production\n" +
+      // The same database, named the way Coolify hands it out: the service's own
+      // id, not the container's label.
+      "QUEUE_DSN=postgres://blink:pw@dok-pg-1:5432/blink\n" +
       // Names Dokploy's throwaway host - an address that stops existing the
       // moment the app moves.
-      "OLD_ADDRESS=https://blink-web-abc.traefik.me/health\n",
+      "OLD_ADDRESS=https://blink-web-abc.traefik.me/health\n" +
+      // The same address again, arriving write-only: `URL` reads as a credential.
+      "OLD_ADDRESS_URL=https://blink-web-abc.traefik.me/hook\n",
     buildArgs: "NEXT_PUBLIC_SITE=https://blink.acme.test\n",
     memoryLimit: "512m",
     cpuLimit: "0.5",
@@ -632,6 +637,17 @@ test("a variable that names the old address is moved to the new one", async () =
   // ...while the one naming the throwaway address now names what it became.
   const old = vars.find((v) => v.key === "OLD_ADDRESS")!;
   assert.equal(decryptSecret(old.valueEnc), `https://${rehosted.name}/health`);
+  // And a WRITE-ONLY one is not left behind: it is the import correcting its own
+  // write, so the frozen-secret rule has nothing to protect here.
+  const secret = vars.find((v) => v.key === "OLD_ADDRESS_URL")!;
+  assert.equal(secret.type, "secret");
+  assert.equal(decryptSecret(secret.valueEnc), `https://${rehosted.name}/hook`);
+  const run = await asOwner(() => getMigrationRun(runId));
+  const said = run!.items
+    .filter((i) => i.sourceId === "dok-app-web")
+    .map((i) => i.message ?? "")
+    .join(" | ");
+  assert.match(said, /OLD_ADDRESS, OLD_ADDRESS_URL named the old address/);
 });
 
 // The rule, at its hardest: BOTH of this app's addresses are unavailable - one is
@@ -753,6 +769,8 @@ test("a project lands complete: project, environment, apps, variables", async ()
     "NEXT_PUBLIC_SITE",
     "NODE_ENV",
     "OLD_ADDRESS",
+    "OLD_ADDRESS_URL",
+    "QUEUE_DSN",
   ]);
   assert.equal(byKey.get("DATABASE_URL")!.type, "secret");
   assert.equal(byKey.get("NEXT_PUBLIC_SITE")!.type, "plain");
@@ -1738,6 +1756,30 @@ test("a database keeps the host port it published on Dokploy", async () => {
   assert.equal(row?.exposedPort, 5432);
   // Exposed means the connection string is the one that WORKS from outside.
   assert.ok(row!.connectionStringEnc.length > 0);
+});
+
+// Coolify gives an app the database's UUID as its hostname, Dokploy the
+// container's label. Both have to be renamed, or the app arrives pointing at a
+// host that does not exist here - and says nothing about it.
+test("a database is renamed whether the app named it by host or by id", async () => {
+  await provisionServer1();
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await settleProvisioning(db);
+
+  const host = (await dbRowOf("blink-db"))!.host;
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+  const vars = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, web.id));
+  const value = (key: string) =>
+    decryptSecret(vars.find((v) => v.key === key)!.valueEnc);
+
+  assert.equal(value("DATABASE_URL"), `postgres://blink:pw@${host}:5432/blink`);
+  assert.equal(value("QUEUE_DSN"), `postgres://blink:pw@${host}:5432/blink`);
 });
 
 test("the review can move that port, or refuse to publish it at all", async () => {
