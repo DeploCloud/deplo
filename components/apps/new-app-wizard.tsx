@@ -393,7 +393,8 @@ export function NewAppWizard({
       : !name.trim();
 
   function onBack() {
-    if (step === "source" || isTemplate) {
+    // A template skipped the picker, so its way back is out of the wizard.
+    if (isTemplate) {
       router.push(exitHref);
       return;
     }
@@ -795,8 +796,6 @@ export function NewAppWizard({
             title="New app"
             description="Where does your code live? Deplo takes it from there and puts it online."
             meta={meta}
-            backLabel="Cancel"
-            onBack={onBack}
           >
             {/* No Next here: picking the source IS the answer, so the choice
                 carries the card forward on its own. */}

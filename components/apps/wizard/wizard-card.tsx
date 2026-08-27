@@ -66,7 +66,7 @@ export function WizardStage({
   children: React.ReactNode;
 }) {
   return (
-    <AnimatedHeight className="w-full">
+    <AnimatedHeight className="w-full" scroll={false}>
       <div
         key={step}
         className={cn(
@@ -112,7 +112,9 @@ export function WizardCard({
   meta?: React.ReactNode;
   children: React.ReactNode;
   backLabel?: string;
-  onBack: () => void;
+  /** Omitted where there is nothing behind this step - then the card has no
+   *  footer at all and the only way out is the frame's own close. */
+  onBack?: () => void;
   nextLabel?: string;
   /** Omitted on a step that advances on the choice itself - then the footer
    *  carries only the way back. */
@@ -123,8 +125,10 @@ export function WizardCard({
   pending?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm">
-      <div className="px-6 pt-6 pb-4">
+    // The card caps ITSELF and scrolls its own body, so its header and footer
+    // hold their place instead of scrolling away with the fields.
+    <div className="flex max-h-[calc(100dvh-10rem)] flex-col rounded-xl border border-border bg-card shadow-sm">
+      <div className="shrink-0 px-6 pt-6 pb-4">
         <div className="flex items-start gap-3">
           {icon}
           <div className="min-w-0 flex-1">
@@ -138,41 +142,49 @@ export function WizardCard({
         </div>
         {meta && <div className="mt-3">{meta}</div>}
       </div>
-      <div className="space-y-5 px-6 pb-6">{children}</div>
-      <div className="flex items-center justify-between border-t border-border px-6 py-4">
-        <Button type="button" variant="ghost" onClick={onBack}>
-          <ArrowLeft className="size-4" />
-          {backLabel}
-        </Button>
-        {onNext && (
-          <Button
-            type="button"
-            onClick={onNext}
-            disabled={nextDisabled || pending}
-          >
-            {/* The label stays mounted while pending so the button keeps its
-                width and the footer doesn't jump. */}
-            <span className="grid place-items-center">
-              <span
-                className={cn(
-                  "col-start-1 row-start-1 flex items-center gap-2",
-                  pending && "invisible",
-                )}
-              >
-                {deploy ? (
-                  <Rocket className="size-4" />
-                ) : (
-                  <ArrowRight className="order-last size-4" />
-                )}
-                {nextLabel}
-              </span>
-              {pending && (
-                <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
-              )}
-            </span>
-          </Button>
-        )}
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 pb-6">
+        {children}
       </div>
+      {(onBack || onNext) && (
+        <div className="flex shrink-0 items-center justify-between border-t border-border px-6 py-4">
+          {onBack ? (
+            <Button type="button" variant="ghost" onClick={onBack}>
+              <ArrowLeft className="size-4" />
+              {backLabel}
+            </Button>
+          ) : (
+            <span />
+          )}
+          {onNext && (
+            <Button
+              type="button"
+              onClick={onNext}
+              disabled={nextDisabled || pending}
+            >
+              {/* The label stays mounted while pending so the button keeps its
+                width and the footer doesn't jump. */}
+              <span className="grid place-items-center">
+                <span
+                  className={cn(
+                    "col-start-1 row-start-1 flex items-center gap-2",
+                    pending && "invisible",
+                  )}
+                >
+                  {deploy ? (
+                    <Rocket className="size-4" />
+                  ) : (
+                    <ArrowRight className="order-last size-4" />
+                  )}
+                  {nextLabel}
+                </span>
+                {pending && (
+                  <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+                )}
+              </span>
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

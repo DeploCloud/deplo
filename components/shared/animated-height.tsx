@@ -12,10 +12,17 @@ import { cn } from "@/lib/utils";
 export function AnimatedHeight({
   children,
   className,
+  scroll = true,
 }: {
   children: React.ReactNode;
   /** Layout of the measured inner box - the content's own spacing. */
   className?: string;
+  /**
+   * Whether a tall body becomes a scroll box HERE. False when the child owns
+   * its own scrolling - a card that caps its own height keeps its header and
+   * footer put, and scrolling it from the outside would carry them away.
+   */
+  scroll?: boolean;
 }) {
   const [el, setEl] = React.useState<HTMLDivElement | null>(null);
   const [height, setHeight] = React.useState<number>();
@@ -34,12 +41,12 @@ export function AnimatedHeight({
       const first = measured.current === undefined;
       measured.current = h;
       setHeight(h);
-      setScrolls(h > window.innerHeight * 0.75);
+      setScrolls(scroll && h > window.innerHeight * 0.75);
       if (!first) setGrowing(true);
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [el]);
+  }, [el, scroll]);
 
   return (
     <div
