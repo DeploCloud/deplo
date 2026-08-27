@@ -1239,7 +1239,7 @@ async function scheduleSourceUninstalls(
  * and the capability is the one that registered the sources in the first place.
  */
 export async function abandonMigration(): Promise<number> {
-  const { teamId } = await requireCapability("create_projects");
+  const { teamId } = await assertImportGate();
   const actor = (await getCurrentUser())?.name ?? "the migration";
 
   const [latest] = await getDb()
@@ -3620,7 +3620,7 @@ export async function resumableMigration(): Promise<ImportRunDTO | null> {
  * "I am done looking at this run" - the wizard stops opening on it.
  */
 export async function dismissMigrationReport(runId: string): Promise<void> {
-  const { teamId } = await requireCapability("create_projects");
+  const { teamId } = await assertImportGate();
   await getDb()
     .update(runsTable)
     .set({ reportSeenAt: nowIso() })
