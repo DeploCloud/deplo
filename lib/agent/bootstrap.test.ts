@@ -9,6 +9,7 @@ import {
   findServerForToken,
   signResponse,
   verifyResponse,
+  assertPinnableFingerprint,
   BootstrapError,
 } from "./bootstrap";
 import { sha256Hex } from "../crypto";
@@ -158,4 +159,21 @@ test("signResponse/verifyResponse: a response binds to the token (HTTP trust pat
   assert.equal(verifyResponse("other-token", body, mac), false);
   // A tampered body fails.
   assert.equal(verifyResponse(token, body + "x", mac), false);
+});
+
+// The agent refuses to bootstrap against an HTTPS control plane with no pinned
+// fingerprint, so a command minted without one exits 0, says the agent is calling
+// home, and leaves a service restarting every five seconds.
+test("an https panel whose certificate could not be read mints nothing", () => {
+  assert.throws(
+    () => assertPinnableFingerprint(new URL("https://panel.example.com"), ""),
+    /refuses to start/,
+  );
+  assert.doesNotThrow(() =>
+    assertPinnableFingerprint(new URL("https://panel.example.com"), "ab12"),
+  );
+  // Over plain http the agent uses the HMAC path, and there is nothing to pin.
+  assert.doesNotThrow(() =>
+    assertPinnableFingerprint(new URL("http://panel.example.com"), ""),
+  );
 });

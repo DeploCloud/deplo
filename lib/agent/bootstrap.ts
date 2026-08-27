@@ -7,6 +7,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { randomToken, sha256Hex } from "../crypto";
 import { signAgentCsr, type SignedAgentCert } from "./pki";
 import type { Server } from "../types";
+import { PUBLIC_URL_PLACEHOLDER } from "../public-url";
+import { isTestEnv } from "../db/pg";
 
 /**
  * The call-home bootstrap (PLAN Part B, P1-P4). Provisioning a remote server is
@@ -106,8 +108,12 @@ export function uninstallCommand(opts: { baseUrl: string }): string {
 
 /**
  * Read the sha256 fingerprint of the cert the control plane's own public URL
- * serves, by making a TLS connection to it. Best-effort: a failure here just
- * degrades to the HTTP trust path, never blocks minting.
+ * serves. Empty over plain HTTP, where the agent uses the HMAC path instead.
+ *
+ * Over HTTPS it THROWS rather than answering empty: the agent refuses to start
+ * without a pinned fingerprint ("HTTPS control plane requires a pinned
+ * fingerprint"), so a command minted without one is a command that cannot work,
+ * handed over with a green "the agent is calling home".
  */
 export async function controlPlaneCertFingerprint(
   baseUrl: string,
@@ -119,6 +125,33 @@ export async function controlPlaneCertFingerprint(
     return "";
   }
   if (url.protocol !== "https:") return "";
+  // Nothing to dial: the instance does not know its own address yet, which is a
+  // different problem from a cert that cannot be read, and has its own answer.
+  if (baseUrl.replace(/\/+$/, "") === PUBLIC_URL_PLACEHOLDER) return "";
+  // Once more before giving up: this dials Deplo's own public address, which can
+  // sit behind a proxy that drops one connection in a while.
+  const fingerprint =
+    (await readCertFingerprint(url)) || (await readCertFingerprint(url));
+  // Nothing is dialable from a test worker, and every server a test registers
+  // would otherwise fail on an address that does not exist.
+  if (!isTestEnv()) assertPinnableFingerprint(url, fingerprint);
+  return fingerprint;
+}
+
+/**
+ * Refuse to mint a command that cannot work. The agent will not bootstrap against
+ * an HTTPS control plane without a pinned fingerprint, so an empty one produces a
+ * service in a restart loop behind a command that exited 0 and said it was
+ * calling home.
+ */
+export function assertPinnableFingerprint(url: URL, fingerprint: string): void {
+  if (url.protocol !== "https:" || fingerprint) return;
+  throw new Error(
+    `Deplo could not read the certificate its own address (${url.origin}) serves, so the install command would produce an agent that refuses to start. Check that ${url.hostname} answers on port ${url.port || 443} from this machine, then try again.`,
+  );
+}
+
+function readCertFingerprint(url: URL): Promise<string> {
   const port = url.port ? Number(url.port) : 443;
   return new Promise<string>((resolve) => {
     const sock = tlsConnect(
