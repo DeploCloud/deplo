@@ -35,6 +35,7 @@ import {
 import { newId, nowIso } from "../ids";
 import { mapLimit } from "../utils";
 import { getCurrentUser } from "../auth";
+import { avatarResolver } from "../avatar";
 import {
   canExposePorts,
   canMountHostVolumes,
@@ -233,6 +234,10 @@ export interface PlanMember {
   sourceRole: string;
   /** Already has a deplo account (matched on email). */
   hasAccount: boolean;
+  /** Their picture and monogram colour, for the ones who do. Null for a stranger:
+   *  an imported address is not sent to Gravatar. */
+  avatarUrl: string | null;
+  avatarColor: string | null;
   /** Already a member of this team. */
   inTeam: boolean;
 }
@@ -268,6 +273,11 @@ export interface ImportRunDTO {
   sourceUrl: string;
   orgName: string | null;
   actor: string;
+  /** The actor's picture and monogram colour, or nulls for a run whose starter
+   *  has no account here any more. Never their email - see `avatarResolver`. */
+  actorUsername: string | null;
+  actorAvatarUrl: string | null;
+  actorAvatarColor: string | null;
   status: string;
   created: number;
   skipped: number;
@@ -1018,7 +1028,12 @@ async function planMembers(
   if (people.length === 0) return [];
 
   const accounts = await getDb()
-    .select({ id: usersTable.id, email: usersTable.email })
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      image: usersTable.image,
+      avatarColor: usersTable.avatarColor,
+    })
     .from(usersTable)
     .where(
       inArray(
@@ -1026,16 +1041,19 @@ async function planMembers(
         people.map((p) => p.email),
       ),
     );
-  const byEmail = new Map(accounts.map((a) => [a.email.toLowerCase(), a.id]));
+  const byEmail = new Map(accounts.map((a) => [a.email.toLowerCase(), a]));
   const memberIds = new Set(await teamMemberIds(teamId));
+  const url = await avatarResolver();
 
   return people.map((p) => {
-    const userId = byEmail.get(p.email) ?? null;
+    const account = byEmail.get(p.email) ?? null;
     return {
       ...p,
       name: p.name || p.email,
-      hasAccount: userId != null,
-      inTeam: userId != null && memberIds.has(userId),
+      hasAccount: account != null,
+      avatarUrl: account ? url(account) : null,
+      avatarColor: account?.avatarColor ?? null,
+      inTeam: account != null && memberIds.has(account.id),
     };
   });
 }
@@ -3739,7 +3757,7 @@ export async function resumableMigration(): Promise<ImportRunDTO | null> {
     )
     .orderBy(desc(runsTable.seq))
     .limit(1);
-  return row ? toRunDTO(row) : null;
+  return row ? (await toRunDTOs([row]))[0] : null;
 }
 
 /**
@@ -3775,7 +3793,8 @@ export async function activeMigrationForTeam(
     .where(eq(itemsTable.runId, rows[0].id))
     .orderBy(desc(itemsTable.seq))
     .limit(1);
-  return { ...toRunDTO(rows[0]), lastPath: last?.path ?? null };
+  const [dto] = await toRunDTOs([rows[0]]);
+  return { ...dto, lastPath: last?.path ?? null };
 }
 
 export async function listMigrationRuns(): Promise<ImportRunDTO[]> {
@@ -3784,15 +3803,14 @@ export async function listMigrationRuns(): Promise<ImportRunDTO[]> {
     .select()
     .from(runsTable)
     .where(eq(runsTable.teamId, teamId));
-  return rows
-    .sort((a, b) =>
-      a.startedAt === b.startedAt
-        ? b.seq - a.seq
-        : a.startedAt < b.startedAt
-          ? 1
-          : -1,
-    )
-    .map(toRunDTO);
+  const sorted = rows.sort((a, b) =>
+    a.startedAt === b.startedAt
+      ? b.seq - a.seq
+      : a.startedAt < b.startedAt
+        ? 1
+        : -1,
+  );
+  return toRunDTOs(sorted);
 }
 
 export async function getMigrationRun(
@@ -3808,8 +3826,9 @@ export async function getMigrationRun(
     .select()
     .from(itemsTable)
     .where(eq(itemsTable.runId, id));
+  const [dto] = await toRunDTOs([rows[0]]);
   return {
-    ...toRunDTO(rows[0]),
+    ...dto,
     items: items
       .sort((a, b) => a.seq - b.seq)
       .map((i) => ({
@@ -3826,13 +3845,68 @@ export async function getMigrationRun(
   };
 }
 
-function toRunDTO(r: typeof runsTable.$inferSelect): ImportRunDTO {
+/** What the History table draws before a name. */
+interface ActorFace {
+  username: string | null;
+  avatarUrl: string | null;
+  avatarColor: string | null;
+}
+
+/**
+ * Resolve every run's actor in one query, so a page of history is two reads and
+ * not one per row. Email is read only to feed the Gravatar fallback and dropped.
+ */
+async function actorFaces(
+  rows: (typeof runsTable.$inferSelect)[],
+): Promise<Map<string, ActorFace>> {
+  const ids = [
+    ...new Set(
+      rows.map((r) => r.actorUserId).filter((v): v is string => Boolean(v)),
+    ),
+  ];
+  if (ids.length === 0) return new Map();
+  const people = await getDb()
+    .select({
+      id: usersTable.id,
+      username: usersTable.username,
+      avatarColor: usersTable.avatarColor,
+      image: usersTable.image,
+      email: usersTable.email,
+    })
+    .from(usersTable)
+    .where(inArray(usersTable.id, ids));
+  const url = await avatarResolver();
+  return new Map(
+    people.map((p) => [
+      p.id,
+      { username: p.username, avatarColor: p.avatarColor, avatarUrl: url(p) },
+    ]),
+  );
+}
+
+/** The same rows as DTOs, with their actors' faces attached. */
+async function toRunDTOs(
+  rows: (typeof runsTable.$inferSelect)[],
+): Promise<ImportRunDTO[]> {
+  const faces = await actorFaces(rows);
+  return rows.map((r) =>
+    toRunDTO(r, (r.actorUserId && faces.get(r.actorUserId)) || null),
+  );
+}
+
+function toRunDTO(
+  r: typeof runsTable.$inferSelect,
+  face: ActorFace | null,
+): ImportRunDTO {
   return {
     id: r.id,
     platform: isMigrationPlatform(r.platform) ? r.platform : "dokploy",
     sourceUrl: r.sourceUrl,
     orgName: r.orgName,
     actor: r.actor,
+    actorUsername: face?.username ?? null,
+    actorAvatarUrl: face?.avatarUrl ?? null,
+    actorAvatarColor: face?.avatarColor ?? null,
     status: r.status,
     created: r.created,
     skipped: r.skipped,

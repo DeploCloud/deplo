@@ -2283,6 +2283,8 @@ type MigrationPlanEnvironment {
 Someone in the team or organization the token reads. Empty when the token belongs to a plain member, which cannot list it.
 """
 type MigrationPlanMember {
+  avatarColor: String
+  avatarUrl: String
   email: String
   hasAccount: Boolean
   inTeam: Boolean

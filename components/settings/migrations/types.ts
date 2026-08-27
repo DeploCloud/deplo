@@ -61,6 +61,8 @@ export interface PlanMember {
   name: string;
   sourceRole: string;
   hasAccount: boolean;
+  avatarUrl: string | null;
+  avatarColor: string | null;
   inTeam: boolean;
 }
 
@@ -101,6 +103,11 @@ export interface ImportRun {
   sourceUrl: string;
   orgName: string | null;
   actor: string;
+  /** The actor's picture and monogram colour - nulls for a run whose starter has
+   *  no account here any more. */
+  actorUsername: string | null;
+  actorAvatarUrl: string | null;
+  actorAvatarColor: string | null;
   status: string;
   created: number;
   skipped: number;

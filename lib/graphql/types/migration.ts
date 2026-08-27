@@ -186,6 +186,8 @@ const PlanMemberRef = builder
           "The role they held over there. Shown, never applied: everyone arrives as a plain member and is promoted on purpose.",
       }),
       hasAccount: t.exposeBoolean("hasAccount"),
+      avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
+      avatarColor: t.exposeString("avatarColor", { nullable: true }),
       inTeam: t.exposeBoolean("inTeam"),
     }),
   });

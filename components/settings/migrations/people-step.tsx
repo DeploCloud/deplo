@@ -132,10 +132,16 @@ function PersonCard({
   return (
     <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4">
       <div className="flex w-full items-center gap-3">
-        {/* These people have no deplo account yet - no stored colour, and no
-            picture to resolve. The neutral mark, and their name or the local
-            part of their address for the letters. */}
-        <UserAvatar name={person.name} username={person.email} size="lg" />
+        {/* Their real picture once they already have an account here; the
+            neutral mark otherwise, with their name or the local part of their
+            address for the letters. */}
+        <UserAvatar
+          name={person.name}
+          username={person.email}
+          avatarUrl={person.avatarUrl}
+          avatarColor={person.avatarColor}
+          size="lg"
+        />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{person.email}</p>
           {person.sourceRole && (
