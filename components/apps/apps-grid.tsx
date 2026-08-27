@@ -18,6 +18,7 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
+  pointerWithin,
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
@@ -981,6 +982,17 @@ function SortableGrid({
           ),
         });
       }
+      // The "move out" strip runs the full width of the page, so its CENTRE sits
+      // mid-screen: closestCenter only chose it when the card was dragged to the
+      // middle, and over the trail's own text - at the far left - a top-row card
+      // always won. Being inside the strip is the whole answer, text included.
+      const leaving = pointerWithin({
+        ...args,
+        droppableContainers: args.droppableContainers.filter(
+          (c) => String(c.id) === UNGROUP_DROP_ID,
+        ),
+      });
+      if (leaving.length > 0) return leaving;
       if (folderIdSet.has(a)) {
         // A folder reorders among other folders, and, when nested, can also be
         // dropped on the breadcrumb "move out" zone to climb out of its parent.
