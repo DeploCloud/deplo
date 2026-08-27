@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import yaml from "@/lib/yaml";
 import { toast } from "sonner";
 import {
-  MoreHorizontal,
   ShieldCheck,
   ShieldOff,
   Star,
   Trash2,
   ExternalLink,
+  Loader2,
   RefreshCw,
   Network,
   Pencil,
@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -33,13 +34,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CopyButton } from "@/components/shared/copy-button";
 import { CloudflareIcon } from "@/components/shared/brand-icons";
@@ -244,17 +238,60 @@ export function DomainRow({
     });
   }
 
+  // Verify reports what the check actually FOUND, not a blanket "verified": a
+  // domain can settle on pending/misconfigured and the toast must say so (the
+  // page keeps re-checking it automatically either way).
+  function verify() {
+    startTransition(async () => {
+      const res = await gqlAction<{
+        verifyDomain: { id: string; status: string };
+      }>(
+        /* GraphQL */ `
+          mutation ($id: String!) {
+            verifyDomain(id: $id) {
+              id
+              status
+            }
+          }
+        `,
+        { id: domain.id },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      const status = res.data?.verifyDomain.status;
+      if (status === "valid")
+        toast.success("Domain verified - routing is live");
+      else if (status === "cloudflare")
+        toast.success(
+          "Cloudflare is proxying this domain. Make sure its record points at this server.",
+        );
+      else if (status === "misconfigured")
+        toast.warning(
+          "This domain\u2019s DNS points at another address - see the hint on its row",
+        );
+      else
+        toast.warning(
+          "No DNS record found yet - it\u2019s re-checked automatically",
+        );
+      router.refresh();
+    });
+  }
+
   return (
     <TableRow>
       <TableCell>
         <div className="flex flex-wrap items-center gap-2">
+          {/* The name IS the way to visit it - the row needs no button of its own. */}
           <a
             href={`${scheme}://${domain.name}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="cursor-pointer font-medium hover:underline"
+            className="group/visit inline-flex cursor-pointer items-center gap-1.5 font-medium hover:underline"
           >
             {domain.name}
+            <ExternalLink className="size-3.5 shrink-0 text-muted-foreground group-hover/visit:text-foreground" />
           </a>
           {domain.primary && (
             <Badge variant="secondary" className="gap-1">
@@ -407,84 +444,36 @@ export function DomainRow({
         </TableCell>
       )}
       <TableCell>
-        <StatusBadge status={domain.status} />
-      </TableCell>
-      <TableCell className="text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Domain menu">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem asChild>
-              <a
-                href={`${scheme}://${domain.name}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="cursor-pointer"
-              >
-                <ExternalLink className="size-4" />
-                Visit
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => openEdit()} disabled={!canManage}>
-              <Pencil className="size-4" />
-              Edit
-            </DropdownMenuItem>
-            {domain.status !== "valid" && (
-              <DropdownMenuItem
-                onClick={() =>
-                  // Verify reports what the check actually FOUND, not a blanket "verified": a domain
-                  // can settle on pending/misconfigured and the toast must say so (the page keeps
-                  // re-checking it automatically either way).
-                  startTransition(async () => {
-                    const res = await gqlAction<{
-                      verifyDomain: { id: string; status: string };
-                    }>(
-                      /* GraphQL */ `
-                        mutation ($id: String!) {
-                          verifyDomain(id: $id) {
-                            id
-                            status
-                          }
-                        }
-                      `,
-                      { id: domain.id },
-                    );
-                    if (!res.ok) {
-                      toast.error(res.error);
-                      return;
-                    }
-                    const status = res.data?.verifyDomain.status;
-                    if (status === "valid")
-                      toast.success("Domain verified - routing is live");
-                    else if (status === "cloudflare")
-                      toast.success(
-                        "Cloudflare is proxying this domain. Make sure its record points at this server.",
-                      );
-                    else if (status === "misconfigured")
-                      toast.warning(
-                        "This domain’s DNS points at another address - see the hint on its row",
-                      );
-                    else
-                      toast.warning(
-                        "No DNS record found yet - it’s re-checked automatically",
-                      );
-                    router.refresh();
-                  })
-                }
+        <span className="flex items-center gap-1">
+          <StatusBadge status={domain.status} />
+          {/* Beside the chip it argues with, not buried in a menu: a domain that
+              is not valid yet is exactly when someone wants to re-check it. */}
+          {domain.status !== "valid" && (
+            <SimpleTooltip content="Check this domain's DNS again">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Verify ${domain.name}`}
+                onClick={verify}
                 disabled={pending || !canManage}
               >
-                <RefreshCw className="size-4" />
-                Verify
-              </DropdownMenuItem>
-            )}
-            {/* A redirecting hostname can never be the canonical host - it
-                serves nothing. The pair is flipped from the Redirect setting of
-                the domain that DOES serve, and the server refuses this too. */}
-            {!domain.primary && !domain.redirectTo && (
-              <DropdownMenuItem
+                <RefreshCw className="size-3.5" />
+              </Button>
+            </SimpleTooltip>
+          )}
+        </span>
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-1">
+          {/* A redirecting hostname can never be the canonical host - it serves
+              nothing. The pair is flipped from the Redirect setting of the
+              domain that DOES serve, and the server refuses this too. */}
+          {!domain.primary && !domain.redirectTo && (
+            <SimpleTooltip content="Make this the canonical host">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Set ${domain.name} as primary`}
                 onClick={() =>
                   call(
                     () =>
@@ -496,28 +485,41 @@ export function DomainRow({
                     "Set as primary",
                   )
                 }
-                // A misconfigured domain has no working DNS to this server, so it
-                // can't be the canonical host - disabled here, and the server
-                // rejects it too.
+                // A misconfigured domain has no working DNS to this server, so
+                // it can't be the canonical host - disabled here, and the
+                // server rejects it too.
                 disabled={
                   pending || !canManage || domain.status === "misconfigured"
                 }
               >
                 <Star className="size-4" />
-                Set as primary
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={() => setConfirmOpen(true)}
+              </Button>
+            </SimpleTooltip>
+          )}
+          <SimpleTooltip content="Remove this domain">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Remove ${domain.name}`}
+              onClick={() => setConfirmOpen(true)}
               disabled={!canManage}
+              className="text-muted-foreground hover:text-destructive"
             >
               <Trash2 className="size-4" />
-              Remove
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </Button>
+          </SimpleTooltip>
+          <SimpleTooltip content="Edit this domain">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Edit ${domain.name}`}
+              onClick={() => openEdit()}
+              disabled={!canManage}
+            >
+              <Pencil className="size-4" />
+            </Button>
+          </SimpleTooltip>
+        </div>
         <ConfirmAction
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
@@ -587,7 +589,19 @@ export function DomainRow({
                   Cancel
                 </Button>
                 <Button type="submit" disabled={pending || !name.trim()}>
-                  {pending ? "Saving…" : "Save changes"}
+                  <span className="grid place-items-center">
+                    <span
+                      className={cn(
+                        "col-start-1 row-start-1",
+                        pending && "invisible",
+                      )}
+                    >
+                      Save changes
+                    </span>
+                    {pending && (
+                      <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+                    )}
+                  </span>
                 </Button>
               </DialogFooter>
             </form>
