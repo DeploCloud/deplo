@@ -224,11 +224,9 @@ function TeamRow({
       disabled={disabled}
       onSelect={onSelect}
     >
-      {/* The gutter the handle fades into. Reserved rather than uncovered by a
-          slide, so the picture and the name never move under the pointer. */}
-      <span
-        className={cn("flex w-full items-center gap-2", sortable && "pr-5")}
-      >
+      {/* Both controls sit in the flow and fade rather than mount, so the
+          picture and the name never move under the pointer. */}
+      <span className="flex w-full items-center gap-2">
         <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
         <span className="flex min-w-0 flex-col">
           <span className="truncate">{team.name}</span>
@@ -238,36 +236,42 @@ function TeamRow({
           </span>
         </span>
         <span className="ml-auto flex items-center gap-1">
+          {sortable && (
+            <span
+              {...attributes}
+              {...listeners}
+              // The handle drags; it must never also switch team - and stopping
+              // the CLICK is the whole of what that takes.
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Reorder ${team.name}`}
+              className="cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
+            >
+              <GripVertical className="size-3.5" />
+            </span>
+          )}
           {team.canManage && (
             <button
               type="button"
-              // Same reason as the handle below: this is its own action, not a
-              // way of picking the row.
+              // Same reason as the handle: this is its own action, not a way of
+              // picking the row.
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit();
               }}
               aria-label={`Settings for ${team.name}`}
-              className="cursor-pointer rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+              className={cn(
+                "cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-opacity hover:text-foreground",
+                // The team you are IN keeps its pencil out: it is the one whose
+                // settings you reach from here most. The rest ask first.
+                !active &&
+                  "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+              )}
             >
               <Pencil className="size-3.5" />
             </button>
           )}
         </span>
       </span>
-      {sortable && (
-        <span
-          {...attributes}
-          {...listeners}
-          // The handle drags; it must never also switch team - and stopping the CLICK is the
-          // whole of what that takes.
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Reorder ${team.name}`}
-          className="absolute right-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
-        >
-          <GripVertical className="size-3.5" />
-        </span>
-      )}
     </DropdownMenuItem>
   );
 }

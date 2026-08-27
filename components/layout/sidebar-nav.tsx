@@ -206,7 +206,9 @@ export function SidebarNav({
     <nav
       ref={navRef}
       className={cn(
-        "relative isolate flex flex-col py-3",
+        // No top padding: the search box above already leaves its own gap, and a
+        // second one made the first row float away from it.
+        "relative isolate flex flex-col pb-3",
         collapsed ? "px-2" : "px-3",
         slide,
       )}
