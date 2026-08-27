@@ -15,7 +15,7 @@ export const DOCS = {
 
   "install.overview": "getting-started/install",
 
-  "deploy.sources": "guides/deploy#the-four-sources",
+  "deploy.sources": "guides/deploy#the-five-sources",
   "deploy.trace": "concepts/what-happens-on-a-deploy",
   "deploy.queue": "concepts/what-happens-on-a-deploy#it-waits-for-a-slot",
   "deploy.fromGit": "guides/deploy/from-git",
