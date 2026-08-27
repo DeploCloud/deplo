@@ -49,13 +49,40 @@ const CHECK_HEALTH = /* GraphQL */ `
 `;
 
 /**
- * `keepHost` is what keeps a corrected machine recognisable: the row was
- * registered at the panel's address, and that is the address a second pass of the
- * wizard matches the Dokploy machine by.
+ * The address is PROVED, then written down against the source - so the next
+ * attempt registers the machine where it really is instead of at the panel's
+ * name. `keepHost` (inside) keeps the row recognisable on that second pass.
  */
 const CHANGE_ADDRESS = /* GraphQL */ `
-  mutation ChangeMigrationServerAddress($id: String!, $address: String!) {
-    updateServerAddress(id: $id, address: $address, keepHost: true)
+  mutation SetMigrationMachineAddress(
+    $url: String!
+    $sourceId: String!
+    $id: String!
+    $address: String!
+  ) {
+    setMigrationMachineAddress(
+      url: $url
+      sourceId: $sourceId
+      serverId: $id
+      address: $address
+    )
+  }
+`;
+
+/**
+ * A machine Deplo already has a row for, but whose agent has never answered - what
+ * a first attempt that failed leaves behind. Its command has to come back, or the
+ * only way past this step is deleting the server by hand.
+ */
+const REISSUE = /* GraphQL */ `
+  mutation ReissueMigrationBootstrap($id: String!) {
+    reissueServerBootstrap(id: $id) {
+      server {
+        id
+        name
+      }
+      installCommand
+    }
   }
 `;
 
@@ -75,6 +102,14 @@ const POLL_MS = 6000;
  */
 const INSTALLED_BUT_UNREACHABLE =
   "Installed and calling home, but Deplo cannot reach it back.";
+
+/**
+ * The other reason nothing answers at that address, and the one this wizard causes
+ * itself: the first guess is the panel's own hostname, which behind a proxy or a
+ * CDN is that proxy rather than the machine.
+ */
+const PANEL_ADDRESS_NOTICE =
+  "If the panel sits behind a proxy or a CDN, this address is the proxy, not the machine.";
 
 /** What the probe said, for a machine that answered badly or not at all. */
 interface Unreachable {
@@ -165,6 +200,7 @@ function AddressForm({
 
 export function InstallStep({
   kind,
+  sourceUrl,
   machines,
   canAddServers,
   pending,
@@ -175,8 +211,9 @@ export function InstallStep({
 }: {
   /** Which panel these machines belong to. */
   kind: SourceKind | null;
-  machines: PlanServer[];
   /** The panel this imports from - the key a corrected address is filed under. */
+  sourceUrl: string;
+  machines: PlanServer[];
   /** Registering a host is instance-admin only, like everywhere else. */
   canAddServers: boolean;
   /** Registered, waiting to be heard from. The wizard holds it - see above. */
@@ -200,8 +237,13 @@ export function InstallStep({
   >({});
   const [draft, setDraft] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState<Record<string, boolean>>({});
+  /** Machines whose address somebody has opened for editing by hand. */
+  const [editing, setEditing] = React.useState<Record<string, boolean>>({});
 
-  const missing = machines.filter((m) => !m.deploServerId);
+  // Having a row is not being connected: a first attempt that failed leaves one
+  // behind at the same address, and taking it for a machine Deplo can read is what
+  // made the retry skip this step and die in the data phase.
+  const missing = machines.filter((m) => !m.deploServerOnline);
   const settled = missing.length === 0;
 
   /**
@@ -258,6 +300,44 @@ export function InstallStep({
     [attempted, setPending, kind],
   );
 
+  /**
+   * A machine Deplo already has a row for that has never answered: ask for its
+   * install command back, so this step can be driven again instead of dead-ending
+   * on a row only Settings -> Servers can remove.
+   */
+  const reclaimMachine = React.useCallback(
+    async (m: PlanServer) => {
+      const res = await gqlAction<
+        {
+          reissueServerBootstrap: {
+            server: { id: string; name: string };
+            installCommand: string;
+          };
+        },
+        { server: { id: string; name: string }; installCommand: string }
+      >(REISSUE, { id: m.deploServerId }, (d) => d.reissueServerBootstrap);
+      if (!res.ok || !res.data) {
+        attempted.current.delete(m.sourceId);
+        setFailed((p) => ({
+          ...p,
+          [m.sourceId]: res.ok
+            ? "Deplo could not mint a new install command."
+            : res.error,
+        }));
+        return;
+      }
+      setPending((prev) => ({
+        ...prev,
+        [m.sourceId]: {
+          serverId: res.data!.server.id,
+          name: res.data!.server.name,
+          installCommand: res.data!.installCommand,
+        },
+      }));
+    },
+    [attempted, setPending],
+  );
+
   // ---- register whatever is not ours yet, once, on arrival ----------
   React.useEffect(() => {
     if (!canAddServers) return;
@@ -268,8 +348,12 @@ export function InstallStep({
         // `machines`, which re-runs this effect and cancels the old one, and a machine
         // claimed by a run that then stops would never be registered by anybody.
         if (cancelled) return;
-        if (m.deploServerId || attempted.current.has(m.sourceId)) continue;
+        if (m.deploServerOnline || attempted.current.has(m.sourceId)) continue;
         attempted.current.add(m.sourceId);
+        if (m.deploServerId) {
+          await reclaimMachine(m);
+          continue;
+        }
         if (!m.ipAddress) {
           // Not a dead end any more: the row below offers the field that fixes
           // it. Marked attempted all the same, so the effect does not re-raise
@@ -289,7 +373,7 @@ export function InstallStep({
     return () => {
       cancelled = true;
     };
-  }, [machines, canAddServers, attempted, registerMachine]);
+  }, [machines, canAddServers, attempted, registerMachine, reclaimMachine]);
 
   // ---- probe until the agent answers US ------------------------------
   /**
@@ -388,29 +472,43 @@ export function InstallStep({
     [],
   );
 
+  /**
+   * Point Deplo at a different address for this machine, and REMEMBER it. Offered
+   * for a connected machine too: a row that answers can still be the wrong box,
+   * and the only sign of that used to be every volume "having no data yet".
+   */
   const saveAddress = (sourceId: string, p: PendingMachine) =>
     runBusy(sourceId, async () => {
       const address = (draft[sourceId] ?? "").trim();
       if (!address) return;
       const res = await gqlAction<
-        { updateServerAddress: string | null },
+        { setMigrationMachineAddress: string | null },
         string | null
       >(
         CHANGE_ADDRESS,
-        { id: p.serverId, address },
-        (d) => d.updateServerAddress,
+        { url: sourceUrl, sourceId, id: p.serverId, address },
+        (d) => d.setMigrationMachineAddress,
       );
       if (!res.ok) {
-        // Verbatim: `updateServerAddress` dials the new address before it saves,
-        // so its refusal IS the diagnosis - the port is still shut, or nothing
-        // is there.
+        // Verbatim: the mutation dials the new address before it saves, so its
+        // refusal IS the diagnosis - the port is still shut, or nothing is there.
+        // A machine with no command on screen has nowhere to show that, so it says
+        // it out loud instead.
+        if (!pending[sourceId]) toast.error(res.error);
         setUnreachable((prev) => ({
           ...prev,
           [sourceId]: { status: "offline", message: res.error },
         }));
         return;
       }
+      if (!pending[sourceId])
+        toast.success(`${p.name} now answers at ${address}.`);
       if (res.data) toast.warning(res.data);
+      setEditing((prev) => {
+        const next = { ...prev };
+        delete next[sourceId];
+        return next;
+      });
       await probe(sourceId, p);
     });
 
@@ -462,10 +560,26 @@ export function InstallStep({
                     </span>
                   )}
                 </div>
-                {m.deploServerId ? (
-                  <span className="flex shrink-0 items-center gap-1.5 text-xs text-success">
-                    <Check className="size-3.5" />
-                    Connected
+                {m.deploServerOnline ? (
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="flex items-center gap-1.5 text-xs text-success">
+                      <Check className="size-3.5" />
+                      Connected
+                    </span>
+                    {canAddServers && (
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                        onClick={() =>
+                          setEditing((prev) => ({
+                            ...prev,
+                            [m.sourceId]: !prev[m.sourceId],
+                          }))
+                        }
+                      >
+                        Change address
+                      </button>
+                    )}
                   </span>
                 ) : error ? (
                   <span className="flex min-w-0 items-start gap-1.5 text-xs text-destructive">
@@ -523,7 +637,8 @@ export function InstallStep({
               {p && bad && bad.status === "offline" && (
                 <div className="space-y-2">
                   <p className="text-xs text-destructive">
-                    {INSTALLED_BUT_UNREACHABLE} {AGENT_PORT_NOTICE}
+                    {INSTALLED_BUT_UNREACHABLE} {AGENT_PORT_NOTICE}{" "}
+                    {PANEL_ADDRESS_NOTICE}
                   </p>
                   <p className="text-xs text-muted-foreground">{bad.message}</p>
                   {canAddServers ? (
@@ -546,10 +661,36 @@ export function InstallStep({
                 </div>
               )}
 
+              {m.deploServerOnline &&
+                editing[m.sourceId] &&
+                m.deploServerId && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      A machine that answers can still be the wrong one. Every
+                      volume of the services on it would arrive empty.
+                    </p>
+                    <AddressForm
+                      value={draft[m.sourceId] ?? ""}
+                      onChange={(v) =>
+                        setDraft((prev) => ({ ...prev, [m.sourceId]: v }))
+                      }
+                      onSubmit={() =>
+                        void saveAddress(m.sourceId, {
+                          serverId: m.deploServerId!,
+                          name: m.deploServerName ?? m.name,
+                          installCommand: "",
+                        })
+                      }
+                      submitLabel="Save"
+                      working={working}
+                    />
+                  </div>
+                )}
+
               {/**
                * Never registered: no address to derive, or `addServer` refused one.
                */}
-              {!p && !m.deploServerId && error && (
+              {!p && !m.deploServerOnline && error && (
                 <div className="space-y-2">
                   {canAddServers ? (
                     <AddressForm

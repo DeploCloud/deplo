@@ -268,12 +268,21 @@ async function detail(
   ]);
   const env = coolifyEnvBlob(envRows);
   const { mounts } = coolifyMounts(storages);
+  // A variable the panel would not answer for arrives EMPTY. Said here, or the
+  // report reads as a clean import of nine variables when four of them are gone.
+  const envNotes =
+    env.unreadableKeys.length > 0
+      ? [
+          `${env.unreadableKeys.join(", ")} arrived empty: {panel} shows those values once and does not answer with them again. Set them under Variables before deploying.`,
+        ]
+      : [];
   // The MACHINE this resource runs on. Left out, everything looked like it was
   // on the panel's own host, and the data phase then asked that host for volumes
   // living on the second one - which answered "no such volume", and the report
   // called it a service that had never been started.
   const extras = {
     env: env.blob,
+    envNotes,
     mounts,
     serverId: index.serverOf.get(id) ?? "",
   };

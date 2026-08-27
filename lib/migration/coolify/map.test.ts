@@ -19,6 +19,7 @@ import {
   coolifyServer,
   parseCoolifyFqdns,
 } from "./map";
+import { parseEnvBlob } from "../map";
 import type { CoolifyApplication, CoolifyDatabase } from "./client";
 
 /**
@@ -225,6 +226,40 @@ test("coolifyEnvBlob says when the values never arrived", () => {
   assert.equal(coolifyEnvBlob([]).masked, false);
 });
 
+// One normal variable in the list is enough for `masked` to stay false, so the
+// whole safety net used to miss a value the panel simply refuses to repeat.
+test("coolifyEnvBlob names the variables the panel would not answer for", () => {
+  const r = coolifyEnvBlob([
+    { key: "PLAIN", value: "yes" },
+    { key: "DB_PASSWORD", is_shown_once: true },
+    { key: "EMPTY_ON_PURPOSE", value: "" },
+  ]);
+  assert.equal(r.masked, false);
+  assert.deepEqual(r.unreadableKeys, ["DB_PASSWORD"]);
+  assert.equal(r.blob, "PLAIN=yes\nDB_PASSWORD=\nEMPTY_ON_PURPOSE=");
+});
+
+test("a multi-line value survives the blob it travels in", () => {
+  const key = "-----BEGIN PLAIN-----\nLINE1\nLINE2\n-----END PLAIN-----";
+  const r = coolifyEnvBlob([
+    { key: "PLAIN_MULTI", value: key },
+    { key: "AFTER", value: "still here" },
+  ]);
+  assert.deepEqual(parseEnvBlob(r.blob), [
+    { key: "PLAIN_MULTI", value: key },
+    { key: "AFTER", value: "still here" },
+  ]);
+});
+
+test("a multi-line value the panel already quoted is not quoted twice", () => {
+  const r = coolifyEnvBlob([
+    { key: "QUOTED", value: "'-----BEGIN-----\nBODY\n-----END-----'" },
+  ]);
+  assert.deepEqual(parseEnvBlob(r.blob), [
+    { key: "QUOTED", value: "-----BEGIN-----\nBODY\n-----END-----" },
+  ]);
+});
+
 /* ---- ports ---------------------------------------------------------- */
 
 test("coolifyPorts reads a mapping list", () => {
@@ -287,6 +322,28 @@ test("a prebuilt image is a docker source, not a build", () => {
   });
   assert.equal(a.sourceType, "docker");
   assert.equal(a.dockerImage, "ghcr.io/acme/api:1.4.0");
+});
+
+test("an image app is not told it arrived as the panel's own repository", () => {
+  const a = coolifyApplication({
+    uuid: "app-3",
+    build_pack: "dockerimage",
+    docker_registry_image_name: "ghcr.io/acme/api",
+    // What the API answers for EVERY image app: its own repository, as a default.
+    git_repository: "coollabsio/coolify",
+  });
+  assert.deepEqual(a.platformNotes, []);
+});
+
+test("a Dockerfile in a subdirectory keeps its path", () => {
+  const a = coolifyApplication({
+    uuid: "app-4",
+    build_pack: "dockerfile",
+    git_repository: "https://github.com/acme/mono",
+    dockerfile_location: "/docker/Dockerfile",
+    dockerfile: "FROM node:22\nRUN true",
+  });
+  assert.equal(a.dockerfile, "docker/Dockerfile");
 });
 
 test("basic auth comes across as one credential", () => {

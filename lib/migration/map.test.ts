@@ -27,6 +27,7 @@ import {
   mapSource,
   parseCpuMilli,
   parseEnvBlob,
+  renameDatabaseHosts,
   parseMemoryMb,
   portNotes,
   repoNameFromUrl,
@@ -1187,6 +1188,52 @@ test("pairVolumes matches on the container path, whatever either side calls them
   assert.deepEqual(notes, []);
 });
 
+test("pairVolumes tells two volumes on the same path apart by their alias", () => {
+  const { value, notes } = pairVolumes(
+    [
+      { name: "b5-compose-vol_alphadata", mountPath: "/data" },
+      { name: "b5-compose-vol_betadata", mountPath: "/data" },
+    ],
+    [
+      {
+        name: "deplo-b5-compose-vol_betadata",
+        mountPath: "/data",
+        alias: "betadata",
+      },
+      {
+        name: "deplo-b5-compose-vol_alphadata",
+        mountPath: "/data",
+        alias: "alphadata",
+      },
+    ],
+  );
+  assert.deepEqual(
+    value.map((p) => `${p.sourceVolume}->${p.targetVolume}`).sort(),
+    [
+      "b5-compose-vol_alphadata->deplo-b5-compose-vol_alphadata",
+      "b5-compose-vol_betadata->deplo-b5-compose-vol_betadata",
+    ],
+  );
+  assert.deepEqual(notes, []);
+});
+
+test("pairVolumes lets the longer alias claim its own volume", () => {
+  const { value } = pairVolumes(
+    [
+      { name: "proj_data", mountPath: "/data" },
+      { name: "proj_mydata", mountPath: "/data" },
+    ],
+    [
+      { name: "deplo-x_data", mountPath: "/data", alias: "data" },
+      { name: "deplo-x_mydata", mountPath: "/data", alias: "mydata" },
+    ],
+  );
+  assert.deepEqual(
+    value.map((p) => `${p.sourceVolume}->${p.targetVolume}`).sort(),
+    ["proj_data->deplo-x_data", "proj_mydata->deplo-x_mydata"],
+  );
+});
+
 test("pairVolumes reports both kinds of leftover", () => {
   const { value, notes } = pairVolumes(
     [{ name: "dok_data", mountPath: "/var/data" }],
@@ -2053,4 +2100,43 @@ test("a path is never mistaken for a slashed volume name", () => {
     { type: "volume", source: "cache", target: "/cache" },
   ]);
   assert.deepEqual(Object.keys(doc.volumes ?? {}), ["cache"]);
+});
+
+// The number one cause of "my app does not start after the migration": the
+// database answers to a new name and every connection string still spells the old.
+test("renameDatabaseHosts rewrites a host token and names the keys", () => {
+  const env = [
+    {
+      key: "DATABASE_URL",
+      value: "postgres://u:p@b2-pg-public-8hleda:5432/pubdb",
+    },
+    { key: "REDIS_HOST", value: "b2-redis-9xk" },
+    { key: "ALLOWED", value: "b2-pg-public-8hleda,localhost" },
+    { key: "UNRELATED", value: "b2-pg-public-8hleda-backup" },
+  ];
+  const touched = renameDatabaseHosts(
+    env,
+    new Map([
+      ["b2-pg-public-8hleda", "db-b2-pg-public"],
+      ["b2-redis-9xk", "db-b2-redis"],
+    ]),
+  );
+  assert.deepEqual(touched, ["DATABASE_URL", "REDIS_HOST", "ALLOWED"]);
+  assert.equal(env[0].value, "postgres://u:p@db-b2-pg-public:5432/pubdb");
+  assert.equal(env[1].value, "db-b2-redis");
+  assert.equal(env[2].value, "db-b2-pg-public,localhost");
+  assert.equal(
+    env[3].value,
+    "b2-pg-public-8hleda-backup",
+    "a longer name that merely starts with it is a different host",
+  );
+});
+
+test("a bare word is never swapped inside a value", () => {
+  const env = [{ key: "DB_ENGINE", value: "postgres" }];
+  assert.deepEqual(
+    renameDatabaseHosts(env, new Map([["postgres", "db-postgres"]])),
+    [],
+  );
+  assert.equal(env[0].value, "postgres");
 });

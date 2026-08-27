@@ -3,15 +3,18 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 
 import type { AgentConnection } from "../infra/agent-client";
+import { EMPTY_TAR_GZ, tarGz } from "../test/tar-fixture";
 import { copyVolumeBetween } from "./volume-migration";
 
 /**
- * The byte relay, on its own.
+ * The byte relay, on its own. The fixtures are REAL gzipped tars: emptiness is
+ * read from the archive's entries, so a stand-in buffer would prove nothing.
  */
 
-/** A gzipped tar of an empty directory - what a missing volume exports. */
-const EMPTY = Buffer.alloc(45, 0);
-const REAL = Buffer.alloc(200_000, 3);
+const EMPTY = EMPTY_TAR_GZ;
+const REAL = tarGz([["./blob", Buffer.alloc(200_000, 3)]]);
+/** Ten bytes. Under any size threshold, and somebody's redis dump. */
+const TINY = tarGz([["./dump.rdb", Buffer.from("0123456789")]]);
 
 interface FakeSource {
   conn: AgentConnection;
@@ -75,6 +78,21 @@ test("an empty source is not a copy, and the destination is never opened", async
     [],
     "a wipe-first import must not even be attempted for a source with nothing in it",
   );
+});
+
+test("a volume holding one small file is copied, not called empty", async () => {
+  const from = source({ data: TINY });
+  const to = dest();
+
+  const res = await copyVolumeBetween(from.conn, to.conn, "data", "target");
+
+  assert.equal(
+    res.empty,
+    false,
+    "ten bytes of somebody's database is not nothing",
+  );
+  assert.equal(res.bytes, TINY.length);
+  assert.deepEqual(to.calls, ["import:target:wipe"]);
 });
 
 test("a real volume arrives byte for byte, and the copy says how much", async () => {

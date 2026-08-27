@@ -51,6 +51,9 @@ export interface PlanServer {
   /** The Deplo server at that address, or null when Deplo has no agent there. */
   deploServerId: string | null;
   deploServerName: string | null;
+  /** Whether that server's agent answers. A row a failed attempt left behind sits
+   *  at the same address and is matched all the same. */
+  deploServerOnline: boolean;
 }
 
 export interface PlanMember {

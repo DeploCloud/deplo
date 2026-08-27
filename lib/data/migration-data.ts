@@ -381,10 +381,12 @@ async function landedFor(
         .map((v) => ({
           name: deploVolumeName(hit.slug, v.name, true),
           mountPath: v.mountPath,
+          alias: v.name,
         })),
       ...composeVolumeMounts(hit.compose ?? "").map((v) => ({
         name: deploVolumeName(hit.slug, v.name, false),
         mountPath: v.mountPath,
+        alias: v.name,
       })),
     ],
     hostMounts: managed
@@ -507,6 +509,21 @@ export interface MoveInput extends ConnectInput {
   sourceId: string;
   /** Bytes as they cross, for a caller that shows progress while this runs. */
   onBytes?: OnBytes;
+}
+
+/**
+ * What Deplo actually saw: it asked ONE machine for a volume and that machine has
+ * no such volume. Only a service that is not running makes "never started there"
+ * a fair reading; for one that IS running, the machine is the wrong machine.
+ */
+function missingVolumeMessage(
+  name: string,
+  serviceName: string,
+  running: boolean,
+): string {
+  return running
+    ? `Deplo asked the machine {panel} says it runs ${serviceName} on for ${name}, and there is no such volume there - ${serviceName} is running, so its data is on a different machine. Correct that machine's address and run the copy again.`
+    : `Deplo asked the machine {panel} says it runs ${serviceName} on for ${name}, and there is no such volume there. ${serviceName} is stopped over there, so it may simply never have been started - check before anyone uses it.`;
 }
 
 /**
@@ -755,6 +772,13 @@ async function runMoveMigrationServiceData(
         if (copied.empty) {
           empty++;
           if (copied.missing) missing++;
+          // A RUNNING service whose volume is not where Deplo looked has its data
+          // somewhere else. Left as a `skipped` line, the app came up on empty
+          // storage with nothing anywhere refusing to let it.
+          if (copied.missing && state.running)
+            lost.push(
+              `${pair.sourceVolume} (${pair.mountPath}): not on the machine ${panel} says ${svc.name} runs on`,
+            );
           await appendRunItem(input.runId, panel, {
             path,
             sourceKind: "volume",
@@ -763,7 +787,7 @@ async function runMoveMigrationServiceData(
             targetKind: landed.targetKind,
             targetId: landed.targetId,
             message: copied.missing
-              ? `${pair.sourceVolume} is not on the machine {panel} runs ${svc.name} on, so it was never started there and has no data yet.`
+              ? missingVolumeMessage(pair.sourceVolume, svc.name, state.running)
               : `${pair.sourceVolume} holds nothing on {panel}, so ${pair.targetVolume} (${pair.mountPath}) was left as it is.`,
           });
           continue;
@@ -843,6 +867,10 @@ async function runMoveMigrationServiceData(
         if (copied.empty) {
           empty++;
           if (copied.missing) missing++;
+          if (copied.missing && state.running)
+            lost.push(
+              `${bind.sourcePath} (${bind.mountPath}): not on the machine ${panel} says ${svc.name} runs on`,
+            );
           await appendRunItem(input.runId, panel, {
             path,
             sourceKind: "volume",
@@ -851,7 +879,7 @@ async function runMoveMigrationServiceData(
             targetKind: landed.targetKind,
             targetId: landed.targetId,
             message: copied.missing
-              ? `${bind.sourcePath} is not on the machine {panel} runs ${svc.name} on, so it was never started there and has no data yet.`
+              ? missingVolumeMessage(bind.sourcePath, svc.name, state.running)
               : `${bind.sourcePath} is empty on {panel}, so ${bind.targetPath} was left as it is.`,
           });
           continue;
@@ -929,9 +957,11 @@ async function runMoveMigrationServiceData(
     );
   if (empty > 0 && moved === 0)
     notes.push(
-      missing === empty
+      missing === empty && !state.running
         ? `Nothing was copied for ${landed.targetName}: it was never started on {panel}, so it has no data there yet. Press Deploy and it starts fresh.`
-        : `Nothing was copied for ${landed.targetName}: every volume it has on {panel} is empty.`,
+        : missing === empty
+          ? `Nothing was copied for ${landed.targetName}: none of the volumes {panel} names are on the machine it says ${svc.name} runs on.`
+          : `Nothing was copied for ${landed.targetName}: every volume it has on {panel} is empty.`,
     );
 
   for (const message of notes)

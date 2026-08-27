@@ -2293,6 +2293,11 @@ type MigrationPlanServer {
   """
   deploServerId: String
   deploServerName: String
+
+  """
+  Whether that server's agent answers. A row a failed attempt left behind sits at the same address and is matched all the same, so this - not the id - is what says the machine is ready to be read.
+  """
+  deploServerOnline: Boolean
   ipAddress: String
   name: String
   sourceId: String

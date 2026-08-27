@@ -48,6 +48,7 @@ import { acceptDataCopyLoss } from "./data-copy";
 import { startApp } from "./apps";
 import { redeployDatabase, restartDatabase } from "./databases";
 import { startDeployment } from "../deploy/build";
+import { EMPTY_TAR_GZ, tarGzOf } from "../test/tar-fixture";
 
 /**
  * The data cutover, against a fake Dokploy and a fake agent.
@@ -221,7 +222,14 @@ let volumes: Record<string, Record<string, Buffer>> = {};
 let hostPaths: Record<string, Record<string, Buffer>> = {};
 
 /** A gzipped tar of an empty directory: the archive a missing volume produces. */
-const EMPTY_ARCHIVE = Buffer.alloc(45, 0);
+const EMPTY_ARCHIVE = EMPTY_TAR_GZ;
+/** What each fixture holds. Real archives, because emptiness is read from an
+ *  archive's entries and not from how many bytes it is. */
+const UPLOADS = tarGzOf(4096, 7);
+const DB_DATA = tarGzOf(8192, 9);
+const CONFIG_DIR = tarGzOf(2048, 5);
+const LANDED_UPLOADS = tarGzOf(64, 1);
+const LANDED_DB = tarGzOf(64, 2);
 
 /** When set, every importVolume refuses with this message - a host that ran out
  *  of disk, a relay that died mid-stream. Reset between tests. */
@@ -265,7 +273,7 @@ function fakeAgent(serverId: string) {
       if (hostDiesMidCopy.has(serverId)) {
         // What a connection reset looks like by the time it reaches this code:
         // the gRPC status, not the socket error underneath it.
-        yield Buffer.alloc(64, 1);
+        yield UPLOADS.subarray(0, 16);
         throw Object.assign(new Error("14 UNAVAILABLE: read ECONNRESET"), {
           code: 14,
         });
@@ -447,17 +455,17 @@ beforeEach(async () => {
   sourceRunning = true;
   stopRefusal = "";
   hostPaths = {
-    srv_migration_host: { "/etc/dokploy/x": Buffer.alloc(2048, 5) },
+    srv_migration_host: { "/etc/dokploy/x": CONFIG_DIR },
   };
   // The Dokploy host holds both source volumes, with real content in them.
   volumes = {
     srv_migration_host: {
-      "blink-web-abc_uploads": Buffer.alloc(4096, 7),
-      "blink-db-abc_data": Buffer.alloc(8192, 9),
+      "blink-web-abc_uploads": UPLOADS,
+      "blink-db-abc_data": DB_DATA,
     },
     [SERVER_1]: {
-      "deplo-blink-web-uploads": Buffer.alloc(64, 1),
-      "deplo-db-blink-db_db-blink-db-data": Buffer.alloc(64, 2),
+      "deplo-blink-web-uploads": LANDED_UPLOADS,
+      "deplo-db-blink-db_db-blink-db-data": LANDED_DB,
     },
   };
   __setAgentConnectorForTest(
@@ -728,7 +736,7 @@ test("the copy reads the source host, and the bytes land in the target volume", 
   assert.ok(agentCalls.includes(`${SERVER_1}:import:deplo-blink-web-uploads`));
   assert.deepEqual(
     volumes[SERVER_1]["deplo-blink-web-uploads"],
-    Buffer.alloc(4096, 7),
+    UPLOADS,
     "the destination must hold exactly what the source had",
   );
 });
@@ -771,8 +779,9 @@ test("a source volume that is not on that host wipes nothing and is not a copy",
 test("a volume a never-started service has not created yet is not a loss", async () => {
   await seedMigrationHostServer();
   // The measured shape: created from a template, never deployed, so the volume it
-  // declares does not exist on that host at all.
+  // declares does not exist on that host at all - and nothing of it is running.
   notFoundVolumes.add("blink-web-abc_uploads");
+  sourceRunning = false;
   const runId = await openRun();
 
   const res = await asOwner(() =>
@@ -789,7 +798,10 @@ test("a volume a never-started service has not created yet is not a loss", async
     `select outcome, message from migration_run_items where run_id = '${runId}' and source_kind = 'volume' and source_name = 'blink-web-abc_uploads'`,
   );
   assert.equal(rows.rows[0].outcome, "skipped");
-  assert.match(String(rows.rows[0].message), /was never started there/);
+  assert.match(
+    String(rows.rows[0].message),
+    /may simply never have been started/,
+  );
 
   // And the app is NOT held back from its first deploy, which is the only way it
   // would ever get that volume.
@@ -938,10 +950,43 @@ test("accepting the loss unblocks the app, and says so in the trail", async () =
   assert.equal(trail.rows.length, 1);
 });
 
+// The other half of the same answer: Deplo asked ONE machine and there is no such
+// volume on it. For a service that is RUNNING over there, "never started" is a
+// claim about the source that Deplo never checked - and the app came up on empty
+// storage with nothing holding it back.
+test("a volume missing from a RUNNING service holds the deploy", async () => {
+  await seedMigrationHostServer();
+  notFoundVolumes.add("blink-web-abc_uploads");
+  sourceRunning = true;
+  const runId = await openRun();
+
+  await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  const rows = await db.execute(
+    `select message from migration_run_items where run_id = '${runId}' and source_name = 'blink-web-abc_uploads'`,
+  );
+  assert.match(
+    String(rows.rows[0].message),
+    /is running, so its data is on a different machine/,
+  );
+  const app = await db.execute(
+    "select data_copy_error from apps where id = 'prj_web'",
+  );
+  assert.match(String(app.rows[0].data_copy_error), /not on the machine/);
+});
+
 test("a database with nothing to copy is left RUNNING, not stopped", async () => {
   await seedMigrationHostServer();
   // Never started on Dokploy, so the data volume it declares is not there.
   notFoundVolumes.add("blink-db-abc_data");
+  sourceRunning = false;
   const runId = await openRun();
   agentCalls = [];
 
@@ -1002,7 +1047,7 @@ test("a copied database is started again and checked, and the report says what l
   assert.equal(res.failed, 0);
   assert.deepEqual(
     volumes[SERVER_1]["deplo-db-blink-db_db-blink-db-data"],
-    Buffer.alloc(8192, 9),
+    DB_DATA,
   );
   // Stopped for the copy, started again afterwards: a database left down would
   // read as a broken migration.
@@ -1017,7 +1062,7 @@ test("a copied database is started again and checked, and the report says what l
   // copy of nothing said for as long as this was broken.
   assert.ok(
     messages.some((m) =>
-      /Copied 8\.19 kB \(compressed\) into deplo-db-blink-db_db-blink-db-data/.test(
+      /Copied \d[\d.]* [kMG]?B \(compressed\) into deplo-db-blink-db_db-blink-db-data/.test(
         m,
       ),
     ),
@@ -1084,10 +1129,7 @@ test("a bind mount's host directory is copied too, and says it is a directory", 
     agentCalls.includes("srv_migration_host:export-path:/etc/dokploy/x"),
     agentCalls.join(" | "),
   );
-  assert.deepEqual(
-    hostPaths[SERVER_1]["/etc/dokploy/x"],
-    Buffer.alloc(2048, 5),
-  );
+  assert.deepEqual(hostPaths[SERVER_1]["/etc/dokploy/x"], CONFIG_DIR);
   const items = await db.execute(
     `select message from migration_run_items where run_id = '${runId}' and message like '%host directory%'`,
   );
@@ -1105,7 +1147,7 @@ test("a host directory already on this machine is not copied over itself", async
     `update servers set host = 'dokploy.acme.test', ip = 'dokploy.acme.test' where id = '${SERVER_1}'`,
   );
   const runId = await openRun();
-  volumes[SERVER_1]["blink-web-abc_uploads"] = Buffer.alloc(4096, 7);
+  volumes[SERVER_1]["blink-web-abc_uploads"] = UPLOADS;
   agentCalls = [];
 
   await asOwner(() =>

@@ -3,6 +3,8 @@ import "server-only";
 // https://deplo.build/docs/guides/data/persistent-storage
 
 import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
+import { createGunzip } from "node:zlib";
 
 import {
   connectAgent,
@@ -102,12 +104,6 @@ async function destMustProveTheCopy(dest: AgentConnection): Promise<boolean> {
 }
 
 /**
- * A gzipped tar of an EMPTY directory is about 45 bytes - a header, two zero
- * blocks and the gzip trailer.
- */
-const EMPTY_ARCHIVE_CEILING = 512;
-
-/**
  * What a copy actually moved.
  */
 export interface VolumeCopyResult {
@@ -165,6 +161,71 @@ function report(onBytes: OnBytes | undefined, chunkBytes: number): void {
   }
 }
 
+/** Tar entries that describe the NEXT entry rather than a file of their own. */
+const TAR_META_TYPES = new Set(["x", "g", "L", "K", "V"]);
+
+/**
+ * Does this gzipped tar hold anything besides the directory root? Read from the
+ * archive's own headers, because a size threshold calls a 300-byte file empty -
+ * a small redis dump, a sqlite with a few rows, a licence, a key.
+ */
+async function archiveHasEntries(
+  stream: AsyncIterable<Uint8Array>,
+): Promise<boolean> {
+  const src = Readable.from(stream);
+  const gunzip = createGunzip();
+  src.on("error", (e) => gunzip.destroy(e));
+  src.pipe(gunzip);
+  let buf = Buffer.alloc(0);
+  try {
+    for await (const chunk of gunzip) {
+      buf = buf.length === 0 ? Buffer.from(chunk) : Buffer.concat([buf, chunk]);
+      while (buf.length >= 512) {
+        const header = buf.subarray(0, 512);
+        // Two zero blocks end an archive; the first is enough to stop reading.
+        if (header.every((b) => b === 0)) return false;
+        const name = header
+          .subarray(0, 100)
+          .toString("latin1")
+          .replace(/\0.*$/, "");
+        const type = String.fromCharCode(header[156] || 0x30);
+        if (!TAR_META_TYPES.has(type) && name !== "." && name !== "./")
+          return true;
+        const size =
+          parseInt(
+            header.subarray(124, 136).toString("latin1").replace(/\0.*$/, ""),
+            8,
+          ) || 0;
+        const skip = 512 + Math.ceil(size / 512) * 512;
+        if (buf.length < skip) break;
+        buf = buf.subarray(skip);
+      }
+    }
+  } finally {
+    src.destroy();
+    gunzip.destroy();
+  }
+  return false;
+}
+
+/** How much of a relayed archive is kept to judge it by its entries afterwards.
+ *  A tar's first headers sit at its front, so this never needs to be large. */
+const ARCHIVE_HEAD_BYTES = 65_536;
+
+/** Did what actually crossed hold files, or only the directory root? A head too
+ *  short to finish reading is not evidence of an empty archive. */
+async function relayedArchiveHeldEntries(head: Buffer[]): Promise<boolean> {
+  try {
+    return await archiveHasEntries(
+      (async function* () {
+        for (const c of head) yield c;
+      })(),
+    );
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Prove the source volume has content BEFORE the destination is touched.
  */
@@ -172,12 +233,7 @@ async function sourceHasData(
   source: AgentConnection,
   volumeName: string,
 ): Promise<boolean> {
-  let seen = 0;
-  for await (const chunk of source.exportVolume(volumeName)) {
-    seen += chunk.length;
-    if (seen > EMPTY_ARCHIVE_CEILING) return true;
-  }
-  return false;
+  return archiveHasEntries(source.exportVolume(volumeName));
 }
 
 /**
@@ -209,11 +265,17 @@ export async function copyVolumeBetween(
   // own sha256 back has to meet this one.
   const hash = createHash("sha256");
   let bytes = 0;
+  const head: Buffer[] = [];
+  let headBytes = 0;
   const counted = (async function* () {
     for await (const chunk of source.exportVolume(volumeName)) {
       stopIfAborted(signal);
       bytes += chunk.length;
       hash.update(chunk);
+      if (headBytes < ARCHIVE_HEAD_BYTES) {
+        head.push(Buffer.from(chunk));
+        headBytes += chunk.length;
+      }
       report(onBytes, chunk.length);
       yield chunk;
     }
@@ -243,9 +305,9 @@ export async function copyVolumeBetween(
     );
 
   const digest = hash.digest("hex");
-  // The source proved itself a moment ago, so an empty stream here means the export
-  // stopped answering between the probe and the copy - never a success.
-  if (bytes <= EMPTY_ARCHIVE_CEILING)
+  // The source proved itself a moment ago, so an archive with nothing in it here
+  // means the export stopped answering between the probe and the copy.
+  if (!(await relayedArchiveHeldEntries(head)))
     throw new Error(
       `nothing was copied out of "${volumeName}" - the volume is empty or no longer on that host`,
     );
@@ -284,27 +346,28 @@ export async function copyHostPathBetween(
   onBytes?: OnBytes,
   signal?: AbortSignal,
 ): Promise<VolumeCopyResult> {
-  let seen = 0;
   try {
-    for await (const chunk of source.exportHostPath(sourcePath)) {
-      seen += chunk.length;
-      if (seen > EMPTY_ARCHIVE_CEILING) break;
-    }
+    if (!(await archiveHasEntries(source.exportHostPath(sourcePath))))
+      return { bytes: 0, sha256: "", empty: true };
   } catch (e) {
     if (isNotFound(e))
       return { bytes: 0, sha256: "", empty: true, missing: true };
     throw attributeCopyError(e);
   }
-  if (seen <= EMPTY_ARCHIVE_CEILING)
-    return { bytes: 0, sha256: "", empty: true };
 
   const hash = createHash("sha256");
   let bytes = 0;
+  const head: Buffer[] = [];
+  let headBytes = 0;
   const counted = (async function* () {
     for await (const chunk of source.exportHostPath(sourcePath)) {
       stopIfAborted(signal);
       bytes += chunk.length;
       hash.update(chunk);
+      if (headBytes < ARCHIVE_HEAD_BYTES) {
+        head.push(Buffer.from(chunk));
+        headBytes += chunk.length;
+      }
       report(onBytes, chunk.length);
       yield chunk;
     }
@@ -328,7 +391,7 @@ export async function copyHostPathBetween(
     );
 
   const digest = hash.digest("hex");
-  if (bytes <= EMPTY_ARCHIVE_CEILING)
+  if (!(await relayedArchiveHeldEntries(head)))
     throw new Error(
       `nothing was copied out of "${sourcePath}" - the directory is empty or no longer on that host`,
     );

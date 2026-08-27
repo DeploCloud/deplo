@@ -11,6 +11,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -96,6 +97,7 @@ import {
   mapResources,
   mapSource,
   parseEnvBlob,
+  renameDatabaseHosts,
   portNotes,
   retargetPlatformEnvFiles,
   unsupportedNotes,
@@ -216,6 +218,12 @@ export interface PlanServer {
   /** The Deplo server sitting at that address, when there is one. */
   deploServerId: string | null;
   deploServerName: string | null;
+  /**
+   * Whether that server can actually be READ. A row a failed first attempt left
+   * behind sits at the same address, and taking it for a connected machine is what
+   * made the retry skip the install step and die in the data phase.
+   */
+  deploServerOnline: boolean;
 }
 
 export interface PlanMember {
@@ -942,7 +950,16 @@ async function planMachines(
       (isDeploHostServer({ ip: a, host: a }, self)
         ? mine.find((s) => isDeploHostServer(s, self))
         : undefined);
-    return hit ? { deploServerId: hit.id, deploServerName: hit.name } : null;
+    return hit
+      ? {
+          deploServerId: hit.id,
+          deploServerName: hit.name,
+          // The row is still MATCHED either way - that is what stops a second
+          // attempt registering the same address twice - but only an agent that
+          // answers means the machine is ready to be read.
+          deploServerOnline: hit.status === "online",
+        }
+      : null;
   };
 
   let ownAddress: string | null = null;
@@ -964,6 +981,7 @@ async function planMachines(
       ipAddress: address,
       deploServerId: null as string | null,
       deploServerName: null as string | null,
+      deploServerOnline: false,
       ...(at(address) ?? at(derived) ?? {}),
     };
   };
@@ -1180,12 +1198,16 @@ async function removeMigrationSources(
 }
 
 /**
- * A volume this run could not copy. Its bytes are still on the source host and
+ * Data this run could not bring across. Its bytes are still on the source host and
  * the agent is the only way to fetch them, so nothing may take that agent off
  * until a person says so.
+ *
+ * A failed VOLUME line is one signal; `data_copy_error` on what the run created is
+ * the other, and the only one a service the data phase never reached has - one
+ * machine of several would not answer, so it has no volume line at all.
  */
 async function hasStrandedVolume(runId: string): Promise<boolean> {
-  const stranded = await getDb()
+  const failedVolume = await getDb()
     .select({ id: itemsTable.id })
     .from(itemsTable)
     .where(
@@ -1196,7 +1218,48 @@ async function hasStrandedVolume(runId: string): Promise<boolean> {
       ),
     )
     .limit(1);
-  return stranded.length > 0;
+  if (failedVolume.length > 0) return true;
+
+  const rows = await getDb()
+    .select({
+      targetKind: itemsTable.targetKind,
+      targetId: itemsTable.targetId,
+    })
+    .from(itemsTable)
+    .where(and(eq(itemsTable.runId, runId), eq(itemsTable.outcome, "created")));
+  const idsOf = (kind: string) => [
+    ...new Set(
+      rows
+        .filter((r) => r.targetKind === kind && r.targetId)
+        .map((r) => r.targetId!),
+    ),
+  ];
+  const appIds = idsOf("app");
+  if (appIds.length > 0) {
+    const hit = await getDb()
+      .select({ id: appsTable.id })
+      .from(appsTable)
+      .where(
+        and(inArray(appsTable.id, appIds), ne(appsTable.dataCopyError, "")),
+      )
+      .limit(1);
+    if (hit.length > 0) return true;
+  }
+  const dbIds = idsOf("database");
+  if (dbIds.length > 0) {
+    const hit = await getDb()
+      .select({ id: databasesTable.id })
+      .from(databasesTable)
+      .where(
+        and(
+          inArray(databasesTable.id, dbIds),
+          ne(databasesTable.dataCopyError, ""),
+        ),
+      )
+      .limit(1);
+    if (hit.length > 0) return true;
+  }
+  return false;
 }
 
 /** Put every one of these sources on the uninstall ladder and take the first
@@ -1398,13 +1461,14 @@ export async function finishMigration(runId: string): Promise<void> {
       ),
     )
     .returning({ id: runsTable.id });
-  if (closed.length > 0) {
-    // The services are the team's again before anything else happens: the sweep
-    // below dials hosts and can take a minute, and none of that is a reason to
-    // keep a finished migration's apps frozen.
-    await releaseMigrating(runId);
-    await removeMigrationSources(runId, teamId);
-  }
+  // The services are the team's again before anything else happens: the sweep
+  // below dials hosts and can take a minute, and none of that is a reason to
+  // keep a finished migration's apps frozen.
+  if (closed.length > 0) await releaseMigrating(runId);
+  // Swept whether or not THIS call is what ended the run. A run that already
+  // failed still owns the agents it put on those machines, and leaving them there
+  // is what made the next attempt find a machine that was "already connected".
+  await removeMigrationSources(runId, teamId);
   await refreshCounts(runId, teamId);
 }
 
@@ -1690,6 +1754,11 @@ async function runImportMigrationProject(
     return soleServer ?? undefined;
   };
 
+  // What a database was called on the other side, and what it answers to here.
+  // Filled in as the databases land and read by every app imported after them,
+  // which is why the databases of an environment are imported first.
+  const dbHosts = new Map<string, string>();
+
   const projectId = await ensureProject(source, report);
   if (!projectId)
     return {
@@ -1704,7 +1773,15 @@ async function runImportMigrationProject(
   const wanted = input.serviceIds ? new Set(input.serviceIds) : null;
 
   for (const env of source.environments ?? []) {
-    const chosen = servicesOf(env).filter((s) => !wanted || wanted.has(s.id));
+    const chosen = servicesOf(env)
+      .filter((s) => !wanted || wanted.has(s.id))
+      // Databases first: an app's connection strings still spell the hostname the
+      // database had over there, and rewriting them needs the new one to exist.
+      .sort(
+        (a, b) =>
+          Number(a.kind === "application" || a.kind === "compose") -
+          Number(b.kind === "application" || b.kind === "compose"),
+      );
     // An environment nobody picked anything from is not created empty.
     if (chosen.length === 0) continue;
 
@@ -1782,6 +1859,7 @@ async function runImportMigrationProject(
               serverId:
                 placed.get(svc.id)?.serverId ?? serverMap.get(svc.serverId),
               buildServerId: placed.get(svc.id)?.buildServerId ?? null,
+              dbHosts,
             },
             svcReport,
           );
@@ -1808,6 +1886,7 @@ async function runImportMigrationProject(
               sourceIsTargetHost:
                 serverId != null &&
                 (await hostOfMachine(svc.serverId)) === serverId,
+              dbHosts,
             },
             svcReport,
           );
@@ -2145,6 +2224,9 @@ async function importAppService(
     environmentId: string;
     serverId: string | undefined;
     buildServerId: string | null;
+    /** Old database hostname -> the one Deplo gave it, for the connection strings
+     *  this app's variables still spell out. */
+    dbHosts: Map<string, string>;
   },
   report: Report,
 ): Promise<string | null> {
@@ -2190,6 +2272,17 @@ async function importAppService(
     ...e,
     type: migratedEnvType(e.key, e.value),
   }));
+  // The databases this same import renamed. Done HERE, before the app is created,
+  // because a secret-typed variable is frozen the moment it exists - and a
+  // connection string is exactly the variable that arrives as a secret.
+  const renamed = renameDatabaseHosts(env, home.dbHosts);
+  if (renamed.length > 0)
+    notes.push(
+      `${renamed.join(", ")} named the database by its {panel} hostname, which does not exist here, so ${
+        renamed.length === 1 ? "it now names" : "they now name"
+      } the one Deplo gave it.`,
+    );
+
   const secrets = env.filter((e) => e.type === "secret").map((e) => e.key);
   if (secrets.length > 0)
     notes.push(
@@ -2886,6 +2979,8 @@ async function importDatabaseService(
     exposedPort?: number | null;
     mayExposePorts: boolean;
     sourceIsTargetHost: boolean;
+    /** Filled in with `old host -> new host`, for the apps that name it. */
+    dbHosts: Map<string, string>;
   },
   report: Report,
 ): Promise<void> {
@@ -3085,6 +3180,7 @@ async function importDatabaseService(
   notes.push(
     `Empty until the data copy runs, a moment from now in this same import. It answers as "${created.host}", not "${row.appName}", so update the connection strings.`,
   );
+  if (row.appName?.trim()) opts.dbHosts.set(row.appName.trim(), created.host);
   await report.notes(
     svc.kind,
     name,
@@ -3409,7 +3505,7 @@ export async function stopMigration(runId: string): Promise<void> {
 export async function undoMigration(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
   await releaseMigrating(runId);
-  await revertMigration(runId);
+  await revertMigration(runId, { undo: true });
   await removeMigrationSources(runId, teamId, { force: true });
   await refreshCounts(runId, teamId);
 }
@@ -3431,13 +3527,39 @@ export interface RevertResultDTO {
  * unreachable host must not strand the other ten objects.
  */
 /** Undoing a migration deletes the very rows it marked, so it is exempt too. */
-export async function revertMigration(runId: string): Promise<RevertResultDTO> {
-  return runAsMigration(() => runRevertMigration(runId));
+export async function revertMigration(
+  runId: string,
+  /** `undo: true` is the automatic path (a Stop, a failed run). There, a run that
+   *  is already out is nothing left to do; asked for by hand, it is worth saying. */
+  opts: { undo?: boolean } = {},
+): Promise<RevertResultDTO> {
+  return runAsMigration(() => runRevertMigration(runId, opts));
 }
 
-async function runRevertMigration(runId: string): Promise<RevertResultDTO> {
+async function runRevertMigration(
+  runId: string,
+  opts: { undo?: boolean },
+): Promise<RevertResultDTO> {
   const { teamId } = await assertImportGate();
-  if (!(await ownRun(runId, teamId))) throw new Error("Migration not found");
+  const [run] = await getDb()
+    .select({ status: runsTable.status })
+    .from(runsTable)
+    .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)))
+    .limit(1);
+  if (!run) throw new Error("Migration not found");
+  // Everything is already gone, so a second pass would report every one of them
+  // as a thing it could not remove.
+  if (run.status === "reverted") {
+    if (!opts.undo) throw new Error("This import was already taken back out.");
+    return {
+      apps: 0,
+      databases: 0,
+      environments: 0,
+      projects: 0,
+      sharedVars: 0,
+      failed: [],
+    };
+  }
 
   const rows = await getDb()
     .select({

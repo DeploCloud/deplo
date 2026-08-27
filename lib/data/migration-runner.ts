@@ -655,24 +655,22 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
         message: note,
       });
 
-  const movable = planned.filter((d) => d.volumes.length > 0);
-  const unreachable = movable.filter((d) => !d.sourceReachable);
+  const planning = planned.filter((d) => d.volumes.length > 0);
+  const unreachable = planning.filter((d) => !d.sourceReachable);
+  const movable = planning.filter((d) => d.sourceReachable);
   if (unreachable.length > 0) {
-    // Nothing is copied at all now, so EVERY service is marked - each with the
-    // reason that is true of it.
+    // Named, and then STEPPED OVER. One machine nobody can reach is not a reason
+    // to leave the services on the machines that do answer sitting on empty
+    // storage - each one that cannot move says so on its own line.
     await markUncopied(
       row,
       unreachable,
       "Deplo has no way to reach the machine it is on",
     );
-    await markUncopied(
-      row,
-      movable.filter((d) => d.sourceReachable),
-      `the migration stopped before reaching it: ${unreachable[0].sourceName}'s machine does not answer`,
-    );
-    throw new Error(
-      `Deplo cannot reach the machine ${unreachable[0].sourceName}'s data is on, so no data was copied and nothing was stopped on ${panelNameFor(row)}.`,
-    );
+    if (movable.length === 0)
+      throw new Error(
+        `Deplo cannot reach the machine ${unreachable[0].sourceName}'s data is on, so no data was copied and nothing was stopped on ${panelNameFor(row)}.`,
+      );
   }
 
   await getDb()
@@ -680,8 +678,20 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
     .set({ totalSteps: movable.length, doneSteps: 0 })
     .where(eq(runsTable.id, row.id));
 
-  let failedHere = 0;
+  let failedHere = unreachable.length;
+  // A machine that stopped answering mid-run takes only ITS OWN services down with
+  // it: the rest of the fleet is still there and still has data to move.
+  const deadMachines = new Set<string>();
   for (const [i, d] of movable.entries()) {
+    if (deadMachines.has(d.sourceServerId)) {
+      await markUncopied(
+        row,
+        [d],
+        "the machine it is on stopped answering earlier in this run",
+      );
+      failedHere++;
+      continue;
+    }
     if (await stopped(row.id)) {
       // Stopped by hand: the undo has already taken everything back out, so
       // there is nothing left to mark.
@@ -732,18 +742,11 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
       failedHere++;
       continue;
     }
-    // A failed VOLUME is a line in the report. A failed MACHINE is the end: every
-    // service after this one is on it, and each gets stopped over there before
-    // its copy is tried.
+    // A failed VOLUME is a line in the report. A failed MACHINE takes the services
+    // that share it, and nothing else: the rest of the run carries on.
     if (res.sourceGone) {
-      await markUncopied(
-        row,
-        movable.slice(i + 1),
-        `the migration stopped before reaching it: the machine holding ${d.sourceName}'s data stopped answering`,
-      );
-      throw new Error(
-        `Lost the connection to the machine ${d.sourceName}'s data is on. Stopped there, and nothing after it was touched.`,
-      );
+      failedHere++;
+      deadMachines.add(d.sourceServerId);
     }
   }
 

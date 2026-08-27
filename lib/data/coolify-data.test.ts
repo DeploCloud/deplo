@@ -41,6 +41,7 @@ import {
   moveMigrationServiceData,
   planMigrationDataMove,
 } from "./migration-data";
+import { EMPTY_TAR_GZ, tarGzOf } from "../test/tar-fixture";
 
 /**
  * The data cutover against a fake Coolify.
@@ -149,7 +150,7 @@ function fakeCoolify() {
 let agentCalls: string[] = [];
 let volumes: Record<string, Record<string, Buffer>> = {};
 let hostPaths: Record<string, Record<string, Buffer>> = {};
-const EMPTY_ARCHIVE = Buffer.alloc(45, 0);
+const EMPTY_ARCHIVE = EMPTY_TAR_GZ;
 
 function fakeAgent(serverId: string) {
   const say = (verb: string, arg: string) =>
@@ -288,12 +289,12 @@ beforeEach(async () => {
   running = true;
   hostPaths = {
     srv_migration_host: {
-      "/data/coolify/applications/app-web/config.json": Buffer.alloc(2048, 5),
+      "/data/coolify/applications/app-web/config.json": tarGzOf(2048, 5),
     },
   };
   volumes = {
-    srv_migration_host: { "web-uploads-app-web": Buffer.alloc(4096, 7) },
-    [SERVER_1]: { "deplo-blink-web-uploads": Buffer.alloc(64, 1) },
+    srv_migration_host: { "web-uploads-app-web": tarGzOf(4096, 7) },
+    [SERVER_1]: { "deplo-blink-web-uploads": tarGzOf(64, 1) },
   };
   __setAgentConnectorForTest(
     async (serverId) =>
@@ -441,9 +442,9 @@ test("the volume crosses, the source is stopped first, and the target is wiped",
     agentCalls.join(","),
   );
   assert.ok(agentCalls.includes(`${SERVER_1}:wipe:deplo-blink-web-uploads`));
-  assert.equal(
-    volumes[SERVER_1]["deplo-blink-web-uploads"].length,
-    4096,
+  assert.deepEqual(
+    volumes[SERVER_1]["deplo-blink-web-uploads"],
+    tarGzOf(4096, 7),
     "the bytes that arrived are the ones that left",
   );
 });

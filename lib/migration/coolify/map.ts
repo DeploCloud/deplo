@@ -377,12 +377,29 @@ export interface CoolifyEnvRead {
    * variables, so the scan refuses instead.
    */
   masked: boolean;
+  /**
+   * Keys the panel would not answer with a value for - a variable it shows once
+   * and never again. They arrive EMPTY, which is not a fact about the value.
+   */
+  unreadableKeys: string[];
+}
+
+/** A value that spans lines, wrapped so the shared line parser reads it whole.
+ *  Left alone when the panel already wrapped it, or when it holds both quotes. */
+function serializeValue(value: string): string {
+  if (!value.includes("\n")) return value;
+  for (const q of ["'", '"'])
+    if (value.startsWith(q) && value.endsWith(q)) return value;
+  if (!value.includes("'")) return `'${value}'`;
+  if (!value.includes('"')) return `"${value}"`;
+  return value;
 }
 
 export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
   const lines: string[] = [];
   const previewKeys: string[] = [];
   const buildOnlyKeys: string[] = [];
+  const unreadableKeys: string[] = [];
   const sharedRefs = new Set<string>();
   let sawValue = false;
 
@@ -399,14 +416,20 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
       previewKeys.push(key);
       continue;
     }
+    // NO value came back for this one (told apart from a value that is empty).
+    // One normal variable in the list is enough for `masked` to stay false, so
+    // without this the empties are silent.
+    if (typeof raw !== "string" || (r.is_shown_once && !value))
+      unreadableKeys.push(key);
     if (r.is_buildtime && !r.is_runtime) buildOnlyKeys.push(key);
-    lines.push(`${key}=${value}`);
+    lines.push(`${key}=${serializeValue(value)}`);
   }
 
   return {
     blob: lines.join("\n"),
     previewKeys,
     buildOnlyKeys,
+    unreadableKeys,
     sharedRefs: [...sharedRefs],
     masked: rows.length > 0 && !sawValue,
   };
@@ -503,6 +526,8 @@ export function coolifyGitUrl(row: CoolifyApplication): {
 /** Everything about a resource that came from a call other than its own row. */
 export interface CoolifyExtras {
   env?: string;
+  /** What the env read could not answer for - see `CoolifyEnvRead.unreadableKeys`. */
+  envNotes?: string[];
   mounts?: SourceMount[];
   serverId?: string;
   environmentId?: string;
@@ -537,7 +562,8 @@ export function coolifyApplication(
     platformNotes: [
       ...coolifyNotes(row),
       ...domains.notes,
-      ...(git.assumed
+      ...(extras.envNotes ?? []),
+      ...(!isImage && git.assumed
         ? [
             `{panel} kept ${row.git_repository?.trim()} without the server it is on, so it arrives as ${git.url}. Change it under Source if the repository lives somewhere else.`,
           ]
@@ -558,7 +584,9 @@ export function coolifyApplication(
       .filter(Boolean),
     command: row.start_command ?? null,
     dockerImage: image,
-    dockerfile: row.dockerfile ?? null,
+    // The PATH, not the file: `dockerfile` is the inline text somebody typed into
+    // the panel, and taking it for a path built every monorepo from ./Dockerfile.
+    dockerfile: row.dockerfile_location?.trim().replace(/^\/+/, "") || null,
     dockerContextPath: row.base_directory ?? null,
     dockerBuildStage: row.dockerfile_target_build ?? null,
     publishDirectory: row.publish_directory ?? null,
@@ -650,7 +678,12 @@ export function coolifyCompose(
   return {
     value: {
       composeId: row.uuid,
-      platformNotes: [...notes, ...coolifyNotes(app), ...domains.notes],
+      platformNotes: [
+        ...notes,
+        ...coolifyNotes(app),
+        ...domains.notes,
+        ...(extras.envNotes ?? []),
+      ],
       name: row.name ?? null,
       appName: row.name ?? null,
       description: row.description ?? null,
@@ -676,6 +709,7 @@ export function coolifyDatabase(
   const f = DB_FIELDS[kind];
   return {
     [`${kind}Id`]: row.uuid,
+    platformNotes: extras.envNotes ?? [],
     name: row.name ?? null,
     appName: row.name ?? null,
     description: row.description ?? null,

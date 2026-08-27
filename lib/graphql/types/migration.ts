@@ -166,6 +166,10 @@ const PlanServerRef = builder
           "The Deplo server at that same address, or null when Deplo has no agent there. Data cannot be copied off a machine Deplo cannot reach: a volume is read by the agent ON its host, and agents cannot dial each other.",
       }),
       deploServerName: t.exposeString("deploServerName", { nullable: true }),
+      deploServerOnline: t.exposeBoolean("deploServerOnline", {
+        description:
+          "Whether that server's agent answers. A row a failed attempt left behind sits at the same address and is matched all the same, so this - not the id - is what says the machine is ready to be read.",
+      }),
     }),
   });
 

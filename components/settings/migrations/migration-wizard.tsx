@@ -140,6 +140,7 @@ const SCAN = /* GraphQL */ `
         ipAddress
         deploServerId
         deploServerName
+        deploServerOnline
       }
       members {
         email
@@ -664,6 +665,7 @@ export function MigrationWizard({
                       ...m,
                       deploServerId: serverId,
                       deploServerName: serverName,
+                      deploServerOnline: true,
                     }
                   : m,
               ),
@@ -691,7 +693,7 @@ export function MigrationWizard({
    * install step ends on, hoisted here because the step rail needs it too.
    */
   const machinesReady = React.useMemo(
-    () => (plan?.servers ?? []).every((m) => m.deploServerId),
+    () => (plan?.servers ?? []).every((m) => m.deploServerOnline),
     [plan],
   );
 
@@ -923,6 +925,7 @@ export function MigrationWizard({
               {!takenOver && step === "install" && plan && (
                 <InstallStep
                   kind={kind}
+                  sourceUrl={plan.sourceUrl}
                   machines={plan.servers}
                   canAddServers={isInstanceAdmin}
                   pending={pendingMachines}

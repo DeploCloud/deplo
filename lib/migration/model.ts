@@ -374,9 +374,11 @@ export interface SourceSchedule {
 export interface NamedVolume {
   /** The volume's real name on the host. */
   name: string;
-  /** Where it is mounted INSIDE the container - the only identity the two
-   *  platforms share, since neither's volume names mean anything to the other. */
+  /** Where it is mounted INSIDE the container. */
   mountPath: string;
+  /** The alias the compose file gave it, when the file itself is known. Two
+   *  services mounting the same path is ordinary; the same alias twice is not. */
+  alias?: string;
 }
 
 /** One host directory a container mounts: where it is on the host, and where the

@@ -144,20 +144,34 @@ export function parseEnvBlob(blob: string | null | undefined): {
   if (!blob) return [];
   const out: { key: string; value: string }[] = [];
   const seen = new Set<string>();
-  for (const raw of blob.split("\n")) {
-    const line = raw.trim().replace(/^export\s+/, "");
+  const lines = blob.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim().replace(/^export\s+/, "");
     if (!line || line.startsWith("#")) continue;
     const eq = line.indexOf("=");
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if (
-      value.length >= 2 &&
-      ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'")))
-    )
-      value = value.slice(1, -1);
     if (!KEY_RE.test(key)) continue;
+    let value = line.slice(eq + 1).trim();
+    const quote = value[0] === '"' || value[0] === "'" ? value[0] : "";
+    if (quote && value.length >= 2 && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    } else if (quote) {
+      // A quote that does not close on its own line runs on: a private key, a
+      // certificate, a service-account JSON. Read to the closing quote - and only
+      // when there IS one, so a value that merely starts with one is left alone.
+      const end = lines.findIndex(
+        (l, j) => j > i && l.trimEnd().endsWith(quote),
+      );
+      if (end !== -1) {
+        value = [
+          value.slice(1),
+          ...lines.slice(i + 1, end),
+          lines[end].trimEnd().slice(0, -1),
+        ].join("\n");
+        i = end;
+      }
+    }
     // Last one wins, like a shell sourcing the file twice.
     if (seen.has(key))
       out[out.findIndex((e) => e.key === key)] = { key, value };
@@ -167,6 +181,41 @@ export function parseEnvBlob(blob: string | null | undefined): {
     }
   }
   return out;
+}
+
+/**
+ * Rewrite, IN PLACE, every variable that names a database by the hostname it had
+ * on the other platform. The renamed host is the first thing that breaks after a
+ * migration, and the app carries it inside its own connection strings.
+ *
+ * Only a WHOLE host token is replaced, and only for a name specific enough to be
+ * one: a database called `postgres` would otherwise turn `DB_ENGINE=postgres`
+ * into a hostname. Returns the keys that changed.
+ */
+export function renameDatabaseHosts(
+  env: { key: string; value: string }[],
+  hosts: Map<string, string>,
+): string[] {
+  const pairs = [...hosts]
+    .filter(([from, to]) => from && to && from !== to && /[-_0-9]/.test(from))
+    .sort((a, b) => b[0].length - a[0].length);
+  if (pairs.length === 0) return [];
+  const touched: string[] = [];
+  for (const e of env) {
+    let next = e.value;
+    for (const [from, to] of pairs)
+      next = next.replace(
+        new RegExp(
+          `(^|[^A-Za-z0-9._-])${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9._-])`,
+          "gi",
+        ),
+        (_m, lead: string) => `${lead}${to}`,
+      );
+    if (next === e.value) continue;
+    e.value = next;
+    touched.push(e.key);
+  }
+  return touched;
 }
 
 /**
@@ -1554,6 +1603,15 @@ export function pairHostMounts(
   return out;
 }
 
+/** Does this host volume name carry `alias` as its compose key? Both platforms
+ *  prefix the project (`myapp_apidata`, `myapp-apidata`), neither renames the key. */
+function volumeCarriesAlias(volumeName: string, alias: string): boolean {
+  if (!alias) return false;
+  if (volumeName === alias) return true;
+  const tail = volumeName.slice(-(alias.length + 1));
+  return tail === `_${alias}` || tail === `-${alias}`;
+}
+
 /** Docker names an anonymous volume with its own 64-hex id. Nobody chose it, so
  *  there is never a volume on the other side that corresponds to it. */
 function isAnonymousVolume(name: string): boolean {
@@ -1612,13 +1670,38 @@ export function pairVolumes(
   const notes: string[] = [];
   const pairs: VolumePair[] = [];
   const takenTarget = new Set<string>();
+  const takenSource = new Set<string>();
+
+  // The compose ALIAS first: the imported file is the source's own, so the key a
+  // service mounts is the same word on both sides. Matching on the container path
+  // alone crosses two services that both mount /data - silently, both ways.
+  // Longest alias first, so `mydata` claims its own volume before `data` can.
+  for (const t of [...target].sort(
+    (a, b) => (b.alias?.length ?? 0) - (a.alias?.length ?? 0),
+  )) {
+    if (!t.alias) continue;
+    const hit = source.find(
+      (s) => !takenSource.has(s.name) && volumeCarriesAlias(s.name, t.alias!),
+    );
+    if (!hit) continue;
+    takenSource.add(hit.name);
+    takenTarget.add(t.name);
+    pairs.push({
+      sourceVolume: hit.name,
+      targetVolume: t.name,
+      mountPath: hit.mountPath,
+      note: null,
+    });
+  }
 
   for (const s of source) {
+    if (takenSource.has(s.name)) continue;
     const hit = target.find(
       (t) => !takenTarget.has(t.name) && t.mountPath === s.mountPath,
     );
     if (hit) {
       takenTarget.add(hit.name);
+      takenSource.add(s.name);
       pairs.push({
         sourceVolume: s.name,
         targetVolume: hit.name,

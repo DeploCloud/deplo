@@ -187,6 +187,9 @@ export interface CoolifyEnv {
   real_value?: string | null;
   is_literal?: boolean | null;
   is_multiline?: boolean | null;
+  /** The panel showed this value once and never answers with it again, whatever
+   *  the token holds. */
+  is_shown_once?: boolean | null;
   is_preview?: boolean | null;
   is_runtime?: boolean | null;
   is_buildtime?: boolean | null;
