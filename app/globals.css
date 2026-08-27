@@ -752,6 +752,51 @@ p:not([class*="leading-"]) {
   }
 }
 
+/* The top bar for a slow navigation. It is only mounted once the route has
+   already taken half a second, so it starts a quarter of the way in and eases
+   toward 90% without ever claiming to have arrived. */
+@keyframes deplo-nav-progress {
+  from {
+    transform: scaleX(0.25);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}
+
+/* The page landed: complete the bar and get out of the way. */
+@keyframes deplo-nav-progress-done {
+  from {
+    transform: scaleX(0.9);
+    opacity: 1;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+.deplo-nav-progress,
+.deplo-nav-progress-done {
+  box-shadow: 0 0 10px var(--foreground);
+}
+
+.deplo-nav-progress {
+  animation: deplo-nav-progress 12s cubic-bezier(0, 0.7, 0.2, 1) forwards;
+}
+
+.deplo-nav-progress-done {
+  animation: deplo-nav-progress-done 0.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No crawl and no fade: the bar is simply there, then it is not. */
+  .deplo-nav-progress,
+  .deplo-nav-progress-done {
+    animation: none;
+  }
+}
+
 /* The Pull requests empty state draws a pull request: the branch leaves the
    trunk, two commits land on it, the merge point lights up, then it fades and
    goes again. One 5s timeline shared by four elements, each entering on its own

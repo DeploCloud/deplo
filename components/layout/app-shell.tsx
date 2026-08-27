@@ -1,9 +1,11 @@
+import * as React from "react";
 import { Sidebar } from "./sidebar";
 import { SidebarProvider } from "./sidebar-state";
 import { Topbar } from "./topbar";
 import { ShellFrame } from "./shell-frame";
 import { UpdateBanner } from "./update-banner";
 import { NavigationHistoryTracker } from "./navigation-history";
+import { NavProgress } from "./nav-progress";
 import { GitConnectToast } from "@/components/shared/git-connect-toast";
 import { DeployActivityProvider } from "./deploy-activity";
 import { MigrationActivityProvider } from "./migration-activity";
@@ -41,6 +43,11 @@ export function AppShell({
     <SidebarProvider>
       {/* Reads the stored log type size so a pane without the menu matches. */}
       <LogsDisplayVars />
+      {/* Suspense because it reads the query string, which the Overview's
+          drill-ins navigate with. */}
+      <React.Suspense fallback={null}>
+        <NavProgress />
+      </React.Suspense>
       {/* Keyed by the active team: the live count is resolved server-side when
           the stream opens, so switching teams has to reconnect it. */}
       <DeployActivityProvider key={team.id}>
