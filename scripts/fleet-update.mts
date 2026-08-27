@@ -17,6 +17,18 @@ import {
 
 const dryRun = process.argv.includes("--dry-run");
 const localIp = process.env.DEPLO_SERVER_IP ?? "";
+const only = argOf("--only");
+/**
+ * The capability the new binary must answer with. A release published on a MOVED
+ * tag carries the same version number, so "the version changed" cannot be the
+ * proof that the swap took - what it advertises can.
+ */
+const expectCapability = argOf("--expect");
+
+function argOf(flag: string): string {
+  const hit = process.argv.find((a) => a.startsWith(`${flag}=`));
+  return hit ? hit.slice(flag.length + 1) : "";
+}
 
 /**
  * Servers with a deploy the agent's re-exec would kill. This check would then come
@@ -43,7 +55,7 @@ const provisioned = all.filter(
 const remotes = provisioned.filter((s) => s.ip !== localIp);
 const agentZero = provisioned.filter((s) => s.ip === localIp);
 // Canary first, then the other remotes, then this host.
-const order = [...remotes, ...agentZero];
+const order = [...remotes, ...agentZero].filter((s) => !only || s.id === only);
 
 if (!order.length) {
   console.log("No provisioned servers, nothing to update.");
@@ -114,8 +126,9 @@ for (const [i, s] of order.entries()) {
     break;
   }
 
-  // A host ALREADY on the release has nothing to come back as.
-  if (target && target === before) {
+  // A host ALREADY on the release has nothing to come back as - unless the proof
+  // asked for is a capability, which a re-published tag does change.
+  if (target && target === before && !expectCapability) {
     console.log(`OK    ${label} - already on ${before}`);
     continue;
   }
@@ -127,7 +140,11 @@ for (const [i, s] of order.entries()) {
     await new Promise((r) => setTimeout(r, 1500));
     try {
       const h = await agentPreflight(s.id);
-      if (h.agentVersion !== before) {
+      if (
+        expectCapability
+          ? h.capabilities.includes(expectCapability)
+          : h.agentVersion !== before
+      ) {
         confirmed = h.agentVersion;
         await markServerSeen(
           s.id,
@@ -150,7 +167,9 @@ for (const [i, s] of order.entries()) {
     }
   }
   if (!confirmed) {
-    console.log(`FAIL  ${label}, never came back on a new version. Stopping.`);
+    console.log(
+      `FAIL  ${label}, never came back ${expectCapability ? `advertising ${expectCapability}` : "on a new version"}. Stopping.`,
+    );
     break;
   }
   updated++;

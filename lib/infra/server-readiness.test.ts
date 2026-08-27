@@ -40,6 +40,7 @@ const ALL_CAPS = [
   "backup",
   "checkport",
   "volume-copy",
+  "volume-copy-hardened",
   "files-copy",
   "deploy.registry-auth",
 ];
