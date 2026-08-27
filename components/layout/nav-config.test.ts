@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { DeploMark } from "@/components/logo";
+
 import {
   appNav,
   appSettingsNav,
@@ -188,4 +190,14 @@ test("the sidebar swaps to a sub-menu only where there is one", () => {
   assert.equal(sidebarMenuFor("/apps/shop/settings").appSlug, "shop");
   assert.equal(sidebarMenuFor("/storage/databases/db_1").dbId, "db_1");
   assert.equal(sidebarMenuFor("/").appSlug, null);
+});
+
+test("System opens on Deplo, wearing the mark", () => {
+  const system = SETTINGS_NAV.find((s) => s.title === "System");
+  assert.ok(system, "the System group disappeared");
+  // First, because it is the instance the other two entries live in - and the
+  // mark, because SlidersHorizontal is the Advanced glyph everywhere else.
+  assert.equal(system.items[0]?.href, "/settings/deplo");
+  assert.equal(system.items[0]?.icon, DeploMark);
+  assert.equal(system.items[1]?.href, "/settings/servers");
 });

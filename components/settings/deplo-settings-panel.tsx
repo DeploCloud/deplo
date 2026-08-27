@@ -2,14 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
+  CircleFadingArrowUp,
   Globe,
   LifeBuoy,
   Pencil,
   Server as ServerIcon,
   ShieldCheck,
+  SlidersHorizontal,
   TriangleAlert,
 } from "lucide-react";
 
@@ -26,11 +28,25 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tabs,
+  TabsContent,
+  UnderlineTabsList,
+  UnderlineTabsTrigger,
+} from "@/components/ui/tabs";
 import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
-import { UpdateCard } from "@/components/settings/update-card";
+import { DeploInstanceGraphic } from "@/components/settings/deplo-instance-graphic";
+import {
+  DeploUpdatesTab,
+  type FleetSummary,
+} from "@/components/settings/deplo-updates-tab";
+import {
+  DeploDiagnosticsCard,
+  type DiagnosticHost,
+} from "@/components/settings/deplo-diagnostics-card";
 import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
 import { GravatarCard } from "@/components/settings/gravatar-card";
 import {
@@ -66,35 +82,158 @@ const ACCOUNT_FIELDS =
 
 const PANEL_HTTPS_FIELDS = "domain enabled unavailable";
 
+const TABS = ["general", "advanced", "updates"] as const;
+type TabId = (typeof TABS)[number];
+
 export function DeploSettingsPanel({
   settings,
   viewerIsOwner,
   ownerCandidates,
+  fleet,
+  hosts,
 }: {
   settings: InstanceSettings;
   viewerIsOwner: boolean;
   ownerCandidates: OwnerCandidate[];
+  fleet: FleetSummary;
+  hosts: DiagnosticHost[];
 }) {
+  const params = useSearchParams();
+  const requested = params.get("tab");
+  const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
+    ? (requested as TabId)
+    : "general";
+
+  function selectTab(tab: string) {
+    const next = new URLSearchParams(params.toString());
+    if (tab === "general") next.delete("tab");
+    else next.set("tab", tab);
+    const s = next.toString();
+    // The native History API, not `router.replace`: the panels are already in the
+    // browser and re-running every server read would be a page load to move an
+    // underline.
+    window.history.replaceState(
+      null,
+      "",
+      s ? `?${s}` : window.location.pathname,
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <PanelAddressCard settings={settings} />
-      <CertificatesCard />
-      <LogsRetentionCard logMaxDays={settings.logMaxDays} />
-      <GravatarCard enabled={settings.gravatarEnabled} />
-      {/**
-       * After the two settings: updating Deplo is a state to read and an action to take,
-       * not a knob, and the page opens on what can be changed.
-       */}
-      <UpdateCard />
-      {/* Last, because handing the instance over is the most consequential thing
-          on this page - the same reason a team's delete card sits at the bottom
-          of Settings, General. */}
-      <InstanceOwnerCard
-        ownerName={settings.ownerName}
-        viewerIsOwner={viewerIsOwner}
-        candidates={ownerCandidates}
-      />
-    </div>
+    <Tabs value={active} onValueChange={selectTab} className="space-y-3">
+      <UnderlineTabsList>
+        <UnderlineTabsTrigger value="general">
+          <Globe className="size-4" />
+          General
+        </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="advanced">
+          <SlidersHorizontal className="size-4" />
+          Advanced
+        </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="updates">
+          <CircleFadingArrowUp className="size-4" />
+          Updates
+        </UnderlineTabsTrigger>
+      </UnderlineTabsList>
+
+      <TabsContent value="general" className="space-y-4">
+        <InstanceHero settings={settings} />
+        {/* Direct grid children, so the address and the certificates share one
+            row's height instead of each ending wherever its own content stops. */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <PanelAddressCard settings={settings} />
+          <CertificatesCard />
+          {/* Last, because handing the instance over is the most consequential
+              thing on this page - the same reason a team's delete card sits at
+              the bottom of Settings, General. */}
+          <div className="lg:col-span-2">
+            <InstanceOwnerCard
+              ownerName={settings.ownerName}
+              viewerIsOwner={viewerIsOwner}
+              candidates={ownerCandidates}
+            />
+          </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="advanced">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <LogsRetentionCard logMaxDays={settings.logMaxDays} />
+          <GravatarCard enabled={settings.gravatarEnabled} />
+          <div className="lg:col-span-2">
+            <DeploDiagnosticsCard
+              version={settings.version}
+              panelUrl={settings.panelUrl}
+              panelUrlSource={SOURCE_LABEL[settings.panelUrlSource]}
+              deploHostName={settings.deploHostName}
+              expectedAgentVersion={fleet.expected}
+              hosts={hosts}
+            />
+          </div>
+        </div>
+      </TabsContent>
+
+      {/* Mounted throughout, so the changelog it fetched survives a flip to
+          General and back - and so nothing is fetched until it is opened. */}
+      <TabsContent
+        value="updates"
+        forceMount
+        className="data-[state=inactive]:hidden"
+      >
+        <DeploUpdatesTab
+          active={active === "updates"}
+          version={settings.version}
+          fleet={fleet}
+        />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+/**
+ * What this instance IS, above the settings that change it: the version it runs,
+ * the host it runs on, and the address it answers at.
+ */
+function InstanceHero({ settings }: { settings: InstanceSettings }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-start gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm font-medium">
+              v{settings.version}
+            </span>
+            {/* Derived from the version, not a flag: the badge disappears on its
+                own the day 1.0.0 ships. */}
+            {settings.version.startsWith("0.") ? (
+              <Badge variant="secondary">Beta</Badge>
+            ) : null}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {settings.deploHostId ? (
+              <>
+                Runs on{" "}
+                <Link
+                  href={`/settings/servers/${settings.deploHostId}`}
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  {settings.deploHostName}
+                </Link>
+              </>
+            ) : (
+              "Runs on a server not added here yet"
+            )}
+            , and answers at{" "}
+            <span className="font-mono text-foreground">
+              {settings.panelUrl}
+            </span>
+          </p>
+        </div>
+        <div className="flex w-full min-w-0 items-center justify-center lg:flex-1">
+          <DeploInstanceGraphic className="max-h-20" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

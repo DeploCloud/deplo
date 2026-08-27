@@ -1298,6 +1298,23 @@ type DeleteUserTeamImpact {
   teamId: ID
 }
 
+"""Deplo's published releases, newest first."""
+type DeploChangelog {
+  error: String
+  releases: [DeploRelease!]
+}
+
+"""One published release of Deplo, as the changelog renders it."""
+type DeploRelease {
+  body: String
+  current: Boolean
+  name: String
+  prerelease: Boolean
+  publishedAt: String
+  tag: String
+  url: String
+}
+
 enum DeploySource {
   COMPOSE
   DOCKER_IMAGE
@@ -2632,7 +2649,9 @@ type Mutation {
     force: Boolean
   ): [Server!]
 
-  """Re-run the upstream release check and return the latest update info."""
+  """
+  Re-run the upstream release check ignoring the cache, and expire the changelog beside it.
+  """
   checkForUpdates: UpdateInfo
 
   """
@@ -3916,6 +3935,11 @@ type Query {
   What permanently deleting this account would remove. Read-only - nothing is deleted.
   """
   deleteUserImpact(userId: String!): DeleteUserImpact
+
+  """
+  Deplo's published releases with their notes, newest first; cached for an hour and refreshed by checkForUpdates.
+  """
+  deploChangelog: DeploChangelog
   deployment(id: String!): Deployment
   deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
 

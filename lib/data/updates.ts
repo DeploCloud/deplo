@@ -1,5 +1,7 @@
 import "server-only";
 
+import { revalidateTag } from "next/cache";
+
 import {
   DEPLO_VERSION,
   DEPLO_REPO,
@@ -20,11 +22,55 @@ export interface UpdateInfo {
   error?: string;
 }
 
-/**
- * Ask GitHub for the latest published release of the Deplo repository and compare
- * it with the running version.
- */
-export async function getUpdateInfo(): Promise<UpdateInfo> {
+/** One published release of Deplo, as the changelog renders it. */
+export interface DeploRelease {
+  /** The release tag, as GitHub spells it ("v0.2.0"). */
+  tag: string;
+  name: string;
+  url: string;
+  publishedAt: string | null;
+  /** Release notes, markdown, truncated. */
+  body: string;
+  prerelease: boolean;
+  /** This is the version the instance is running. */
+  current: boolean;
+}
+
+/** The cache tag both GitHub reads carry, so one refresh busts them together. */
+const RELEASES_TAG = "deplo-releases";
+
+/** Releases move slowly, and the anonymous GitHub bucket is 60 calls an hour. */
+const CACHED = {
+  cache: "force-cache",
+  next: { revalidate: 3600, tags: [RELEASES_TAG] },
+} satisfies RequestInit;
+
+const GH_HEADERS = {
+  Accept: "application/vnd.github+json",
+  "User-Agent": "deplo-control-plane",
+};
+
+const TIMEOUT_MS = 5000;
+const MAX_RELEASES = 20;
+/** Notes long enough to matter link out instead of shipping in the payload. */
+const MAX_BODY = 4000;
+
+interface GitHubRelease {
+  tag_name?: string;
+  name?: string;
+  html_url?: string;
+  published_at?: string;
+  body?: string;
+  draft?: boolean;
+  prerelease?: boolean;
+}
+
+/** Strip a single leading v/V so a tag and a bare version compare equal. */
+function normalizeTag(tag: string): string {
+  return tag.trim().replace(/^v/i, "");
+}
+
+async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
   const base: UpdateInfo = {
     current: DEPLO_VERSION,
     latest: null,
@@ -39,23 +85,16 @@ export async function getUpdateInfo(): Promise<UpdateInfo> {
     const res = await fetch(
       `https://api.github.com/repos/${DEPLO_REPO}/releases/latest`,
       {
-        headers: {
-          Accept: "application/vnd.github+json",
-          "User-Agent": "deplo-control-plane",
-        },
-        next: { revalidate: 3600 },
+        headers: GH_HEADERS,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        ...init,
       },
     );
 
     if (res.status === 404) return base; // no releases published yet
     if (!res.ok) return { ...base, error: `GitHub API returned ${res.status}` };
 
-    const json = (await res.json()) as {
-      tag_name?: string;
-      name?: string;
-      html_url?: string;
-      published_at?: string;
-    };
+    const json = (await res.json()) as GitHubRelease;
     const tag = typeof json.tag_name === "string" ? json.tag_name : null;
     if (!tag) return base;
 
@@ -75,6 +114,86 @@ export async function getUpdateInfo(): Promise<UpdateInfo> {
     return {
       ...base,
       error: e instanceof Error ? e.message : "Update check failed",
+    };
+  }
+}
+
+/**
+ * Ask GitHub for the latest published release of the Deplo repository and compare
+ * it with the running version. Cached for an hour under {@link RELEASES_TAG}.
+ */
+export async function getUpdateInfo(): Promise<UpdateInfo> {
+  return fetchUpdateInfo(CACHED);
+}
+
+/**
+ * Re-ask GitHub, ignoring the cache, and expire the tag so the changelog beside
+ * it re-reads too. `no-store` rather than the tag alone: a "Check now" that
+ * answers with the hour-old body is the bug this replaces.
+ */
+export async function refreshUpdateInfo(): Promise<UpdateInfo> {
+  await requireInstanceAdmin();
+  revalidateTag(RELEASES_TAG, { expire: 0 });
+  return fetchUpdateInfo({ cache: "no-store" });
+}
+
+/**
+ * The published releases of Deplo, newest first - the changelog the panel shows
+ * so "what changed" has an answer that is not a GitHub tab.
+ */
+export async function listDeploReleases(): Promise<{
+  releases: DeploRelease[];
+  error?: string;
+}> {
+  await requireInstanceAdmin();
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${DEPLO_REPO}/releases?per_page=${MAX_RELEASES}`,
+      {
+        headers: GH_HEADERS,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        ...CACHED,
+      },
+    );
+
+    if (res.status === 404) return { releases: [] }; // nothing published yet
+    if (!res.ok)
+      return { releases: [], error: `GitHub API returned ${res.status}` };
+
+    const json = (await res.json()) as GitHubRelease[];
+    if (!Array.isArray(json)) return { releases: [] };
+
+    const releases = json
+      .filter((r): r is GitHubRelease => !!r && !r.draft)
+      .map((r) => {
+        const tag = typeof r.tag_name === "string" ? r.tag_name.trim() : "";
+        if (!tag) return null;
+        const url =
+          typeof r.html_url === "string"
+            ? r.html_url
+            : `https://github.com/${DEPLO_REPO}/releases/tag/${tag}`;
+        const body = typeof r.body === "string" ? r.body.trim() : "";
+        return {
+          tag,
+          name: typeof r.name === "string" && r.name ? r.name : tag,
+          url,
+          publishedAt:
+            typeof r.published_at === "string" ? r.published_at : null,
+          body:
+            body.length > MAX_BODY
+              ? `${body.slice(0, MAX_BODY)}\n\n[Read the full notes on GitHub](${url})`
+              : body,
+          prerelease: r.prerelease === true,
+          current: normalizeTag(tag) === DEPLO_VERSION,
+        };
+      })
+      .filter((r): r is DeploRelease => r !== null);
+
+    return { releases };
+  } catch (e) {
+    return {
+      releases: [],
+      error: e instanceof Error ? e.message : "Could not read the changelog",
     };
   }
 }

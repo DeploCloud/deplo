@@ -33,14 +33,17 @@ import {
   Cpu,
   Bot,
   Cable,
-  type LucideIcon,
 } from "lucide-react";
+import type { ComponentType } from "react";
+
+import { DeploMark } from "@/components/logo";
 import type { DatabaseType } from "@/lib/types";
 
 export interface NavItem {
   label: string;
   href: string;
-  icon: LucideIcon;
+  /** Any glyph that takes a className - lucide's icons and Deplo's own mark. */
+  icon: ComponentType<{ className?: string }>;
   tooltip: string;
   /** exact match for active state (default: startsWith) */
   exact?: boolean;
@@ -320,6 +323,17 @@ export const SETTINGS_NAV: NavSection[] = [
   {
     title: "System",
     items: [
+      // First, and wearing the mark: this is the instance the other two live in,
+      // and `SlidersHorizontal` is the Advanced glyph everywhere else.
+      {
+        label: "Deplo",
+        href: "/settings/deplo",
+        icon: DeploMark,
+        tooltip: "This instance: its address, certificates and version",
+        // Instance admins, like its neighbours: everything on it is one setting
+        // for the whole instance, and applying it touches every host.
+        requiresAdmin: true,
+      },
       {
         label: "Servers",
         href: "/settings/servers",
@@ -328,16 +342,6 @@ export const SETTINGS_NAV: NavSection[] = [
         // Server administration is an instance-wide concern (the management view lists
         // EVERY server across teams), so it is gated to instance admins, not the per-team
         // manage_infra capability.
-        requiresAdmin: true,
-      },
-      {
-        label: "Deplo",
-        href: "/settings/deplo",
-        icon: SlidersHorizontal,
-        tooltip:
-          "How this Deplo instance addresses itself & issues certificates",
-        // Instance admins, like its neighbours: everything on it is one setting
-        // for the whole instance, and applying it touches every host.
         requiresAdmin: true,
       },
       {

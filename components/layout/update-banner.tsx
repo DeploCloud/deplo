@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { Sparkles, ArrowUpRight, X } from "lucide-react";
-import { gqlAction } from "@/lib/graphql-client";
-import type { UpdateInfo } from "@/lib/data/updates";
+
+import { useUpstreamUpdate } from "./update-state";
 
 const DISMISS_KEY = "deplo:update-dismissed";
 
@@ -13,55 +13,46 @@ const DISMISS_KEY = "deplo:update-dismissed";
  * still-newer release lands.
  */
 export function UpdateBanner() {
-  const [info, setInfo] = React.useState<UpdateInfo | null>(null);
+  const update = useUpstreamUpdate();
+  const [dismissed, setDismissed] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    let active = true;
-    gqlAction<{ updateInfo: UpdateInfo | null }, UpdateInfo | null>(
-      `query { updateInfo { updateAvailable latest current url } }`,
-      undefined,
-      (d) => d.updateInfo,
-    ).then((res) => {
-      if (!active || !res.ok || !res.data) return;
-      const d = res.data;
-      if (!d.updateAvailable || !d.latest) return;
-      let dismissed = "";
-      try {
-        dismissed = window.localStorage.getItem(DISMISS_KEY) ?? "";
-      } catch {
-        /* ignore */
-      }
-      if (dismissed === d.latest) return;
-      setInfo(d);
-    });
-    return () => {
-      active = false;
-    };
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDismissed(window.localStorage.getItem(DISMISS_KEY) ?? "");
+    } catch {
+      /* private mode, blocked storage - the banner simply shows */
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDismissed("");
+    }
   }, []);
 
-  if (!info?.updateAvailable) return null;
+  // `null` is "not read yet": rendering the banner before the stored answer is in
+  // would flash a notice the user closed on the last page.
+  if (!update || dismissed === null || dismissed === update.latest) return null;
 
   function dismiss() {
+    if (!update) return;
     try {
-      if (info?.latest) window.localStorage.setItem(DISMISS_KEY, info.latest);
+      window.localStorage.setItem(DISMISS_KEY, update.latest);
     } catch {
       /* ignore */
     }
-    setInfo(null);
+    setDismissed(update.latest);
   }
 
   return (
     <div className="flex items-center gap-3 border-b border-border bg-secondary/50 px-4 py-2 text-sm sm:px-6">
       <Sparkles className="size-4 shrink-0 text-[var(--success)]" />
       <span className="min-w-0 truncate">
-        Deplo <span className="font-medium">{info.latest}</span> is available
+        Deplo <span className="font-medium">{update.latest}</span> is available
         <span className="text-muted-foreground">
           {" "}
-          - you have v{info.current}
+          - you have v{update.current}
         </span>
       </span>
       <a
-        href={info.url ?? "#"}
+        href={update.url ?? "#"}
         target="_blank"
         rel="noopener noreferrer"
         className="ml-auto inline-flex shrink-0 items-center gap-1 font-medium hover:underline"

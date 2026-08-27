@@ -21,6 +21,7 @@ import { useAppNav } from "@/components/apps/app-nav-store";
 import { useDbNav } from "@/components/storage/db-nav-store";
 import { useConsoleAck } from "@/components/apps/console-ack";
 import { useActiveDeployments } from "./deploy-activity";
+import { useUpstreamUpdate } from "./update-state";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
@@ -59,6 +60,9 @@ export function SidebarNav({
   // Builds in flight right now, live. Decorates the Deployments entry so a
   // running deploy is visible from anywhere in the dashboard.
   const deploying = useActiveDeployments();
+  // A newer Deplo upstream, so the entry that owns the instance says so from
+  // anywhere in Settings. Independent of the banner's dismissal.
+  const upstream = useUpstreamUpdate();
 
   // A "back" escape hatch leaves the whole current section via the browser's history,
   // jumping to the last page you were on *outside* it, so it lands where you came
@@ -282,6 +286,10 @@ export function SidebarNav({
               item.href === "/deployments" && deploying > 0
                 ? `${deploying} deployment${deploying === 1 ? "" : "s"} in progress`
                 : null;
+            const updateTip =
+              upstream && item.href === "/settings/deplo"
+                ? `Deplo ${upstream.latest} is available`
+                : null;
             return (
               <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
                 <TooltipTrigger asChild>
@@ -306,6 +314,12 @@ export function SidebarNav({
                     {showIcon && <NavIcon item={item} active={active} />}
                     {!collapsed && item.label}
                     {!showIcon && <NavPending />}
+                    {updateTip &&
+                      (collapsed ? (
+                        <span className="absolute top-1 right-1 size-2 rounded-full bg-[var(--success)]" />
+                      ) : (
+                        <span className="ml-auto size-2 shrink-0 rounded-full bg-[var(--success)]" />
+                      ))}
                     {deployingTip &&
                       (collapsed ? (
                         // No room for a number next to the icon: the pulsing dot
@@ -326,7 +340,8 @@ export function SidebarNav({
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  {deployingTip ?? (collapsed ? item.label : item.tooltip)}
+                  {deployingTip ??
+                    (collapsed ? item.label : (updateTip ?? item.tooltip))}
                 </TooltipContent>
               </Tooltip>
             );

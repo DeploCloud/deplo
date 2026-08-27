@@ -98,7 +98,7 @@ async function checkDeploUpdate(): Promise<void> {
     dedupe: { id: "deplo-update", state: info.latest },
     title: `Deplo ${info.latest} is available`,
     body: `This instance is on ${info.current}.`,
-    path: "/settings/deplo",
+    path: "/settings/deplo?tab=updates",
   });
 }
 

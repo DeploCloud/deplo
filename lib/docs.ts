@@ -190,6 +190,7 @@ export const DOCS = {
   "panel.certEmail":
     "operations/panel-address-and-certificates#the-certificate-account-email",
   "upgrade.overview": "operations/upgrade",
+  "upgrade.releases": "operations/upgrade#release-history",
 
   "migration.dokploy": "guides/move-from-dokploy",
   "migration.coolify": "guides/move-from-coolify",

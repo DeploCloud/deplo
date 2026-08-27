@@ -4,6 +4,7 @@ import { SidebarProvider } from "./sidebar-state";
 import { Topbar } from "./topbar";
 import { ShellFrame } from "./shell-frame";
 import { UpdateBanner } from "./update-banner";
+import { UpdateProvider } from "./update-state";
 import { NavigationHistoryTracker } from "./navigation-history";
 import { NavProgress } from "./nav-progress";
 import { GitConnectToast } from "@/components/shared/git-connect-toast";
@@ -52,50 +53,52 @@ export function AppShell({
           the stream opens, so switching teams has to reconnect it. */}
       <DeployActivityProvider key={team.id}>
         <MigrationActivityProvider key={team.id}>
-          {/**
-           * The frame itself is a client component: it reads the route, because the log
-           * consoles take the whole area to the right of the sidebar and every other page
-           * does not.
-           */}
-          <ShellFrame
-            contentKey={team.id}
-            sidebar={
-              <>
-                {/* Tracks in-app history depth so sidebar back links can use the
+          <UpdateProvider>
+            {/**
+             * The frame itself is a client component: it reads the route, because the log
+             * consoles take the whole area to the right of the sidebar and every other page
+             * does not.
+             */}
+            <ShellFrame
+              contentKey={team.id}
+              sidebar={
+                <>
+                  {/* Tracks in-app history depth so sidebar back links can use the
                 browser's back when there's a page to return to (see
                 navigation-history). */}
-                <NavigationHistoryTracker />
-                {/* Connecting a git host ends on whatever page started it, so
+                  <NavigationHistoryTracker />
+                  {/* Connecting a git host ends on whatever page started it, so
                     its one-shot confirmation is mounted once here rather than
                     on Settings → Git. */}
-                <GitConnectToast />
-                <Sidebar capabilities={capabilities} isAdmin={isAdmin} />
-              </>
-            }
-            header={
-              <>
-                <Topbar
-                  user={user}
-                  team={team}
-                  teams={teams}
-                  breadcrumb={breadcrumb}
-                  capabilities={capabilities}
-                  isAdmin={isAdmin}
-                />
-                <UpdateBanner />
-                {/**
-                 * Renders nothing for an account that already has a second factor - an
-                 * authenticator app OR a passkey (ADR-0024) - and nothing at all once the user has
-                 * dismissed it for good.
-                 */}
-                <TwoFactorReminder
-                  hasSecondFactor={user.twoFactorEnabled || hasPasskey}
-                />
-              </>
-            }
-          >
-            {children}
-          </ShellFrame>
+                  <GitConnectToast />
+                  <Sidebar capabilities={capabilities} isAdmin={isAdmin} />
+                </>
+              }
+              header={
+                <>
+                  <Topbar
+                    user={user}
+                    team={team}
+                    teams={teams}
+                    breadcrumb={breadcrumb}
+                    capabilities={capabilities}
+                    isAdmin={isAdmin}
+                  />
+                  <UpdateBanner />
+                  {/**
+                   * Renders nothing for an account that already has a second factor - an
+                   * authenticator app OR a passkey (ADR-0024) - and nothing at all once the user has
+                   * dismissed it for good.
+                   */}
+                  <TwoFactorReminder
+                    hasSecondFactor={user.twoFactorEnabled || hasPasskey}
+                  />
+                </>
+              }
+            >
+              {children}
+            </ShellFrame>
+          </UpdateProvider>
         </MigrationActivityProvider>
       </DeployActivityProvider>
     </SidebarProvider>

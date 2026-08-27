@@ -18,7 +18,7 @@ import {
   toStoreTemplate,
 } from "@/components/templates/template-card";
 import { plateClass, veilProps } from "@/components/templates/veil";
-import { TemplateMarkdown } from "@/components/templates/template-markdown";
+import { RemoteMarkdown } from "@/components/shared/remote-markdown";
 import { TemplateRail } from "@/components/templates/template-rail";
 import { TemplateSearchLink } from "@/components/templates/template-search";
 import { TemplateScreenshots } from "@/components/templates/template-screenshots";
@@ -162,7 +162,7 @@ export default async function TemplatePage(
         <TemplateScreenshots images={images} name={template.name} />
       )}
 
-      <TemplateMarkdown source={variant.description} />
+      <RemoteMarkdown source={variant.description} />
 
       {/* Metadata. Every row is a fact the catalogue carries; nothing is faked
           when it is missing, the row simply isn't there. */}

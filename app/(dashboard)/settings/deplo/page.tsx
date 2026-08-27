@@ -1,13 +1,17 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/page-header";
-import { Badge } from "@/components/ui/badge";
 import { DeploSettingsPanel } from "@/components/settings/deplo-settings-panel";
 import { getInstanceSettings } from "@/lib/data/instance-settings";
 import { viewerIsInstanceOwner } from "@/lib/data/instance-owner";
 import { listAllUsers } from "@/lib/data/members";
+import { listAllServers } from "@/lib/data/servers";
 import { isInstanceAdmin } from "@/lib/membership";
+import {
+  agentUpdateAvailable,
+  reportedAgentVersion,
+  resolveExpectedAgentVersion,
+} from "@/lib/version";
 
 export const metadata = { title: "Settings · Deplo" };
 
@@ -16,11 +20,14 @@ export const metadata = { title: "Settings · Deplo" };
  */
 export default async function DeploSettingsPage() {
   if (!(await isInstanceAdmin())) notFound();
-  const [settings, viewerIsOwner, users] = await Promise.all([
-    getInstanceSettings(),
-    viewerIsInstanceOwner(),
-    listAllUsers(),
-  ]);
+  const [settings, viewerIsOwner, users, servers, expectedAgentVersion] =
+    await Promise.all([
+      getInstanceSettings(),
+      viewerIsInstanceOwner(),
+      listAllUsers(),
+      listAllServers(),
+      resolveExpectedAgentVersion(),
+    ]);
 
   // Who the crown could go to, narrowed to exactly what the server would accept: an
   // active instance admin who isn't already the owner.
@@ -33,48 +40,36 @@ export default async function DeploSettingsPage() {
       avatarUrl: u.avatarUrl,
     }));
 
+  // A migration source hosts nothing and takes its own agent off when it is done
+  // (ADR-0025), so counting it would report a host nobody has to keep current.
+  const fleetHosts = servers.filter((s) => !s.importOnly);
+  const fleet = {
+    total: fleetHosts.length,
+    outdated: fleetHosts.filter((s) =>
+      agentUpdateAvailable(reportedAgentVersion(s), expectedAgentVersion),
+    ).length,
+    expected: expectedAgentVersion,
+  };
+  const hosts = fleetHosts.map((s) => ({
+    name: s.name,
+    agentVersion: reportedAgentVersion(s),
+    dockerVersion: s.dockerVersion,
+    hostArch: s.hostArch,
+  }));
+
   return (
-    <div className="space-y-6">
-      {/**
-       * Version and host are read-only facts about this instance, so they ride the header
-       * instead of taking a card of their own: a settings page should open on what can be
-       * changed.
-       */}
+    <div className="space-y-3">
       <PageHeader
         docs="panel.address"
         title="Deplo"
-        description={
-          <>
-            <span className="font-mono">v{settings.version}</span>
-            {/* Derived from the version, not a flag: the badge disappears on its
-                own the day 1.0.0 ships, so there is no line to remember to delete
-                and no env var left switched on in production. */}
-            {settings.version.startsWith("0.") ? (
-              <Badge variant="secondary" className="ml-2 align-middle">
-                Beta
-              </Badge>
-            ) : null}
-            {" · "}
-            {settings.deploHostId ? (
-              <>
-                runs on{" "}
-                <Link
-                  href={`/settings/servers/${settings.deploHostId}`}
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  {settings.deploHostName}
-                </Link>
-              </>
-            ) : (
-              "runs on a server not added here yet"
-            )}
-          </>
-        }
+        description="The instance itself: the address it answers at, the certificates it issues, and the version it runs."
       />
       <DeploSettingsPanel
         settings={settings}
         viewerIsOwner={viewerIsOwner}
         ownerCandidates={ownerCandidates}
+        fleet={fleet}
+        hosts={hosts}
       />
     </div>
   );
