@@ -564,7 +564,7 @@ function autoDetectRepoFramework(
   rootDirectory: string | null | undefined,
 ): void {
   void detectRepoFramework(repo, rootDirectory)
-    .then((framework) => setFramework(appId, framework))
+    .then((hints) => setFramework(appId, hints.framework))
     .catch(() => {});
 }
 

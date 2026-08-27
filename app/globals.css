@@ -545,6 +545,70 @@ p:not([class*="leading-"]) {
   animation: deplo-slide-in-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* The new-app wizard's step swap: the card leaves in the direction of travel and
+ * the next one arrives from the opposite edge, so Back reads as Back. Paired with
+ * `AnimatedHeight`, which eases the card's height over the same beat. */
+@keyframes deplo-step-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes deplo-step-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes deplo-step-out-up {
+  to {
+    opacity: 0;
+    transform: translateY(-1.5rem);
+  }
+}
+
+@keyframes deplo-step-out-down {
+  to {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+}
+
+.animate-step-in-up {
+  animation: deplo-step-in-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-step-in-down {
+  animation: deplo-step-in-down 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-step-out-up {
+  animation: deplo-step-out-up 0.16s ease-in both;
+}
+
+.animate-step-out-down {
+  animation: deplo-step-out-down 0.16s ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-step-in-up,
+  .animate-step-in-down,
+  .animate-step-out-up,
+  .animate-step-out-down {
+    animation: none;
+  }
+}
+
 /* iOS-style "jiggle" for the project grid's reorder (edit) mode. Applied to an
  * inner wrapper so it composes with, and never fights, the translate transform
  * dnd-kit writes on the outer (sortable) element while dragging/reflowing. Cards
@@ -2728,6 +2792,46 @@ p:not([class*="leading-"]) {
   /* Nearly linear: confetti falls, it does not ease out. */
   animation-timing-function: cubic-bezier(0.35, 0.15, 0.6, 1);
   animation-delay: calc(var(--i) * 40ms);
+}
+
+/* The two-cannon variant (`ConfettiBurst cannons`), fired when a deploy the user
+   just started is on its way: pieces launch from the bottom corners, arc toward
+   the middle and fall off-screen. The arc is two segments with their own easing -
+   out of the barrel it decelerates, past the apex it accelerates - because one
+   timing function over the whole flight reads as a balloon, not a shot. */
+@keyframes deplo-confetti-cannon {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg);
+    animation-timing-function: cubic-bezier(0.12, 0.6, 0.35, 1);
+  }
+  8% {
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.12, 0.6, 0.35, 1);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(
+        calc(var(--deplo-confetti-vx) * 0.6),
+        calc(var(--deplo-confetti-vy) * -1)
+      )
+      rotate(calc(var(--deplo-confetti-r) * 0.45));
+    animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--deplo-confetti-vx), 22vh)
+      rotate(var(--deplo-confetti-r));
+  }
+}
+
+.deplo-confetti-cannons .deplo-confetti-piece {
+  left: var(--deplo-confetti-x);
+  top: auto;
+  bottom: 0;
+  animation-name: deplo-confetti-cannon;
+  animation-duration: var(--deplo-confetti-t);
+  animation-delay: calc(var(--i) * 16ms);
 }
 
 /* The robot glyph on "N agents connected" (components/settings/mcp/robot-graphic.tsx).

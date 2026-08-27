@@ -448,6 +448,12 @@ const AppEnvInput = builder.inputType("AppEnvInput", {
   fields: (t) => ({
     key: t.string({ required: true }),
     value: t.string({ required: true }),
+    type: t.string({
+      required: false,
+      description:
+        '"plain" or "secret". Omitted lets the name decide; a secret is ' +
+        "write-only from the moment it lands.",
+    }),
   }),
 });
 
@@ -492,6 +498,24 @@ const CreateAppInputType = builder.inputType("CreateAppInput", {
     logo: t.string({ required: false }),
     compose: t.string({ required: false }),
     serverId: t.string({ required: false }),
+    buildServerId: t.string({
+      required: false,
+      description:
+        "Where the app COMPILES, when that is not where it runs. Omitted is " +
+        "Automatic - a build-only server if the fleet has one.",
+    }),
+    composeUpArgs: t.string({
+      required: false,
+      description:
+        "Extra flags appended to `docker compose up` for a compose stack. " +
+        "Validated against the same allow-list the app's settings use.",
+    }),
+    sharedVarIds: t.stringList({
+      required: false,
+      description:
+        "Shared variables to link to the new app, so its FIRST deploy already " +
+        "carries them (ADR-0012: linking is the injection, and it is opt-in).",
+    }),
     build: t.field({ type: BuildConfigInput, required: false }),
     autoDeploy: t.boolean({ required: false }),
     // Template/compose deploys carry these so a one-click template keeps its
@@ -524,25 +548,53 @@ const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
   }),
 });
 
+/** What one read of a repository yields the new-app wizard. */
+interface RecognizedFrameworkDTO {
+  framework: FrameworkDefinition | null;
+  buildCommand: string | null;
+  startCommand: string | null;
+}
+
 const RecognizedFrameworkRef = builder
-  .objectRef<FrameworkDefinition>("RecognizedFramework")
+  .objectRef<RecognizedFrameworkDTO>("RecognizedFramework")
   .implement({
     description:
-      "A JavaScript framework Deplo recognised in an app's source, with what it " +
-      "knows about it. Detection only - Deplo never writes build commands from a " +
-      "framework; the auto-detecting builders own that.",
+      "What Deplo read in a repository before an app exists for it: the " +
+      "JavaScript framework backing it, and the build/start commands the " +
+      "repository declares for ITSELF in its package.json. A command is never " +
+      "invented from the framework - null means the repo said nothing and the " +
+      "builder decides.",
     fields: (t) => ({
-      id: t.exposeString("id", {
+      id: t.string({
+        nullable: true,
         description:
-          'Stable id, e.g. "nextjs" - also the key for its brand mark.',
+          'Stable framework id, e.g. "nextjs" - also the key for its brand ' +
+          "mark. Null for a repo with no framework Deplo knows.",
+        resolve: (f) => f.framework?.id ?? null,
       }),
-      name: t.exposeString("name", {
+      name: t.string({
+        nullable: true,
         description: 'Display name, e.g. "Next.js".',
+        resolve: (f) => f.framework?.name ?? null,
       }),
-      defaultPort: t.exposeInt("defaultPort", {
+      defaultPort: t.int({
+        nullable: true,
         description:
           "The port this framework's production server binds when nothing tells " +
           "it otherwise - what a new app's container port defaults to.",
+        resolve: (f) => f.framework?.defaultPort ?? null,
+      }),
+      buildCommand: t.exposeString("buildCommand", {
+        nullable: true,
+        description:
+          "The repository's own build script, spelled for its lockfile's " +
+          'package manager (e.g. "pnpm run build").',
+      }),
+      startCommand: t.exposeString("startCommand", {
+        nullable: true,
+        description:
+          "The repository's own start script (falling back to `serve`), spelled " +
+          "the same way.",
       }),
     }),
   });
@@ -651,12 +703,12 @@ builder.queryFields((t) => ({
     nullable: true,
     authScopes: { capability: "create_apps" },
     description:
-      "Recognise the JavaScript framework in a GitHub repository before an app " +
-      "exists for it - what the new-app wizard shows while you pick a repo. " +
-      "Null when there is nothing to recognise: a build method other than " +
+      "Read a GitHub repository before an app exists for it - the framework " +
+      "and the commands the new-app wizard prefills while you pick a repo. " +
+      "Null when there is nothing to read at all: a build method other than " +
       "Nixpacks / Railpack (the only ones this applies to), a repository Deplo " +
-      "can't read, or a repository with no framework in it. Reads only; the " +
-      "app's first deploy re-derives and stores the answer.",
+      "can't read, or one with neither a framework nor a script. Reads only; " +
+      "the app's first deploy re-derives and stores the framework.",
     args: {
       repo: t.arg.string({
         required: true,
@@ -685,19 +737,25 @@ builder.queryFields((t) => ({
         description: "Build sub-directory, for a monorepo.",
       }),
     },
-    resolve: async (_r, args) =>
-      frameworkById(
-        await previewRepoFramework({
-          repo: args.repo,
-          url: args.url,
-          branch: args.branch,
-          installationId: args.installationId,
-          // Untrusted string: anything that isn't a real method simply fails the
-          // Nixpacks/Railpack test inside and yields null.
-          buildMethod: args.buildMethod as BuildMethod,
-          rootDirectory: args.rootDirectory,
-        }),
-      ),
+    resolve: async (_r, args) => {
+      const hints = await previewRepoFramework({
+        repo: args.repo,
+        url: args.url,
+        branch: args.branch,
+        installationId: args.installationId,
+        // Untrusted string: anything that isn't a real method simply fails the
+        // Nixpacks/Railpack test inside and yields nothing.
+        buildMethod: args.buildMethod as BuildMethod,
+        rootDirectory: args.rootDirectory,
+      });
+      const framework = frameworkById(hints.framework);
+      if (!framework && !hints.buildCommand && !hints.startCommand) return null;
+      return {
+        framework,
+        buildCommand: hints.buildCommand,
+        startCommand: hints.startCommand,
+      };
+    },
   }),
   deployments: t.field({
     type: [DeploymentRef],
@@ -766,6 +824,9 @@ builder.mutationFields((t) => ({
         logo: input.logo ?? null,
         compose: input.compose ?? null,
         serverId: input.serverId ?? undefined,
+        buildServerId: input.buildServerId ?? null,
+        composeUpArgs: input.composeUpArgs ?? null,
+        sharedVarIds: input.sharedVarIds ?? null,
         // Remap the input's `settings` to the stored `methodSettings` shape so
         // method settings chosen at create time aren't silently dropped (see
         // updateAppBuild). buildConfigFor reads overrides.methodSettings.
@@ -773,7 +834,13 @@ builder.mutationFields((t) => ({
           ? (remapBuildInput(input.build) as never)
           : undefined,
         autoDeploy: input.autoDeploy ?? undefined,
-        env: input.env?.map((e) => ({ key: e.key, value: e.value })),
+        env: input.env?.map((e) => ({
+          key: e.key,
+          value: e.value,
+          // Anything but the two names lets the key heuristic decide, which is
+          // what omitting it does.
+          type: e.type === "secret" || e.type === "plain" ? e.type : undefined,
+        })),
         composeService: input.composeService ?? null,
         composePort: input.composePort ?? null,
         extraDomains: input.extraDomains

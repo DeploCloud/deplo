@@ -251,6 +251,11 @@ type AppEnvGroupApp {
 """An initial environment variable for a new app."""
 input AppEnvInput {
   key: String!
+
+  """
+  "plain" or "secret". Omitted lets the name decide; a secret is write-only from the moment it lands.
+  """
+  type: String
   value: String!
 }
 
@@ -873,9 +878,19 @@ input CreateAppInput {
   autoDeploy: Boolean
   autoDomain: String
   build: BuildConfigInput
+
+  """
+  Where the app COMPILES, when that is not where it runs. Omitted is Automatic - a build-only server if the fleet has one.
+  """
+  buildServerId: String
   compose: String
   composePort: Int
   composeService: String
+
+  """
+  Extra flags appended to `docker compose up` for a compose stack. Validated against the same allow-list the app's settings use.
+  """
+  composeUpArgs: String
   dockerImage: String
   env: [AppEnvInput!]
   environmentId: String
@@ -887,6 +902,11 @@ input CreateAppInput {
   projectId: String
   repo: GitRepoInput
   serverId: String
+
+  """
+  Shared variables to link to the new app, so its FIRST deploy already carries them (ADR-0012: linking is the injection, and it is opt-in).
+  """
+  sharedVarIds: [String!]
   source: DeploySource!
 }
 
@@ -3905,7 +3925,7 @@ type Query {
   destinationTestReport(id: String!): S3TestReport
 
   """
-  Recognise the JavaScript framework in a GitHub repository before an app exists for it - what the new-app wizard shows while you pick a repo. Null when there is nothing to recognise: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or a repository with no framework in it. Reads only; the app's first deploy re-derives and stores the answer.
+  Read a GitHub repository before an app exists for it - the framework and the commands the new-app wizard prefills while you pick a repo. Null when there is nothing to read at all: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or one with neither a framework nor a script. Reads only; the app's first deploy re-derives and stores the framework.
   """
   detectRepoFramework(
     """Branch to read; empty ⇒ the repository's default branch."""
@@ -4158,19 +4178,31 @@ type Query {
 }
 
 """
-A JavaScript framework Deplo recognised in an app's source, with what it knows about it. Detection only - Deplo never writes build commands from a framework; the auto-detecting builders own that.
+What Deplo read in a repository before an app exists for it: the JavaScript framework backing it, and the build/start commands the repository declares for ITSELF in its package.json. A command is never invented from the framework - null means the repo said nothing and the builder decides.
 """
 type RecognizedFramework {
+  """
+  The repository's own build script, spelled for its lockfile's package manager (e.g. "pnpm run build").
+  """
+  buildCommand: String
+
   """
   The port this framework's production server binds when nothing tells it otherwise - what a new app's container port defaults to.
   """
   defaultPort: Int
 
-  """Stable id, e.g. "nextjs" - also the key for its brand mark."""
+  """
+  Stable framework id, e.g. "nextjs" - also the key for its brand mark. Null for a repo with no framework Deplo knows.
+  """
   id: String
 
   """Display name, e.g. "Next.js"."""
   name: String
+
+  """
+  The repository's own start script (falling back to `serve`), spelled the same way.
+  """
+  startCommand: String
 }
 
 """

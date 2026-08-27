@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   declaredDependencies,
+  detectCommands,
   detectFramework,
+  packageManagerFrom,
   parsePackageManifest,
   rootFileNames,
 } from "./framework-detect";
@@ -247,4 +249,68 @@ test("the catalog itself stays coherent", () => {
   assert.equal(frameworkById(null), null);
   // The catch-all is last, or it would swallow every JavaScript app.
   assert.equal(FRAMEWORKS[FRAMEWORKS.length - 1].id, "node");
+});
+
+test("the package manager comes from the lockfile at the build root", () => {
+  assert.equal(packageManagerFrom(["package.json", "bun.lock"]), "bun");
+  assert.equal(packageManagerFrom(["package.json", "bun.lockb"]), "bun");
+  assert.equal(packageManagerFrom(["pnpm-lock.yaml"]), "pnpm");
+  assert.equal(packageManagerFrom(["yarn.lock"]), "yarn");
+  assert.equal(packageManagerFrom(["package-lock.json"]), "npm");
+  // Nothing to go on is npm, the one that always works.
+  assert.equal(packageManagerFrom([]), "npm");
+  // The list is matched lowercase, like every other root-file rule.
+  assert.equal(packageManagerFrom(["PNPM-LOCK.YAML"]), "pnpm");
+});
+
+test("commands come from the repo's own scripts, spelled for its manager", () => {
+  const manifest = parsePackageManifest(
+    JSON.stringify({ scripts: { build: "next build", start: "next start" } }),
+  );
+  assert.deepEqual(detectCommands(["pnpm-lock.yaml"], manifest), {
+    buildCommand: "pnpm run build",
+    startCommand: "pnpm run start",
+  });
+  // yarn is the one that takes the script name bare.
+  assert.deepEqual(detectCommands(["yarn.lock"], manifest), {
+    buildCommand: "yarn build",
+    startCommand: "yarn start",
+  });
+});
+
+test("`serve` stands in for a missing `start`", () => {
+  const manifest = parsePackageManifest(
+    JSON.stringify({ scripts: { serve: "vite preview" } }),
+  );
+  assert.deepEqual(detectCommands([], manifest), {
+    buildCommand: null,
+    startCommand: "npm run serve",
+  });
+});
+
+test("a repo that declares nothing gets no command invented for it", () => {
+  // A Go service, a manifest with no scripts, an empty script body, and a
+  // scripts block that isn't an object at all - all four say the same thing:
+  // nothing, so the builder decides.
+  assert.deepEqual(detectCommands(["go.mod"], null), {
+    buildCommand: null,
+    startCommand: null,
+  });
+  assert.deepEqual(
+    detectCommands([], parsePackageManifest('{"dependencies":{"next":"15"}}')),
+    { buildCommand: null, startCommand: null },
+  );
+  assert.deepEqual(
+    detectCommands([], parsePackageManifest('{"scripts":{"build":"   "}}')),
+    { buildCommand: null, startCommand: null },
+  );
+  assert.deepEqual(
+    detectCommands([], parsePackageManifest('{"scripts":["build"]}')),
+    { buildCommand: null, startCommand: null },
+  );
+  // A non-string body is user JSON, not a command.
+  assert.deepEqual(
+    detectCommands([], parsePackageManifest('{"scripts":{"build":42}}')),
+    { buildCommand: null, startCommand: null },
+  );
 });

@@ -28,6 +28,7 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid, FolderTrail } from "@/components/apps/apps-grid";
+import { ArchiveDropZone } from "@/components/apps/archive-drop-zone";
 import { AppsGraphic } from "@/components/apps/apps-graphic";
 import { AppSearch } from "@/components/apps/app-search";
 import { EnvironmentSwitcher } from "@/components/apps/environment-switcher";
@@ -245,6 +246,11 @@ export default async function OverviewPage(props: PageProps<"/">) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      {/* Drop a code archive anywhere here and it opens the wizard on Upload
+          with the file already in hand. */}
+      {canDeploy && (
+        <ArchiveDropZone href={newAppHref(placement, { source: "upload" })} />
+      )}
       {/* Right rail */}
       <div className="order-2 space-y-6 lg:order-2">
         <Card>

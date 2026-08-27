@@ -10,6 +10,7 @@ import { FRAMEWORKS, type FrameworkId } from "./framework-catalog";
 export interface PackageManifest {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  scripts?: Record<string, string>;
 }
 
 /**
@@ -70,6 +71,74 @@ export function rootFileNames(
     }
   }
   return out;
+}
+
+/** The package managers a lockfile at the build root can name. */
+export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
+
+/** Lockfile → manager, most specific first. Same priority the generated
+ * Dockerfile's install step uses. */
+const LOCKFILES: readonly (readonly [string, PackageManager])[] = [
+  ["bun.lock", "bun"],
+  ["bun.lockb", "bun"],
+  ["pnpm-lock.yaml", "pnpm"],
+  ["yarn.lock", "yarn"],
+];
+
+/**
+ * Which package manager runs this build root's scripts, from the lockfile it
+ * ships. npm when nothing says otherwise - it is the one that always works.
+ */
+export function packageManagerFrom(
+  rootFiles: readonly string[],
+): PackageManager {
+  const files = new Set(rootFiles.map((f) => f.toLowerCase()));
+  for (const [file, manager] of LOCKFILES) if (files.has(file)) return manager;
+  return "npm";
+}
+
+/** The commands a repository declares for itself, or null where it declares none. */
+export interface DetectedCommands {
+  buildCommand: string | null;
+  startCommand: string | null;
+}
+
+const NO_COMMANDS: DetectedCommands = {
+  buildCommand: null,
+  startCommand: null,
+};
+
+/**
+ * The build and start commands a repository declares in its OWN `package.json`,
+ * spelled for its own package manager. Never invented from the framework: a null
+ * means the repo said nothing and the builder decides.
+ */
+export function detectCommands(
+  rootFiles: readonly string[],
+  manifest: PackageManifest | null | undefined,
+): DetectedCommands {
+  const scripts = manifest?.scripts;
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) {
+    return NO_COMMANDS;
+  }
+  const manager = packageManagerFrom(rootFiles);
+  return {
+    buildCommand: runScript(manager, scripts, "build"),
+    startCommand:
+      runScript(manager, scripts, "start") ??
+      runScript(manager, scripts, "serve"),
+  };
+}
+
+function runScript(
+  manager: PackageManager,
+  scripts: Record<string, string>,
+  name: string,
+): string | null {
+  const body = scripts[name];
+  if (typeof body !== "string" || body.trim() === "") return null;
+  // `yarn build` is how yarn spells it; the other three take `run`.
+  return manager === "yarn" ? `yarn ${name}` : `${manager} run ${name}`;
 }
 
 /**

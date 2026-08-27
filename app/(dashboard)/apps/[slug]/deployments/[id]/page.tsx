@@ -20,6 +20,7 @@ import { repoCommitUrl, timeAgo } from "@/lib/utils";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
 import { RollbackButton } from "@/components/apps/rollback-deployment";
+import { CreatedCelebration } from "@/components/apps/created-celebration";
 
 export const metadata = { title: "Deployment" };
 
@@ -27,6 +28,7 @@ export default async function DeploymentDetailPage(
   props: PageProps<"/apps/[slug]/deployments/[id]">,
 ) {
   const { slug, id } = await props.params;
+  const search = await props.searchParams;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
   const deployment = await getDeployment(id);
@@ -161,6 +163,9 @@ export default async function DeploymentDetailPage(
           />
         )}
       </div>
+
+      {/* The app that just landed here was created a second ago. */}
+      <CreatedCelebration created={search.created === "1"} />
     </div>
   );
 }

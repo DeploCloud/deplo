@@ -23,6 +23,7 @@ export function UploadInput({
   appId,
   current,
   onSelect,
+  file,
 }: {
   /** Settings mode: the existing app to stream the archive to. */
   appId?: string;
@@ -30,14 +31,20 @@ export function UploadInput({
   current?: CurrentUpload | null;
   /** Deferred mode: report the picked File (or null when cleared) to the parent. */
   onSelect?: (file: File | null) => void;
+  /** Deferred mode, CONTROLLED: a file the parent already holds (one dropped on
+   *  another page) so the chip shows it too. */
+  file?: File | null;
 }) {
   const router = useRouter();
   const deferred = typeof onSelect === "function";
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = React.useState(false);
   const [progress, setProgress] = React.useState<number | null>(null);
-  // Deferred mode: the File held for the parent to upload post-create.
-  const [selected, setSelected] = React.useState<File | null>(null);
+  // Deferred mode: the File held for the parent to upload post-create. A parent
+  // that passes `file` owns it instead - the archive may have been picked on a
+  // different page entirely.
+  const [picked, setPicked] = React.useState<File | null>(null);
+  const selected = file !== undefined ? file : picked;
 
   const uploading = progress !== null;
 
@@ -45,8 +52,8 @@ export function UploadInput({
     if (!uploading) inputRef.current?.click();
   }
 
-  function handle(file: File) {
-    const err = validateArchive(file);
+  function handle(chosen: File) {
+    const err = validateArchive(chosen);
     if (err) {
       toast.error(err);
       return;
@@ -55,13 +62,13 @@ export function UploadInput({
     // Deferred mode: just hand the File to the parent - the create wizard streams
     // it after the app exists (there's nothing to upload to yet).
     if (deferred) {
-      setSelected(file);
-      onSelect!(file);
+      setPicked(chosen);
+      onSelect!(chosen);
       return;
     }
 
     setProgress(0);
-    uploadArchive(appId!, file, setProgress)
+    uploadArchive(appId!, chosen, setProgress)
       .then(() => {
         setProgress(null);
         // Archive stored, not deployed - refresh so it shows as the current

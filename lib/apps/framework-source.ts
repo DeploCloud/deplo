@@ -14,9 +14,11 @@ import {
   type FrameworkId,
 } from "./framework-catalog";
 import {
+  detectCommands,
   detectFramework,
   parsePackageManifest,
   rootFileNames,
+  type DetectedCommands,
   type PackageManifest,
 } from "./framework-detect";
 import type { BuildConfig, GitRepo } from "../types";
@@ -33,35 +35,61 @@ import type { BuildConfig, GitRepo } from "../types";
 const MAX_MANIFEST_BYTES = 1_000_000;
 
 /**
- * Name the framework in a GitHub repo through the API.
+ * What one read of a repository's build root yields: the framework backing it,
+ * plus the commands the repository declares for ITSELF. Both are best-effort and
+ * both can be null.
+ */
+export interface RepoBuildHints extends DetectedCommands {
+  framework: FrameworkId | null;
+}
+
+const NO_HINTS: RepoBuildHints = {
+  framework: null,
+  buildCommand: null,
+  startCommand: null,
+};
+
+function hintsFor(
+  files: readonly string[],
+  manifest: PackageManifest | null,
+): RepoBuildHints {
+  return {
+    framework: detectFramework(files, manifest),
+    ...detectCommands(files, manifest),
+  };
+}
+
+/**
+ * Read a GitHub repo's build root through the API: what framework it is, and
+ * what it says its own build and start commands are.
  */
 export async function detectRepoFramework(
   repo: GitRepo,
   rootDirectory?: string | null,
-): Promise<FrameworkId | null> {
+): Promise<RepoBuildHints> {
   // A repo reached through a git connection is read with that connection's own API,
   // which is the same two calls in a different dialect (list the tree, read one
   // manifest).
   if (repo.connectionId) {
     return detectViaConnection(repo, rootDirectory);
   }
-  if (!isGithubRepo(repo)) return null;
+  if (!isGithubRepo(repo)) return NO_HINTS;
   const fullName = githubFullName(repo);
-  if (!fullName) return null;
+  if (!fullName) return NO_HINTS;
 
   const tree = await listRepoTree(
     fullName,
     repo.branch?.trim() || "HEAD",
     repo.installationId ?? null,
   );
-  if (tree.length === 0) return null;
+  if (tree.length === 0) return NO_HINTS;
 
   const rootRel = normalizeRootRel(rootDirectory);
   const files = rootFileNames(
     tree.map((entry) => entry.path),
     rootRel,
   );
-  if (files.length === 0) return null;
+  if (files.length === 0) return NO_HINTS;
 
   const manifestPath =
     rootRel && rootRel !== "." ? `${rootRel}/package.json` : "package.json";
@@ -78,7 +106,7 @@ export async function detectRepoFramework(
     );
     if (bytes) manifest = parsePackageManifest(bytes.toString("utf8"));
   }
-  return detectFramework(files, manifest);
+  return hintsFor(files, manifest);
 }
 
 /**
@@ -89,18 +117,18 @@ export async function detectRepoFramework(
 async function detectViaConnection(
   repo: GitRepo,
   rootDirectory?: string | null,
-): Promise<FrameworkId | null> {
+): Promise<RepoBuildHints> {
   const cred = await readGitCredential(repo.connectionId!);
   const api = cred ? providerFor(cred.provider).api : null;
-  if (!cred || !api || !repo.repo) return null;
+  if (!cred || !api || !repo.repo) return NO_HINTS;
   const ref = repo.branch?.trim() || "HEAD";
 
   const paths = await api.listTree(cred, repo.repo, ref).catch(() => []);
-  if (paths.length === 0) return null;
+  if (paths.length === 0) return NO_HINTS;
 
   const rootRel = normalizeRootRel(rootDirectory);
   const files = rootFileNames(paths, rootRel);
-  if (files.length === 0) return null;
+  if (files.length === 0) return NO_HINTS;
 
   let manifest: PackageManifest | null = null;
   if (files.includes("package.json")) {
@@ -115,7 +143,7 @@ async function detectViaConnection(
     ).catch(() => null);
     if (text) manifest = parsePackageManifest(text);
   }
-  return detectFramework(files, manifest);
+  return hintsFor(files, manifest);
 }
 
 /** Entries scanned in one directory before we stop. The build root of a real app
@@ -186,5 +214,6 @@ export async function detectAppFramework(
 ): Promise<FrameworkId | null> {
   if (!supportsFrameworkDetection(app.build.buildMethod)) return null;
   if (!app.repo) return null;
-  return detectRepoFramework(app.repo, app.build.rootDirectory);
+  return (await detectRepoFramework(app.repo, app.build.rootDirectory))
+    .framework;
 }

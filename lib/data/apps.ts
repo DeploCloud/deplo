@@ -65,6 +65,7 @@ import {
 import { encryptSecret } from "../crypto";
 import type { EnvEntryType } from "../deploy/env-resolve";
 import { recordActivity } from "./activity";
+import { setSharedVarAppLink } from "./shared-vars";
 import { teardownOrQueue } from "./teardown-queue";
 import { matchesQuery } from "./match-query";
 import { buildConfigFor } from "../frameworks";
@@ -113,7 +114,10 @@ import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { detectAppFavicon } from "../apps/favicon-detect";
 import { faviconSourceKind } from "../apps/favicon-shared";
-import { detectRepoFramework } from "../apps/framework-source";
+import {
+  detectRepoFramework,
+  type RepoBuildHints,
+} from "../apps/framework-source";
 import {
   frameworkById,
   isFrameworkId,
@@ -607,6 +611,14 @@ export interface CreateAppInput {
   noAutoDomain?: boolean;
   /** Template config files to materialise at deploy time. */
   mounts?: { filePath: string; content: string }[] | null;
+  /** Extra flags for `docker compose up`, validated like the app setting. */
+  composeUpArgs?: string | null;
+  /**
+   * Shared variables linked to the app AT BIRTH, so the first deploy already
+   * carries them. Linking after the create would be too late: `createApp`
+   * starts that deploy itself.
+   */
+  sharedVarIds?: string[] | null;
   /** WHERE the app is born. The Overview drill-ins (an open folder, or a
    *  project's selected environment) thread their context through `/new`, so an
    *  app created while standing inside a folder lands IN that folder instead of
@@ -787,6 +799,10 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     throw new Error(
       "Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).",
     );
+  // Linking a team's shared variables is an env act, and it is asked for BEFORE
+  // anything is written: refusing after the insert would leave the app created
+  // and the mutation failed.
+  if (input.sharedVarIds?.length) await requireCapability("manage_env");
   // Binding a HOST port - a service's `ports:` - needs the expose-ports grant.
   // Two things that look like it are intentionally NOT gated: a public Traefik
   // DOMAIN (composeService/composePort/exposes), which is routing, and `expose:`,
@@ -901,6 +917,14 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     buildServerId = picked.id;
   }
 
+  // Same allow-list `setAppComposeUpArgs` enforces, and stored the same way -
+  // the tokens as the deploy edge will send them.
+  const rawComposeArgs = input.composeUpArgs?.trim() || null;
+  if (rawComposeArgs) {
+    const problem = validateComposeUpArgs(rawComposeArgs);
+    if (problem) throw new Error(problem);
+  }
+
   // A template's generated nip.io hosts (the primary autoDomain + every
   // exposes[].host, and any env value that embedded ${domain}) are baked in the
   // /new page against the instance IP (instanceHost), because the server isn't
@@ -982,8 +1006,10 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     // The deploy hook answers as soon as someone opens it (it mints its URL on
     // first read and is bearer-gated either way), nothing to configure at create.
     deployHookEnabled: true,
-    // The bring-up command starts untouched; extra flags are an advanced setting.
-    composeUpArgs: null,
+    // The bring-up command starts untouched unless the create explicitly set flags.
+    composeUpArgs: rawComposeArgs
+      ? parseComposeUpArgs(rawComposeArgs).join(" ")
+      : null,
     // Rollbacks are on from the first deploy - being able to undo one is not
     // something anyone should have to find a setting for first.
     rollbackKeep: DEFAULT_ROLLBACK_KEEP,
@@ -1145,6 +1171,13 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
         // on every host it declares; anything else is born plain-HTTP.
         certProvider,
       });
+  }
+
+  // Link the shared variables the create asked for, through the same gated call
+  // the Environment tab uses - and BEFORE the deploy below, or the first build
+  // would run without them.
+  for (const varId of input.sharedVarIds ?? []) {
+    await setSharedVarAppLink(varId, project.id, true);
   }
 
   // The display logo is auto-detected from the app's own files at DEPLOY
@@ -2209,8 +2242,9 @@ export async function redetectAppLogo(id: string): Promise<string> {
 }
 
 /**
- * Recognise the framework in a repository the user is ABOUT to deploy - the read
- * behind the new-app wizard's "Next.js" badge, before any app row exists. Pure
+ * Read a repository the user is ABOUT to deploy - the framework behind the
+ * new-app wizard's "Next.js" badge and the build/start commands the repo
+ * declares for itself, before any app row exists. Pure
  * read: it stores nothing, and the value it returns is re-derived (and persisted)
  * by the app's first deploy anyway.
  *
@@ -2223,9 +2257,9 @@ export async function redetectAppLogo(id: string): Promise<string> {
  *    private repo. Dropping it (instead of failing) degrades to the
  *    unauthenticated read, which is exactly right for a public repo.
  *
- * Null whenever there is nothing to recognise: a build method that isn't one of
- * the auto-detecting builders, a non-GitHub host, an unreadable repo, or a repo
- * with no framework in it.
+ * Every field is null whenever there is nothing to read: a build method that
+ * isn't one of the auto-detecting builders, a non-GitHub host, an unreadable
+ * repo, or a repo that declares neither a framework nor a script.
  */
 export async function previewRepoFramework(input: {
   repo: string;
@@ -2234,9 +2268,10 @@ export async function previewRepoFramework(input: {
   installationId?: string | null;
   buildMethod: BuildMethod;
   rootDirectory?: string | null;
-}): Promise<FrameworkId | null> {
+}): Promise<RepoBuildHints> {
   await requireCapability("create_apps");
-  if (!supportsFrameworkDetection(input.buildMethod)) return null;
+  if (!supportsFrameworkDetection(input.buildMethod))
+    return { framework: null, buildCommand: null, startCommand: null };
 
   let installationId: string | null = null;
   if (input.installationId) {

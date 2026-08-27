@@ -929,6 +929,25 @@ function fileSourcedKeys(entries: Record<string, unknown>): string[] {
 }
 
 /**
+ * The services a stack declares, in the order it declares them. Used by the
+ * new-app wizard to name the app after its first service and to say how big the
+ * stack is without opening the editor. Empty for anything that doesn't parse -
+ * the linter is what reports that.
+ */
+export function composeServiceNames(composeYaml: string): string[] {
+  let doc: { services?: Record<string, unknown> } | null;
+  try {
+    doc = yaml.load(composeYaml) as typeof doc;
+  } catch {
+    return [];
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object" || Array.isArray(services))
+    return [];
+  return Object.keys(services as Record<string, unknown>);
+}
+
+/**
  * The volumes DEPLO itself creates for a stack: every top-level `volumes:` entry
  * that is neither `external:` nor pinned to a `name:` of its own, so compose
  * creates it as `<project>_<key>` and it belongs to this app alone.

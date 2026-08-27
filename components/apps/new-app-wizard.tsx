@@ -6,40 +6,21 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   GitBranch,
-  ChevronDown,
-  Rocket,
-  Check,
   Container,
-  Upload,
+  FileText,
   Server as ServerIcon,
   Pencil,
-  RotateCcw,
-  Plus,
-  Trash2,
-  FileText,
+  Variable,
 } from "lucide-react";
+
 import { GitHubIcon } from "@/components/shared/brand-icons";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Input } from "@/components/ui/input";
-// Textarea no longer used here - the compose editor replaces it.
-import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
-import { ComposeEditor } from "@/components/apps/compose-editor";
-import { ComposeLintSummary } from "@/components/apps/compose-lint-summary";
-import { ImageInput } from "@/components/apps/image-input";
-import {
-  hasBlockingErrors,
-  type LintDiagnostic,
-} from "@/lib/deploy/compose-lint";
 import { Switch } from "@/components/ui/switch";
+import { DocsLink } from "@/components/ui/docs-link";
 import {
   Select,
   SelectContent,
@@ -47,18 +28,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+
+import { ImageInput } from "@/components/apps/image-input";
+import { UploadInput } from "@/components/apps/upload-input";
 import { BuildConfigFields } from "@/components/apps/build-config-fields";
+import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
 import {
   FrameworkRow,
   FrameworkRowSkeleton,
 } from "@/components/apps/framework-badge";
 import { useRepoFramework } from "@/components/apps/use-repo-framework";
-import { buildConfigFor } from "@/lib/frameworks";
-import type { BuildConfig, DeploySource } from "@/lib/types";
-import { deploySourceEnumName } from "@/lib/types";
-import { gqlAction } from "@/lib/graphql-client";
-import { cn, serverLabel } from "@/lib/utils";
 import {
   GithubRepoPicker,
   type GithubSelection,
@@ -67,23 +46,66 @@ import {
   GitSourcePicker,
   type GitSourceValue,
 } from "@/components/apps/git-source-picker";
-import type { GitConnectionDTO } from "@/lib/data/git-connections";
 import { GithubConnectButton } from "@/components/apps/github-connect-button";
-import { UploadInput } from "@/components/apps/upload-input";
 import {
   GitDeployOptions,
   watchPathsToArray,
   DEFAULT_GIT_DEPLOY_OPTIONS,
   type GitDeployOptionsValue,
 } from "@/components/apps/git-deploy-options";
+import { ArchiveDropZone } from "@/components/apps/archive-drop-zone";
+import { SOURCE_TABS, sourceLabelFor } from "@/components/apps/source-tabs";
+import {
+  WizardCard,
+  WizardStage,
+  useStepSwap,
+} from "@/components/apps/wizard/wizard-card";
+import { SourceTiles } from "@/components/apps/wizard/source-tiles";
+import { ComposeDialog } from "@/components/apps/wizard/compose-dialog";
+import {
+  EnvDraftDialog,
+  type DraftEnvRow,
+  type LinkableSharedVar,
+} from "@/components/apps/wizard/env-draft-dialog";
+import {
+  AdvancedSection,
+  AdvancedGroup,
+} from "@/components/apps/wizard/advanced-section";
+import { CommandField } from "@/components/apps/wizard/command-field";
+
+import {
+  hasBlockingErrors,
+  lintCompose,
+  composeServiceNames,
+  type LintDiagnostic,
+} from "@/lib/deploy/compose-lint";
+import { validateComposeUpArgs } from "@/lib/deploy/compose-args";
+import {
+  clearPendingArchive,
+  peekPendingArchive,
+} from "@/lib/deploy/pending-archive";
 import { uploadArchive } from "@/lib/deploy/upload-client";
+import { buildConfigFor } from "@/lib/frameworks";
+import { archiveExt } from "@/lib/deploy/upload-shared";
+import type { BuildConfig, DeploySource } from "@/lib/types";
+import { deploySourceEnumName } from "@/lib/types";
+import { gqlAction } from "@/lib/graphql-client";
+import { serverLabel } from "@/lib/utils";
+import type { GitConnectionDTO } from "@/lib/data/git-connections";
 import type { GithubInstallationDTO } from "@/lib/data/github";
-import { DocsLink } from "@/components/ui/docs-link";
 
 export interface WizardServer {
   id: string;
   name: string;
   type: "localhost" | "remote";
+}
+
+/** A host that can compile for another machine (Settings → Servers marks one). */
+export interface WizardBuildServer {
+  id: string;
+  name: string;
+  hostArch: string;
+  buildOnly: boolean;
 }
 
 export interface WizardTemplate {
@@ -109,12 +131,16 @@ export interface WizardTemplate {
  * environment, the user had open on the Overview when they hit "New app".
  */
 export interface WizardPlacement {
-  /** What the summary rail shows, e.g. "Marketing" or "Shop · Production". */
   label: string;
   folderId?: string | null;
   projectId?: string | null;
   environmentId?: string | null;
 }
+
+type Step = "source" | "details" | "configure";
+
+/** The build server picker's "let Deplo choose" row - a Select cannot hold null. */
+const AUTO_BUILD_SERVER = "__auto__";
 
 function parseRepo(url: string): {
   repo: string;
@@ -141,56 +167,74 @@ function parseRepo(url: string): {
   return null;
 }
 
-const SOURCE_TABS: {
-  id: DeploySource;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}[] = [
-  { id: "github", label: "GitHub", icon: GitHubIcon },
-  { id: "git", label: "Git", icon: GitBranch },
-  { id: "docker-image", label: "Docker Image", icon: Container },
-  { id: "upload", label: "Upload", icon: Upload },
-  { id: "compose", label: "Compose", icon: FileText },
-];
+/** The app name an image reference suggests: `ghcr.io/acme/api:v2` ⇒ `api`. */
+function nameFromImage(ref: string): string {
+  const path = ref.trim().split("@")[0];
+  const lastSegment = path.split("/").pop() ?? "";
+  return lastSegment.split(":")[0] ?? "";
+}
+
+/** The app name an archive suggests: `shop.tar.gz` ⇒ `shop`. */
+function nameFromArchive(filename: string): string {
+  const ext = archiveExt(filename);
+  return ext ? filename.slice(0, -ext.length) : filename;
+}
 
 export function NewAppWizard({
   servers,
+  buildServers,
+  sharedVars,
   template,
   presetRepo,
   presetName,
+  presetSource,
   installations,
   connections,
   placement,
+  exitHref,
 }: {
   servers: WizardServer[];
+  /** Hosts offerable under Advanced → Build on. */
+  buildServers: WizardBuildServer[];
+  /** The team's shared variables, empty when the creator can't manage env. */
+  sharedVars: LinkableSharedVar[];
   template?: WizardTemplate;
   presetRepo?: string;
   presetName?: string;
+  /** A source the caller already knows - a dropped archive opens on Upload. */
+  presetSource?: DeploySource | null;
   installations: GithubInstallationDTO[];
-  /** The team's git connections (GitLab, Bitbucket, Gitea, plain git). */
   connections: GitConnectionDTO[];
-  /** Drill-in context: the folder / project environment the app is created in. */
   placement?: WizardPlacement | null;
+  /** Where Cancel goes - the Overview drill-in, or the template catalog. */
+  exitHref: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const isTemplate = Boolean(template);
+
+  // An archive dropped on another page rides a module variable across the
+  // client-side navigation. Read (not consumed) during render so the state below
+  // can start from it; the effect at the end of this block is what drops it.
+  const [dropped] = React.useState(peekPendingArchive);
+  React.useEffect(() => clearPendingArchive(), []);
+
+  // A template arrives resolved (its stack, env and routing are decided), so the
+  // wizard opens on the last card. A dropped archive already answered step one.
+  const [source, setSource] = React.useState<DeploySource | null>(
+    isTemplate
+      ? "docker-image"
+      : dropped
+        ? "upload"
+        : (presetSource ?? (presetRepo ? "git" : null)),
+  );
+  const { step, direction, leaving, go } = useStepSwap<Step>(
+    isTemplate || presetSource || presetRepo || dropped ? "details" : "source",
+  );
+
   const [ghSelection, setGhSelection] = React.useState<GithubSelection | null>(
     null,
   );
-  // Templates start in a locked summary view. "Edit template" unlocks the full
-  // source/build configuration so the user can tweak before deploying.
-  const [editing, setEditing] = React.useState(false);
-  const locked = isTemplate && !editing;
-
-  const defaultServerId = servers[0]?.id ?? "";
-
-  const [serverId, setServerId] = React.useState(defaultServerId);
-  const [source, setSource] = React.useState<DeploySource>(
-    isTemplate ? "docker-image" : "github",
-  );
-  // The Git source's whole value (credential + repo + branch), owned by
-  // GitSourcePicker.
   const [gitValue, setGitValue] = React.useState<GitSourceValue>({
     provider: presetRepo ? "github" : "git",
     url: presetRepo ? `https://github.com/${presetRepo}` : "",
@@ -199,34 +243,50 @@ export function NewAppWizard({
     connectionId: null,
   });
   const [dockerImage, setDockerImage] = React.useState("");
-  // "Upload" source: a code archive picked here and held until deploy, then
-  // streamed to the freshly-created app (there's no app to POST to yet).
-  const [uploadFile, setUploadFile] = React.useState<File | null>(null);
-  const [name, setName] = React.useState(presetName ?? template?.name ?? "");
+  // A code archive picked here and held until deploy, then streamed to the
+  // freshly-created app (there's no app to POST to yet).
+  const [uploadFile, setUploadFile] = React.useState<File | null>(dropped);
+  const [compose, setCompose] = React.useState(template?.compose ?? "");
+  const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>(
+    () => (template?.compose ? lintCompose(template.compose) : []),
+  );
+
+  const [name, setName] = React.useState(
+    presetName ??
+      template?.name ??
+      (dropped ? nameFromArchive(dropped.name) : ""),
+  );
+  const [nameTouched, setNameTouched] = React.useState(
+    Boolean(presetName ?? template?.name),
+  );
+  const [serverId, setServerId] = React.useState(servers[0]?.id ?? "");
+  const [buildServerId, setBuildServerId] = React.useState<string | null>(null);
   const [autoDeploy, setAutoDeploy] = React.useState(true);
   const [gitOptions, setGitOptions] = React.useState<GitDeployOptionsValue>(
     DEFAULT_GIT_DEPLOY_OPTIONS,
   );
-  const [advanced, setAdvanced] = React.useState(false);
-  // What the user has actually chosen. The build config the UI shows and deploys
-  // is `build` below - this with the recognised framework's port layered on.
-  const [draftBuild, setDraftBuild] = React.useState(() => buildConfigFor());
+  const [composeUpArgs, setComposeUpArgs] = React.useState("");
+  const [envRows, setEnvRows] = React.useState<DraftEnvRow[]>(
+    template?.env ?? [],
+  );
+  const [sharedIds, setSharedIds] = React.useState<string[]>([]);
+  const [composeOpen, setComposeOpen] = React.useState(false);
+  const [envOpen, setEnvOpen] = React.useState(false);
 
-  // The compose editor is shared by templates (their baked stack) and the
-  // non-template Compose source tab; env rows stay template-only.
-  const [compose, setCompose] = React.useState(template?.compose ?? "");
-  const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>([]);
-  const [envRows, setEnvRows] = React.useState<
-    { key: string; value: string }[]
-  >(template?.env ?? []);
+  // What the user has actually chosen. `build` below is this with what the
+  // repository told us layered on.
+  const [draftBuild, setDraftBuild] = React.useState(() => buildConfigFor());
+  const [portTouched, setPortTouched] = React.useState(false);
+  const [commandsTouched, setCommandsTouched] = React.useState(false);
 
   const usesGit = source === "github" || source === "git";
-  // Build & output settings only apply when Deplo turns code into an image. A
-  // prebuilt docker image and a compose stack are deployed as-is.
+  // Build settings only apply when Deplo turns code into an image. A prebuilt
+  // image and a compose stack are deployed as-is.
   const buildsImage = source !== "docker-image" && source !== "compose";
+  const templateCompose = isTemplate && source === "docker-image";
+  const useCompose = templateCompose || source === "compose";
 
-  // ── Framework recognition ──────────────────────────────────────────────── Which
-  // repository (if any) Deplo can read to name the framework.
+  // ── What the repository tells us about itself ─────────────────────────────
   const gitRepoParsed = source === "git" ? parseRepo(gitValue.url) : null;
   const detectRepo =
     source === "github" && ghSelection
@@ -245,8 +305,12 @@ export function NewAppWizard({
           }
         : null;
 
-  const { framework, detecting: detectingFramework } = useRepoFramework({
-    repo: buildsImage && !locked ? (detectRepo?.repo ?? null) : null,
+  const {
+    framework,
+    commands,
+    detecting: detectingFramework,
+  } = useRepoFramework({
+    repo: buildsImage ? (detectRepo?.repo ?? null) : null,
     url: detectRepo?.url,
     branch: detectRepo?.branch,
     installationId: detectRepo?.installationId,
@@ -254,42 +318,102 @@ export function NewAppWizard({
     rootDirectory: draftBuild.rootDirectory,
   });
 
-  // Once a framework is named, the container port follows ITS server instead of a
-  // hardcoded 3000 - the difference between an Astro or Vite app answering on its own
-  // port and one that deploys green and serves nothing.
-  const [portTouched, setPortTouched] = React.useState(false);
-  const build = React.useMemo(
-    () =>
-      framework && !portTouched && draftBuild.port !== framework.defaultPort
-        ? { ...draftBuild, port: framework.defaultPort }
-        : draftBuild,
-    [draftBuild, framework, portTouched],
-  );
+  // The port follows the recognised framework's own server instead of a
+  // hardcoded 3000, and the commands follow the repo's package.json - until the
+  // user edits either, after which what they typed wins.
+  const build = React.useMemo(() => {
+    let next = draftBuild;
+    if (framework && !portTouched && next.port !== framework.defaultPort) {
+      next = { ...next, port: framework.defaultPort };
+    }
+    if (!commandsTouched && (commands.buildCommand || commands.startCommand)) {
+      next = {
+        ...next,
+        buildCommand: commands.buildCommand ?? next.buildCommand,
+        startCommand: commands.startCommand ?? next.startCommand,
+      };
+    }
+    return next;
+  }, [draftBuild, framework, portTouched, commands, commandsTouched]);
 
-  /** Build-config edits made BY THE USER - the fields edit the config they were
-   * SHOWN (port included), so a hand-set port stops being auto-managed. */
+  const prefilledBuild = !commandsTouched ? commands.buildCommand : null;
+  const prefilledStart = !commandsTouched ? commands.startCommand : null;
+
   function onBuildChange(next: BuildConfig) {
     if (next.port !== build.port) setPortTouched(true);
+    if (
+      next.buildCommand !== build.buildCommand ||
+      next.startCommand !== build.startCommand
+    ) {
+      setCommandsTouched(true);
+    }
     setDraftBuild(next);
   }
 
-  // Name the app after the repository the first time one is picked, so the most
-  // common case needs no typing at all.
+  /** Name the app after whatever the user just picked, until they type one. */
+  function suggestName(suggested: string) {
+    if (!nameTouched && suggested) setName(suggested);
+  }
+
   function onGitChange(value: GitSourceValue) {
     setGitValue(value);
-    if (!name && value.repo) setName(value.repo.split("/").pop() ?? "");
+    if (value.repo) suggestName(value.repo.split("/").pop() ?? "");
   }
 
-  function onSourceChange(next: DeploySource) {
-    setSource(next);
+  function onComposeSaved(next: string, diagnostics: LintDiagnostic[]) {
+    setCompose(next);
+    setComposeDiags(diagnostics);
+    suggestName(composeServiceNames(next)[0] ?? "");
   }
 
-  // Whether this deploy ships a docker-compose stack. The Compose tab is hidden for
-  // templates (it would drop their routing/mount metadata), so source === "compose"
-  // only ever fires for non-templates.
-  const templateCompose = isTemplate && source === "docker-image";
-  const useCompose = templateCompose || source === "compose";
+  const selectedServer = servers.find((s) => s.id === serverId);
+  const composeServices = React.useMemo(
+    () => (compose.trim() ? composeServiceNames(compose) : []),
+    [compose],
+  );
+  const composeArgsProblem = composeUpArgs.trim()
+    ? validateComposeUpArgs(composeUpArgs.trim())
+    : null;
 
+  // ── Navigation ───────────────────────────────────────────────────────────
+  function sourceReady(): boolean {
+    if (source === "github") return Boolean(ghSelection);
+    if (source === "git") return Boolean(parseRepo(gitValue.url));
+    if (source === "docker-image")
+      return isTemplate || Boolean(dockerImage.trim());
+    if (source === "upload") return Boolean(uploadFile);
+    if (source === "compose") return Boolean(compose.trim());
+    return false;
+  }
+
+  const nextDisabled =
+    step === "source"
+      ? !source
+      : step === "details"
+        ? !sourceReady() || (!usesGit && !name.trim())
+        : !name.trim();
+
+  function onBack() {
+    if (step === "source" || isTemplate) {
+      router.push(exitHref);
+      return;
+    }
+    go(step === "configure" ? "details" : "source", "back");
+  }
+
+  function onNext() {
+    if (step === "source") {
+      go("details", "forward");
+      return;
+    }
+    if (step === "details" && usesGit) {
+      go("configure", "forward");
+      return;
+    }
+    deploy();
+  }
+
+  // ── Deploy ───────────────────────────────────────────────────────────────
   function deploy() {
     if (!name.trim()) {
       toast.error("Enter an app name");
@@ -305,6 +429,10 @@ export function NewAppWizard({
     }
     if (source === "compose" && !compose.trim()) {
       toast.error("Write a docker-compose stack to deploy");
+      return;
+    }
+    if (composeArgsProblem) {
+      toast.error(composeArgsProblem);
       return;
     }
 
@@ -356,15 +484,8 @@ export function NewAppWizard({
         return;
       }
       image = isTemplate ? null : dockerImage.trim();
-    } else if (source === "compose") {
-      // Hand-written stack: the engine auto-detects the service to expose, so no
-      // expose/exposes metadata is sent (templates supply theirs separately).
-    } else if (source === "upload") {
-      // Upload: a code archive is attached after creation; no repo/image.
     }
 
-    // Carry the git deploy options (trigger type / watch paths / submodules) on
-    // whichever repo the source produced (github or git).
     if (repo) {
       repo = {
         ...repo,
@@ -374,10 +495,10 @@ export function NewAppWizard({
       };
     }
 
-    // The build config only matters when Deplo builds an image.
     const payloadBuild = buildsImage
       ? build
       : buildConfigFor({ buildMethod: "dockerfile" });
+    const filledEnv = envRows.filter((e) => e.key.trim());
 
     startTransition(async () => {
       const res = await gqlAction(
@@ -387,17 +508,28 @@ export function NewAppWizard({
         {
           input: {
             name: name.trim(),
-            // A template deploying its own stack is stored as the `compose` source
-            // so settings opens on the Compose tab and the deploy engine is
-            // unambiguous.
-            source: deploySourceEnumName(useCompose ? "compose" : source),
+            // A template deploying its own stack is stored as the `compose`
+            // source so settings opens on the Compose tab and the deploy engine
+            // is unambiguous.
+            source: deploySourceEnumName(useCompose ? "compose" : source!),
             serverId,
+            buildServerId,
+            composeUpArgs: useCompose ? composeUpArgs.trim() || null : null,
             dockerImage: image,
             // Seed the app's display logo from the template so a deployed
             // template carries its icon; editable later from app settings.
             logo: isTemplate ? template!.logo : null,
             compose: useCompose ? compose : null,
-            env: isTemplate ? envRows.filter((e) => e.key.trim()) : undefined,
+            env: filledEnv.length
+              ? filledEnv.map((e) => ({
+                  key: e.key.trim(),
+                  value: e.value,
+                  // Undefined lets the key's own name decide, which is what a
+                  // template's generated passwords want.
+                  type: e.secret ? "secret" : undefined,
+                }))
+              : undefined,
+            sharedVarIds: sharedIds.length ? sharedIds : null,
             repo,
             build: {
               buildMethod: payloadBuild.buildMethod,
@@ -411,8 +543,8 @@ export function NewAppWizard({
               port: payloadBuild.port,
             },
             autoDeploy: usesGit ? autoDeploy : false,
-            // Routing metadata is template-only; a hand-written compose stack lets the engine
-            // auto-detect which service to expose.
+            // Routing metadata is template-only; a hand-written compose stack
+            // lets the engine auto-detect which service to expose.
             composeService: templateCompose
               ? (template!.expose?.service ?? null)
               : null,
@@ -431,9 +563,6 @@ export function NewAppWizard({
               : null,
             autoDomain: templateCompose ? template!.autoDomain : null,
             mounts: templateCompose ? template!.mounts : null,
-            // File the app where it was created from (an open folder or project
-            // environment on the Overview) instead of dropping it at the top
-            // level; the server re-validates the destination.
             folderId: placement?.folderId ?? null,
             projectId: placement?.projectId ?? null,
             environmentId: placement?.environmentId ?? null,
@@ -451,20 +580,17 @@ export function NewAppWizard({
         toast.error(res.error);
         return;
       }
-      const service = res.data;
-      if (!service) return;
+      const app = res.data;
+      if (!app) return;
 
-      // Invalidate the router cache so the shared dashboard layout re-runs on the
-      // destination, otherwise the topbar breadcrumb's team snapshot is stale and
-      // the brand-new app is missing from it until a hard reload.
+      // Invalidate the router cache so the shared dashboard layout re-runs on
+      // the destination, otherwise the topbar breadcrumb's team snapshot is
+      // stale and the brand-new app is missing from it until a hard reload.
       router.refresh();
 
-      // Upload source with an attached archive: stream it to the freshly-created
-      // (idle) app, then deploy, so creation ends on the live build logs like
-      // every other source instead of stranding the user on an empty app.
       if (source === "upload" && uploadFile) {
         try {
-          await uploadArchive(service.id, uploadFile);
+          await uploadArchive(app.id, uploadFile);
         } catch (e) {
           // The app exists but the archive didn't land - send the user to its
           // settings to retry rather than deploying nothing.
@@ -473,90 +599,343 @@ export function NewAppWizard({
               e instanceof Error ? e.message : "unknown error"
             }). Upload the archive from Settings.`,
           );
-          router.push(`/apps/${service.slug}/settings`);
+          router.push(`/apps/${app.slug}/settings`);
           return;
         }
         const dep = await gqlAction(
           `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
-          { appId: service.id },
+          { appId: app.id },
           (d: { redeploy: { id: string } }) => d.redeploy,
         );
         if (dep.ok && dep.data) {
-          toast.success("Uploaded - deploying…");
-          router.push(`/apps/${service.slug}/deployments/${dep.data.id}`);
+          toast.success("Deployment started");
+          router.push(`/apps/${app.slug}/deployments/${dep.data.id}?created=1`);
         } else {
-          // The archive is stored; only the deploy kick-off failed. Land on
-          // settings so the user can hit Save & Deploy.
+          // The archive is stored; only the deploy kick-off failed.
           if (!dep.ok) toast.error(dep.error);
-          router.push(`/apps/${service.slug}/settings`);
+          router.push(`/apps/${app.slug}/settings`);
         }
         return;
       }
 
-      // Non-upload sources deploy on create; a fileless upload stays idle until the user
-      // uploads from Settings - don't claim it's deploying.
-      const firstDeploymentId = service.latestDeployment?.id;
+      const firstDeploymentId = app.latestDeployment?.id;
       toast.success(
         firstDeploymentId
-          ? "App created - deploying now"
+          ? "Deployment started"
           : source === "upload"
             ? "App created - upload an archive from Settings to deploy"
             : "App created - it needs someone with permission to deploy",
       );
-      // A first deployment kicked off inside createApp (startDeployment sets
-      // latestDeployment synchronously before it returns) means landing on its live build
-      // logs, the same destination the upload path above uses, instead of a still-empty
       router.push(
         firstDeploymentId
-          ? `/apps/${service.slug}/deployments/${firstDeploymentId}`
-          : `/apps/${service.slug}`,
+          ? `/apps/${app.slug}/deployments/${firstDeploymentId}?created=1`
+          : `/apps/${app.slug}`,
       );
     });
   }
 
-  // Values surfaced in the sticky summary rail (right column) - the at-a-glance
-  // recap of what will be created, next to the primary deploy action.
-  const sourceLabel = isTemplate
-    ? template!.variantName
-      ? `${template!.name} · ${template!.variantName}`
-      : template!.name
-    : (SOURCE_TABS.find((t) => t.id === source)?.label ?? source);
-  const selectedServer = servers.find((s) => s.id === serverId);
-  const serverSummary = selectedServer ? serverLabel(selectedServer) : "—";
-  const domainSummary = template?.autoDomain ?? "Auto · HTTPS";
+  // ── Cards ────────────────────────────────────────────────────────────────
+  const meta = placement ? (
+    <p className="text-xs text-muted-foreground">
+      Creating in <span className="text-foreground">{placement.label}</span>
+    </p>
+  ) : null;
 
-  // Card order: configure the app first, then pick the source, then choose
-  // which server runs it (3rd). Template-only compose/env follow afterwards.
+  const advanced = (
+    <AdvancedSection
+      summary={selectedServer ? serverLabel(selectedServer) : undefined}
+    >
+      <AdvancedGroup title="Deploy to">
+        <Select value={serverId} onValueChange={setServerId}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select a server" />
+          </SelectTrigger>
+          <SelectContent>
+            {servers.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                <span className="flex items-center gap-2">
+                  <ServerIcon className="size-4 text-muted-foreground" />
+                  {serverLabel(s)}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </AdvancedGroup>
+
+      <AdvancedGroup title="Environment variables">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {envRows.length + sharedIds.length === 0
+              ? "None yet"
+              : `${envRows.length} typed, ${sharedIds.length} shared`}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setEnvOpen(true)}
+          >
+            <Variable className="size-4" />
+            Edit variables
+          </Button>
+        </div>
+      </AdvancedGroup>
+
+      {buildsImage && (
+        <>
+          <AdvancedGroup title="Build & output">
+            <BuildConfigFields build={build} onBuildChange={onBuildChange} />
+          </AdvancedGroup>
+          <AdvancedGroup title="Build path">
+            <RootDirectoryFields build={build} onBuildChange={onBuildChange} />
+          </AdvancedGroup>
+          <AdvancedGroup title="Build on">
+            <Select
+              value={buildServerId ?? AUTO_BUILD_SERVER}
+              onValueChange={(v) =>
+                setBuildServerId(v === AUTO_BUILD_SERVER ? null : v)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={AUTO_BUILD_SERVER}>Automatic</SelectItem>
+                {buildServers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    <span className="flex items-center gap-2">
+                      <ServerIcon className="size-4 text-muted-foreground" />
+                      {s.name}
+                      {s.buildOnly && (
+                        <Badge variant="outline">Build server</Badge>
+                      )}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </AdvancedGroup>
+        </>
+      )}
+
+      {usesGit && (
+        <AdvancedGroup title="Git">
+          <GitDeployOptions value={gitOptions} onChange={setGitOptions} />
+        </AdvancedGroup>
+      )}
+
+      {useCompose && (
+        <AdvancedGroup title="Extra compose flags">
+          <Input
+            id="compose-up-args"
+            value={composeUpArgs}
+            onChange={(e) => setComposeUpArgs(e.target.value)}
+            placeholder="--pull always"
+            className="font-mono text-sm"
+            aria-invalid={Boolean(composeArgsProblem)}
+          />
+          {composeArgsProblem && (
+            <p className="mt-1 text-xs text-destructive">
+              {composeArgsProblem}
+            </p>
+          )}
+        </AdvancedGroup>
+      )}
+    </AdvancedSection>
+  );
+
+  const nameField = (
+    <div className="space-y-2">
+      <FieldLabel
+        htmlFor="name"
+        info="Shown everywhere in Deplo. It also seeds the app's URL, which is frozen after creation."
+      >
+        App name
+      </FieldLabel>
+      <Input
+        id="name"
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value);
+          setNameTouched(true);
+        }}
+        placeholder="my-app"
+      />
+    </div>
+  );
+
+  const noServer = servers.length === 0 && (
+    <EmptyState
+      icon={ServerIcon}
+      title="No server connected"
+      docs="servers.add"
+      description="Deplo runs your apps on a server, and none is connected yet."
+      action={
+        <Button asChild>
+          <Link href="/settings/servers">Add a server</Link>
+        </Button>
+      }
+    />
+  );
+
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      {/* Left column: the configuration cards, in creation order. */}
-      <div className="min-w-0 space-y-6">
-        {/* 1. Configure */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Configure App</CardTitle>
-            <CardDescription>
-              Review the settings. Override anything you need.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2">
+    <>
+      {/* Dropping an archive anywhere in the wizard is the Upload source. */}
+      <ArchiveDropZone
+        onFile={(file) => {
+          setUploadFile(file);
+          setSource("upload");
+          suggestName(nameFromArchive(file.name));
+          if (step === "source") go("details", "forward");
+        }}
+      />
+
+      <WizardStage step={step} direction={direction} leaving={leaving}>
+        {step === "source" ? (
+          <WizardCard
+            title="New app"
+            description="Where does it come from? Deplo builds it and configures Docker and Traefik for you."
+            meta={meta}
+            backLabel="Cancel"
+            onBack={onBack}
+            onNext={onNext}
+            nextDisabled={nextDisabled}
+          >
+            <SourceTiles value={source} onSelect={setSource} />
+          </WizardCard>
+        ) : step === "details" ? (
+          <WizardCard
+            title={
+              isTemplate
+                ? templateTitle(template!)
+                : `Deploy from ${sourceLabelFor(source!)}`
+            }
+            description={
+              isTemplate ? template!.description : detailsDescription(source!)
+            }
+            meta={meta}
+            backLabel={isTemplate ? "Back to templates" : "Back"}
+            onBack={onBack}
+            onNext={onNext}
+            nextLabel={usesGit ? "Next" : "Deploy"}
+            deploy={!usesGit}
+            nextDisabled={nextDisabled}
+            pending={pending}
+          >
+            {source === "github" &&
+              (installations.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
+                  <GitHubIcon className="size-6 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">
+                      Connect GitHub to import a repo
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Deplo creates a GitHub App with only the permissions it
+                      needs, then you pick which repositories it can access.
+                    </p>
+                  </div>
+                  <GithubConnectButton size="sm" />
+                </div>
+              ) : (
+                <GithubRepoPicker
+                  installations={installations}
+                  onChange={(sel) => {
+                    setGhSelection(sel);
+                    if (sel) suggestName(sel.fullName.split("/")[1] ?? "");
+                  }}
+                />
+              ))}
+
+            {source === "git" && (
+              <GitSourcePicker
+                connections={connections}
+                initial={{
+                  url: gitValue.url,
+                  repo: gitValue.repo,
+                  branch: gitValue.branch,
+                }}
+                onChange={onGitChange}
+              />
+            )}
+
+            {source === "docker-image" && !isTemplate && (
               <div className="space-y-2">
-                <Label htmlFor="name">App Name</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="my-app"
+                <FieldLabel
+                  htmlFor="image"
+                  info="Pulls a prebuilt image from any registry. No build step runs. Start typing to search."
+                  docs="deploy.dockerImage"
+                >
+                  Docker image
+                </FieldLabel>
+                <ImageInput
+                  id="image"
+                  value={dockerImage}
+                  onChange={(v) => {
+                    setDockerImage(v);
+                    suggestName(nameFromImage(v));
+                  }}
                 />
               </div>
-            </div>
+            )}
 
-            {/**
-             * What Deplo recognised in the repository, as soon as one is picked - the app's
-             * framework named with its own mark, and the container port that framework's server
-             * actually binds.
-             */}
+            {source === "upload" && (
+              <UploadInput
+                file={uploadFile}
+                onSelect={(file) => {
+                  setUploadFile(file);
+                  if (file) suggestName(nameFromArchive(file.name));
+                }}
+              />
+            )}
+
+            {isTemplate && (
+              <div className="flex items-center gap-4 rounded-lg border border-border p-3">
+                <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border p-2">
+                  {template!.logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={template!.logo}
+                      alt={templateTitle(template!)}
+                      className="size-full object-contain"
+                    />
+                  ) : (
+                    <Container className="size-6 text-foreground" />
+                  )}
+                </div>
+                <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+                  Deplo provisions the stack and exposes it through Traefik.{" "}
+                  <DocsLink topic="deploy.fromTemplate" />
+                </p>
+              </div>
+            )}
+
+            {useCompose && (
+              <ComposeSummary
+                services={composeServices}
+                diagnostics={composeDiags}
+                onOpen={() => setComposeOpen(true)}
+              />
+            )}
+
+            {!usesGit && nameField}
+            {!usesGit && noServer}
+            {!usesGit && servers.length > 0 && advanced}
+          </WizardCard>
+        ) : (
+          <WizardCard
+            title="Set up the app"
+            description="Deplo read your repository. Change anything that looks wrong."
+            meta={meta}
+            onBack={onBack}
+            onNext={onNext}
+            nextLabel="Deploy"
+            deploy
+            nextDisabled={nextDisabled}
+            pending={pending}
+          >
+            {nameField}
+
             {detectingFramework ? (
               <FrameworkRowSkeleton />
             ) : (
@@ -568,469 +947,127 @@ export function NewAppWizard({
               )
             )}
 
-            {/**
-             * Build & output settings - the same method-aware controls the app settings page
-             * shows, kept inside a collapse so creation stays lean.
-             */}
-            {!locked && buildsImage && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setAdvanced((v) => !v)}
-                  className="flex w-full cursor-pointer items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
-                >
-                  <span className="font-medium">
-                    Build &amp; Output Settings
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "size-4 transition-transform",
-                      advanced && "rotate-180",
-                    )}
-                  />
-                </button>
+            <CommandField
+              id="build-command"
+              label="Build command"
+              info="Run to compile the app. Leave it empty and the builder works it out."
+              value={build.buildCommand ?? ""}
+              onChange={(v) => onBuildChange({ ...build, buildCommand: v })}
+              detected={prefilledBuild}
+              placeholder="Detected at build time"
+            />
+            <CommandField
+              id="start-command"
+              label="Deploy command"
+              info="Run to start the container. Leave it empty and the builder works it out."
+              value={build.startCommand ?? ""}
+              onChange={(v) => onBuildChange({ ...build, startCommand: v })}
+              detected={prefilledStart}
+              placeholder="Detected at build time"
+            />
 
-                {advanced && (
-                  <div className="rounded-lg border border-border p-4">
-                    <BuildConfigFields
-                      build={build}
-                      onBuildChange={onBuildChange}
-                    />
-                  </div>
-                )}
-              </>
-            )}
-
-            {usesGit && (
-              <div className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="flex items-center gap-2">
-                  <GitBranch className="size-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Automatic deployments</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Deploy on every push to{" "}
-                      {(source === "github"
-                        ? ghSelection?.branch
-                        : gitValue.branch) || "main"}
-                      .
-                    </p>
-                  </div>
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div className="flex items-center gap-2">
+                <GitBranch className="size-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Automatic deployments</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Deploy on every push to{" "}
+                    {(source === "github"
+                      ? ghSelection?.branch
+                      : gitValue.branch) || "main"}
+                    .
+                  </p>
                 </div>
-                <Switch checked={autoDeploy} onCheckedChange={setAutoDeploy} />
               </div>
-            )}
+              <Switch checked={autoDeploy} onCheckedChange={setAutoDeploy} />
+            </div>
 
-            {/* Git deploy options - trigger type, watch paths, submodules. Same
-                controls the app settings page shows. */}
-            {usesGit && (
-              <div className="rounded-lg border border-border p-4">
-                <GitDeployOptions value={gitOptions} onChange={setGitOptions} />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 2. Source */}
-        {locked ? (
-          <Card>
-            <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-              <div className="space-y-1.5">
-                <CardTitle>Template</CardTitle>
-                <CardDescription>
-                  Deplo provisions the template&apos;s container stack and
-                  exposes it through Traefik with automatic HTTPS.
-                </CardDescription>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setEditing(true)}
-              >
-                <Pencil className="size-4" />
-                Edit template
-              </Button>
-            </CardHeader>
-            <CardContent className="flex items-center gap-4">
-              <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg border border-border p-2">
-                {template!.logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={template!.logo}
-                    alt={
-                      template!.variantName
-                        ? `${template!.name} · ${template!.variantName}`
-                        : template!.name
-                    }
-                    className="size-full object-contain"
-                  />
-                ) : (
-                  <Container className="size-6 text-foreground" />
-                )}
-              </div>
-              <div>
-                <p className="font-medium">
-                  {template!.variantName
-                    ? `${template!.name} · ${template!.variantName}`
-                    : template!.name}
-                </p>
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                  {template!.description}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-              <div className="space-y-1.5">
-                <CardTitle>Source</CardTitle>
-                <CardDescription>
-                  {isTemplate
-                    ? `Customising ${template!.variantName ? `${template!.name} · ${template!.variantName}` : template!.name}. Change the source or build before deploying.`
-                    : "Where your code or image comes from. Deplo builds and runs it in Docker."}
-                </CardDescription>
-              </div>
-              {isTemplate && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditing(false);
-                    onSourceChange("docker-image");
-                  }}
-                >
-                  <RotateCcw className="size-4" />
-                  Reset to template
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {SOURCE_TABS.filter(
-                  // Templates edit their baked stack inline in the Docker Compose
-                  // card below; a raw Compose source tab would only discard the
-                  // template's expose/exposes/mounts/autoDomain metadata.
-                  (tab) => tab.id !== "compose" || !isTemplate,
-                ).map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <Button
-                      key={tab.id}
-                      type="button"
-                      variant={source === tab.id ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => onSourceChange(tab.id)}
-                    >
-                      <Icon className="size-4" />
-                      {tab.label}
-                    </Button>
-                  );
-                })}
-              </div>
-
-              {source === "github" &&
-                (installations.length === 0 ? (
-                  <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
-                    <GitHubIcon className="size-6 text-muted-foreground" />
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">
-                        Connect GitHub to import a repo
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Deplo creates a GitHub App with only the permissions it
-                        needs, then you pick which repositories it can access.
-                      </p>
-                    </div>
-                    <GithubConnectButton size="sm" />
-                  </div>
-                ) : (
-                  <GithubRepoPicker
-                    installations={installations}
-                    onChange={(sel) => {
-                      setGhSelection(sel);
-                      if (sel && !name) {
-                        setName(sel.fullName.split("/")[1] ?? "");
-                      }
-                    }}
-                  />
-                ))}
-
-              {source === "git" && (
-                <GitSourcePicker
-                  connections={connections}
-                  initial={{
-                    url: gitValue.url,
-                    repo: gitValue.repo,
-                    branch: gitValue.branch,
-                  }}
-                  onChange={onGitChange}
-                />
-              )}
-
-              {source === "docker-image" && (
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="image"
-                    info={
-                      <>
-                        Pulls a prebuilt image from any registry. No build step
-                        runs. Start typing to search; add{" "}
-                        <code className="font-mono">:</code> for tags.
-                      </>
-                    }
-                    docs="deploy.dockerImage"
-                  >
-                    Docker image
-                  </FieldLabel>
-                  <ImageInput
-                    id="image"
-                    value={dockerImage}
-                    onChange={setDockerImage}
-                  />
-                </div>
-              )}
-
-              {source === "upload" && <UploadInput onSelect={setUploadFile} />}
-
-              {source === "compose" && (
-                <div className="space-y-2">
-                  <ComposeEditor
-                    value={compose}
-                    onChange={setCompose}
-                    onDiagnostics={setComposeDiags}
-                    minHeight={300}
-                  />
-                  <ComposeLintSummary diagnostics={composeDiags} />
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            {noServer}
+            {servers.length > 0 && advanced}
+          </WizardCard>
         )}
+      </WizardStage>
 
-        {/* 3. Target server  pick where this runs, after choosing the source. */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ServerIcon className="size-4" />
-              Deploy to
-            </CardTitle>
-            <CardDescription>
-              Choose which server runs this {isTemplate ? "template" : "app"}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/**
-             * An install enrolls the machine Deplo runs on, so this is normally impossible.
-             */}
-            {servers.length === 0 ? (
-              <EmptyState
-                icon={ServerIcon}
-                title="No server connected"
-                docs="servers.add"
-                description="Deplo runs your apps on a server, and none is connected yet."
-                action={
-                  <Button asChild>
-                    <Link href="/settings/servers">Add a server</Link>
-                  </Button>
-                }
-              />
-            ) : (
-              <Select value={serverId} onValueChange={setServerId}>
-                <SelectTrigger className="max-w-md">
-                  <SelectValue placeholder="Select a server" />
-                </SelectTrigger>
-                <SelectContent>
-                  {servers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-2">
-                        <ServerIcon className="size-4 text-muted-foreground" />
-                        {serverLabel(s)}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </CardContent>
-        </Card>
+      <ComposeDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        value={compose}
+        onSave={onComposeSaved}
+        title={isTemplate ? templateTitle(template!) : "Docker Compose"}
+      />
+      <EnvDraftDialog
+        open={envOpen}
+        onOpenChange={setEnvOpen}
+        rows={envRows}
+        sharedIds={sharedIds}
+        sharedVars={sharedVars}
+        onSave={(rows, ids) => {
+          setEnvRows(rows);
+          setSharedIds(ids);
+        }}
+      />
+    </>
+  );
+}
 
-        {/**
-         * Templates carry their compose stack (source is docker-image, mapped to
-         * templateCompose), so their editor lives in its own card here.
-         */}
-        {templateCompose && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="size-4" />
-                Docker Compose
-              </CardTitle>
-              <CardDescription>
-                The stack Deplo will deploy. Edit it directly to customise
-                images, ports, volumes or services before deploying.{" "}
-                <DocsLink topic="compose.overview" />
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <ComposeEditor
-                value={compose}
-                onChange={setCompose}
-                onDiagnostics={setComposeDiags}
-                minHeight={300}
-              />
-              <ComposeLintSummary diagnostics={composeDiags} />
-            </CardContent>
-          </Card>
-        )}
+function templateTitle(t: WizardTemplate): string {
+  return t.variantName ? `${t.name} · ${t.variantName}` : t.name;
+}
 
-        {isTemplate && (
-          <Card>
-            <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-              <div className="space-y-1.5">
-                <CardTitle>Environment variables</CardTitle>
-                <CardDescription>
-                  Referenced as <code className="font-mono">{"${VAR}"}</code> in
-                  the compose file. Generated secrets are prefilled; edit as
-                  needed. <DocsLink topic="deploy.fromTemplate" />
-                </CardDescription>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setEnvRows((rows) => [...rows, { key: "", value: "" }])
-                }
-              >
-                <Plus className="size-4" />
-                Add
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {envRows.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No variables. Add one if your compose file needs it.
-                </p>
-              )}
-              {envRows.map((row, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input
-                    value={row.key}
-                    onChange={(e) =>
-                      setEnvRows((rows) =>
-                        rows.map((r, j) =>
-                          j === i ? { ...r, key: e.target.value } : r,
-                        ),
-                      )
-                    }
-                    placeholder="KEY"
-                    className="font-mono text-xs sm:max-w-[40%]"
-                  />
-                  <Input
-                    value={row.value}
-                    onChange={(e) =>
-                      setEnvRows((rows) =>
-                        rows.map((r, j) =>
-                          j === i ? { ...r, value: e.target.value } : r,
-                        ),
-                      )
-                    }
-                    placeholder="value"
-                    className="flex-1 font-mono text-xs"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Remove variable"
-                    onClick={() =>
-                      setEnvRows((rows) => rows.filter((_, j) => j !== i))
-                    }
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+function detailsDescription(source: DeploySource): string {
+  return (
+    SOURCE_TABS.find((t) => t.id === source)?.blurb ??
+    "Where your code or image comes from."
+  );
+}
+
+/**
+ * What the card says about a stack it is not showing: how big it is, whether the
+ * linter is happy, and the way into the editor.
+ */
+function ComposeSummary({
+  services,
+  diagnostics,
+  onOpen,
+}: {
+  services: string[];
+  diagnostics: LintDiagnostic[];
+  onOpen: () => void;
+}) {
+  const errors = diagnostics.filter((d) => d.severity === "error").length;
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <FileText className="size-5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">
+            {services.length === 0
+              ? "No stack yet"
+              : `${services.length} service${services.length === 1 ? "" : "s"}`}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {errors > 0
+              ? `${errors} error${errors === 1 ? "" : "s"} to fix`
+              : services.length === 0
+                ? "Paste or write your docker-compose.yml"
+                : services.join(", ")}
+          </p>
+        </div>
       </div>
-
-      {/* Right rail: an at-a-glance summary + the primary deploy action,
-          sticky on desktop so the button stays reachable while scrolling. On
-          mobile it drops below the config cards (natural bottom-of-form spot). */}
-      <aside className="h-fit space-y-4 lg:sticky lg:top-20">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <dl className="space-y-2.5 text-sm">
-              <div className="flex items-center gap-3">
-                <dt className="shrink-0 text-muted-foreground">Name</dt>
-                <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {name || "—"}
-                </dd>
-              </div>
-              <div className="flex items-center gap-3">
-                <dt className="shrink-0 text-muted-foreground">Source</dt>
-                <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {sourceLabel}
-                </dd>
-              </div>
-              <div className="flex items-center gap-3">
-                <dt className="shrink-0 text-muted-foreground">Server</dt>
-                <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {serverSummary}
-                </dd>
-              </div>
-              <div className="flex items-center gap-3">
-                <dt className="shrink-0 text-muted-foreground">Domain</dt>
-                <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {domainSummary}
-                </dd>
-              </div>
-              {/* Where it lands, so creating from inside a folder/environment
-                  visibly stays there instead of silently going top level. */}
-              <div className="flex items-center gap-3">
-                <dt className="shrink-0 text-muted-foreground">Location</dt>
-                <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {placement?.label ?? "Overview"}
-                </dd>
-              </div>
-            </dl>
-
-            <Badge variant="outline" className="w-full justify-center gap-1.5">
-              <Check className="size-3 text-[var(--success)]" />
-              Docker + Traefik configured
-            </Badge>
-
-            {locked && (
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                className="w-full"
-                onClick={() => setEditing(true)}
-              >
-                <Pencil className="size-4" />
-                Edit
-              </Button>
-            )}
-            <Button
-              onClick={deploy}
-              disabled={pending}
-              size="lg"
-              className="w-full"
-            >
-              <Rocket className="size-4" />
-              {pending ? "Deploying…" : "Deploy"}
-            </Button>
-          </CardContent>
-        </Card>
-      </aside>
+      <Button type="button" variant="outline" onClick={onOpen}>
+        {services.length === 0 ? (
+          <>
+            <FileText className="size-4" />
+            Write compose
+          </>
+        ) : (
+          <>
+            <Pencil className="size-4" />
+            Edit compose
+          </>
+        )}
+      </Button>
     </div>
   );
 }
