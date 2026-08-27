@@ -4364,6 +4364,11 @@ type RuntimeContainer {
   service: String
 
   """
+  When it last started, epoch seconds. 0 when it has never started, or when the owning agent predates the field - both mean there is no uptime to show, never 1970.
+  """
+  startedAtUnix: Int
+
+  """
   Raw docker state ("running" | "restarting" | "exited" | …), or "" when the owning agent is too old to report it.
   """
   state: String

@@ -39,7 +39,12 @@ import {
   decryptSecretOrThrow,
   randomToken,
 } from "../crypto";
-import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
+import {
+  connectAgent,
+  mapCheckPortUnsupported,
+  serverSupports,
+  VOLUME_USAGE_CAPABILITY,
+} from "../infra/agent-client";
 import {
   migrateWorkloadData,
   stopStackOn,
@@ -518,6 +523,50 @@ export async function getDatabase(id: string): Promise<DatabaseDTO | null> {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabase(id, teamId, { forRead: true });
   return db ? toDTO(db) : null;
+}
+
+/**
+ * How much disk this database's data volume occupies, measured on the host. null
+ * when the owning agent is too old or unreachable - a dash on the card, never a
+ * zero, which would read as an empty database.
+ *
+ * Also refreshes `databases.size_mb`, which is otherwise written 0 at create and
+ * never again, so GraphQL and MCP stop answering 0 to everyone who asks.
+ */
+export async function getDatabaseVolumeBytes(
+  id: string,
+): Promise<number | null> {
+  const teamId = await requireActiveTeamId();
+  const db = await loadDatabase(id, teamId, { forRead: true });
+  if (!db) return null;
+  if (!(await serverSupports(db.serverId, VOLUME_USAGE_CAPABILITY)))
+    return null;
+
+  const volume = dbVolumeHostName(db.host);
+  let bytes: number | undefined;
+  try {
+    const conn = await connectAgent(db.serverId);
+    try {
+      bytes = (await conn.volumeUsage([volume])).get(volume);
+    } finally {
+      conn.close();
+    }
+  } catch {
+    // An unreachable host is not evidence about the size. Say nothing.
+    return null;
+  }
+  if (bytes === undefined) return null;
+
+  const sizeMb = Math.round(bytes / (1024 * 1024));
+  if (sizeMb !== db.sizeMb) {
+    await getDb()
+      .update(databasesTable)
+      .set({ sizeMb })
+      .where(
+        and(eq(databasesTable.id, db.id), eq(databasesTable.teamId, teamId)),
+      );
+  }
+  return bytes;
 }
 
 export async function getConnectionString(id: string): Promise<string> {

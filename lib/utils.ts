@@ -21,6 +21,11 @@ export function timeAgo(input: Date | string | number): string {
   return formatDistanceToNowStrict(date, { addSuffix: true });
 }
 
+/** How long ago, with no "ago": `8h`, `1d`, `3mo` - for an uptime, not an event. */
+export function sinceShort(input: Date | string | number): string {
+  return timeAgoShort(input).replace(/\sago$/, "");
+}
+
 /** `timeAgo` with one-letter units: `8h ago`, `1d ago`, `3mo ago`. */
 export function timeAgoShort(input: Date | string | number): string {
   return timeAgo(input).replace(

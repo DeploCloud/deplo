@@ -73,6 +73,7 @@ async function probeRuntime(db: Database): Promise<AppRuntime> {
       state: i.state,
       health: i.health,
       restartCount: i.restartCount,
+      startedAtUnix: i.startedAtUnix,
       running: i.running,
       exposed: i.exposed,
     }));
@@ -150,6 +151,7 @@ function displayFallback(db: Database): ConsoleInstance {
     state: "",
     health: "",
     restartCount: 0,
+    startedAtUnix: 0,
   };
 }
 

@@ -842,6 +842,25 @@ export interface ExportVolumeRequest {
   volumeName: string;
 }
 
+export interface VolumeUsageRequest {
+  /** FULL Docker named volumes, validated like ExportVolumeRequest.volume_name. */
+  volumeNames: string[];
+}
+
+export interface VolumeUsage {
+  volumeName: string;
+  /** On-disk bytes (allocated blocks, so a sparse file counts what it occupies). */
+  bytes: number;
+}
+
+export interface VolumeUsageResponse {
+  /**
+   * One entry per volume that EXISTS; an absent name is simply omitted, never
+   * reported as zero - "no such volume" is not "an empty volume".
+   */
+  volumes: VolumeUsage[];
+}
+
 /**
  * A framed chunk of a cross-host volume transfer. ExportVolume emits a sequence of
  * `data` chunks (no header). ImportVolume expects the FIRST message to be a
@@ -1629,6 +1648,11 @@ export interface ConsoleInstance {
    * "it is starting" into "it has been dying for an hour".
    */
   restartCount: number;
+  /**
+   * When the container last started, epoch seconds. 0 = never started, or an
+   * agent too old to send it - both mean "no uptime to show", never 1970.
+   */
+  startedAtUnix: number;
 }
 
 export interface ListInstancesResponse {
@@ -5337,6 +5361,210 @@ export const ExportVolumeRequest: MessageFns<ExportVolumeRequest> = {
   fromPartial<I extends Exact<DeepPartial<ExportVolumeRequest>, I>>(object: I): ExportVolumeRequest {
     const message = createBaseExportVolumeRequest();
     message.volumeName = object.volumeName ?? "";
+    return message;
+  },
+};
+
+function createBaseVolumeUsageRequest(): VolumeUsageRequest {
+  return { volumeNames: [] };
+}
+
+export const VolumeUsageRequest: MessageFns<VolumeUsageRequest> = {
+  encode(message: VolumeUsageRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.volumeNames) {
+      writer.uint32(10).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): VolumeUsageRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseVolumeUsageRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.volumeNames.push(reader.string());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): VolumeUsageRequest {
+    return {
+      volumeNames: globalThis.Array.isArray(object?.volumeNames)
+        ? object.volumeNames.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.volume_names)
+        ? object.volume_names.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: VolumeUsageRequest): unknown {
+    const obj: any = {};
+    if (message.volumeNames?.length) {
+      obj.volumeNames = message.volumeNames;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<VolumeUsageRequest>, I>>(base?: I): VolumeUsageRequest {
+    return VolumeUsageRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<VolumeUsageRequest>, I>>(object: I): VolumeUsageRequest {
+    const message = createBaseVolumeUsageRequest();
+    message.volumeNames = object.volumeNames?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseVolumeUsage(): VolumeUsage {
+  return { volumeName: "", bytes: 0 };
+}
+
+export const VolumeUsage: MessageFns<VolumeUsage> = {
+  encode(message: VolumeUsage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.volumeName !== "") {
+      writer.uint32(10).string(message.volumeName);
+    }
+    if (message.bytes !== 0) {
+      writer.uint32(16).int64(message.bytes);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): VolumeUsage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseVolumeUsage();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.volumeName = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.bytes = longToNumber(reader.int64());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): VolumeUsage {
+    return {
+      volumeName: isSet(object.volumeName)
+        ? globalThis.String(object.volumeName)
+        : isSet(object.volume_name)
+        ? globalThis.String(object.volume_name)
+        : "",
+      bytes: isSet(object.bytes) ? globalThis.Number(object.bytes) : 0,
+    };
+  },
+
+  toJSON(message: VolumeUsage): unknown {
+    const obj: any = {};
+    if (message.volumeName !== "") {
+      obj.volumeName = message.volumeName;
+    }
+    if (message.bytes !== 0) {
+      obj.bytes = Math.round(message.bytes);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<VolumeUsage>, I>>(base?: I): VolumeUsage {
+    return VolumeUsage.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<VolumeUsage>, I>>(object: I): VolumeUsage {
+    const message = createBaseVolumeUsage();
+    message.volumeName = object.volumeName ?? "";
+    message.bytes = object.bytes ?? 0;
+    return message;
+  },
+};
+
+function createBaseVolumeUsageResponse(): VolumeUsageResponse {
+  return { volumes: [] };
+}
+
+export const VolumeUsageResponse: MessageFns<VolumeUsageResponse> = {
+  encode(message: VolumeUsageResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.volumes) {
+      VolumeUsage.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): VolumeUsageResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseVolumeUsageResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.volumes.push(VolumeUsage.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): VolumeUsageResponse {
+    return {
+      volumes: globalThis.Array.isArray(object?.volumes) ? object.volumes.map((e: any) => VolumeUsage.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: VolumeUsageResponse): unknown {
+    const obj: any = {};
+    if (message.volumes?.length) {
+      obj.volumes = message.volumes.map((e) => VolumeUsage.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<VolumeUsageResponse>, I>>(base?: I): VolumeUsageResponse {
+    return VolumeUsageResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<VolumeUsageResponse>, I>>(object: I): VolumeUsageResponse {
+    const message = createBaseVolumeUsageResponse();
+    message.volumes = object.volumes?.map((e) => VolumeUsage.fromPartial(e)) || [];
     return message;
   },
 };
@@ -10522,6 +10750,7 @@ function createBaseConsoleInstance(): ConsoleInstance {
     state: "",
     health: "",
     restartCount: 0,
+    startedAtUnix: 0,
   };
 }
 
@@ -10562,6 +10791,9 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     }
     if (message.restartCount !== 0) {
       writer.uint32(96).int32(message.restartCount);
+    }
+    if (message.startedAtUnix !== 0) {
+      writer.uint32(104).int64(message.startedAtUnix);
     }
     return writer;
   },
@@ -10669,6 +10901,14 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
           message.restartCount = reader.int32();
           continue;
         }
+        case 13: {
+          if (tag !== 104) {
+            break;
+          }
+
+          message.startedAtUnix = longToNumber(reader.int64());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -10699,6 +10939,11 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
         ? globalThis.Number(object.restartCount)
         : isSet(object.restart_count)
         ? globalThis.Number(object.restart_count)
+        : 0,
+      startedAtUnix: isSet(object.startedAtUnix)
+        ? globalThis.Number(object.startedAtUnix)
+        : isSet(object.started_at_unix)
+        ? globalThis.Number(object.started_at_unix)
         : 0,
     };
   },
@@ -10741,6 +10986,9 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     if (message.restartCount !== 0) {
       obj.restartCount = Math.round(message.restartCount);
     }
+    if (message.startedAtUnix !== 0) {
+      obj.startedAtUnix = Math.round(message.startedAtUnix);
+    }
     return obj;
   },
 
@@ -10761,6 +11009,7 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     message.state = object.state ?? "";
     message.health = object.health ?? "";
     message.restartCount = object.restartCount ?? 0;
+    message.startedAtUnix = object.startedAtUnix ?? 0;
     return message;
   },
 };
@@ -16335,6 +16584,19 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
   /**
+   * How much disk a named volume occupies. The caller supplies the names (Deplo's
+   * volume-naming scheme stays control-plane-side, as for backup and move).
+   */
+  volumeUsage: {
+    path: "/deplo.agent.v1.Agent/VolumeUsage" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: VolumeUsageRequest): Buffer => Buffer.from(VolumeUsageRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): VolumeUsageRequest => VolumeUsageRequest.decode(value),
+    responseSerialize: (value: VolumeUsageResponse): Buffer => Buffer.from(VolumeUsageResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): VolumeUsageResponse => VolumeUsageResponse.decode(value),
+  },
+  /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
    * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
@@ -17034,6 +17296,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   importVolume: handleClientStreamingCall<VolumeChunk, StackResult>;
   /**
+   * How much disk a named volume occupies. The caller supplies the names (Deplo's
+   * volume-naming scheme stays control-plane-side, as for backup and move).
+   */
+  volumeUsage: handleUnaryCall<VolumeUsageRequest, VolumeUsageResponse>;
+  /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
    * server move - the sibling of ExportVolume/ImportVolume for the one piece of a
    * service's state that is NOT a Docker volume.
@@ -17433,6 +17700,25 @@ export interface AgentClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StackResult) => void,
   ): ClientWritableStream<VolumeChunk>;
+  /**
+   * How much disk a named volume occupies. The caller supplies the names (Deplo's
+   * volume-naming scheme stays control-plane-side, as for backup and move).
+   */
+  volumeUsage(
+    request: VolumeUsageRequest,
+    callback: (error: ServiceError | null, response: VolumeUsageResponse) => void,
+  ): ClientUnaryCall;
+  volumeUsage(
+    request: VolumeUsageRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: VolumeUsageResponse) => void,
+  ): ClientUnaryCall;
+  volumeUsage(
+    request: VolumeUsageRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: VolumeUsageResponse) => void,
+  ): ClientUnaryCall;
   /**
    * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts, for a
    * server move - the sibling of ExportVolume/ImportVolume for the one piece of a

@@ -196,6 +196,9 @@ export interface AgentConsoleInstance {
   health: string;
   /** How many times docker has restarted this container. */
   restartCount: number;
+  /** When it last started, epoch seconds. 0 = never started, or an agent older
+   *  than the field - both mean "no uptime", never 1970. */
+  startedAtUnix: number;
 }
 export interface AgentFileEntry {
   path: string;
@@ -316,6 +319,11 @@ export interface AgentConnection {
    * owning stack) first so the on-disk files can't change mid-read.
    */
   exportVolume(volumeName: string): AsyncGenerator<Buffer, void, unknown>;
+  /**
+   * On-disk bytes per named volume. A name the host does not have is simply
+   * absent from the answer - "no such volume" is not "an empty volume".
+   */
+  volumeUsage(volumeNames: string[]): Promise<Map<string, number>>;
   /**
    * Untar a stream of gzipped-tar chunks INTO a named Docker volume on this
    * (destination) host - the receiving half of a cross-host move. `wipeFirst`
@@ -1043,6 +1051,7 @@ function dial(target: DialTarget): AgentConnection {
     state: i.state,
     health: i.health,
     restartCount: i.restartCount,
+    startedAtUnix: Number(i.startedAtUnix ?? 0),
   });
   const mapEntry = (e: PbFileEntry): AgentFileEntry => ({
     path: e.path,
@@ -1249,6 +1258,23 @@ function dial(target: DialTarget): AgentConnection {
           if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
         }
       })();
+    },
+    volumeUsage(volumeNames: string[]) {
+      return new Promise<Map<string, number>>((resolve, reject) => {
+        client.volumeUsage(
+          { volumeNames },
+          new Metadata(),
+          { deadline: new Date(Date.now() + VOLUME_USAGE_TIMEOUT_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve(
+                  new Map(
+                    resp.volumes.map((v) => [v.volumeName, Number(v.bytes)]),
+                  ),
+                ),
+        );
+      });
     },
     importVolume(
       volumeName: string,
@@ -2297,6 +2323,12 @@ export interface FollowLogsOptions {
  * the stream and the UI greys out the time-range control.
  */
 export const LOGS_TIMERANGE_CAPABILITY = "logs.timerange";
+
+/** `VolumeUsage` - the measured size behind a database's Data card. */
+export const VOLUME_USAGE_CAPABILITY = "volume-usage";
+
+/** A du-class walk is O(files); the agent bounds it at 60s, this leaves headroom. */
+const VOLUME_USAGE_TIMEOUT_MS = 70_000;
 
 /**
  * Does this host's agent advertise a capability? Best-effort: an agent that is

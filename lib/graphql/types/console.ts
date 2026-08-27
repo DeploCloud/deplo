@@ -115,6 +115,12 @@ const RuntimeContainerRef = builder
       restartCount: t.exposeInt("restartCount", {
         description: "Times docker has restarted this container.",
       }),
+      startedAtUnix: t.exposeInt("startedAtUnix", {
+        description:
+          "When it last started, epoch seconds. 0 when it has never started, " +
+          "or when the owning agent predates the field - both mean there is no " +
+          "uptime to show, never 1970.",
+      }),
       running: t.exposeBoolean("running"),
       exposed: t.exposeBoolean("exposed"),
     }),

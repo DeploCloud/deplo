@@ -96,6 +96,9 @@ export interface ConsoleInstance {
   /** Times docker has restarted this container: what turns "it is starting" into
    *  "it has been dying all afternoon". */
   restartCount: number;
+  /** When it last started, epoch seconds. 0 = never started, or an agent older
+   *  than the field - both mean there is no uptime to show. */
+  startedAtUnix: number;
 }
 
 /**
@@ -189,6 +192,7 @@ function displayFallback(p: App): ConsoleInstance {
     state: "",
     health: "",
     restartCount: 0,
+    startedAtUnix: 0,
   };
 }
 
@@ -258,6 +262,9 @@ export interface RuntimeContainer {
   health: string;
   /** Times docker has restarted it - the difference between "booting" and "dying". */
   restartCount: number;
+  /** When it last started, epoch seconds. 0 = never started, or an agent older
+   *  than the field - both mean there is no uptime to show. */
+  startedAtUnix: number;
   running: boolean;
   exposed: boolean;
 }
@@ -348,6 +355,7 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
       state: i.state || (idx === 0 ? legacySoloState : ""),
       health: i.health,
       restartCount: i.restartCount,
+      startedAtUnix: i.startedAtUnix,
       running: i.running,
       exposed: i.exposed,
     }));

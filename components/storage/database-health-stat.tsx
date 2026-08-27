@@ -7,6 +7,7 @@ import { StatCard } from "@/components/storage/database-stats";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
 import { databaseDisplayStatus } from "@/lib/databases/display-status";
+import { sinceShort } from "@/lib/utils";
 import type { DatabaseStatus } from "@/lib/types";
 
 /**
@@ -69,6 +70,9 @@ export function DatabaseHealthStat({
             : "No healthcheck";
 
   const restarts = container?.restartCount ?? 0;
+  // 0 means never started OR an agent older than the field - either way there is
+  // no uptime to claim.
+  const startedAt = container?.startedAtUnix ?? 0;
 
   return (
     <StatCard
@@ -80,7 +84,16 @@ export function DatabaseHealthStat({
           {value}
         </span>
       }
-      sub={restarts === 0 ? "No restarts" : `Restarted ${restarts} times`}
+      sub={
+        <>
+          {startedAt > 0 && live === "running" && (
+            <p>Up {sinceShort(startedAt * 1000)}</p>
+          )}
+          <p className={startedAt > 0 && live === "running" ? "mt-1" : ""}>
+            {restarts === 0 ? "No restarts" : `Restarted ${restarts} times`}
+          </p>
+        </>
+      }
     />
   );
 }

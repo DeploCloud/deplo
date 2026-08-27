@@ -36,6 +36,8 @@ export interface RuntimeContainerView {
   state: string;
   health: string;
   restartCount: number;
+  /** Epoch seconds, 0 when unknown - the app views do not render it yet. */
+  startedAtUnix?: number;
   running: boolean;
   exposed: boolean;
 }

@@ -100,6 +100,7 @@ function fakeAgent(opts: {
         state: "running",
         health: "",
         restartCount: 0,
+        startedAtUnix: 0,
       }));
     },
     stopStack: async () => {

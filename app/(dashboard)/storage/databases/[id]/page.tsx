@@ -1,5 +1,6 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase, getDatabaseVolumeBytes } from "@/lib/data/databases";
 import { getDatabaseBackupSummary } from "@/lib/data/backups";
 import { getDatabaseMetrics } from "@/lib/data/container-metrics";
 import { getServerById } from "@/lib/data/servers";
@@ -8,6 +9,8 @@ import { DatabaseOverview } from "@/components/storage/database-overview";
 import { DataStat } from "@/components/storage/database-stats";
 import { DatabaseRelabelNotice } from "@/components/storage/database-health-stat";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
+import type { ContainerMetrics } from "@/lib/data/container-metrics";
+import type { DatabaseDTO } from "@/lib/data/databases";
 
 export default async function DatabaseOverviewPage(
   props: PageProps<"/storage/databases/[id]">,
@@ -26,6 +29,7 @@ export default async function DatabaseOverviewPage(
     getDatabaseMetrics(db.id),
   ]);
   const can = new Set(caps);
+  const monitoringHref = `/storage/databases/${db.id}/monitoring`;
 
   return (
     <div className="space-y-6">
@@ -50,14 +54,41 @@ export default async function DatabaseOverviewPage(
         canViewBackups={can.has("manage_backups")}
         backups={backups}
         dataStat={
-          <DataStat
-            db={db}
-            metrics={metrics}
-            bytes={null}
-            href={`/storage/databases/${db.id}/monitoring`}
-          />
+          // Measuring a volume WALKS it, so it streams in its own boundary
+          // rather than holding the whole page behind a du.
+          <Suspense
+            fallback={
+              <DataStat
+                db={db}
+                metrics={metrics}
+                bytes={undefined}
+                href={monitoringHref}
+              />
+            }
+          >
+            <DataStatLive db={db} metrics={metrics} href={monitoringHref} />
+          </Suspense>
         }
       />
     </div>
+  );
+}
+
+async function DataStatLive({
+  db,
+  metrics,
+  href,
+}: {
+  db: DatabaseDTO;
+  metrics: ContainerMetrics | null;
+  href: string;
+}) {
+  return (
+    <DataStat
+      db={db}
+      metrics={metrics}
+      bytes={await getDatabaseVolumeBytes(db.id)}
+      href={href}
+    />
   );
 }
