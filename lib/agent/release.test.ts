@@ -259,3 +259,32 @@ test("refreshAgentRelease busts the memo and surfaces a newly-published version"
     s.restore();
   }
 });
+
+// One rate-limited call used to serve `curl … | bash` a 503 for five minutes,
+// which prints "curl: (22)" and exits 0 - the machine then never comes online.
+test("a resolved release keeps being served through a GitHub blip", async () => {
+  const good = stub({
+    release: {
+      tag_name: "v2.0.0",
+      assets: [
+        {
+          name: "deplo-agent-linux-amd64",
+          browser_download_url: "https://x/amd64",
+        },
+        { name: "checksums.txt", browser_download_url: "https://x/checksums" },
+      ],
+    },
+    checksums: `${"a".repeat(64)}  deplo-agent-linux-amd64\n`,
+  });
+  assert.equal((await resolveLatestAgentRelease())?.version, "2.0.0");
+  good();
+
+  const limited = stub({ release: {}, releaseStatus: 403 });
+  const after = await refreshAgentRelease();
+  limited();
+  assert.equal(
+    after?.version,
+    "2.0.0",
+    "the installer still has a release to render",
+  );
+});

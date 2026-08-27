@@ -67,15 +67,22 @@ function parseChecksums(text: string): Map<string, string> {
 const CACHE_KEY = Symbol.for("deplo.agent.release.cache");
 type ReleaseCacheCell = {
   value: { at: number; release: AgentRelease | null } | null;
+  /** The last release that DID resolve. GitHub answers 60 unauthenticated calls
+   *  an hour for the whole instance, and the installer is rendered per request:
+   *  without this one blip served `curl | bash` a 503 for five minutes. */
+  lastGood?: AgentRelease | null;
 };
 const cacheCell: ReleaseCacheCell = ((globalThis as Record<symbol, unknown>)[
   CACHE_KEY
-] ??= { value: null }) as ReleaseCacheCell;
+] ??= { value: null, lastGood: null }) as ReleaseCacheCell;
 /**
  * Short TTL: the memo only exists to coalesce the GitHub calls within a single
  * render (many server cards / GraphQL fields resolve the same release).
  */
 const CACHE_TTL_MS = 300_000; // 5m
+/** A failure is remembered far more briefly than a success: it is a blip until
+ *  proven otherwise, and the next request should be allowed to find out. */
+const FAILURE_TTL_MS = 30_000;
 
 /** A monotonic-ish clock that tolerates environments where Date.now is shimmed. */
 function now(): number {
@@ -88,11 +95,16 @@ function now(): number {
  */
 export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> {
   const cache = cacheCell.value;
-  if (cache && now() - cache.at < CACHE_TTL_MS) return cache.release;
+  const ttl = cache?.release ? CACHE_TTL_MS : FAILURE_TTL_MS;
+  if (cache && now() - cache.at < ttl)
+    return cache.release ?? cacheCell.lastGood ?? null;
 
   const release = await fetchLatestRelease();
   cacheCell.value = { at: now(), release };
-  return release;
+  if (release) cacheCell.lastGood = release;
+  // ponytail: last-good lives in this process only, so a restart while GitHub is
+  // unreachable still serves nothing. Persist it if that turns out to matter.
+  return release ?? cacheCell.lastGood ?? null;
 }
 
 /**
@@ -159,4 +171,5 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
 /** Test-only: drop the in-process memo so a test can stub a fresh fetch. */
 export function __resetReleaseCacheForTests(): void {
   cacheCell.value = null;
+  cacheCell.lastGood = null;
 }
