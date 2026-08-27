@@ -50,7 +50,7 @@ export default async function SettingsMigrationsPage() {
     ]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-3">
       <PageHeader
         docs="migration.dokploy"
         title={

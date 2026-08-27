@@ -166,7 +166,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <PageHeader
         docs="databases.overview"
         title="Storage"

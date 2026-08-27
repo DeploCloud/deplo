@@ -73,7 +73,7 @@ export function McpTabs({
   }
 
   return (
-    <Tabs value={active} onValueChange={selectTab} className="space-y-6">
+    <Tabs value={active} onValueChange={selectTab} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border">
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="connect">

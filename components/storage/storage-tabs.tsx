@@ -44,7 +44,7 @@ export function StorageTabs({
   }
 
   return (
-    <Tabs value={active} onValueChange={selectTab}>
+    <Tabs value={active} onValueChange={selectTab} className="space-y-3">
       {children}
     </Tabs>
   );

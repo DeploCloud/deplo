@@ -514,6 +514,14 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `Button` defaults to `type="button"`, so Cancel never submits by accident; a raw `<button>` you
   add inside a form must spell out `type="button"` itself. Pattern reference:
   `components/apps/create-folder-dialog.tsx`.
+- **A page that is a header plus a tab bar has ONE vertical rhythm: `space-y-3`,
+  everywhere.** The page wrapper (`PageHeader` → the tab bar) and the `Tabs` root (tab
+  bar → its content) both carry it, so the same three pages cannot drift apart - MCP,
+  Migrations and Storage had 6/8/6 and 6/10/none, and the same tab bar sat at a
+  different height on each. 24px is too much between a title and the tabs that belong
+  to it; they are one control, not two sections. This measure is for THIS shape only -
+  a page of stacked cards keeps its own spacing, and `TabsContent`'s internal
+  `space-y-*` is the content's business, not the rhythm's.
 - **A dialog footer with exactly two controls SPLITS: the secondary far left, the primary far
   right.** Cancel is not a peer of the thing it cancels, and sitting next to it is how a stray
   click lands on the wrong one. Any other footer - a third button, a hint beside the buttons -
