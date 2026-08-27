@@ -500,6 +500,28 @@ export function AllAppsEnvManager({
         onClear={clear}
         facets={facets}
         counts={counts}
+        actions={
+          sections.length > 1 ? (
+            <Button
+              // Toolbar height, not `sm`: it stands beside the sort select.
+              variant="ghost"
+              className="text-muted-foreground"
+              onClick={toggleAllSections}
+            >
+              {openSections > 0 ? (
+                <>
+                  <ChevronsDownUp className="size-4" />
+                  Collapse all
+                </>
+              ) : (
+                <>
+                  <ChevronsUpDown className="size-4" />
+                  Expand all
+                </>
+              )}
+            </Button>
+          ) : undefined
+        }
       />
 
       {sections.length === 0 && (
@@ -513,29 +535,6 @@ export function AllAppsEnvManager({
             </Button>
           }
         />
-      )}
-
-      {sections.length > 1 && (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            onClick={toggleAllSections}
-          >
-            {openSections > 0 ? (
-              <>
-                <ChevronsDownUp className="size-4" />
-                Collapse all
-              </>
-            ) : (
-              <>
-                <ChevronsUpDown className="size-4" />
-                Expand all
-              </>
-            )}
-          </Button>
-        </div>
       )}
 
       {/* One node per section, rendered the same whether or not it can be
