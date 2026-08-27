@@ -307,6 +307,7 @@ export const PLATFORM_FEATURES: readonly {
   { capability: "backup", name: "backups" },
   { capability: "self-update", name: "in-place agent updates" },
   { capability: "volume-copy", name: "moving data between servers" },
+  { capability: "volume-copy-hardened", name: "hardened data import" },
   { capability: "files-copy", name: "moving app files between servers" },
   { capability: "deploy.registry-auth", name: "private image registries" },
 ] as const;

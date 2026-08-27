@@ -84,6 +84,24 @@ function isNotFound(e: unknown): boolean {
 }
 
 /**
+ * An agent that advertises the hardened import ALWAYS reports the digest of what it
+ * received, so from one of those "not reported" stops being an answer: the source is
+ * torn down on this verdict, and `sha256: ""` used to sail through both cross-checks.
+ */
+const HARDENED_COPY_CAPABILITY = "volume-copy-hardened";
+
+async function destMustProveTheCopy(dest: AgentConnection): Promise<boolean> {
+  try {
+    return (
+      (await dest.hello()).capabilities?.includes(HARDENED_COPY_CAPABILITY) ===
+      true
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A gzipped tar of an EMPTY directory is about 45 bytes - a header, two zero
  * blocks and the gzip trailer.
  */
@@ -234,6 +252,10 @@ export async function copyVolumeBetween(
   // Both halves of the digest cross-check are optional until the whole fleet
   // answers them (they are additive StackResult fields); when they are there they
   // are load-bearing, because a truncated untar is otherwise invisible.
+  if (!res.sha256 && (await destMustProveTheCopy(dest)))
+    throw new Error(
+      `the copy of "${volumeName}" arrived unverified: the destination host reported no digest`,
+    );
   if (res.sha256 && res.sha256 !== digest)
     throw new Error(
       `the copy of "${volumeName}" arrived corrupted: ${bytes} bytes sent, digest ${res.sha256} received instead of ${digest}`,
@@ -309,6 +331,10 @@ export async function copyHostPathBetween(
   if (bytes <= EMPTY_ARCHIVE_CEILING)
     throw new Error(
       `nothing was copied out of "${sourcePath}" - the directory is empty or no longer on that host`,
+    );
+  if (!res.sha256 && (await destMustProveTheCopy(dest)))
+    throw new Error(
+      `the copy of "${sourcePath}" arrived unverified: the destination host reported no digest`,
     );
   if (res.sha256 && res.sha256 !== digest)
     throw new Error(
