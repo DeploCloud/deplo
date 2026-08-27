@@ -2301,7 +2301,11 @@ async function importAppService(
       } the one Deplo gave it.`,
     );
 
-  const secrets = env.filter((e) => e.type === "secret").map((e) => e.key);
+  // A value the panel would not answer for arrives EMPTY and has its own note.
+  // Counted here too, the line reads as a clean import until you reach that one.
+  const secrets = env
+    .filter((e) => e.type === "secret" && e.value.trim() !== "")
+    .map((e) => e.key);
   if (secrets.length > 0)
     notes.push(
       `${secrets.length} variable(s) arrived as secrets, because they look like credentials: ${secrets

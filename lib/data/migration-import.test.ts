@@ -252,7 +252,10 @@ const APPLICATIONS: Record<string, unknown> = {
       // moment the app moves.
       "OLD_ADDRESS=https://blink-web-abc.traefik.me/health\n" +
       // The same address again, arriving write-only: `URL` reads as a credential.
-      "OLD_ADDRESS_URL=https://blink-web-abc.traefik.me/hook\n",
+      "OLD_ADDRESS_URL=https://blink-web-abc.traefik.me/hook\n" +
+      // A value the panel would not hand over. It arrives empty, and its own
+      // note says so - the secrets line must not count it as one that landed.
+      "LEGACY_TOKEN=\n",
     buildArgs: "NEXT_PUBLIC_SITE=https://blink.acme.test\n",
     memoryLimit: "512m",
     cpuLimit: "0.5",
@@ -766,6 +769,7 @@ test("a project lands complete: project, environment, apps, variables", async ()
   const byKey = new Map(env.map((e) => [e.key, e]));
   assert.deepEqual([...byKey.keys()].sort(), [
     "DATABASE_URL",
+    "LEGACY_TOKEN",
     "NEXT_PUBLIC_SITE",
     "NODE_ENV",
     "OLD_ADDRESS",
@@ -775,6 +779,16 @@ test("a project lands complete: project, environment, apps, variables", async ()
   assert.equal(byKey.get("DATABASE_URL")!.type, "secret");
   assert.equal(byKey.get("NEXT_PUBLIC_SITE")!.type, "plain");
   assert.equal(byKey.get("NODE_ENV")!.type, "plain");
+
+  // The one that arrived with no value is still a secret ROW, but the note that
+  // counts what landed leaves it out: another line already says it came empty.
+  assert.equal(byKey.get("LEGACY_TOKEN")!.type, "secret");
+  const said = (await asOwner(() => getMigrationRun(runId)))!.items
+    .filter((i) => i.sourceId === "dok-app-web")
+    .map((i) => i.message ?? "")
+    .find((m) => m.includes("arrived as secrets"))!;
+  assert.match(said, /^3 variable\(s\) arrived as secrets/);
+  assert.doesNotMatch(said, /LEGACY_TOKEN/);
 
   // The database could not be created against a host with no agent, and that is
   // a REPORT row carrying the host's own words - not a failed import.
