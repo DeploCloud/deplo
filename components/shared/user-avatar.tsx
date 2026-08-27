@@ -57,6 +57,13 @@ function Mark({
   size: AvatarSize;
   className?: string;
 }) {
+  const [status, setStatus] = React.useState<
+    "idle" | "loading" | "loaded" | "error"
+  >("idle");
+  // A picture that is still arriving gets the skeleton, not the monogram: the
+  // initials would flash for as long as the download takes and then be replaced.
+  const pending = Boolean(src) && status === "loading";
+
   return (
     <Avatar className={cn(SIZE[size], className)}>
       <AvatarImage
@@ -65,6 +72,7 @@ function Mark({
         // Without this, every avatar tells gravatar.com which page of this panel
         // it was rendered on.
         referrerPolicy="no-referrer"
+        onLoadingStatusChange={setStatus}
       />
       {/**
        * No `delayMs`.
@@ -72,10 +80,11 @@ function Mark({
       <AvatarFallback
         className={cn(
           "font-medium",
-          !background && "bg-foreground text-background",
+          pending && "animate-pulse",
+          !pending && !background && "bg-foreground text-background",
         )}
         style={
-          background
+          background && !pending
             ? {
                 backgroundColor: background,
                 color: readableTextColor(background),
@@ -83,7 +92,7 @@ function Mark({
             : undefined
         }
       >
-        {initials}
+        {pending ? null : initials}
       </AvatarFallback>
     </Avatar>
   );
