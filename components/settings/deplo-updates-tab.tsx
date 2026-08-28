@@ -154,7 +154,7 @@ export function DeploUpdatesTab({
       {/* First in the DOM on a phone, where a picture on top reads as a heading;
           last and pinned on a wide screen, where it belongs on the right. */}
       <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
-        <UpdateGraphic className="w-56 xl:w-[86%]" />
+        <UpdateGraphic className="w-48 xl:w-[72%]" />
       </div>
 
       <div className="min-w-0 space-y-6">
