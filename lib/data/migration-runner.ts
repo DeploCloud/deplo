@@ -12,7 +12,7 @@ import { newId, nowIso } from "../ids";
 import { MIGRATION_HEARTBEAT_STALE_MS } from "../types";
 import { formatBytes } from "../utils";
 import { encryptSecret, decryptSecretOrThrow } from "../crypto";
-import { isMigrationPlatform } from "../migration/source";
+import { isMigrationPlatform, sourceClient } from "../migration/source";
 import type { MigrationPlatform } from "../migration/source";
 import { runWithIdentity } from "../auth/request-context";
 import { acquireLease, releaseLease } from "../backups/lease";
@@ -22,6 +22,7 @@ import {
   appendRunItem,
   assertImportGate,
   beginMigration,
+  credentialFor as connectCredential,
   finishMigration,
   importMigrationProject,
   releaseMigrating,
@@ -110,10 +111,17 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
   if (input.targets.length === 0)
     throw new Error("Nothing is selected, so there is nothing to migrate.");
 
+  // Which panel this is, and whether it answers at all, BEFORE a run exists.
+  // Both were the wizard's alone: a Coolify migration driven from the API ran the
+  // Dokploy client against it and died on its first call, inside a run that had
+  // already been created.
+  const c = await connectCredential(input);
+  await sourceClient(c).listProjects();
+
   const runId = await beginMigration({
     url: input.url,
     orgName: input.orgName ?? null,
-    kind: input.kind,
+    kind: c.kind,
   });
   const { currentIdentity } = await import("../auth/request-context");
   const { getCurrentUser } = await import("../auth");

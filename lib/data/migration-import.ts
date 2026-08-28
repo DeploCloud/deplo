@@ -603,8 +603,10 @@ export async function scanMigrationSource(
 
           // The detail row is the first place a name is guaranteed: `project.all`
           // gives a database nothing but its id, so until now this line may have had
-          // no name at all.
+          // no name at all. Same for the MACHINE: the tree carries no server, so
+          // every service on the second host was read as the panel's own.
           line.name = nameOf(detail, svc);
+          line.sourceServerId = detail.serverId?.trim() || line.sourceServerId;
           line.logo = mapLogo((detail as SourceApplication).icon);
           // What the ADAPTER saw and no shared mapper can: a field of its own
           // platform with no home here.
@@ -1874,6 +1876,10 @@ async function runImportMigrationProject(
         continue;
       }
 
+      // The MACHINE, from the row that has one: `project.all` carries no server, so
+      // every service on the second host mapped as if it were on the panel's own.
+      const sourceServerId = detail.serverId?.trim() || svc.serverId;
+
       // Deplo caps a name at 60 characters and so does Dokploy's own column at 63 for
       // `appName` - but its display NAME is free text, and a service called after a team,
       // a region and a cluster goes past it.
@@ -1901,7 +1907,7 @@ async function runImportMigrationProject(
               projectId,
               environmentId,
               serverId:
-                placed.get(svc.id)?.serverId ?? serverMap.get(svc.serverId),
+                placed.get(svc.id)?.serverId ?? serverMap.get(sourceServerId),
               buildServerId: placed.get(svc.id)?.buildServerId ?? null,
               dbHosts,
             },
@@ -1911,7 +1917,7 @@ async function runImportMigrationProject(
         } else {
           const placement = placed.get(svc.id);
           const serverId = await targetServerFor(
-            placement?.serverId ?? serverMap.get(svc.serverId),
+            placement?.serverId ?? serverMap.get(sourceServerId),
           );
           await importDatabaseService(
             c,
@@ -1929,7 +1935,7 @@ async function runImportMigrationProject(
               // container we are importing, and stopping that frees it.
               sourceIsTargetHost:
                 serverId != null &&
-                (await hostOfMachine(svc.serverId)) === serverId,
+                (await hostOfMachine(sourceServerId)) === serverId,
               dbHosts,
             },
             svcReport,
@@ -2305,6 +2311,32 @@ async function importAppService(
     ...((detail as SourceApplication).platformNotes ?? []),
   ];
 
+  // The same name somewhere ELSE in this team is allowed - an app lives in one
+  // environment and staging may share a name with production - but never silent:
+  // two apps called the same thing is a thing to walk into knowingly.
+  const namesake = (
+    await getDb()
+      .select({ slug: appsTable.slug })
+      .from(appsTable)
+      .where(
+        and(
+          eq(appsTable.teamId, await requireActiveTeamId()),
+          sql`lower(${appsTable.name}) = ${name.trim().toLowerCase()}`,
+          // `NULL <> id` is NULL, not true: an app sitting outside every
+          // environment is exactly the one this has to see.
+          or(
+            isNull(appsTable.environmentId),
+            ne(appsTable.environmentId, home.environmentId),
+          ),
+        ),
+      )
+      .limit(1)
+  )[0];
+  if (namesake)
+    notes.push(
+      `This team already has an app called ${name} (/apps/${namesake.slug}). This one is a second app beside it - rename either under Settings if that is not what you wanted.`,
+    );
+
   // Env: the service's own blob, plus its build args, which deplo passes to the
   // build as ordinary variables (agent >= 1.9.0) rather than as a second channel.
   const envEntries = parseEnvBlob(detail.env);
@@ -2601,6 +2633,10 @@ async function importAppService(
   // EVERY address the app answered on over there has to be an address it answers on
   // here.
   const rehosted = new Map<string, string>();
+  // Kept apart from `notes` so the warning about what the app stores about itself
+  // can ride the last of them. As its own note it repeated, once per app, what the
+  // line above had just said - half a clean run's report was these two sentences.
+  const rehostNotes: string[] = [];
   if (domains.value.length === 0)
     notes.push(
       "It answered on no address on {panel}, so it arrives with none here either. Add one under Domains if it should be reachable from outside.",
@@ -2628,7 +2664,7 @@ async function importAppService(
       // taken.
       await applyImportedRoute(row.id, importedRoute(primary));
       rehosted.set(primary.host, row.name);
-      notes.push(
+      rehostNotes.push(
         primary.generated
           ? `${primary.host} was {panel}'s own temporary address, so this app answers on ${row.name} here - same port, same route.`
           : `${primary.host} could not be taken, so the app answers on ${row.name} instead.`,
@@ -2683,7 +2719,7 @@ async function importAppService(
       for (const [source, host] of landed)
         if (!rehosted.has(source)) {
           rehosted.set(source, host);
-          notes.push(
+          rehostNotes.push(
             wasThrowaway.has(source)
               ? `${source} was {panel}'s own temporary address, so it comes across as ${host} here - same port, same route.`
               : `${source} answers on ${host} here instead - same port, same route. Point it at this server and add it under Domains to use the real name.`,
@@ -2698,13 +2734,13 @@ async function importAppService(
     }
   }
 
-  // The one place a re-hosted address cannot be fixed from out here: INSIDE the app's
-  // own data.
-  if (rehosted.size > 0) {
+  // The one place a re-hosted address cannot be fixed from out here: INSIDE the
+  // app's own data. Said on the same line that names the new address.
+  if (rehostNotes.length > 0) {
     const landedOn = [...new Set(rehosted.values())].join(", ");
-    notes.push(
-      `If this app stores its own address (Nextcloud's trusted_domains, WordPress's siteurl), the copied data still has the old one - open the app's Console and set it to ${landedOn}.`,
-    );
+    rehostNotes[rehostNotes.length - 1] +=
+      ` If it stores its own address (a trusted_domains, a saved site URL), the copied data still holds the old one - open its Console and set it to ${landedOn}.`;
+    notes.push(...rehostNotes);
   }
 
   // An address that could not come across is a DEAD address, and the app is usually

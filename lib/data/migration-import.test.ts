@@ -16,6 +16,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
 import { markDataCopyFailed } from "./data-copy";
+import { startMigrationRun } from "./migration-runner";
 import {
   appMounts as appMountsTable,
   appVolumes as appVolumesTable,
@@ -64,6 +65,7 @@ import {
   setMigrationMachineAddress,
   drainMigrationSourceUninstalls,
   finishMigration,
+  importMigrationMembers,
   sweepFinishedMigrationMarks,
   undoMigration,
   getMigrationRun,
@@ -296,6 +298,8 @@ const APPLICATIONS: Record<string, unknown> = {
     applicationId: "dok-app-api",
     name: "blink-api",
     appName: "blink-api-def",
+    // On the SECOND machine. `project.all` does not say so - only this row does.
+    serverId: "dok-srv-1",
     sourceType: "docker",
     buildType: "dockerfile",
     dockerImage: "ghcr.io/acme/api:1.4.2",
@@ -656,6 +660,43 @@ test("a variable that names the old address is moved to the new one", async () =
   assert.match(said, /OLD_ADDRESS, OLD_ADDRESS_URL named the old address/);
 });
 
+// The skip is per ENVIRONMENT, which is right - staging and production share a
+// name on purpose - but the team ending up with two apps called the same thing
+// used to happen in silence.
+test("a name the team already uses elsewhere is said out loud", async () => {
+  await seedApp(db, { id: "blink-web", teamId: TEAM_A, slug: "blink-web" });
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const said = (await asOwner(() => getMigrationRun(runId)))!.items
+    .filter((i) => i.sourceId === "dok-app-web")
+    .map((i) => i.message ?? "")
+    .join(" | ");
+  assert.match(
+    said,
+    /already has an app called blink-web \(\/apps\/blink-web\)/,
+  );
+  // And it still came across - two environments may hold the same name.
+  const apps = await db.select().from(appsTable);
+  assert.equal(apps.filter((a) => a.name === "blink-web").length, 2);
+});
+
+// Half a clean run's report was two sentences per app, the second repeating what
+// the first had just said.
+test("a re-hosted address is one line, not two", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const said = (await asOwner(() => getMigrationRun(runId)))!.items
+    .filter((i) => i.sourceId === "dok-app-web")
+    .map((i) => i.message ?? "");
+
+  const addressLines = said.filter((m) => /same port, same route/.test(m));
+  assert.equal(addressLines.length, 1);
+  // And the console warning rides it rather than being a line of its own.
+  assert.match(addressLines[0], /open its Console/);
+  assert.equal(said.filter((m) => /open its Console/.test(m)).length, 1);
+});
+
 // The rule, at its hardest: BOTH of this app's addresses are unavailable - one is
 // Dokploy's throwaway, the other is a real name another team here already serves.
 // It must still arrive answering on two.
@@ -888,6 +929,30 @@ test("the sweep frees a row whose migration is over", async () => {
     (a) => a.id === web.id,
   )!;
   assert.equal(after.migrationRunId, null);
+});
+
+// The wizard renders these lines itself, and only the REPORT resolves a
+// `{panel}` - so the People step read "Was owner on {panel}".
+test("an invited owner is told which panel they were owner on", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const invites = await asOwner(() =>
+    importMigrationMembers({ ...CONNECT, runId }),
+  );
+  const owner = invites.find((i) => i.email === "owner@acme.test")!;
+  assert.match(owner.message ?? "", /Was owner on Dokploy/);
+  assert.doesNotMatch(owner.message ?? "", /\{panel\}/);
+});
+
+// The tree carries no server, so every service read as if it were on the panel's
+// own machine - and the remote ones were then annotated with a runtime status
+// read off the wrong host.
+test("a service on the second machine says so in the plan", async () => {
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
+  const services = plan.projects[0].environments[0].services;
+  const byName = new Map(services.map((s) => [s.name, s]));
+  assert.equal(byName.get("blink-api")!.sourceServerId, "dok-srv-1");
+  // And one that really is on the panel's own host still says nothing.
+  assert.equal(byName.get("blink-web")!.sourceServerId, "");
 });
 
 test("what a running migration created is nobody else's to touch", async () => {
@@ -2328,6 +2393,40 @@ test("a remembered address belongs to one team and one panel", async () => {
 test("a scan reports which product answered", async () => {
   const plan = await asOwner(() => scanMigrationSource(CONNECT));
   assert.equal(plan.platform, "dokploy");
+});
+
+// The wizard checks the panel answers before it starts anything; the API did
+// not, so a run was created, stored a key, and then died on its first call.
+test("a panel that does not answer leaves no run behind", async () => {
+  __setMigrationFetchForTest(async () => new Response("nope", { status: 502 }));
+  const before = (await db.select().from(runsTable)).length;
+  await assert.rejects(() =>
+    asOwner(() =>
+      startMigrationRun({
+        url: URL_BASE,
+        apiKey: "whatever",
+        allowPrivate: false,
+        orgName: null,
+        targets: [
+          {
+            projectId: "dok-prj-blink",
+            projectName: "Blink",
+            serviceId: "dok-app-web",
+            serverId: null,
+            buildServerId: null,
+            exposedPort: null,
+            exposedPortSet: false,
+          },
+        ],
+        servers: [],
+      }),
+    ),
+  );
+  assert.equal(
+    (await db.select().from(runsTable)).length,
+    before,
+    "nothing to stop, nothing to clean up",
+  );
 });
 
 test("a run records the platform, and defaults to the older one", async () => {
