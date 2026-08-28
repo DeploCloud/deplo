@@ -7,7 +7,7 @@
 
 import {
   listProjects as coolifyProjects,
-  panelAnswersHealth,
+  panelFromHealth,
 } from "./coolify/client";
 import { listProjects as dokployProjects } from "./dokploy/client";
 import type { MigrationPlatform, SourceCredential } from "./source";
@@ -65,11 +65,12 @@ export async function detectMigrationSource(
 
   // Both refused. The unauthenticated healthcheck only chooses the WORDS - a
   // reverse proxy can answer 200 there, so it never decides which product it is.
-  const looksLikeCoolify = await panelAnswersHealth(baseUrl);
-  const coolifySaid = refused.find((r) => r.startsWith("Coolify: "));
-  if (looksLikeCoolify && coolifySaid)
+  const answered = await panelFromHealth(baseUrl);
+  const name = answered === "coolify" ? "Coolify" : "Dokploy";
+  const said = refused.find((r) => r.startsWith(`${name}: `));
+  if (answered && said)
     throw new PanelNotIdentifiedError(
-      `That is a Coolify panel, and it refused the token. ${coolifySaid.slice("Coolify: ".length)}`,
+      `That is a ${name} panel, and it refused the token. ${said.slice(`${name}: `.length)}`,
     );
 
   throw new PanelNotIdentifiedError(

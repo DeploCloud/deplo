@@ -615,7 +615,9 @@ export async function resourceState(
  * The unauthenticated healthcheck. Only ever used to choose the WORDS of a
  * failure - a reverse proxy can answer 200 here, so it never decides anything.
  */
-export async function panelAnswersHealth(baseUrl: string): Promise<boolean> {
+export async function panelFromHealth(
+  baseUrl: string,
+): Promise<"coolify" | "dokploy" | null> {
   try {
     const res = await sendRequest(
       baseUrl,
@@ -628,11 +630,25 @@ export async function panelAnswersHealth(baseUrl: string): Promise<boolean> {
       },
       COOLIFY_PANEL,
     );
-    if (!res.ok) return false;
+    if (!res.ok) return null;
     const body = (await res.text().catch(() => "")).trim();
-    // An HTML body is somebody's front page, not Coolify's healthcheck.
-    return body.length > 0 && !body.startsWith("<");
+    // Both panels answer on this path, in their own words: `OK` in plain text
+    // here, `{"ok":true}` there. Any 200 read as Coolify announced a Dokploy
+    // panel with a wrong key as "a Coolify panel refusing the token".
+    if (/^ok$/i.test(body)) return "coolify";
+    try {
+      const parsed: unknown = JSON.parse(body);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        (parsed as { ok?: unknown }).ok === true
+      )
+        return "dokploy";
+    } catch {
+      /* not JSON: not the other one either */
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }

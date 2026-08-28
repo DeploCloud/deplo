@@ -16,6 +16,7 @@ import yaml, {
 
 import { isValidLogoValue } from "../apps/logo-shared";
 import { keepAuthoredEnvText } from "../deploy/compose-lint";
+import { HEALTH_CHECK_DEFAULTS } from "../deploy/health-check";
 
 import type {
   BuildConfig,
@@ -24,6 +25,7 @@ import type {
   DatabaseType,
   DomainEntrypoint,
   GitRepo,
+  HealthCheck,
   ResourceLimits,
   VolumeMount,
 } from "../types";
@@ -1383,7 +1385,11 @@ export function mapDatabase(
   const notes: string[] = [];
   const type = deploEngineFor(kind);
   if (!type) {
-    notes.push(`${row.name}: Deplo has no ${kind} engine - not imported.`);
+    notes.push(
+      kind === "unknown"
+        ? `${row.name}: {panel} does not say which engine this database runs, so Deplo could not create it. Add it here and copy its data over.`
+        : `${row.name}: Deplo has no ${kind} engine - not imported.`,
+    );
     return { value: null, notes };
   }
 
@@ -1878,6 +1884,51 @@ export function portNotes(app: SourceApplication): string[] {
   ];
 }
 
+/**
+ * Dokploy keeps a health check in Swarm's own shape - `Test`, durations in
+ * nanoseconds - and every field of it has a column here, so it comes across
+ * instead of being reported as a setting with no equivalent.
+ */
+export function swarmHealthCheck(spec: unknown): HealthCheck | null {
+  if (!spec || typeof spec !== "object") return null;
+  const row = spec as Record<string, unknown>;
+  const at = (key: string): unknown =>
+    row[key] ?? row[key[0].toLowerCase() + key.slice(1)];
+  const test = Array.isArray(at("Test"))
+    ? (at("Test") as unknown[]).map(String)
+    : [];
+  if (test.length === 0 || test[0] === "NONE") return null;
+  const command = (
+    test[0] === "CMD" || test[0] === "CMD-SHELL" ? test.slice(1) : test
+  )
+    .join(" ")
+    .trim();
+  if (!command) return null;
+  const seconds = (key: string, fallback: number): number => {
+    const n = Number(at(key));
+    return Number.isFinite(n) && n > 0
+      ? Math.max(1, Math.round(n / 1e9))
+      : fallback;
+  };
+  const intervalS = seconds("Interval", HEALTH_CHECK_DEFAULTS.intervalS);
+  const timeoutS = seconds("Timeout", HEALTH_CHECK_DEFAULTS.timeoutS);
+  const retries = Number(at("Retries"));
+  return {
+    type: "command",
+    path: null,
+    port: null,
+    command,
+    intervalS,
+    // Deplo refuses a check still running when the next one is due.
+    timeoutS: timeoutS < intervalS ? timeoutS : Math.max(1, intervalS - 1),
+    retries:
+      Number.isFinite(retries) && retries > 0
+        ? Math.round(retries)
+        : HEALTH_CHECK_DEFAULTS.retries,
+    startPeriodS: seconds("StartPeriod", HEALTH_CHECK_DEFAULTS.startPeriodS),
+  };
+}
+
 /** Everything else on a Dokploy service with no deplo column at all. */
 export function unsupportedNotes(app: SourceApplication): string[] {
   const notes: string[] = [];
@@ -1893,7 +1944,12 @@ export function unsupportedNotes(app: SourceApplication): string[] {
       ["labelsSwarm", "service labels"],
       ["ulimitsSwarm", "ulimits"],
     ] as const
-  ).filter(([key]) => hasSwarmValue(app[key]));
+  ).filter(
+    ([key]) =>
+      hasSwarmValue(app[key]) &&
+      // The health check is imported now, so it is not a loss to report.
+      !(key === "healthCheckSwarm" && swarmHealthCheck(app[key])),
+  );
   if (swarm.length > 0)
     notes.push(
       `Swarm settings on {panel} (${swarm.map(([, label]) => label).join(", ")}) have no equivalent here - Deplo runs one container per app through compose.`,

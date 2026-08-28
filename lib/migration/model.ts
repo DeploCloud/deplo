@@ -292,6 +292,9 @@ export const SOURCE_DB_KINDS = [
   "clickhouse",
   "keydb",
   "dragonfly",
+  /** The panel would not say which engine it runs. Kept so it reaches the plan
+   *  and the report as a database nobody could import, never dropped in silence. */
+  "unknown",
 ] as const;
 export type SourceDbKind = (typeof SOURCE_DB_KINDS)[number];
 
@@ -312,6 +315,7 @@ export interface SourceEnvironment {
   clickhouse?: SourceDatabase[] | null;
   keydb?: SourceDatabase[] | null;
   dragonfly?: SourceDatabase[] | null;
+  unknown?: SourceDatabase[] | null;
 }
 
 export interface SourceProject {
@@ -337,6 +341,7 @@ export interface SourceProject {
   clickhouse?: SourceDatabase[] | null;
   keydb?: SourceDatabase[] | null;
   dragonfly?: SourceDatabase[] | null;
+  unknown?: SourceDatabase[] | null;
 }
 
 export interface SourceServer {

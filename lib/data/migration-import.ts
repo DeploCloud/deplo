@@ -101,6 +101,7 @@ import {
   renameDatabaseHosts,
   portNotes,
   retargetPlatformEnvFiles,
+  swarmHealthCheck,
   unsupportedNotes,
   volumeLabel,
   withPanel,
@@ -2862,7 +2863,11 @@ async function importAppService(
     }
   }
 
-  const health = (detail as SourceApplication).healthCheck ?? null;
+  // The other panel fills `healthCheck`; Dokploy keeps the same thing in Swarm's
+  // own shape, and reading only the first reported it as unimportable.
+  const health =
+    (detail as SourceApplication).healthCheck ??
+    swarmHealthCheck((detail as SourceApplication).healthCheckSwarm);
   if (health && !isCompose) {
     try {
       await updateAppHealthCheck(created.id, health);
@@ -3424,9 +3429,10 @@ export async function importMigrationMembers(
   if (!(await ownRun(input.runId, teamId)))
     throw new Error("That import run does not belong to this team.");
 
-  const report = new Report(input.runId, sourceClient(c).displayName).at(
-    "Members",
-  );
+  // The name, not the placeholder: these lines are handed back to the wizard as
+  // well as written to the report, and only the report resolves a `{panel}`.
+  const panel = sourceClient(c).displayName;
+  const report = new Report(input.runId, panel).at("Members");
   const people = await planMembers(c, teamId);
   const out: MigrationInvite[] = [];
 
@@ -3446,7 +3452,7 @@ export async function importMigrationMembers(
   for (const p of people) {
     const roleNote =
       p.sourceRole && p.sourceRole !== "member"
-        ? ` Was ${p.sourceRole} on {panel} - promote them in Members if that should carry over.`
+        ? ` Was ${p.sourceRole} on ${panel} - promote them in Members if that should carry over.`
         : "";
 
     if (p.inTeam) {

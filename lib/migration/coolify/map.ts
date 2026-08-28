@@ -60,9 +60,21 @@ const DB_KIND: Record<string, SourceDbKind> = {
  * reading `type` alone found nothing and dropped every database in silence.
  */
 export function coolifyDbKindOf(
-  row: Pick<CoolifyDatabase, "database_type" | "type">,
+  row: Pick<CoolifyDatabase, "database_type" | "type" | "image">,
 ): SourceDbKind | null {
-  return coolifyDbKind(row.database_type ?? row.type);
+  return (
+    coolifyDbKind(row.database_type ?? row.type) ?? kindFromImage(row.image)
+  );
+}
+
+/** KeyDB's table carries no `database_type` at all, so the engine comes from the
+ *  one other column that names it: the image the panel runs. */
+function kindFromImage(image: string | null | undefined): SourceDbKind | null {
+  const ref = (image ?? "").toLowerCase();
+  if (!ref) return null;
+  for (const [word, kind] of Object.entries(DB_KIND))
+    if (new RegExp(`(^|[/:_-])${word}([/:_.-]|$)`).test(ref)) return kind;
+  return null;
 }
 
 export function coolifyDbKind(
@@ -110,6 +122,7 @@ const DB_FIELDS: Record<
   keydb: { password: ["keydb_password"] },
   dragonfly: { password: ["dragonfly_password"] },
   libsql: {},
+  unknown: {},
 };
 
 /**
@@ -132,6 +145,22 @@ function pick(row: CoolifyDatabase, keys: string[] | undefined): string | null {
     const v = row[k];
     if (typeof v === "string" && v.trim()) return v;
   }
+  return null;
+}
+
+/**
+ * The same credential, out of the resource's own variables. Redis keeps its
+ * password ONLY there, and minting a new one silently broke every app that talked
+ * to it. The column names are the variable names, so one list serves both.
+ */
+function pickEnv(
+  blob: string | null | undefined,
+  keys: string[] | undefined,
+): string | null {
+  if (!blob || !keys?.length) return null;
+  const wanted = new Set(keys.map((k) => k.toUpperCase()));
+  for (const e of parseEnvBlob(blob))
+    if (wanted.has(e.key.toUpperCase()) && e.value.trim()) return e.value;
   return null;
 }
 
@@ -733,10 +762,10 @@ export function coolifyDatabase(
     appName: row.name ?? null,
     description: row.description ?? null,
     dockerImage: row.image ?? null,
-    databaseName: pick(row, f.database),
-    databaseUser: pick(row, f.user),
-    databasePassword: pick(row, f.password),
-    databaseRootPassword: pick(row, f.root),
+    databaseName: pick(row, f.database) ?? pickEnv(extras.env, f.database),
+    databaseUser: pick(row, f.user) ?? pickEnv(extras.env, f.user),
+    databasePassword: pick(row, f.password) ?? pickEnv(extras.env, f.password),
+    databaseRootPassword: pick(row, f.root) ?? pickEnv(extras.env, f.root),
     env: extras.env ?? null,
     externalPort: row.is_public ? (row.public_port ?? null) : null,
     memoryLimit: row.limits_memory ?? null,

@@ -238,8 +238,9 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
           env.compose!.push(coolifyCompose(s, extras(s.uuid)).value);
       for (const d of databases) {
         if (!here(d.environment_id)) continue;
-        const kind = coolifyDbKindOf(d);
-        if (!kind) continue;
+        // Named by neither column: it still reaches the plan, as a database
+        // nobody can import. Dropping it here is how one disappeared in silence.
+        const kind = coolifyDbKindOf(d) ?? "unknown";
         const list = (env[kind] ??= []) as SourceDatabase[];
         list.push(coolifyDatabase(d, kind, extras(d.uuid)));
       }

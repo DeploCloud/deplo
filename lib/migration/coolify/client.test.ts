@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   __resetCoolifyRateLimitForTest,
   listProjects,
-  panelAnswersHealth,
+  panelFromHealth,
   stopResource,
 } from "./client";
 import {
@@ -202,15 +202,22 @@ test("a blip is retried, and a wrong address is not", async (t) => {
   assert.equal(calls, 1);
 });
 
-test("the healthcheck refuses to call somebody's front page a panel", async (t) => {
+test("the healthcheck names the panel that answered, or nothing", async (t) => {
   reset(t);
   __setMigrationFetchForTest(
     async () => new Response("<!doctype html><html></html>", { status: 200 }),
   );
-  assert.equal(await panelAnswersHealth("https://coolify.test"), false);
+  assert.equal(await panelFromHealth("https://panel.test"), null);
 
   __setMigrationFetchForTest(async () => new Response("OK", { status: 200 }));
-  assert.equal(await panelAnswersHealth("https://coolify.test"), true);
+  assert.equal(await panelFromHealth("https://panel.test"), "coolify");
+
+  // The other panel answers on the same path in its own words, and reading any
+  // 200 as Coolify told people their ADDRESS was wrong when their key was.
+  __setMigrationFetchForTest(
+    async () => new Response('{"ok":true}', { status: 200 }),
+  );
+  assert.equal(await panelFromHealth("https://panel.test"), "dokploy");
 });
 
 test("the one write is a stop, and it posts", async (t) => {

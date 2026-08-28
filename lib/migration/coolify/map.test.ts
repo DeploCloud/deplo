@@ -45,6 +45,60 @@ test("coolifyDbKind answers in Deplo's own spelling", () => {
   assert.equal(coolifyDbKind(null), null);
 });
 
+// KeyDB's table in Coolify carries no `database_type` at all, so the row was
+// dropped before the plan existed - a database that vanished without a line.
+test("an engine with no column of its own is read off the image", () => {
+  assert.equal(
+    coolifyDbKindOf({ image: "eqalpha/keydb:6.3" } as CoolifyDatabase),
+    "keydb",
+  );
+  assert.equal(
+    coolifyDbKindOf({ image: "bitnami/postgresql:16" } as CoolifyDatabase),
+    "postgres",
+  );
+  assert.equal(
+    coolifyDbKindOf({ image: "mongo:7" } as CoolifyDatabase),
+    "mongo",
+  );
+  // The column still wins when it is there.
+  assert.equal(
+    coolifyDbKindOf({
+      database_type: "standalone-redis",
+      image: "eqalpha/keydb:6.3",
+    } as CoolifyDatabase),
+    "redis",
+  );
+  // And a row neither names is not guessed at.
+  assert.equal(
+    coolifyDbKindOf({ image: "acme/our-own-store:2" } as CoolifyDatabase),
+    null,
+  );
+});
+
+// Redis keeps its password in the resource's variables and in no column at all,
+// so deplo minted a new one: 300 keys arrived intact and every app that talked to
+// it stopped working.
+test("a credential kept only in the variables still comes across", () => {
+  const redis = coolifyDatabase(
+    { uuid: "db-r", name: "cache", image: "redis:7" } as CoolifyDatabase,
+    "redis",
+    { env: "REDIS_PASSWORD=R3dis@Pass1\nREDIS_USERNAME=cacher\n" },
+  );
+  assert.equal(redis.databasePassword, "R3dis@Pass1");
+  assert.equal(redis.databaseUser, "cacher");
+
+  // The column still wins where there is one.
+  const pg = coolifyDatabase(
+    {
+      uuid: "db-p",
+      postgres_password: "from-the-column",
+    } as unknown as CoolifyDatabase,
+    "postgres",
+    { env: "POSTGRES_PASSWORD=from-the-env\n" },
+  );
+  assert.equal(pg.databasePassword, "from-the-column");
+});
+
 test("a database's credentials are read from its own engine's columns", () => {
   const pg = coolifyDatabase(
     {

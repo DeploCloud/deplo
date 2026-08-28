@@ -38,6 +38,7 @@ import {
   deploFilesPath,
   deploEngineFor,
   withPanel,
+  swarmHealthCheck,
   unsupportedNotes,
 } from "./map";
 import type { SourceApplication, SourceDatabase } from "./model";
@@ -2042,6 +2043,50 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
     "STRIPE_PK",
   ])
     assert.ok(!looksLikeSecretKey(key), `${key} should stay plain`);
+});
+
+// The same app from the two panels used to land with a health check from one and
+// none from the other: Dokploy keeps it in Swarm's shape, which has a column here
+// for every field.
+test("a Swarm health check becomes deplo's own", () => {
+  const hc = swarmHealthCheck({
+    Test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+    Interval: 30_000_000_000,
+    Timeout: 10_000_000_000,
+    StartPeriod: 5_000_000_000,
+    Retries: 4,
+  })!;
+  assert.equal(hc.type, "command");
+  assert.equal(hc.command, "curl -f http://localhost:3000/health || exit 1");
+  assert.deepEqual(
+    [hc.intervalS, hc.timeoutS, hc.startPeriodS, hc.retries],
+    [30, 10, 5, 4],
+  );
+
+  // A timeout that outlives its interval never settles either way, so it is
+  // pulled under it - the same rule the other panel's mapper follows.
+  assert.equal(
+    swarmHealthCheck({ Test: ["CMD", "true"], Interval: 5e9, Timeout: 9e9 })!
+      .timeoutS,
+    4,
+  );
+
+  // Nothing to import: no test, the Swarm word for "disabled", empty.
+  assert.equal(swarmHealthCheck({ Test: ["NONE"] }), null);
+  assert.equal(swarmHealthCheck({}), null);
+  assert.equal(swarmHealthCheck(null), null);
+});
+
+// And a check that came across is not ALSO reported as a setting deplo dropped.
+test("an imported health check is not listed as unsupported", () => {
+  const spec = { Test: ["CMD-SHELL", "curl -f localhost || exit 1"] };
+  assert.deepEqual(unsupportedNotes({ healthCheckSwarm: spec } as never), []);
+  assert.match(
+    unsupportedNotes({ healthCheckSwarm: { Test: ["NONE"] } } as never).join(
+      " ",
+    ),
+    /Swarm settings/,
+  );
 });
 
 test("migratedEnvType also reads a value that IS a credential", () => {
