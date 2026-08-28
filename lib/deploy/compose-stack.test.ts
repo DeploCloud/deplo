@@ -5,7 +5,9 @@ import yaml from "../yaml";
 
 import {
   buildComposeStack,
+  composeDeclaredEnvKeys,
   detectDefaultApp,
+  escapeComposeDollars,
   type ComposeStackInput,
   type ComposeDomainRoute,
 } from "./compose-stack";
@@ -1061,4 +1063,34 @@ test("a compose that needs no requoting is read as it was", () => {
     "services:\n  web:\n    image: nginx\n    environment:\n      A: '1'\n",
   );
   assert.deepEqual(doc.services.web.environment, { A: "1" });
+});
+
+test("composeDeclaredEnvKeys names the keys the authored YAML sets itself", () => {
+  // A bare `KEY` is the pass-through Deplo writes; a `KEY=value` (or a mapped one)
+  // is the compose author's own value, which `mergeEnvironment` leaves alone - so
+  // the Environment tab has to say the variable set there does not reach it.
+  assert.deepEqual(
+    composeDeclaredEnvKeys(
+      [
+        "services:",
+        "  web:",
+        "    environment:",
+        "      - SET=1",
+        "      - PASSTHROUGH",
+        "  api:",
+        "    environment:",
+        "      MAPPED: x",
+        "      BARE:",
+      ].join("\n"),
+    ).sort(),
+    ["MAPPED", "SET"],
+  );
+  assert.deepEqual(composeDeclaredEnvKeys(null), []);
+  assert.deepEqual(composeDeclaredEnvKeys("not: [valid"), []);
+});
+
+test("escapeComposeDollars doubles a $ and leaves everything else alone", () => {
+  assert.equal(escapeComposeDollars('"plain"'), '"plain"');
+  assert.equal(escapeComposeDollars('"a$b"'), '"a$$b"');
+  assert.equal(escapeComposeDollars('"${X}"'), '"$${X}"');
 });

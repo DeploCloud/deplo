@@ -282,6 +282,10 @@ export function AllAppsEnvManager({
     () => new Map(sharedVars.map((v) => [v.id, v] as const)),
     [sharedVars],
   );
+  const editableSharedIds = React.useMemo(
+    () => new Set(sharedVars.filter((v) => v.editable).map((v) => v.id)),
+    [sharedVars],
+  );
   const projectName = React.useMemo(
     () => new Map(projects.map((p) => [p.id, p.name] as const)),
     [projects],
@@ -576,6 +580,8 @@ export function AllAppsEnvManager({
                         const full = sharedById.get(id);
                         if (full) setSharedEditing(full);
                       }}
+                      // Another team owns it: the pencil would only earn a refusal.
+                      editableSharedIds={editableSharedIds}
                     />
                   ))}
                 </div>
@@ -835,6 +841,7 @@ function AppVarsCard({
   onEdit,
   onDelete,
   onEditShared,
+  editableSharedIds,
 }: {
   card: AppBucket<EnvRow>;
   open: boolean;
@@ -844,6 +851,8 @@ function AppVarsCard({
   onEdit: (row: EnvVarDTO) => void;
   onDelete: (id: string) => void;
   onEditShared: (id: string) => void;
+  /** The shared variables this team OWNS - the only ones it may edit (ADR-0027). */
+  editableSharedIds: Set<string>;
 }) {
   const { app, rows } = card;
   const subtitle = appSubtitle(app, environmentName);
@@ -986,11 +995,19 @@ function AppVarsCard({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <EnvEditButton
-                            secret={row.type === "secret"}
-                            label="Edit shared variable"
-                            onClick={() => onEditShared(row.id)}
-                          />
+                          {editableSharedIds.has(row.id) ? (
+                            <EnvEditButton
+                              secret={row.type === "secret"}
+                              label="Edit shared variable"
+                              onClick={() => onEditShared(row.id)}
+                            />
+                          ) : (
+                            <SimpleTooltip content="Another team owns this variable. Only they can change it.">
+                              <span className="text-xs text-muted-foreground">
+                                Read-only
+                              </span>
+                            </SimpleTooltip>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

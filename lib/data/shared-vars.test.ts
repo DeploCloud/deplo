@@ -19,6 +19,7 @@ import {
   apps as appsTable,
   folders as foldersTable,
   sharedEnvVars as sharedVarsTable,
+  activities as activitiesTable,
 } from "../db/schema/control-plane";
 import { decryptSecret } from "../crypto";
 import {
@@ -720,4 +721,80 @@ test("a secret is frozen: the mask round-trip can no longer downgrade it", async
       /cannot be edited/i,
     );
   });
+});
+
+test("an orphaned variable stays editable (its only scope was deleted)", async () => {
+  const id = await asUser1(() =>
+    mkVar({ key: "ORPHAN", environmentIds: [ENV_DEV] }),
+  );
+  // Exactly what deleting the environment does: the junction cascades and the
+  // variable is left reaching nothing.
+  await db.delete(environmentsTable).where(eq(environmentsTable.id, ENV_DEV));
+  await asUser1(() =>
+    saveSharedVar({
+      id,
+      key: "ORPHAN",
+      value: "repaired",
+      type: "plain",
+      teamIds: [],
+      environmentIds: [],
+      projectIds: [],
+    }),
+  );
+  const [v] = await asUser1(() => listSharedVars());
+  assert.equal(v!.value, "repaired");
+  // A NEW variable still cannot be authored unreachable.
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        saveSharedVar({
+          key: "NOWHERE",
+          value: "x",
+          type: "plain",
+          teamIds: [],
+          environmentIds: [],
+          projectIds: [],
+        }),
+      ),
+    /at least one/i,
+  );
+});
+
+test("a twin - same key AND same reach - is refused, other scopes are not", async () => {
+  await asUser1(() => mkVar({ key: "TWIN", teamWide: true }));
+  await assert.rejects(
+    () => asUser1(() => mkVar({ key: "TWIN", teamWide: true })),
+    /already shared with the same/i,
+  );
+  // The same key for a different audience is the point of the model.
+  await asUser1(() => mkVar({ key: "TWIN", projectIds: [PRJ] }));
+  assert.equal(
+    (await asUser1(() => listSharedVars())).filter((v) => v.key === "TWIN")
+      .length,
+    2,
+  );
+});
+
+test("the activity trail says CREATED once, then UPDATED", async () => {
+  const id = await asUser1(() => mkVar({ key: "TRAIL", teamWide: true }));
+  await asUser1(() =>
+    saveSharedVar({
+      id,
+      key: "TRAIL",
+      value: "v2",
+      type: "plain",
+      teamIds: [TEAM_A],
+      environmentIds: [],
+      projectIds: [],
+    }),
+  );
+  const rows = await db
+    .select({ message: activitiesTable.message })
+    .from(activitiesTable)
+    .orderBy(activitiesTable.createdAt);
+  const mine = rows.map((r) => r.message).filter((m) => m.includes("TRAIL"));
+  assert.deepEqual(mine, [
+    "Created shared variable TRAIL",
+    "Updated shared variable TRAIL",
+  ]);
 });

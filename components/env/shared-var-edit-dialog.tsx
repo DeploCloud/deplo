@@ -197,7 +197,7 @@ function SharedVarEditForm({
                     disabled={pending}
                   >
                     <Share2 className="size-4" />
-                    Change sharing…
+                    Change sharing
                   </Button>
                 )}
               </div>

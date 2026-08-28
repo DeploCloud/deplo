@@ -9,6 +9,7 @@ import {
   listSharedVarTeams,
 } from "@/lib/data/shared-vars";
 import { listProjects } from "@/lib/data/projects";
+import { composeDeclaredEnvKeys } from "@/lib/deploy/compose-stack";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { listPreviewEnvVars } from "@/lib/data/previews";
@@ -89,6 +90,7 @@ export default async function AppEnvPage(
         vars={vars}
         sharedVars={sharedVars}
         sharedVarDetails={sharedVarDetails}
+        composeKeys={composeDeclaredEnvKeys(project.compose)}
         canCreateShared={teamWideEnv}
         projects={projects}
         environments={environments}

@@ -29,7 +29,6 @@ import {
   projects as projectsTable,
   serverTeams as serverTeamsTable,
   servers as serversTable,
-  sharedEnvVars as sharedVarsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
@@ -143,7 +142,11 @@ import {
   isDeploHostServer,
   resolveServerIp,
 } from "../deploy/domains";
-import { saveSharedVar, setSharedVarAppLink } from "./shared-vars";
+import {
+  saveSharedVar,
+  setSharedVarAppLink,
+  visibleSharedVarIdsByKey,
+} from "./shared-vars";
 import { recordActivity } from "./activity";
 import { runAsMigration } from "./migration-guard";
 import { publishMigrationChanged } from "../graphql/pubsub";
@@ -3562,17 +3565,6 @@ async function importBackupDestinations(
  */
 type SharedIndex = Map<string, { varId: string; value: string }>;
 
-/** Every shared variable this team already has, by key. */
-async function existingSharedVars(
-  teamId: string,
-): Promise<Map<string, string>> {
-  const rows = await getDb()
-    .select({ id: sharedVarsTable.id, key: sharedVarsTable.key })
-    .from(sharedVarsTable)
-    .where(eq(sharedVarsTable.teamId, teamId));
-  return new Map(rows.map((r) => [r.key, r.id] as const));
-}
-
 async function importSharedVars(
   blob: string | null | undefined,
   opts: {
@@ -3595,7 +3587,7 @@ async function importSharedVars(
   // Same rule as everything else on a re-run: a key that is already here is left
   // exactly as it is - but it still enters the index, so the apps that referenced
   // it are linked to the row that IS here.
-  const already = await existingSharedVars(opts.teamId);
+  const already = await visibleSharedVarIdsByKey(opts.teamId);
 
   // Said once at the end, exactly as a service's own variables say it: a secret
   // here is write-only with no reveal path, so which values just became

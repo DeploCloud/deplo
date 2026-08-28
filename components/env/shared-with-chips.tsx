@@ -43,6 +43,15 @@ export function SharedWithChips({
       : []),
   ];
 
+  // Its only project / environment / app was deleted: the cell would otherwise be
+  // blank, which reads as "still shared" rather than "reaches nothing".
+  if (groups.length === 0)
+    return (
+      <span className="text-xs text-muted-foreground">
+        Not shared with anything
+      </span>
+    );
+
   return (
     <div className="flex flex-wrap gap-1">
       {groups.map(({ icon: Icon, names }, i) => {

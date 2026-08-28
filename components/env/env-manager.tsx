@@ -72,6 +72,7 @@ export function EnvManager({
   projects,
   environments,
   teams,
+  composeKeys = [],
 }: {
   appId: string;
   appName: string;
@@ -89,6 +90,12 @@ export function EnvManager({
   environments: TeamEnvironment[];
   /** The teams the viewer may share a new variable with. */
   teams: TeamRef[];
+  /**
+   * Keys this app's own compose file writes itself. Deplo injects a variable into a
+   * compose service as a pass-through, so a key the YAML already sets keeps the
+   * YAML's value - said on the row, because the setting looks applied otherwise.
+   */
+  composeKeys?: string[];
 }) {
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -290,10 +297,23 @@ export function EnvManager({
                           className="gap-1 text-[10px] font-normal whitespace-nowrap"
                         >
                           <Share2 className="size-3" />
-                          {row.linked
+                          {/* A variable another team owns says WHOSE it is, linked
+                              or not: the actions below are theirs, not ours. */}
+                          {row.linked &&
+                          detailsById.get(row.id)?.editable !== false
                             ? "Shared"
                             : (row.ownerTeamName ?? "Every team")}
                         </Badge>
+                        {composeKeys.includes(row.key) && (
+                          <SimpleTooltip content="This app's compose file sets this variable itself, so the compose value is what the container gets.">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] font-normal whitespace-nowrap"
+                            >
+                              Set in the compose file
+                            </Badge>
+                          </SimpleTooltip>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -316,6 +336,7 @@ export function EnvManager({
                           row={row}
                           appId={appId}
                           detail={detailsById.get(row.id)}
+                          teamWide={canCreateShared}
                           onRemoved={() => remove(rowKey(row))}
                           onRestored={() => restore(rowKey(row))}
                         />
@@ -392,12 +413,15 @@ function SharedRowActions({
   row,
   appId,
   detail,
+  teamWide,
   onRemoved,
   onRestored,
 }: {
   row: AppSharedVarDTO;
   appId: string;
   detail: SharedVarDTO | undefined;
+  /** `manage_env` across the whole team - what editing the variable itself needs. */
+  teamWide: boolean;
   /**
    * Both removals below take the row off THIS table, so both tell the table to
    * drop it on the click rather than leaving it clickable until the refresh
@@ -409,10 +433,18 @@ function SharedRowActions({
   const router = useRouter();
   const [editOpen, setEditOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  // Another team owns it: the LINK is this app's own opt-in and stays removable, but
+  // its value and its existence are not ours to change - the server refuses both, so
+  // offering the buttons only bought a refusal.
+  const ours = teamWide && detail?.editable !== false;
+  // Unlinking one of these does not take it out of the container: it keeps arriving
+  // with no link, at the lowest precedence (ADR-0027).
+  const keepsArriving = row.autoInject;
 
   function removeFromApp() {
-    // The row goes now and the unlink settles behind it.
-    onRemoved();
+    // The row goes now and the unlink settles behind it - unless the variable keeps
+    // arriving anyway, in which case the row belongs on the table, read-only.
+    if (!keepsArriving) onRemoved();
     void (async () => {
       const res = await gqlAction(
         `mutation($varId: String!, $appId: String!, $linked: Boolean!) {
@@ -421,14 +453,35 @@ function SharedRowActions({
         { varId: row.id, appId, linked: false },
       );
       if (res.ok) {
-        toast.success(`Removed ${row.key} from this app`);
+        toast.success(
+          keepsArriving
+            ? `${row.key} now arrives from ${row.ownerTeamName ?? "an instance admin"}`
+            : `Removed ${row.key} from this app`,
+        );
         router.refresh();
       } else {
-        onRestored();
+        if (!keepsArriving) onRestored();
         toast.error(res.error);
       }
     })();
   }
+
+  if (!ours)
+    return (
+      <div className="flex justify-end gap-1">
+        <SimpleTooltip content="Remove from this app">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={removeFromApp}
+            aria-label="Remove from this app"
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <Unlink className="size-4" />
+          </Button>
+        </SimpleTooltip>
+      </div>
+    );
 
   return (
     <div className="flex justify-end gap-1">
@@ -440,7 +493,7 @@ function SharedRowActions({
       />
 
       <DropdownMenu>
-        <SimpleTooltip content="Delete…">
+        <SimpleTooltip content="Delete">
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -462,7 +515,9 @@ function SharedRowActions({
               Remove from this app
             </span>
             <span className="pl-6 text-xs text-muted-foreground">
-              Unlinks it here. Every other app keeps it.
+              {keepsArriving
+                ? "Unlinks it here. It still arrives from the team that shares it."
+                : "Unlinks it here. Every other app keeps it."}
             </span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -473,7 +528,7 @@ function SharedRowActions({
           >
             <span className="flex items-center gap-2">
               <Trash2 className="size-4" />
-              Delete for all apps…
+              Delete for all apps
             </span>
             <span className="pl-6 text-xs text-muted-foreground">
               Removes it from every app it reaches.

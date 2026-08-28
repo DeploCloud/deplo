@@ -3,7 +3,7 @@
 /**
  * docker-compose generation for databases.
  */
-import { deploLabels } from "./compose-stack";
+import { deploLabels, escapeComposeDollars } from "./compose-stack";
 import { renderResourceLimitsYaml } from "./resources";
 import type { DatabaseType, ResourceLimits } from "../types";
 
@@ -213,19 +213,21 @@ export function generateDatabaseCompose(input: {
   };
   const customCommand = input.customCommand?.trim();
   const defaultCommand =
-    type === "redis" ? `redis-server --requirepass ${password}` : "";
+    type === "redis"
+      ? `redis-server --requirepass ${escapeComposeDollars(password)}`
+      : "";
   // The default (redis) command renders as the historical plain scalar; a
   // USER-supplied command is emitted double-quoted (JSON is valid YAML) so
   // embedded quotes / a `: ` can never change the YAML parse.
   const command = customCommand
-    ? `    command: ${JSON.stringify(customCommand)}\n`
+    ? `    command: ${escapeComposeDollars(JSON.stringify(customCommand))}\n`
     : defaultCommand
       ? `    command: ${defaultCommand}\n`
       : "";
   const envLines = envByType[type];
   const envBlock = envLines.length
     ? "    environment:\n" +
-      envLines.map((l) => `      - ${l}`).join("\n") +
+      envLines.map((l) => `      - ${escapeComposeDollars(l)}`).join("\n") +
       "\n"
     : "";
   // Publish the engine port on the chosen HOST port when exposed.

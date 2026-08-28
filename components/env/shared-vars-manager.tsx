@@ -206,9 +206,9 @@ export function SharedVarsManager({
         <div>
           <h3 className="text-sm font-medium">Shared variables</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Define a variable once and make it available to the whole team, to
-            projects, or add it to single apps. Apps opt in - a shared variable
-            is never added to an app automatically.
+            Define a variable once and make it available to every app in the
+            team, in a project, or add it to single apps. Apps opt in - a shared
+            variable is never added to an app automatically.
           </p>
         </div>
         <Button size="sm" onClick={() => setWizard({ editing: null })}>

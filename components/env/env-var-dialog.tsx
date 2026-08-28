@@ -560,7 +560,7 @@ function SharedTab({
     gql<{ sharedVarsForApp: LinkableSharedVar[] }>(
       `query($appId: String!) {
         sharedVarsForApp(appId: $appId) {
-          id key masked type targets linked inScope scope
+          id key masked type targets linked inScope scope autoInject ownerTeamName
           updatedAt updatedBy { id name username avatarColor avatarUrl }
         }
       }`,
@@ -671,7 +671,13 @@ function SharedVarLinkRow({
         { varId: sharedVar.id, appId, linked: next },
       );
       if (res.ok) {
-        toast.success(next ? "Added to this app" : "Removed from this app");
+        toast.success(
+          next
+            ? "Added to this app"
+            : sharedVar.autoInject
+              ? `${sharedVar.key} now arrives from ${sharedVar.ownerTeamName ?? "an instance admin"}`
+              : "Removed from this app",
+        );
         router.refresh();
       } else {
         setLinked(!next);
@@ -683,6 +689,28 @@ function SharedVarLinkRow({
   // Every shared variable is OPT-IN (ADR-0012): added ⇒ removable, never a
   // disabled "auto-applied" state. The scope only explains why it's suggested.
   const hint = sharedVar.scope ? SCOPE_HINT[sharedVar.scope] : null;
+
+  // The one exception to the opt-in (ADR-0027): it is already in this app, with no
+  // link, and adding it here would only be a second copy of a decision already made.
+  if (sharedVar.autoInject && !linked)
+    return (
+      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+        <div className="min-w-0 space-y-1">
+          <p className="truncate font-mono text-xs font-medium">
+            {sharedVar.key}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="muted" className="gap-1 text-[10px] font-normal">
+              <Check className="size-3" />
+              Added
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">
+              Shared by {sharedVar.ownerTeamName ?? "an instance admin"}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
 
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-accent/30">

@@ -283,10 +283,18 @@ export function SharedVarWizardBody({
     apps: inApp || scopes.includes("apps"),
   };
 
+  // Teams the variable already reaches that this author cannot tick. Shown LOCKED:
+  // invisible, they were still submitted, and the save answered "Team not found"
+  // with nothing on screen to untick.
+  const lockedTeams = (editing?.teams ?? []).filter(
+    (t) => !teams.some((o) => o.id === t.id),
+  );
+  const teamPickerRows = teams.length + lockedTeams.length;
+
   // With one team on offer, "Teams" IS that team and there is nothing to pick.
   // In an app context the destination is settled, so there is nothing to review.
   const needsDetails =
-    (picked.team && teams.length > 1) ||
+    (picked.team && teamPickerRows > 1) ||
     picked.projects ||
     (!inApp && picked.apps);
   const steps: StepId[] = [
@@ -366,7 +374,11 @@ export function SharedVarWizardBody({
     // Stays open until the writes answer - the state that would carry a refused
     // row back lives INSIDE the dialog, and Radix unmounts that on close. What
     // it never waits for is the refresh behind it, which is the slow half.
-    const batch = filled;
+    // One row per KEY: two rows with the same name would be two variables sharing a
+    // name AND a scope, which the server refuses anyway.
+    const batch = filled.filter(
+      (r, i) => filled.findIndex((o) => o.key.trim() === r.key.trim()) === i,
+    );
     const type = secret ? "secret" : "plain";
     startTransition(async () => {
       // One variable per call - `saveSharedVar` writes one row, and every row of
@@ -512,14 +524,15 @@ export function SharedVarWizardBody({
 
             {s === "details" && (
               <div className="space-y-6">
-                {picked.team && teams.length > 1 && (
+                {picked.team && teamPickerRows > 1 && (
                   <TeamsSection
                     teams={teams}
+                    locked={lockedTeams}
                     selected={teamIds}
                     onChange={setTeamIds}
                   />
                 )}
-                {picked.team && teams.length > 1 && picked.projects && (
+                {picked.team && teamPickerRows > 1 && picked.projects && (
                   <hr className="border-border" />
                 )}
                 {picked.projects && (
@@ -1074,19 +1087,24 @@ function list(names: string[]): string {
 /** Details for the "Teams" scope: every team the author may share with. */
 function TeamsSection({
   teams,
+  locked = [],
   selected,
   onChange,
 }: {
   teams: TeamRef[];
+  /** Teams the variable reaches that this author may not change. */
+  locked?: { id: string; name: string }[];
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
   const [q, setQ] = React.useState("");
-  const shown = React.useMemo(() => {
+  const match = <T extends { name: string }>(rows: T[]): T[] => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return teams;
-    return teams.filter((t) => t.name.toLowerCase().includes(needle));
-  }, [teams, q]);
+    if (!needle) return rows;
+    return rows.filter((t) => t.name.toLowerCase().includes(needle));
+  };
+  const shown = match(teams);
+  const shownLocked = match(locked);
   const set = new Set(selected);
 
   return (
@@ -1114,7 +1132,7 @@ function TeamsSection({
           onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
         />
       </div>
-      {shown.length === 0 && (
+      {shown.length === 0 && shownLocked.length === 0 && (
         <p className="text-xs text-muted-foreground">
           No team matches &ldquo;{q.trim()}&rdquo;.
         </p>
@@ -1122,6 +1140,21 @@ function TeamsSection({
       {/* No scroller of its own: the dialog's body is the ONE scrolling region,
           so a long team list never traps the wheel in a nested box. */}
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+        {shownLocked.map((t) => (
+          <div
+            key={t.id}
+            className="flex items-center gap-3 px-3 py-2.5 opacity-60"
+          >
+            <Checkbox checked disabled />
+            <TeamAvatar name={t.name} avatarUrl={null} size="lg" />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+              {t.name}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Already shared
+            </span>
+          </div>
+        ))}
         {shown.map((t) => (
           <label
             key={t.id}

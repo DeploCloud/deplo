@@ -81,7 +81,7 @@ import { sweepSupersededAppImages } from "../data/docker-cleanup";
 import { traefikRouterLabels } from "./routing";
 import { renderResourceLimitsYaml } from "./resources";
 import { renderHealthCheckYaml, renderYamlKeys } from "./health-check";
-import { buildComposeStack } from "./compose-stack";
+import { buildComposeStack, escapeComposeDollars } from "./compose-stack";
 import { parseComposeUpArgs } from "./compose-args";
 import {
   primaryDomainName,
@@ -864,7 +864,9 @@ export function renderCompose(opts: {
   const envYaml = Object.keys(env).length
     ? "    environment:\n" +
       Object.entries(env)
-        .map(([k, v]) => `      ${k}: ${JSON.stringify(v)}`)
+        .map(
+          ([k, v]) => `      ${k}: ${escapeComposeDollars(JSON.stringify(v))}`,
+        )
         .join("\n") +
       "\n"
     : "";

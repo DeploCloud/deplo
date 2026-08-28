@@ -265,3 +265,23 @@ test("a preview publishes no host ports, so two of them can coexist", () => {
     "an inherited host port would make the second preview fail to start",
   );
 });
+
+test("a $ in a value is escaped, because compose interpolates the file it reads", () => {
+  const yaml = renderCompose({
+    ...BASE,
+    name: "deplo-blog",
+    deployKey: "blog",
+    env: {
+      PLAIN: "ordinary",
+      HOST_VAR: "pass$HOME/x",
+      BRACED: "pre${MISSING}post",
+      LITERAL: "pa$$word",
+    },
+  });
+  // Unescaped, `docker compose up` substituted its own environment into a tenant's
+  // variable (`pass/root/x`) and gutted the braced one to `prepost`.
+  assert.match(yaml, /PLAIN: "ordinary"/);
+  assert.match(yaml, /HOST_VAR: "pass\$\$HOME\/x"/);
+  assert.match(yaml, /BRACED: "pre\$\$\{MISSING\}post"/);
+  assert.match(yaml, /LITERAL: "pa\$\$\$\$word"/);
+});

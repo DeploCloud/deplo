@@ -120,6 +120,15 @@ type ComposeDoc = {
   [k: string]: unknown;
 };
 
+/**
+ * `docker compose` interpolates `$VAR` in every value it reads, so a `$` in an
+ * authored value reached the container gutted - or holding the AGENT HOST's own
+ * variable. `$$` is its escape; apply to an already-encoded scalar.
+ */
+export function escapeComposeDollars(encoded: string): string {
+  return encoded.replace(/\$/g, "$$$$");
+}
+
 /** First published container port of a service, if any (`"8080:80"` -> 80, `8080` -> 8080). */
 function publishedPort(svc: App): number | null {
   const ports = svc.ports;
@@ -196,6 +205,36 @@ export function composeServiceNames(compose: string | null): string[] {
   if (!services || typeof services !== "object" || Array.isArray(services))
     return [];
   return Object.keys(services as Record<string, unknown>);
+}
+
+/**
+ * The env keys the AUTHORED compose sets itself. `mergeEnvironment` leaves those
+ * alone, so they keep the compose's value whatever the app's variables say - which
+ * the Environment tab has to state, or the setting looks applied.
+ */
+export function composeDeclaredEnvKeys(compose: string | null): string[] {
+  if (!compose || !compose.trim()) return [];
+  let doc: ComposeDoc;
+  try {
+    doc = (yaml.load(compose) as ComposeDoc) ?? {};
+  } catch {
+    return [];
+  }
+  const out = new Set<string>();
+  for (const svc of Object.values(doc.services ?? {})) {
+    const env = (svc as App)?.environment;
+    if (Array.isArray(env)) {
+      for (const e of env) {
+        // `KEY=value` sets it; a bare `KEY` is the pass-through Deplo itself writes.
+        if (typeof e === "string" && e.includes("="))
+          out.add(e.split("=")[0].trim());
+      }
+    } else if (env && typeof env === "object") {
+      for (const [k, v] of Object.entries(env as Record<string, unknown>))
+        if (v !== null && v !== undefined) out.add(k);
+    }
+  }
+  return [...out];
 }
 
 /** Pick the service Traefik should route to when the template did not say. */
