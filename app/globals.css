@@ -519,6 +519,24 @@ p:not([class*="leading-"]) {
   animation: deplo-fade-in 0.2s ease-out both;
 }
 
+/* A deploy PHASE opening in the build phase bar. `min-width` is what gives a new
+ * column its width, and min-width beats max-width in the cascade, so that is the
+ * property to animate. The bar's first paint is not an entrance - see above. */
+@keyframes deplo-phase-in {
+  from {
+    min-width: 0;
+    opacity: 0;
+  }
+  to {
+    min-width: var(--phase-min);
+    opacity: 1;
+  }
+}
+
+.animate-phase-in {
+  animation: deplo-phase-in 0.2s ease-out both;
+}
+
 /* Sidebar sub-menu transitions: the left navigation slides in horizontally when
  * it swaps - entering a sub-menu (e.g. Settings) slides in from the right, going
  * back slides in from the left. */
@@ -2153,6 +2171,7 @@ label:hover .deplo-gear,
 
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
+  .animate-phase-in,
   .animate-slide-in-right,
   .animate-slide-in-left,
   .animate-jiggle,
