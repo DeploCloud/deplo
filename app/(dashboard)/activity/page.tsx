@@ -11,7 +11,10 @@ import { listProjects } from "@/lib/data/projects";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ActivityFilters } from "@/components/activity/activity-filters";
 import { ActivityFeed } from "@/components/activity/activity-feed";
-import { toActivityItem } from "@/components/activity/activity-timeline";
+import {
+  toActivityItem,
+  type AppLinks,
+} from "@/components/activity/activity-timeline";
 import {
   activityHref,
   activityWindow,
@@ -52,7 +55,9 @@ export default async function ActivityPage(props: PageProps<"/activity">) {
           <ActivityFilters
             params={params}
             actors={actorOptions(actors)}
-            resources={resourceOptions(apps, folders, projects)}
+            apps={apps}
+            folders={folders}
+            projects={projects}
           />
         )}
         <EmptyState
@@ -75,13 +80,16 @@ export default async function ActivityPage(props: PageProps<"/activity">) {
       <ActivityFilters
         params={params}
         actors={actorOptions(actors)}
-        resources={resourceOptions(apps, folders, projects)}
+        apps={apps}
+        folders={folders}
+        projects={projects}
       />
       <ActivityFeed
         // A filter change is a fresh first page, not more of the old one.
         key={activityHref(params)}
         initialItems={activities.map(toActivityItem)}
         monthCounts={Object.fromEntries(months.map((m) => [m.month, m.count]))}
+        appLinks={appLinks(apps)}
         variables={{
           actorUserIds: nonEmpty(params.actorUserIds),
           types: nonEmpty(params.types),
@@ -109,14 +117,12 @@ function actorOptions(
   }));
 }
 
-function resourceOptions(
-  apps: { id: string; name: string }[],
-  folders: { id: string; name: string }[],
-  projects: { id: string; name: string }[],
-): FacetOption[] {
-  return [
-    ...apps.map((a) => ({ value: a.id, label: a.name, group: "Apps" })),
-    ...folders.map((f) => ({ value: f.id, label: f.name, group: "Folders" })),
-    ...projects.map((p) => ({ value: p.id, label: p.name, group: "Projects" })),
-  ];
+/** Only what `listApps` returned: an app the caller cannot list stays plain text
+ *  in the sentence rather than becoming a link into a 404. */
+function appLinks(
+  apps: { id: string; name: string; slug: string }[],
+): AppLinks {
+  return Object.fromEntries(
+    apps.map((a) => [a.id, { name: a.name, slug: a.slug }]),
+  );
 }

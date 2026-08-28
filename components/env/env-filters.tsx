@@ -81,6 +81,9 @@ export interface FacetOption {
   label: string;
   hint?: string;
   author?: VarAuthor;
+  /** The option's own picture, when it has one that is not a person's face -
+   *  an app's logo in a list of apps. Rendered where the avatar would be. */
+  leading?: React.ReactNode;
   /** Heading this option sits under. A facet whose options are one flat list
    *  leaves it unset and renders exactly as it always did. */
   group?: string;
@@ -701,6 +704,7 @@ function FacetOptionRow({
       )}
     >
       <Checkbox checked={checked} onCheckedChange={onToggle} />
+      {opt.leading}
       {opt.author && (
         <UserAvatar
           name={opt.author.name}

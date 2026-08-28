@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 // arrives with the shell instead of being redrawn as a skeleton bar.
 export default function ActivityLayout(props: LayoutProps<"/activity">) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <PageHeader
         docs="team.activity"
         title="Activity"

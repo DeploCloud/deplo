@@ -5,7 +5,11 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { gqlAction } from "@/lib/graphql-client";
-import { ActivityTimeline, type ActivityItem } from "./activity-timeline";
+import {
+  ActivityTimeline,
+  type ActivityItem,
+  type AppLinks,
+} from "./activity-timeline";
 
 const PAGE = /* GraphQL */ `
   query ActivityPage(
@@ -31,6 +35,7 @@ const PAGE = /* GraphQL */ `
       message
       actor
       createdAt
+      appId
       cursor
       actorUser {
         id
@@ -51,11 +56,13 @@ const PAGE = /* GraphQL */ `
 export function ActivityFeed({
   initialItems,
   monthCounts,
+  appLinks,
   variables,
   pageSize,
 }: {
   initialItems: ActivityItem[];
   monthCounts: Record<string, number>;
+  appLinks: AppLinks;
   /** The filter arguments, repeated verbatim for every later page. */
   variables: Record<string, unknown>;
   pageSize: number;
@@ -100,7 +107,11 @@ export function ActivityFeed({
   }, [done, loading, error, loadMore, items]);
 
   return (
-    <ActivityTimeline items={items} monthCounts={monthCounts}>
+    <ActivityTimeline
+      items={items}
+      monthCounts={monthCounts}
+      appLinks={appLinks}
+    >
       {!done && (
         <li className="relative flex items-start gap-3">
           <div

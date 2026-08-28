@@ -1,4 +1,5 @@
 import * as React from "react";
+import Link from "next/link";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
@@ -13,9 +14,17 @@ export interface ActivityItem {
   actor: string;
   actorUser: VarAuthor | null;
   createdAt: string;
+  /** The app this happened to, when it happened to one. */
+  appId: string | null;
   /** Keyset position, for paging past this row. */
   cursor: string;
 }
+
+/**
+ * The apps a mention may link to, by id. Built from what the caller can LIST, so
+ * an app they cannot see is named in the sentence and stays plain text.
+ */
+export type AppLinks = Record<string, { name: string; slug: string }>;
 
 export function toActivityItem(a: Activity): ActivityItem {
   return {
@@ -25,8 +34,73 @@ export function toActivityItem(a: Activity): ActivityItem {
     actor: a.actor,
     actorUser: a.actorUser,
     createdAt: a.createdAt,
+    appId: a.appId,
     cursor: `${a.createdAt}|${a.seq}`,
   };
+}
+
+/** Where the app's name starts in the sentence, or -1. Whole word only: an app
+ *  called `api` must not light up the middle of `api-gateway`. */
+export function mentionAt(message: string, name: string): number {
+  const edge = (c: string | undefined) => c === undefined || !/[\w-]/.test(c);
+  for (let i = message.indexOf(name); i >= 0; i = message.indexOf(name, i + 1))
+    if (edge(message[i - 1]) && edge(message[i + name.length])) return i;
+  return -1;
+}
+
+/**
+ * The message, with the app it names turned into a link to that app. The
+ * sentence is prose written at the call site, so the app's NAME is the only
+ * handle there is - no match, no link, and the row reads as it always did.
+ */
+function messageWithLink(
+  item: ActivityItem,
+  appLinks: AppLinks | undefined,
+): React.ReactNode {
+  const app = item.appId ? appLinks?.[item.appId] : undefined;
+  if (!app) return item.message;
+  const at = mentionAt(item.message, app.name);
+  if (at < 0) return item.message;
+  return (
+    <>
+      {item.message.slice(0, at)}
+      <Link
+        href={`/apps/${app.slug}`}
+        className="font-medium text-foreground underline-offset-2 hover:underline"
+      >
+        {app.name}
+      </Link>
+      {item.message.slice(at + app.name.length)}
+    </>
+  );
+}
+
+const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/**
+ * `2026-08-26T14:32:11Z` -> `26 Aug, 14:32`. Read straight off the ISO string in
+ * UTC, like the month headings bucket, so a row can never sit under "August"
+ * while its own clock reads September. No `Date`, so the server and the browser
+ * cannot disagree; the year is the heading's job.
+ */
+export function stamp(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso);
+  if (!m) return "";
+  const [, , month, day, hh, mi] = m;
+  return `${Number(day)} ${MONTH_SHORT[Number(month) - 1]}, ${hh}:${mi}`;
 }
 
 const MONTHS = [
@@ -72,6 +146,9 @@ function ActivityMarker({
   showActor: boolean;
 }) {
   const box = size === "lg" ? "size-8" : "size-6";
+  // `relative` with NO z-index on purpose: it already paints over the rail (a
+  // positioned sibling earlier in the list), and any z of its own would raise it
+  // through the sticky month heading on the way past.
   if (item.actorUser && showActor)
     return (
       <UserAvatar
@@ -80,14 +157,14 @@ function ActivityMarker({
         avatarColor={item.actorUser.avatarColor}
         avatarUrl={item.actorUser.avatarUrl}
         size={size}
-        className="relative z-10 shrink-0 ring-4 ring-background"
+        className="relative shrink-0 ring-4 ring-background"
       />
     );
   const Icon = ACTIVITY_ICON[item.type] ?? UNKNOWN_ACTIVITY_ICON;
   return (
     <span
       className={cn(
-        "relative z-10 flex shrink-0 items-center justify-center rounded-full border border-border bg-secondary ring-4 ring-background",
+        "relative flex shrink-0 items-center justify-center rounded-full border border-border bg-secondary ring-4 ring-background",
         box,
       )}
     >
@@ -99,14 +176,21 @@ function ActivityMarker({
 /** Who did it, when, and what happened - in that order. */
 export function ActivityRow({
   item,
+  repeats,
   size = "lg",
   showActor = true,
+  appLinks,
 }: {
   item: ActivityItem;
+  /** Every `createdAt` in the run this row stands for, newest first. */
+  repeats?: string[];
   size?: "md" | "lg";
   /** Off on a page that already names the person, like a member's own tab. */
   showActor?: boolean;
+  appLinks?: AppLinks;
 }) {
+  const times = repeats ?? [item.createdAt];
+  const many = times.length > 1;
   return (
     <li className="relative flex items-start gap-3">
       <ActivityMarker item={item} size={size} showActor={showActor} />
@@ -124,11 +208,50 @@ export function ActivityRow({
           >
             {timeAgo(item.createdAt)}
           </time>
+          <span className="text-xs text-muted-foreground">
+            · {many ? `${times.length} times` : stamp(item.createdAt)}
+          </span>
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">{item.message}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {messageWithLink(item, appLinks)}
+        </p>
+        {many && (
+          // Every clock in the run, spelled out: folding rows must not cost the
+          // trail a single "when".
+          <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            {times.map((t, i) => (
+              <span key={`${t}-${i}`}>{stamp(t)}</span>
+            ))}
+          </p>
+        )}
       </div>
     </li>
   );
+}
+
+/**
+ * Fold a run of identical events by the same person into one row. Seven
+ * "Deploying docs" from one account is one thing that happened seven times, not
+ * seven things, and read as seven rows it buries everything else. Consecutive
+ * only, and never across a month heading.
+ */
+export function foldRuns(
+  items: ActivityItem[],
+): { item: ActivityItem; times: string[] }[] {
+  const runs: { item: ActivityItem; times: string[] }[] = [];
+  for (const item of items) {
+    const last = runs[runs.length - 1];
+    if (
+      last !== undefined &&
+      last.item.actor === item.actor &&
+      last.item.message === item.message &&
+      last.item.appId === item.appId &&
+      monthKey(last.item.createdAt) === monthKey(item.createdAt)
+    )
+      last.times.push(item.createdAt);
+    else runs.push({ item, times: [item.createdAt] });
+  }
+  return runs;
 }
 
 /** The month's own heading, riding the rail. */
@@ -159,6 +282,7 @@ export function ActivityTimeline({
   variant = "full",
   monthCounts,
   showActor = true,
+  appLinks,
   children,
 }: {
   items: ActivityItem[];
@@ -166,6 +290,7 @@ export function ActivityTimeline({
   /** `{ "2026-08": 42 }`, for the month headings. */
   monthCounts?: Record<string, number>;
   showActor?: boolean;
+  appLinks?: AppLinks;
   /** The loader / end-of-list footer, inside the rail. */
   children?: React.ReactNode;
 }) {
@@ -175,8 +300,8 @@ export function ActivityTimeline({
   // list, so a month cannot own a container of its own.
   const rows: React.ReactNode[] = [];
   let month = "";
-  for (const item of items) {
-    const key = monthKey(item.createdAt);
+  for (const run of foldRuns(items)) {
+    const key = monthKey(run.item.createdAt);
     if (full && key !== month)
       rows.push(
         <MonthHeading
@@ -188,10 +313,12 @@ export function ActivityTimeline({
     month = key;
     rows.push(
       <ActivityRow
-        key={item.id}
-        item={item}
+        key={run.item.id}
+        item={run.item}
+        repeats={run.times}
         size={size}
         showActor={showActor}
+        appLinks={appLinks}
       />,
     );
   }

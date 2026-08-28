@@ -260,6 +260,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
             <ActivityTimeline
               variant="compact"
               items={activity.map(toActivityItem)}
+              appLinks={Object.fromEntries(
+                services.map((s) => [s.id, { name: s.name, slug: s.slug }]),
+              )}
             />
             <Button variant="outline" size="sm" className="w-full" asChild>
               <Link href="/activity">View all activity</Link>

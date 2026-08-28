@@ -10,6 +10,7 @@ import {
   type EnvFacet,
   type FacetOption,
 } from "@/components/env/env-filters";
+import { AppLogo } from "@/components/shared/project-logo";
 import { ACTIVITY_TYPES } from "@/lib/activity-types";
 import {
   activityHref,
@@ -50,6 +51,14 @@ const EVENT_OPTIONS: FacetOption[] = ACTIVITY_TYPES.map((t) => ({
   group: t.group,
 }));
 
+/** One named thing the trail can be narrowed to. */
+export interface ResourceOption {
+  id: string;
+  name: string;
+  /** Apps only: the same logo the Overview grid shows. */
+  logo?: string | null;
+}
+
 /**
  * The Activity page's filter row. Every pick is a navigation, so the URL is the
  * whole state: a link to "what did Ada do last week" is just this page's address.
@@ -57,14 +66,38 @@ const EVENT_OPTIONS: FacetOption[] = ACTIVITY_TYPES.map((t) => ({
 export function ActivityFilters({
   params,
   actors,
-  resources,
+  apps,
+  folders,
+  projects,
 }: {
   params: ActivityParams;
   actors: FacetOption[];
-  resources: FacetOption[];
+  apps: ResourceOption[];
+  folders: ResourceOption[];
+  projects: ResourceOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
+
+  // Built here rather than on the server: an option's picture is a component,
+  // and the page has no business shipping JSX across for it.
+  const resources: FacetOption[] = React.useMemo(
+    () => [
+      ...apps.map((a) => ({
+        value: a.id,
+        label: a.name,
+        group: "Apps",
+        leading: <AppLogo logo={a.logo ?? null} size={16} />,
+      })),
+      ...folders.map((f) => ({ value: f.id, label: f.name, group: "Folders" })),
+      ...projects.map((p) => ({
+        value: p.id,
+        label: p.name,
+        group: "Projects",
+      })),
+    ],
+    [apps, folders, projects],
+  );
 
   function go(next: Partial<ActivityParams>) {
     startTransition(() => router.replace(activityHref({ ...params, ...next })));
