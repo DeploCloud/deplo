@@ -17,6 +17,7 @@ import { getDb } from "../db/client";
 import {
   activities as activitiesTable,
   apps as appsTable,
+  databases as databasesTable,
   teams,
 } from "../db/schema/control-plane";
 import { assembleActivity, activityToRow } from "./infra-rows";
@@ -52,7 +53,7 @@ export interface ActivityFilter {
   from?: string;
   /** ISO, exclusive. */
   to?: string;
-  /** App, folder and project ids mixed - resolved to the apps they cover. */
+  /** App, folder, project and database ids mixed - resolved to what they cover. */
   resourceIds?: string[];
   /** Keyset position: the last row of the previous page. */
   cursor?: { createdAt: string; seq: number };
@@ -99,25 +100,40 @@ function activityFilterWhere(
   if (f.from) out.push(gte(activitiesTable.createdAt, f.from));
   if (f.to) out.push(lt(activitiesTable.createdAt, f.to));
   if (f.resourceIds?.length)
-    // Team-level rows (`app_id IS NULL`) drop out here, the same way they do for a
-    // scoped caller: asking what happened to an app is not asking about the team.
+    // Team-level rows (both pointers NULL) drop out here, the same way they do for
+    // a scoped caller: asking what happened to an app is not asking about the team.
+    // Both sub-selects are team-bound, so an id from another team widens nothing.
     out.push(
-      inArray(
-        activitiesTable.appId,
-        getDb()
-          .select({ id: appsTable.id })
-          .from(appsTable)
-          .where(
-            and(
-              eq(appsTable.teamId, teamId),
-              or(
-                inArray(appsTable.id, f.resourceIds),
-                inArray(appsTable.folderId, f.resourceIds),
-                inArray(appsTable.projectId, f.resourceIds),
-              )!,
+      or(
+        inArray(
+          activitiesTable.appId,
+          getDb()
+            .select({ id: appsTable.id })
+            .from(appsTable)
+            .where(
+              and(
+                eq(appsTable.teamId, teamId),
+                or(
+                  inArray(appsTable.id, f.resourceIds),
+                  inArray(appsTable.folderId, f.resourceIds),
+                  inArray(appsTable.projectId, f.resourceIds),
+                )!,
+              ),
             ),
-          ),
-      ),
+        ),
+        inArray(
+          activitiesTable.databaseId,
+          getDb()
+            .select({ id: databasesTable.id })
+            .from(databasesTable)
+            .where(
+              and(
+                eq(databasesTable.teamId, teamId),
+                inArray(databasesTable.id, f.resourceIds),
+              ),
+            ),
+        ),
+      )!,
     );
   if (f.cursor)
     // The ROW form, not the expanded `a < x OR (a = x AND b < y)`: Postgres takes
@@ -166,7 +182,8 @@ async function queryActivity(
 
 /**
  * The scope predicate for the audit feed, or undefined for a caller who reaches
- * the whole team.
+ * the whole team. Databases are not folder/project-scoped, so a narrowed caller
+ * reaches no database row at all - the same answer they got before `database_id`.
  */
 async function scopedActivityWhere(): Promise<SQL | undefined> {
   const roleScope = await currentMemberScope();
@@ -290,6 +307,7 @@ export async function recordActivity(
   appId: string | null = null,
   teamId: string | null = null,
   alert: AlertKey | null = null,
+  databaseId: string | null = null,
 ): Promise<void> {
   // Best-effort (PLAN §1(c): an audit-log insert must NEVER roll back the user's
   // action - it stays a standalone, non-transactional, fire-and-forget insert).
@@ -322,6 +340,7 @@ export async function recordActivity(
       // Resolved on the way OUT, per list. Nothing on the write path needs it.
       actorUser: null,
       appId,
+      databaseId,
       createdAt: nowIso(),
     };
     await insertActivityRow(activity);
@@ -393,6 +412,7 @@ async function flushDroppedMarker(teamId: string): Promise<void> {
           actor: "Deplo",
           actorUserId: null,
           appId: null,
+          databaseId: null,
           createdAt: nowIso(),
         }),
       );

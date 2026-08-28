@@ -23,6 +23,7 @@ type Activity {
   appId: ID
   createdAt: String
   cursor: String
+  databaseId: ID
   id: ID
   message: String
   teamId: ID

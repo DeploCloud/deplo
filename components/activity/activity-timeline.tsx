@@ -2,9 +2,16 @@ import * as React from "react";
 import Link from "next/link";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { AppLogo } from "@/components/shared/project-logo";
+import { DatabaseLogo } from "@/components/storage/database-logo";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
 import { cn, timeAgo } from "@/lib/utils";
-import type { Activity, ActivityType, VarAuthor } from "@/lib/types";
+import type {
+  Activity,
+  ActivityType,
+  DatabaseType,
+  VarAuthor,
+} from "@/lib/types";
 
 /** One row of the trail, trimmed to what the timeline draws. */
 export interface ActivityItem {
@@ -16,6 +23,8 @@ export interface ActivityItem {
   createdAt: string;
   /** The app this happened to, when it happened to one. */
   appId: string | null;
+  /** The database this happened to. Never set together with `appId`. */
+  databaseId: string | null;
   /** Keyset position, for paging past this row. */
   cursor: string;
 }
@@ -24,7 +33,16 @@ export interface ActivityItem {
  * The apps a mention may link to, by id. Built from what the caller can LIST, so
  * an app they cannot see is named in the sentence and stays plain text.
  */
-export type AppLinks = Record<string, { name: string; slug: string }>;
+export type AppLinks = Record<
+  string,
+  { name: string; slug: string; logo?: string | null }
+>;
+
+/** The databases a mention may link to, by id - the twin of {@link AppLinks}. */
+export type DatabaseLinks = Record<
+  string,
+  { name: string; logo: string | null; type: DatabaseType }
+>;
 
 export function toActivityItem(a: Activity): ActivityItem {
   return {
@@ -35,6 +53,7 @@ export function toActivityItem(a: Activity): ActivityItem {
     actorUser: a.actorUser,
     createdAt: a.createdAt,
     appId: a.appId,
+    databaseId: a.databaseId,
     cursor: `${a.createdAt}|${a.seq}`,
   };
 }
@@ -48,29 +67,59 @@ export function mentionAt(message: string, name: string): number {
   return -1;
 }
 
+/** The resource a row happened to, resolved for display, or undefined. */
+function mentioned(
+  item: ActivityItem,
+  appLinks: AppLinks | undefined,
+  databaseLinks: DatabaseLinks | undefined,
+): { name: string; href: string; mark: React.ReactNode } | undefined {
+  const app = item.appId ? appLinks?.[item.appId] : undefined;
+  if (app)
+    return {
+      name: app.name,
+      href: `/apps/${app.slug}`,
+      mark: <AppLogo logo={app.logo ?? null} size={16} />,
+    };
+  const db = item.databaseId ? databaseLinks?.[item.databaseId] : undefined;
+  if (db)
+    return {
+      name: db.name,
+      href: `/storage/databases/${item.databaseId}`,
+      mark: <DatabaseLogo type={db.type} logo={db.logo} size={16} />,
+    };
+  return undefined;
+}
+
 /**
- * The message, with the app it names turned into a link to that app. The
- * sentence is prose written at the call site, so the app's NAME is the only
- * handle there is - no match, no link, and the row reads as it always did.
+ * The message, with the app or database it names turned into a link carrying that
+ * resource's own picture. The sentence is prose written at the call site, so the
+ * NAME is the only handle there is - no match, no link, and the row reads as it
+ * always did.
  */
 function messageWithLink(
   item: ActivityItem,
   appLinks: AppLinks | undefined,
+  databaseLinks: DatabaseLinks | undefined,
 ): React.ReactNode {
-  const app = item.appId ? appLinks?.[item.appId] : undefined;
-  if (!app) return item.message;
-  const at = mentionAt(item.message, app.name);
+  const target = mentioned(item, appLinks, databaseLinks);
+  if (!target) return item.message;
+  const at = mentionAt(item.message, target.name);
   if (at < 0) return item.message;
   return (
     <>
       {item.message.slice(0, at)}
       <Link
-        href={`/apps/${app.slug}`}
+        href={target.href}
         className="font-medium text-foreground underline-offset-2 hover:underline"
       >
-        {app.name}
+        {/* Inline-block on the MARK, not on the link: a flex link takes its
+            baseline from the picture and lifts the name off the line. */}
+        <span className="mr-1 inline-block align-text-bottom">
+          {target.mark}
+        </span>
+        {target.name}
       </Link>
-      {item.message.slice(at + app.name.length)}
+      {item.message.slice(at + target.name.length)}
     </>
   );
 }
@@ -180,6 +229,7 @@ export function ActivityRow({
   size = "lg",
   showActor = true,
   appLinks,
+  databaseLinks,
 }: {
   item: ActivityItem;
   /** Every `createdAt` in the run this row stands for, newest first. */
@@ -188,9 +238,11 @@ export function ActivityRow({
   /** Off on a page that already names the person, like a member's own tab. */
   showActor?: boolean;
   appLinks?: AppLinks;
+  databaseLinks?: DatabaseLinks;
 }) {
   const times = repeats ?? [item.createdAt];
   const many = times.length > 1;
+  const sentence = messageWithLink(item, appLinks, databaseLinks);
   return (
     <li className="relative flex items-start gap-3">
       <ActivityMarker item={item} size={size} showActor={showActor} />
@@ -212,17 +264,22 @@ export function ActivityRow({
             · {many ? `${times.length} times` : stamp(item.createdAt)}
           </span>
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {messageWithLink(item, appLinks)}
-        </p>
-        {many && (
-          // Every clock in the run, spelled out: folding rows must not cost the
-          // trail a single "when".
-          <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+        {many ? (
+          // The sentence once per occurrence with its own clock beside it: a
+          // folded run must not cost the trail a single "what" or "when".
+          <ul className="mt-1 space-y-1">
             {times.map((t, i) => (
-              <span key={`${t}-${i}`}>{stamp(t)}</span>
+              <li
+                key={`${t}-${i}`}
+                className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground"
+              >
+                <span className="min-w-0">{sentence}</span>
+                <span className="shrink-0 text-xs">{stamp(t)}</span>
+              </li>
             ))}
-          </p>
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">{sentence}</p>
         )}
       </div>
     </li>
@@ -246,6 +303,7 @@ export function foldRuns(
       last.item.actor === item.actor &&
       last.item.message === item.message &&
       last.item.appId === item.appId &&
+      last.item.databaseId === item.databaseId &&
       monthKey(last.item.createdAt) === monthKey(item.createdAt)
     )
       last.times.push(item.createdAt);
@@ -283,6 +341,7 @@ export function ActivityTimeline({
   monthCounts,
   showActor = true,
   appLinks,
+  databaseLinks,
   children,
 }: {
   items: ActivityItem[];
@@ -291,6 +350,7 @@ export function ActivityTimeline({
   monthCounts?: Record<string, number>;
   showActor?: boolean;
   appLinks?: AppLinks;
+  databaseLinks?: DatabaseLinks;
   /** The loader / end-of-list footer, inside the rail. */
   children?: React.ReactNode;
 }) {
@@ -319,6 +379,7 @@ export function ActivityTimeline({
         size={size}
         showActor={showActor}
         appLinks={appLinks}
+        databaseLinks={databaseLinks}
       />,
     );
   }

@@ -54,6 +54,7 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
       resolve: (a) => a.actorUser,
     }),
     appId: t.exposeID("appId", { nullable: true }),
+    databaseId: t.exposeID("databaseId", { nullable: true }),
     createdAt: t.exposeString("createdAt"),
     // This row's keyset position, opaque on purpose: hand it back as `cursor` to
     // read the page after it. Not `seq` as an Int - a GraphQL Int is 32 bits and
@@ -90,7 +91,7 @@ builder.queryFields((t) => ({
       types: t.arg({ type: [ActivityTypeEnum], required: false }),
       from: t.arg.string({ required: false }),
       to: t.arg.string({ required: false }),
-      /** App, folder and project ids mixed. */
+      /** App, folder, project and database ids mixed. */
       resourceIds: t.arg.idList({ required: false }),
     },
     resolve: (_r, a) =>

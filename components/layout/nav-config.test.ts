@@ -126,6 +126,16 @@ test("Cron jobs has no settings entry of its own - the switch is under Advanced"
   }
 });
 
+test("Activity sits second-to-last in both settings menus, gated on view_activity", () => {
+  for (const nav of [appSettingsNav("blog"), databaseSettingsNav("db_1")]) {
+    const items = nav.flatMap((s) => s.items);
+    const activity = items.at(-2);
+    assert.equal(activity?.label, "Activity");
+    assert.equal(activity?.requires, "view_activity");
+    assert.equal(items.at(-1)?.label, "Advanced");
+  }
+});
+
 test("a database gets Cron jobs on the same rule", () => {
   const dbLabels = (
     cronsEnabled: boolean,

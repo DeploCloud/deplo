@@ -405,8 +405,10 @@ export async function createBackup(input: {
     "backup",
     `Created backup schedule ${b.name}`,
     user.name,
-    null,
+    b.appId,
     teamId,
+    null,
+    b.databaseId,
   );
   return await toDTO(b);
 }
@@ -627,6 +629,8 @@ async function executeBackup(
   // itself) lands on the same `failed`-run path below.
   let label = opts.kind === "database" ? "database" : "app";
   let activityAppId: string | null = opts.kind === "app" ? opts.appId : null;
+  let activityDatabaseId: string | null =
+    opts.kind === "database" ? opts.databaseId : null;
   // Kept out here for the cancel cleanup below, which runs after the try block
   // that resolves it.
   let targetServerId = "";
@@ -650,6 +654,7 @@ async function executeBackup(
     );
     label = target.label;
     activityAppId = target.appId;
+    activityDatabaseId = target.databaseId;
     targetServerId = target.serverId;
     objectKey = buildObjectKey({
       teamId,
@@ -795,6 +800,8 @@ async function executeBackup(
     actor,
     activityAppId,
     teamId,
+    null,
+    activityDatabaseId,
   );
   // executeBackup already takes teamId as a parameter, so the scheduler tick,
   // which has no request and no active team - alerts exactly like a manual run.
@@ -1099,6 +1106,8 @@ export async function downloadBackupArtifact(runId: string): Promise<{
     user.name,
     run.appId,
     teamId,
+    null,
+    run.databaseId,
   );
   return {
     filename: downloadFilename(label, run),
@@ -1235,6 +1244,8 @@ export async function restoreBackup(runId: string): Promise<void> {
     user.name,
     target.appId,
     teamId,
+    null,
+    target.databaseId,
   );
   dispatchAlert({
     teamId,
@@ -1412,6 +1423,8 @@ export async function prepareUploadRestore(input: {
       user.name,
       resolved.appId,
       teamId,
+      null,
+      resolved.databaseId,
     );
     dispatchAlert({
       teamId,
@@ -1721,8 +1734,10 @@ export async function updateBackup(
     "backup",
     `Updated backup schedule ${b.name}`,
     user.name,
-    null,
+    b.appId,
     teamId,
+    null,
+    b.databaseId,
   );
   return await toDTO(b);
 }
@@ -1812,6 +1827,8 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
     user.name,
     run.appId,
     teamId,
+    null,
+    run.databaseId,
   );
   return true;
 }
@@ -1899,6 +1916,8 @@ export async function deleteBackupRun(runId: string): Promise<void> {
     user.name,
     run.appId,
     teamId,
+    null,
+    run.databaseId,
   );
 }
 

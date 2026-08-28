@@ -1212,6 +1212,8 @@ async function runMoveMigrationServiceData(
     (await getCurrentUser())?.name ?? "someone",
     landed.targetKind === "app" ? landed.targetId : null,
     teamId,
+    null,
+    landed.targetKind === "database" ? landed.targetId : null,
   );
 
   // What the caller and the summary read: data that should have arrived and did

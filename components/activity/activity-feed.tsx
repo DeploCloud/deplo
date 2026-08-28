@@ -9,6 +9,7 @@ import {
   ActivityTimeline,
   type ActivityItem,
   type AppLinks,
+  type DatabaseLinks,
 } from "./activity-timeline";
 
 const PAGE = /* GraphQL */ `
@@ -36,6 +37,7 @@ const PAGE = /* GraphQL */ `
       actor
       createdAt
       appId
+      databaseId
       cursor
       actorUser {
         id
@@ -57,12 +59,14 @@ export function ActivityFeed({
   initialItems,
   monthCounts,
   appLinks,
+  databaseLinks,
   variables,
   pageSize,
 }: {
   initialItems: ActivityItem[];
   monthCounts: Record<string, number>;
   appLinks: AppLinks;
+  databaseLinks: DatabaseLinks;
   /** The filter arguments, repeated verbatim for every later page. */
   variables: Record<string, unknown>;
   pageSize: number;
@@ -111,6 +115,7 @@ export function ActivityFeed({
       items={items}
       monthCounts={monthCounts}
       appLinks={appLinks}
+      databaseLinks={databaseLinks}
     >
       {!done && (
         <li className="relative flex items-start gap-3">

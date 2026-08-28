@@ -136,6 +136,7 @@ export async function seedActivity(
     actorUser: opts.actorUser ?? null,
     actorUserId: opts.actorUserId ?? null,
     appId: opts.appId ?? null,
+    databaseId: opts.databaseId ?? null,
     createdAt: opts.createdAt ?? T0,
   };
   await db.insert(activitiesTable).values(activityToRow(a));

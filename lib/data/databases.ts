@@ -781,6 +781,8 @@ export async function createDatabase(input: {
     user.name,
     null,
     teamId,
+    null,
+    db.id,
   );
 
   // Provision the real container on the owning server's agent in the background;
@@ -1154,6 +1156,9 @@ export async function updateDatabase(
         : `Unexposed database ${db.name}`,
     user.name,
     null,
+    teamId,
+    null,
+    db.id,
   );
 }
 
@@ -1281,6 +1286,9 @@ export async function deleteDatabase(
       null,
       db.teamId,
       "database_deleted",
+      // NOT linked: the row is already gone, so the FK would refuse it - and
+      // `ON DELETE SET NULL` would have unlinked it a moment later anyway.
+      null,
     );
   });
 }
@@ -1334,6 +1342,9 @@ export async function renameDatabase(id: string, name: string): Promise<void> {
     `Renamed database ${cur.name} to ${clean}`,
     user.name,
     null,
+    teamId,
+    null,
+    id,
   );
 }
 
@@ -1366,7 +1377,7 @@ export async function updateDatabaseLogo(
           : sql`${databasesTable.logo} is distinct from ${next}`,
       ),
     )
-    .returning({ id: databasesTable.id });
+    .returning({ id: databasesTable.id, name: databasesTable.name });
   if (updated.length === 0) {
     // Nothing changed - tell "not found / not owned" apart from "already that".
     const exists = await loadDatabase(id, membership.teamId);
@@ -1376,9 +1387,14 @@ export async function updateDatabaseLogo(
   publishDatabaseChanged(id);
   await recordActivity(
     "database",
-    next ? "Updated database logo" : "Removed database logo",
+    next
+      ? `Updated the logo of ${updated[0].name}`
+      : `Removed the logo of ${updated[0].name}`,
     user.name,
     null,
+    membership.teamId,
+    null,
+    id,
   );
 }
 
@@ -1407,15 +1423,17 @@ export async function updateDatabaseResources(
         eq(databasesTable.teamId, membership.teamId),
       ),
     )
-    .returning({ id: databasesTable.id });
+    .returning({ id: databasesTable.id, name: databasesTable.name });
   if (updated.length === 0) throw new Error("Not found");
   publishDatabaseChanged(id);
   await recordActivity(
     "database",
-    "Updated database resource limits",
+    `Updated the resource limits of ${updated[0].name}`,
     user.name,
     null,
     membership.teamId,
+    null,
+    id,
   );
 }
 
@@ -1480,15 +1498,17 @@ export async function updateDatabaseImage(
         eq(databasesTable.teamId, membership.teamId),
       ),
     )
-    .returning({ id: databasesTable.id });
+    .returning({ id: databasesTable.id, name: databasesTable.name });
   if (updated.length === 0) throw new Error("Not found");
   publishDatabaseChanged(id);
   await recordActivity(
     "database",
-    "Updated database image settings",
+    `Updated the image settings of ${updated[0].name}`,
     user.name,
     null,
     membership.teamId,
+    null,
+    id,
   );
 }
 
@@ -1561,9 +1581,13 @@ export async function setDatabaseMounts(
 ): Promise<void> {
   const { teamId } = await requireCapability("configure_databases");
   const user = (await getCurrentUser())!;
+  // Captured inside the lock so the audit line can name the database the way
+  // every other one does; `cur` does not outlive the closure.
+  let name = "";
   await withKeyedLock(id, async () => {
     const cur = await loadDatabase(id, teamId);
     if (!cur) throw new Error("Not found");
+    name = cur.name;
     const validated = validateDatabaseMounts(cur.type, mounts);
 
     await getDb().transaction(async (tx) => {
@@ -1611,10 +1635,12 @@ export async function setDatabaseMounts(
   });
   await recordActivity(
     "database",
-    "Updated database config files",
+    `Updated the config files of ${name}`,
     user.name,
     null,
     teamId,
+    null,
+    id,
   );
 }
 
@@ -1625,9 +1651,13 @@ export async function setDatabaseMounts(
 export async function restartDatabase(id: string): Promise<void> {
   const teamId = (await requireCapability("control_databases")).teamId;
   const user = (await getCurrentUser())!;
+  // Captured inside the lock so the audit line can name the database the way
+  // every other one does; `cur` does not outlive the closure.
+  let name = "";
   await withKeyedLock(id, async () => {
     const cur = await loadDatabase(id, teamId);
     if (!cur) throw new Error("Not found");
+    name = cur.name;
     if (cur.status === "provisioning")
       throw new Error(
         "Database is still provisioning - wait for it to finish before restarting it.",
@@ -1655,10 +1685,12 @@ export async function restartDatabase(id: string): Promise<void> {
   });
   await recordActivity(
     "database",
-    "Restarted database",
+    `Restarted database ${name}`,
     user.name,
     null,
     teamId,
+    null,
+    id,
   );
 }
 
@@ -1669,9 +1701,13 @@ export async function restartDatabase(id: string): Promise<void> {
 export async function redeployDatabase(id: string): Promise<void> {
   const teamId = (await requireCapability("control_databases")).teamId;
   const user = (await getCurrentUser())!;
+  // Captured inside the lock so the audit line can name the database the way
+  // every other one does; `cur` does not outlive the closure.
+  let name = "";
   await withKeyedLock(id, async () => {
     const cur = await loadDatabase(id, teamId);
     if (!cur) throw new Error("Not found");
+    name = cur.name;
     if (cur.status === "provisioning")
       throw new Error(
         "Database is still provisioning - wait for it to finish before redeploying it.",
@@ -1705,10 +1741,12 @@ export async function redeployDatabase(id: string): Promise<void> {
   });
   await recordActivity(
     "database",
-    "Redeployed database",
+    `Redeployed database ${name}`,
     user.name,
     null,
     teamId,
+    null,
+    id,
   );
 }
 
@@ -1719,9 +1757,13 @@ export async function redeployDatabase(id: string): Promise<void> {
 export async function rebuildDatabase(id: string): Promise<void> {
   const teamId = (await requireCapability("delete_databases")).teamId;
   const user = (await getCurrentUser())!;
+  // Captured inside the lock so the audit line can name the database the way
+  // every other one does; `cur` does not outlive the closure.
+  let name = "";
   await withKeyedLock(id, async () => {
     const cur = await loadDatabase(id, teamId);
     if (!cur) throw new Error("Not found");
+    name = cur.name;
     if (cur.status === "provisioning")
       throw new Error(
         "Database is still provisioning - wait for it to finish before rebuilding it.",
@@ -1769,11 +1811,12 @@ export async function rebuildDatabase(id: string): Promise<void> {
   });
   await recordActivity(
     "database",
-    "Rebuilt database from scratch (data volume wiped)",
+    `Rebuilt database ${name} from scratch (data volume wiped)`,
     user.name,
     null,
     teamId,
     "database_rebuilt",
+    id,
   );
 }
 
@@ -1868,9 +1911,11 @@ export async function rotateDatabasePassword(
   // creation for no reason a user could see (create has always accepted a quote).
 
   let newConn = "";
+  let name = "";
   await withKeyedLock(id, async () => {
     const cur = await loadDatabase(id, teamId);
     if (!cur) throw new Error("Not found");
+    name = cur.name;
     if (cur.status !== "running")
       throw new Error("Start the database before rotating its password.");
 
@@ -1952,10 +1997,12 @@ export async function rotateDatabasePassword(
   });
   await recordActivity(
     "database",
-    "Rotated database password",
+    `Rotated the password of ${name}`,
     user.name,
     null,
     teamId,
+    null,
+    id,
   );
   return newConn;
 }

@@ -1635,6 +1635,9 @@ export interface Activity {
    */
   actorUser: VarAuthor | null;
   appId: ID | null;
+  /** The database this happened to. A database is not an App, so it needs its
+   *  own pointer; both are null for a team-level event. */
+  databaseId: ID | null;
   createdAt: string;
 }
 

@@ -17,6 +17,7 @@ import {
   seedApp,
   seedServer,
 } from "./app-graph-test-helpers";
+import { seedDatabase } from "./backup-test-helpers";
 import {
   ACTOR_SYSTEM,
   activityMonths,
@@ -232,6 +233,42 @@ test("filters: resourceIds resolves an app, its folder and its project", async (
       ),
       false,
     );
+  });
+});
+
+test("filters: resourceIds reaches a database, which is not an app", async () => {
+  // `app_id` cannot hold a database id (its FK points at `apps`), so the feed
+  // matches `database_id` too - the whole reason the column exists.
+  await seedServer(db);
+  await seedApp(db, { id: "prj_1" });
+  await seedDatabase(db, { id: "db_1" });
+  await seedDatabase(db, { id: "db_2" });
+
+  await seedActivity(db, { id: "a_db1", teamId: TEAM_A, databaseId: "db_1" });
+  await seedActivity(db, { id: "a_db2", teamId: TEAM_A, databaseId: "db_2" });
+  await seedActivity(db, { id: "a_app", teamId: TEAM_A, appId: "prj_1" });
+
+  await asUser1(async () => {
+    assert.deepEqual(
+      (await listActivity(50, { resourceIds: ["db_1"] })).map((a) => a.id),
+      ["a_db1"],
+    );
+    // One filter, both kinds: the Resource facet mixes them in one list.
+    assert.deepEqual(
+      (await listActivity(50, { resourceIds: ["db_1", "prj_1"] })).map(
+        (a) => a.id,
+      ),
+      ["a_app", "a_db1"],
+    );
+  });
+});
+
+test("filters: another team's database id reaches none of this team's rows", async () => {
+  await seedServer(db);
+  await seedDatabase(db, { id: "db_b", teamId: TEAM_B });
+  await seedActivity(db, { id: "a_a", teamId: TEAM_A, databaseId: null });
+  await asUser1(async () => {
+    assert.deepEqual(await listActivity(50, { resourceIds: ["db_b"] }), []);
   });
 });
 

@@ -164,6 +164,7 @@ const SETTINGS_SUBS: {
   { seg: "storage", label: "Storage" },
   { seg: "resources", label: "Resources" },
   { seg: "access", label: "Access", requires: "manageBasicAuth" },
+  { seg: "activity", label: "Activity" },
   { seg: "advanced", label: "Advanced" },
 ];
 

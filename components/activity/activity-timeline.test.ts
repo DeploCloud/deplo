@@ -17,6 +17,7 @@ function row(over: Partial<ActivityItem> & { id: string }): ActivityItem {
     actorUser: null,
     createdAt: "2026-08-26T14:32:11.000Z",
     appId: "prj_api",
+    databaseId: null,
     cursor: `${over.createdAt ?? "2026-08-26T14:32:11.000Z"}|1`,
     ...over,
   };
@@ -69,7 +70,7 @@ test("foldRuns folds a consecutive run by one person into one entry", () => {
   ]);
 });
 
-test("foldRuns keeps a different person, message or app apart", () => {
+test("foldRuns keeps a different person, message, app or database apart", () => {
   const runs = foldRuns([
     row({ id: "a" }),
     row({ id: "b", actor: "Grace Hopper" }),
@@ -79,6 +80,31 @@ test("foldRuns keeps a different person, message or app apart", () => {
   assert.deepEqual(
     runs.map((r) => r.item.id),
     ["a", "b", "c", "d"],
+  );
+});
+
+test("foldRuns keeps two databases apart under one message", () => {
+  // "Restarted database x" is the same sentence for every database, so without
+  // the id two of them would collapse into one row that names only the first.
+  const dbRow = (id: string, databaseId: string) =>
+    row({
+      id,
+      type: "database",
+      message: "Restarted database db",
+      appId: null,
+      databaseId,
+    });
+  const runs = foldRuns([
+    dbRow("a", "db_1"),
+    dbRow("b", "db_2"),
+    dbRow("c", "db_2"),
+  ]);
+  assert.deepEqual(
+    runs.map((r) => [r.item.id, r.times.length]),
+    [
+      ["a", 1],
+      ["b", 2],
+    ],
   );
 });
 

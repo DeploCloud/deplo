@@ -281,6 +281,7 @@ export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
     // resolved from `actor_user_id` on the way out; there is no column to write.
     actorUser: undefined,
     appId: a.appId,
+    databaseId: a.databaseId,
     createdAt: a.createdAt,
   } satisfies Record<keyof Omit<Activity, "seq">, unknown> as ActivityInsert;
 }
@@ -302,6 +303,7 @@ export function assembleActivity(row: ActivityRow): Activity {
     // one shape stays honest: a list that has not looked the actor up says so.
     actorUser: null,
     appId: row.appId,
+    databaseId: row.databaseId,
     createdAt: row.createdAt,
   };
 }

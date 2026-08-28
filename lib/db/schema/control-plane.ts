@@ -2059,6 +2059,11 @@ export const activities = pgTable(
     appId: text("app_id").references(() => apps.id, {
       onDelete: "set null",
     }),
+    // A database is not an App, so it needs its own pointer - without it every
+    // database event is indistinguishable from a team-level one (migration 0134).
+    databaseId: text("database_id").references(() => databases.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -2070,6 +2075,7 @@ export const activities = pgTable(
     // app_id is ON DELETE SET NULL - index it so deleting an app doesn't scan the
     // whole activity history (migration 0042).
     index("activities_app_idx").on(t.appId),
+    index("activities_database_idx").on(t.databaseId),
     // "What has this person done?" - the per-user feed on an account's admin
     // page, which reads across every team and would otherwise seq-scan.
     index("activities_actor_created_idx").on(t.actorUserId, t.createdAt.desc()),

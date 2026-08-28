@@ -591,6 +591,8 @@ export async function setCronEnabled(
     actor,
     null,
     teamId,
+    null,
+    targetId,
   );
 }
 
@@ -660,6 +662,8 @@ export async function createCronJob(
     user?.name ?? "Deplo",
     targetKind === "app" ? targetId : null,
     teamId,
+    null,
+    targetKind === "database" ? targetId : null,
   );
   return (await oneJob(id))!;
 }
@@ -712,6 +716,8 @@ export async function updateCronJob(
     user?.name ?? "Deplo",
     job.appId,
     teamId,
+    null,
+    job.databaseId,
   );
   return (await oneJob(jobId))!;
 }
@@ -730,6 +736,8 @@ export async function deleteCronJob(jobId: string): Promise<void> {
     user?.name ?? "Deplo",
     job.appId,
     teamId,
+    null,
+    job.databaseId,
   );
 }
 
@@ -757,6 +765,8 @@ export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
     actor,
     job.appId,
     teamId,
+    null,
+    job.databaseId,
   );
   // Re-read: startAttempt may already have settled it (a stopped container is a
   // `skipped` run before this call returns), and the caller renders the outcome.
@@ -783,5 +793,7 @@ export async function cancelCronRun(runId: string): Promise<void> {
     actor,
     r.job.appId,
     teamId,
+    null,
+    r.job.databaseId,
   );
 }

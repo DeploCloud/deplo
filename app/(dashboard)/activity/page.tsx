@@ -6,6 +6,7 @@ import {
   listActivityActors,
 } from "@/lib/data/activity";
 import { listApps } from "@/lib/data/apps";
+import { listDatabases } from "@/lib/data/databases";
 import { listFolders } from "@/lib/data/folders";
 import { listProjects } from "@/lib/data/projects";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -14,19 +15,19 @@ import { ActivityFeed } from "@/components/activity/activity-feed";
 import {
   toActivityItem,
   type AppLinks,
+  type DatabaseLinks,
 } from "@/components/activity/activity-timeline";
 import {
+  ACTIVITY_PAGE_SIZE,
   activityHref,
   activityWindow,
   hasActivityFilters,
   parseActivityParams,
 } from "@/lib/activity-filter";
+import { reachesWholeTeam } from "@/lib/membership";
 import type { FacetOption } from "@/components/env/env-filters";
 
 export const metadata = { title: "Activity" };
-
-/** How many rows a page of the feed holds, first one included. */
-const PAGE_SIZE = 40;
 
 export default async function ActivityPage(props: PageProps<"/activity">) {
   const params = parseActivityParams(await props.searchParams);
@@ -37,29 +38,37 @@ export default async function ActivityPage(props: PageProps<"/activity">) {
     ...activityWindow(params),
   };
 
-  const [activities, months, actors, apps, folders, projects] =
+  // A database belongs to the team and to no project, so `listDatabases` refuses a
+  // role that only reaches part of it - and such a role reaches no database row in
+  // the feed either, so there is nothing to name.
+  const [activities, months, actors, apps, folders, projects, teamWide] =
     await Promise.all([
-      listActivity(PAGE_SIZE, filter),
+      listActivity(ACTIVITY_PAGE_SIZE, filter),
       activityMonths(filter),
       listActivityActors(),
       listApps(),
       listFolders(),
       listProjects(),
+      reachesWholeTeam(),
     ]);
+  const databases = teamWide ? await listDatabases() : [];
 
   const filtered = hasActivityFilters(params);
+  const filters = (
+    <ActivityFilters
+      params={params}
+      actors={actorOptions(actors)}
+      apps={apps}
+      folders={folders}
+      projects={projects}
+      databases={databases}
+    />
+  );
+
   if (activities.length === 0)
     return (
       <>
-        {filtered && (
-          <ActivityFilters
-            params={params}
-            actors={actorOptions(actors)}
-            apps={apps}
-            folders={folders}
-            projects={projects}
-          />
-        )}
+        {filtered && filters}
         <EmptyState
           icon={ActivityIcon}
           docs="team.activity"
@@ -77,19 +86,14 @@ export default async function ActivityPage(props: PageProps<"/activity">) {
 
   return (
     <>
-      <ActivityFilters
-        params={params}
-        actors={actorOptions(actors)}
-        apps={apps}
-        folders={folders}
-        projects={projects}
-      />
+      {filters}
       <ActivityFeed
         // A filter change is a fresh first page, not more of the old one.
         key={activityHref(params)}
         initialItems={activities.map(toActivityItem)}
         monthCounts={Object.fromEntries(months.map((m) => [m.month, m.count]))}
         appLinks={appLinks(apps)}
+        databaseLinks={databaseLinks(databases)}
         variables={{
           actorUserIds: nonEmpty(params.actorUserIds),
           types: nonEmpty(params.types),
@@ -97,7 +101,7 @@ export default async function ActivityPage(props: PageProps<"/activity">) {
           from: filter.from ?? null,
           to: filter.to ?? null,
         }}
-        pageSize={PAGE_SIZE}
+        pageSize={ACTIVITY_PAGE_SIZE}
       />
     </>
   );
@@ -120,9 +124,18 @@ function actorOptions(
 /** Only what `listApps` returned: an app the caller cannot list stays plain text
  *  in the sentence rather than becoming a link into a 404. */
 function appLinks(
-  apps: { id: string; name: string; slug: string }[],
+  apps: { id: string; name: string; slug: string; logo: string | null }[],
 ): AppLinks {
   return Object.fromEntries(
-    apps.map((a) => [a.id, { name: a.name, slug: a.slug }]),
+    apps.map((a) => [a.id, { name: a.name, slug: a.slug, logo: a.logo }]),
+  );
+}
+
+/** The database twin of {@link appLinks}. */
+function databaseLinks(
+  databases: Awaited<ReturnType<typeof listDatabases>>,
+): DatabaseLinks {
+  return Object.fromEntries(
+    databases.map((d) => [d.id, { name: d.name, logo: d.logo, type: d.type }]),
   );
 }

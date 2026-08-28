@@ -1,5 +1,8 @@
 import type { ActivityType } from "./types";
 
+/** How many rows a page of the feed holds, first one included. */
+export const ACTIVITY_PAGE_SIZE = 40;
+
 /** How long "the last N days" is, per preset. Absent from the URL = all time. */
 export const ACTIVITY_RANGES: { value: string; label: string; days: number }[] =
   [
@@ -72,8 +75,9 @@ export function parseActivityParams(
   };
 }
 
-/** The href for a set of filters. Defaults are omitted, so "no filters" is `/activity`. */
-export function activityHref(p: ActivityParams): string {
+/** The href for a set of filters, on the team-wide page or on a resource's own
+ *  Activity tab. Defaults are omitted, so "no filters" is `base` itself. */
+export function activityHref(p: ActivityParams, base = "/activity"): string {
   const q = new URLSearchParams();
   if (p.actorUserIds.length) q.set("actor", p.actorUserIds.join(","));
   if (p.types.length) q.set("event", p.types.join(","));
@@ -84,7 +88,7 @@ export function activityHref(p: ActivityParams): string {
     if (p.to) q.set("to", p.to);
   }
   const s = q.toString();
-  return s ? `/activity?${s}` : "/activity";
+  return s ? `${base}?${s}` : base;
 }
 
 /**

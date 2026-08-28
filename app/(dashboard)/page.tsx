@@ -5,10 +5,12 @@ import { listFolders } from "@/lib/data/folders";
 import { listProjects } from "@/lib/data/projects";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
 import { listActivity } from "@/lib/data/activity";
+import { listDatabases } from "@/lib/data/databases";
 import {
   isInstanceAdmin,
   hasCapability,
   hasCapabilityAnywhere,
+  reachesWholeTeam,
 } from "@/lib/membership";
 import {
   folderCapabilities,
@@ -58,6 +60,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     folders,
     projects,
     activity,
+    teamWideReach,
     isAdmin,
     canManageTeam,
     canDeploy,
@@ -70,6 +73,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
     listFolders(),
     listProjects(),
     listActivity(6),
+    // `listDatabases` is team-wide and refuses a partial-reach role; such a role
+    // sees no database row in the trail either.
+    reachesWholeTeam(),
     isInstanceAdmin(),
     hasCapability("manage_team"),
     hasCapability("create_apps"),
@@ -86,6 +92,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     // question.
     hasCapabilityAnywhere("move_apps"),
   ]);
+  const activityDatabases = teamWideReach ? await listDatabases() : [];
   const canManageOrder = isAdmin || canManageTeam;
   // Shown instead of a create button wherever the viewer can't create apps, so
   // an empty Overview says what is missing instead of looking broken.
@@ -261,7 +268,16 @@ export default async function OverviewPage(props: PageProps<"/">) {
               variant="compact"
               items={activity.map(toActivityItem)}
               appLinks={Object.fromEntries(
-                services.map((s) => [s.id, { name: s.name, slug: s.slug }]),
+                services.map((s) => [
+                  s.id,
+                  { name: s.name, slug: s.slug, logo: s.logo },
+                ]),
+              )}
+              databaseLinks={Object.fromEntries(
+                activityDatabases.map((d) => [
+                  d.id,
+                  { name: d.name, logo: d.logo, type: d.type },
+                ]),
               )}
             />
             <Button variant="outline" size="sm" className="w-full" asChild>

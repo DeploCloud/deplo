@@ -159,7 +159,11 @@ export async function acceptDataCopyLoss(
     "database",
     `Started ${row.name} without the data a migration could not copy`,
     user.name,
-    target.id,
+    // A database id in the `app_id` slot violates that column's FK, so the row
+    // was never written at all - it only bumped the dropped-entries counter.
+    null,
     teamId,
+    null,
+    target.id,
   );
 }
