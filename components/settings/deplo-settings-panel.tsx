@@ -9,6 +9,7 @@ import {
   CircleFadingArrowUp,
   Globe,
   LifeBuoy,
+  Loader2,
   Pencil,
   Server as ServerIcon,
   ShieldCheck,
@@ -328,7 +329,8 @@ function PanelDnsBlock({
 }) {
   if (!dns)
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
         Checking where this address points
       </p>
     );
