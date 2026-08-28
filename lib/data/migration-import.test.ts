@@ -16,6 +16,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
 import { markDataCopyFailed } from "./data-copy";
+import { recopySourceFor } from "./migration-data";
 import { startMigrationRun } from "./migration-runner";
 import {
   appMounts as appMountsTable,
@@ -256,8 +257,8 @@ const APPLICATIONS: Record<string, unknown> = {
       // Names Dokploy's throwaway host - an address that stops existing the
       // moment the app moves.
       "OLD_ADDRESS=https://blink-web-abc.traefik.me/health\n" +
-      // The same address again, arriving write-only: `URL` reads as a credential.
-      "OLD_ADDRESS_URL=https://blink-web-abc.traefik.me/hook\n" +
+      // The same address again, arriving write-only: it carries a credential.
+      "OLD_ADDRESS_URL=https://hooker:pw@blink-web-abc.traefik.me/hook\n" +
       // A value the panel would not hand over. It arrives empty, and its own
       // note says so - the secrets line must not count it as one that landed.
       "LEGACY_TOKEN=\n",
@@ -651,7 +652,10 @@ test("a variable that names the old address is moved to the new one", async () =
   // write, so the frozen-secret rule has nothing to protect here.
   const secret = vars.find((v) => v.key === "OLD_ADDRESS_URL")!;
   assert.equal(secret.type, "secret");
-  assert.equal(decryptSecret(secret.valueEnc), `https://${rehosted.name}/hook`);
+  assert.equal(
+    decryptSecret(secret.valueEnc),
+    `https://hooker:pw@${rehosted.name}/hook`,
+  );
   const run = await asOwner(() => getMigrationRun(runId));
   const said = run!.items
     .filter((i) => i.sourceId === "dok-app-web")
@@ -840,6 +844,33 @@ test("a project lands complete: project, environment, apps, variables", async ()
   const dbRow = report!.items.find((i) => i.sourceKind === "postgres")!;
   assert.equal(dbRow.outcome, "failed");
   assert.match(dbRow.message!, /not provisioned yet/);
+});
+
+// "Copy the data again" needs to know WHERE from. The run's key is wiped when it
+// ends, so the report is the only record of the service an app came from.
+test("a blocked app can say where its data still is", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  // While the run is open the app is the migration's to write, so this is asked
+  // exactly where it is asked for real: afterwards.
+  await asOwner(() => finishMigration(runId));
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+
+  const from = await asOwner(() => recopySourceFor("app", web.id));
+  assert.equal(from?.runId, runId);
+  assert.equal(from?.sourceId, "dok-app-web");
+  assert.equal(from?.sourceKind, "application");
+  assert.equal(from?.sourceUrl, URL_BASE);
+  assert.equal(from?.platform, "dokploy");
+
+  // An app nobody migrated has nothing to offer.
+  await seedApp(db, { id: "prj_handmade", teamId: TEAM_A, slug: "handmade" });
+  assert.equal(
+    await asOwner(() => recopySourceFor("app", "prj_handmade")),
+    null,
+  );
 });
 
 // The recovery path: a copy failed, the run ended, and the owner copies the data

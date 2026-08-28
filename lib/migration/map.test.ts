@@ -38,6 +38,8 @@ import {
   deploFilesPath,
   deploEngineFor,
   withPanel,
+  composeHostMounts,
+  declaredSourceBindMounts,
   swarmHealthCheck,
   unsupportedNotes,
 } from "./map";
@@ -2022,9 +2024,6 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
     "AWS_SECRET_ACCESS_KEY",
     // The credential-bearing half the ID veto used to hand out at the `view` floor.
     "AWS_ACCESS_KEY_ID",
-    "DATABASE_URL",
-    "SENTRY_DSN",
-    "REDIS_CONNECTION_STRING",
     "STRIPE_WEBHOOK_SIGNING_SECRET",
     // The abbreviations people actually type.
     "STRIPE_SK",
@@ -2041,6 +2040,11 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
     "PUBLIC_KEY",
     "CLIENT_ID",
     "STRIPE_PK",
+    // An ADDRESS is judged by what it holds, not by its name - see the test
+    // below. `DB_CONNECTION=pgsql` is a driver, and it was landing write-only.
+    "DATABASE_URL",
+    "SENTRY_DSN",
+    "REDIS_CONNECTION_STRING",
   ])
     assert.ok(!looksLikeSecretKey(key), `${key} should stay plain`);
 });
@@ -2048,6 +2052,45 @@ test("looksLikeSecretKey reads the NAME, and knows the public half", () => {
 // The same app from the two panels used to land with a health check from one and
 // none from the other: Dokploy keeps it in Swarm's shape, which has a column here
 // for every field.
+// A bind written INSIDE the compose is neither a mount row over there nor an
+// `app_volumes` row here, so `- /etc/b2host:/hostcfg:ro` arrived in the YAML byte
+// for byte and the directory it names arrived empty, with no report line.
+test("a host bind written in the compose is seen on both sides", () => {
+  const compose = [
+    "services:",
+    "  web:",
+    "    image: nginx",
+    "    volumes:",
+    "      - /etc/b2host:/hostcfg:ro",
+    "      - ./local:/app/local",
+    "      - data:/var/lib/data",
+    "      - type: bind",
+    "        source: /srv/certs",
+    "        target: /certs",
+    "volumes:",
+    "  data:",
+  ].join("\n");
+
+  assert.deepEqual(composeHostMounts(compose), [
+    { hostPath: "/etc/b2host", mountPath: "/hostcfg" },
+    { hostPath: "/srv/certs", mountPath: "/certs" },
+  ]);
+
+  // And a stopped stack, whose mounts come from what the panel declares, gets
+  // them too - there is no container to inspect.
+  assert.deepEqual(
+    declaredSourceBindMounts(
+      [{ type: "bind", hostPath: "/opt/data", mountPath: "/data" }],
+      compose,
+    ),
+    [
+      { hostPath: "/etc/b2host", mountPath: "/hostcfg" },
+      { hostPath: "/srv/certs", mountPath: "/certs" },
+      { hostPath: "/opt/data", mountPath: "/data" },
+    ],
+  );
+});
+
 test("a Swarm health check becomes deplo's own", () => {
   const hc = swarmHealthCheck({
     Test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
@@ -2100,6 +2143,44 @@ test("migratedEnvType also reads a value that IS a credential", () => {
   );
   assert.equal(migratedEnvType("MY_STORE", "https://example.com/x"), "plain");
   assert.equal(migratedEnvType("PORT", "3000"), "plain");
+});
+
+// A URL is a secret when it CARRIES one. On the name alone, a driver name and
+// every public service address landed write-only - and a secret has no way back.
+test("an address is judged by what it holds", () => {
+  for (const [key, value] of [
+    ["DATABASE_URL", "postgres://u:pw@db:5432/app"],
+    ["SENTRY_DSN", "https://abc123@o1.ingest.sentry.io/1"],
+    // A chat webhook: the whole credential is the last path segment. Written
+    // against a made-up host, because the real shape trips a secret scanner.
+    [
+      "CHAT_WEBHOOK_URL",
+      "https://hooks.example.test/services/T00000000/B00000000/aQbWcEdRfTgYhUjIkOlP1234",
+    ],
+    ["CALLBACK_URL", "https://acme.test/cb?token=s3cret-value-that-is-long"],
+    ["REDIS_URL", "redis://:hunter2@cache:6379"],
+  ] as const)
+    assert.equal(migratedEnvType(key, value), "secret", `${key} carries one`);
+
+  for (const [key, value] of [
+    ["DB_CONNECTION", "pgsql"],
+    ["SERVICE_URL_KUMA", "http://uptimekuma-c0ojo906osgws4wgokkkskkw:3001"],
+    ["MONGO_URL", "mongodb://mongo:27017/app"],
+    ["N8N_WEBHOOK_URL", "https://n8n.acme.test/webhook/"],
+    ["ASSET_URL", "https://cdn.acme.test/assets/main.9f8a7b6c5d4e3f21.js"],
+    ["CALLBACK_URL", "/auth/callback"],
+  ] as const)
+    assert.equal(
+      migratedEnvType(key, value),
+      "plain",
+      `${key} holds no secret`,
+    );
+
+  // The name still decides where it says the thing outright.
+  assert.equal(
+    migratedEnvType("WEBHOOK_SECRET", "https://acme.test"),
+    "secret",
+  );
 });
 
 test("adaptComposeForDeplo takes the slash off a volume NAME", () => {

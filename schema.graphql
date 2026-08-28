@@ -2399,6 +2399,18 @@ type MigrationProjectResult {
 }
 
 """
+The panel service a blocked app or database was imported from. Its key is NOT here: a run wipes the token the moment it ends, so copying the data again asks for it once more.
+"""
+type MigrationRecopySource {
+  platform: String
+  runId: String
+  sourceId: String
+  sourceKind: String
+  sourceName: String
+  sourceUrl: String
+}
+
+"""
 What a revert took back out of Deplo, and what is still here because it could not be removed.
 """
 type MigrationRevertResult {
@@ -2939,6 +2951,11 @@ type Mutation {
 
   """Clear the session + active-team cookies."""
   logout: Boolean
+
+  """
+  Turn a secret variable back into a plain one, with the value given here. The old value is never handed back - that is what write-only means - so this REPLACES it; without this a variable typed as a secret by mistake could only be deleted and remade.
+  """
+  makeEnvPlain(id: String!, key: String!, value: String!): EnvVar
 
   """
   Mint a single-use registration link. Returns the absolute /register URL.
@@ -3908,6 +3925,11 @@ type Query {
   One job's run history, newest first. Gated on manage_crons and not on view: stdout can carry whatever the command printed.
   """
   cronRuns(jobId: ID!, limit: Int): [CronRun!]
+
+  """
+  Where a workload whose data did not come across was imported from, so the copy can be run again from its own page. Null when nothing here came from a migration.
+  """
+  dataRecopySource(id: String!, kind: String!): MigrationRecopySource
   database(id: String!): Database
 
   """Attachable container + default target for a database's console."""

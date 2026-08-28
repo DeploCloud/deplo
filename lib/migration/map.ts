@@ -85,17 +85,8 @@ const SECRET_WORDS = new Set([
   "PASSPHRASE",
   "SALT",
   "PRIVATE",
-  // An address is a credential when it is the one that CARRIES the credential:
-  // a connection string, a DSN, a signed webhook endpoint. `NEXT_PUBLIC_*` and
-  // friends still come out plain on the veto below.
-  "URL",
-  "URI",
-  "DSN",
-  "CONNECTION",
-  "CONNECTIONSTRING",
   "SIGNING",
   "SIGNATURE",
-  "WEBHOOK",
   "HMAC",
   "SEED",
   // The abbreviations, which are how half of them are actually spelled: a Stripe
@@ -108,6 +99,43 @@ const SECRET_WORDS = new Set([
 
 /** Words that say the value is the PUBLIC half, whatever else the name says. */
 const PUBLIC_WORDS = new Set(["PUBLIC", "PUB", "PUBLISHABLE"]);
+
+/**
+ * Words that name an ADDRESS. One is a credential only when the address it holds
+ * carries one - on the name alone, `DB_CONNECTION=pgsql` (a driver) and every
+ * `SERVICE_URL_*` (a public address) landed write-only with no way back.
+ */
+const ADDRESS_WORDS = new Set([
+  "URL",
+  "URI",
+  "DSN",
+  "CONNECTION",
+  "CONNECTIONSTRING",
+  "WEBHOOK",
+]);
+
+/** 16+ characters of one opaque run: the shape a token has in a path or a query. */
+const OPAQUE_TOKEN = /^[A-Za-z0-9_-]{16,}$/;
+
+/**
+ * Whether a URL carries its own credential: any userinfo (`k@`, `u:p@`), a query
+ * parameter that names one, or a path segment long and opaque enough to be a
+ * token - a Slack webhook is nothing but that segment.
+ */
+export function urlCarriesCredential(value: string): boolean {
+  const v = value.trim();
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) return false;
+  if (/^[a-z][a-z0-9+.-]*:\/\/[^/\s@]+@/i.test(v)) return true;
+  let url: URL;
+  try {
+    url = new URL(v);
+  } catch {
+    return false;
+  }
+  for (const [name, val] of url.searchParams)
+    if (looksLikeSecretKey(name) || OPAQUE_TOKEN.test(val)) return true;
+  return url.pathname.split("/").some((seg) => OPAQUE_TOKEN.test(seg));
+}
 
 /**
  * A value that carries a credential whatever its name says: a URL with a
@@ -133,7 +161,18 @@ export function migratedEnvType(
   value?: string,
 ): "plain" | "secret" {
   if (looksLikeSecretKey(key)) return "secret";
-  return value && CREDENTIAL_VALUE.test(value.trim()) ? "secret" : "plain";
+  const v = value?.trim() ?? "";
+  if (v && CREDENTIAL_VALUE.test(v)) return "secret";
+  // An address is judged by what it holds, not by being called one.
+  return namesAnAddress(key) && urlCarriesCredential(v) ? "secret" : "plain";
+}
+
+/** Whether the NAME says this variable holds an address. */
+function namesAnAddress(key: string): boolean {
+  return key
+    .toUpperCase()
+    .split(/[_\-.]/)
+    .some((p) => ADDRESS_WORDS.has(p));
 }
 
 /**
@@ -1563,9 +1602,15 @@ export function declaredSourceBindMounts(
         mountPath?: string | null;
       }[]
     | null,
+  /** A stack binds host directories in its own YAML, where no mount row exists. */
+  composeFile?: string | null,
 ): HostMount[] {
   const out: HostMount[] = [];
   const seen = new Set<string>();
+  for (const m of composeHostMounts(composeFile ?? "")) {
+    seen.add(m.mountPath);
+    out.push(m);
+  }
   for (const m of mounts ?? []) {
     if (m?.type !== "bind") continue;
     const hostPath = m.hostPath?.trim();
@@ -1581,11 +1626,58 @@ export function declaredSourceBindMounts(
 }
 
 /**
+ * The host directories a compose file binds ITSELF. Neither side saw one: not the
+ * panel's mount rows, not deplo's `app_volumes` - so `- /etc/app:/cfg` arrived in
+ * the YAML byte for byte and the directory it names arrived empty.
+ *
+ * Absolute paths only: a relative one lives in the stack's own directory, which
+ * the compose import already brings across.
+ */
+export function composeHostMounts(compose: string): HostMount[] {
+  let doc: { services?: Record<string, { volumes?: unknown }> } | null;
+  try {
+    doc = yaml.load(compose) as typeof doc;
+  } catch {
+    return [];
+  }
+  const out: HostMount[] = [];
+  const seen = new Set<string>();
+  for (const svc of Object.values(doc?.services ?? {})) {
+    if (!Array.isArray(svc?.volumes)) continue;
+    for (const raw of svc.volumes) {
+      let src: string | undefined;
+      let dest: string | undefined;
+      if (typeof raw === "string") {
+        const parts = raw.split(":");
+        src = parts[0]?.trim();
+        dest = parts[1]?.trim();
+      } else if (raw && typeof raw === "object") {
+        const m = raw as { type?: string; source?: string; target?: string };
+        if (m.type && m.type !== "bind") continue;
+        src = m.source?.trim();
+        dest = m.target?.trim();
+      }
+      if (!src?.startsWith("/") || !dest?.startsWith("/")) continue;
+      const mountPath = normalizePath(dest);
+      if (seen.has(mountPath)) continue;
+      seen.add(mountPath);
+      out.push({ hostPath: normalizePath(src), mountPath });
+    }
+  }
+  return out;
+}
+
+/**
  * Host paths that hold no DATA: a socket the runtime owns (`/var/run/docker.sock`
  * above all) and the kernel's pseudo-filesystems. The agent refuses to read one as
  * a directory, and the refusal used to reach the report as a lost volume.
  */
 const NOT_DATA_HOST_PATH = /^\/(proc|sys|dev)(\/|$)|\.sock$/;
+
+/** Whether a host path is one a copy has any business reading. */
+export function isDataHostPath(hostPath: string): boolean {
+  return !NOT_DATA_HOST_PATH.test(hostPath);
+}
 
 /**
  * Match every source bind mount to the deplo host mount that should receive it.

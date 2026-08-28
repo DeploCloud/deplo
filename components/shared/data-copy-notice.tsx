@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
+import { RecopyDataDialog } from "@/components/shared/recopy-data-dialog";
 
 const ACCEPT_APP = /* GraphQL */ `
   mutation DeployWithoutMigratedData($id: String!) {
@@ -46,6 +46,7 @@ export function DataCopyNotice({
   canAccept: boolean;
 }) {
   const router = useRouter();
+  const [recopyOpen, setRecopyOpen] = React.useState(false);
   if (!error) return null;
 
   const verb = kind === "app" ? "Deploy" : "Start";
@@ -71,8 +72,8 @@ export function DataCopyNotice({
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        <Button asChild size="sm" variant="outline">
-          <Link href="/settings/migrations">Copy the data again</Link>
+        <Button size="sm" variant="outline" onClick={() => setRecopyOpen(true)}>
+          Copy the data again
         </Button>
         {canAccept && (
           <ConfirmAction
@@ -100,6 +101,13 @@ export function DataCopyNotice({
           />
         )}
       </div>
+      <RecopyDataDialog
+        open={recopyOpen}
+        onOpenChange={setRecopyOpen}
+        kind={kind}
+        id={id}
+        name={name}
+      />
     </div>
   );
 }

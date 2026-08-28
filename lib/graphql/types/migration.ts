@@ -4,8 +4,10 @@ import { pubSub, MIGRATION_ACTIVITY_TOPIC } from "../pubsub";
 import {
   moveMigrationServiceData,
   planMigrationDataMove,
+  recopySourceFor,
   type DataMoveResult,
   type DataMoveService,
+  type RecopySource,
   type DataMoveVolume,
 } from "@/lib/data/migration-data";
 import {
@@ -355,6 +357,21 @@ const DataMoveVolumeRef = builder
     }),
   });
 
+const RecopySourceRef = builder
+  .objectRef<RecopySource>("MigrationRecopySource")
+  .implement({
+    description:
+      "The panel service a blocked app or database was imported from. Its key is NOT here: a run wipes the token the moment it ends, so copying the data again asks for it once more.",
+    fields: (t) => ({
+      runId: t.exposeString("runId"),
+      sourceUrl: t.exposeString("sourceUrl"),
+      platform: t.exposeString("platform"),
+      sourceKind: t.exposeString("sourceKind"),
+      sourceId: t.exposeString("sourceId"),
+      sourceName: t.exposeString("sourceName"),
+    }),
+  });
+
 const DataMoveServiceRef = builder
   .objectRef<DataMoveService>("MigrationDataService")
   .implement({
@@ -500,6 +517,19 @@ const ConnectInputRef = builder.inputType("MigrationSourceInput", {
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
+  dataRecopySource: t.field({
+    type: RecopySourceRef,
+    nullable: true,
+    authScopes: { capability: "restore_backups" },
+    description:
+      "Where a workload whose data did not come across was imported from, so the copy can be run again from its own page. Null when nothing here came from a migration.",
+    args: {
+      kind: t.arg.string({ required: true }),
+      id: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { kind, id }) =>
+      recopySourceFor(kind === "database" ? "database" : "app", id),
+  }),
   migrationRuns: t.field({
     type: [ImportRunRef],
     authScopes: { capability: "create_projects" },

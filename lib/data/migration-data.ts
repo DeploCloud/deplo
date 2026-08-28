@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -8,6 +8,7 @@ import {
   apps as appsTable,
   databases as databasesTable,
   migrationRunItems as itemsTable,
+  migrationRuns as runsTable,
 } from "../db/schema/control-plane";
 import { formatBytes, mapLimit } from "../utils";
 import { nowIso } from "../ids";
@@ -16,6 +17,7 @@ import {
   canMountHostVolumes,
   isInstanceAdmin,
   reachesWholeTeam,
+  requireActiveTeamId,
   requireCapability,
 } from "../membership";
 import { connectAgent } from "../infra/agent-client";
@@ -29,7 +31,9 @@ import type { SourceCredential } from "../migration/source";
 import { SOURCE_DB_KINDS } from "../migration/model";
 import type { SourceDatabase } from "../migration/model";
 import {
+  composeHostMounts,
   composeVolumeMounts,
+  isDataHostPath,
   declaredSourceBindMounts,
   declaredSourceVolumes,
   deploDatabaseVolumeName,
@@ -237,7 +241,12 @@ async function sourceServices(c: SourceCredential): Promise<SourceService[]> {
                 null)
               : null,
         }),
-        declaredBindMounts: declaredSourceBindMounts(detail.mounts),
+        declaredBindMounts: declaredSourceBindMounts(
+          detail.mounts,
+          "composeFile" in detail
+            ? ((detail as { composeFile?: string | null }).composeFile ?? null)
+            : null,
+        ),
       };
     },
   );
@@ -389,9 +398,14 @@ async function landedFor(
         alias: v.name,
       })),
     ],
-    hostMounts: managed
-      .filter((v) => v.type === "host" && (v.hostPath ?? "").trim())
-      .map((v) => ({ hostPath: v.hostPath!.trim(), mountPath: v.mountPath })),
+    hostMounts: [
+      ...managed
+        .filter((v) => v.type === "host" && (v.hostPath ?? "").trim())
+        .map((v) => ({ hostPath: v.hostPath!.trim(), mountPath: v.mountPath })),
+      // The stack's own YAML binds host directories too, and it is the same file
+      // that came across - so the path this app reads is the path over there.
+      ...composeHostMounts(hit.compose ?? ""),
+    ],
   };
 }
 
@@ -556,6 +570,68 @@ async function recordStoppedForCopy(
     );
 }
 
+/** Where a blocked workload's data still is, so it can be fetched again. */
+export interface RecopySource {
+  runId: string;
+  /** The panel's address, as the run recorded it. Its key is NOT kept. */
+  sourceUrl: string;
+  platform: string;
+  sourceKind: string;
+  sourceId: string;
+  sourceName: string;
+}
+
+/**
+ * The service this app or database was imported from.
+ *
+ * The report is the record: the run's key is wiped the moment it ends, so
+ * copying the data again asks for it once more - and everything else it needs is
+ * here rather than typed by whoever is trying to recover.
+ */
+export async function recopySourceFor(
+  kind: "app" | "database",
+  id: string,
+): Promise<RecopySource | null> {
+  if (kind === "app") await requireAppCapability(id, "restore_backups");
+  else {
+    if (!(await reachesWholeTeam())) throw new Error("Not found");
+    await requireCapability("restore_backups");
+  }
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .select({
+      runId: itemsTable.runId,
+      sourceKind: itemsTable.sourceKind,
+      sourceId: itemsTable.sourceId,
+      sourceName: itemsTable.sourceName,
+      sourceUrl: runsTable.sourceUrl,
+      platform: runsTable.platform,
+    })
+    .from(itemsTable)
+    .innerJoin(runsTable, eq(runsTable.id, itemsTable.runId))
+    .where(
+      and(
+        eq(runsTable.teamId, teamId),
+        eq(itemsTable.targetKind, kind),
+        eq(itemsTable.targetId, id),
+        isNotNull(itemsTable.sourceId),
+        ne(itemsTable.sourceKind, "volume"),
+      ),
+    )
+    .orderBy(desc(itemsTable.seq))
+    .limit(1);
+  const hit = rows[0];
+  if (!hit?.sourceId) return null;
+  return {
+    runId: hit.runId,
+    sourceUrl: hit.sourceUrl,
+    platform: hit.platform,
+    sourceKind: hit.sourceKind,
+    sourceId: hit.sourceId,
+    sourceName: hit.sourceName,
+  };
+}
+
 /**
  * Cut one service's data over: stop it on the source panel, then copy every
  * paired volume into the app or database that was imported from it.
@@ -632,6 +708,16 @@ async function runMoveMigrationServiceData(
   // A bind mount's bytes sit in a plain host directory, so copying one reads and
   // writes an arbitrary path on two machines.
   const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
+  // One nothing here mounts. Silent, this read as a stack that came across whole,
+  // with an empty directory inside it.
+  for (const m of state.hostMounts)
+    if (
+      isDataHostPath(m.hostPath) &&
+      !binds.some((b) => b.sourcePath === m.hostPath)
+    )
+      notes.push(
+        `${m.hostPath} is mounted at ${m.mountPath} on {panel}, but nothing of ${landed.targetName} mounts that path here - what is in it was not copied.`,
+      );
   const mayCopyHostPaths =
     binds.length === 0 ||
     ((await isInstanceAdmin()) && (await canMountHostVolumes()));

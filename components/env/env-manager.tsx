@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Share2, SearchX, Unlink } from "lucide-react";
+import { LockOpen, Plus, Trash2, Share2, SearchX, Unlink } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -28,6 +28,7 @@ import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EnvGraphic } from "@/components/env/env-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
+import { MakePlainDialog } from "@/components/env/make-plain-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
 import { EnvEditButton } from "@/components/env/env-edit-button";
@@ -78,6 +79,11 @@ export function EnvManager({
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  // The way back from a secret typed by mistake, which nothing else offers.
+  const [makePlain, setMakePlain] = React.useState<{
+    id: string;
+    key: string;
+  } | null>(null);
   const router = useRouter();
 
   // Shared vars this app has OPTED INTO (linked - the only way a shared var injects,
@@ -231,6 +237,21 @@ export function EnvManager({
                             setAddOpen(true);
                           }}
                         />
+                        {row.type === "secret" && (
+                          <SimpleTooltip content="Make it plain">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground"
+                              onClick={() =>
+                                setMakePlain({ id: row.id, key: row.key })
+                              }
+                              aria-label="Make it plain"
+                            >
+                              <LockOpen className="size-4" />
+                            </Button>
+                          </SimpleTooltip>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -288,6 +309,13 @@ export function EnvManager({
         </div>
       )}
 
+      <MakePlainDialog
+        key={makePlain?.id ?? "none"}
+        open={makePlain !== null}
+        onOpenChange={(o) => !o && setMakePlain(null)}
+        id={makePlain?.id ?? ""}
+        varKey={makePlain?.key ?? ""}
+      />
       <EnvVarDialog
         key={editing?.id ?? "new"}
         open={addOpen}

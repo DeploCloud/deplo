@@ -8,6 +8,7 @@ import {
   importEnv,
   setAppEnv,
   deleteEnv,
+  makeEnvPlain,
   type AppEnvGroup,
 } from "@/lib/data/env";
 import type { EnvVarDTO, VarAuthor } from "@/lib/types";
@@ -201,6 +202,21 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id, newKey }) => {
       const appId = await renameEnv(id, newKey);
       return reloadEnv(appId, newKey);
+    },
+  }),
+  makeEnvPlain: t.field({
+    type: EnvVarRef,
+    authScopes: { capability: "manage_env" },
+    description:
+      "Turn a secret variable back into a plain one, with the value given here. The old value is never handed back - that is what write-only means - so this REPLACES it; without this a variable typed as a secret by mistake could only be deleted and remade.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.string({ required: true }),
+      key: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { id, value, key }) => {
+      const appId = await makeEnvPlain(id, value);
+      return reloadEnv(appId, key);
     },
   }),
   deleteEnv: t.field({
