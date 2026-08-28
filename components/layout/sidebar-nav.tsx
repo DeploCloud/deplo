@@ -224,15 +224,15 @@ export function SidebarNav({
           key={i}
           className={cn(
             "flex flex-col gap-0.5",
-            // The gap the header or the rule used to carry, for the one group
-            // that gets neither: the sub-menus' break under "Back to …".
-            i > 0 && !section.title && !collapsed && "pt-3",
+            // No break under the back row: it belongs to the menu below it, so
+            // it keeps the group's own row gap and nothing more.
+            i > 0 && !section.title && !collapsed && "pt-0.5",
           )}
         >
           {/* A titled group shows its label as a header. Collapsed there is no
               room for one, so a rule stands in; expanded, the only untitled
-              break is under the back button, where a line fenced it off from
-              the menu it belongs to. */}
+              break is under the back button, which reads as part of the menu
+              below it and gets neither. */}
           {section.title && !collapsed ? (
             <div
               className={cn(
