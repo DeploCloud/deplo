@@ -732,7 +732,7 @@ export async function createToken(
   });
 
   await recordActivity(
-    "member",
+    "security",
     `Created the ${name} API token`,
     await actorUsername(),
     null,
@@ -899,7 +899,7 @@ export async function updateToken(
   });
 
   await recordActivity(
-    "member",
+    "security",
     `Updated the ${name} API token`,
     await actorUsername(),
     null,
@@ -1114,12 +1114,15 @@ export async function revokeToken(id: string): Promise<void> {
     ...reached.map((t) => t.id),
   ]);
   const actor = await actorUsername();
-  const what = gone[0].oauthClientId
+  const mcp = gone[0].oauthClientId != null;
+  const what = mcp
     ? `Revoked ${gone[0].name}'s MCP access`
     : `Revoked the ${gone[0].name} API token`;
   for (const trailTeamId of trailTeamIds)
+    // The type follows the message: `mcp-clients.ts` files the connect under
+    // `mcp`, and filing the revoke elsewhere would split one story in two.
     await recordActivity(
-      "member",
+      mcp ? "mcp" : "security",
       what,
       actor,
       null,

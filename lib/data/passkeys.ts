@@ -221,5 +221,5 @@ async function announce(
     .from(memberships)
     .where(eq(memberships.userId, userId));
   for (const { teamId } of rows)
-    await recordActivity("member", message, actor, null, teamId);
+    await recordActivity("security", message, actor, null, teamId);
 }

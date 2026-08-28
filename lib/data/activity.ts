@@ -1,6 +1,17 @@
 import "server-only";
 
-import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -20,11 +31,39 @@ import {
 import { appScopeWhere } from "./app-graph-load";
 import { narrowedScope } from "../auth/request-context";
 import { dispatchAlert } from "../notify/dispatch";
-import type { Activity, ActivityType, AlertKey } from "../types";
+import type { Activity, ActivityType, AlertKey, VarAuthor } from "../types";
+
+/**
+ * Picks the rows with no human behind them (`actor_user_id IS NULL`). User ids are
+ * `usr_`-prefixed, so this cannot collide with one.
+ */
+export const ACTOR_SYSTEM = "system";
+
+/**
+ * What the Activity page narrows the feed by. Every field is AND-ed with the
+ * others and OR-ed within itself, and none of them ever WIDENS what the caller
+ * reaches - the scope predicate below is applied on top regardless.
+ */
+export interface ActivityFilter {
+  /** User ids, plus {@link ACTOR_SYSTEM} for the non-human actors. */
+  actorUserIds?: string[];
+  types?: ActivityType[];
+  /** ISO, inclusive. */
+  from?: string;
+  /** ISO, exclusive. */
+  to?: string;
+  /** App, folder and project ids mixed - resolved to the apps they cover. */
+  resourceIds?: string[];
+  /** Keyset position: the last row of the previous page. */
+  cursor?: { createdAt: string; seq: number };
+}
 
 /** Activity for the active team only, newest-first, with the LIMIT pushed into SQL. */
-export async function listActivity(limit = 20): Promise<Activity[]> {
-  return queryActivity(limit);
+export async function listActivity(
+  limit = 20,
+  filter: ActivityFilter = {},
+): Promise<Activity[]> {
+  return queryActivity(limit, filter);
 }
 
 /**
@@ -35,12 +74,64 @@ export async function listActivityByActor(
   userId: string,
   limit = 10,
 ): Promise<Activity[]> {
-  return queryActivity(limit, userId);
+  return queryActivity(limit, { actorUserIds: [userId] });
+}
+
+/**
+ * The filter predicates, minus the team and the scope. Arrays are spelled out
+ * rather than handed to `inArray(col, [])`, whose behaviour has changed across
+ * Drizzle versions.
+ */
+function activityFilterWhere(
+  teamId: string,
+  f: ActivityFilter,
+): (SQL | undefined)[] {
+  const out: (SQL | undefined)[] = [];
+  if (f.actorUserIds?.length) {
+    const people = f.actorUserIds.filter((id) => id !== ACTOR_SYSTEM);
+    const alt: SQL[] = [];
+    if (people.length) alt.push(inArray(activitiesTable.actorUserId, people));
+    if (f.actorUserIds.includes(ACTOR_SYSTEM))
+      alt.push(isNull(activitiesTable.actorUserId));
+    out.push(alt.length === 1 ? alt[0] : or(...alt)!);
+  }
+  if (f.types?.length) out.push(inArray(activitiesTable.type, f.types));
+  if (f.from) out.push(gte(activitiesTable.createdAt, f.from));
+  if (f.to) out.push(lt(activitiesTable.createdAt, f.to));
+  if (f.resourceIds?.length)
+    // Team-level rows (`app_id IS NULL`) drop out here, the same way they do for a
+    // scoped caller: asking what happened to an app is not asking about the team.
+    out.push(
+      inArray(
+        activitiesTable.appId,
+        getDb()
+          .select({ id: appsTable.id })
+          .from(appsTable)
+          .where(
+            and(
+              eq(appsTable.teamId, teamId),
+              or(
+                inArray(appsTable.id, f.resourceIds),
+                inArray(appsTable.folderId, f.resourceIds),
+                inArray(appsTable.projectId, f.resourceIds),
+              )!,
+            ),
+          ),
+      ),
+    );
+  if (f.cursor)
+    // The ROW form, not the expanded `a < x OR (a = x AND b < y)`: Postgres takes
+    // this one as an Index Cond on `(team_id, created_at DESC, seq DESC)`, and
+    // the expanded form only as a bound on `created_at` plus a filter.
+    out.push(
+      sql`(${activitiesTable.createdAt}, ${activitiesTable.seq}) < (${f.cursor.createdAt}::timestamptz, ${f.cursor.seq}::bigint)`,
+    );
+  return out;
 }
 
 async function queryActivity(
   limit: number,
-  actorUserId?: string,
+  filter: ActivityFilter,
 ): Promise<Activity[]> {
   const teamId = await requireActiveTeamId();
   // The trail is who-did-what across the whole team, so it is `view_activity`
@@ -53,7 +144,7 @@ async function queryActivity(
     .where(
       and(
         eq(activitiesTable.teamId, teamId),
-        actorUserId ? eq(activitiesTable.actorUserId, actorUserId) : undefined,
+        ...activityFilterWhere(teamId, filter),
         // An API token limited to Projects reads only its own apps' history.
         // Team-level events (`app_id IS NULL` - members, roles, tokens, the team
         // itself) belong to nothing it can reach, so they drop out with the rest.
@@ -109,6 +200,85 @@ async function scopedActivityWhere(): Promise<SQL | undefined> {
 }
 
 /**
+ * How many events fall in each month, for the feed's month headers. Same filters
+ * as the feed minus the cursor, so the counts describe the whole filtered range
+ * and not the page that has been scrolled to.
+ */
+export async function activityMonths(
+  filter: ActivityFilter = {},
+  tz = "UTC",
+): Promise<{ month: string; count: number }[]> {
+  const teamId = await requireActiveTeamId();
+  if (!(await hasCapability("view_activity"))) return [];
+  // `to_char`, not `date_trunc`: a raw timestamptz expression does not pass the
+  // column's `fromDriver`, so it would come back formatted in the SESSION's
+  // TimeZone. And GROUP BY takes the ORDINAL - Drizzle renders the same `sql`
+  // object unqualified in the select and qualified in the GROUP BY, which
+  // Postgres rejects.
+  const month = sql<string>`to_char(${activitiesTable.createdAt} at time zone ${tz}, 'YYYY-MM')`;
+  return getDb()
+    .select({
+      month: month.as("month"),
+      count: sql<number>`count(*)::int`.as("count"),
+    })
+    .from(activitiesTable)
+    .where(
+      and(
+        eq(activitiesTable.teamId, teamId),
+        ...activityFilterWhere(teamId, { ...filter, cursor: undefined }),
+        await scopedActivityWhere(),
+      ),
+    )
+    .groupBy(sql`1`)
+    .orderBy(sql`1 desc`);
+}
+
+/**
+ * Everyone who appears in this team's trail, for the feed's actor filter. Read
+ * off the activity itself rather than the member list, so someone who has since
+ * left stays pickable. Every non-human writer ("Deplo", "system", a webhook)
+ * collapses into the one {@link ACTOR_SYSTEM} option, which is all the column
+ * can tell apart.
+ */
+export async function listActivityActors(): Promise<
+  { value: string; label: string; author: VarAuthor | null }[]
+> {
+  const teamId = await requireActiveTeamId();
+  if (!(await hasCapability("view_activity"))) return [];
+  const rows = await getDb()
+    .selectDistinct({
+      actorUserId: activitiesTable.actorUserId,
+      actor: activitiesTable.actor,
+    })
+    .from(activitiesTable)
+    .where(
+      and(eq(activitiesTable.teamId, teamId), await scopedActivityWhere()),
+    );
+  const authors = await loadUserIdentities(rows.map((r) => r.actorUserId));
+  const seen = new Set<string>();
+  const out: { value: string; label: string; author: VarAuthor | null }[] = [];
+  for (const row of rows) {
+    const value = row.actorUserId ?? ACTOR_SYSTEM;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    const author = authorOf(row.actorUserId, authors);
+    out.push({
+      value,
+      label: value === ACTOR_SYSTEM ? "System" : (author?.name ?? row.actor),
+      author,
+    });
+  }
+  // The system bucket last: it is a catch-all, not a person.
+  return out.sort((a, b) =>
+    a.value === ACTOR_SYSTEM
+      ? 1
+      : b.value === ACTOR_SYSTEM
+        ? -1
+        : a.label.localeCompare(b.label),
+  );
+}
+
+/**
  * Internal: record an event. When neither resolves - e.g. a background deploy with
  * no request context - it falls back to the first team so the row is never written
  * team-less (which would make it invisible to every team).
@@ -142,7 +312,7 @@ export async function recordActivity(
       resolved = firstTeam[0]?.id ?? null;
     }
     if (!resolved) return;
-    const activity: Activity = {
+    const activity: Omit<Activity, "seq"> = {
       id: newId("act"),
       teamId: resolved,
       type,
@@ -187,7 +357,9 @@ let droppedEntries = 0;
  * request the caller is still inside, and the marker below covers what retrying
  * cannot.
  */
-async function insertActivityRow(activity: Activity): Promise<void> {
+async function insertActivityRow(
+  activity: Omit<Activity, "seq">,
+): Promise<void> {
   try {
     await getDb().insert(activitiesTable).values(activityToRow(activity));
     return;
@@ -213,7 +385,7 @@ async function flushDroppedMarker(teamId: string): Promise<void> {
           id: newId("act"),
           teamId,
           actorUser: null,
-          type: "member",
+          type: "instance",
           message:
             n === 1
               ? "1 activity entry could not be recorded on this instance"

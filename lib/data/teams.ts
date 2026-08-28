@@ -254,7 +254,7 @@ export async function updateTeam(input: {
   // all, so it is the one worth a trail and an alert.
   if (updated.policyChanged)
     await recordActivity(
-      "member",
+      "security",
       `Two-factor sign-in is now ${
         updated.team.requireTwoFactor ? "required" : "optional"
       } for this team`,

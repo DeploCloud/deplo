@@ -136,7 +136,7 @@ export async function setServerTimezone(
     controlPlaneHint: controlPlaneHint(),
   });
   await recordActivity(
-    "member",
+    "server",
     `Set the timezone on ${server.name} to ${tz}`,
     user.name,
     null,
@@ -258,7 +258,7 @@ export async function restartServerWorkloads(
   }
 
   await recordActivity(
-    "member",
+    "server",
     `Restarted ${restarted} workload${restarted === 1 ? "" : "s"} on ${server.name}`,
     user.name,
     null,
@@ -309,7 +309,7 @@ export async function restartServerTraefik(id: string): Promise<void> {
   if (!res.ok)
     throw new Error(res.error || `Could not restart Traefik on ${server.name}`);
   await recordActivity(
-    "member",
+    "server",
     `Restarted Traefik on ${server.name}`,
     user.name,
     null,
@@ -338,7 +338,7 @@ export async function restartDeploPanel(id: string): Promise<void> {
   // Recorded BEFORE the restart lands (it is scheduled a moment out), so the
   // trail survives the process going away mid-request.
   await recordActivity(
-    "member",
+    "server",
     `Restarted the Deplo panel`,
     user.name,
     null,
@@ -478,7 +478,7 @@ export async function setServerTraefikDashboard(
   // turned off a panel that was never on is a small lie in the audit trail.
   if (changesTheHost) {
     await recordActivity(
-      "member",
+      "server",
       stored
         ? `Published the Traefik panel for ${server.name} on ${stored.domain}`
         : `Turned off the Traefik panel for ${server.name}`,

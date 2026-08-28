@@ -1,13 +1,5 @@
 import Link from "next/link";
-import {
-  Plus,
-  Rocket,
-  Folder,
-  Boxes,
-  Bell,
-  Eye,
-  ArrowUpRight,
-} from "lucide-react";
+import { Plus, Rocket, Folder, Boxes, Eye, ArrowUpRight } from "lucide-react";
 import { listApps } from "@/lib/data/apps";
 import { listFolders } from "@/lib/data/folders";
 import { listProjects } from "@/lib/data/projects";
@@ -24,7 +16,6 @@ import {
 } from "@/lib/data/folder-access";
 import { nodeCapabilities } from "@/lib/data/node-access";
 import { Button } from "@/components/ui/button";
-import { UserAvatar } from "@/components/shared/user-avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid, FolderTrail } from "@/components/apps/apps-grid";
@@ -40,7 +31,10 @@ import {
 } from "@/lib/overview-links";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { PageHeader } from "@/components/shared/page-header";
-import { timeAgo } from "@/lib/utils";
+import {
+  ActivityTimeline,
+  toActivityItem,
+} from "@/components/activity/activity-timeline";
 
 export default async function OverviewPage(props: PageProps<"/">) {
   const {
@@ -263,28 +257,10 @@ export default async function OverviewPage(props: PageProps<"/">) {
                 No recent activity.
               </p>
             )}
-            {activity.map((a) => (
-              <div key={a.id} className="flex items-start gap-2.5 text-xs">
-                <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary">
-                  <Bell className="size-3 text-muted-foreground" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-foreground">{a.message}</p>
-                  <p className="flex items-center gap-1.5 text-muted-foreground">
-                    {a.actorUser && (
-                      <UserAvatar
-                        name={a.actorUser.name}
-                        username={a.actorUser.username}
-                        avatarColor={a.actorUser.avatarColor}
-                        avatarUrl={a.actorUser.avatarUrl}
-                        size="xs"
-                      />
-                    )}
-                    {a.actor} · {timeAgo(a.createdAt)}
-                  </p>
-                </div>
-              </div>
-            ))}
+            <ActivityTimeline
+              variant="compact"
+              items={activity.map(toActivityItem)}
+            />
             <Button variant="outline" size="sm" className="w-full" asChild>
               <Link href="/activity">View all activity</Link>
             </Button>

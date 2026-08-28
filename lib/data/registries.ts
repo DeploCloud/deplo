@@ -161,7 +161,7 @@ export async function addRegistry(input: {
       createdAt: nowIso(),
     });
   await recordActivity(
-    "member",
+    "integration",
     `Added registry ${name}`,
     user.name,
     null,
@@ -193,7 +193,7 @@ export async function deleteRegistry(id: string): Promise<void> {
       ),
     );
   await recordActivity(
-    "member",
+    "integration",
     `Removed registry ${r.name}`,
     user.name,
     null,

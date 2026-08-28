@@ -1,157 +1,122 @@
+import { Activity as ActivityIcon } from "lucide-react";
+
 import {
-  Rocket,
-  Box,
-  Boxes,
-  Database,
-  Globe,
-  KeyRound,
-  Users,
-  Archive,
-  HardDrive,
-  Timer,
-  Brush,
-  Gauge,
-  Bot,
-  Activity as ActivityIcon,
-  type LucideIcon,
-} from "lucide-react";
-import { listActivity } from "@/lib/data/activity";
-import { Card, CardContent } from "@/components/ui/card";
-import { UserAvatar } from "@/components/shared/user-avatar";
+  activityMonths,
+  listActivity,
+  listActivityActors,
+} from "@/lib/data/activity";
+import { listApps } from "@/lib/data/apps";
+import { listFolders } from "@/lib/data/folders";
+import { listProjects } from "@/lib/data/projects";
 import { EmptyState } from "@/components/shared/empty-state";
-import { timeAgo } from "@/lib/utils";
-import type { Activity, ActivityType } from "@/lib/types";
+import { ActivityFilters } from "@/components/activity/activity-filters";
+import { ActivityFeed } from "@/components/activity/activity-feed";
+import { toActivityItem } from "@/components/activity/activity-timeline";
+import {
+  activityHref,
+  activityWindow,
+  hasActivityFilters,
+  parseActivityParams,
+} from "@/lib/activity-filter";
+import type { FacetOption } from "@/components/env/env-filters";
 
 export const metadata = { title: "Activity" };
 
-const ICON_BY_TYPE: Record<ActivityType, LucideIcon> = {
-  deployment: Rocket,
-  app: Box,
-  project: Boxes,
-  database: Database,
-  domain: Globe,
-  env: KeyRound,
-  member: Users,
-  backup: Archive,
-  s3: HardDrive,
-  cron: Timer,
-  cleanup: Brush,
-  monitoring: Gauge,
-  mcp: Bot,
-};
+/** How many rows a page of the feed holds, first one included. */
+const PAGE_SIZE = 40;
 
-function iconFor(type: ActivityType): LucideIcon {
-  return ICON_BY_TYPE[type] ?? ActivityIcon;
-}
+export default async function ActivityPage(props: PageProps<"/activity">) {
+  const params = parseActivityParams(await props.searchParams);
+  const filter = {
+    actorUserIds: params.actorUserIds,
+    types: params.types,
+    resourceIds: params.resourceIds,
+    ...activityWindow(params),
+  };
 
-/** Start-of-day timestamp in local time, robust against invalid dates. */
-function startOfDay(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
+  const [activities, months, actors, apps, folders, projects] =
+    await Promise.all([
+      listActivity(PAGE_SIZE, filter),
+      activityMonths(filter),
+      listActivityActors(),
+      listApps(),
+      listFolders(),
+      listProjects(),
+    ]);
 
-function dayLabel(iso: string, now: Date): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
+  const filtered = hasActivityFilters(params);
+  if (activities.length === 0)
+    return (
+      <>
+        {filtered && (
+          <ActivityFilters
+            params={params}
+            actors={actorOptions(actors)}
+            resources={resourceOptions(apps, folders, projects)}
+          />
+        )}
+        <EmptyState
+          icon={ActivityIcon}
+          docs="team.activity"
+          title={filtered ? "No matching activity" : "No activity yet"}
+          description={
+            filtered
+              ? "No one did any of that in this window. Widen the filters to see more."
+              : "As you deploy apps, manage databases and invite members, everything will show up here."
+          }
+          // No action: when the filters are what emptied the page, the toolbar
+          // above is still on screen and already carries "Clear filters".
+        />
+      </>
+    );
 
-  const dayMs = 86_400_000;
-  const diffDays = Math.round((startOfDay(now) - startOfDay(date)) / dayMs);
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-
-  return date.toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  });
-}
-
-type DayGroup = { label: string; items: Activity[] };
-
-function groupByDay(activities: Activity[], now: Date): DayGroup[] {
-  const groups: DayGroup[] = [];
-  let current: DayGroup | null = null;
-
-  for (const activity of activities) {
-    const label = dayLabel(activity.createdAt, now);
-    if (!current || current.label !== label) {
-      current = { label, items: [] };
-      groups.push(current);
-    }
-    current.items.push(activity);
-  }
-
-  return groups;
-}
-
-export default async function ActivityPage() {
-  const activities = await listActivity(100);
-  const now = new Date();
-  const groups = groupByDay(activities, now);
-
-  return activities.length === 0 ? (
-    <EmptyState
-      icon={ActivityIcon}
-      title="No activity yet"
-      docs="team.activity"
-      description="As you deploy apps, manage databases and invite members, everything will show up here."
-    />
-  ) : (
-    <Card>
-      <CardContent className="p-6">
-        <div className="space-y-8">
-          {groups.map((group) => (
-            <section key={group.label} className="space-y-4">
-              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                {group.label}
-              </h2>
-
-              <ol className="relative space-y-5 pl-2">
-                {/* Vertical timeline connector */}
-                <span
-                  aria-hidden
-                  className="absolute top-2 bottom-2 left-[18px] w-px bg-border"
-                />
-
-                {group.items.map((activity) => {
-                  const Icon = iconFor(activity.type);
-                  return (
-                    <li
-                      key={activity.id}
-                      className="relative flex items-start gap-4"
-                    >
-                      <div className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
-                        <Icon className="size-4 text-muted-foreground" />
-                      </div>
-                      <div className="min-w-0 flex-1 pt-1">
-                        <p className="text-sm text-foreground">
-                          {activity.message}
-                        </p>
-                        {/**
-                         * The circle above says WHAT happened; the mark here says who.
-                         */}
-                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                          {activity.actorUser && (
-                            <UserAvatar
-                              name={activity.actorUser.name}
-                              username={activity.actorUser.username}
-                              avatarColor={activity.actorUser.avatarColor}
-                              avatarUrl={activity.actorUser.avatarUrl}
-                              size="xs"
-                            />
-                          )}
-                          {activity.actor} · {timeAgo(activity.createdAt)}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </section>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+  return (
+    <>
+      <ActivityFilters
+        params={params}
+        actors={actorOptions(actors)}
+        resources={resourceOptions(apps, folders, projects)}
+      />
+      <ActivityFeed
+        // A filter change is a fresh first page, not more of the old one.
+        key={activityHref(params)}
+        initialItems={activities.map(toActivityItem)}
+        monthCounts={Object.fromEntries(months.map((m) => [m.month, m.count]))}
+        variables={{
+          actorUserIds: nonEmpty(params.actorUserIds),
+          types: nonEmpty(params.types),
+          resourceIds: nonEmpty(params.resourceIds),
+          from: filter.from ?? null,
+          to: filter.to ?? null,
+        }}
+        pageSize={PAGE_SIZE}
+      />
+    </>
   );
+}
+
+function nonEmpty(values: string[]): string[] | null {
+  return values.length ? values : null;
+}
+
+function actorOptions(
+  actors: Awaited<ReturnType<typeof listActivityActors>>,
+): FacetOption[] {
+  return actors.map((a) => ({
+    value: a.value,
+    label: a.label,
+    author: a.author ?? undefined,
+  }));
+}
+
+function resourceOptions(
+  apps: { id: string; name: string }[],
+  folders: { id: string; name: string }[],
+  projects: { id: string; name: string }[],
+): FacetOption[] {
+  return [
+    ...apps.map((a) => ({ value: a.id, label: a.name, group: "Apps" })),
+    ...folders.map((f) => ({ value: f.id, label: f.name, group: "Folders" })),
+    ...projects.map((p) => ({ value: p.id, label: p.name, group: "Projects" })),
+  ];
 }

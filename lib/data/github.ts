@@ -148,7 +148,7 @@ export async function createGithubApp(
   };
   await getDb().insert(githubAppsTable).values(githubAppToRow(app));
   await recordActivity(
-    "member",
+    "integration",
     `Connected GitHub App ${app.name}`,
     user.name,
     null,
@@ -240,7 +240,7 @@ export async function upsertInstallation(input: {
     })
     .returning();
   await recordActivity(
-    "member",
+    "integration",
     `Installed GitHub App on ${input.accountLogin}`,
     user.name,
     null,
@@ -290,7 +290,7 @@ export async function removeGithubApp(id: string): Promise<void> {
   // ON DELETE CASCADE) - one DELETE replaces the old two-collection JSONB filter.
   await db.delete(githubAppsTable).where(eq(githubAppsTable.id, id));
   await recordActivity(
-    "member",
+    "integration",
     `Removed GitHub App ${app[0]!.name}`,
     user.name,
     null,

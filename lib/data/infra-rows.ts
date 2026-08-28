@@ -268,7 +268,7 @@ export function assembleGithubInstallation(
  * is a `bigint identity` the DB assigns in insertion order (PLAN §5), so a copy /
  * insert in source-array order reproduces the history's order.
  */
-export function activityToRow(a: Activity): ActivityInsert {
+export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
   return {
     id: a.id,
     teamId: a.teamId,
@@ -282,17 +282,17 @@ export function activityToRow(a: Activity): ActivityInsert {
     actorUser: undefined,
     appId: a.appId,
     createdAt: a.createdAt,
-  } satisfies Record<keyof Activity, unknown> as ActivityInsert;
+  } satisfies Record<keyof Omit<Activity, "seq">, unknown> as ActivityInsert;
 }
 
 /**
- * Reassemble an `activities` row into an {@link Activity}. Drops `seq` (the domain
- * object never carries it - list ordering reads it via the SQL `ORDER BY`, not the
- * returned object).
+ * Reassemble an `activities` row into an {@link Activity}. `seq` travels with the
+ * row: it is the tie-break the feed's keyset cursor pages on.
  */
 export function assembleActivity(row: ActivityRow): Activity {
   return {
     id: row.id,
+    seq: row.seq,
     teamId: row.teamId,
     type: row.type as ActivityType,
     message: row.message,

@@ -126,11 +126,11 @@ export async function seedGithubInstallation(
 export async function seedActivity(
   db: TestDb,
   opts: Partial<Activity> & { id: string; teamId: string },
-): Promise<Activity> {
-  const a: Activity = {
+): Promise<Omit<Activity, "seq">> {
+  const a: Omit<Activity, "seq"> = {
     id: opts.id,
     teamId: opts.teamId,
-    type: (opts.type ?? "service") as ActivityType,
+    type: (opts.type ?? "app") as ActivityType,
     message: opts.message ?? "did a thing",
     actor: opts.actor ?? "owner",
     actorUser: opts.actorUser ?? null,

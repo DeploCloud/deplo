@@ -281,7 +281,7 @@ export async function connectGitProvider(
   };
   await getDb().insert(gitConnectionsTable).values(row);
   await recordActivity(
-    "member",
+    "integration",
     `Connected ${adapter.label}${row.accountLogin ? ` as ${row.accountLogin}` : ""}`,
     user.name,
     null,
@@ -336,7 +336,7 @@ export async function updateGitConnection(
   if (updated.length === 0) throw new Error("Git connection not found");
   const user = (await getCurrentUser())!;
   await recordActivity(
-    "member",
+    "integration",
     `Updated the ${updated[0].label} git connection`,
     user.name,
     null,
@@ -396,7 +396,7 @@ export async function removeGitConnection(id: string): Promise<number> {
 
   const user = (await getCurrentUser())!;
   await recordActivity(
-    "member",
+    "integration",
     `Disconnected the ${row.label} git connection`,
     user.name,
     null,

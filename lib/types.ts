@@ -1620,7 +1620,16 @@ export type ActivityType =
   | "database"
   | "domain"
   | "env"
+  /** People: members, roles, access grants, team settings and ownership. */
   | "member"
+  /** Credentials: API tokens, passkeys, and the two-factor policy. */
+  | "security"
+  /** Hosts: the fleet, the server agent, maintenance and TLS certificates. */
+  | "server"
+  /** Third-party connections: git providers, the GitHub App, image registries. */
+  | "integration"
+  /** Instance-wide settings, and what Deplo reports about itself. */
+  | "instance"
   | "backup"
   | "s3"
   /** Cron jobs: a job created, edited, run or deleted. */
@@ -1637,6 +1646,11 @@ export type ActivityType =
 
 export interface Activity {
   id: ID;
+  /**
+   * The database's insert order. It breaks a same-timestamp tie for both the
+   * feed's ORDER BY and its keyset cursor, so it travels with the row.
+   */
+  seq: number;
   /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
   teamId: ID;
   type: ActivityType;

@@ -899,6 +899,13 @@
       "breakpoints": true
     },
     {
+      "idx": 128,
+      "version": "7",
+      "when": 1784942210006,
+      "tag": "0128_split_member_activity_type",
+      "breakpoints": true
+    },
+    {
       "idx": 129,
       "version": "7",
       "when": 1784942211006,

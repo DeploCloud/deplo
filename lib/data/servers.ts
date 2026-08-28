@@ -375,7 +375,7 @@ export async function addServer(
         .values(teamIds.map((teamId) => ({ serverId: server.id, teamId })));
   });
   await recordActivity(
-    "member",
+    "server",
     `Connected server ${server.name}`,
     user.name,
     null,
@@ -518,7 +518,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   // Re-minting a single-use bootstrap token arms a ~1h re-pin window, and for an
   // already-trusted server that window can silently replace its agent cert.
   await recordActivity(
-    "member",
+    "server",
     `Reissued install command for server ${server.name}`,
     user.name,
     null,
@@ -696,7 +696,7 @@ async function removeServerRow(
     );
   }
   await recordActivity(
-    "member",
+    "server",
     `Removed server ${server.name}`,
     user.name,
     null,
@@ -704,7 +704,7 @@ async function removeServerRow(
   );
   if (abandoned > 0)
     await recordActivity(
-      "member",
+      "server",
       `${abandoned} pending teardown${abandoned === 1 ? "" : "s"} on ${server.name} ` +
         `${abandoned === 1 ? "was" : "were"} dropped with the server.`,
       user.name,
@@ -786,7 +786,7 @@ export async function uninstallMigrationSource(
         await import("../infra/agent-client");
       const removed = await selfUninstallServerAgent(id, deadlineMs);
       await recordActivity(
-        "member",
+        "server",
         `Uninstalled the agent from ${server.name} (${removed.join(", ") || "nothing found"})`,
         actorName,
         null,
@@ -918,7 +918,7 @@ export async function updateServerAddress(
   // and this write must surface as a refusal, not as success + phantom activity.
   if (updated.length === 0) throw new Error("Server not found");
   await recordActivity(
-    "member",
+    "server",
     `Changed server ${server.name} address to ${address}:${port}`,
     user.name,
     null,
@@ -960,7 +960,7 @@ export async function updateServerAgent(
     .set({ agentVersion: result.version })
     .where(eq(serversTable.id, id));
   await recordActivity(
-    "member",
+    "server",
     `Updated agent on ${server.name} to v${result.version}`,
     user.name,
     null,
@@ -1106,7 +1106,7 @@ export async function setServerTeams(
   });
 
   await recordActivity(
-    "member",
+    "server",
     allTeams
       ? `Made server ${server.name} available to all teams`
       : `Set server ${server.name} access to ${teamIds.length} team${teamIds.length === 1 ? "" : "s"}`,
@@ -1141,7 +1141,7 @@ export async function setServerDeployConcurrency(
     .set({ deployConcurrency: n })
     .where(eq(serversTable.id, id));
   await recordActivity(
-    "member",
+    "server",
     `Set deploy concurrency for server ${server.name} to ${n}`,
     user.name,
     null,
@@ -1215,7 +1215,7 @@ export async function setServerRole(
     })
     .where(eq(serversTable.id, id));
   await recordActivity(
-    "member",
+    "server",
     role === "build"
       ? `Set server ${server.name} to build only`
       : role === "storage"

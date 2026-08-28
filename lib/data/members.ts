@@ -72,7 +72,12 @@ import {
 } from "./roles";
 import { boundedBy, withView } from "./folder-access";
 import { instancePublicBaseUrl } from "./instance-settings";
-import type { Capability, RegistrationLink, Role } from "../types";
+import type {
+  ActivityType,
+  Capability,
+  RegistrationLink,
+  Role,
+} from "../types";
 
 /**
  * How long a freshly minted registration link stays usable. Expiry is automatic:
@@ -1159,6 +1164,7 @@ export async function updateUserAdmin(input: {
       .limit(1)
   )[0]!;
   await recordForEveryTeamOf(
+    "member",
     input.userId,
     `Updated user @${target.username}` +
       (newPassword ? " (password reset)" : ""),
@@ -1171,6 +1177,7 @@ export async function updateUserAdmin(input: {
  * because there is no trail it belongs in.
  */
 async function recordForEveryTeamOf(
+  type: ActivityType,
   userId: string,
   message: string,
 ): Promise<void> {
@@ -1181,7 +1188,7 @@ async function recordForEveryTeamOf(
   const actor = await actorUsername();
   for (const { teamId } of rows)
     await recordActivity(
-      "member",
+      type,
       message,
       actor,
       null,
@@ -1240,6 +1247,7 @@ export async function resetUserTwoFactor(userId: string): Promise<void> {
   });
 
   await recordForEveryTeamOf(
+    "security",
     userId,
     `Reset two-factor authentication for @${target.username}`,
   );
@@ -1281,6 +1289,7 @@ export async function resetUserPasskeys(userId: string): Promise<void> {
   if (removed.length === 0) throw new Error("That account has no passkeys");
 
   await recordForEveryTeamOf(
+    "security",
     userId,
     removed.length === 1
       ? `Removed @${target.username}'s passkey`

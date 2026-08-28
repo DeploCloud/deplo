@@ -48,6 +48,10 @@ import {
 } from "@/lib/membership-shared";
 import { ALL_CAPABILITIES, type Activity, type Capability } from "@/lib/types";
 import { timeAgo } from "@/lib/utils";
+import {
+  ActivityTimeline,
+  toActivityItem,
+} from "@/components/activity/activity-timeline";
 import type { MemberDTO } from "@/lib/data/members";
 import type { TeamRoleDTO } from "@/lib/data/roles";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
@@ -448,21 +452,12 @@ export function MemberDetailTabs({
           ) : (
             <Card>
               <CardContent className="space-y-4 pt-6">
-                <ol className="space-y-4">
-                  {activity.map((a) => (
-                    <li key={a.id} className="flex items-start gap-3">
-                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
-                        <ActivityIcon className="size-3.5 text-muted-foreground" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm">{a.message}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {timeAgo(a.createdAt)}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
+                {/* The actor is this page, so the rows name only the event. */}
+                <ActivityTimeline
+                  variant="compact"
+                  showActor={false}
+                  items={activity.map(toActivityItem)}
+                />
                 <Button variant="outline" size="sm" className="w-full" asChild>
                   <Link href="/activity">Open Activity</Link>
                 </Button>

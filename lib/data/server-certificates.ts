@@ -127,7 +127,7 @@ export async function addServerCertificate(
   );
 
   await recordActivity(
-    "member",
+    "server",
     `Installed a TLS certificate for ${description.domains.join(", ")} on ${serverName}`,
     user.name,
     null,
@@ -167,7 +167,7 @@ export async function removeServerCertificate(
   );
 
   await recordActivity(
-    "member",
+    "server",
     `Removed the TLS certificate for ${removed} from ${serverName}`,
     user.name,
     null,

@@ -1407,7 +1407,7 @@ async function attemptSourceUninstall(
     await refreshCounts(source.runId, teamId);
   }
   await recordActivity(
-    "member",
+    "server",
     `Could not remove Deplo's agent from ${source.name} after ${UNINSTALL_ATTEMPTS} tries: ${error}`,
     actor,
     null,

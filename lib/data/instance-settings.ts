@@ -212,7 +212,7 @@ export async function setLogMaxDays(days: number): Promise<InstanceSettings> {
     });
 
   await recordActivity(
-    "member",
+    "instance",
     `Set the maximum log range to ${value} ${value === 1 ? "day" : "days"}`,
     user.name,
     null,
@@ -243,7 +243,7 @@ export async function setGravatarEnabled(
     });
 
   await recordActivity(
-    "member",
+    "instance",
     enabled
       ? "Turned on Gravatar profile pictures"
       : "Turned off Gravatar profile pictures",
@@ -402,7 +402,7 @@ export async function setPanelUrl(
   await rememberPanelUrl(url);
 
   await recordActivity(
-    "member",
+    "instance",
     (url
       ? `Set the Deplo panel address to ${url}`
       : "Cleared the Deplo panel address") + passkeyLossSuffix(lostPasskeys),
@@ -794,7 +794,7 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
   if (moved) {
     await rememberPanelUrl(`${enabled ? "https" : "http"}://${moved.domain}`);
     await recordActivity(
-      "member",
+      "instance",
       (enabled
         ? `Moved the panel to https://${moved.domain}`
         : `Moved the panel to http://${moved.domain}`) +
@@ -1074,7 +1074,7 @@ export async function setCertificateEmail(
 
   if (applied > 0) {
     await recordActivity(
-      "member",
+      "server",
       `Set the certificate account email to ${address} on ${applied} server${applied === 1 ? "" : "s"}`,
       user.name,
       null,

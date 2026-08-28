@@ -1,7 +1,7 @@
 import { builder } from "../builder";
 import { VarAuthorRef } from "./env";
 import { listActivity } from "@/lib/data/activity";
-import type { Activity } from "@/lib/types";
+import type { Activity, ActivityType } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Enums (local, not shared in enums.ts)                              */
@@ -18,6 +18,10 @@ const ActivityTypeEnum = builder.enumType("ActivityType", {
     "domain",
     "env",
     "member",
+    "security",
+    "server",
+    "integration",
+    "instance",
     "backup",
     "s3",
     "cron",
@@ -51,8 +55,23 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
     }),
     appId: t.exposeID("appId", { nullable: true }),
     createdAt: t.exposeString("createdAt"),
+    // This row's keyset position, opaque on purpose: hand it back as `cursor` to
+    // read the page after it. Not `seq` as an Int - a GraphQL Int is 32 bits and
+    // `seq` is a bigint.
+    cursor: t.string({ resolve: (a) => `${a.createdAt}|${a.seq}` }),
   }),
 });
+
+/** Undo {@link ActivityRef}'s `cursor`. A malformed one pages from the top. */
+function parseCursor(
+  cursor: string | null | undefined,
+): { createdAt: string; seq: number } | undefined {
+  if (!cursor) return undefined;
+  const at = cursor.lastIndexOf("|");
+  const seq = Number(cursor.slice(at + 1));
+  if (at < 1 || !Number.isSafeInteger(seq)) return undefined;
+  return { createdAt: cursor.slice(0, at), seq };
+}
 
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
@@ -63,8 +82,26 @@ builder.queryFields((t) => ({
     type: [ActivityRef],
     authScopes: { capability: "view_activity" },
     description: "Recent activity in the active team, newest first.",
-    args: { limit: t.arg.int({ required: false }) },
-    resolve: (_r, { limit }) => listActivity(limit ?? undefined),
+    args: {
+      limit: t.arg.int({ required: false }),
+      /** An `Activity.cursor` from the previous page. */
+      cursor: t.arg.string({ required: false }),
+      actorUserIds: t.arg.idList({ required: false }),
+      types: t.arg({ type: [ActivityTypeEnum], required: false }),
+      from: t.arg.string({ required: false }),
+      to: t.arg.string({ required: false }),
+      /** App, folder and project ids mixed. */
+      resourceIds: t.arg.idList({ required: false }),
+    },
+    resolve: (_r, a) =>
+      listActivity(a.limit ?? undefined, {
+        actorUserIds: a.actorUserIds?.map(String),
+        types: a.types as ActivityType[] | undefined,
+        from: a.from ?? undefined,
+        to: a.to ?? undefined,
+        resourceIds: a.resourceIds?.map(String),
+        cursor: parseCursor(a.cursor),
+      }),
   }),
 }));
 

@@ -81,6 +81,9 @@ export interface FacetOption {
   label: string;
   hint?: string;
   author?: VarAuthor;
+  /** Heading this option sits under. A facet whose options are one flat list
+   *  leaves it unset and renders exactly as it always did. */
+  group?: string;
   /** Classes for the label itself, when the option's own colour IS information -
    *  a log level reads as its severity in the menu, the same way it does in the
    *  pane. Left unset by every facet whose options are just names. */
@@ -601,6 +604,64 @@ function FacetPicker<T>(props: {
   );
 }
 
+/** Bucket options by `group`, in first-appearance order. Options with no group
+ *  land in one nameless bucket, which is the whole list for most facets. */
+function groupedOptions(
+  options: FacetOption[],
+): { group: string | null; options: FacetOption[] }[] {
+  const out: { group: string | null; options: FacetOption[] }[] = [];
+  for (const opt of options) {
+    const group = opt.group ?? null;
+    const last = out[out.length - 1];
+    if (last && last.group === group) last.options.push(opt);
+    else out.push({ group, options: [opt] });
+  }
+  return out;
+}
+
+/** A group's heading, with the bulk toggle for its own options. */
+function FacetGroupHeader({
+  group,
+  options,
+  values,
+  onChange,
+}: {
+  group: string;
+  options: FacetOption[];
+  values: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const all = options.every((o) => values.includes(o.value));
+  const mine = new Set(options.map((o) => o.value));
+  return (
+    <div className="flex items-center gap-2 px-2 pt-2 pb-1">
+      <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {group}
+      </span>
+      <button
+        type="button"
+        // Keeps the caret in the combobox input this can sit inside.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() =>
+          onChange(
+            all
+              ? values.filter((v) => !mine.has(v))
+              : [
+                  ...values,
+                  ...options
+                    .filter((o) => !values.includes(o.value))
+                    .map((o) => o.value),
+                ],
+          )
+        }
+        className="ml-auto cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+      >
+        {all ? "Unselect all" : "Select all"}
+      </button>
+    </div>
+  );
+}
+
 /** One option of a facet menu: checkbox, avatar for a person, label, hint, and
  *  how many rows picking it would leave. In a combobox listbox it also carries
  *  the `option` role and the keyboard highlight (`active`). */
@@ -730,14 +791,26 @@ export function FacetMenu<T>({
         </button>
         <div className="my-1 h-px bg-border" />
         <div className="max-h-72 space-y-0.5 overflow-y-auto">
-          {facet.options.map((opt) => (
-            <FacetOptionRow
-              key={opt.value}
-              opt={opt}
-              checked={values.includes(opt.value)}
-              count={counts?.[opt.value]}
-              onToggle={() => toggle(opt.value)}
-            />
+          {groupedOptions(facet.options).map((bucket) => (
+            <div key={bucket.group ?? ""}>
+              {bucket.group && (
+                <FacetGroupHeader
+                  group={bucket.group}
+                  options={bucket.options}
+                  values={values}
+                  onChange={onChange}
+                />
+              )}
+              {bucket.options.map((opt) => (
+                <FacetOptionRow
+                  key={opt.value}
+                  opt={opt}
+                  checked={values.includes(opt.value)}
+                  count={counts?.[opt.value]}
+                  onToggle={() => toggle(opt.value)}
+                />
+              ))}
+            </div>
           ))}
         </div>
       </PopoverContent>
@@ -750,7 +823,7 @@ export function FacetMenu<T>({
  * summary ("Modified by" / "Ada" / "Modified by · 3"); the value is always the
  * needle, so what you typed and what is picked never fight over the same box.
  */
-function FacetCombobox<T>({
+export function FacetCombobox<T>({
   facet,
   values,
   counts,
@@ -952,17 +1025,34 @@ function FacetCombobox<T>({
                 No match for “{query.trim()}”.
               </p>
             )}
-            {shownOptions.map((opt, i) => (
-              <FacetOptionRow
-                key={opt.value}
-                opt={opt}
-                checked={values.includes(opt.value)}
-                count={counts?.[opt.value]}
-                onToggle={() => toggle(opt.value)}
-                id={optionId(i + 1)}
-                active={activeIndex === i + 1}
-                onActivate={() => setActive(i + 1)}
-              />
+            {groupedOptions(shownOptions).map((bucket) => (
+              <div key={bucket.group ?? ""}>
+                {bucket.group && (
+                  <FacetGroupHeader
+                    group={bucket.group}
+                    options={bucket.options}
+                    values={values}
+                    onChange={onChange}
+                  />
+                )}
+                {bucket.options.map((opt) => {
+                  // The arrow keys walk ONE flat list, so the index is the
+                  // option's position in `shownOptions`, not in its bucket.
+                  const i = shownOptions.indexOf(opt) + 1;
+                  return (
+                    <FacetOptionRow
+                      key={opt.value}
+                      opt={opt}
+                      checked={values.includes(opt.value)}
+                      count={counts?.[opt.value]}
+                      onToggle={() => toggle(opt.value)}
+                      id={optionId(i)}
+                      active={activeIndex === i}
+                      onActivate={() => setActive(i)}
+                    />
+                  );
+                })}
+              </div>
             ))}
           </div>
         </div>
