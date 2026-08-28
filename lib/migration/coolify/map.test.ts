@@ -299,8 +299,30 @@ test("coolifyEnvBlob takes the resolved value and leaves previews behind", () =>
   );
   assert.deepEqual(r.previewKeys, ["ONLY_PREVIEW"]);
   assert.deepEqual(r.buildOnlyKeys, ["BUILT"]);
-  assert.deepEqual(r.sharedRefs, ["SMTP_HOST"]);
+  assert.deepEqual(r.sharedRefs, [
+    { key: "SHARED", level: "team", sharedKey: "SMTP_HOST", whole: true },
+  ]);
   assert.equal(r.masked, false);
+});
+
+// The bug this pins: a token that can actually run an import gets `real_value`,
+// which is the panel HAVING ALREADY RESOLVED the reference away. Read the refs off
+// it and they are empty on every real migration, while the value is still right.
+test("a reference is read off the stored value, not the resolved one", () => {
+  const r = coolifyEnvBlob([
+    { key: "SMTP_HOST", value: "{{team.SMTP_HOST}}", real_value: "mail.acme" },
+    {
+      key: "URL",
+      value: "https://{{server.HOST}}/api",
+      real_value: "https://h/api",
+    },
+    { key: "PREVIEW_REF", value: "{{team.X}}", is_preview: true },
+  ]);
+  assert.equal(r.blob, "SMTP_HOST=mail.acme\nURL=https://h/api");
+  assert.deepEqual(r.sharedRefs, [
+    { key: "SMTP_HOST", level: "team", sharedKey: "SMTP_HOST", whole: true },
+    { key: "URL", level: "server", sharedKey: "HOST", whole: false },
+  ]);
 });
 
 // The single worst failure this adapter can have: a token without read:sensitive

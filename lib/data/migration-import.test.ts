@@ -15,6 +15,8 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
+import { loadSharedVarsForApp } from "./shared-vars";
+import { resolveEnvEntries } from "../deploy/env-resolve";
 import { markDataCopyFailed } from "./data-copy";
 import { recopySourceFor } from "./migration-data";
 import { startMigrationRun } from "./migration-runner";
@@ -178,6 +180,9 @@ function defaultFixtures(): Fixtures {
       {
         projectId: "dok-prj-other",
         name: "Other",
+        // The SAME key as the first project's: one row per (team, key), so the
+        // second import must link to the row that is already here.
+        env: "SHARED_TOKEN=other-level\n",
         environments: [
           {
             environmentId: "dok-env-stg",
@@ -197,7 +202,7 @@ function defaultFixtures(): Fixtures {
       appName: "other-stack-xyz",
       sourceType: "raw",
       composeFile: COMPOSE_WITH_DOKPLOY_NETWORK,
-      env: "STACK_VAR=1\n",
+      env: "STACK_VAR=1\nSHARED_TOKEN=${{project.SHARED_TOKEN}}\n",
       domains: [
         {
           domainId: "d-3",
@@ -304,7 +309,13 @@ const APPLICATIONS: Record<string, unknown> = {
     sourceType: "docker",
     buildType: "dockerfile",
     dockerImage: "ghcr.io/acme/api:1.4.2",
-    env: "PORT=8000\n",
+    env:
+      "PORT=8000\n" +
+      // Same name as the project-level shared variable: a LINK here.
+      "SHARED_TOKEN=${{project.SHARED_TOKEN}}\n" +
+      // A different name: a link injects under the shared variable's own key, so
+      // this one arrives as the value Deplo resolved for it.
+      "TOKEN_COPY=${{project.SHARED_TOKEN}}\n",
     domains: [],
     mounts: [],
     ports: [],
@@ -1276,7 +1287,7 @@ test("the compose file arrives with Dokploy's network taken out", async () => {
   assert.equal(primary.port, 80);
 });
 
-test("a project's and an environment's own variables become linked shared variables", async () => {
+test("a project's and an environment's own variables become shared variables", async () => {
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 
@@ -1285,12 +1296,111 @@ test("a project's and an environment's own variables become linked shared variab
     "ENV_LEVEL",
     "SHARED_TOKEN",
   ]);
-  // The LINK is what injects (ADR-0012) - a scope alone would inject nothing.
-  const links = await db.select().from(sharedVarAppsTable);
-  assert.ok(links.length >= 2, `expected app links, got ${links.length}`);
   // A name that says credential arrives write-only; anything else stays readable.
   assert.equal(shared.find((s) => s.key === "SHARED_TOKEN")!.type, "secret");
   assert.equal(shared.find((s) => s.key === "ENV_LEVEL")!.type, "plain");
+});
+
+test("only the app that referenced a shared variable is linked to it", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const links = await db
+    .select({
+      key: sharedVarsTable.key,
+      appName: appsTable.name,
+    })
+    .from(sharedVarAppsTable)
+    .innerJoin(
+      sharedVarsTable,
+      eq(sharedVarsTable.id, sharedVarAppsTable.varId),
+    )
+    .innerJoin(appsTable, eq(appsTable.id, sharedVarAppsTable.appId));
+  // blink-api wrote SHARED_TOKEN=${{project.SHARED_TOKEN}}; nothing else did.
+  assert.deepEqual(
+    links.map((l) => [l.key, l.appName]),
+    [["SHARED_TOKEN", "blink-api"]],
+  );
+
+  const api = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-api",
+  )!;
+  const own = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, api.id));
+  const keys = own.map((v) => v.key).sort();
+  // The linked one carries no copy of its own; the aliased one arrives resolved.
+  assert.equal(keys.includes("SHARED_TOKEN"), false);
+  assert.equal(
+    decryptSecret(own.find((v) => v.key === "TOKEN_COPY")!.valueEnc),
+    "project-level",
+  );
+});
+
+test("a second project links to the shared variable already here", async () => {
+  // The key is skipped on the second pass (one row per team and name), and the
+  // apps that referenced it must still be linked to the row that IS here - or
+  // importing project B after project A leaves B's apps with nothing.
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await importProject(runId, "dok-prj-other");
+
+  const rows = await db
+    .select({ key: sharedVarsTable.key })
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.key, "SHARED_TOKEN"));
+  assert.equal(rows.length, 1, "one row per team and name");
+
+  const links = await db
+    .select({ appName: appsTable.name })
+    .from(sharedVarAppsTable)
+    .innerJoin(
+      sharedVarsTable,
+      eq(sharedVarsTable.id, sharedVarAppsTable.varId),
+    )
+    .innerJoin(appsTable, eq(appsTable.id, sharedVarAppsTable.appId))
+    .where(eq(sharedVarsTable.key, "SHARED_TOKEN"));
+  assert.deepEqual(
+    links.map((l) => l.appName).sort(),
+    ["blink-api", "other-stack"],
+    "both projects' referencing apps are linked to the one row",
+  );
+});
+
+test("a shared variable never clobbers an app's own value of the same name", async () => {
+  // The reason links are reference-driven: a link outranks the app's own var
+  // (ADR-0012), so linking everything in scope silently rewrote values nobody
+  // asked to change. Pinned on a SINGLE-team, linked variable, so it holds
+  // whichever precedence model the auto-injected layer ends up with.
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+  const own = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, web.id));
+  // It never referenced SHARED_TOKEN, so nothing from the project level reaches it.
+  assert.deepEqual(await loadSharedVarsForApp(web.id), []);
+  const resolved = resolveEnvEntries(
+    "production",
+    web.id,
+    own.map((v) => ({
+      appId: web.id,
+      key: v.key,
+      valueEnc: v.valueEnc,
+      targets: ["production" as const, "preview" as const],
+      type: v.type as "plain" | "secret",
+    })),
+    [],
+  );
+  assert.equal(
+    decryptSecret(resolved.find((e) => e.key === "NODE_ENV")!.valueEnc),
+    "production",
+  );
 });
 
 test("an environment Dokploy calls production reuses the one Deplo already made", async () => {

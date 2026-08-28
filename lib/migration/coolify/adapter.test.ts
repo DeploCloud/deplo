@@ -192,3 +192,34 @@ test("the resource index is read once, not once per service", async (t) => {
     "the server join is per SCAN, not per resource",
   );
 });
+
+test("a shared-variable level the panel refuses is a note, not a silence", async (t) => {
+  // An older panel has no `envs` endpoint at that level. Answering `[]` there made
+  // a whole set of shared variables disappear with nothing said about it.
+  serve(t, {}, (path) =>
+    path === "/api/v1/projects/prj-1/envs"
+      ? new Response(JSON.stringify({ message: "Not found." }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        })
+      : null,
+  );
+  const [project] = await coolifyClient(cred).listProjects();
+  assert.match(
+    (project.platformNotes ?? []).join("\n"),
+    /would not answer for the project "acme" shared variables/,
+  );
+  // The tree still comes back whole - one level refusing is not a failed scan.
+  assert.equal(project.environments?.length, 1);
+});
+
+test("the server level is read for the machine a resource runs on", async (t) => {
+  const seen = serve(t, {
+    "/api/v1/servers/srv-remote/envs": [{ key: "SERVER_WIDE", value: "s" }],
+  });
+  const blob = await coolifyClient(cred).serverSharedEnv("srv-remote");
+  assert.equal(blob, "SERVER_WIDE=s");
+  assert.ok(seen.includes("/api/v1/servers/srv-remote/envs"));
+  // The panel's OWN host is keyed "" everywhere else in the importer.
+  assert.equal(await coolifyClient(cred).serverSharedEnv("nope"), null);
+});

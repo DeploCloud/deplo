@@ -11,7 +11,9 @@ import {
   composeServiceExposingPort,
   composeServices,
   parseEnvBlob,
+  sharedRefsIn,
 } from "../map";
+import type { SharedRef } from "../map";
 import type {
   SourceApplication,
   SourceBuildType,
@@ -419,9 +421,6 @@ export function coolifyMounts(
 /* Environment variables                                               */
 /* ------------------------------------------------------------------ */
 
-/** `{{team.KEY}}` and friends: a reference to a shared variable, not a value. */
-const SHARED_REF = /\{\{\s*(team|project|environment)\.([A-Za-z0-9_]+)\s*\}\}/g;
-
 export interface CoolifyEnvRead {
   /** `KEY=value` lines, in the shape `parseEnvBlob` reads. */
   blob: string;
@@ -429,8 +428,8 @@ export interface CoolifyEnvRead {
   previewKeys: string[];
   /** Keys that were build-time only over there. */
   buildOnlyKeys: string[];
-  /** Shared variables this resource referenced, by their bare key. */
-  sharedRefs: string[];
+  /** Shared variables this resource referenced, read off the STORED value. */
+  sharedRefs: SharedRef[];
   /**
    * True when the rows arrived with no `value` at all, which is what Coolify does
    * for a token without `read:sensitive`. Importing then would land empty
@@ -460,7 +459,7 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
   const previewKeys: string[] = [];
   const buildOnlyKeys: string[] = [];
   const unreadableKeys: string[] = [];
-  const sharedRefs = new Set<string>();
+  const sharedRefs: SharedRef[] = [];
   let sawValue = false;
 
   for (const r of rows) {
@@ -471,7 +470,11 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
     const raw = r.real_value ?? r.value;
     if (typeof raw === "string") sawValue = true;
     const value = typeof raw === "string" ? raw : "";
-    for (const m of value.matchAll(SHARED_REF)) sharedRefs.add(m[2]);
+    // The REFERENCE lives on the STORED value: `real_value` is the panel having
+    // already resolved it away, so reading the refs off it finds nothing at all
+    // on any token that can actually run an import.
+    if (typeof r.value === "string" && !r.is_preview)
+      sharedRefs.push(...sharedRefsIn([{ key, value: r.value }]));
     if (r.is_preview) {
       previewKeys.push(key);
       continue;
@@ -490,7 +493,7 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
     previewKeys,
     buildOnlyKeys,
     unreadableKeys,
-    sharedRefs: [...sharedRefs],
+    sharedRefs,
     masked: rows.length > 0 && !sawValue,
   };
 }
@@ -588,6 +591,8 @@ export interface CoolifyExtras {
   env?: string;
   /** What the env read could not answer for - see `CoolifyEnvRead.unreadableKeys`. */
   envNotes?: string[];
+  /** What the resource's own values referenced - see `CoolifyEnvRead.sharedRefs`. */
+  sharedRefs?: SharedRef[];
   mounts?: SourceMount[];
   serverId?: string;
   environmentId?: string;
@@ -619,6 +624,7 @@ export function coolifyApplication(
 
   return {
     applicationId: row.uuid,
+    sharedRefs: extras.sharedRefs ?? null,
     platformNotes: [
       ...coolifyNotes(row),
       ...domains.notes,
@@ -751,6 +757,7 @@ export function coolifyCompose(
   return {
     value: {
       composeId: row.uuid,
+      sharedRefs: extras.sharedRefs ?? null,
       platformNotes: [
         ...notes,
         ...coolifyNotes(app),

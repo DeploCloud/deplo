@@ -259,6 +259,79 @@ export function renameDatabaseHosts(
   return touched;
 }
 
+/* ------------------------------------------------------------------ */
+/* Shared-variable references (`{{team.KEY}}` / `${{project.KEY}}`)     */
+/* ------------------------------------------------------------------ */
+
+export const SHARED_REF_LEVELS = [
+  "team",
+  "project",
+  "environment",
+  "server",
+] as const;
+export type SharedRefLevel = (typeof SHARED_REF_LEVELS)[number];
+
+/** One reference a service's own value makes to a shared variable. */
+export interface SharedRef {
+  /** The SERVICE's own key that carried the reference. */
+  key: string;
+  level: SharedRefLevel;
+  /** The name the shared variable has on the panel. */
+  sharedKey: string;
+  /** The value was EXACTLY this reference, with nothing around it. */
+  whole: boolean;
+}
+
+/** The two panels differ by a dollar sign and by nothing else that matters. */
+const SHARED_REF =
+  /\$?\{\{\s*(team|project|environment|server)\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+
+/** Every shared variable these values reference, in the order they appear. */
+export function sharedRefsIn(
+  entries: { key: string; value: string }[],
+): SharedRef[] {
+  const out: SharedRef[] = [];
+  for (const e of entries)
+    for (const m of e.value.matchAll(SHARED_REF))
+      out.push({
+        key: e.key,
+        level: m[1] as SharedRefLevel,
+        sharedKey: m[2],
+        whole: m[0] === e.value.trim(),
+      });
+  return out;
+}
+
+/**
+ * Rewrite the references IN PLACE, like {@link renameDatabaseHosts}. A no-op on
+ * Coolify, which already answers with the resolved value; on Dokploy this is
+ * where a reference becomes a value, since it resolves nothing until deploy time.
+ */
+export function resolveSharedRefs(
+  entries: { key: string; value: string }[],
+  shared: Map<string, string>,
+): { resolved: string[]; unresolved: string[] } {
+  const resolved: string[] = [];
+  const unresolved: string[] = [];
+  for (const e of entries) {
+    if (!e.value.includes("{{")) continue;
+    let hit = false;
+    let miss = false;
+    e.value = e.value.replace(SHARED_REF, (whole, _level, key: string) => {
+      const v = shared.get(key);
+      if (v === undefined) {
+        miss = true;
+        return whole;
+      }
+      hit = true;
+      return v;
+    });
+    if (hit) resolved.push(e.key);
+    if (miss) unresolved.push(e.key);
+  }
+  return { resolved, unresolved };
+}
+
 /**
  * Dokploy's own template syntax for pulling a value in from the project or a
  * sibling service (`${{project.KEY}}`). deplo resolves nothing at deploy time, so

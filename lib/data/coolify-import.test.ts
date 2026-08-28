@@ -36,6 +36,7 @@ import {
   __setMigrationFetchForTest,
 } from "../migration/transport";
 import { __resetCoolifyRateLimitForTest } from "../migration/coolify/client";
+import { decryptSecret } from "../crypto";
 import {
   beginMigration,
   importMigrationProject,
@@ -173,6 +174,11 @@ function defaultFixtures(): Record<string, unknown> {
       { key: "NODE_ENV", value: "production" },
       { key: "SECRET", value: "$SERVICE_PASSWORD_APP", real_value: "aB3k9" },
       { key: "ONLY_PREVIEW", value: "x", is_preview: true },
+      // Same name as the shared variable: a LINK here, not a second copy.
+      { key: "TEAM_WIDE", value: "{{team.TEAM_WIDE}}", real_value: "t" },
+      // A different name: a link injects under the shared variable's own key, so
+      // this one has to arrive as the value the panel resolved.
+      { key: "MAIL", value: "{{project.PROJECT_WIDE}}", real_value: "p" },
     ],
     "applications/app-web/storages": {
       persistent_storages: [
@@ -203,6 +209,8 @@ function defaultFixtures(): Record<string, unknown> {
       { key: "ENV_WIDE", value: "e" },
     ],
     "team/envs": [{ key: "TEAM_WIDE", value: "t" }],
+    "servers/srv-local/envs": [{ key: "SERVER_WIDE", value: "s" }],
+    "servers/srv-eu/envs": [],
     "s3-storages": [
       {
         uuid: "s3-1",
@@ -410,7 +418,9 @@ test("a project lands: apps, a stack, a database and its variables", async () =>
     .from(envVarsTable)
     .where(eq(envVarsTable.appId, web.id));
   const keys = vars.map((v) => v.key).sort();
-  assert.deepEqual(keys, ["NODE_ENV", "SECRET"]);
+  // MAIL read {{project.PROJECT_WIDE}}: a link cannot rename, so it arrives as the
+  // value. TEAM_WIDE read a variable of its own name and became a link instead.
+  assert.deepEqual(keys, ["MAIL", "NODE_ENV", "SECRET"]);
   // A preview-only variable stays behind: Deplo's previews inherit the app's env,
   // so importing it would leak it into production.
   assert.equal(keys.includes("ONLY_PREVIEW"), false);
@@ -502,7 +512,7 @@ test("the health check comes across, and what does not fit is a note", async () 
   );
 });
 
-test("shared variables come across at all three levels, linked to the apps", async () => {
+test("shared variables come across at every level, including the server one", async () => {
   await importAll();
   // The team level is now a reach ROW, not a boolean (ADR-0027).
   const shared = await db.execute(
@@ -519,15 +529,43 @@ test("shared variables come across at all three levels, linked to the apps", asy
     [
       ["ENV_WIDE", false],
       ["PROJECT_WIDE", false],
+      ["SERVER_WIDE", false],
       ["TEAM_WIDE", true],
     ],
   );
-  // ADR-0012: a scope only suggests. The LINK is what injects it, and a migration
-  // reproduces the links the source had rather than backfilling any.
+});
+
+test("only the app that REFERENCED a shared variable is linked to it", async () => {
+  await importAll();
   const links = await db.execute(
-    "select count(*)::int as n from shared_env_var_apps",
+    `select v.key, a.slug from shared_env_var_apps l
+       join shared_env_vars v on v.id = l.var_id
+       join apps a on a.id = l.app_id
+      order by v.key, a.slug`,
   );
-  assert.ok((links.rows[0] as { n: number }).n > 0);
+  // app-web wrote TEAM_WIDE={{team.TEAM_WIDE}} and nothing else did.
+  assert.deepEqual(
+    (links.rows as { key: string; slug: string }[]).map((r) => r.key),
+    ["TEAM_WIDE"],
+  );
+  const rows = await db.execute(
+    `select e.key, e.value_enc from env_vars e
+       join apps a on a.id = e.app_id
+      where a.name = 'web' order by e.key`,
+  );
+  const keys = (rows.rows as { key: string }[]).map((r) => r.key);
+  // The linked one carries no copy of its own; the aliased one does.
+  assert.equal(keys.includes("TEAM_WIDE"), false);
+  assert.equal(keys.includes("MAIL"), true);
+  const mail = (rows.rows as { key: string; value_enc: string }[]).find(
+    (r) => r.key === "MAIL",
+  );
+  assert.equal(decryptSecret(mail!.value_enc), "p");
+  // And it is said out loud, both ways round.
+  const items = await db.select().from(itemsTable);
+  const messages = items.map((i) => i.message ?? "").join("\n");
+  assert.match(messages, /linked to the shared variable of the same name/);
+  assert.match(messages, /cannot be called something else/);
 });
 
 test("a backup destination comes across and is tried at once", async () => {

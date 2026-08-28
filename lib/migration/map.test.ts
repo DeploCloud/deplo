@@ -29,6 +29,8 @@ import {
   parseCpuMilli,
   parseEnvBlob,
   renameDatabaseHosts,
+  resolveSharedRefs,
+  sharedRefsIn,
   parseMemoryMb,
   portNotes,
   repoNameFromUrl,
@@ -105,6 +107,53 @@ test("parseEnvBlob keeps the last value for a repeated key", () => {
 test("parseEnvBlob tolerates nothing at all", () => {
   assert.deepEqual(parseEnvBlob(null), []);
   assert.deepEqual(parseEnvBlob(""), []);
+});
+
+test("sharedRefsIn reads both panels' syntax, at all four levels", () => {
+  const entries = parseEnvBlob(
+    [
+      "A={{team.SMTP_HOST}}",
+      "B=${{project.DB_URL}}",
+      "C={{ environment.API }}",
+      "D=https://{{server.HOST}}/api",
+      "E=literal",
+    ].join("\n"),
+  );
+  assert.deepEqual(sharedRefsIn(entries), [
+    { key: "A", level: "team", sharedKey: "SMTP_HOST", whole: true },
+    { key: "B", level: "project", sharedKey: "DB_URL", whole: true },
+    { key: "C", level: "environment", sharedKey: "API", whole: true },
+    { key: "D", level: "server", sharedKey: "HOST", whole: false },
+  ]);
+});
+
+// Dokploy also writes `${{ <service>.<field> }}`, which is NOT a shared variable.
+// `envNeedsInterpolation` still owns those, so the two must not overlap.
+test("sharedRefsIn does not claim a service reference", () => {
+  const entries = parseEnvBlob("A=${{ mydb.databaseName }}");
+  assert.deepEqual(sharedRefsIn(entries), []);
+  assert.deepEqual(envNeedsInterpolation(entries), ["A"]);
+});
+
+test("resolveSharedRefs rewrites in place and names what it could not answer", () => {
+  const entries = parseEnvBlob(
+    "A=${{project.DB_URL}}\nB=pre-{{team.X}}-post\nC={{team.MISSING}}\nD=plain",
+  );
+  const r = resolveSharedRefs(
+    entries,
+    new Map([
+      ["DB_URL", "postgres://here"],
+      ["X", "mid"],
+    ]),
+  );
+  assert.deepEqual(entries, [
+    { key: "A", value: "postgres://here" },
+    { key: "B", value: "pre-mid-post" },
+    { key: "C", value: "{{team.MISSING}}" },
+    { key: "D", value: "plain" },
+  ]);
+  assert.deepEqual(r.resolved, ["A", "B"]);
+  assert.deepEqual(r.unresolved, ["C"]);
 });
 
 test("envNeedsInterpolation flags Dokploy's own template syntax", () => {

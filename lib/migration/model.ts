@@ -1,4 +1,5 @@
 import type { HealthCheck } from "../types";
+import type { SharedRef } from "./map";
 
 /**
  * The row shapes an import maps, shared by every source platform.
@@ -74,6 +75,12 @@ export interface SourceSecurity {
 }
 
 export interface SourceApplication {
+  /**
+   * Shared variables this service's own values reference (`{{team.KEY}}` /
+   * `${{project.KEY}}`). A WHOLE-value reference of the same name becomes a LINK
+   * here rather than a copy; anything else is resolved to a value.
+   */
+  sharedRefs?: SharedRef[] | null;
   /**
    * What the ADAPTER found that no shared mapper can see: a platform-specific
    * field with no home in Deplo. Written with `{panel}` where the product's name
@@ -194,6 +201,12 @@ export interface SourceApplication {
 
 export interface SourceCompose {
   /**
+   * Shared variables this service's own values reference (`{{team.KEY}}` /
+   * `${{project.KEY}}`). A WHOLE-value reference of the same name becomes a LINK
+   * here rather than a copy; anything else is resolved to a value.
+   */
+  sharedRefs?: SharedRef[] | null;
+  /**
    * What the ADAPTER found that no shared mapper can see: a platform-specific
    * field with no home in Deplo. Written with `{panel}` where the product's name
    * goes, like every other note.
@@ -306,6 +319,8 @@ export interface SourceEnvironment {
   name: string;
   description?: string | null;
   env?: string | null;
+  /** What the panel would not answer for at THIS level. Written with `{panel}`. */
+  platformNotes?: string[] | null;
   isDefault?: boolean | null;
   applications?: SourceApplication[] | null;
   compose?: SourceCompose[] | null;
@@ -326,6 +341,8 @@ export interface SourceProject {
   name: string;
   description?: string | null;
   env?: string | null;
+  /** What the panel would not answer for at THIS level. Written with `{panel}`. */
+  platformNotes?: string[] | null;
   createdAt?: string | null;
   environments?: SourceEnvironment[] | null;
   /**

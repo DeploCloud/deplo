@@ -99,6 +99,7 @@ import {
   mapSource,
   parseEnvBlob,
   renameDatabaseHosts,
+  resolveSharedRefs,
   portNotes,
   retargetPlatformEnvFiles,
   swarmHealthCheck,
@@ -142,7 +143,7 @@ import {
   isDeploHostServer,
   resolveServerIp,
 } from "../deploy/domains";
-import { saveSharedVar } from "./shared-vars";
+import { saveSharedVar, setSharedVarAppLink } from "./shared-vars";
 import { recordActivity } from "./activity";
 import { runAsMigration } from "./migration-guard";
 import { publishMigrationChanged } from "../graphql/pubsub";
@@ -635,10 +636,25 @@ export async function scanMigrationSource(
           if (homeKey && existing.apps.has(homeKey)) line.status = "exists";
 
           const isCompose = svc.kind === "compose";
-          // The scan has to say what the import would say. This one is worth
-          // knowing BEFORE pressing the button: the values arrive literally.
-          const templated = envNeedsInterpolation(
-            parseEnvBlob((detail as SourceApplication).env),
+          // The scan has to say what the import would say. Two different facts:
+          // a reference to a shared variable BECOMES one here, and everything else
+          // the panel templates arrives as it is written.
+          const scanned = parseEnvBlob((detail as SourceApplication).env);
+          const scannedRefs = (detail as SourceApplication).sharedRefs ?? [];
+          const willLink = scannedRefs
+            .filter((r) => r.whole && r.key === r.sharedKey)
+            .map((r) => r.key);
+          if (willLink.length > 0)
+            line.notes.push(
+              `${willLink.join(", ")} read a shared variable on {panel}, so ${
+                willLink.length === 1
+                  ? "it becomes a link"
+                  : "they become links"
+              } to the shared variable of the same name here.`,
+            );
+          const refKeys = new Set(scannedRefs.map((r) => r.key));
+          const templated = envNeedsInterpolation(scanned).filter(
+            (k) => !refKeys.has(k),
           );
           if (templated.length > 0)
             line.notes.push(
@@ -1827,6 +1843,68 @@ async function runImportMigrationProject(
   // SILENTLY: it is a choice made on the review screen, not an event, and a
   // report line per unticked box would bury the ones that need reading.
   const wanted = input.serviceIds ? new Set(input.serviceIds) : null;
+  const picked = (env: SourceEnvironment) =>
+    servicesOf(env).filter((s) => !wanted || wanted.has(s.id));
+
+  // The shared variables come FIRST, because a link needs the row it points at.
+  // Levels in reach order: team, project, then each machine that hosts something
+  // we are importing.
+  const shared: SharedIndex = new Map();
+  await noteLevel(report, source.platformNotes);
+  try {
+    await importSharedVars(
+      await sourceClient(c).teamSharedEnv(),
+      {
+        teamId,
+        label: "Team",
+        environmentIds: [],
+        projectIds: [],
+        teamWide: true,
+        scopeNote: "Offered to your whole team.",
+        report,
+      },
+      shared,
+    );
+  } catch (e) {
+    await levelRefused(report, "team", "", e);
+  }
+  await importSharedVars(
+    source.env,
+    {
+      teamId,
+      label: source.name,
+      environmentIds: [],
+      projectIds: [projectId],
+      scopeNote: "Offered to this project.",
+      report,
+    },
+    shared,
+  );
+  // Coolify's fourth level has no twin here: a variable scoped to a MACHINE
+  // covers everything on it, across projects. Offered to this project instead.
+  for (const sourceServerId of new Set(
+    (source.environments ?? []).flatMap((env) =>
+      picked(env).map((s) => s.serverId ?? ""),
+    ),
+  )) {
+    try {
+      await importSharedVars(
+        await sourceClient(c).serverSharedEnv(sourceServerId),
+        {
+          teamId,
+          label: `${source.name} (server)`,
+          environmentIds: [],
+          projectIds: [projectId],
+          scopeNote:
+            "{panel} shared this across everything on one machine. Deplo has no server scope, so it is offered to this project instead.",
+          report,
+        },
+        shared,
+      );
+    } catch (e) {
+      await levelRefused(report, "server", sourceServerId, e);
+    }
+  }
 
   for (const env of source.environments ?? []) {
     const chosen = servicesOf(env)
@@ -1844,8 +1922,28 @@ async function runImportMigrationProject(
     const envReport = report.at(env.name);
     const environmentId = await ensureEnvironment(projectId, env, envReport);
     if (!environmentId) continue;
+    await noteLevel(envReport, env.platformNotes);
 
-    /** Apps landed in this environment - the link set for its shared vars. */
+    // BEFORE the services: `project.all` is a projection, so an environment's
+    // variable blob is ALWAYS null there however much it holds.
+    const envBlob =
+      env.env ??
+      (await sourceClient(c).getEnvironment(env.environmentId))?.env ??
+      null;
+    await importSharedVars(
+      envBlob,
+      {
+        teamId,
+        label: `${source.name} / ${env.name}`,
+        environmentIds: [environmentId],
+        projectIds: [],
+        scopeNote: `Offered to ${env.name}.`,
+        report: envReport,
+      },
+      shared,
+    );
+
+    /** Apps landed in this environment. */
     const appIds: string[] = [];
 
     for (const svc of chosen) {
@@ -1920,6 +2018,7 @@ async function runImportMigrationProject(
                 placed.get(svc.id)?.serverId ?? serverMap.get(sourceServerId),
               buildServerId: placed.get(svc.id)?.buildServerId ?? null,
               dbHosts,
+              shared,
             },
             svcReport,
           );
@@ -1962,46 +2061,9 @@ async function runImportMigrationProject(
         });
       }
     }
-
-    // `project.all` is a projection: an environment's variable blob is ALWAYS
-    // null there, however much it holds, so this asks for the row itself.
-    const envBlob =
-      env.env ??
-      (await sourceClient(c).getEnvironment(env.environmentId))?.env ??
-      null;
-    await importSharedVars(envBlob, {
-      teamId,
-      label: `${source.name} / ${env.name}`,
-      environmentIds: [environmentId],
-      projectIds: [],
-      appIds,
-      report: envReport,
-    });
   }
 
-  // The project-level blob is available to every app of the project, so it links
-  // to all of them - the environment ones each linked their own slice above.
-  const projectAppIds = await appIdsInProject(teamId, projectId);
   await importBackupDestinations(c, report);
-
-  // Above the project: a panel that shares variables across the whole team.
-  await importSharedVars(await sourceClient(c).teamSharedEnv(), {
-    teamId,
-    label: "Team",
-    environmentIds: [],
-    projectIds: [],
-    appIds: projectAppIds,
-    teamWide: true,
-    report,
-  });
-  await importSharedVars(source.env, {
-    teamId,
-    label: source.name,
-    environmentIds: [],
-    projectIds: [projectId],
-    appIds: projectAppIds,
-    report,
-  });
 
   await refreshCounts(input.runId, teamId);
   // Outside every transaction, like every other caller: `recordActivity` opens its
@@ -2236,18 +2298,40 @@ async function ensureEnvironment(
   }
 }
 
-/** Every app currently filed under a project, for the shared-var link set. */
-async function appIdsInProject(
-  teamId: string,
-  projectId: string,
-): Promise<string[]> {
-  const rows = await getDb()
-    .select({ id: appsTable.id })
-    .from(appsTable)
-    .where(
-      and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, projectId)),
-    );
-  return rows.map((r) => r.id);
+/** The adapter's own notes for one level of the tree, straight onto the report. */
+async function noteLevel(
+  report: Report,
+  notes: string[] | null | undefined,
+): Promise<void> {
+  for (const message of notes ?? [])
+    await report.add({
+      sourceKind: "shared-var",
+      sourceName: "Shared variables",
+      outcome: "manual",
+      targetKind: "shared-var",
+      message,
+    });
+}
+
+/**
+ * A shared-variable level the panel would not answer for. `manual`, not `failed`:
+ * an older build simply has no such endpoint, `failed` is for a write that failed,
+ * and `manual` already means "a person has to look at this".
+ */
+async function levelRefused(
+  report: Report,
+  level: "team" | "server",
+  name: string,
+  e: unknown,
+): Promise<void> {
+  const why = e instanceof Error ? e.message : "it refused the request";
+  await report.add({
+    sourceKind: "shared-var",
+    sourceName: level === "team" ? "Team" : name || "Server",
+    outcome: "manual",
+    targetKind: "shared-var",
+    message: `{panel} would not answer for the ${level} shared variables (${why}). None of them came across - copy them in under Variables.`,
+  });
 }
 
 /* ---- applications and compose stacks -------------------------------- */
@@ -2287,6 +2371,8 @@ async function importAppService(
     /** Old database hostname -> the one Deplo gave it, for the connection strings
      *  this app's variables still spell out. */
     dbHosts: Map<string, string>;
+    /** The shared variables this import has already written, by key. */
+    shared: SharedIndex;
   },
   report: Report,
 ): Promise<string | null> {
@@ -2353,11 +2439,57 @@ async function importAppService(
   const argEntries = parseEnvBlob(
     (detail as SourceApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));
+  const rows = [...envEntries, ...argEntries];
+
+  // A value that is EXACTLY one reference to a shared variable of the SAME name is
+  // a link here, not a copy: a link injects (ADR-0012), and it injects under the
+  // shared variable's own key, so that is the only reference shape it can express.
+  const refs = (detail.sharedRefs ?? []).filter(
+    (r) => !argEntries.some((a) => a.key === r.key),
+  );
+  const linkable = refs.filter(
+    (r) => r.whole && r.key === r.sharedKey && home.shared.has(r.sharedKey),
+  );
+  const dropped = new Map<string, { key: string; value: string }>();
+  for (const r of linkable) {
+    const i = rows.findIndex((e) => e.key === r.key);
+    if (i !== -1) dropped.set(r.key, rows.splice(i, 1)[0]);
+  }
+  // Whatever is still a reference becomes a VALUE. A no-op on a panel that already
+  // answered resolved; the real work on one that resolves at deploy time.
+  const refResolved = resolveSharedRefs(
+    rows,
+    new Map([...home.shared].map(([k, v]) => [k, v.value] as const)),
+  );
+  // Classified AFTER the resolution, so a reference is typed on its real value.
   // A variable that looks like a credential comes across write-only.
-  const env = [...envEntries, ...argEntries].map((e) => ({
+  const env = rows.map((e) => ({
     ...e,
     type: migratedEnvType(e.key, e.value),
   }));
+  const aliased = refs.filter(
+    (r) => r.whole && r.key !== r.sharedKey && home.shared.has(r.sharedKey),
+  );
+  if (linkable.length > 0)
+    notes.push(
+      `${linkable.map((r) => r.key).join(", ")} read a shared variable on {panel}, so ${
+        linkable.length === 1 ? "it is" : "they are"
+      } linked to the shared variable of the same name here instead of carrying a copy. Unlink under Variables to give this app its own value.`,
+    );
+  if (aliased.length > 0)
+    notes.push(
+      `${aliased
+        .map((r) => `${r.key} read {{${r.level}.${r.sharedKey}}}`)
+        .join(
+          ", ",
+        )}. A link here injects under the shared variable's own name, so it cannot be called something else - the value {panel} resolved came across instead.`,
+    );
+  if (refResolved.unresolved.length > 0)
+    notes.push(
+      `${refResolved.unresolved.join(
+        ", ",
+      )} still read a shared variable {panel} did not answer with the value behind. Put the real values in under Variables.`,
+    );
   // The databases this same import renamed. Done HERE, before the app is created,
   // because a secret-typed variable is frozen the moment it exists - and a
   // connection string is exactly the variable that arrives as a secret.
@@ -2629,6 +2761,44 @@ async function importAppService(
     deploy: false,
   });
 
+  // The links the references asked for. A value must never vanish because a link
+  // could not be made, so a refusal writes the entry back instead.
+  const linkRefused: { key: string; value: string }[] = [];
+  for (const r of linkable) {
+    try {
+      await setSharedVarAppLink(
+        home.shared.get(r.sharedKey)!.varId,
+        created.id,
+        true,
+      );
+    } catch {
+      const back = dropped.get(r.key);
+      if (back) linkRefused.push(back);
+    }
+  }
+  if (linkRefused.length > 0) {
+    // `setAppEnv` is a whole-set replace, so it takes the FULL set back.
+    await setAppEnv(
+      created.id,
+      [
+        ...env,
+        ...linkRefused.map((e) => ({
+          ...e,
+          type: migratedEnvType(e.key, e.value),
+        })),
+      ],
+      undefined,
+      { overwriteSecrets: true },
+    );
+    notes.push(
+      `${linkRefused
+        .map((e) => e.key)
+        .join(
+          ", ",
+        )} could not be linked to the shared variable, so ${linkRefused.length === 1 ? "it kept its" : "they kept their"} own copy of the value.`,
+    );
+  }
+
   await report.add({
     sourceKind: svc.kind,
     sourceId: svc.id,
@@ -2636,7 +2806,9 @@ async function importAppService(
     outcome: "created",
     targetKind: "app",
     targetId: created.id,
-    message: `${env.length} variable(s), ${mounts.value.files.length} config file(s).`,
+    message: `${env.length} variable(s), ${
+      linkable.length - linkRefused.length
+    } shared variable(s), ${mounts.value.files.length} config file(s).`,
   });
   const target = { kind: "app", id: created.id };
 
@@ -3381,6 +3553,26 @@ async function importBackupDestinations(
   }
 }
 
+/**
+ * Every shared variable an app of this import can be linked to, by KEY: the row a
+ * link points at, and the value a reference to it stands for. Flat, because Deplo
+ * keeps one shared variable per team and name - so the FIRST level that carries a
+ * key wins, exactly as the database already decides on a re-run.
+ * `ponytail: first-level-wins; compare values if a report line naming the winner is asked for.`
+ */
+type SharedIndex = Map<string, { varId: string; value: string }>;
+
+/** Every shared variable this team already has, by key. */
+async function existingSharedVars(
+  teamId: string,
+): Promise<Map<string, string>> {
+  const rows = await getDb()
+    .select({ id: sharedVarsTable.id, key: sharedVarsTable.key })
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.teamId, teamId));
+  return new Map(rows.map((r) => [r.key, r.id] as const));
+}
+
 async function importSharedVars(
   blob: string | null | undefined,
   opts: {
@@ -3388,25 +3580,22 @@ async function importSharedVars(
     label: string;
     environmentIds: string[];
     projectIds: string[];
-    appIds: string[];
-    /** The scope the variable SUGGESTS. The links above are what injects it. */
+    /** The scope the variable SUGGESTS. Only a REFERENCE creates a link. */
     teamWide?: boolean;
+    /** Said in the created line when the level has no twin here. */
+    scopeNote?: string;
     report: Report;
   },
+  /** Filled in as variables land, so an app can be linked to one afterwards. */
+  index: SharedIndex,
 ): Promise<void> {
   const entries = parseEnvBlob(blob);
   if (entries.length === 0) return;
 
   // Same rule as everything else on a re-run: a key that is already here is left
-  // exactly as it is.
-  const already = new Set(
-    (
-      await getDb()
-        .select({ key: sharedVarsTable.key })
-        .from(sharedVarsTable)
-        .where(eq(sharedVarsTable.teamId, opts.teamId))
-    ).map((r) => r.key),
-  );
+  // exactly as it is - but it still enters the index, so the apps that referenced
+  // it are linked to the row that IS here.
+  const already = await existingSharedVars(opts.teamId);
 
   // Said once at the end, exactly as a service's own variables say it: a secret
   // here is write-only with no reveal path, so which values just became
@@ -3415,20 +3604,24 @@ async function importSharedVars(
   const secrets: string[] = [];
 
   for (const { key, value } of entries) {
-    if (already.has(key)) {
+    if (index.has(key)) continue;
+    const here = already.get(key);
+    if (here) {
+      index.set(key, { varId: here, value });
       await opts.report.add({
         path: opts.label,
         sourceKind: "shared-var",
         sourceName: key,
         outcome: "skipped",
         targetKind: "shared-var",
-        message: "A shared variable with this name is already in this team.",
+        message:
+          "A shared variable with this name is already in this team. The apps that referenced it are linked to that one, whatever value it holds.",
       });
       continue;
     }
     const type = migratedEnvType(key, value);
     try {
-      await saveSharedVar({
+      const varId = await saveSharedVar({
         key,
         value,
         // Write-only when it looks like a credential, exactly as a service's
@@ -3437,8 +3630,11 @@ async function importSharedVars(
         teamIds: opts.teamWide ? [opts.teamId] : [],
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
-        appIds: opts.appIds,
+        // Never `[]`, which is a whole-set replace that would unlink what a
+        // previous pass attached. Links are made from the REFERENCES, below.
+        appIds: undefined,
       });
+      index.set(key, { varId, value });
       if (type === "secret" && value.trim() !== "") secrets.push(key);
       await opts.report.add({
         path: opts.label,
@@ -3447,9 +3643,8 @@ async function importSharedVars(
         outcome: "created",
         targetKind: "shared-var",
         message:
-          opts.appIds.length === 0
-            ? "Nothing is linked to it yet - no app was imported into this scope."
-            : null,
+          (opts.scopeNote ? `${opts.scopeNote} ` : "") +
+          "Only an app that referenced it on {panel} is linked to it - link others under Variables.",
       });
     } catch (e) {
       await opts.report.add({

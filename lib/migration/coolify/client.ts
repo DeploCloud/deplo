@@ -547,23 +547,32 @@ export async function listTeamMembers(
   return asArray<CoolifyUser>(await getOr<unknown>(c, "team/members", []));
 }
 
-/** Shared variables, one level at a time. Serialised into an env blob upstream. */
+/**
+ * Shared variables, one level at a time. Serialised into an env blob upstream.
+ * THROWS rather than answering `[]`: an older panel that has no such endpoint and
+ * a team whose variables really are empty are not the same fact, and swallowing
+ * the difference is how a whole team's variable set disappeared with no report
+ * line. Each caller decides what to say.
+ */
 export async function listSharedEnvs(
   c: SourceCredential,
   scope:
     | { level: "team" }
     | { level: "project"; projectUuid: string }
-    | { level: "environment"; projectUuid: string; environment: string },
+    | { level: "environment"; projectUuid: string; environment: string }
+    | { level: "server"; serverUuid: string },
 ): Promise<CoolifyEnv[]> {
   const path =
     scope.level === "team"
       ? "team/envs"
       : scope.level === "project"
         ? `projects/${scope.projectUuid}/envs`
-        : `projects/${scope.projectUuid}/environments/${encodeURIComponent(
-            scope.environment,
-          )}/envs`;
-  return asArray<CoolifyEnv>(await getOr<unknown>(c, path, []));
+        : scope.level === "server"
+          ? `servers/${scope.serverUuid}/envs`
+          : `projects/${scope.projectUuid}/environments/${encodeURIComponent(
+              scope.environment,
+            )}/envs`;
+  return asArray<CoolifyEnv>(await get<unknown>(c, path));
 }
 
 /* ------------------------------------------------------------------ */

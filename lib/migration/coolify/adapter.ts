@@ -186,25 +186,42 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
   const envsByProject = new Map<string, CoolifyEnvironment[]>();
   const sharedByProject = new Map<string, string>();
   const sharedByEnv = new Map<string, string>();
+  // A level the panel will not answer for is a REPORT LINE, never a silence: an
+  // older build has no such endpoint, and swallowing the 404 is how a whole set
+  // of shared variables vanished with nothing said.
+  const notesByProject = new Map<string, string[]>();
+  const notesByEnv = new Map<string, string[]>();
   await mapLimit(projects, CONCURRENCY, async (p) => {
-    const [envs, shared] = await Promise.all([
-      listEnvironments(c, p.uuid),
-      listSharedEnvs(c, { level: "project", projectUuid: p.uuid }),
-    ]);
+    const envs = await listEnvironments(c, p.uuid);
     envsByProject.set(p.uuid, envs);
-    sharedByProject.set(p.uuid, coolifyEnvBlob(shared).blob);
-    await mapLimit(envs, CONCURRENCY, async (e) => {
-      const name = e.name?.trim() || String(e.uuid ?? e.id);
-      sharedByEnv.set(
-        `${p.uuid}/${e.id}`,
+    try {
+      sharedByProject.set(
+        p.uuid,
         coolifyEnvBlob(
-          await listSharedEnvs(c, {
-            level: "environment",
-            projectUuid: p.uuid,
-            environment: name,
-          }),
+          await listSharedEnvs(c, { level: "project", projectUuid: p.uuid }),
         ).blob,
       );
+    } catch (e) {
+      notesByProject.set(p.uuid, [sharedLevelNote("project", p.name ?? "", e)]);
+    }
+    await mapLimit(envs, CONCURRENCY, async (e) => {
+      const name = e.name?.trim() || String(e.uuid ?? e.id);
+      try {
+        sharedByEnv.set(
+          `${p.uuid}/${e.id}`,
+          coolifyEnvBlob(
+            await listSharedEnvs(c, {
+              level: "environment",
+              projectUuid: p.uuid,
+              environment: name,
+            }),
+          ).blob,
+        );
+      } catch (err) {
+        notesByEnv.set(`${p.uuid}/${e.id}`, [
+          sharedLevelNote("environment", name, err),
+        ]);
+      }
     });
   });
 
@@ -216,6 +233,7 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
         environmentId: String(e.uuid ?? e.id),
         name: e.name?.trim() || "production",
         env: sharedByEnv.get(`${p.uuid}/${e.id}`) || null,
+        platformNotes: notesByEnv.get(`${p.uuid}/${e.id}`) ?? null,
         applications: [],
         compose: [],
       };
@@ -252,9 +270,21 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
       name: p.name?.trim() || p.uuid,
       description: p.description ?? null,
       env: sharedByProject.get(p.uuid) || null,
+      platformNotes: notesByProject.get(p.uuid) ?? null,
       environments,
     };
   });
+}
+
+/** One line for a shared-variable level the panel would not answer for. */
+function sharedLevelNote(
+  level: "team" | "project" | "environment" | "server",
+  name: string,
+  e: unknown,
+): string {
+  const why = e instanceof Error ? e.message : "it refused the request";
+  const what = name ? `${level} "${name}"` : `${level}`;
+  return `{panel} would not answer for the ${what} shared variables (${why}), so none of them came across. Copy them in under Variables.`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -289,6 +319,7 @@ async function detail(
   const extras = {
     env: env.blob,
     envNotes,
+    sharedRefs: env.sharedRefs,
     mounts,
     serverId: index.serverOf.get(id) ?? "",
   };
@@ -475,6 +506,22 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
 
     teamSharedEnv: async () =>
       coolifyEnvBlob(await listSharedEnvs(c, { level: "team" })).blob || null,
+
+    // Coolify's fourth level: a variable scoped to a MACHINE, referenced as
+    // `{{server.KEY}}`. Deplo has no server scope, so the importer offers it to
+    // the project instead and says so.
+    serverSharedEnv: async (sourceServerId) => {
+      // The importer keys the panel's own host `""` (see `serverOfResource`).
+      const uuid = (await listServers(c)).find(
+        (s) => (coolifyIsPanelHost(s) ? "" : s.uuid) === sourceServerId,
+      )?.uuid;
+      if (!uuid) return null;
+      return (
+        coolifyEnvBlob(
+          await listSharedEnvs(c, { level: "server", serverUuid: uuid }),
+        ).blob || null
+      );
+    },
 
     listBackupDestinations: async () =>
       (await listS3Storages(c))

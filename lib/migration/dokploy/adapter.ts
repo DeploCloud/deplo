@@ -25,6 +25,8 @@ import {
 } from "./client";
 import {
   DOKPLOY_PLATFORM,
+  parseEnvBlob,
+  sharedRefsIn,
   sourceBindMountsFrom,
   sourceVolumesFrom,
 } from "../map";
@@ -109,7 +111,13 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     assertReadable: async () => {},
     listProjects: () => listProjects(c),
     getEnvironment: (id) => getEnvironment(c, id),
-    getService: (kind, id) => getService(c, kind, id),
+    // Dokploy hands over the REFERENCE itself - it resolves `${{project.KEY}}`
+    // only at deploy time - so the refs are read straight off the blob here.
+    getService: async (kind, id) => {
+      const row = await getService(c, kind, id);
+      const blob = (row as { env?: string | null }).env;
+      return { ...row, sharedRefs: sharedRefsIn(parseEnvBlob(blob)) };
+    },
     getResolvedCompose: (id) => getConvertedCompose(c, id),
     listServers: () => listServers(c),
     listMembers: () => listMembers(c),
@@ -117,6 +125,7 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     listSchedules: (kind, id) => listSchedules(c, kind, id),
     // Dokploy shares variables at the project and the environment, never above.
     teamSharedEnv: async () => null,
+    serverSharedEnv: async () => null,
     listBackupDestinations: async () => [],
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),
