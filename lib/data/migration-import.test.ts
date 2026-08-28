@@ -2426,6 +2426,38 @@ test("a scan reports which product answered", async () => {
   assert.equal(plan.platform, "dokploy");
 });
 
+// The panel answering says nothing about the machines its services run on. The
+// wizard will not reach Review until every one of them answers; the API started
+// anyway, imported eleven objects, and left six of them with unreadable data.
+test("a machine with no agent stops the run before it starts", async () => {
+  const before = (await db.select().from(runsTable)).length;
+  await assert.rejects(
+    () =>
+      asOwner(() =>
+        startMigrationRun({
+          url: URL_BASE,
+          apiKey: CONNECT.apiKey,
+          allowPrivate: false,
+          orgName: null,
+          targets: [
+            {
+              projectId: "dok-prj-blink",
+              projectName: "Blink",
+              serviceId: "dok-app-web",
+              serverId: null,
+              buildServerId: null,
+              exposedPort: null,
+              exposedPortSet: false,
+            },
+          ],
+          servers: [],
+        }),
+      ),
+    /has no agent[\s\S]*every machine has to answer/,
+  );
+  assert.equal((await db.select().from(runsTable)).length, before);
+});
+
 // The wizard checks the panel answers before it starts anything; the API did
 // not, so a run was created, stored a key, and then died on its first call.
 test("a panel that does not answer leaves no run behind", async () => {

@@ -31,6 +31,7 @@ import {
 } from "./migration-import";
 import {
   abortRunCopy,
+  assertMigrationMachinesReady,
   moveMigrationServiceData,
   planMigrationDataMove,
   type DataMoveService,
@@ -117,6 +118,8 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
   // already been created.
   const c = await connectCredential(input);
   await sourceClient(c).listProjects();
+  // And the MACHINES, which is the half the panel answering says nothing about.
+  await assertMigrationMachinesReady(c);
 
   const runId = await beginMigration({
     url: input.url,

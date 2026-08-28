@@ -83,7 +83,7 @@ const UNREACHABLE_SOURCE_AGENT =
 /**
  * Whether the agent holding this service's data answers US.
  */
-async function sourceAgentReachable(serverId: string): Promise<boolean> {
+export async function sourceAgentReachable(serverId: string): Promise<boolean> {
   try {
     const conn = await connectAgent(serverId);
     try {
@@ -567,6 +567,32 @@ async function recordStoppedForCopy(
     .set({ status: "idle", updatedAt: nowIso() })
     .where(
       and(eq(appsTable.id, landed.targetId), eq(appsTable.teamId, teamId)),
+    );
+}
+
+/**
+ * Every machine behind the panel answers Deplo, or nothing starts.
+ *
+ * The wizard refuses to reach Review without this; the API did not, so a run
+ * imported eleven objects and then found six of them with no way to read their
+ * data. A LIVE hello, not the stored status: that one goes green on the agent's
+ * own call-home and says nothing about the direction a copy needs.
+ */
+export async function assertMigrationMachinesReady(
+  c: SourceCredential,
+): Promise<void> {
+  const teamId = await requireActiveTeamId();
+  const machines = await migrationMachines(c, teamId);
+  const notReady: string[] = [];
+  for (const m of machines) {
+    const name = m.name || m.ipAddress || "the panel's own host";
+    if (!m.deploServerId) notReady.push(`${name} has no agent`);
+    else if (!(await sourceAgentReachable(m.deploServerId)))
+      notReady.push(`${name} does not answer`);
+  }
+  if (notReady.length > 0)
+    throw new Error(
+      `Nothing was started: ${notReady.join(", ")}. Deplo reads a service's data off the machine it runs on, so every machine has to answer first - the wizard's Connect step lists them and installs the agent.`,
     );
 }
 
