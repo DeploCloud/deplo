@@ -19,6 +19,7 @@ import {
   useLogFilters,
   BUILD_LEVELS,
 } from "@/components/logs/log-filters";
+import { BuildPhaseBar } from "@/components/apps/build-phase-bar";
 import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
@@ -44,6 +45,8 @@ const DEPLOYMENT_LOGS_QUERY = /* GraphQL */ `
     deployment(id: $id) {
       status
       queuePosition
+      startedAt
+      buildDurationMs
       logs {
         ts
         level
@@ -57,6 +60,8 @@ type LogsResponse = {
   deployment: {
     status: DeploymentStatus;
     queuePosition: number | null;
+    startedAt: string | null;
+    buildDurationMs: number | null;
     logs: LogLine[];
   } | null;
 };
@@ -69,12 +74,17 @@ export function BuildLogStream({
   initialLogs,
   initialStatus,
   initialQueuePosition = null,
+  initialStartedAt = null,
+  initialBuildDurationMs = null,
 }: {
   deploymentId: string;
   initialLogs: LogLine[];
   initialStatus: DeploymentStatus;
   /** Seed for the queued banner's position; the poll keeps it fresh. */
   initialQueuePosition?: number | null;
+  /** Seeds for the phase bar; the poll keeps both fresh. */
+  initialStartedAt?: string | null;
+  initialBuildDurationMs?: number | null;
 }) {
   // The log list is NOT seeded from `initialLogs` and is NOT server-rendered.
   const [logs, setLogs] = React.useState<LogLine[]>([]);
@@ -84,6 +94,12 @@ export function BuildLogStream({
   // the first poll, then refreshed by the poll below as the builds ahead finish.
   const [queuePosition, setQueuePosition] = React.useState<number | null>(
     initialQueuePosition,
+  );
+  // The phase bar's clock. Polled rather than left to `router.refresh()`, so the
+  // last segment freezes on the measured duration the instant the build settles.
+  const [startedAt, setStartedAt] = React.useState(initialStartedAt);
+  const [buildDurationMs, setBuildDurationMs] = React.useState(
+    initialBuildDurationMs,
   );
   const [follow, setFollow] = React.useState(true);
 
@@ -150,6 +166,8 @@ export function BuildLogStream({
         setLogs(data.deployment.logs);
         setStatus(data.deployment.status);
         setQueuePosition(data.deployment.queuePosition ?? null);
+        setStartedAt(data.deployment.startedAt ?? null);
+        setBuildDurationMs(data.deployment.buildDurationMs ?? null);
         // Sync the server-rendered status badge / build time on each transition
         // (queued→building→ready/error/canceled) so they update live, not just on
         // reload. Guarded by a ref so it fires once per change, not every poll.
@@ -212,6 +230,12 @@ export function BuildLogStream({
       {status === "queued" && logs.length === 0 && (
         <QueuedBanner position={queuePosition} />
       )}
+      <BuildPhaseBar
+        logs={logs}
+        status={status}
+        startedAt={startedAt}
+        buildDurationMs={buildDurationMs}
+      />
       <div className="overflow-hidden rounded-xl border border-border bg-terminal">
         {/* Every control beside the search input is h-9 - `size="sm"` is h-8,
             which lands a button 4px short of an Input and reads as a broken row. */}

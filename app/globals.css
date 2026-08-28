@@ -35,6 +35,7 @@
   --destructive-foreground: #ffffff;
 
   --success: #00794d;
+  --success-foreground: #ffffff;
   --warning: #a35200;
   --info: #0068d6;
 
@@ -125,6 +126,7 @@
   --destructive-foreground: #ffffff;
 
   --success: #50e3c2;
+  --success-foreground: #0a0a0a;
   --warning: #f5a623;
   --info: #5b9dff;
   --violet: #8b5cf6;
@@ -168,6 +170,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-info: var(--info);
   --color-chart-1: var(--chart-1);
