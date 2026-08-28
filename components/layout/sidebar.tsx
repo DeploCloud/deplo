@@ -14,6 +14,7 @@ import {
 import { DeploLogo, DeploMark } from "@/components/logo";
 import { sidebarMenuFor } from "@/components/layout/nav-config";
 import { SidebarNav } from "./sidebar-nav";
+import { SidebarTips } from "./sidebar-tips";
 import { useSidebar } from "./sidebar-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,9 +39,12 @@ const FOOTER_LINK_COLLAPSED = "h-9 w-9 justify-center px-0";
 export function Sidebar({
   capabilities = [],
   isAdmin = false,
+  hasSecondFactor = true,
 }: {
   capabilities?: string[];
   isAdmin?: boolean;
+  /** Feeds the nudge cards above the footer; see sidebar-tips. */
+  hasSecondFactor?: boolean;
 }) {
   const router = useRouter();
   // The footer stands down inside a drill-in; the nav there has its own way out.
@@ -137,6 +141,19 @@ export function Sidebar({
           isAdmin={isAdmin}
         />
       </div>
+
+      {/* Nudges sit above the footer and only in the main menu: a drill-in's nav
+          is a place someone went on purpose, and the collapsed rail has no room
+          for prose. */}
+      {menu === "main" && !collapsed && (
+        <div className="px-3 pb-2">
+          <SidebarTips
+            hasSecondFactor={hasSecondFactor}
+            capabilities={capabilities}
+            isAdmin={isAdmin}
+          />
+        </div>
+      )}
 
       {/* Outside the scroller: the manual and the way into Settings are both
           reachable from any page, however far down the nav has been scrolled.

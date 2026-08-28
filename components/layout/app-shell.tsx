@@ -10,7 +10,6 @@ import { NavProgress } from "./nav-progress";
 import { GitConnectToast } from "@/components/shared/git-connect-toast";
 import { DeployActivityProvider } from "./deploy-activity";
 import { MigrationActivityProvider } from "./migration-activity";
-import { TwoFactorReminder } from "@/components/security/two-factor-reminder";
 import { LogsDisplayVars } from "@/components/shared/logs-display";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { PublicUser, TeamIdentity, TeamSummary } from "@/lib/types";
@@ -34,7 +33,7 @@ export function AppShell({
   capabilities: string[];
   /** Instance admin - gates admin-only nav (the Users settings section). */
   isAdmin: boolean;
-  /** Holds a passkey that works here: already a second factor. */
+  /** Holds a passkey that works here: already a second factor (ADR-0024). */
   hasPasskey?: boolean;
   children: React.ReactNode;
 }) {
@@ -71,7 +70,11 @@ export function AppShell({
                     its one-shot confirmation is mounted once here rather than
                     on Settings → Git. */}
                   <GitConnectToast />
-                  <Sidebar capabilities={capabilities} isAdmin={isAdmin} />
+                  <Sidebar
+                    capabilities={capabilities}
+                    isAdmin={isAdmin}
+                    hasSecondFactor={user.twoFactorEnabled || hasPasskey}
+                  />
                 </>
               }
               header={
@@ -85,14 +88,6 @@ export function AppShell({
                     isAdmin={isAdmin}
                   />
                   <UpdateBanner />
-                  {/**
-                   * Renders nothing for an account that already has a second factor - an
-                   * authenticator app OR a passkey (ADR-0024) - and nothing at all once the user has
-                   * dismissed it for good.
-                   */}
-                  <TwoFactorReminder
-                    hasSecondFactor={user.twoFactorEnabled || hasPasskey}
-                  />
                 </>
               }
             >
