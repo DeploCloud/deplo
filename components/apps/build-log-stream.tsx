@@ -23,22 +23,12 @@ import { BuildPhaseBar } from "@/components/apps/build-phase-bar";
 import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
+import { formatClockTime } from "@/lib/utils";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
 
 const POLL_MS = 500;
 /** Treat "within this many px of the bottom" as "at the bottom" → keep following. */
 const BOTTOM_THRESHOLD = 24;
-
-/**
- * Format a timestamp as a stable `HH:MM:SS` string. `toLocaleTimeString()` formats
- * in the server's timezone/locale during SSR and the browser's during hydration,
- * so the two never match → hydration error.
- */
-function formatLogTime(ts: string): string {
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-}
 
 const DEPLOYMENT_LOGS_QUERY = /* GraphQL */ `
   query DeploymentLogs($id: String!) {
@@ -219,7 +209,7 @@ export function BuildLogStream({
       filters.shown
         .map(
           (l) =>
-            `[${formatLogTime(l.ts)}] ${levelLabelPadded(l.level)} ${stripAnsi(l.text)}`,
+            `[${formatClockTime(l.ts)}] ${levelLabelPadded(l.level)} ${stripAnsi(l.text)}`,
         )
         .join("\n"),
     [filters.shown],
@@ -302,7 +292,7 @@ export function BuildLogStream({
               key={i}
               level={l.level}
               text={l.text}
-              time={formatLogTime(l.ts)}
+              time={formatClockTime(l.ts)}
               highlight={filters.highlight}
             />
           ))}

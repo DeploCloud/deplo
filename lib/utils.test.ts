@@ -4,6 +4,7 @@ import {
   appTypeLabel,
   cn,
   formatBuildDuration,
+  formatClockTime,
   isHexColor,
   normalizeHexColor,
   pickerInstallationId,
@@ -219,4 +220,15 @@ test("timeAgoShort compresses the unit and keeps the suffix", () => {
   );
   assert.equal(timeAgoShort(new Date(Date.now() + 3 * 60 * 1000)), "in 3m");
   assert.equal(timeAgoShort("not a date"), "");
+});
+
+test("formatClockTime pads UTC and only shows millis when asked", () => {
+  const ts = "2026-08-27T19:39:04.007Z";
+  assert.equal(formatClockTime(ts), "19:39:04");
+  assert.equal(formatClockTime(ts, true), "19:39:04.007");
+  assert.equal(
+    formatClockTime("2026-01-02T00:00:00.000Z", true),
+    "00:00:00.000",
+  );
+  assert.equal(formatClockTime("not a date"), "");
 });

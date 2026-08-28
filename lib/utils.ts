@@ -45,6 +45,19 @@ const SHORT_UNITS: Record<string, string> = {
 };
 
 /**
+ * A log/build clock as a stable `HH:MM:SS[.mmm]`. UTC on purpose: a locale-aware
+ * format renders in the server's timezone during SSR and the browser's during
+ * hydration, so the two never match.
+ */
+export function formatClockTime(ts: string, withMillis = false): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  const hms = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+  return withMillis ? `${hms}.${pad(d.getUTCMilliseconds(), 3)}` : hms;
+}
+
+/**
  * How long a build took (or has been running), as `340ms` / `12s` / `2m 5s`.
  */
 export function formatBuildDuration(ms: number | null): string {
