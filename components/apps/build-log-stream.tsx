@@ -226,7 +226,7 @@ export function BuildLogStream({
         startedAt={startedAt}
         buildDurationMs={buildDurationMs}
       />
-      <div className="overflow-hidden rounded-xl border border-border bg-terminal">
+      <div className="mt-4 overflow-hidden rounded-xl border border-border bg-terminal">
         {/* Every control beside the search input is h-9 - `size="sm"` is h-8,
             which lands a button 4px short of an Input and reads as a broken row. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
