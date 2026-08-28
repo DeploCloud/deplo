@@ -481,22 +481,25 @@ function PanelHttpsRow() {
     return res;
   }
 
+  // The real box, not a guessed height: everything but the switch's state is
+  // known before the read returns, so the row settles in place instead of
+  // growing out of a bar that was never the same size as it.
   if (loading)
-    return <div className="h-14 animate-pulse rounded-lg bg-muted/50" />;
+    return (
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+        <div className="min-w-0">
+          <HttpsLabel />
+        </div>
+        <span className="h-5 w-9 shrink-0 animate-pulse rounded-full bg-muted" />
+      </div>
+    );
   if (!cert) return null;
 
   return (
     <>
       <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <ShieldCheck className="size-4 text-muted-foreground" />
-            HTTPS
-            <InfoTip
-              content="Turn this off when the address cannot get a certificate: it does not resolve publicly yet, port 80 is closed, or the server is on an internal network. You can turn it back on once it can."
-              docs="panel.https"
-            />
-          </div>
+          <HttpsLabel />
           {cert.unavailable ? (
             <p className="mt-1 text-sm text-muted-foreground">
               {cert.unavailable}
@@ -555,6 +558,21 @@ function PanelHttpsRow() {
         />
       )}
     </>
+  );
+}
+
+/** The HTTPS row's fixed half, drawn while loading too so the box is already
+ *  the height it will settle at. */
+function HttpsLabel() {
+  return (
+    <div className="flex items-center gap-2 text-sm font-medium">
+      <ShieldCheck className="size-4 text-muted-foreground" />
+      HTTPS
+      <InfoTip
+        content="Turn this off when the address cannot get a certificate: it does not resolve publicly yet, port 80 is closed, or the server is on an internal network. You can turn it back on once it can."
+        docs="panel.https"
+      />
+    </div>
   );
 }
 
