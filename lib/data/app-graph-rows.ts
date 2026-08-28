@@ -605,6 +605,7 @@ export function assembleDomain(
     ...(row.pathPrefix != null ? { pathPrefix: row.pathPrefix } : {}),
     ...(row.stripPrefix != null ? { stripPrefix: row.stripPrefix } : {}),
     ...(row.service != null ? { service: row.service } : {}),
+    ...(row.proxied != null ? { proxied: row.proxied } : {}),
     ...(row.importedFrom != null ? { importedFrom: row.importedFrom } : {}),
     createdAt: row.createdAt,
   };
@@ -629,6 +630,7 @@ export function domainToRow(d: Domain): DomainInsert {
     pathPrefix: d.pathPrefix ?? null,
     stripPrefix: d.stripPrefix ?? null,
     service: d.service ?? null,
+    proxied: d.proxied ?? null,
     importedFrom: d.importedFrom ?? null,
     createdAt: d.createdAt,
   };

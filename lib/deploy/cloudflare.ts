@@ -144,6 +144,31 @@ export function classifyDomainDns(
   return "misconfigured";
 }
 
+/** The shape both routability answers read: the settled DNS status plus the
+ * user's own "something else answers for this hostname" declaration. */
+export interface DomainReach {
+  status: DomainStatus;
+  proxied?: boolean | null;
+}
+
+/**
+ * Whether something answers for the hostname in FRONT of this server - detected
+ * (Cloudflare's anycast) or declared by the user for any other proxy. Either way
+ * DNS cannot see the origin.
+ */
+export function isProxiedDomain(d: DomainReach): boolean {
+  return d.status === "cloudflare" || d.proxied === true;
+}
+
+/**
+ * Whether a domain gets a Traefik router at all: its DNS points straight here, or
+ * a proxy answers for it. A `pending`/`misconfigured` host that nothing fronts
+ * has no working DNS and is left off.
+ */
+export function isRoutableDomain(d: DomainReach): boolean {
+  return d.status === "valid" || isProxiedDomain(d);
+}
+
 /**
  * The certificate provider a domain carries once a DNS check has settled its
  * status - the ONE place the "proxied ⇒ Cloudflare issues the certificate" rule

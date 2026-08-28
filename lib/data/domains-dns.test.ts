@@ -21,6 +21,8 @@ import {
 import {
   addDomain,
   ensureAutoDomain,
+  routableRoutes,
+  setPrimaryDomain,
   updateDomain,
   verifyDomain,
   __setDnsResolve4ForTest,
@@ -303,4 +305,80 @@ test("rename to an unresolvable host drops to pending and stops ssl", async () =
   const renamed = rows.find((r) => r.id === d.id)!;
   assert.equal(renamed.status, "pending");
   assert.equal(renamed.ssl, false);
+});
+
+/* ------------------------------------------------------------------ */
+/* A proxy that is not Cloudflare                                       */
+/* ------------------------------------------------------------------ */
+
+test("proxied: a host answered by another proxy is routed, not dropped", async () => {
+  // A CDN / reverse proxy answers for the hostname, so its A record is the
+  // proxy's and the check can only ever say `misconfigured`.
+  __setDnsResolve4ForTest(async () => [ELSEWHERE_IP]);
+  const d = await asUser1(() =>
+    addDomain("prj_1", "cdn.example.io", { proxied: true }),
+  );
+  assert.equal(d.status, "misconfigured");
+  assert.equal(d.proxied, true);
+  assert.equal(d.ssl, true);
+
+  const routes = await asUser1(() => routableRoutes("prj_1"));
+  assert.deepEqual(
+    routes.map((r) => r.name),
+    ["cdn.example.io"],
+  );
+});
+
+test("proxied: the SAME host without the flag stays off the router", async () => {
+  __setDnsResolve4ForTest(async () => [ELSEWHERE_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "cdn.example.io", {}));
+  assert.equal(d.status, "misconfigured");
+  assert.equal(d.proxied, undefined);
+  assert.deepEqual(await asUser1(() => routableRoutes("prj_1")), []);
+});
+
+test("proxied: turning the switch on routes an already-misconfigured host", async () => {
+  __setDnsResolve4ForTest(async () => [ELSEWHERE_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "late.example.io", {}));
+  assert.deepEqual(await asUser1(() => routableRoutes("prj_1")), []);
+
+  await asUser1(() => updateDomain(d.id, { proxied: true }));
+  const routes = await asUser1(() => routableRoutes("prj_1"));
+  assert.deepEqual(
+    routes.map((r) => r.name),
+    ["late.example.io"],
+  );
+  const [row] = await db.select().from(domainsTable);
+  assert.equal(row.proxied, true);
+  assert.equal(row.ssl, true);
+});
+
+test("proxied: a verify leaves the declaration (and the routing) alone", async () => {
+  __setDnsResolve4ForTest(async () => [ELSEWHERE_IP]);
+  const d = await asUser1(() =>
+    addDomain("prj_1", "stays.example.io", { proxied: true }),
+  );
+  const checked = await asUser1(() => verifyDomain(d.id));
+  assert.equal(checked.status, "misconfigured");
+  assert.equal(checked.ssl, true);
+  assert.equal((await asUser1(() => routableRoutes("prj_1"))).length, 1);
+});
+
+test("proxied: a declared host can be the primary, a plain misconfigured one can't", async () => {
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  await asUser1(() => addDomain("prj_1", "first.example.io", {}));
+  __setDnsResolve4ForTest(async () => [ELSEWHERE_IP]);
+  const cdn = await asUser1(() =>
+    addDomain("prj_1", "second.example.io", { proxied: true }),
+  );
+  const plain = await asUser1(() => addDomain("prj_1", "third.example.io", {}));
+
+  await asUser1(() => setPrimaryDomain(cdn.id));
+  const rows = await db.select().from(domainsTable);
+  assert.equal(rows.find((r) => r.id === cdn.id)!.isPrimary, true);
+
+  await assert.rejects(
+    () => asUser1(() => setPrimaryDomain(plain.id)),
+    /misconfigured/,
+  );
 });

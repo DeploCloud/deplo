@@ -127,6 +127,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
               pathPrefix: resolved.pathPrefix,
               stripPrefix: resolved.stripPrefix,
               service: resolved.service,
+              proxied: resolved.proxied,
               // A brand-new domain can be paired with its www counterpart in the
               // same click: the server adds the second hostname, checks its DNS
               // and wires the 301 before the add returns.
@@ -140,7 +141,13 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
           // pre-pointed host is already live; an unpointed one is watched automatically from
           // the domains page, never a generic "now go verify" chore.
           const status = data?.addDomain.status;
-          if (status === "valid")
+          if (resolved.proxied)
+            // Its DNS answers with the proxy, so the check's verdict says nothing
+            // here: what matters is that the host is routed.
+            toast.success(
+              "Domain added - routed through your proxy. Point the proxy at this server.",
+            );
+          else if (status === "valid")
             toast.success(
               "Domain added - DNS already points here, routing is live",
             );

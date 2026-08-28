@@ -1541,6 +1541,11 @@ type Domain {
   primary: Boolean
 
   """
+  The owner's declaration that a proxy (a CDN, a reverse proxy, a load balancer) answers for this hostname. Its A records then name the proxy, never this server, so the DNS check can only ever settle `misconfigured` - this is what keeps the host routed anyway, and makes its URL https (the proxy terminates TLS). The declared twin of the `cloudflare` status, which is detected from Cloudflare's published ranges.
+  """
+  proxied: Boolean
+
+  """
   Hostname this domain answers a permanent 301 to (the canonical half of its www / non-www pair), or null when it serves the app itself.
   """
   redirectTo: String
@@ -1550,7 +1555,7 @@ type Domain {
   ssl: Boolean
 
   """
-  DNS verification state. Only `valid` is confirmed: `cloudflare` means the host is proxied and its origin cannot be checked from DNS, so it is routed but unverified. See the DomainStatus enum.
+  DNS verification state. Only `valid` is confirmed: `cloudflare` means the host is proxied and its origin cannot be checked from DNS, so it is routed but unverified. A `misconfigured` host is off the router unless `proxied` declares another proxy answers for it. See the DomainStatus enum.
   """
   status: DomainStatus
   stripPrefix: Boolean
@@ -1565,6 +1570,7 @@ input DomainConfigInput {
   middlewares: [String!]
   pathPrefix: String
   port: Int
+  proxied: Boolean
   service: String
   stripPrefix: Boolean
   www: DomainWwwRedirect
@@ -1585,6 +1591,7 @@ input DomainPatchInput {
   name: String
   pathPrefix: String
   port: Int
+  proxied: Boolean
   service: String
   stripPrefix: Boolean
   www: DomainWwwRedirect
@@ -1601,7 +1608,7 @@ enum DomainStatus {
   error
 
   """
-  Resolves to an address that is neither this app's server nor a Cloudflare edge. Not routed.
+  Resolves to an address that is neither this app's server nor a Cloudflare edge. Not routed, unless `Domain.proxied` says another proxy answers for it.
   """
   misconfigured
 

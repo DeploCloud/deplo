@@ -72,6 +72,13 @@ test("domainScheme: http only for the `none` provider, https otherwise (absent â
   assert.equal(domainScheme({}), "https");
 });
 
+test("domainScheme: a proxied host is https even with no certificate of its own", () => {
+  // The proxy terminates TLS at its edge; the origin router behind it can stay
+  // on plain http, and the link the panel prints has to be the public one.
+  assert.equal(domainScheme({ certProvider: "none", proxied: true }), "https");
+  assert.equal(domainTlsConfig({ certProvider: "none" }).entrypoint, "web");
+});
+
 test("domainScheme: the `custom` provider is https - it is a certificate, just not ours", () => {
   assert.equal(domainScheme({ certProvider: "custom" }), "https");
 });

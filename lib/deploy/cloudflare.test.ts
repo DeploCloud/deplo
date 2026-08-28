@@ -5,6 +5,8 @@ import {
   isCloudflareIp,
   classifyDomainDns,
   certProviderForDns,
+  isProxiedDomain,
+  isRoutableDomain,
   CLOUDFLARE_IPV4_RANGES,
 } from "./cloudflare";
 
@@ -165,4 +167,34 @@ test("CLOUDFLARE_IPV4_RANGES mirrors the published ips-v4 list (15 CIDRs)", () =
   for (const cidr of CLOUDFLARE_IPV4_RANGES) {
     assert.match(cidr, /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/, `${cidr} is a CIDR`);
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Routability: detected proxy, declared proxy                          */
+/* ------------------------------------------------------------------ */
+
+test("isRoutableDomain: valid and Cloudflare-proxied hosts route", () => {
+  assert.equal(isRoutableDomain({ status: "valid" }), true);
+  assert.equal(isRoutableDomain({ status: "cloudflare" }), true);
+});
+
+test("isRoutableDomain: a declared proxy routes what DNS calls misconfigured", () => {
+  assert.equal(isRoutableDomain({ status: "misconfigured" }), false);
+  assert.equal(
+    isRoutableDomain({ status: "misconfigured", proxied: true }),
+    true,
+  );
+  // A host that does not resolve at all has nothing in front of it either.
+  assert.equal(isRoutableDomain({ status: "pending" }), false);
+  assert.equal(isRoutableDomain({ status: "pending", proxied: true }), true);
+});
+
+test("isProxiedDomain: detected or declared, never inferred from `valid`", () => {
+  assert.equal(isProxiedDomain({ status: "cloudflare" }), true);
+  assert.equal(
+    isProxiedDomain({ status: "misconfigured", proxied: true }),
+    true,
+  );
+  assert.equal(isProxiedDomain({ status: "valid" }), false);
+  assert.equal(isProxiedDomain({ status: "valid", proxied: null }), false);
 });

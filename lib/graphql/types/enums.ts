@@ -112,7 +112,9 @@ export const DomainStatusEnum = builder.enumType("DomainStatus", {
     misconfigured: {
       value: "misconfigured",
       description:
-        "Resolves to an address that is neither this app's server nor a Cloudflare edge. Not routed.",
+        "Resolves to an address that is neither this app's server nor a " +
+        "Cloudflare edge. Not routed, unless `Domain.proxied` says another " +
+        "proxy answers for it.",
     },
     error: {
       value: "error",

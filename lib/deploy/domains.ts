@@ -226,8 +226,11 @@ export function domainTlsConfig(domain: {
  */
 export function domainScheme(domain: {
   certProvider?: CertProvider;
+  proxied?: boolean | null;
 }): "http" | "https" {
-  return domainTlsConfig(domain).tls ? "https" : "http";
+  // A proxied host is reached AT the proxy, which terminates TLS there - the
+  // origin router behind it can still be plain http.
+  return domain.proxied || domainTlsConfig(domain).tls ? "https" : "http";
 }
 
 /**

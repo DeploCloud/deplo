@@ -3,6 +3,7 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { serverIpForApp } from "@/lib/data/servers";
 import { listDomains } from "@/lib/data/domains";
 import { productionDomain } from "@/lib/deploy/domains";
+import { isRoutableDomain } from "@/lib/deploy/cloudflare";
 import { composeServiceNames } from "@/lib/deploy/compose-stack";
 import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -58,7 +59,7 @@ export default async function AppDomainsPage(
   // `applyRouting` in lib/graphql/types/domain.ts), so a settled domain is genuinely
   // live and needs no nagging.
   const unsettledDomains = domains
-    .filter((d) => d.status !== "valid" && d.status !== "cloudflare")
+    .filter((d) => !isRoutableDomain(d))
     .map((d) => ({ id: d.id, name: d.name, status: d.status }));
 
   // Rows that answer on a different name than they did on the platform this app

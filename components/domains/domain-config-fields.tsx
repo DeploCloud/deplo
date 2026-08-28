@@ -1,7 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { CornerDownRight, Lock, Route, Signpost } from "lucide-react";
+import {
+  CornerDownRight,
+  Lock,
+  Route,
+  Signpost,
+  Waypoints,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -61,6 +67,9 @@ export interface DomainConfigState {
   stripPath: boolean;
   /** Compose-stack only: which compose service this host targets ("" ⇒ default). */
   service: string;
+  /** Something else answers for this hostname, so its DNS never points here and
+   * the check can only ever say `misconfigured`. Routes it anyway. */
+  proxied: boolean;
   /** Which half of this hostname's `www` pair serves the app. Derived from the
    * app's rows by the caller (never a stored flag) and posted back on save. */
   www: WwwRedirect;
@@ -78,6 +87,7 @@ export function initialDomainConfig(
     pathPrefix?: string;
     stripPrefix?: boolean;
     service?: string;
+    proxied?: boolean;
   },
   defaultPort?: number,
   /** The `www` pairing the app's rows currently describe (`deriveWwwRedirect`).
@@ -98,6 +108,7 @@ export function initialDomainConfig(
     path: domain?.pathPrefix ?? "",
     stripPath: Boolean(domain?.stripPrefix),
     service: domain?.service ?? "",
+    proxied: Boolean(domain?.proxied),
     www,
   };
 }
@@ -130,6 +141,7 @@ export function resolveDomainConfig(
       pathPrefix: string;
       stripPrefix: boolean;
       service: string;
+      proxied: boolean;
       www: WwwRedirect;
     }
   | { ok: false; error: string } {
@@ -163,6 +175,7 @@ export function resolveDomainConfig(
     // Strip is meaningless without a path; never send a true with no path.
     stripPrefix: path ? state.stripPath : false,
     service,
+    proxied: state.proxied,
     // Sent as-is, including when unchanged: the pairing is derived from the app's
     // rows, so posting the current value is a no-op server-side and posting a
     // different one is the whole edit.
@@ -198,6 +211,7 @@ export function advancedSummary(
           : "redirects to www",
     );
   }
+  if (state.proxied) parts.push("behind a proxy");
   const path = state.path.trim();
   if (path) parts.push(state.stripPath ? `${path} (stripped)` : path);
   const count = parseMiddlewares(state.middlewares).length;
@@ -219,7 +233,9 @@ function RoutePreview({
   isCompose: boolean;
 }) {
   const host = hostname?.trim() ?? "";
-  const scheme = state.certProvider === "none" ? "http" : "https";
+  // A proxied host is visited AT the proxy, which serves its HTTPS.
+  const scheme =
+    state.proxied || state.certProvider !== "none" ? "https" : "http";
   const path = state.path.trim();
   const urlPath = path.startsWith("/") && !path.includes("`") ? path : "";
   const port = state.port.trim();
@@ -551,6 +567,24 @@ export function DomainConfigFields({
           </AccordionTrigger>
 
           <AccordionContent className="space-y-6 pt-2 text-foreground">
+            <FieldGroup icon={Waypoints} title="Proxy">
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                <FieldLabel
+                  htmlFor={`${idPrefix}-proxied`}
+                  className="cursor-pointer font-normal"
+                  info="Turn this on when a CDN or another proxy answers for this domain. Its DNS points at the proxy instead of this server, so Deplo routes the domain without waiting for a DNS check and links it as https."
+                  docs="domains.dnsStates"
+                >
+                  Behind a proxy
+                </FieldLabel>
+                <Switch
+                  id={`${idPrefix}-proxied`}
+                  checked={state.proxied}
+                  onCheckedChange={(c) => set("proxied", c)}
+                />
+              </div>
+            </FieldGroup>
+
             {showWww && (
               <FieldGroup icon={Signpost} title="Redirect">
                 <div className="space-y-2">

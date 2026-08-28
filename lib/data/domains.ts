@@ -33,6 +33,7 @@ import {
 import {
   classifyDomainDns,
   certProviderForDns,
+  isRoutableDomain,
   type DomainDnsClass,
 } from "../deploy/cloudflare";
 import { usesComposeStack } from "../utils";
@@ -294,9 +295,7 @@ export async function ensureAutoDomain(
     status,
     primary: true,
     redirectTo: null,
-    ssl:
-      certProvider !== "none" &&
-      (status === "valid" || status === "cloudflare"),
+    ssl: certProvider !== "none" && isRoutableDomain({ status }),
     source: "auto",
     // Always born complete: the resolved container port (and, on a compose stack, the
     // service it routes to) so no auto domain is ever portless or appless.
@@ -588,6 +587,9 @@ export interface DomainConfig {
   /** `www` ⇄ non-`www` pairing for this hostname - see {@link applyWwwRedirect}.
    * Absent/`none` ⇒ the hostname is routed on its own, exactly as before. */
   www?: WwwRedirect;
+  /** The user declaring a proxy answers for this hostname, so it is routed even
+   * though its DNS can never point here. See {@link Domain.proxied}. */
+  proxied?: boolean;
 }
 
 export async function addDomain(
@@ -650,15 +652,15 @@ export async function addDomain(
   const isFirst = existing.length === 0;
   // A path-routed row is a SECOND row on a hostname that may already be verified
   // (`app.com` for `/`, `app.com` for `/api`).
-  const sibling = existing.find(
-    (d) =>
-      d.name === clean && (d.status === "valid" || d.status === "cloudflare"),
-  );
+  const sibling = existing.find((d) => d.name === clean && isRoutableDomain(d));
   // No verified sibling ⇒ check DNS RIGHT NOW instead of parking the row at `pending`
   // until someone finds the Verify button: a host whose record is already in place (a
   // suggested nip.io domain, a pre-pointed custom domain) is born
   // `valid`/`cloudflare` and the caller's routing re-apply makes it live in the same
   // click - zero manual steps.
+  // Declared, never detected: a proxy that is not Cloudflare has no published
+  // address range to recognise, so the routing decision is the user's to make.
+  const proxied = config.proxied === true;
   const status =
     sibling?.status ?? (await checkDomainDns(clean, await appServerIp(appId)));
   // A host the check found PROXIED is served over HTTPS by Cloudflare, so it is born
@@ -675,7 +677,7 @@ export async function addDomain(
     status,
     primary: isFirst,
     redirectTo: null,
-    ssl: sibling ? sibling.ssl : status === "valid" || status === "cloudflare",
+    ssl: sibling ? sibling.ssl : isRoutableDomain({ status, proxied }),
     // Always store a concrete port so no domain is ever portless.
     port: config.port ?? portFor(project),
     // Entrypoint persists only when the user picked it explicitly (manual mode).
@@ -685,6 +687,7 @@ export async function addDomain(
     ...(pathPrefix ? { pathPrefix } : {}),
     ...(stripPrefix ? { stripPrefix } : {}),
     ...(service ? { service } : {}),
+    ...(proxied ? { proxied: true } : {}),
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
@@ -852,6 +855,9 @@ export interface DomainPatch {
    * "field not in this edit".
    */
   entrypoint?: DomainEntrypoint | null;
+  /** The "a proxy answers for this hostname" declaration - see
+   * {@link Domain.proxied}. Absent leaves it unchanged. */
+  proxied?: boolean;
 }
 
 /**
@@ -950,6 +956,12 @@ export async function updateDomain(
     next.stripPrefix = strip ? true : undefined;
   }
   if (patch.service !== undefined) next.service = nextApp ?? undefined;
+  // Declaring (or un-declaring) a proxy in front changes whether the host is
+  // routed at all, without its DNS having moved an inch.
+  if (patch.proxied !== undefined) {
+    next.proxied = patch.proxied || undefined;
+    next.ssl = isRoutableDomain(next);
+  }
   // A renamed domain points at a new host whose DNS the stored status says nothing
   // about, so check the NEW name right now, exactly like addDomain does: a
   // pre-pointed host keeps routing across the rename with zero manual steps, an
@@ -960,7 +972,7 @@ export async function updateDomain(
       nextName,
       await appServerIp(current.appId),
     );
-    next.ssl = next.status === "valid" || next.status === "cloudflare";
+    next.ssl = isRoutableDomain(next);
     // The rename's check can discover the NEW host is proxied, so it gets the same
     // automatic Cloudflare provider an add would have given it, UNLESS this edit
     // deliberately moved the provider, which always wins.
@@ -1149,7 +1161,7 @@ async function repointRedirects(
         status,
         ssl:
           (dep.certProvider ?? "letsencrypt") !== "none" &&
-          (status === "valid" || status === "cloudflare"),
+          isRoutableDomain({ status, proxied: dep.proxied }),
       })
       .where(eq(domainsTable.id, dep.id));
   }
@@ -1208,12 +1220,14 @@ async function insertPairedDomain(
     redirectTo: opts.redirectTo,
     ssl:
       certProvider !== "none" &&
-      (status === "valid" || status === "cloudflare"),
+      isRoutableDomain({ status, proxied: from.proxied }),
     source: opts.source,
     port: from.port ?? null,
     ...(from.entrypoint ? { entrypoint: from.entrypoint } : {}),
     certProvider,
     ...(from.service ? { service: from.service } : {}),
+    // Whatever fronts the canonical host fronts its www twin too.
+    ...(from.proxied ? { proxied: true } : {}),
     createdAt: nowIso(),
   });
 }
@@ -1235,11 +1249,9 @@ export async function verifyDomain(
   // panel host: a project on a remote server needs its A record on that server.
   const target = await appServerIp(dom.appId);
   const status = await checkDomainDns(dom.name, target);
-  // `valid` (points straight here) and `cloudflare` (proxied - DNS delegated to
-  // Cloudflare, origin masked) are the two routable states, so `ssl` (a cert is in
-  // effect for end users) is on for those two only - a `pending`/ `misconfigured`
-  // host has no working DNS and thus no live cert.
-  const ssl = status === "valid" || status === "cloudflare";
+  // `ssl` (a cert is in effect for end users) follows routability: pointing here,
+  // or a proxy in front terminating TLS of its own.
+  const ssl = isRoutableDomain({ status, proxied: dom.proxied });
   // Discovering the host is proxied also settles WHO issues its certificate:
   // Cloudflare does, at its edge.
   const certProvider = certProviderForDns(status, dom.certProvider);
@@ -1279,12 +1291,16 @@ export async function sweepDomainDns(): Promise<void> {
       teamId: appsTable.teamId,
       slug: appsTable.slug,
       appName: appsTable.name,
+      proxied: domainsTable.proxied,
     })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
     .where(eq(domainsTable.status, "valid"));
 
   for (const row of rows) {
+    // A host the user says sits behind a proxy answers with the proxy's address
+    // by design - re-checking it would alert on the configuration it was given.
+    if (row.proxied) continue;
     try {
       const status = await checkDomainDns(
         row.name,
@@ -1411,10 +1427,9 @@ export async function routableRoutes(appId: string): Promise<RoutableDomain[]> {
   const all = await loadDomainsForApp(appId);
   return (
     all
-      // `valid` (points straight here) and `cloudflare` (proxied - Cloudflare may or may
-      // not forward here, which DNS cannot tell us) are both routable hosts; a
-      // pending/misconfigured host has no working DNS at all and is left off the router.
-      .filter((d) => d.status === "valid" || d.status === "cloudflare")
+      // Points straight here, or a proxy answers for it (detected or declared);
+      // a host with no working DNS and nothing in front is left off the router.
+      .filter(isRoutableDomain)
       .sort((a, b) => Number(b.primary) - Number(a.primary))
       // Every row is mapped against the app's FULL domain set, because a
       // redirecting host resolves its target's scheme from the target's own row.
@@ -1487,7 +1502,7 @@ export async function setPrimaryDomain(id: string): Promise<string> {
   // A misconfigured domain has no working DNS to this server, so it can't be the
   // canonical host - block promoting it until its DNS is fixed and re-verified.
   // (A `pending` domain is allowed: the first domain added is pending+primary.)
-  if (dom.status === "misconfigured")
+  if (dom.status === "misconfigured" && !dom.proxied)
     throw new Error(
       "This domain’s DNS is misconfigured - fix its DNS and re-verify before setting it as primary.",
     );
@@ -1558,11 +1573,7 @@ export function successorPrimary(
   const port = removed.port ?? null;
   // Routability rank: routed > not resolving yet > pointing somewhere else.
   const reach = (d: Domain): number =>
-    d.status === "valid" || d.status === "cloudflare"
-      ? 2
-      : d.status === "misconfigured"
-        ? 0
-        : 1;
+    isRoutableDomain(d) ? 2 : d.status === "misconfigured" ? 0 : 1;
   const rank = (d: Domain): [number, number, number] => [
     (d.service ?? null) === service ? 1 : 0,
     (d.port ?? null) === port ? 1 : 0,

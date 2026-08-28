@@ -128,13 +128,18 @@ export function DomainRow({
   );
 
   const effectiveProvider = domain.certProvider ?? "letsencrypt";
-  const scheme = effectiveProvider === "none" ? "http" : "https";
+  // A proxied host is visited AT the proxy, which serves its HTTPS.
+  const scheme =
+    domain.proxied || effectiveProvider !== "none" ? "https" : "http";
   const middlewares = domain.middlewares ?? [];
-  const proxied = domain.status === "cloudflare";
-  // A proxied domain is now put on the Cloudflare certificate provider automatically,
-  // so the certificate chip and the DNS chip would BOTH read "Cloudflare" - two
-  // badges, inches apart, saying the same word.
-  const oneCloudflareChip = proxied && effectiveProvider === "cloudflare";
+  const cloudflare = domain.status === "cloudflare";
+  // Detected (Cloudflare's anycast) or declared by the owner: either way DNS
+  // cannot see the origin, and either way the host is routed.
+  const proxied = cloudflare || Boolean(domain.proxied);
+  // A Cloudflare-proxied domain is now put on the Cloudflare certificate provider
+  // automatically, so the certificate chip and the DNS chip would BOTH read
+  // "Cloudflare" - two badges, inches apart, saying the same word.
+  const oneCloudflareChip = cloudflare && effectiveProvider === "cloudflare";
 
   function call(
     fn: () => Promise<{ ok: boolean; error?: string; data?: string }>,
@@ -204,6 +209,7 @@ export function DomainRow({
             pathPrefix: resolved.pathPrefix,
             stripPrefix: resolved.stripPrefix,
             service: resolved.service,
+            proxied: resolved.proxied,
             // The pairing is derived, so this is the CURRENT value unless the
             // user changed it - the server no-ops when it already matches.
             www: resolved.www,
@@ -221,6 +227,10 @@ export function DomainRow({
           toast.success(
             "Domain updated - Cloudflare is proxying it. Make sure its record points at this server.",
           );
+        else if (resolved.proxied)
+          // Its DNS answers with the proxy by design, so the check's verdict is
+          // not news - what matters is that the host is still routed.
+          toast.success("Domain updated - routed through your proxy");
         else if (status === "misconfigured")
           toast.warning(
             "Domain updated, but its DNS points at another address - see the hint on its row",
@@ -276,6 +286,8 @@ export function DomainRow({
     }
     const status = res.data?.verifyDomain.status;
     if (status === "valid") toast.success("Domain verified - routing is live");
+    else if (domain.proxied)
+      toast.success("Routing re-applied - its DNS answers with your proxy");
     else if (status === "cloudflare")
       toast.success(
         "Cloudflare is proxying this domain. Make sure its record points at this server.",
@@ -375,7 +387,7 @@ export function DomainRow({
               </Badge>
             </SimpleTooltip>
           )}
-          {proxied && !oneCloudflareChip && (
+          {cloudflare && !oneCloudflareChip && (
             // Marks WHO sits in front of the domain, nothing more. Only rendered when the
             // certificate chip does NOT already say "Cloudflare" (the user moved this proxied
             // domain onto Let's Encrypt); otherwise the merged chip above stands for both.
@@ -388,48 +400,63 @@ export function DomainRow({
             </Badge>
           )}
         </div>
-        {(domain.status === "misconfigured" || domain.status === "pending") && (
-          // A pending domain has no DNS record yet; a misconfigured one resolves somewhere
-          // other than this app's server.
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-            <DocsLink topic="domains.dnsStates" className="order-last" />
-            {serverIp ? (
-              <>
+        {!proxied &&
+          (domain.status === "misconfigured" ||
+            domain.status === "pending") && (
+            // A pending domain has no DNS record yet; a misconfigured one resolves somewhere
+            // other than this app's server.
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+              <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+              <DocsLink topic="domains.dnsStates" className="order-last" />
+              {serverIp ? (
+                <>
+                  <span>
+                    {domain.status === "pending"
+                      ? "This domain doesn’t resolve yet."
+                      : "This domain’s DNS doesn’t point here."}{" "}
+                    Add an{" "}
+                    <span className="font-medium text-foreground">
+                      A record
+                    </span>{" "}
+                    for{" "}
+                    <span className="font-mono text-foreground">
+                      {domain.name}
+                    </span>{" "}
+                    →
+                  </span>
+                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
+                    {serverIp}
+                  </code>
+                  <CopyButton value={serverIp} className="size-6" />
+                  <span>
+                    - the IP of the server this app runs on (unique to this
+                    server). It’s re-checked automatically.
+                  </span>
+                </>
+              ) : (
                 <span>
                   {domain.status === "pending"
                     ? "This domain doesn’t resolve yet."
                     : "This domain’s DNS doesn’t point here."}{" "}
-                  Add an{" "}
+                  Point its{" "}
                   <span className="font-medium text-foreground">A record</span>{" "}
-                  for{" "}
-                  <span className="font-mono text-foreground">
-                    {domain.name}
-                  </span>{" "}
-                  →
+                  at the IP of the server this app is deployed on (unique to
+                  that server). It’s re-checked automatically.
                 </span>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
-                  {serverIp}
-                </code>
-                <CopyButton value={serverIp} className="size-6" />
+              )}
+              {domain.status === "misconfigured" && (
+                // The way out for a record that CAN'T point here, said where the
+                // dead end is - the switch itself lives in Advanced settings.
                 <span>
-                  - the IP of the server this app runs on (unique to this
-                  server). It’s re-checked automatically.
+                  Or turn on{" "}
+                  <span className="font-medium text-foreground">
+                    Behind a proxy
+                  </span>{" "}
+                  if a CDN or another proxy answers for it.
                 </span>
-              </>
-            ) : (
-              <span>
-                {domain.status === "pending"
-                  ? "This domain doesn’t resolve yet."
-                  : "This domain’s DNS doesn’t point here."}{" "}
-                Point its{" "}
-                <span className="font-medium text-foreground">A record</span> at
-                the IP of the server this app is deployed on (unique to that
-                server). It’s re-checked automatically.
-              </span>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
       </TableCell>
       {showContainer && (
         <TableCell className="w-56">
@@ -457,7 +484,16 @@ export function DomainRow({
       )}
       <TableCell>
         <span className="flex items-center gap-1">
-          <StatusBadge status={domain.status} />
+          {/* A declared proxy answers for the host, so the DNS verdict it can
+              never beat is not the status to show - it reads "Proxied", exactly
+              like the detected one. */}
+          <StatusBadge
+            status={
+              domain.proxied && domain.status !== "valid"
+                ? "cloudflare"
+                : domain.status
+            }
+          />
           {/* Beside the chip it argues with, not buried in a menu: a domain that
               is not valid yet is exactly when someone wants to re-check it. */}
           {domain.status !== "valid" && (
@@ -589,7 +625,7 @@ export function DomainRow({
                   onChange={setConfig}
                   services={services}
                   idPrefix={`edit-${domain.id}`}
-                  proxied={proxied}
+                  proxied={cloudflare}
                   hostname={name}
                   serverIp={serverIp}
                 />

@@ -188,7 +188,8 @@ const LABELS: Record<string, string> = {
   // "Not running", never "Stopped": the app is supposed to be up. The wording
   // has to make an unasked-for outage impossible to mistake for a deliberate one.
   down: "Not running",
-  // A domain whose DNS lands on Cloudflare.
+  // A domain something answers for in front of this server - Cloudflare's
+  // anycast, or a proxy the owner declared.
   cloudflare: "Proxied",
 };
 

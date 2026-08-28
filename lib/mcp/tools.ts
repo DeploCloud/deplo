@@ -807,6 +807,7 @@ const DOMAIN_FIELDS = /* GraphQL */ `
   certProvider
   port
   entrypoint
+  proxied
 `;
 
 const DOMAINS: McpToolDef[] = [

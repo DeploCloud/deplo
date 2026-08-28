@@ -1364,6 +1364,10 @@ export const domains = pgTable(
     pathPrefix: text("path_prefix"),
     stripPrefix: boolean("strip_prefix"),
     service: text("service"),
+    // The user's own declaration that something else answers for this hostname
+    // (a CDN, a reverse proxy), so its A records never point here and the DNS
+    // check cannot settle it - see [Domain.proxied](../../types.ts).
+    proxied: boolean("proxied"),
     // The hostname this row REPLACED on the platform it was imported from - set only
     // when the address actually changed (the source's own throwaway host, or a name
     // another team here already serves).

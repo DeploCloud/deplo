@@ -12,6 +12,7 @@ import {
   type DomainPatch,
 } from "@/lib/data/domains";
 import { rerouteApp } from "@/lib/deploy/build";
+import { isRoutableDomain } from "@/lib/deploy/cloudflare";
 import type { Domain } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -60,7 +61,9 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
       description:
         "DNS verification state. Only `valid` is confirmed: `cloudflare` means " +
         "the host is proxied and its origin cannot be checked from DNS, so it " +
-        "is routed but unverified. See the DomainStatus enum.",
+        "is routed but unverified. A `misconfigured` host is off the router " +
+        "unless `proxied` declares another proxy answers for it. See the " +
+        "DomainStatus enum.",
       resolve: (d) => d.status,
     }),
     primary: t.exposeBoolean("primary"),
@@ -89,6 +92,16 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
         "(see `addServerCertificate`) and asks no ACME provider for one. Null on " +
         "rows written before the field existed (they route as `letsencrypt`).",
       resolve: (d) => d.certProvider ?? null,
+    }),
+    proxied: t.exposeBoolean("proxied", {
+      nullable: true,
+      description:
+        "The owner's declaration that a proxy (a CDN, a reverse proxy, a load " +
+        "balancer) answers for this hostname. Its A records then name the proxy, " +
+        "never this server, so the DNS check can only ever settle " +
+        "`misconfigured` - this is what keeps the host routed anyway, and makes " +
+        "its URL https (the proxy terminates TLS). The declared twin of the " +
+        "`cloudflare` status, which is detected from Cloudflare's published ranges.",
     }),
     middlewares: t.exposeStringList("middlewares", { nullable: true }),
     pathPrefix: t.exposeString("pathPrefix", { nullable: true }),
@@ -133,6 +146,7 @@ const DomainConfigInput = builder.inputType("DomainConfigInput", {
     pathPrefix: t.string({ required: false }),
     stripPrefix: t.boolean({ required: false }),
     service: t.string({ required: false }),
+    proxied: t.boolean({ required: false }),
     www: t.field({ type: DomainWwwRedirectEnum, required: false }),
   }),
 });
@@ -152,6 +166,7 @@ const DomainPatchInput = builder.inputType("DomainPatchInput", {
     pathPrefix: t.string({ required: false }),
     stripPrefix: t.boolean({ required: false }),
     service: t.string({ required: false }),
+    proxied: t.boolean({ required: false }),
     www: t.field({ type: DomainWwwRedirectEnum, required: false }),
   }),
 });
@@ -208,6 +223,7 @@ builder.mutationFields((t) => ({
         pathPrefix: config?.pathPrefix ?? undefined,
         stripPrefix: config?.stripPrefix ?? undefined,
         service: config?.service ?? undefined,
+        proxied: config?.proxied ?? undefined,
         www: config?.www ?? undefined,
       };
       const domain = await addDomain(appId, name, cfg);
@@ -237,6 +253,7 @@ builder.mutationFields((t) => ({
         pathPrefix: patch.pathPrefix ?? undefined,
         stripPrefix: patch.stripPrefix ?? undefined,
         service: patch.service ?? undefined,
+        proxied: patch.proxied ?? undefined,
         www: patch.www ?? undefined,
       };
       const appId = await updateDomain(id, next);
@@ -259,8 +276,7 @@ builder.mutationFields((t) => ({
       const domain = await verifyDomain(id);
       // Re-apply routing when the check changed anything, or whenever the host is
       // routable (so a manual Verify can still heal drifted labels).
-      const routable =
-        domain.status === "valid" || domain.status === "cloudflare";
+      const routable = isRoutableDomain(domain);
       if (domain.statusChanged || routable) await applyRouting(domain.appId);
       return domain;
     },

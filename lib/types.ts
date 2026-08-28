@@ -1220,6 +1220,12 @@ export interface Domain {
    * targets.
    */
   service?: string;
+  /**
+   * The user declaring that a proxy answers for this hostname, so its A records
+   * name the proxy and the DNS check can never settle `valid`. Routed anyway -
+   * the manual twin of the `cloudflare` status.
+   */
+  proxied?: boolean;
   createdAt: string;
 }
 
