@@ -3,6 +3,7 @@
  */
 
 import { mapLimit } from "../../utils";
+import { composeServices } from "../map";
 import type {
   MigrationSourceClient,
   RuntimeQuery,
@@ -40,6 +41,7 @@ import {
   listSharedEnvs,
   listStorages,
   listTeamMembers,
+  resourceState,
   resourceStatus,
   stopResource,
   type CoolifyEnvironment,
@@ -63,8 +65,11 @@ import {
 /** How many reads run at once. Well under the 200/min the bucket already caps. */
 const CONCURRENCY = 5;
 
-/** How long a stop may take before the cutover gives up waiting for it. */
-const STOP_DEADLINE_MS = 30_000;
+/** How long a stop may take before the cutover gives up. It scales: a flat 30
+ *  seconds was a two-container service on a panel that was also building. */
+const STOP_BASE_MS = 30_000;
+const STOP_PER_CONTAINER_MS = 20_000;
+const STOP_DEADLINE_CAP_MS = 180_000;
 const STOP_POLL_MS = 1_500;
 
 /* ------------------------------------------------------------------ */
@@ -402,16 +407,29 @@ async function stopService(
   const group = await resolveGroup(c, kind, id);
   await stopResource(c, group, id);
 
-  const deadline = Date.now() + STOP_DEADLINE_MS;
+  const started = Date.now();
+  let allowed = 0;
   for (;;) {
-    const status = await resourceStatus(c, group, id);
-    if (!status.startsWith("running")) return;
-    if (Date.now() >= deadline)
+    const state = await resourceState(c, group, id);
+    if (!state.status.startsWith("running")) return;
+    // Read from the row the poll already fetched, so knowing the size costs
+    // nothing: a stack of eight gets eight containers' worth of patience.
+    if (!allowed)
+      allowed = stopDeadlineMs(composeServices(state.compose).length);
+    if (Date.now() - started >= allowed)
       throw new Error(
-        `Coolify accepted the stop for that service but it is still running ${STOP_DEADLINE_MS / 1000} seconds later. Stop it there, then move its data.`,
+        `Coolify accepted the stop for that service but it is still running ${Math.round(allowed / 1000)} seconds later. Stop it there, then move its data.`,
       );
     await new Promise((r) => setTimeout(r, STOP_POLL_MS));
   }
+}
+
+/** 30 seconds, plus 20 for every container in the stack, capped at three minutes. */
+export function stopDeadlineMs(containers: number): number {
+  return Math.min(
+    STOP_DEADLINE_CAP_MS,
+    STOP_BASE_MS + Math.max(1, containers) * STOP_PER_CONTAINER_MS,
+  );
 }
 
 /* ------------------------------------------------------------------ */

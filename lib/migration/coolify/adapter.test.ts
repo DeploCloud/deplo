@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { coolifyClient, __resetCoolifyIndexForTest } from "./adapter";
+import {
+  coolifyClient,
+  stopDeadlineMs,
+  __resetCoolifyIndexForTest,
+} from "./adapter";
 import { __resetCoolifyRateLimitForTest } from "./client";
 import {
   __resetMigrationFetchForTest,
@@ -106,6 +110,17 @@ function serve(
   __resetCoolifyRateLimitForTest();
   return seen;
 }
+
+// A flat 30 seconds was a two-container service on a panel that was also
+// building: the stop had worked, the wait had not.
+test("the stop deadline grows with the stack", () => {
+  assert.equal(stopDeadlineMs(0), 50_000);
+  assert.equal(stopDeadlineMs(1), 50_000);
+  assert.equal(stopDeadlineMs(2), 70_000);
+  assert.equal(stopDeadlineMs(5), 130_000);
+  assert.equal(stopDeadlineMs(8), 180_000);
+  assert.equal(stopDeadlineMs(40), 180_000, "capped at three minutes");
+});
 
 test("a database is found, because the engine lives on `database_type`", async (t) => {
   serve(t);

@@ -589,8 +589,18 @@ async function runMoveMigrationServiceData(
   const svc = (await sourceServices(c)).find(
     (s) => s.kind === input.sourceKind && s.id === input.sourceId,
   );
-  if (!svc)
-    throw new Error(`That service is no longer on the ${panel} instance.`);
+  if (!svc) {
+    // The listing drops a service whose detail call failed, which is not the same
+    // fact as "it is gone" - a panel restarting answers that way for a moment.
+    const stumbled = await sourceClient(c)
+      .getService(input.sourceKind, input.sourceId)
+      .catch(() => null);
+    throw new Error(
+      stumbled
+        ? `${panel} did not answer for ${stumbled.appName?.trim() || input.sourceId} this time. Nothing was copied and nothing here was changed - run the copy again.`
+        : `That service is no longer on the ${panel} instance.`,
+    );
+  }
 
   const target = (await runTargets(input.runId)).get(svc.id);
   const landed = target ? await landedFor(teamId, target) : null;
@@ -661,6 +671,7 @@ async function runMoveMigrationServiceData(
     await markDataCopyFailed(
       { kind: landed.targetKind, id: landed.targetId },
       `Deplo could not reach the machine ${svc.name}'s data is on, so it was never copied`,
+      { unlessCopiedIn: input.runId },
     );
     await refreshCounts(input.runId, teamId);
     // Nothing was stopped and nothing was copied, and every other service on
@@ -692,6 +703,7 @@ async function runMoveMigrationServiceData(
       await markDataCopyFailed(
         { kind: landed.targetKind, id: landed.targetId },
         `${landed.targetName} was still being created when the migration reached it, so its data was never copied`,
+        { unlessCopiedIn: input.runId },
       );
       await refreshCounts(input.runId, teamId);
       return { moved: 0, failed: 1, notes, sourceGone: false };
@@ -720,6 +732,7 @@ async function runMoveMigrationServiceData(
       await markDataCopyFailed(
         { kind: landed.targetKind, id: landed.targetId },
         `${svc.name} would not stop on ${panel}, so its data was never copied`,
+        { unlessCopiedIn: input.runId },
       );
       await refreshCounts(input.runId, teamId);
       return { moved: 0, failed: 1, notes, sourceGone: false };

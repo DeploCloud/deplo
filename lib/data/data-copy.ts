@@ -6,6 +6,7 @@ import { getDb } from "../db/client";
 import {
   apps as appsTable,
   databases as databasesTable,
+  migrationRunItems as runItemsTable,
 } from "../db/schema/control-plane";
 import { nowIso } from "../ids";
 import { recordActivity } from "./activity";
@@ -42,7 +43,15 @@ export type DataCopyTarget = { kind: "app" | "database"; id: string };
 export async function markDataCopyFailed(
   target: DataCopyTarget,
   message: string,
+  /** The run whose earlier pass may already have delivered the bytes. Given, a
+   *  failure that touched nothing leaves a landed copy alone. */
+  opts?: { unlessCopiedIn?: string },
 ): Promise<void> {
+  if (
+    opts?.unlessCopiedIn &&
+    (await dataAlreadyCopiedInto(opts.unlessCopiedIn, target.id))
+  )
+    return;
   const text = message.trim() || "the copy failed";
   try {
     if (target.kind === "app")
@@ -58,6 +67,30 @@ export async function markDataCopyFailed(
   } catch {
     // Deliberately swallowed: see above.
   }
+}
+
+/**
+ * Whether this run already put bytes into that row. The report is the record: a
+ * `created` volume line names the target it copied into. The verdict has to be
+ * about whether the data is there, not about how the last attempt went.
+ */
+export async function dataAlreadyCopiedInto(
+  runId: string,
+  targetId: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: runItemsTable.id })
+    .from(runItemsTable)
+    .where(
+      and(
+        eq(runItemsTable.runId, runId),
+        eq(runItemsTable.targetId, targetId),
+        eq(runItemsTable.sourceKind, "volume"),
+        eq(runItemsTable.outcome, "created"),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 /**

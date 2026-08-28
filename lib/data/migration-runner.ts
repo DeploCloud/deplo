@@ -34,7 +34,7 @@ import {
   planMigrationDataMove,
   type DataMoveService,
 } from "./migration-data";
-import { markDataCopyFailed } from "./data-copy";
+import { dataAlreadyCopiedInto, markDataCopyFailed } from "./data-copy";
 import { isCopyAborted } from "./volume-migration";
 import { checkServerHealth } from "./server-health";
 import { listServersForTeam } from "./servers";
@@ -352,7 +352,9 @@ async function failRun(row: RunRow, why: string): Promise<void> {
   if (!row.actorUserId) return;
   try {
     await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
-      undoMigration(row.id),
+      // Not forced: data that did not copy is still over there, and the agent is
+      // the only way to fetch it. The next attempt needs the machine readable.
+      undoMigration(row.id, { forceSourceRemoval: false }),
     );
   } catch (e) {
     console.error("[migration] undo after failure", row.id, "failed:", e);
@@ -619,17 +621,24 @@ async function markUncopied(
   why: string,
 ): Promise<void> {
   for (const d of services) {
+    // A retry of a service this run ALREADY copied says nothing about the data:
+    // the bytes are in the volume, and the row must not be blocked over how the
+    // second attempt went.
+    const landed = await dataAlreadyCopiedInto(row.id, d.targetId);
     const reason = `${d.sourceName}'s data was not copied: ${why}`;
-    await markDataCopyFailed({ kind: d.targetKind, id: d.targetId }, reason);
+    if (!landed)
+      await markDataCopyFailed({ kind: d.targetKind, id: d.targetId }, reason);
     await appendRunItem(row.id, panelNameFor(row), {
       path: d.path,
       sourceKind: d.sourceKind,
       sourceId: d.sourceId,
       sourceName: d.sourceName,
-      outcome: "failed",
+      outcome: landed ? "manual" : "failed",
       targetKind: d.targetKind,
       targetId: d.targetId,
-      message: `${reason}. ${d.targetName} is running on the empty storage Deplo created for it - bring the data over before anyone uses it, or choose "Deploy anyway" to accept starting without it.`,
+      message: landed
+        ? `${d.sourceName} was read again and ${why} - its data had already been copied into ${d.targetName}, which keeps it.`
+        : `${reason}. ${d.targetName} is running on the empty storage Deplo created for it - bring the data over before anyone uses it, or choose "Deploy anyway" to accept starting without it.`,
     });
   }
 }

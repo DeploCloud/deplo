@@ -1651,7 +1651,32 @@ async function markMigrating(
   await getDb()
     .update(table)
     .set({ migrationRunId: runId })
-    .where(eq(table.id, row.targetId));
+    .where(
+      and(
+        eq(table.id, row.targetId),
+        // Only while the run is OPEN. A re-copy appends its `created` lines to a
+        // run that finished long ago, and marking there froze the app for good.
+        sql`exists (select 1 from ${runsTable} where ${runsTable.id} = ${runId} and ${runsTable.status} = 'running')`,
+      ),
+    );
+}
+
+/**
+ * Marks whose run is over. The marker outlives its run, and a row still carrying
+ * one refuses every deploy behind a migration there is nothing left to finish.
+ */
+export async function sweepFinishedMigrationMarks(): Promise<void> {
+  for (const table of Object.values(MIGRATING_TABLES))
+    await getDb()
+      .update(table)
+      .set({ migrationRunId: null })
+      .where(
+        sql`${table.migrationRunId} is not null and not exists (
+          select 1 from ${runsTable}
+          where ${runsTable.id} = ${table.migrationRunId}
+            and ${runsTable.status} = 'running'
+        )`,
+      );
 }
 
 /**
@@ -3531,11 +3556,19 @@ export async function stopMigration(runId: string): Promise<void> {
  * Take a run back out whole: what it created HERE, and the agent Deplo put over
  * THERE to read it. The uninstall is FORCED past its usual guard.
  */
-export async function undoMigration(runId: string): Promise<void> {
+export async function undoMigration(
+  runId: string,
+  /** The uninstall past its usual guard. A person taking everything back out has
+   *  no further use for the source; the AUTOMATIC revert after a failure does -
+   *  it took the agent off a machine the next attempt then could not read. */
+  opts: { forceSourceRemoval?: boolean } = {},
+): Promise<void> {
   const { teamId } = await assertImportGate();
   await releaseMigrating(runId);
   await revertMigration(runId, { undo: true });
-  await removeMigrationSources(runId, teamId, { force: true });
+  await removeMigrationSources(runId, teamId, {
+    force: opts.forceSourceRemoval !== false,
+  });
   await refreshCounts(runId, teamId);
 }
 

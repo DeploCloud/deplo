@@ -14,6 +14,7 @@ import { probeCredential } from "../data/git-connections";
 import { sweepDomainDns } from "../data/domains";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo } from "../data/updates";
+import { sweepFinishedMigrationMarks } from "../data/migration-import";
 import { connectAgent } from "../infra/agent-client";
 import {
   dispatchAlert,
@@ -39,6 +40,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   // treated as absent, this just stops a year of guessed addresses accumulating
   // as dead rows.
   await settle("rate limits", sweepRateLimits);
+  await settle("migration marks", sweepFinishedMigrationMarks);
   await settle("oauth clients", sweepAbandonedOauthClients);
   await settle("expired challenges", sweepExpiredVerifications);
 }

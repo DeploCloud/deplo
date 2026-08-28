@@ -584,12 +584,31 @@ export async function resourceStatus(
   group: CoolifyResourceGroup,
   uuid: string,
 ): Promise<string> {
-  const row = await getOr<{ status?: unknown } | null>(
-    c,
-    `${group}/${uuid}`,
-    null,
-  );
-  return typeof row?.status === "string" ? row.status : "";
+  return (await resourceState(c, group, uuid)).status;
+}
+
+/** The status, plus the compose that says how many containers a stop has to
+ *  bring down. Same one call the status already made. */
+export async function resourceState(
+  c: SourceCredential,
+  group: CoolifyResourceGroup,
+  uuid: string,
+): Promise<{ status: string; compose: string }> {
+  const row = await getOr<{
+    status?: unknown;
+    docker_compose_raw?: unknown;
+    docker_compose?: unknown;
+  } | null>(c, `${group}/${uuid}`, null);
+  const compose =
+    typeof row?.docker_compose_raw === "string"
+      ? row.docker_compose_raw
+      : typeof row?.docker_compose === "string"
+        ? row.docker_compose
+        : "";
+  return {
+    status: typeof row?.status === "string" ? row.status : "",
+    compose,
+  };
 }
 
 /**

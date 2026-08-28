@@ -15,6 +15,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
+import { markDataCopyFailed } from "./data-copy";
 import {
   appMounts as appMountsTable,
   appVolumes as appVolumesTable,
@@ -63,6 +64,8 @@ import {
   setMigrationMachineAddress,
   drainMigrationSourceUninstalls,
   finishMigration,
+  sweepFinishedMigrationMarks,
+  undoMigration,
   getMigrationRun,
   importMigrationProject,
   listMigrationRuns,
@@ -798,6 +801,95 @@ test("a project lands complete: project, environment, apps, variables", async ()
   assert.match(dbRow.message!, /not provisioned yet/);
 });
 
+// The recovery path: a copy failed, the run ended, and the owner copies the data
+// again. Its report lines land on a run that is OVER, and marking there left the
+// app frozen behind a migration with nothing left to finish.
+test("a line written after the run is over does not freeze the app", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await asOwner(() => finishMigration(runId));
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+  assert.equal(web.migrationRunId, null, "the finish handed it back");
+
+  await appendRunItem(runId, "Dokploy", {
+    path: "Blink / production / blink-web",
+    sourceKind: "volume",
+    sourceName: "blink-web-abc_uploads",
+    outcome: "created",
+    targetKind: "app",
+    targetId: web.id,
+    message: "Copied 12 MB (compressed) into deplo-blink-web-uploads.",
+  });
+
+  const after = (await db.select().from(appsTable)).find(
+    (a) => a.id === web.id,
+  )!;
+  assert.equal(after.migrationRunId, null, "and it stays handed back");
+});
+
+// The verdict has to be about whether the data is there, not about how the last
+// attempt went: a panel that stumbles on a retry must not blank out a copy that
+// already landed, and then tell the owner their data is missing.
+test("a stumble on a retry does not blank out a copy that landed", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+  const errorOf = async () =>
+    (await db.select().from(appsTable)).find((a) => a.id === web.id)!
+      .dataCopyError;
+
+  // Nothing copied yet, so the verdict stands.
+  await markDataCopyFailed({ kind: "app", id: web.id }, "the panel stumbled", {
+    unlessCopiedIn: runId,
+  });
+  assert.equal(await errorOf(), "the panel stumbled");
+
+  await db
+    .update(appsTable)
+    .set({ dataCopyError: "" })
+    .where(eq(appsTable.id, web.id));
+  await appendRunItem(runId, "Dokploy", {
+    path: "Blink / production / blink-web",
+    sourceKind: "volume",
+    sourceName: "blink-web-abc_uploads",
+    outcome: "created",
+    targetKind: "app",
+    targetId: web.id,
+    message: "Copied 12 MB (compressed) into deplo-blink-web-uploads.",
+  });
+
+  // Now the bytes are in, and a second attempt that reads nothing says nothing.
+  await markDataCopyFailed({ kind: "app", id: web.id }, "the panel stumbled", {
+    unlessCopiedIn: runId,
+  });
+  assert.equal(await errorOf(), "");
+});
+
+// The heal for a row frozen by an older version: nothing else ever lets it go.
+test("the sweep frees a row whose migration is over", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await asOwner(() => finishMigration(runId));
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+  await db
+    .update(appsTable)
+    .set({ migrationRunId: runId })
+    .where(eq(appsTable.id, web.id));
+
+  await sweepFinishedMigrationMarks();
+
+  const after = (await db.select().from(appsTable)).find(
+    (a) => a.id === web.id,
+  )!;
+  assert.equal(after.migrationRunId, null);
+});
+
 test("what a running migration created is nobody else's to touch", async () => {
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
@@ -1518,6 +1610,33 @@ test("leaving keeps the source that still holds data nothing could copy", async 
     await asOwner(() => getServerById(id)),
     "the only way back to the bytes was uninstalled",
   );
+});
+
+// The automatic revert after a failed run is not a person saying "take it all
+// out": it took the agent off the machine 90 seconds after installing it, and the
+// next attempt could not read a single volume.
+test("the revert after a failure keeps the agent the retry needs", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.81");
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await appendRunItem(runId, "Dokploy", {
+    path: "Blink / production / api",
+    sourceKind: "volume",
+    sourceName: "api-data",
+    outcome: "failed",
+    message: "the copy failed",
+  });
+
+  await asOwner(() => undoMigration(runId, { forceSourceRemoval: false }));
+
+  const [source] = await db
+    .select()
+    .from(serversTable)
+    .where(eq(serversTable.id, id));
+  assert.ok(
+    source,
+    "the bytes are still over there and this is the way to them",
+  );
+  assert.equal(source.uninstallNextAt, null, "and nothing is taking it off");
 });
 
 test("a stopped run has already handed its sources back", async () => {
