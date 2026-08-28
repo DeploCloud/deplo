@@ -717,6 +717,7 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
     creatorUserId: row.creatorUserId ?? null,
     // A DECORATION the list batch-resolves from `creatorUserId`, never a column.
     creatorUser: null,
+    creatorProvider: row.creatorProvider ?? null,
   };
 }
 
@@ -745,6 +746,7 @@ export function deploymentToRow(
     rollbackOf: d.rollbackOf ?? null,
     creator: d.creator,
     creatorUserId: d.creatorUserId ?? null,
+    creatorProvider: d.creatorProvider ?? null,
     createdAt: d.createdAt,
   };
 }

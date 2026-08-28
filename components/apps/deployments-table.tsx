@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { UserAvatar } from "@/components/shared/user-avatar";
+import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import { AppLogo } from "@/components/shared/project-logo";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -116,6 +116,7 @@ export function searchHaystack(d: DeploymentRow): string {
     d.creator,
     d.creatorUser?.name,
     d.creatorUser?.username,
+    d.creatorProvider,
     d.environment,
     d.status,
   ]
@@ -264,6 +265,10 @@ export interface DeploymentRow {
     avatarColor: string;
     avatarUrl: string | null;
   } | null;
+  /** Set ⇒ `creator` is a login on this git host, not a deplo account. */
+  creatorProvider?: string | null;
+  /** That account's profile on the host, when it can be linked. */
+  creatorUrl?: string | null;
   url: string;
   /** The app can be put back on this deployment - the SERVER's answer (whether
    *  its image is still on the host), never re-derived in the browser. */
@@ -1167,14 +1172,14 @@ export function DeploymentsTable({
                         {timeAgo(d.createdAt)}
                       </p>
                       <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                        <UserAvatar
-                          name={d.creatorUser?.name ?? d.creator}
-                          username={d.creatorUser?.username}
-                          avatarColor={d.creatorUser?.avatarColor}
-                          avatarUrl={d.creatorUser?.avatarUrl}
+                        <span>by</span>
+                        <DeploymentCreator
+                          creator={d.creator}
+                          creatorUser={d.creatorUser}
+                          creatorProvider={d.creatorProvider}
+                          creatorUrl={d.creatorUrl}
                           size="xs"
                         />
-                        <span className="truncate">by {d.creator}</span>
                       </p>
                     </TableCell>
 

@@ -1079,6 +1079,9 @@ export const deployments = pgTable(
     creatorUserId: text("creator_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // The git host `creator` is a login ON, when a webhook push wrote this row.
+    // NULL ⇒ a person on this instance, so the UI shows their account instead.
+    creatorProvider: text("creator_provider"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

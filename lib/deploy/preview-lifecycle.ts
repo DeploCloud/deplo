@@ -100,6 +100,8 @@ export async function openOrSyncPreview(
   pr: PullRequestFacts,
   opts: {
     actor: string;
+    /** The git host `actor` is a login on, when a webhook opened this. */
+    actorProvider?: string | null;
     /** A manual deploy approves a fork implicitly. */
     approve?: boolean;
     /**
@@ -261,6 +263,7 @@ export async function openOrSyncPreview(
     }
     const deploymentId = await deployPreviewRow(previewId!, {
       actor: opts.actor,
+      actorProvider: opts.actorProvider,
       commitMessage: pr.title,
     });
     return { previewId, deploymentId };
@@ -274,7 +277,11 @@ export async function openOrSyncPreview(
  */
 export async function deployPreviewRow(
   previewId: string,
-  opts: { actor: string; commitMessage?: string },
+  opts: {
+    actor: string;
+    actorProvider?: string | null;
+    commitMessage?: string;
+  },
 ): Promise<string | null> {
   const row = await getDb()
     .select()
@@ -303,6 +310,7 @@ export async function deployPreviewRow(
   return startDeployment(p.appId, {
     environment: "preview",
     creator: opts.actor,
+    creatorProvider: opts.actorProvider,
     commitMessage:
       opts.commitMessage || p.prTitle || `Pull request #${p.prNumber}`,
     branch: p.headBranch,

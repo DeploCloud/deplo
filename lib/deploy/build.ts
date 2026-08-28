@@ -1001,6 +1001,11 @@ export async function startDeployment(
   opts: {
     environment?: DeploymentEnvironment;
     creator: string;
+    /**
+     * The git host `creator` is a login on, when a webhook push triggered this
+     * build. Set ⇒ nobody here is credited: it names an account on that host.
+     */
+    creatorProvider?: string | null;
     commitMessage?: string;
     branch?: string;
     /**
@@ -1108,8 +1113,12 @@ export async function startDeployment(
     imageRef: rollback?.imageRef ?? null,
     rollbackOf: rollback?.deploymentId ?? null,
     creator: opts.creator,
-    // WHO `creator` names, when it names somebody with an account here.
-    creatorUserId: await resolveActorUserId(opts.creator),
+    // WHO `creator` names, when it names somebody with an account here - never
+    // asked for a git login, which belongs to no account on this instance.
+    creatorUserId: opts.creatorProvider
+      ? null
+      : await resolveActorUserId(opts.creator),
+    creatorProvider: opts.creatorProvider ?? null,
     creatorUser: null,
     serverId: preview?.serverId || project.serverId,
     // Resolved just below, once the target server row is in hand.

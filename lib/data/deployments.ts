@@ -18,6 +18,7 @@ import {
 import {
   repoCommitUrl,
   githubPullRequestUrl,
+  gitProfileUrl,
   appBuildsItsOwnImage,
 } from "../utils";
 import { publishAppChanged } from "../graphql/pubsub";
@@ -63,6 +64,9 @@ export async function listDeployments(filter?: {
      *  a production build. Derived from the denormalized `prNumber`, so it keeps
      *  working after the preview row itself is reaped. */
     pullRequestUrl: string | null;
+    /** The git-host profile of the account that pushed, for a webhook build.
+     *  Null for a deployment somebody here ran, and for a login we can't link. */
+    creatorUrl: string | null;
     /** Owning server of the deployment - the host it ran on (`deployments.server_id`,
      *  denormalized) falling back to the app's current server. null only when
      *  neither is set (a legacy row on an app with no resolvable server). */
@@ -205,6 +209,7 @@ export async function listDeployments(filter?: {
           { provider: p?.repoProvider, repo: p?.repoRepo, url: p?.repoUrl },
           dep.prNumber,
         ),
+        creatorUrl: gitProfileUrl(dep.creatorProvider, dep.creator, p?.repoUrl),
       };
     });
 }

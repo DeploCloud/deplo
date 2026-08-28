@@ -105,6 +105,7 @@ export async function POST(request: Request) {
     repoFullName: fullName,
     event: pushEvent,
     creator: payload.pusher?.name || "github",
+    provider: "github",
     commitMessage:
       payload.head_commit?.message || (pushEvent.isTag ? "Tag" : "Push"),
     logTag: "github-webhook",

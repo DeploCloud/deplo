@@ -162,6 +162,42 @@ export function githubPullRequestUrl(
 }
 
 /**
+ * Where each provider publishes a profile. Self-hosted hosts (GitLab, Gitea) have
+ * no fixed origin, so theirs is taken from the repository's own URL.
+ */
+const PROFILE_ORIGIN: Record<string, string | null> = {
+  github: "https://github.com",
+  bitbucket: "https://bitbucket.org",
+  gitlab: null,
+  gitea: null,
+};
+
+/**
+ * The git-host profile of whoever pushed, or null when there is nothing to link
+ * (an unknown host, or a display name that is not a login). Derived, never stored -
+ * same shape and rationale as {@link repoCommitUrl}.
+ */
+export function gitProfileUrl(
+  provider: string | null | undefined,
+  login: string | null | undefined,
+  repoUrl?: string | null,
+): string | null {
+  const name = login?.trim().replace(/^@/, "");
+  if (!provider || !name || !/^[\w.-]+$/.test(name)) return null;
+  if (!(provider in PROFILE_ORIGIN)) return null;
+  let origin = PROFILE_ORIGIN[provider];
+  if (!origin) {
+    try {
+      const u = new URL(repoUrl?.trim() ?? "");
+      origin = /^https?:$/.test(u.protocol) ? u.origin : null;
+    } catch {
+      return null;
+    }
+  }
+  return origin ? `${origin}/${name}` : null;
+}
+
+/**
  * The `owner/name` slug of a project's GitHub repo, or null when it isn't on
  * GitHub. Strips a trailing `.git`/slash so the commit URL never doubles up
  * (`owner/name.git` / `owner/name/` → `owner/name`).

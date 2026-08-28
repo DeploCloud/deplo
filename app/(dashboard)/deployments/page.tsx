@@ -64,6 +64,8 @@ export default async function DeploymentsPage() {
             createdAt: d.createdAt,
             creator: d.creator,
             creatorUser: d.creatorUser,
+            creatorProvider: d.creatorProvider,
+            creatorUrl: d.creatorUrl,
             url: d.url,
             canRollback: d.canRollback,
             rollbackOf: d.rollbackOf,

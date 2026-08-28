@@ -191,6 +191,8 @@ export async function seedDeployment(
     buildServerId?: string | null;
     /** The account behind `creator`, for the attribution tests. */
     creatorUserId?: string | null;
+    /** The git host `creator` is a login on - a webhook push. */
+    creatorProvider?: string | null;
   },
 ): Promise<void> {
   const dep: Deployment = {
@@ -200,6 +202,7 @@ export async function seedDeployment(
     forceRecreate: false,
     creatorUserId: opts.creatorUserId ?? null,
     creatorUser: null,
+    creatorProvider: opts.creatorProvider ?? null,
     serverId: opts.serverId ?? SERVER_1,
     buildServerId: opts.buildServerId ?? null,
     environment: opts.environment ?? "production",

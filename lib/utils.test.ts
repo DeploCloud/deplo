@@ -5,6 +5,7 @@ import {
   cn,
   formatBuildDuration,
   formatClockTime,
+  gitProfileUrl,
   isHexColor,
   normalizeHexColor,
   pickerInstallationId,
@@ -231,4 +232,30 @@ test("formatClockTime pads UTC and only shows millis when asked", () => {
     "00:00:00.000",
   );
   assert.equal(formatClockTime("not a date"), "");
+});
+
+test("gitProfileUrl links a pusher's account, and only when it can", () => {
+  assert.equal(
+    gitProfileUrl("github", "idradev"),
+    "https://github.com/idradev",
+  );
+  assert.equal(
+    gitProfileUrl("bitbucket", "@idradev"),
+    "https://bitbucket.org/idradev",
+  );
+  // Self-hosted: the origin comes from the repository's own URL.
+  assert.equal(
+    gitProfileUrl("gitea", "idradev", "https://git.acme.com/team/api.git"),
+    "https://git.acme.com/idradev",
+  );
+  assert.equal(gitProfileUrl("gitea", "idradev"), null);
+  // A deploy nobody on a git host ran, an unknown host, and a display name that
+  // is not a login all stay unlinked.
+  assert.equal(gitProfileUrl(null, "Owner"), null);
+  assert.equal(gitProfileUrl("svn", "idradev"), null);
+  assert.equal(gitProfileUrl("bitbucket", "Ada Lovelace"), null);
+  assert.equal(
+    gitProfileUrl("gitlab", "../admin", "https://gitlab.com/a/b"),
+    null,
+  );
 });

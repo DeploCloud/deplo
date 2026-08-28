@@ -22,8 +22,10 @@ export async function dispatchPushEvent(opts: {
   /** owner/name as the provider spells it. */
   repoFullName: string;
   event: GitPushEvent;
-  /** Who to credit in the deployment. */
+  /** Who to credit in the deployment - a login on `provider`, not a deplo user. */
   creator: string;
+  /** The git host that login belongs to, so the build says whose account it was. */
+  provider: string;
   commitMessage: string;
   /** Log prefix, so a dropped delivery is traceable to its route. */
   logTag: string;
@@ -88,6 +90,7 @@ export async function dispatchPushEvent(opts: {
       await startDeployment(p.id, {
         environment: "production",
         creator: opts.creator,
+        creatorProvider: opts.provider,
         commitMessage: opts.commitMessage,
         // For a tag trigger the deploy checks out the tag itself; for a push it
         // is the tracked branch (event.refName === repoBranch here).

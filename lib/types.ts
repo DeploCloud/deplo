@@ -1023,6 +1023,10 @@ export interface Deployment {
   creatorUserId: ID | null;
   /** That person, resolved for display. A DECORATION the list batch-resolves. */
   creatorUser: VarAuthor | null;
+  /** The git host {@link creator} is a login on, set only by a webhook push
+   *  ("github", "gitlab", "bitbucket", "gitea"). Null ⇒ somebody with an account
+   *  here, drawn with their own avatar. */
+  creatorProvider: string | null;
 }
 
 export type LogLevel =

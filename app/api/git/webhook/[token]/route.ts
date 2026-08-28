@@ -73,6 +73,7 @@ export async function POST(
       repoFullName: push.repoFullName,
       event: push.event,
       creator: push.author,
+      provider: conn.provider,
       commitMessage: push.commitMessage,
       logTag: "git-webhook",
     });

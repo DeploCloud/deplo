@@ -4,7 +4,7 @@ import { ArrowLeft, GitBranch, Clock, ExternalLink, Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
-import { UserAvatar } from "@/components/shared/user-avatar";
+import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import {
   getDeployment,
   getLogs,
@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/apps/commit-link";
 import { CommitMessage } from "@/components/apps/commit-message";
-import { repoCommitUrl, timeAgo } from "@/lib/utils";
+import { gitProfileUrl, repoCommitUrl, timeAgo } from "@/lib/utils";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
 import { RollbackButton } from "@/components/apps/rollback-deployment";
@@ -110,14 +110,16 @@ export default async function DeploymentDetailPage(
                 between was not rendered. */}
             <span className="flex items-center gap-1.5 text-sm">
               <span>{timeAgo(deployment.createdAt)} by</span>
-              <UserAvatar
-                name={deployment.creatorUser?.name ?? deployment.creator}
-                username={deployment.creatorUser?.username}
-                avatarColor={deployment.creatorUser?.avatarColor}
-                avatarUrl={deployment.creatorUser?.avatarUrl}
-                size="sm"
+              <DeploymentCreator
+                creator={deployment.creator}
+                creatorUser={deployment.creatorUser}
+                creatorProvider={deployment.creatorProvider}
+                creatorUrl={gitProfileUrl(
+                  deployment.creatorProvider,
+                  deployment.creator,
+                  project.repo?.url,
+                )}
               />
-              <span>{deployment.creator}</span>
             </span>
           </Meta>
           <div className="flex items-end gap-2">

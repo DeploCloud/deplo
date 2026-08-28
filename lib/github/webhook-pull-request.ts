@@ -142,7 +142,7 @@ export async function handlePullRequestDelivery(
           baseBranch: ev.baseBranch,
           isFork: ev.isFork,
         },
-        { actor: ev.author || "github" },
+        { actor: ev.author || "github", actorProvider: "github" },
       );
 
       // Tell the pull request what happened, whatever happened. A refusal that

@@ -10,7 +10,7 @@ import {
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
-import { UserAvatar } from "@/components/shared/user-avatar";
+import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import { listDeployments } from "@/lib/data/deployments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ import {
 import { CommitLink } from "@/components/apps/commit-link";
 import {
   formatBuildDuration,
+  gitProfileUrl,
   repoCommitUrl,
   repoCredentialMissing,
   timeAgoShort,
@@ -110,16 +111,16 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
                   <p className="text-xs text-muted-foreground">Created</p>
                   <p className="flex items-center gap-1.5 text-sm">
                     {timeAgoShort(prod.createdAt)} by
-                    {prod.creatorUser && (
-                      <UserAvatar
-                        name={prod.creatorUser.name}
-                        username={prod.creatorUser.username}
-                        avatarColor={prod.creatorUser.avatarColor}
-                        avatarUrl={prod.creatorUser.avatarUrl}
-                        size="sm"
-                      />
-                    )}
-                    {prod.creator}
+                    <DeploymentCreator
+                      creator={prod.creator}
+                      creatorUser={prod.creatorUser}
+                      creatorProvider={prod.creatorProvider}
+                      creatorUrl={gitProfileUrl(
+                        prod.creatorProvider,
+                        prod.creator,
+                        project.repo?.url,
+                      )}
+                    />
                   </p>
                 </div>
               </div>
