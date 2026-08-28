@@ -220,9 +220,19 @@ export function SidebarNav({
     >
       <SlidingBackground rect={bgRect} />
       {rendered.map((section, i) => (
-        <div key={i} className="flex flex-col gap-0.5">
-          {/* A titled group shows its label as a header; an untitled one falls
-              back to a divider, as does the collapsed rail - no room for a label. */}
+        <div
+          key={i}
+          className={cn(
+            "flex flex-col gap-0.5",
+            // The gap the header or the rule used to carry, for the one group
+            // that gets neither: the sub-menus' break under "Back to …".
+            i > 0 && !section.title && !collapsed && "pt-3",
+          )}
+        >
+          {/* A titled group shows its label as a header. Collapsed there is no
+              room for one, so a rule stands in; expanded, the only untitled
+              break is under the back button, where a line fenced it off from
+              the menu it belongs to. */}
           {section.title && !collapsed ? (
             <div
               className={cn(
@@ -233,13 +243,9 @@ export function SidebarNav({
               {section.title}
             </div>
           ) : (
-            i > 0 && (
-              <hr
-                className={cn(
-                  "my-2 border-t border-sidebar-border",
-                  collapsed ? "mx-1" : "mx-2",
-                )}
-              />
+            i > 0 &&
+            collapsed && (
+              <hr className="mx-1 my-2 border-t border-sidebar-border" />
             )
           )}
           {section.items.map((item) => {
