@@ -44,6 +44,8 @@ import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
+import type { TeamEnvironment } from "@/lib/data/environments";
+import type { ProjectRef } from "@/components/env/shared-var-wizard";
 
 /**
  * Standalone and shared variables share ONE row list so that the sort orders the
@@ -62,11 +64,16 @@ const rowKey = (row: EnvRow) => `${row.kind}:${row.id}`;
 
 export function EnvManager({
   appId,
+  appName,
   vars,
   sharedVars,
   sharedVarDetails,
+  canCreateShared,
+  projects,
+  environments,
 }: {
   appId: string;
+  appName: string;
   vars: EnvVarDTO[];
   sharedVars: AppSharedVarDTO[];
   /**
@@ -75,6 +82,10 @@ export function EnvManager({
    * the whole DTO). Keyed by id into `detailsById` below.
    */
   sharedVarDetails: SharedVarDTO[];
+  /** `manage_env` held team-wide - what creating a shared variable needs. */
+  canCreateShared: boolean;
+  projects: ProjectRef[];
+  environments: TeamEnvironment[];
 }) {
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -321,8 +332,12 @@ export function EnvManager({
         open={addOpen}
         onOpenChange={setAddOpen}
         appId={appId}
+        appName={appName}
         editing={editing}
         sharedVars={sharedVars}
+        canCreateShared={canCreateShared}
+        projects={projects}
+        environments={environments}
       />
       <ConfirmAction
         open={deleteId !== null}

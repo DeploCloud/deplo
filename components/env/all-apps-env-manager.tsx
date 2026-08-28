@@ -621,7 +621,12 @@ export function AllAppsEnvManager({
           open
           onOpenChange={(v) => !v && setDialog(null)}
           appId={dialog.appId}
+          appName={apps.find((a) => a.id === dialog.appId)?.name}
           editing={dialog.editing}
+          // This page only renders for a caller holding `manage_env` team-wide.
+          canCreateShared
+          projects={projects}
+          environments={environments}
         />
       )}
       {sharedEditing && (

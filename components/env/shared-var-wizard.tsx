@@ -23,16 +23,24 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { FieldLabel } from "@/components/ui/info-tip";
 import { AppLogo } from "@/components/shared/project-logo";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, readableTextColor } from "@/lib/utils";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { ChoiceCard, CheckMark } from "@/components/shared/choice-card";
+import {
+  SlidingPanels,
+  PANEL_BODY_MAX,
+} from "@/components/shared/sliding-panels";
+import {
+  EnvRowsEditor,
+  filledRows,
+  invalidRows,
+  type EnvRow,
+} from "@/components/env/env-rows-editor";
+import { SecretRow } from "@/components/env/secret-row";
 import { SECRET_EDIT_BLOCKED } from "@/components/env/env-edit-button";
 import type { SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
@@ -60,9 +68,6 @@ export interface ProjectRef extends WizardRef {
   appCount: number;
   environmentCount: number;
 }
-
-/** Mirrors the server's key rule (lib/data/shared-vars.ts) so a bad key fails on step 1. */
-const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 type StepId = "variable" | "scope" | "details" | "review";
 
@@ -99,12 +104,11 @@ const SCOPES: {
   },
 ];
 
-const STEP_LABEL: Record<StepId, string> = {
-  variable: "Variable",
-  scope: "Shared with",
-  details: "Details",
-  review: "Review",
-};
+/** Creating from inside an app: that app is the destination, fixed. */
+export interface WizardAppContext {
+  id: string;
+  name: string;
+}
 
 /**
  * How one checked project shares: with all of its environments (the project id
@@ -148,9 +152,12 @@ function initialProjectScopes(
   return out;
 }
 
+const emptyRow = (): EnvRow[] => [{ key: "", value: "" }];
+
 /**
- * Create/edit one shared variable, as a wizard: name and value, then WHO gets it,
- * then only the details of what you picked.
+ * Create/edit shared variables, as a wizard: the same key/value table the app's
+ * own variables are written in, then WHO gets them, then only the details of
+ * what you picked.
  */
 export function SharedVarDialog({
   open,
@@ -167,11 +174,64 @@ export function SharedVarDialog({
   projects: ProjectRef[];
   environments: TeamEnvironment[];
 }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* Same box as "Add environment variables": the body owns its height and
+          eases between steps instead of padding out to the tallest one. */}
+      <DialogContent
+        selfManaged
+        className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
+      >
+        <DialogHeader className="px-6 pt-6 pb-4">
+          <DialogTitle>
+            {editing ? "Edit shared variable" : "New shared variables"}
+          </DialogTitle>
+          <DialogDescription>
+            {editing
+              ? "Change who can use it - the key stays as it is."
+              : "Write them once, then choose who can use them."}
+          </DialogDescription>
+        </DialogHeader>
+        <SharedVarWizardBody
+          editing={editing}
+          apps={apps}
+          projects={projects}
+          environments={environments}
+          onOpenChange={onOpenChange}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * The wizard itself, without a Dialog of its own: the Variables page hosts it in
+ * one, an app's Add-variable modal hosts it as a panel on its own track.
+ */
+export function SharedVarWizardBody({
+  editing,
+  apps,
+  projects,
+  environments,
+  appContext,
+  onOpenChange,
+}: {
+  editing: SharedVarDTO | null;
+  /** Every app of the team - empty in an app context, where nothing is picked. */
+  apps: AppRef[];
+  projects: ProjectRef[];
+  environments: TeamEnvironment[];
+  appContext?: WizardAppContext;
+  /** Closes on save and re-opens on a refusal, exactly like a Dialog's own. */
+  onOpenChange: (v: boolean) => void;
+}) {
+  const inApp = appContext != null;
   const [step, setStep] = React.useState<StepId>("variable");
-  const [key, setKey] = React.useState(editing?.key ?? "");
   // A secret's DTO value is the MASK, and the server reads that back as "keep
   // the stored value", so prefilling it is what lets a scope-only edit save.
-  const [value, setValue] = React.useState(editing?.value ?? "");
+  const [rows, setRows] = React.useState<EnvRow[]>(() =>
+    editing ? [{ key: editing.key, value: editing.value }] : emptyRow(),
+  );
   const [secret, setSecret] = React.useState(editing?.type === "secret");
   const [scopes, setScopes] = React.useState<ScopeId[]>(() =>
     initialScopes(editing),
@@ -198,15 +258,17 @@ export function SharedVarDialog({
   const picked = {
     team: scopes.includes("team"),
     projects: scopes.includes("projects"),
-    apps: scopes.includes("apps"),
+    apps: inApp || scopes.includes("apps"),
   };
 
   // Nothing to configure for a team-wide-only variable, so it never sees Details.
+  // In an app context the destination is settled, so there is nothing to review.
+  const needsDetails = picked.projects || (!inApp && picked.apps);
   const steps: StepId[] = [
     "variable",
     "scope",
-    ...(picked.projects || picked.apps ? (["details"] as const) : []),
-    "review",
+    ...(needsDetails ? (["details"] as const) : []),
+    ...(inApp ? [] : (["review"] as const)),
   ];
 
   const checkedProjects = Object.entries(projectScopes);
@@ -214,15 +276,16 @@ export function SharedVarDialog({
     checkedProjects.length > 0 &&
     checkedProjects.every(([, s]) => s.mode === "all" || s.envIds.length > 0);
 
-  // Caught on step 1, not on Save four steps later.
-  const keyInvalid = key.trim() !== "" && !KEY_RE.test(key.trim());
+  const filled = filledRows(rows);
+  const badRows = invalidRows(rows);
 
   const valid: Record<StepId, boolean> = {
-    variable: KEY_RE.test(key.trim()),
-    scope: scopes.length > 0,
+    variable: filled.length > 0 && badRows.length === 0,
+    // This app is always a destination, so an app context can never be empty.
+    scope: inApp || scopes.length > 0,
     details:
       (!picked.projects || projectsReady) &&
-      (!picked.apps || appIds.length > 0),
+      (inApp || !picked.apps || appIds.length > 0),
     review: true,
   };
 
@@ -244,7 +307,7 @@ export function SharedVarDialog({
     // Always sent: `saveSharedVar` replaces the whole link set, so an empty
     // array UNLINKS every app. That is deliberate - the wizard checks the "apps"
     // scope whenever the variable has links, so clearing it is an explicit act.
-    appIds: picked.apps ? appIds : [],
+    appIds: inApp ? [appContext.id] : picked.apps ? appIds : [],
   };
 
   function toggleScope(id: ScopeId) {
@@ -264,179 +327,164 @@ export function SharedVarDialog({
     }
   }
 
+  function reset() {
+    setRows(emptyRow());
+    setSecret(false);
+    setScopes([]);
+    setProjectScopes({});
+    setAppIds([]);
+    setStep("variable");
+  }
+
   function save() {
-    // The wizard closes on the click and the write settles behind it; the whole
-    // wait here is the refresh that re-reads every app's variables. A refusal
-    // reopens it with every step exactly as it was left.
-    onOpenChange(false);
+    // Stays open until the writes answer - the state that would carry a refused
+    // row back lives INSIDE the dialog, and Radix unmounts that on close. What
+    // it never waits for is the refresh behind it, which is the slow half.
+    const batch = filled;
+    const type = secret ? "secret" : "plain";
     startTransition(async () => {
-      const res = await gqlAction<{ saveSharedVar: { id: string } }>(
-        `mutation($input: SaveSharedVarInput!) { saveSharedVar(input: $input) { id } }`,
-        {
-          input: {
-            id: editing?.id,
-            key,
-            value,
-            type: secret ? "secret" : "plain",
-            ...scoped,
-          },
-        },
+      // One variable per call - `saveSharedVar` writes one row, and every row of
+      // the batch shares the scope picked once.
+      const results = await Promise.all(
+        batch.map((r) =>
+          gqlAction<{ saveSharedVar: { id: string } }>(
+            `mutation($input: SaveSharedVarInput!) { saveSharedVar(input: $input) { id } }`,
+            {
+              input: {
+                id: editing?.id,
+                key: r.key.trim(),
+                value: r.value,
+                type,
+                ...scoped,
+              },
+            },
+          ),
+        ),
       );
-      if (res.ok) {
+      const failed = batch.filter((_, i) => !results[i].ok);
+      if (failed.length === 0) {
+        onOpenChange(false);
+        reset();
         toast.success(
-          editing ? "Shared variable updated" : "Shared variable created",
+          editing
+            ? "Shared variable updated"
+            : batch.length === 1
+              ? "Shared variable created"
+              : `${batch.length} shared variables created`,
         );
       } else {
-        onOpenChange(true);
-        toast.error(res.error);
+        // The rows that landed stay landed; the ones that did not stay in the
+        // table, with the server's own words for why.
+        const first = results.find((r) => !r.ok);
+        const done = batch.length - failed.length;
+        const why = first && !first.ok ? first.error : "Something went wrong";
+        setRows(failed);
+        setStep("variable");
+        toast.error(
+          done > 0 ? `${done} created, ${failed.length} failed. ${why}` : why,
+        );
       }
       router.refresh();
     });
   }
 
+  const stepLabel: Record<StepId, string> = {
+    variable: editing ? "Variable" : "Variables",
+    scope: "Shared with",
+    details: "Details",
+    review: "Review",
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      {/**
-       * Wide AND tall: the Details step lays its project + app cards out side by side,
-       * and each card carries an icon, a name and a domain under it.
-       */}
-      <DialogContent
-        selfManaged
-        className="h-[min(90vh,52rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-3xl"
-      >
-        <DialogHeader>
-          <DialogTitle>
-            {editing ? "Edit shared variable" : "New shared variable"}
-          </DialogTitle>
-          <DialogDescription>
-            Write the variable once, then choose who can use it. Apps opt in - a
-            shared variable is never added to an app automatically.
-          </DialogDescription>
-        </DialogHeader>
+    <form className="flex min-h-0 flex-col" onSubmit={onSubmit}>
+      {/* Nested in an app's Add-variable modal there is a back row above this
+          one, so the rail needs its own top padding; under a DialogHeader the
+          header's `pb-4` already provides it. */}
+      <div className={cn("border-b border-border px-6 pb-4", inApp && "pt-4")}>
+        <WizardStepper
+          steps={steps.map((s) => ({ id: s, label: stepLabel[s] }))}
+          current={steps[index]}
+          // A step is reachable once every step before it is complete, which,
+          // when editing, is all of them from the first render.
+          reachable={(s) =>
+            steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
+          }
+          onSelect={setStep}
+        />
+      </div>
 
-        <form
-          onSubmit={onSubmit}
-          className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-4 overflow-hidden"
-        >
-          <WizardStepper
-            steps={steps.map((s) => ({ id: s, label: STEP_LABEL[s] }))}
-            current={steps[index]}
-            // A step is reachable once every step before it is complete, which,
-            // when editing, is all of them from the first render.
-            reachable={(s) =>
-              steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
-            }
-            onSelect={setStep}
-          />
-
-          {/* The one scrolling row. The form steps keep a readable measure inside the
-              wide dialog; only Details (the card grids) uses the full width. */}
-          <div className="focus-safe-scroll overflow-y-auto">
-            {steps[index] === "variable" && (
-              <div className="mx-auto w-full max-w-xl space-y-4">
-                <div className="space-y-2">
-                  <FieldLabel
-                    info="The variable's name, exposed to apps during builds and at runtime. It can't be renamed once created."
-                    docs="env.shared"
-                  >
-                    Key
-                  </FieldLabel>
-                  <Input
-                    value={key}
-                    onChange={(e) => setKey(e.target.value)}
-                    placeholder="DATABASE_URL"
-                    aria-invalid={keyInvalid}
-                    className={cn(
-                      "font-mono text-sm",
-                      keyInvalid &&
-                        "border-destructive focus-visible:ring-destructive",
-                    )}
-                    disabled={!!editing}
-                    autoFocus={!editing}
-                  />
-                  {keyInvalid && (
-                    <p className="text-xs text-destructive">
-                      “{key.trim()}” isn&apos;t a valid variable name. Names
-                      must start with a letter or underscore and contain only
-                      letters, digits and underscores.
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Value</label>
-                  {/* Editing a SECRET, this wizard only changes who receives it: the
-                    value and the type are frozen, so both controls go read-only
-                    rather than pretending the save would carry them. */}
-                  <Textarea
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    placeholder={editing ? "Enter a new value" : "value"}
-                    rows={3}
-                    readOnly={frozen}
-                    className={cn(frozen && "text-muted-foreground")}
-                  />
-                  {frozen && (
-                    <p className="text-xs text-muted-foreground">
-                      {SECRET_EDIT_BLOCKED} You can still change who it is
-                      shared with.
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-border p-3">
-                  <div>
-                    <p className="text-sm font-medium">Secret</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Hide the value in the UI after saving. It can never be
-                      read back or edited.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={secret}
-                    onCheckedChange={setSecret}
-                    disabled={frozen}
-                  />
-                </div>
-              </div>
+      <SlidingPanels
+        panels={steps}
+        current={steps[index]}
+        labelFor={(s) => stepLabel[s]}
+        render={(s) => (
+          <div
+            className={cn(
+              "space-y-4 overflow-y-auto px-6 py-4",
+              PANEL_BODY_MAX,
+            )}
+          >
+            {s === "variable" && (
+              <>
+                <EnvRowsEditor
+                  rows={rows}
+                  onChange={setRows}
+                  keyPlaceholder="DATABASE_URL"
+                  singleRow={!!editing}
+                  keyDisabled={!!editing}
+                  valueReadOnly={frozen}
+                />
+                {frozen ? (
+                  <p className="text-xs text-muted-foreground">
+                    {SECRET_EDIT_BLOCKED} You can still change who it is shared
+                    with.
+                  </p>
+                ) : (
+                  <SecretRow secret={secret} onChange={setSecret} />
+                )}
+              </>
             )}
 
-            {steps[index] === "scope" && (
-              <div className="mx-auto w-full max-w-xl space-y-3">
+            {s === "scope" && (
+              <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Who is this variable for? Pick one or more - you&apos;ll fill
-                  in the details next. Only “Specific apps” adds it somewhere
-                  right away; the other scopes suggest it and each app opts in
-                  itself.
+                  {inApp
+                    ? "This app gets it right away. Pick who else may use it."
+                    : "Pick one or more. Only “Specific apps” adds it somewhere right away."}
                 </p>
                 <div
                   role="group"
                   aria-label="Shared with"
                   className="space-y-2"
                 >
-                  {SCOPES.map((s) => (
-                    <ChoiceCard
-                      multi
-                      key={s.id}
-                      title={s.title}
-                      blurb={s.blurb}
-                      icon={s.icon}
-                      selected={scopes.includes(s.id)}
-                      disabled={
-                        (s.id === "projects" && projects.length === 0) ||
-                        (s.id === "apps" && apps.length === 0)
-                      }
-                      disabledNote={
-                        s.id === "projects"
-                          ? "No projects yet."
-                          : "No apps yet."
-                      }
-                      onSelect={() => toggleScope(s.id)}
-                    />
-                  ))}
+                  {inApp && <ThisApp name={appContext.name} />}
+                  {SCOPES.filter((sc) => !inApp || sc.id !== "apps").map(
+                    (sc) => (
+                      <ChoiceCard
+                        multi
+                        key={sc.id}
+                        title={sc.title}
+                        blurb={sc.blurb}
+                        icon={sc.icon}
+                        selected={scopes.includes(sc.id)}
+                        disabled={
+                          (sc.id === "projects" && projects.length === 0) ||
+                          (sc.id === "apps" && apps.length === 0)
+                        }
+                        disabledNote={
+                          sc.id === "projects"
+                            ? "No projects yet."
+                            : "No apps yet."
+                        }
+                        onSelect={() => toggleScope(sc.id)}
+                      />
+                    ),
+                  )}
                 </div>
               </div>
             )}
 
-            {steps[index] === "details" && (
+            {s === "details" && (
               <div className="space-y-6">
                 {picked.projects && (
                   <ProjectsSection
@@ -446,10 +494,10 @@ export function SharedVarDialog({
                     onChange={setProjectScopes}
                   />
                 )}
-                {picked.projects && picked.apps && (
+                {picked.projects && !inApp && picked.apps && (
                   <hr className="border-border" />
                 )}
-                {picked.apps && (
+                {!inApp && picked.apps && (
                   <AppsSection
                     apps={apps}
                     selected={appIds}
@@ -459,55 +507,80 @@ export function SharedVarDialog({
               </div>
             )}
 
-            {steps[index] === "review" && (
-              <div className="mx-auto w-full max-w-xl">
-                <Review
-                  varKey={key}
-                  secret={secret}
-                  teamWide={scoped.teamWide}
-                  projects={projects}
-                  environments={environments}
-                  projectScopes={picked.projects ? projectScopes : {}}
-                  apps={apps}
-                  appIds={scoped.appIds}
-                />
-              </div>
+            {s === "review" && (
+              <Review
+                varKeys={filled.map((r) => r.key.trim())}
+                secret={secret}
+                teamWide={scoped.teamWide}
+                projects={projects}
+                environments={environments}
+                projectScopes={picked.projects ? projectScopes : {}}
+                apps={apps}
+                appIds={scoped.appIds}
+              />
             )}
           </div>
+        )}
+      />
 
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setStep(steps[index - 1])}
-              disabled={index === 0 || pending}
-            >
-              <ChevronLeft className="size-4" />
-              Back
+      <DialogFooter className="items-center border-t border-border px-6 py-4">
+        {/* Kept in the footer, hidden on the first step: a disabled Back reads
+            as something broken, and removing it would move Cancel across. */}
+        <Button
+          variant="ghost"
+          onClick={() => setStep(steps[index - 1])}
+          disabled={index === 0 || pending}
+          className={cn(index === 0 && "invisible")}
+        >
+          <ChevronLeft className="size-4" />
+          Back
+        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={pending}
+          >
+            Cancel
+          </Button>
+          {last ? (
+            <Button type="submit" disabled={pending || !canSave}>
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              {editing
+                ? "Save"
+                : filled.length > 1
+                  ? `Create ${filled.length}`
+                  : "Create"}
             </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={pending}
-              >
-                Cancel
-              </Button>
-              {last ? (
-                <Button type="submit" disabled={pending || !canSave}>
-                  {pending && <Loader2 className="size-4 animate-spin" />}
-                  Save
-                </Button>
-              ) : (
-                <Button type="submit" disabled={!canGoOn}>
-                  Next
-                  <ChevronRight className="size-4" />
-                </Button>
-              )}
-            </div>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          ) : (
+            <Button type="submit" disabled={!canGoOn}>
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          )}
+        </div>
+      </DialogFooter>
+    </form>
+  );
+}
+
+/** The destination you cannot unpick: the app the modal was opened from. */
+function ThisApp({ name }: { name: string }) {
+  return (
+    <div className="flex w-full items-start gap-3 rounded-lg border border-primary bg-primary/[0.06] p-3 text-left ring-1 ring-primary/60">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-primary/40 bg-background text-primary">
+        <AppWindow className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">
+          This app · {name}
+        </span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+          Added right away - it reaches the app on its next deploy.
+        </span>
+      </span>
+      <CheckMark selected />
+    </div>
   );
 }
 
@@ -639,11 +712,11 @@ function ProjectsSection({
                           selected={scope.mode === "some"}
                           onSelect={() => setMode(p.id, "some")}
                         >
-                          Selected environments…
+                          Some environments
                         </ModeButton>
                       </div>
                       {scope.mode === "some" && (
-                        <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
                           {envs.map((e) => (
                             <label
                               key={e.id}
@@ -770,11 +843,7 @@ function AppsSection({
             : "This team has no apps yet."}
         </p>
       ) : (
-        <div
-          role="group"
-          aria-label="Apps"
-          className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-        >
+        <div role="group" aria-label="Apps" className="grid grid-cols-1 gap-2">
           {shown.map((a) => {
             const on = selected.includes(a.id);
             return (
@@ -837,7 +906,7 @@ function ProjectTile({ color }: { color: string | null }) {
 
 /** The last step: everything the Save button is about to do, as chips. */
 function Review({
-  varKey,
+  varKeys,
   secret,
   teamWide,
   projects,
@@ -846,7 +915,7 @@ function Review({
   apps,
   appIds,
 }: {
-  varKey: string;
+  varKeys: string[];
   secret: boolean;
   teamWide: boolean;
   projects: WizardRef[];
@@ -898,10 +967,14 @@ function Review({
     <div className="space-y-4">
       <div className="space-y-1.5">
         <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Variable
+          {varKeys.length === 1 ? "Variable" : `${varKeys.length} variables`}
         </p>
-        <div className="flex items-center gap-2">
-          <code className="font-mono text-sm font-medium">{varKey}</code>
+        <div className="flex flex-wrap items-center gap-2">
+          {varKeys.map((k) => (
+            <code key={k} className="font-mono text-sm font-medium">
+              {k}
+            </code>
+          ))}
           <Badge variant="muted" className="text-[10px]">
             {secret ? "Secret" : "Plain"}
           </Badge>

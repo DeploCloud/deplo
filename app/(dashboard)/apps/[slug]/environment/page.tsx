@@ -4,6 +4,8 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { listEnv } from "@/lib/data/env";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { listSharedVars, listSharedVarsForApp } from "@/lib/data/shared-vars";
+import { listProjects } from "@/lib/data/projects";
+import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { listPreviewEnvVars } from "@/lib/data/previews";
 import { EnvManager } from "@/components/env/env-manager";
@@ -38,17 +40,36 @@ export default async function AppEnvPage(
     );
   }
 
-  const [vars, sharedVars, allSharedVars, previewOverrides] = await Promise.all(
-    [
-      listEnv(project.id),
-      listSharedVarsForApp(project.id),
-      // The full records back the value edit + "Shared with" chips a shared row now
-      // exposes here; narrow to the ones this app actually receives.
-      teamWideEnv ? listSharedVars() : Promise.resolve([]),
-      // Preview overrides only mean anything once preview deployments are on.
-      project.previewEnabled ? listPreviewEnvVars(project.id) : [],
-    ],
-  );
+  const [
+    vars,
+    sharedVars,
+    allSharedVars,
+    previewOverrides,
+    projectSummaries,
+    environments,
+  ] = await Promise.all([
+    listEnv(project.id),
+    listSharedVarsForApp(project.id),
+    // The full records back the value edit + "Shared with" chips a shared row now
+    // exposes here; narrow to the ones this app actually receives.
+    teamWideEnv ? listSharedVars() : Promise.resolve([]),
+    // Preview overrides only mean anything once preview deployments are on.
+    project.previewEnabled ? listPreviewEnvVars(project.id) : [],
+    // What the "New shared variable" panel offers beyond this app itself. Read
+    // only when the caller could actually create one.
+    teamWideEnv ? listProjects() : Promise.resolve([]),
+    teamWideEnv ? listAllEnvironmentsForTeam() : Promise.resolve([]),
+  ]);
+  // Same shape the Variables page hands the wizard: colour + counts, so a
+  // project is recognised the way it is on the Overview.
+  const projects = projectSummaries.map((p) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    color: p.color ?? null,
+    appCount: p.appCount,
+    environmentCount: p.environmentCount,
+  }));
   const linkedIds = new Set(
     sharedVars.filter((v) => v.linked).map((v) => v.id),
   );
@@ -58,9 +79,13 @@ export default async function AppEnvPage(
     <div className="space-y-6">
       <EnvManager
         appId={project.id}
+        appName={project.name}
         vars={vars}
         sharedVars={sharedVars}
         sharedVarDetails={sharedVarDetails}
+        canCreateShared={teamWideEnv}
+        projects={projects}
+        environments={environments}
       />
       {project.previewEnabled && (
         <PreviewOverrides appId={project.id} overrides={previewOverrides} />

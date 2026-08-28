@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -9,7 +8,7 @@ import {
   Plus,
   Trash2,
   Share2,
-  ArrowUpRight,
+  ChevronLeft,
   Info,
   Search,
   Check,
@@ -29,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
@@ -40,8 +40,17 @@ import {
   type EnvRow,
 } from "@/components/env/env-rows-editor";
 import { SecretRow } from "@/components/env/secret-row";
+import {
+  SlidingPanels,
+  PANEL_BODY_MAX,
+} from "@/components/shared/sliding-panels";
+import {
+  SharedVarWizardBody,
+  type ProjectRef,
+} from "@/components/env/shared-var-wizard";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
+import type { TeamEnvironment } from "@/lib/data/environments";
 
 /**
  * A shared var as the LINK rows read it: everything but the value.
@@ -57,15 +66,25 @@ export function EnvVarDialog({
   open,
   onOpenChange,
   appId,
+  appName,
   editing,
   sharedVars,
+  canCreateShared = false,
+  projects = [],
+  environments = [],
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   appId: string;
+  /** Named on the "This app" destination of the shared-variable panel. */
+  appName?: string;
   editing: EnvVarDTO | null;
   /** In-scope shared vars for this app; lazy-fetched when omitted. */
   sharedVars?: LinkableSharedVar[];
+  /** `manage_env` held TEAM-WIDE - what creating a shared variable needs. */
+  canCreateShared?: boolean;
+  projects?: ProjectRef[];
+  environments?: TeamEnvironment[];
 }) {
   // A secret has no edit form: it is write-only, and the pencil that opens this is
   // already disabled for a secret row (EnvEditButton).
@@ -85,7 +104,11 @@ export function EnvVarDialog({
       open={open}
       onOpenChange={onOpenChange}
       appId={appId}
+      appName={appName}
       sharedVars={sharedVars}
+      canCreateShared={canCreateShared}
+      projects={projects}
+      environments={environments}
     />
   );
 }
@@ -243,69 +266,45 @@ function EditForm({
 const ADD_TABS = ["standalone", "shared"] as const;
 type AddTab = (typeof ADD_TABS)[number];
 
+/** The two tabs plus the shared-variable creator they lead to, as one track. */
+const ADD_PANELS = [...ADD_TABS, "new-shared"] as const;
+type AddPanel = (typeof ADD_PANELS)[number];
+
+const PANEL_LABEL: Record<AddPanel, string> = {
+  standalone: "Standalone",
+  shared: "Shared",
+  "new-shared": "New shared variable",
+};
+
 /**
- * Standalone + Shared, as two panels on ONE horizontal track that slides between
- * them when you switch tab, and the modal's height eases to whichever panel is
- * showing, so the slide glides instead of jumping.
+ * Standalone, Shared and the shared-variable creator, as three panels on ONE
+ * horizontal track that slides between them; the modal's height eases to
+ * whichever panel is showing, so the slide glides instead of jumping.
  */
 function AddDialog({
   open,
   onOpenChange,
   appId,
+  appName,
   sharedVars,
+  canCreateShared,
+  projects,
+  environments,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   appId: string;
+  appName?: string;
   sharedVars?: LinkableSharedVar[];
+  canCreateShared: boolean;
+  projects: ProjectRef[];
+  environments: TeamEnvironment[];
 }) {
   const [tab, setTab] = React.useState<AddTab>("standalone");
-  const index = ADD_TABS.indexOf(tab);
-
-  // The viewport's height follows the ACTIVE panel.
-  const panels = React.useRef<Record<AddTab, HTMLElement | null>>({
-    standalone: null,
-    shared: null,
-  });
-  const [heights, setHeights] = React.useState<Record<AddTab, number>>({
-    standalone: 0,
-    shared: 0,
-  });
-  const height = heights[tab] || undefined;
-
-  // Created once (lazy state init, so `new ResizeObserver` never runs on the
-  // server); a single instance keeps both panels measured.
-  const [observer] = React.useState<ResizeObserver | null>(() =>
-    typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver((entries) => {
-          setHeights((prev) => {
-            let next = prev;
-            for (const entry of entries) {
-              const el = entry.target as HTMLElement;
-              const t = el.dataset.panel as AddTab | undefined;
-              if (t && next[t] !== el.offsetHeight)
-                next = { ...next, [t]: el.offsetHeight };
-            }
-            return next;
-          });
-        }),
-  );
-  React.useEffect(() => () => observer?.disconnect(), [observer]);
-
-  // Measure on attach and observe for later size changes; unobserve on detach.
-  const registerPanel = React.useCallback(
-    (t: AddTab) => (el: HTMLElement | null) => {
-      const prev = panels.current[t];
-      if (prev) observer?.unobserve(prev);
-      panels.current[t] = el;
-      if (!el) return;
-      const h = el.offsetHeight;
-      setHeights((prevH) => (prevH[t] === h ? prevH : { ...prevH, [t]: h }));
-      observer?.observe(el);
-    },
-    [observer],
-  );
+  // The creator is not a tab - it is where the Shared tab's button leads, and
+  // Back returns to it.
+  const [creating, setCreating] = React.useState(false);
+  const panel: AddPanel = creating ? "new-shared" : tab;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -325,64 +324,74 @@ function AddDialog({
           onValueChange={(v) => setTab(v as AddTab)}
           className="flex min-h-0 flex-col"
         >
-          {/* A segmented control on a track - the same shape the app wears
-              elsewhere, so the idle half still reads as a place you can go. */}
+          {/* One chrome row either way, so nothing jumps while the track moves:
+              the segmented control, or the way back from the creator. */}
           <div className="border-b border-border px-6 pb-4">
-            <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-secondary/40 p-1">
-              <TabsTrigger
-                value="standalone"
-                className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            {creating ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-ml-2 h-9 text-muted-foreground hover:text-foreground"
+                onClick={() => setCreating(false)}
               >
-                <Plus />
-                Standalone
-              </TabsTrigger>
-              <TabsTrigger
-                value="shared"
-                className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <Share2 />
-                Shared
-              </TabsTrigger>
-            </TabsList>
+                <ChevronLeft className="size-4" />
+                Shared variables
+              </Button>
+            ) : (
+              // A segmented control on a track - the same shape the app wears
+              // elsewhere, so the idle half still reads as a place you can go.
+              <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-secondary/40 p-1">
+                <TabsTrigger
+                  value="standalone"
+                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                >
+                  <Plus />
+                  Standalone
+                </TabsTrigger>
+                <TabsTrigger
+                  value="shared"
+                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                >
+                  <Share2 />
+                  Shared
+                </TabsTrigger>
+              </TabsList>
+            )}
           </div>
 
-          {/* The sliding viewport: its height eases to the active panel while the
-              track glides one panel-width sideways per tab. */}
-          <div
-            className="relative overflow-hidden transition-[height] duration-300 ease-out motion-reduce:transition-none"
-            style={{ height }}
-          >
-            <div
-              className="flex transition-transform duration-300 ease-out motion-reduce:transition-none"
-              style={{ transform: `translateX(-${index * 100}%)` }}
-            >
-              {ADD_TABS.map((t) => (
-                <div
-                  key={t}
-                  ref={registerPanel(t)}
-                  data-panel={t}
-                  role="tabpanel"
-                  aria-label={t === "standalone" ? "Standalone" : "Shared"}
-                  inert={t !== tab ? true : undefined}
-                  className="w-full shrink-0 self-start"
-                >
-                  {t === "standalone" ? (
-                    <StandaloneTab
-                      appId={appId}
-                      onDone={() => onOpenChange(false)}
-                    />
-                  ) : (
-                    <SharedTab
-                      appId={appId}
-                      sharedVars={sharedVars}
-                      active={tab === "shared"}
-                      onClose={() => onOpenChange(false)}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <SlidingPanels
+            panels={ADD_PANELS}
+            current={panel}
+            labelFor={(p) => PANEL_LABEL[p]}
+            render={(p) =>
+              p === "standalone" ? (
+                <StandaloneTab
+                  appId={appId}
+                  onDone={() => onOpenChange(false)}
+                />
+              ) : p === "shared" ? (
+                <SharedTab
+                  appId={appId}
+                  sharedVars={sharedVars}
+                  active={panel === "shared"}
+                  canCreate={canCreateShared}
+                  onCreate={() => setCreating(true)}
+                  onClose={() => onOpenChange(false)}
+                />
+              ) : (
+                canCreateShared && (
+                  <SharedVarWizardBody
+                    editing={null}
+                    apps={[]}
+                    projects={projects}
+                    environments={environments}
+                    appContext={{ id: appId, name: appName ?? "this app" }}
+                    onOpenChange={setCreating}
+                  />
+                )
+              )
+            }
+          />
         </Tabs>
       </DialogContent>
     </Dialog>
@@ -391,12 +400,6 @@ function AddDialog({
 
 /** The row editor itself lives in `env-rows-editor.tsx` - Add preview override
  *  uses the very same one. */
-
-/** The three columns every row of the key/value editor lines up on. */
-/** Each panel's scrolling body caps here so its footer stays on screen and the
- *  whole modal stays inside its 85vh box - the chrome (header + tabs + footer) is
- *  ~14rem, so the body gets the rest. */
-const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
 
 function StandaloneTab({
   appId,
@@ -518,6 +521,8 @@ function SharedTab({
   appId,
   sharedVars,
   active,
+  canCreate,
+  onCreate,
   onClose,
 }: {
   appId: string;
@@ -525,18 +530,25 @@ function SharedTab({
   /** This tab is mounted even while off-screen (for the slide); only reach for
    *  the network once it has actually been opened. */
   active: boolean;
+  canCreate: boolean;
+  onCreate: () => void;
   onClose: () => void;
 }) {
-  const [vars, setVars] = React.useState<LinkableSharedVar[] | null>(
-    sharedVars ?? null,
+  const [fetched, setFetched] = React.useState<LinkableSharedVar[] | null>(
+    null,
   );
   const [query, setQuery] = React.useState("");
+  // The prop wins whenever there is one, and it CHANGES: creating a shared
+  // variable from here refreshes the RSC, and this list has to follow rather
+  // than keep the copy it mounted with.
+  const vars = sharedVars ?? fetched;
 
   // Lazy-fetch when the caller didn't pass the in-scope set (aggregate view),
   // but not before this tab is opened, so a dialog left on Standalone never
-  // queries for shared vars it won't show.
+  // queries for shared vars it won't show. Re-runs whenever the tab is opened,
+  // which is also how a variable created next door lands in the list.
   React.useEffect(() => {
-    if (!active || vars !== null) return;
+    if (!active || sharedVars) return;
     let alive = true;
     gql<{ sharedVarsForApp: LinkableSharedVar[] }>(
       `query($appId: String!) {
@@ -547,12 +559,12 @@ function SharedTab({
       }`,
       { appId },
     )
-      .then((d) => alive && setVars(d.sharedVarsForApp))
-      .catch(() => alive && setVars([]));
+      .then((d) => alive && setFetched(d.sharedVarsForApp))
+      .catch(() => alive && setFetched([]));
     return () => {
       alive = false;
     };
-  }, [appId, vars, active]);
+  }, [appId, active, sharedVars]);
 
   const q = query.trim().toLowerCase();
   // Case-insensitive substring match on the key - the only thing a row shows and
@@ -565,15 +577,17 @@ function SharedTab({
         className={cn("space-y-3 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
       >
         {vars === null ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            Loading…
-          </p>
+          <div className="space-y-2 py-2">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-lg" />
+            ))}
+          </div>
         ) : vars.length === 0 ? (
           <EmptyState
             icon={Share2}
             title="No shared variables"
             docs="env.shared"
-            description="Create shared variables on the Variables page to reuse them across apps."
+            description="One value, reused by as many apps as you like."
             className="py-10"
           />
         ) : (
@@ -610,12 +624,12 @@ function SharedTab({
 
       {/* Each toggle already saved itself - Done just closes, it doesn't commit. */}
       <DialogFooter className="border-t border-border px-6 py-4">
-        <Button variant="outline" asChild>
-          <Link href="/variables?tab=shared">
-            Create &amp; manage
-            <ArrowUpRight className="size-4" />
-          </Link>
-        </Button>
+        {canCreate && (
+          <Button variant="outline" onClick={onCreate}>
+            <Plus className="size-4" />
+            New shared variable
+          </Button>
+        )}
         <Button onClick={onClose}>Done</Button>
       </DialogFooter>
     </>
