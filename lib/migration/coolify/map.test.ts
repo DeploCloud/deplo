@@ -778,3 +778,82 @@ test("the port survives when only the variable NAME carries it", () => {
     );
   }
 });
+
+test("a dockercompose application's own address gets a service and a port", () => {
+  // Coolify's commonest Application shape after nixpacks: the address is on the
+  // APPLICATION, not on a compose service, so the domain arrived naming neither
+  // and Deplo rendered no router at all - a 404 on every one of them.
+  const raw = [
+    "services:",
+    "  web:",
+    "    image: acme/web",
+    "    ports:",
+    "      - 8000:8000",
+    "  worker:",
+    "    image: acme/worker",
+    "",
+  ].join("\n");
+  const { value } = coolifyCompose({
+    uuid: "app-1",
+    name: "stack-git",
+    build_pack: "dockercompose",
+    fqdn: "https://stack.acme.com",
+    ports_exposes: "8000",
+    docker_compose_raw: raw,
+  } as CoolifyApplication);
+
+  assert.deepEqual(
+    value.domains?.map((d) => [d.host, d.port, d.serviceName]),
+    [["stack.acme.com", 8000, "web"]],
+  );
+  assert.equal(value.routingPort, 8000);
+  assert.match(value.platformNotes?.join(" ") ?? "", /routes it to "web"/);
+});
+
+test("two services exposing a port is a question, not a default", () => {
+  const raw = [
+    "services:",
+    "  web:",
+    "    image: acme/web",
+    "    ports:",
+    "      - 8000:8000",
+    "  api:",
+    "    image: acme/api",
+    "    ports:",
+    "      - 9000:9000",
+    "",
+  ].join("\n");
+  const { value } = coolifyCompose({
+    uuid: "app-2",
+    name: "two",
+    build_pack: "dockercompose",
+    fqdn: "https://two.acme.com",
+    ports_exposes: "8000",
+    docker_compose_raw: raw,
+  } as CoolifyApplication);
+  assert.equal(value.domains?.[0].serviceName, null);
+  assert.equal(
+    value.platformNotes?.some((n) => /routes it to/.test(n)),
+    false,
+  );
+});
+
+test("custom labels Coolify never encoded are read as they came", () => {
+  // Measured: Coolify answers `custom_labels` in CLEAR for any app it never
+  // deployed. `Buffer.from(x, "base64")` does not throw on that - it drops the
+  // bytes it cannot read - so the report used to invent a label out of mojibake
+  // and hide the real ones behind it.
+  const plain = "com.acme.team=core\ncom.acme.tier=web";
+  const notes = coolifyNotes({
+    uuid: "a",
+    custom_labels: plain,
+  } as CoolifyApplication);
+  assert.match(notes.join(" "), /com\.acme\.team=core, com\.acme\.tier=web/);
+
+  // And a real base64 payload still decodes.
+  const encoded = Buffer.from(plain).toString("base64");
+  assert.deepEqual(
+    coolifyNotes({ uuid: "a", custom_labels: encoded } as CoolifyApplication),
+    notes,
+  );
+});

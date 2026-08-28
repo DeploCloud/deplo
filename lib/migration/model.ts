@@ -214,6 +214,9 @@ export interface SourceCompose {
    */
   icon?: string | null;
   composeType?: "docker-compose" | "stack" | null;
+  /** Same as {@link SourceApplication.routingPort}: what a route with no port of
+   *  its own reaches. A stack route with none renders no Traefik router at all. */
+  routingPort?: number | null;
   sourceType: "git" | "github" | "gitlab" | "bitbucket" | "gitea" | "raw";
   composePath?: string | null;
   suffix?: string | null;

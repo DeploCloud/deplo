@@ -5,7 +5,7 @@ import { CircleHelp, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
-import { AGENT_PORT_NOTICE } from "@/components/shared/agent-reachability";
+import { AGENT_PORT_NOTICE } from "@/lib/agent-reachability";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 import type { ServerStatus } from "@/lib/types";

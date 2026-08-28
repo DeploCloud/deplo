@@ -8,6 +8,7 @@ import {
   composeAsRepoApp,
   composeBuildServices,
   retargetPlatformEnvFiles,
+  composeServiceExposingPort,
   composeVolumeMounts,
   deploDatabaseVolumeName,
   deploVolumeName,
@@ -2265,4 +2266,40 @@ test("a bare word is never swapped inside a value", () => {
     [],
   );
   assert.equal(env[0].value, "postgres");
+});
+
+test("composeServiceExposingPort answers only when it is not a guess", () => {
+  const svc = (body: string) => `services:\n${body}`;
+  assert.equal(
+    composeServiceExposingPort(svc("  only:\n    image: a\n")),
+    "only",
+    "one service is the answer whether or not it declares a port",
+  );
+  assert.equal(
+    composeServiceExposingPort(
+      svc(
+        "  web:\n    image: a\n    ports:\n      - 80:80\n  db:\n    image: b\n",
+      ),
+    ),
+    "web",
+  );
+  assert.equal(
+    composeServiceExposingPort(
+      svc(
+        "  web:\n    image: a\n    expose:\n      - 3000\n  db:\n    image: b\n",
+      ),
+    ),
+    "web",
+    "`expose` counts too - a stack behind a proxy publishes nothing",
+  );
+  assert.equal(
+    composeServiceExposingPort(
+      svc(
+        "  a:\n    image: a\n    ports:\n      - 80:80\n  b:\n    image: b\n    ports:\n      - 90:90\n",
+      ),
+    ),
+    null,
+  );
+  assert.equal(composeServiceExposingPort("  not: yaml: at all"), null);
+  assert.equal(composeServiceExposingPort(null), null);
 });

@@ -54,6 +54,8 @@ async function serviceRuntime(
       volumes: svc.declaredVolumes,
       hostMounts: svc.declaredBindMounts,
       running: false,
+      undetermined:
+        svc.declaredVolumes.length + svc.declaredBindMounts.length === 0,
       // The count is volumes AND host binds: a service with only a bind mount
       // used to be told it "declares no volume", right beside the bind mount the
       // plan had already paired for it.
@@ -62,8 +64,11 @@ async function serviceRuntime(
           ? [
               `${svc.appName} is stopped on Dokploy, so its data comes from what Dokploy says it mounts rather than from a live container.`,
             ]
-          : [
-              `Dokploy has no container for ${svc.appName} and declares nothing it mounts, so there is nothing to copy.`,
+          : // Never "there is nothing to copy": for a compose stack that is what
+            // "Dokploy stopped answering about it" also looks like, and somebody
+            // read it as a verdict and pressed Deploy over their own data.
+            [
+              `Dokploy has no container for ${svc.appName} and names nothing it mounts, so Deplo cannot tell what its data is. If it had any, start it again on Dokploy and run the copy from here - a running stack names its own volumes. Do not deploy this one until you have.`,
             ],
     };
 

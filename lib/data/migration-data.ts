@@ -21,6 +21,7 @@ import {
   requireCapability,
 } from "../membership";
 import { connectAgent } from "../infra/agent-client";
+import { AGENT_PORT_NOTICE } from "../agent-reachability";
 import { publishDatabaseChanged } from "../graphql/pubsub";
 import { DB_DATA_DIRS } from "../deploy/database-compose";
 import type { DatabaseType } from "../types";
@@ -40,6 +41,7 @@ import {
   deploVolumeName,
   pairHostMounts,
   pairVolumes,
+  withPanel,
 } from "../migration/map";
 import type { HostMount, NamedVolume } from "../migration/model";
 
@@ -77,8 +79,7 @@ const UNREACHABLE_SOURCE_HOST =
 /**
  * Its twin, for the machine that HAS an agent Deplo still cannot talk to.
  */
-const UNREACHABLE_SOURCE_AGENT =
-  "Deplo cannot reach the agent on the machine this service's data is on, so nothing was stopped and no data was copied. Check that machine's address and that its agent port is open to Deplo, then run the copy again.";
+const UNREACHABLE_SOURCE_AGENT = `Deplo cannot reach the agent on the machine this service's data is on, so nothing was stopped and no data was copied. Installing the agent is outbound and works behind any firewall; reading a volume is Deplo dialing that machine back, INBOUND. ${AGENT_PORT_NOTICE} Then check the machine's address under Servers and run the copy again.`;
 
 /**
  * Whether the agent holding this service's data answers US.
@@ -94,6 +95,32 @@ export async function sourceAgentReachable(serverId: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Which of `names` that host actually HAS. `null` when it could not be asked at
+ * all - an agent too old for the RPC answers that way too, and refusing a copy
+ * over a question nobody could answer would be the worse mistake.
+ *
+ * ponytail: `volumeUsage` SIZES each volume (a `du`) to answer a yes/no. Fine
+ * before a copy that is about to stream the same bytes; a dedicated exists-RPC if
+ * this ever runs anywhere hot.
+ */
+async function volumesOnHost(
+  serverId: string,
+  names: string[],
+): Promise<Set<string> | null> {
+  if (names.length === 0) return new Set();
+  try {
+    const conn = await connectAgent(serverId);
+    try {
+      return new Set((await conn.volumeUsage(names)).keys());
+    } finally {
+      conn.close();
+    }
+  } catch {
+    return null;
   }
 }
 
@@ -226,6 +253,20 @@ async function sourceServices(c: SourceCredential): Promise<SourceService[]> {
         .catch(() => null);
       if (!detail) return;
       const appName = detail.appName?.trim() ?? "";
+      // The DECLARED fallback is the only thing a stopped stack has, and a stack
+      // whose YAML lives in a git repo carries none inline - so it declared
+      // nothing, and one bad copy left it unrecoverable ("nothing to copy") with
+      // its volumes sitting on the host. Same fallback the config import makes.
+      const inline =
+        "composeFile" in detail
+          ? ((detail as { composeFile?: string | null }).composeFile ?? null)
+          : null;
+      const composeFile =
+        stub.kind === "compose" && !inline?.trim()
+          ? await sourceClient(c)
+              .getResolvedCompose(stub.id)
+              .catch(() => null)
+          : inline;
       out[index] = {
         ...stub,
         name: serviceDisplayName(detail, stub.id),
@@ -235,17 +276,11 @@ async function sourceServices(c: SourceCredential): Promise<SourceService[]> {
           kind: stub.kind,
           appName,
           mounts: detail.mounts,
-          composeFile:
-            "composeFile" in detail
-              ? ((detail as { composeFile?: string | null }).composeFile ??
-                null)
-              : null,
+          composeFile,
         }),
         declaredBindMounts: declaredSourceBindMounts(
           detail.mounts,
-          "composeFile" in detail
-            ? ((detail as { composeFile?: string | null }).composeFile ?? null)
-            : null,
+          composeFile,
         ),
       };
     },
@@ -439,6 +474,10 @@ export async function planMigrationDataMove(
   const targets = await runTargets(input.runId);
   if (targets.size === 0) return [];
 
+  // The mappers write `{panel}`; only `Report.add` used to resolve it, so every
+  // note that reached a SCREEN instead of the run log still said "{panel} says".
+  const panel = sourceClient(c).displayName;
+  const said = (text: string) => withPanel(text, panel);
   const machines = await migrationMachines(c, teamId);
   const out: DataMoveService[] = [];
   // One Hello per distinct machine, not per service: several services share a host
@@ -497,7 +536,7 @@ export async function planMigrationDataMove(
           mountPath: b.mountPath,
           note: "A host directory, not a volume. Copying it needs instance admin and the host-volumes permission.",
         })),
-      ],
+      ].map((v) => ({ ...v, note: v.note ? said(v.note) : null })),
       notes: [
         ...state.notes,
         ...paired.notes,
@@ -506,7 +545,7 @@ export async function planMigrationDataMove(
           : [
               sourceServer ? UNREACHABLE_SOURCE_AGENT : UNREACHABLE_SOURCE_HOST,
             ]),
-      ],
+      ].map(said),
     });
   }
   return out;
@@ -592,7 +631,7 @@ export async function assertMigrationMachinesReady(
   }
   if (notReady.length > 0)
     throw new Error(
-      `Nothing was started: ${notReady.join(", ")}. Deplo reads a service's data off the machine it runs on, so every machine has to answer first - the wizard's Connect step lists them and installs the agent.`,
+      `Nothing was started: ${notReady.join(", ")}. Deplo reads a service's data off the machine it runs on, so every machine has to answer first - and answering means Deplo dialing its agent on TCP 9443, INBOUND. Installing the agent is the other direction and works behind any firewall, so open that port on any of them that has one. The wizard's Connect step lists them and re-checks each one.`,
     );
 }
 
@@ -685,6 +724,9 @@ async function runMoveMigrationServiceData(
   const { teamId } = await assertImportGate();
   const c = await credentialFor(input);
   const panel = sourceClient(c).displayName;
+  // The run log resolves `{panel}` in `Report.add`; what this RETURNS goes to a
+  // screen instead (the recopy dialog), so it has to be resolved here too.
+  const saidHere = (text: string) => withPanel(text, panel);
   if (!(await ownRun(input.runId, teamId)))
     throw new Error("That import run does not belong to this team.");
 
@@ -755,7 +797,9 @@ async function runMoveMigrationServiceData(
       path,
       sourceKind: input.sourceKind,
       sourceName: svc.name,
-      outcome: "skipped",
+      // "Deplo could not find out" is a decision for a person, not a clean skip -
+      // see ServiceRuntime.undetermined.
+      outcome: state.undetermined ? "manual" : "skipped",
       targetKind: landed.targetKind,
       targetId: landed.targetId,
       message:
@@ -763,7 +807,12 @@ async function runMoveMigrationServiceData(
         "Nothing to move: this service has no data of its own on {panel}.",
     });
     await refreshCounts(input.runId, teamId);
-    return { moved: 0, failed: 0, notes, sourceGone: false };
+    return {
+      moved: 0,
+      failed: 0,
+      notes: notes.map(saidHere),
+      sourceGone: false,
+    };
   }
 
   // Everything below this point either stops something or writes something, and
@@ -791,9 +840,43 @@ async function runMoveMigrationServiceData(
     return {
       moved: 0,
       failed: 1,
-      notes: [...notes, UNREACHABLE_SOURCE_AGENT],
+      notes: [...notes, UNREACHABLE_SOURCE_AGENT].map(saidHere),
       sourceGone: true,
     };
+  }
+
+  // ...and it has to HOLD the bytes. Deplo knows the exact volume names here, so
+  // asking costs one RPC and answers the question the stop below cannot be taken
+  // back from: a service stopped on the source panel whose volumes live on a
+  // different machine is the old platform down AND an empty app here.
+  if (state.running && (binds.length === 0 || !mayCopyHostPaths)) {
+    const wanted = paired.value.map((p) => p.sourceVolume);
+    const present = await volumesOnHost(sourceServerId, wanted);
+    if (present && wanted.length > 0 && !wanted.some((n) => present.has(n))) {
+      const message = `${svc.name} is running on {panel}, but none of the volumes it names (${wanted.join(", ")}) are on the machine {panel} says it runs on - so its data is somewhere else. Nothing was stopped and nothing was copied. Correct that machine's address under the Connect step and run the copy again.`;
+      await appendRunItem(input.runId, panel, {
+        path,
+        sourceKind: input.sourceKind,
+        sourceName: svc.name,
+        sourceId: svc.id,
+        outcome: "failed",
+        targetKind: landed.targetKind,
+        targetId: landed.targetId,
+        message,
+      });
+      await markDataCopyFailed(
+        { kind: landed.targetKind, id: landed.targetId },
+        `None of ${svc.name}'s volumes are on the machine ${panel} says it runs on, so its data was never copied`,
+        { unlessCopiedIn: input.runId },
+      );
+      await refreshCounts(input.runId, teamId);
+      return {
+        moved: 0,
+        failed: 1,
+        notes: [...notes, message].map(saidHere),
+        sourceGone: false,
+      };
+    }
   }
 
   // A database is provisioned in the BACKGROUND by the import (`createDatabase`
@@ -818,7 +901,12 @@ async function runMoveMigrationServiceData(
         { unlessCopiedIn: input.runId },
       );
       await refreshCounts(input.runId, teamId);
-      return { moved: 0, failed: 1, notes, sourceGone: false };
+      return {
+        moved: 0,
+        failed: 1,
+        notes: notes.map(saidHere),
+        sourceGone: false,
+      };
     }
   }
 
@@ -847,7 +935,12 @@ async function runMoveMigrationServiceData(
         { unlessCopiedIn: input.runId },
       );
       await refreshCounts(input.runId, teamId);
-      return { moved: 0, failed: 1, notes, sourceGone: false };
+      return {
+        moved: 0,
+        failed: 1,
+        notes: notes.map(saidHere),
+        sourceGone: false,
+      };
     }
     notes.push(
       `{panel} would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was copied as it is.`,
@@ -869,6 +962,11 @@ async function runMoveMigrationServiceData(
   // Of `empty`, the ones that do not EXIST over there - a service created and
   // never started. See VolumeCopyResult.missing.
   let missing = 0;
+  // Of `missing`, the ones belonging to a service that IS running over there,
+  // which is data that should have come across and did not. Kept apart from
+  // `failed` because that one also decides whether a database is started again,
+  // and a database left down is not the right answer to a volume on another host.
+  let notCopied = 0;
   // Set by either loop below. See DataMoveResult.sourceGone: it is the difference
   // between "this volume did not come across" and "stop the whole migration".
   let sourceGone = false;
@@ -900,15 +998,20 @@ async function runMoveMigrationServiceData(
           // A RUNNING service whose volume is not where Deplo looked has its data
           // somewhere else. Left as a `skipped` line, the app came up on empty
           // storage with nothing anywhere refusing to let it.
-          if (copied.missing && state.running)
+          if (copied.missing && state.running) {
+            notCopied++;
             lost.push(
               `${pair.sourceVolume} (${pair.mountPath}): not on the machine ${panel} says ${svc.name} runs on`,
             );
+          }
           await appendRunItem(input.runId, panel, {
             path,
             sourceKind: "volume",
             sourceName: pair.sourceVolume,
-            outcome: "skipped",
+            // Data that did not come across is a FAILURE, never a line the
+            // summary folds into "skipped": a run that ends `failed: 0` over a
+            // volume nobody copied reads as a clean migration.
+            outcome: copied.missing && state.running ? "failed" : "skipped",
             targetKind: landed.targetKind,
             targetId: landed.targetId,
             message: copied.missing
@@ -992,15 +1095,17 @@ async function runMoveMigrationServiceData(
         if (copied.empty) {
           empty++;
           if (copied.missing) missing++;
-          if (copied.missing && state.running)
+          if (copied.missing && state.running) {
+            notCopied++;
             lost.push(
               `${bind.sourcePath} (${bind.mountPath}): not on the machine ${panel} says ${svc.name} runs on`,
             );
+          }
           await appendRunItem(input.runId, panel, {
             path,
             sourceKind: "volume",
             sourceName: bind.sourcePath,
-            outcome: "skipped",
+            outcome: copied.missing && state.running ? "failed" : "skipped",
             targetKind: landed.targetKind,
             targetId: landed.targetId,
             message: copied.missing
@@ -1109,7 +1214,14 @@ async function runMoveMigrationServiceData(
     teamId,
   );
 
-  return { moved, failed, notes, sourceGone };
+  // What the caller and the summary read: data that should have arrived and did
+  // not counts, whether the copy threw or the volume was simply not there.
+  return {
+    moved,
+    failed: failed + notCopied,
+    notes: notes.map(saidHere),
+    sourceGone,
+  };
 }
 
 /* ------------------------------------------------------------------ */

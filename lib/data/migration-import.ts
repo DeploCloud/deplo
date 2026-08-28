@@ -970,7 +970,13 @@ async function planMachines(
           // The row is still MATCHED either way - that is what stops a second
           // attempt registering the same address twice - but only an agent that
           // answers means the machine is ready to be read.
-          deploServerOnline: hit.status === "online",
+          //
+          // `status` alone is not that: it goes green on the agent's own CALL-HOME,
+          // which is outbound and proves nothing about the direction a copy needs.
+          // `statusCheckedAt` is only ever written by a probe that DIALED the agent,
+          // so the two together are the one honest reading of "Deplo can reach it".
+          deploServerOnline:
+            hit.status === "online" && Boolean(hit.statusCheckedAt),
         }
       : null;
   };
@@ -1198,9 +1204,13 @@ async function removeMigrationSources(
         sourceKind: "server",
         sourceName: s.name,
         outcome: "manual",
+        // Never "the data is on THIS machine": the commonest reason a copy left
+        // data behind is that Deplo asked the wrong machine, and this is exactly
+        // the one that did not have it.
         message:
-          `Deplo's agent is still on ${s.name}: data that did not copy is still ` +
-          `on it. Remove it once the copy is done.`,
+          `Deplo's agent is still on ${s.name}: this migration left data that ` +
+          `has not been copied yet, and its agents are how Deplo reaches it. ` +
+          `Remove it once the copy is done.`,
       });
     return;
   }
@@ -3398,6 +3408,12 @@ async function importSharedVars(
     ).map((r) => r.key),
   );
 
+  // Said once at the end, exactly as a service's own variables say it: a secret
+  // here is write-only with no reveal path, so which values just became
+  // unreadable is the one thing a person has to be told while they still have
+  // them open on the other platform.
+  const secrets: string[] = [];
+
   for (const { key, value } of entries) {
     if (already.has(key)) {
       await opts.report.add({
@@ -3410,18 +3426,20 @@ async function importSharedVars(
       });
       continue;
     }
+    const type = migratedEnvType(key, value);
     try {
       await saveSharedVar({
         key,
         value,
         // Write-only when it looks like a credential, exactly as a service's
         // own variables are - see the service import.
-        type: migratedEnvType(key, value),
+        type,
         teamWide: opts.teamWide ?? false,
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
         appIds: opts.appIds,
       });
+      if (type === "secret" && value.trim() !== "") secrets.push(key);
       await opts.report.add({
         path: opts.label,
         sourceKind: "shared-var",
@@ -3445,6 +3463,20 @@ async function importSharedVars(
       });
     }
   }
+
+  if (secrets.length > 0)
+    await opts.report.add({
+      path: opts.label,
+      sourceKind: "shared-var",
+      sourceName: opts.label,
+      outcome: "manual",
+      targetKind: "shared-var",
+      message: `${secrets.length} shared variable(s) arrived as secrets, because they look like credentials: ${secrets
+        .slice(0, 8)
+        .join(", ")}${
+        secrets.length > 8 ? ` and ${secrets.length - 8} more` : ""
+      }. A secret is write-only here - change any of them to a plain value under Variables.`,
+    });
 }
 
 /* ------------------------------------------------------------------ */

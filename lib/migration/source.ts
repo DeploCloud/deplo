@@ -48,6 +48,12 @@ export interface ServiceRuntime {
   hostMounts: HostMount[];
   running: boolean;
   notes: string[];
+  /**
+   * Deplo could not find out what this service mounts - no live container AND
+   * nothing declared. NOT the same fact as "it mounts nothing", which is why the
+   * report calls this one a decision for a person rather than a clean skip.
+   */
+  undetermined?: boolean;
 }
 
 /** What `serviceRuntime` is asked about: enough to answer without the panel when

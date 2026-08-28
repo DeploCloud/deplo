@@ -7,7 +7,11 @@
 
 import { HEALTH_CHECK_DEFAULTS } from "../../deploy/health-check";
 import type { HealthCheck } from "../../types";
-import { composeServices, parseEnvBlob } from "../map";
+import {
+  composeServiceExposingPort,
+  composeServices,
+  parseEnvBlob,
+} from "../map";
 import type {
   SourceApplication,
   SourceBuildType,
@@ -204,6 +208,9 @@ export function parseCoolifyFqdns(
   fqdn: string | null | undefined,
   perService?: string | null,
   extra: { url: string; service: string | null; port?: number | null }[] = [],
+  /** What an APPLICATION-level `fqdn` does not carry, for a `dockercompose` one:
+   *  it names no compose service and no port, and a stack route needs both. */
+  onCompose?: { service: string | null; port: number | null },
 ): { value: SourceDomain[]; notes: string[] } {
   const entries: {
     url: string;
@@ -211,7 +218,12 @@ export function parseCoolifyFqdns(
     port?: number | null;
   }[] = [];
   for (const raw of (fqdn ?? "").split(","))
-    if (raw.trim()) entries.push({ url: raw.trim(), service: null });
+    if (raw.trim())
+      entries.push({
+        url: raw.trim(),
+        service: onCompose?.service ?? null,
+        port: onCompose?.port ?? null,
+      });
   for (const [service, domains] of composeDomainPairs(perService))
     for (const raw of domains.split(","))
       if (raw.trim()) entries.push({ url: raw.trim(), service });
@@ -718,11 +730,24 @@ export function coolifyCompose(
   const app = row as CoolifyApplication;
   // A SERVICE has no `fqdn` column: its address lives in SERVICE_FQDN_*.
   const magic = coolifyServiceFqdns(extras.env, composeServices(raw ?? parsed));
+  // A `dockercompose` APPLICATION keeps its address on the application row, so it
+  // names neither a compose service nor a port - and a stack route needs both, or
+  // Deplo renders no router at all and the stack answers 404. `ports_exposes` is
+  // the port; the one service that exposes one is the service.
+  const onCompose = {
+    service: composeServiceExposingPort(raw ?? parsed),
+    port: coolifyFallbackPort(app),
+  };
   const domains = parseCoolifyFqdns(
     app.fqdn,
     app.docker_compose_domains,
     magic,
+    onCompose,
   );
+  if (app.fqdn?.trim() && onCompose.service)
+    notes.push(
+      `{panel} kept this stack's address on the application rather than on a service, so Deplo routes it to "${onCompose.service}"${onCompose.port ? ` on port ${onCompose.port}` : ""} - the only one that exposes a port. Change it under Domains if that is the wrong container.`,
+    );
   return {
     value: {
       composeId: row.uuid,
@@ -739,6 +764,7 @@ export function coolifyCompose(
       composeFile: raw || parsed || null,
       icon: null,
       composeType: "docker-compose",
+      routingPort: onCompose.port,
       sourceType: "raw",
       serverId: extras.serverId ?? "",
       environmentId: extras.environmentId ?? null,
@@ -861,17 +887,25 @@ export function coolifyDestination(row: CoolifyS3Storage): {
 /* What has no twin here                                               */
 /* ------------------------------------------------------------------ */
 
-/** `custom_labels` is base64 with one `key=value` per line. */
+/** Bytes no `key=value` line can hold: C0 controls other than tab/newline, and
+ *  the replacement character a mis-decode leaves behind. */
+const NOT_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/;
+
+/**
+ * `custom_labels` is base64 with one `key=value` per line - EXCEPT that Coolify
+ * hands it back in clear for anything it never deployed successfully.
+ *
+ * `Buffer.from(x, "base64")` does not throw on that: it drops the bytes it cannot
+ * read and answers with mojibake, so the old `catch` was dead code and the report
+ * invented a label while hiding the real ones. What the decode produced has to be
+ * TEXT, or it was never base64.
+ */
 function decodeLabels(raw: string | null | undefined): string[] {
   const text = raw?.trim();
   if (!text) return [];
-  let decoded = text;
-  try {
-    decoded = Buffer.from(text, "base64").toString("utf8");
-  } catch {
-    // Not base64: read it as it came.
-  }
-  return decoded
+  const decoded = Buffer.from(text, "base64").toString("utf8");
+  const usable = decoded.trim() !== "" && !NOT_TEXT.test(decoded);
+  return (usable ? decoded : text)
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);

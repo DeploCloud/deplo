@@ -91,7 +91,7 @@ const PROJECT_TREE = [
             applicationStatus: "done",
           },
         ],
-        compose: [],
+        compose: [{ composeId: "dok-cmp-1" }],
         postgres: [{ postgresId: "dok-pg-1" }],
       },
     ],
@@ -110,6 +110,15 @@ const DETAILS: Record<string, unknown> = {
     applicationId: "dok-app-ghost",
     name: "never-imported",
     appName: "ghost-xyz",
+    serverId: null,
+  },
+  // A stack built from a repository: Dokploy holds no `composeFile` for it, which
+  // is what left it with "nothing to copy" once its containers were gone.
+  "dok-cmp-1": {
+    composeId: "dok-cmp-1",
+    name: "blink-stack",
+    appName: "blinkstack-abc",
+    composeFile: "",
     serverId: null,
   },
   "dok-pg-1": {
@@ -165,7 +174,21 @@ const CONTAINERS: Record<
     { containerId: "ct-db", name: "blink-db-abc.1", state: "running" },
   ],
   "ghost-xyz": [],
+  // Stopped: Dokploy scales a stack to zero, so there is nothing to inspect.
+  "blinkstack-abc": [],
 };
+
+/** What `compose.getConvertedCompose` hands back - the file Dokploy would deploy. */
+const RESOLVED_COMPOSE = [
+  "services:",
+  "  api:",
+  "    image: acme/api",
+  "    volumes:",
+  "      - store:/var/lib/store",
+  "volumes:",
+  "  store: {}",
+  "",
+].join("\n");
 
 function fakeSource() {
   return async (input: string, init?: RequestInit): Promise<Response> => {
@@ -189,6 +212,8 @@ function fakeSource() {
       const row = DETAILS[id];
       return row ? json(row) : new Response("not found", { status: 404 });
     }
+    if (procedure === "compose.getConvertedCompose")
+      return json(RESOLVED_COMPOSE);
     if (procedure === "docker.getContainersByAppLabel")
       return json(CONTAINERS[url.searchParams.get("appName") ?? ""] ?? []);
     if (procedure === "docker.getConfig") {
@@ -228,6 +253,7 @@ const EMPTY_ARCHIVE = EMPTY_TAR_GZ;
 const UPLOADS = tarGzOf(4096, 7);
 const DB_DATA = tarGzOf(8192, 9);
 const CONFIG_DIR = tarGzOf(2048, 5);
+const STACK_STORE = tarGzOf(3072, 6);
 const LANDED_UPLOADS = tarGzOf(64, 1);
 const LANDED_DB = tarGzOf(64, 2);
 
@@ -298,6 +324,17 @@ function fakeAgent(serverId: string) {
       volumes[serverId][name] = Buffer.concat(parts);
       if (importRefusal) return { ok: false, error: importRefusal };
       return { ok: true, error: "" };
+    },
+    // The pre-flight's OTHER half: the machine answers, but does it hold the
+    // volumes? A name it does not have is simply absent from the answer.
+    async volumeUsage(names: string[]) {
+      say("usage", names.join(","));
+      const here = volumes[serverId] ?? {};
+      return new Map(
+        names
+          .filter((n) => n in here && !notFoundVolumes.has(n))
+          .map((n) => [n, 1024]),
+      );
     },
     async *exportHostPath(path: string) {
       say("export-path", path);
@@ -396,6 +433,13 @@ async function openRun(): Promise<string> {
       targetKind: "database",
       targetId: "db_blink",
     },
+    {
+      sourceKind: "compose",
+      sourceId: "dok-cmp-1",
+      sourceName: "blink-stack",
+      targetKind: "app",
+      targetId: "prj_stack",
+    },
   ]);
   return runId;
 }
@@ -462,6 +506,7 @@ beforeEach(async () => {
     srv_migration_host: {
       "blink-web-abc_uploads": UPLOADS,
       "blink-db-abc_data": DB_DATA,
+      "blinkstack-abc_store": STACK_STORE,
     },
     [SERVER_1]: {
       "deplo-blink-web-uploads": LANDED_UPLOADS,
@@ -536,6 +581,20 @@ beforeEach(async () => {
     readOnly: false,
     propagation: null,
   });
+  // The imported stack: same compose, so the volume key is the same word on both
+  // sides and only the project prefix differs.
+  await seedApp(db, {
+    id: "prj_stack",
+    teamId: TEAM_A,
+    slug: "blink-stack",
+    projectId: "prc_blink",
+    environmentId: "environ_prod",
+    source: "compose",
+    compose: RESOLVED_COMPOSE,
+  });
+  await db.execute(
+    "update apps set name = 'blink-stack' where id = 'prj_stack'",
+  );
   await db.insert(databasesTable).values({
     id: "db_blink",
     teamId: TEAM_A,
@@ -980,6 +1039,112 @@ test("a volume missing from a RUNNING service holds the deploy", async () => {
     "select data_copy_error from apps where id = 'prj_web'",
   );
   assert.match(String(app.rows[0].data_copy_error), /not on the machine/);
+});
+
+test("a stopped stack whose compose lives in a repo still names its volumes", async () => {
+  await seedMigrationHostServer();
+  const runId = await openRun();
+
+  // Nothing is running over there and Dokploy holds no inline compose, so the
+  // only place the volume names exist is the file it would deploy. Without that
+  // fallback the copy answered "there is nothing to copy" over live data, and the
+  // only way back was restarting the stack on the source panel.
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
+  const stack = plan.find((s) => s.sourceName === "blink-stack");
+  assert.ok(stack, JSON.stringify(plan.map((s) => s.sourceName)));
+  assert.equal(stack.running, false);
+  assert.deepEqual(
+    stack.volumes.map((v) => `${v.sourceVolume}->${v.targetVolume}`),
+    ["blinkstack-abc_store->deplo-blink-stack_store"],
+  );
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "compose",
+      sourceId: "dok-cmp-1",
+    }),
+  );
+  assert.equal(res.moved, 1, res.notes.join(" | "));
+  assert.equal(res.failed, 0);
+});
+
+test("nothing is stopped on the source when the volumes are not on that machine", async () => {
+  await seedMigrationHostServer();
+  // The measured shape: the panel names a machine, the data is on another one.
+  // The old pre-flight only asked whether the agent ANSWERED, so the copy stopped
+  // the service over there and then found nothing to read - both sides down.
+  notFoundVolumes.add("blink-db-abc_data");
+  sourceRunning = true;
+  const runId = await openRun();
+  calls = [];
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "postgres",
+      sourceId: "dok-pg-1",
+    }),
+  );
+
+  assert.equal(res.failed, 1, "a service whose data did not move is a failure");
+  assert.equal(res.moved, 0);
+  assert.equal(
+    calls.some((c) => c.endsWith(".stop")),
+    false,
+    "the source must still be up: nothing could have been copied off it",
+  );
+  assert.equal(
+    agentCalls.some((c) => c.includes(":wipe:")),
+    false,
+    "and the destination must still hold whatever it had",
+  );
+  assert.match(res.notes.join(" "), /none of the volumes it names/);
+  // The refusal names the product, not the placeholder - this one reaches a dialog.
+  assert.equal(res.notes.join(" ").includes("{panel}"), false);
+
+  const rows = await db.execute(
+    `select outcome from migration_run_items where run_id = '${runId}' and source_id = 'dok-pg-1' order by seq desc`,
+  );
+  assert.equal(rows.rows[0].outcome, "failed");
+  const row = await db.execute(
+    "select status, data_copy_error from databases where id = 'db_blink'",
+  );
+  assert.equal(row.rows[0].status, "running", "it was never stopped");
+  assert.match(String(row.rows[0].data_copy_error), /never copied/);
+});
+
+test("a volume that did not come across is counted failed, not skipped", async () => {
+  await seedMigrationHostServer();
+  // The bind mount is copyable, so the service is not refused outright - but the
+  // volume that is not there is data nobody moved, and a run that ends
+  // `failed: 0` over it reads as a clean migration.
+  notFoundVolumes.add("blink-web-abc_uploads");
+  sourceRunning = true;
+  const runId = await openRun();
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(res.failed, 1);
+
+  const rows = await db.execute(
+    `select outcome from migration_run_items where run_id = '${runId}' and source_name = 'blink-web-abc_uploads'`,
+  );
+  assert.equal(rows.rows[0].outcome, "failed");
+  const run = await db.execute(
+    `select failed from migration_runs where id = '${runId}'`,
+  );
+  assert.equal(Number(run.rows[0].failed), 1, "and the summary says so");
 });
 
 test("a database with nothing to copy is left RUNNING, not stopped", async () => {

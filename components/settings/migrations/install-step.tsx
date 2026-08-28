@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
 import type { SourceKind } from "./sources";
-import { AGENT_PORT_NOTICE } from "@/components/shared/agent-reachability";
+import { AGENT_PORT_NOTICE } from "@/lib/agent-reachability";
 import type { PlanServer } from "./types";
 
 /**

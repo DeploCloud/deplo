@@ -1908,6 +1908,33 @@ export function composeServices(compose: string | null | undefined): string[] {
 }
 
 /**
+ * The ONE service a stack's traffic obviously belongs to: the only one that
+ * publishes or exposes a port, or the only service there is. `null` the moment it
+ * would be a guess - two candidates is a question for a person, not a default.
+ */
+export function composeServiceExposingPort(
+  compose: string | null | undefined,
+): string | null {
+  let doc: {
+    services?: Record<string, { ports?: unknown; expose?: unknown }>;
+  } | null;
+  try {
+    doc = yaml.load(compose ?? "") as typeof doc;
+  } catch {
+    return null;
+  }
+  const services = Object.entries(doc?.services ?? {});
+  if (services.length === 0) return null;
+  if (services.length === 1) return services[0][0];
+  const exposing = services.filter(
+    ([, svc]) =>
+      (Array.isArray(svc?.ports) && svc.ports.length > 0) ||
+      (Array.isArray(svc?.expose) && svc.expose.length > 0),
+  );
+  return exposing.length === 1 ? exposing[0][0] : null;
+}
+
+/**
  * The volumes a compose file declares, with the path each is mounted at.
  */
 export function composeVolumeMounts(compose: string): NamedVolume[] {

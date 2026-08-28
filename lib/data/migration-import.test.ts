@@ -1550,7 +1550,9 @@ test("data that did not copy KEEPS the source, agent and all", async () => {
   const full = await asOwner(() => getMigrationRun(runId));
   assert.match(
     full!.items.find((i) => i.sourceKind === "server")!.message!,
-    /still on dokploy-host: data that did not copy/,
+    // It never claims the bytes are on THAT machine: the commonest reason a copy
+    // left data behind is that Deplo asked the wrong one.
+    /still on dokploy-host: this migration left data that has not been copied/,
   );
 });
 
