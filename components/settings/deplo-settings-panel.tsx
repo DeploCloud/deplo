@@ -195,6 +195,8 @@ export function DeploSettingsPanel({
 /* The panel address                                                   */
 /* ------------------------------------------------------------------ */
 
+/** Where the address came from. The diagnostics dump names all three; the card's
+ *  badge shows only the two the reader could not already tell. */
 const SOURCE_LABEL: Record<InstanceSettings["panelUrlSource"], string> = {
   stored: "Set here",
   environment: "From the installer",
@@ -253,8 +255,8 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
 
   return (
     <Card>
-      {/* The badge says where the address in the field came from, which is the
-          whole story for one nobody set here - no sentence needed under it. */}
+      {/* The badge says where an address NOBODY set here came from. "Set here"
+          was the field below saying what the field below already is. */}
       <CardHeader className="flex-row flex-wrap items-center gap-2 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           <Globe className="size-4" />
@@ -264,7 +266,9 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
             docs="panel.address"
           />
         </CardTitle>
-        <Badge variant="muted">{SOURCE_LABEL[settings.panelUrlSource]}</Badge>
+        {settings.panelUrlSource !== "stored" && (
+          <Badge variant="muted">{SOURCE_LABEL[settings.panelUrlSource]}</Badge>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <form
