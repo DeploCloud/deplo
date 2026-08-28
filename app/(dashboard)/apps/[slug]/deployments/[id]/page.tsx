@@ -105,18 +105,19 @@ export default async function DeploymentDetailPage(
             />
           </Meta>
           <Meta label="Created">
+            {/* Each part its own flex item: contiguous text collapses into ONE,
+                and "by" lost its space against the name whenever the avatar in
+                between was not rendered. */}
             <span className="flex items-center gap-1.5 text-sm">
-              {timeAgo(deployment.createdAt)} by
-              {deployment.creatorUser && (
-                <UserAvatar
-                  name={deployment.creatorUser.name}
-                  username={deployment.creatorUser.username}
-                  avatarColor={deployment.creatorUser.avatarColor}
-                  avatarUrl={deployment.creatorUser.avatarUrl}
-                  size="sm"
-                />
-              )}
-              {deployment.creator}
+              <span>{timeAgo(deployment.createdAt)} by</span>
+              <UserAvatar
+                name={deployment.creatorUser?.name ?? deployment.creator}
+                username={deployment.creatorUser?.username}
+                avatarColor={deployment.creatorUser?.avatarColor}
+                avatarUrl={deployment.creatorUser?.avatarUrl}
+                size="sm"
+              />
+              <span>{deployment.creator}</span>
             </span>
           </Meta>
           <div className="flex items-end gap-2">
@@ -153,6 +154,8 @@ export default async function DeploymentDetailPage(
             initialLogs={logs}
             initialStatus={deployment.status}
             initialQueuePosition={queuePosition}
+            initialStartedAt={deployment.startedAt}
+            initialBuildDurationMs={deployment.buildDurationMs}
           />
         ) : (
           <EmptyState

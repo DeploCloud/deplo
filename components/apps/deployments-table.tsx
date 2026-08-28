@@ -1167,16 +1167,14 @@ export function DeploymentsTable({
                         {timeAgo(d.createdAt)}
                       </p>
                       <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                        {d.creatorUser && (
-                          <UserAvatar
-                            name={d.creatorUser.name}
-                            username={d.creatorUser.username}
-                            avatarColor={d.creatorUser.avatarColor}
-                            avatarUrl={d.creatorUser.avatarUrl}
-                            size="xs"
-                          />
-                        )}
-                        by {d.creator}
+                        <UserAvatar
+                          name={d.creatorUser?.name ?? d.creator}
+                          username={d.creatorUser?.username}
+                          avatarColor={d.creatorUser?.avatarColor}
+                          avatarUrl={d.creatorUser?.avatarUrl}
+                          size="xs"
+                        />
+                        <span className="truncate">by {d.creator}</span>
                       </p>
                     </TableCell>
 
