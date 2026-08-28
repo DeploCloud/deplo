@@ -134,8 +134,6 @@ const CONTROL_PLANE = [
   "pending_teardowns",
   "env_vars",
   "env_var_targets",
-  "instance_env_vars",
-  "instance_env_var_targets",
   "domains",
   "domain_middlewares",
   "app_basic_auth_users",
@@ -174,6 +172,7 @@ const CONTROL_PLANE = [
   "shared_env_var_environments",
   "shared_env_var_projects",
   "shared_env_var_apps",
+  "shared_env_var_teams",
   // integrations
   "github_apps",
   "github_installation",

@@ -5,7 +5,7 @@ templates into Docker stacks fronted by Traefik. Read this before writing code, 
 the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root): authoritative glossary / ubiquitous language. Single-context repo.
-- **`docs/adr/`**: numbered decisions (0001-0026). Contradicting one? Surface it, don't silently override.
+- **`docs/adr/`**: numbered decisions (0001-0027). Contradicting one? Surface it, don't silently override.
 - **`schema.graphql`** (root): generated SDL, the API contract.
 - **The USER manual is NOT in this repo.** It is [`DeploCloud/docs`](https://github.com/DeploCloud/docs),
   served at <https://deplo.build/docs>. Never add a user-facing page here.
@@ -397,9 +397,10 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
 - **Every env layer carries its `plain`/`secret` type, and the type is REQUIRED**
   (`EnvEntryType` in `lib/deploy/env-resolve.ts`). A preview of a FORK drops every secret-typed
   value, because the pull request's code is a stranger's; the filter reads `type`, and the two
-  loaders that did not project the column (`loadSharedVarsForApp`, `loadInstanceEnv`) silently
-  passed a whole team's shared secrets and every instance-global secret through it. Requiredness is
-  the guard: a new loader that forgets does not compile.
+  loaders that did not project the column (`loadSharedVarsForApp` and the instance-global
+  one, now `loadAutoInjectedVarsForApp`) silently passed a whole team's shared secrets and
+  every cross-team secret through it. Requiredness is the guard: a new loader that forgets
+  does not compile.
 - **Passwords are `scrypt$<N>$<r>$<p>$<salt>$<hash>`, async, with the cost as a stored parameter.**
   Raising `SCRYPT_PARAMS` in `lib/crypto.ts` is a one-line change: `verifyPassword` reads each
   hash's own parameters, the pre-parameter 3-field form still verifies, and `login()` re-hashes a

@@ -24,7 +24,9 @@ export function SharedWithChips({
     icon: React.ComponentType<{ className?: string }>;
     names: string[];
   }[] = [
-    ...(v.teamWide ? [{ icon: Users, names: ["The whole team"] }] : []),
+    ...(v.teams.length > 0
+      ? [{ icon: Users, names: v.teams.map((t) => t.name) }]
+      : []),
     ...(v.projects.length > 0
       ? [{ icon: Boxes, names: v.projects.map((p) => p.name) }]
       : []),

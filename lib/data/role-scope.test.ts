@@ -666,7 +666,7 @@ test("the trail and the shared library are cut to what they reach", async () => 
       key: "TEAM_WIDE",
       value: "PLAINTEXT-VALUE",
       type: "plain",
-      teamWide: true,
+      teamIds: [TEAM_A],
       environmentIds: [],
       projectIds: [],
     }),

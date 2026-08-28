@@ -1,5 +1,9 @@
 # ADR-0012: Shared variables are opt-in per app (scopes suggest, links inject)
 
+- **Superseded in part by [ADR-0027](0027-a-shared-variable-reaches-many-teams.md)**
+  (2026-08-28): a variable reaching MORE than one team injects with no link, and
+  that layer is no longer admin-only.
+
 - **Status**: Accepted - 2026-07-16.
 - **Amends**: [ADR-0010](0010-unified-shared-variables.md) §2 ("in-scope vars
   auto-apply") and §4 (deploy precedence). The unified one-variable model, the

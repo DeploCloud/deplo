@@ -18,7 +18,7 @@ import type { EnvVarDTO, VarAuthor } from "@/lib/types";
 /* ------------------------------------------------------------------ */
 
 // `type` is a two-valued union that is not shared in enums.ts, so it lives here.
-// Exported so the global-env types can reuse the same GraphQL enum (a Pothos enum
+// Exported so the shared-env types reuse the same GraphQL enum (a Pothos enum
 // name must be unique, so there can be only one "EnvVarType").
 export const EnvVarTypeEnum = builder.enumType("EnvVarType", {
   values: ["plain", "secret"] as const,
@@ -28,9 +28,9 @@ export const EnvVarTypeEnum = builder.enumType("EnvVarType", {
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
 
-// The one authorship type for every kind of variable (app / instance / shared),
-// so exported: a Pothos type name must be unique, and global-env.ts and
-// shared-env.ts import this ref rather than declaring a second "VarAuthor".
+// The one authorship type for every kind of variable (app / shared / preview), so
+// exported: a Pothos type name must be unique, and shared-env.ts imports this ref
+// rather than declaring a second "VarAuthor".
 export const VarAuthorRef = builder
   .objectRef<VarAuthor>("VarAuthor")
   .implement({

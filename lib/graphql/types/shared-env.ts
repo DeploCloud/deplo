@@ -37,6 +37,16 @@ const SharedVarProjectRef = builder
     }),
   });
 
+/** A lightweight team reference: the owner, and every team the var reaches. */
+const SharedVarTeamRef = builder
+  .objectRef<SharedVarDTO["teams"][number]>("SharedVarTeam")
+  .implement({
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+    }),
+  });
+
 /** A lightweight app reference embedded in a shared var's per-app links. */
 const SharedVarAppRef = builder
   .objectRef<SharedVarDTO["apps"][number]>("SharedVarApp")
@@ -51,9 +61,10 @@ const SharedVarAppRef = builder
 /** One unified shared variable: availability scopes + opt-in per-app links. */
 const SharedVarRef = builder.objectRef<SharedVarDTO>("SharedVar").implement({
   description:
-    "A shared environment variable (ADR-0010/0012). Secret values are masked. " +
-    "Team-wide / environment / project scopes say who it is AVAILABLE to; it " +
-    "injects only through explicit per-app links (opt-in).",
+    "A shared environment variable (ADR-0010/0012/0027). Secret values are masked. " +
+    "Team / environment / project scopes say who it is AVAILABLE to, and it injects " +
+    "only through explicit per-app links (opt-in) - UNLESS `autoInject`, which is " +
+    "what reaching more than one team means.",
   fields: (t) => ({
     id: t.exposeID("id"),
     key: t.exposeString("key"),
@@ -65,7 +76,27 @@ const SharedVarRef = builder.objectRef<SharedVarDTO>("SharedVar").implement({
       description: "Deploy runtimes this variable applies to.",
       resolve: (v) => v.targets,
     }),
-    teamWide: t.exposeBoolean("teamWide"),
+    teamWide: t.exposeBoolean("teamWide", {
+      description: "It reaches the VIEWER's team.",
+    }),
+    teamIds: t.exposeIDList("teamIds"),
+    teams: t.field({ type: [SharedVarTeamRef], resolve: (v) => v.teams }),
+    autoInject: t.exposeBoolean("autoInject", {
+      description:
+        "Injects into every app of every team it reaches, with no per-app link, " +
+        "at the LOWEST precedence. True when it reaches more than one team.",
+    }),
+    ownerTeam: t.field({
+      type: SharedVarTeamRef,
+      nullable: true,
+      description: "The owning team; null when the instance owns it.",
+      resolve: (v) => v.ownerTeam,
+    }),
+    editable: t.exposeBoolean("editable", {
+      description:
+        "The viewer's team owns it. A variable shared IN from another team is " +
+        "read-only here, and its project/environment/app ids come back empty.",
+    }),
     environmentIds: t.exposeIDList("environmentIds"),
     projectIds: t.exposeIDList("projectIds"),
     appIds: t.exposeIDList("appIds"),
@@ -115,7 +146,15 @@ const AppSharedVarRef = builder
       }),
       inScope: t.exposeBoolean("inScope", {
         description:
-          "An availability scope (team-wide / environment / project) covers this app.",
+          "An availability scope (team / environment / project) covers this app.",
+      }),
+      autoInject: t.exposeBoolean("autoInject", {
+        description:
+          "It lands here with no link and cannot be removed from this app.",
+      }),
+      ownerTeamName: t.exposeString("ownerTeamName", {
+        nullable: true,
+        description: "The team behind an auto-injected variable.",
       }),
       scope: t.exposeString("scope", {
         nullable: true,
@@ -140,7 +179,7 @@ const AppSharedVarRef = builder
 const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
   description:
     "Create (omit id) or update (provide id) one shared variable. It must be " +
-    "shared with something: teamWide, ≥1 environment, ≥1 project, or ≥1 app.",
+    "shared with something: ≥1 team, ≥1 environment, ≥1 project, or ≥1 app.",
   fields: (t) => ({
     id: t.string({ required: false }),
     key: t.string({ required: true }),
@@ -148,7 +187,15 @@ const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
     type: t.field({ type: EnvVarTypeEnum, required: true }),
     // Omit ⇒ every deploy runtime (the UI no longer asks); see UpsertEnvInput.
     targets: t.field({ type: [EnvTargetEnum], required: false }),
-    teamWide: t.boolean({ required: true }),
+    teamIds: t.idList({
+      required: true,
+      description:
+        "Teams every app of which gets this variable. ONE team ⇒ it is only " +
+        "SUGGESTED there and the per-app link injects (ADR-0012); TWO OR MORE ⇒ " +
+        "it is injected into every app of every one of them, with no link, at " +
+        "the lowest precedence. The caller must hold `manage_env` across the " +
+        "whole of every team named here.",
+    }),
     environmentIds: t.idList({ required: true }),
     projectIds: t.idList({ required: true }),
     appIds: t.stringList({
@@ -199,7 +246,7 @@ builder.mutationFields((t) => ({
         value: input.value,
         type: input.type,
         targets: input.targets ?? undefined,
-        teamWide: input.teamWide,
+        teamIds: input.teamIds,
         environmentIds: input.environmentIds,
         projectIds: input.projectIds,
         appIds: input.appIds ?? undefined,

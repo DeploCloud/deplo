@@ -162,7 +162,6 @@ test("transfers the app, and severs every tie to the team it came from", async (
     key: "SHARED",
     valueEnc: "x",
     type: "plain",
-    teamWide: false,
     createdAt: T0,
     updatedAt: T0,
   });

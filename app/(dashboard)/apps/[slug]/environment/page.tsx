@@ -3,7 +3,11 @@ import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { listEnv } from "@/lib/data/env";
 import { hasAppCapability } from "@/lib/data/node-access";
-import { listSharedVars, listSharedVarsForApp } from "@/lib/data/shared-vars";
+import {
+  listSharedVars,
+  listSharedVarsForApp,
+  listSharedVarTeams,
+} from "@/lib/data/shared-vars";
 import { listProjects } from "@/lib/data/projects";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
@@ -47,6 +51,7 @@ export default async function AppEnvPage(
     previewOverrides,
     projectSummaries,
     environments,
+    shareableTeams,
   ] = await Promise.all([
     listEnv(project.id),
     listSharedVarsForApp(project.id),
@@ -59,6 +64,7 @@ export default async function AppEnvPage(
     // only when the caller could actually create one.
     teamWideEnv ? listProjects() : Promise.resolve([]),
     teamWideEnv ? listAllEnvironmentsForTeam() : Promise.resolve([]),
+    teamWideEnv ? listSharedVarTeams() : Promise.resolve([]),
   ]);
   // Same shape the Variables page hands the wizard: colour + counts, so a
   // project is recognised the way it is on the Overview.
@@ -86,6 +92,7 @@ export default async function AppEnvPage(
         canCreateShared={teamWideEnv}
         projects={projects}
         environments={environments}
+        teams={shareableTeams}
       />
       {project.previewEnabled && (
         <PreviewOverrides appId={project.id} overrides={previewOverrides} />

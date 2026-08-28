@@ -83,7 +83,7 @@ beforeEach(async () => {
       key: "SHARED_KEY",
       value: SHARED_SECRET,
       type: "secret",
-      teamWide: true,
+      teamIds: [TEAM_A],
       environmentIds: [],
       projectIds: [],
     });

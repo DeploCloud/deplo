@@ -119,7 +119,7 @@ test("the team's shared-variable library stays closed to a node-only holder", as
       key: "STRIPE_KEY",
       value: "sk_live_secret",
       type: "secret",
-      teamWide: true,
+      teamIds: [TEAM_A],
       environmentIds: [],
       projectIds: [],
     }),

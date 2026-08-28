@@ -36,7 +36,6 @@ export default function Loading() {
       aria-label="Loading variables"
     >
       <UnderlineTabsList>
-        {/* The admin-only "All teams" tab appends after these two, so neither moves. */}
         <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
       </UnderlineTabsList>

@@ -8,8 +8,10 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { encryptSecret } from "../crypto";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { loadEnvVarsForApp } from "./app-graph-load";
-import { loadSharedVarsForApp } from "./shared-vars";
-import { loadInstanceEnv } from "./global-env";
+import {
+  loadAutoInjectedVarsForApp,
+  loadSharedVarsForApp,
+} from "./shared-vars";
 
 /**
  * EVERY env layer carries its `plain`/`secret` type to the deploy edge. ==
@@ -42,16 +44,19 @@ before(async () => {
              ('env_2','prj_1','APP_PLAIN','${enc("app")}','plain','${T0}','${T0}');
     insert into env_var_targets (env_var_id, target) values ('env_1','preview'), ('env_2','preview');
 
-    insert into shared_env_vars (id, team_id, key, value_enc, type, team_wide, created_at, updated_at)
-      values ('sv_1','team_a','SHARED_SECRET','${enc("shared")}','secret',true,'${T0}','${T0}'),
-             ('sv_2','team_a','SHARED_PLAIN','${enc("shared")}','plain',true,'${T0}','${T0}');
+    insert into shared_env_vars (id, team_id, key, value_enc, type, created_at, updated_at)
+      values ('sv_1','team_a','SHARED_SECRET','${enc("shared")}','secret','${T0}','${T0}'),
+             ('sv_2','team_a','SHARED_PLAIN','${enc("shared")}','plain','${T0}','${T0}');
     insert into shared_env_var_targets (var_id, target) values ('sv_1','preview'), ('sv_2','preview');
+    insert into shared_env_var_teams (var_id, team_id) values ('sv_1','team_a'), ('sv_2','team_a');
     insert into shared_env_var_apps (var_id, app_id) values ('sv_1','prj_1'), ('sv_2','prj_1');
 
-    insert into instance_env_vars (id, key, value_enc, type, created_at, updated_at)
-      values ('gv_1','GLOBAL_SECRET','${enc("global")}','secret','${T0}','${T0}'),
-             ('gv_2','GLOBAL_PLAIN','${enc("global")}','plain','${T0}','${T0}');
-    insert into instance_env_var_targets (env_var_id, target) values ('gv_1','preview'), ('gv_2','preview');
+    -- The instance-owned layer: team_id NULL, auto_inject, reaching this team.
+    insert into shared_env_vars (id, team_id, key, value_enc, type, auto_inject, created_at, updated_at)
+      values ('gv_1',null,'GLOBAL_SECRET','${enc("global")}','secret',true,'${T0}','${T0}'),
+             ('gv_2',null,'GLOBAL_PLAIN','${enc("global")}','plain',true,'${T0}','${T0}');
+    insert into shared_env_var_targets (var_id, target) values ('gv_1','preview'), ('gv_2','preview');
+    insert into shared_env_var_teams (var_id, team_id) values ('gv_1','team_a'), ('gv_2','team_a');
   `);
 });
 
@@ -76,8 +81,10 @@ test("a fork preview drops the team's SHARED secrets", async () => {
   ]);
 });
 
-test("a fork preview drops INSTANCE-GLOBAL secrets, which cross every team", async () => {
-  assert.deepEqual(keys(keep(await loadInstanceEnv())), ["GLOBAL_PLAIN"]);
+test("a fork preview drops AUTO-INJECTED secrets, which cross every team", async () => {
+  assert.deepEqual(keys(keep(await loadAutoInjectedVarsForApp("prj_1"))), [
+    "GLOBAL_PLAIN",
+  ]);
 });
 
 /**

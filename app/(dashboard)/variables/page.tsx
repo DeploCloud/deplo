@@ -3,9 +3,9 @@ import { listAllAppEnv } from "@/lib/data/env";
 import {
   listSharedVars,
   listAppliedSharedVarsByApp,
+  listSharedVarTeams,
 } from "@/lib/data/shared-vars";
 import type { AppliedSharedVarDTO } from "@/lib/data/shared-vars";
-import { listInstanceEnv } from "@/lib/data/global-env";
 import { listProjects } from "@/lib/data/projects";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import {
@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/tabs";
 import { AllAppsEnvManager } from "@/components/env/all-apps-env-manager";
 import { SharedVarsManager } from "@/components/env/shared-vars-manager";
-import { GlobalEnvManager } from "@/components/env/global-env-manager";
 
 export const metadata = { title: "Environment Variables" };
 
@@ -51,7 +50,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     appliedShared,
     projectSummaries,
     teamEnvironments,
-    instanceGlobals,
+    shareableTeams,
     canManageTeam,
   ] = await Promise.all([
     listAllAppEnv(),
@@ -62,8 +61,9 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     wholeTeam ? listAppliedSharedVarsByApp() : Promise.resolve([]),
     listProjects(),
     listAllEnvironmentsForTeam(),
-    // Instance-wide vars are admin-only; skip the (throwing) read otherwise.
-    admin ? listInstanceEnv() : Promise.resolve([]),
+    // The teams the wizard may offer: the viewer's own, minus the ones where they
+    // do not hold manage_env across the whole team.
+    wholeTeam ? listSharedVarTeams() : Promise.resolve([]),
     hasCapability("manage_team"),
   ]);
   // The project order this page drags is the TEAM-WIDE one the Overview grid
@@ -87,19 +87,17 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
   // returns a group per app (name-sorted), so there is nothing more to fetch.
   const apps = allAppGroups.map((g) => g.app);
 
-  // Two team-facing tabs (All / Shared) + an admin-only instance tab. Legacy
-  // deep links (?tab=service|environments|team) fold gracefully into the new set.
+  // Two tabs. Legacy deep links (?tab=service|environments|team|instance) fold
+  // gracefully - `instance` was the "All teams" tab, now a Teams scope on a
+  // shared variable (ADR-0027).
   const legacy: Record<string, string> = {
     service: "app",
     environments: "app",
     team: "app",
+    instance: "shared",
   };
   const tab = rawTab ? (legacy[rawTab] ?? rawTab) : "app";
-  const allowedTabs = new Set([
-    "app",
-    "shared",
-    ...(admin ? ["instance"] : []),
-  ]);
+  const allowedTabs = new Set(["app", "shared"]);
   const defaultTab = allowedTabs.has(tab) ? tab : "app";
 
   return (
@@ -111,11 +109,6 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
         {/* The value stays `app` - it is what every ?tab= deep link carries. */}
         <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
-        {admin && (
-          <UnderlineTabsTrigger value="instance">
-            All teams
-          </UnderlineTabsTrigger>
-        )}
       </UnderlineTabsList>
 
       {/* All: every app's variables (standalone + applied shared), editable */}
@@ -127,6 +120,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
           apps={apps}
           projects={projects}
           environments={teamEnvironments}
+          teams={shareableTeams}
           canReorderProjects={canReorderProjects}
         />
       </TabsContent>
@@ -138,15 +132,9 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
           apps={apps}
           projects={projects}
           environments={teamEnvironments}
+          teams={shareableTeams}
         />
       </TabsContent>
-
-      {/* All teams: instance-wide, admin only */}
-      {admin && (
-        <TabsContent value="instance">
-          <GlobalEnvManager scope="instance" vars={instanceGlobals} />
-        </TabsContent>
-      )}
     </Tabs>
   );
 }

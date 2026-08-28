@@ -45,7 +45,7 @@ import { timeAgo } from "@/lib/utils";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
-import type { ProjectRef } from "@/components/env/shared-var-wizard";
+import type { ProjectRef, TeamRef } from "@/components/env/shared-var-wizard";
 
 /**
  * Standalone and shared variables share ONE row list so that the sort orders the
@@ -71,6 +71,7 @@ export function EnvManager({
   canCreateShared,
   projects,
   environments,
+  teams,
 }: {
   appId: string;
   appName: string;
@@ -86,6 +87,8 @@ export function EnvManager({
   canCreateShared: boolean;
   projects: ProjectRef[];
   environments: TeamEnvironment[];
+  /** The teams the viewer may share a new variable with. */
+  teams: TeamRef[];
 }) {
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -97,10 +100,12 @@ export function EnvManager({
   } | null>(null);
   const router = useRouter();
 
-  // Shared vars this app has OPTED INTO (linked - the only way a shared var injects,
-  // ADR-0012).
+  // What actually reaches this app: the vars it OPTED INTO (the link, ADR-0012),
+  // plus the ones another team or the instance injects with no opt-in at all
+  // (ADR-0027) - those are read-only here, but they must be visible, because a
+  // value in the container that appears nowhere in the UI is the failure mode.
   const appliedShared = React.useMemo(
-    () => sharedVars.filter((v) => v.linked),
+    () => sharedVars.filter((v) => v.linked || v.autoInject),
     [sharedVars],
   );
 
@@ -285,7 +290,9 @@ export function EnvManager({
                           className="gap-1 text-[10px] font-normal whitespace-nowrap"
                         >
                           <Share2 className="size-3" />
-                          Shared
+                          {row.linked
+                            ? "Shared"
+                            : (row.ownerTeamName ?? "Every team")}
                         </Badge>
                       </div>
                     </TableCell>
@@ -304,13 +311,23 @@ export function EnvManager({
                       <EnvAuthorCell author={row.updatedBy ?? null} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <SharedRowActions
-                        row={row}
-                        appId={appId}
-                        detail={detailsById.get(row.id)}
-                        onRemoved={() => remove(rowKey(row))}
-                        onRestored={() => restore(rowKey(row))}
-                      />
+                      {row.linked ? (
+                        <SharedRowActions
+                          row={row}
+                          appId={appId}
+                          detail={detailsById.get(row.id)}
+                          onRemoved={() => remove(rowKey(row))}
+                          onRestored={() => restore(rowKey(row))}
+                        />
+                      ) : (
+                        <SimpleTooltip
+                          content={`Shared by ${row.ownerTeamName ?? "an instance admin"}. Only they can change it.`}
+                        >
+                          <span className="text-xs text-muted-foreground">
+                            Read-only
+                          </span>
+                        </SimpleTooltip>
+                      )}
                     </TableCell>
                   </TableRow>
                 ),
@@ -338,6 +355,7 @@ export function EnvManager({
         canCreateShared={canCreateShared}
         projects={projects}
         environments={environments}
+        teams={teams}
       />
       <ConfirmAction
         open={deleteId !== null}

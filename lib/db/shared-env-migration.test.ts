@@ -16,8 +16,10 @@ import {
 } from "./schema/control-plane";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import { loadEnvVarsForApp } from "../data/app-graph-load";
-import { loadSharedVarsForApp } from "../data/shared-vars";
-import { loadInstanceEnv } from "../data/global-env";
+import {
+  loadAutoInjectedVarsForApp,
+  loadSharedVarsForApp,
+} from "../data/shared-vars";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import type { EnvTarget } from "../types";
 
@@ -177,10 +179,10 @@ async function resolved(
   appId: string,
   target: EnvTarget,
 ): Promise<Record<string, string>> {
-  const [vars, sharedVars, instanceGlobals] = await Promise.all([
+  const [vars, sharedVars, autoInjected] = await Promise.all([
     loadEnvVarsForApp(appId),
     loadSharedVarsForApp(appId),
-    loadInstanceEnv(),
+    loadAutoInjectedVarsForApp(appId),
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries(
@@ -188,7 +190,7 @@ async function resolved(
     appId,
     vars,
     sharedVars,
-    instanceGlobals,
+    autoInjected,
   )) {
     out[e.key] = e.valueEnc;
   }
@@ -215,7 +217,7 @@ test("the only mode-less/link-less var is the one whose group reached no app", a
   // kept rather than destroying the user's authored value.
   const orphans = await pg.query<{ key: string }>(`
     select v.key from shared_env_vars v
-    where v.team_wide = false
+    where not exists (select 1 from shared_env_var_teams t where t.var_id = v.id)
       and not exists (select 1 from shared_env_var_environments e where e.var_id = v.id)
       and not exists (select 1 from shared_env_var_projects p where p.var_id = v.id)
       and not exists (select 1 from shared_env_var_apps a where a.var_id = v.id)

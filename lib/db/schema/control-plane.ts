@@ -1304,39 +1304,10 @@ export const envVarTargets = pgTable(
 // `shared_env_vars` model as team-wide-mode shared vars (ADR-0010); migration
 // 0027 converts the rows and 0028 drops the tables.
 
-/**
- * [GlobalEnvVar](../../types.ts) (instance scope) - a variable injected into EVERY
- * service of EVERY team (an instance-wide default), managed by an instance admin.
- */
-export const instanceEnvVars = pgTable(
-  "instance_env_vars",
-  {
-    id: text("id").primaryKey(),
-    key: text("key").notNull(),
-    valueEnc: text("value_enc").notNull(),
-    type: text("type").notNull(),
-    createdByUserId: text("created_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    createdAt: isoTimestamptz("created_at").notNull(),
-    updatedAt: isoTimestamptz("updated_at").notNull(),
-  },
-  (t) => [uniqueIndex("instance_env_vars_key_uq").on(t.key)],
-);
-
-export const instanceEnvVarTargets = pgTable(
-  "instance_env_var_targets",
-  {
-    envVarId: text("env_var_id")
-      .notNull()
-      .references(() => instanceEnvVars.id, { onDelete: "cascade" }),
-    target: text("target").notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.envVarId, t.target] })],
-);
+// NOTE: `instance_env_vars` (+ targets) was absorbed into `shared_env_vars` as
+// instance-OWNED vars (`team_id` NULL, `auto_inject` true) reaching every team
+// through `shared_env_var_teams` (ADR-0027); migration 0131 converts the rows and
+// 0132 drops the tables.
 
 // NOTE: `environment_env_vars` was absorbed into the unified `shared_env_vars`
 // model as environment-mode shared vars (ADR-0010); migration 0027 converts the
@@ -2249,13 +2220,16 @@ export const sharedEnvVars = pgTable(
   "shared_env_vars",
   {
     id: text("id").primaryKey(),
-    teamId: text("team_id")
-      .notNull()
-      .references(() => teams.id, { onDelete: "cascade" }),
+    // NULL = instance-owned (a migrated "All teams" global). Ownership decides who
+    // may EDIT; `shared_env_var_teams` decides who sees and receives (ADR-0027).
+    teamId: text("team_id").references(() => teams.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
-    teamWide: boolean("team_wide").notNull().default(false),
+    // Reaches MORE than one team (or is instance-owned): injects with no link, at
+    // the lowest precedence. A column, not `count(teams) > 1` - deleting a team
+    // cascades a junction row away and must not silently disarm the variable.
+    autoInject: boolean("auto_inject").notNull().default(false),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -2314,6 +2288,24 @@ export const sharedEnvVarProjects = pgTable(
   (t) => [
     primaryKey({ columns: [t.varId, t.projectId] }),
     index("shared_env_var_projects_project_idx").on(t.projectId),
+  ],
+);
+
+/** Sharing mode 0 (teams[]) - the generalisation of the old `team_wide` bool.
+ *  One row = every app of that team is offered (or, when `auto_inject`, given) it. */
+export const sharedEnvVarTeams = pgTable(
+  "shared_env_var_teams",
+  {
+    varId: text("var_id")
+      .notNull()
+      .references(() => sharedEnvVars.id, { onDelete: "cascade" }),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.varId, t.teamId] }),
+    index("shared_env_var_teams_team_idx").on(t.teamId),
   ],
 );
 

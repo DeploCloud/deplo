@@ -1,5 +1,9 @@
 # ADR-0010: Unified shared variables (one model, three sharing modes)
 
+- **Superseded in part by [ADR-0027](0027-a-shared-variable-reaches-many-teams.md)**
+  (2026-08-28): §3's separate instance-global system is folded into this model, and
+  the team-wide mode becomes a SET of teams.
+
 - **Status**: Accepted - 2026-07-12. **Amended by [ADR-0012](0012-shared-variables-are-opt-in-per-app.md)**
   (2026-07-16): §2's "in-scope vars auto-apply" is reversed - modes are now
   availability scopes and only the per-app link injects; §4's precedence

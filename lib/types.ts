@@ -1100,43 +1100,6 @@ export interface EnvVarDTO {
 }
 
 /**
- * A GLOBAL environment variable - injected into services without being attached
- * per-project.
- */
-/**
- * Global env scope. Only `instance` remains: team-global vars became team-wide
- * SHARED vars (ADR-0010), so there is no `team` scope any more - the union is kept
- * (rather than deleted) so the manager keeps one explicit, checkable scope name.
- */
-export type GlobalEnvScope = "instance";
-
-export interface GlobalEnvVar {
-  id: ID;
-  key: string;
-  valueEnc: string; // encrypted at rest
-  targets: EnvTarget[];
-  type: "plain" | "secret";
-  createdByUserId: ID | null;
-  updatedByUserId: ID | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** DTO sent to the client: secret values are masked. */
-export interface GlobalEnvVarDTO {
-  id: ID;
-  key: string;
-  value: string; // masked for secrets
-  masked: boolean;
-  targets: EnvTarget[];
-  type: "plain" | "secret";
-  createdBy: VarAuthor | null;
-  updatedBy: VarAuthor | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
  * A custom domain's DNS verification state. - valid an A record points straight at
  * this project's server. - cloudflare proxied through Cloudflare's orange-cloud:
  * the A records are Cloudflare's anycast IPs, which mask the origin.
@@ -1672,18 +1635,22 @@ export interface Activity {
 }
 
 /**
- * A unified shared variable (ADR-0010) - ONE variable owned by a team, the
- * replacement for the shared-env group, environment-scoped, and team-global
- * models.
+ * A unified shared variable (ADR-0010, multi-team per ADR-0027) - ONE variable,
+ * the replacement for the shared-env group, environment-scoped, team-global and
+ * instance-global models.
  */
 export interface SharedVar {
   id: ID;
-  teamId: ID;
+  /** The OWNER. `null` = instance-owned, editable only by an instance admin. */
+  teamId: ID | null;
   key: string;
   /** encrypted at rest */
   valueEnc: string;
   type: "plain" | "secret";
-  teamWide: boolean;
+  /** Every team the variable reaches (ADR-0027). One team ⇒ it only suggests. */
+  teamIds: ID[];
+  /** Reaches >1 team (or is instance-owned): injects with no link, lowest slot. */
+  autoInject: boolean;
   environmentIds: ID[];
   projectIds: ID[];
   appIds: ID[];

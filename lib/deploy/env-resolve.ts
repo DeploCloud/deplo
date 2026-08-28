@@ -22,11 +22,11 @@ export interface TargetedEnvEntry {
 }
 
 /**
- * A GLOBAL entry (instance-wide, admin-managed). It carries no `appId` because it
- * applies to every app of every team - only its `targets` gate which runtime sees
- * it.
+ * A shared var that injects with NO per-app link, because it reaches more than one
+ * team or the instance owns it (ADR-0027). It carries no `appId` because it applies
+ * to every app of every team it reaches - only its `targets` gate the runtime.
  */
-export interface GlobalEnvEntryLike {
+export interface AutoInjectedEntry {
   key: string;
   valueEnc: string;
   targets: EnvTarget[];
@@ -67,11 +67,11 @@ export function resolveEnvEntries(
   appId: string,
   envVars: TargetedEnvEntry[],
   sharedVars: SharedVarEntry[],
-  instanceGlobals: GlobalEnvEntryLike[] = [],
+  autoInjected: AutoInjectedEntry[] = [],
   previewOverrides: PreviewOverrideEntry[] = [],
 ): { key: string; valueEnc: string }[] {
   const out: { key: string; valueEnc: string }[] = [];
-  for (const e of instanceGlobals) {
+  for (const e of autoInjected) {
     if (e.targets.includes(target))
       out.push({ key: e.key, valueEnc: e.valueEnc });
   }

@@ -26,8 +26,10 @@ import {
   type EnvEntryType,
   type PreviewOverrideEntry,
 } from "./env-resolve";
-import { loadInstanceEnv } from "../data/global-env";
-import { loadSharedVarsForApp } from "../data/shared-vars";
+import {
+  loadAutoInjectedVarsForApp,
+  loadSharedVarsForApp,
+} from "../data/shared-vars";
 import { recordActivity, resolveActorUserId } from "../data/activity";
 import { dispatchAlert } from "../notify/dispatch";
 import {
@@ -667,15 +669,12 @@ async function appEnv(
   opts: { preview?: PreviewEnvContext | null } = {},
 ): Promise<Record<string, string>> {
   const preview = opts.preview ?? null;
-  const [vars, sharedVars, instanceGlobals, previewOverrides] =
-    await Promise.all([
-      loadEnvVarsForApp(appId),
-      loadSharedVarsForApp(appId),
-      loadInstanceEnv(),
-      target === "preview"
-        ? loadPreviewEnvOverrides(appId)
-        : Promise.resolve([]),
-    ]);
+  const [vars, sharedVars, autoInjected, previewOverrides] = await Promise.all([
+    loadEnvVarsForApp(appId),
+    loadSharedVarsForApp(appId),
+    loadAutoInjectedVarsForApp(appId),
+    target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
+  ]);
   const dropSecrets = Boolean(preview?.isFork);
   // `T extends { type: EnvEntryType }` rather than a cast: the cast is what let
   // two of the four layers arrive with no `type` at all and be kept as if they
@@ -688,7 +687,7 @@ async function appEnv(
     appId,
     keep(vars),
     keep(sharedVars),
-    keep(instanceGlobals),
+    keep(autoInjected),
     keep(previewOverrides),
   )) {
     // STRICT at the deploy edge. Refusing to deploy is the only honest answer to a
@@ -729,15 +728,12 @@ async function appEnvKeys(
   opts: { preview?: PreviewEnvContext | null } = {},
 ): Promise<string[]> {
   const preview = opts.preview ?? null;
-  const [vars, sharedVars, instanceGlobals, previewOverrides] =
-    await Promise.all([
-      loadEnvVarsForApp(appId),
-      loadSharedVarsForApp(appId),
-      loadInstanceEnv(),
-      target === "preview"
-        ? loadPreviewEnvOverrides(appId)
-        : Promise.resolve([]),
-    ]);
+  const [vars, sharedVars, autoInjected, previewOverrides] = await Promise.all([
+    loadEnvVarsForApp(appId),
+    loadSharedVarsForApp(appId),
+    loadAutoInjectedVarsForApp(appId),
+    target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
+  ]);
   const dropSecrets = Boolean(preview?.isFork);
   // `T extends { type: EnvEntryType }` rather than a cast: the cast is what let
   // two of the four layers arrive with no `type` at all and be kept as if they
@@ -755,7 +751,7 @@ async function appEnvKeys(
     appId,
     keep(vars),
     keep(sharedVars),
-    keep(instanceGlobals),
+    keep(autoInjected),
     keep(previewOverrides),
   )) {
     seen.add(e.key);

@@ -2,7 +2,7 @@ import "server-only";
 
 // https://deplo.build/docs/guides/config/shared-variables
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, exists, inArray, isNull, or } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import type { DbTx } from "../db/client";
@@ -12,19 +12,23 @@ import {
   sharedEnvVarEnvironments as envJunction,
   sharedEnvVarProjects as projJunction,
   sharedEnvVarApps as appJunction,
+  sharedEnvVarTeams as teamJunction,
   apps as appsTable,
+  teams as teamsTable,
   projects as projectsTable,
   environments as environmentsTable,
 } from "../db/schema/control-plane";
-import { getCurrentUser } from "../auth";
+import { assertUser, getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
+  holdsTeamWideCapability,
+  isInstanceAdmin,
   requireCapability,
   requireMembership,
   reachesWholeTeam,
   requireTeamWide,
+  teamsForUser,
 } from "../membership";
-import { narrowedScope } from "../auth/request-context";
 import { recordActivity } from "./activity";
 import {
   appCapabilitiesForTeam,
@@ -38,9 +42,9 @@ import type { EnvTarget, SharedVar, VarAuthor } from "../types";
 import type { SharedVarEntry } from "../deploy/env-resolve";
 
 /**
- * Unified SHARED variables (ADR-0010, opt-in per ADR-0012) - one individual
- * variable owned by a team, the replacement for shared-env groups,
- * environment-scoped vars, and team-global vars.
+ * Unified SHARED variables (ADR-0010, opt-in per ADR-0012, multi-team per
+ * ADR-0027) - one variable, the replacement for shared-env groups,
+ * environment-scoped, team-global and instance-global vars.
  */
 
 const MASK = "••••••••••••";
@@ -66,6 +70,7 @@ function authorIds(vars: SharedVar[]): (string | null)[] {
 function scopeFor(m: {
   byOwnEnv: boolean;
   byProject: boolean;
+  /** The var reaches THIS app's team - per viewer, not a property of the row. */
   teamWide: boolean;
 }): SharedVarScope | null {
   if (m.byOwnEnv) return "environment";
@@ -75,23 +80,50 @@ function scopeFor(m: {
 }
 
 /* ------------------------------------------------------------------ */
-/* Internal loader (no auth gate) - stitch a team's vars + junctions.  */
+/* Internal loaders (no auth gate) - stitch vars + their junction sets. */
 /* ------------------------------------------------------------------ */
 
-/** Every shared var of one team, stitched with its four junction sets. */
-async function loadSharedVarsForTeam(teamId: string): Promise<SharedVar[]> {
+/**
+ * A team SEES a variable it owns, or one shared into it. Every READ uses this;
+ * a write keeps its own `eq(teamId)`, because seeing is not editing (ADR-0027).
+ */
+function visibleTo(teamId: string) {
+  return or(
+    eq(varsTable.teamId, teamId),
+    exists(
+      getDb()
+        .select({ one: teamJunction.varId })
+        .from(teamJunction)
+        .where(
+          and(
+            eq(teamJunction.varId, varsTable.id),
+            eq(teamJunction.teamId, teamId),
+          ),
+        ),
+    ),
+  );
+}
+
+/** The variables one team SEES: owned by it, or shared into it. */
+async function loadVisibleToTeam(teamId: string): Promise<SharedVar[]> {
+  return stitch(
+    await getDb().select().from(varsTable).where(visibleTo(teamId)),
+  );
+}
+
+/** Stitch var rows to their five junction sets. */
+async function stitch(
+  rows: (typeof varsTable.$inferSelect)[],
+): Promise<SharedVar[]> {
   const db = getDb();
-  const rows = await db
-    .select()
-    .from(varsTable)
-    .where(eq(varsTable.teamId, teamId));
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const [targets, envs, projs, apps] = await Promise.all([
+  const [targets, envs, projs, apps, teams] = await Promise.all([
     db.select().from(targetsTable).where(inArray(targetsTable.varId, ids)),
     db.select().from(envJunction).where(inArray(envJunction.varId, ids)),
     db.select().from(projJunction).where(inArray(projJunction.varId, ids)),
     db.select().from(appJunction).where(inArray(appJunction.varId, ids)),
+    db.select().from(teamJunction).where(inArray(teamJunction.varId, ids)),
   ]);
   const group = <T, V>(list: T[], key: (t: T) => string, val: (t: T) => V) => {
     const m = new Map<string, V[]>();
@@ -123,13 +155,19 @@ async function loadSharedVarsForTeam(teamId: string): Promise<SharedVar[]> {
     (a) => a.varId,
     (a) => a.appId,
   );
+  const teamsBy = group(
+    teams,
+    (t) => t.varId,
+    (t) => t.teamId,
+  );
   return rows.map((r) => ({
     id: r.id,
     teamId: r.teamId,
     key: r.key,
     valueEnc: r.valueEnc,
     type: r.type as "plain" | "secret",
-    teamWide: r.teamWide,
+    teamIds: teamsBy.get(r.id) ?? [],
+    autoInject: r.autoInject,
     environmentIds: envsBy.get(r.id) ?? [],
     projectIds: projsBy.get(r.id) ?? [],
     appIds: appsBy.get(r.id) ?? [],
@@ -152,7 +190,17 @@ export interface SharedVarDTO {
   masked: boolean;
   type: "plain" | "secret";
   targets: EnvTarget[];
+  /** The variable reaches the VIEWER's team - the old team-wide sharing mode. */
   teamWide: boolean;
+  /** Every team it reaches. Two or more ⇒ it injects with no link. */
+  teamIds: string[];
+  teams: { id: string; name: string }[];
+  /** Injects into every app of every team above, with no per-app link. */
+  autoInject: boolean;
+  /** The owning team, or null when the instance owns it. */
+  ownerTeam: { id: string; name: string } | null;
+  /** The viewer's team owns it (or an instance admin owns the instance one). */
+  editable: boolean;
   environmentIds: string[];
   projectIds: string[];
   appIds: string[];
@@ -206,44 +254,82 @@ async function teamLookups(teamId: string): Promise<{
   };
 }
 
-/** Every shared variable of the active team, key-sorted, decorated for the UI. */
+/** Every team a set of vars names, for the owner badge and the Teams chips. */
+async function teamNames(
+  vars: SharedVar[],
+): Promise<Map<string, { id: string; name: string }>> {
+  const ids = [
+    ...new Set(vars.flatMap((v) => [...v.teamIds, v.teamId ?? ""])),
+  ].filter(Boolean);
+  if (ids.length === 0) return new Map();
+  const rows = await getDb()
+    .select({ id: teamsTable.id, name: teamsTable.name })
+    .from(teamsTable)
+    .where(inArray(teamsTable.id, ids));
+  return new Map(rows.map((t) => [t.id, t] as const));
+}
+
+/**
+ * Every shared variable the active team sees, key-sorted, decorated for the UI.
+ * A variable another team owns comes back READ-ONLY and stripped of that team's
+ * object graph: `editable` false, and its project/environment/app ids blanked,
+ * because those name rows this team has no business enumerating.
+ */
 export async function listSharedVars(): Promise<SharedVarDTO[]> {
   await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");
-  const [vars, lookups] = await Promise.all([
-    loadSharedVarsForTeam(teamId),
+  const [vars, lookups, admin] = await Promise.all([
+    loadVisibleToTeam(teamId),
     teamLookups(teamId),
+    isInstanceAdmin(),
   ]);
   // One identity query for the whole list.
-  const authors = await loadUserIdentities(authorIds(vars));
+  const [authors, teams] = await Promise.all([
+    loadUserIdentities(authorIds(vars)),
+    teamNames(vars),
+  ]);
   return vars
     .sort((a, b) => a.key.localeCompare(b.key))
-    .map((v) => ({
-      id: v.id,
-      key: v.key,
-      value: v.type === "secret" ? MASK : decryptSecret(v.valueEnc),
-      masked: v.type === "secret",
-      type: v.type,
-      targets: sanitizeTargets(v.targets),
-      teamWide: v.teamWide,
-      environmentIds: v.environmentIds,
-      projectIds: v.projectIds,
-      appIds: v.appIds,
-      environments: v.environmentIds
-        .map((id) => lookups.environments.get(id))
-        .filter((e): e is NonNullable<typeof e> => Boolean(e)),
-      projects: v.projectIds
-        .map((id) => lookups.projects.get(id))
-        .filter((p): p is NonNullable<typeof p> => Boolean(p)),
-      apps: v.appIds
-        .map((id) => lookups.apps.get(id))
-        .filter((a): a is NonNullable<typeof a> => Boolean(a)),
-      // Authorship is metadata, not value - safe alongside a masked `value`.
-      createdBy: authorOf(v.createdByUserId, authors),
-      updatedBy: authorOf(v.updatedByUserId, authors),
-      createdAt: v.createdAt,
-      updatedAt: v.updatedAt,
-    }));
+    .map((v) => {
+      const editable = v.teamId === teamId || (v.teamId === null && admin);
+      // A foreign variable's scopes point at ITS team's rows.
+      const environmentIds = editable ? v.environmentIds : [];
+      const projectIds = editable ? v.projectIds : [];
+      const appIds = editable ? v.appIds : [];
+      return {
+        id: v.id,
+        key: v.key,
+        value: v.type === "secret" ? MASK : decryptSecret(v.valueEnc),
+        masked: v.type === "secret",
+        type: v.type,
+        targets: sanitizeTargets(v.targets),
+        teamWide: v.teamIds.includes(teamId),
+        teamIds: v.teamIds,
+        teams: v.teamIds
+          .map((id) => teams.get(id))
+          .filter((t): t is NonNullable<typeof t> => Boolean(t)),
+        autoInject: v.autoInject,
+        ownerTeam: v.teamId ? (teams.get(v.teamId) ?? null) : null,
+        editable,
+        environmentIds,
+        projectIds,
+        appIds,
+        environments: environmentIds
+          .map((id) => lookups.environments.get(id))
+          .filter((e): e is NonNullable<typeof e> => Boolean(e)),
+        projects: projectIds
+          .map((id) => lookups.projects.get(id))
+          .filter((p): p is NonNullable<typeof p> => Boolean(p)),
+        apps: appIds
+          .map((id) => lookups.apps.get(id))
+          .filter((a): a is NonNullable<typeof a> => Boolean(a)),
+        // Authorship is metadata, not value - safe alongside a masked `value`.
+        createdBy: authorOf(v.createdByUserId, authors),
+        updatedBy: authorOf(v.updatedByUserId, authors),
+        createdAt: v.createdAt,
+        updatedAt: v.updatedAt,
+      };
+    });
 }
 
 /**
@@ -264,6 +350,13 @@ export interface AppSharedVarDTO {
   linked: boolean;
   /** An availability scope (team-wide / environment / project) covers this app. */
   inScope: boolean;
+  /**
+   * It lands in this app with NO link and cannot be removed here: another team
+   * shares it, or an instance admin does (ADR-0027). Read-only in the app UI.
+   */
+  autoInject: boolean;
+  /** The team that owns an auto-injected variable, for the read-only row. */
+  ownerTeamName: string | null;
   /** The most specific covering scope; null when none does. */
   scope: SharedVarScope | null;
   updatedBy: VarAuthor | null;
@@ -279,9 +372,16 @@ export interface AppSharedVarDTO {
  * project or environment the app lives in.
  */
 function reachableFromApp(
-  v: { appIds: string[]; projectIds: string[]; environmentIds: string[] },
+  v: {
+    appIds: string[];
+    projectIds: string[];
+    environmentIds: string[];
+    autoInject: boolean;
+    teamIds: string[];
+  },
   app: {
     appId: string;
+    teamId: string;
     projectId: string | null;
     environmentId: string | null;
   },
@@ -289,7 +389,11 @@ function reachableFromApp(
   return (
     v.appIds.includes(app.appId) ||
     (app.projectId != null && v.projectIds.includes(app.projectId)) ||
-    (app.environmentId != null && v.environmentIds.includes(app.environmentId))
+    (app.environmentId != null &&
+      v.environmentIds.includes(app.environmentId)) ||
+    // A variable that lands in this container with no link of its own must not be
+    // invisible to the one person allowed to see the app's variables.
+    (v.autoInject && v.teamIds.includes(app.teamId))
   );
 }
 
@@ -310,24 +414,29 @@ export async function listSharedVarsForApp(
   )[0];
   const projectId = app?.projectId ?? null;
   const environmentId = app?.environmentId ?? null;
-  const all = await loadSharedVarsForTeam(teamId);
+  const all = await loadVisibleToTeam(teamId);
   // Both principals, one rule: a narrowed token and a member on a limited role
   // reach the same part of the team, so they see the same variables.
   const vars = (await reachesWholeTeam())
     ? all
     : all.filter((v) =>
-        reachableFromApp(v, { appId, projectId, environmentId }),
+        reachableFromApp(v, { appId, teamId, projectId, environmentId }),
       );
   // One identity query for every shared row on the app's Environment page.
-  const authors = await loadUserIdentities(authorIds(vars));
+  const [authors, teams] = await Promise.all([
+    loadUserIdentities(authorIds(vars)),
+    teamNames(vars),
+  ]);
   return vars
     .map((v) => {
       const byProject = projectId != null && v.projectIds.includes(projectId);
       const byOwnEnv =
         environmentId != null && v.environmentIds.includes(environmentId);
       const linked = v.appIds.includes(appId);
-      // A covering scope only SUGGESTS the var here - injection is the link.
-      const inScope = v.teamWide || byProject || byOwnEnv;
+      const teamWide = v.teamIds.includes(teamId);
+      // A covering scope only SUGGESTS the var here - injection is the link, unless
+      // the variable auto-injects (ADR-0027), which needs no opt-in at all.
+      const inScope = teamWide || byProject || byOwnEnv;
       return {
         id: v.id,
         key: v.key,
@@ -337,7 +446,9 @@ export async function listSharedVarsForApp(
         targets: sanitizeTargets(v.targets),
         linked,
         inScope,
-        scope: scopeFor({ byOwnEnv, byProject, teamWide: v.teamWide }),
+        autoInject: v.autoInject && teamWide,
+        ownerTeamName: v.teamId ? (teams.get(v.teamId)?.name ?? null) : null,
+        scope: scopeFor({ byOwnEnv, byProject, teamWide }),
         // Falls back to the creator so "Last modified" never shows a timestamp
         // with no author.
         updatedBy: authorOf(v.updatedByUserId ?? v.createdByUserId, authors),
@@ -370,7 +481,7 @@ export async function listAppliedSharedVarsByApp(): Promise<
 > {
   await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");
-  const vars = await loadSharedVarsForTeam(teamId);
+  const vars = await loadVisibleToTeam(teamId);
   // One identity query for every card on the page.
   const authors = await loadUserIdentities(authorIds(vars));
   // Node scope, mirroring `listAllAppEnv`: a link into an app the caller can't
@@ -465,6 +576,19 @@ async function insertScopeChildren(
       .values(projectIds.map((projectId) => ({ varId, projectId })));
 }
 
+/** Whole-set replace of the team-reach junction. */
+async function replaceTeams(
+  tx: DbTx,
+  varId: string,
+  teamIds: string[],
+): Promise<void> {
+  await tx.delete(teamJunction).where(eq(teamJunction.varId, varId));
+  if (teamIds.length > 0)
+    await tx
+      .insert(teamJunction)
+      .values(teamIds.map((teamId) => ({ varId, teamId })));
+}
+
 /**
  * Whole-set replace of the per-app links, but ONLY when the caller sent a set.
  * `undefined` leaves the junction untouched (see `saveSharedVar`'s `appIds`).
@@ -508,7 +632,12 @@ export async function saveSharedVar(input: {
    * whatever targets the var already has - an edit must never widen them.
    */
   targets?: EnvTarget[];
-  teamWide: boolean;
+  /**
+   * Every team whose apps this variable reaches. One ⇒ it is only SUGGESTED there
+   * (the per-app link injects, ADR-0012); two or more ⇒ it is injected into every
+   * app of every one of them, with no link, at the lowest precedence (ADR-0027).
+   */
+  teamIds: string[];
   environmentIds: string[];
   projectIds: string[];
   /**
@@ -522,6 +651,16 @@ export async function saveSharedVar(input: {
   await requireTeamWide("shared variables");
   const { teamId, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
+  // Every OTHER team is its own gate, held across the whole of that team. The
+  // refusal is the same words as an unknown id: the picker must never be an oracle
+  // for which teams exist, nor for who is in them.
+  const teamIds = [...new Set(input.teamIds)];
+  for (const t of teamIds) {
+    if (t === teamId) continue;
+    if (!(await holdsTeamWideCapability(t, "manage_env")))
+      throw new Error("Team not found");
+  }
+  const adminHere = await isInstanceAdmin();
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
   // An omitted target set defaults to every runtime on INSERT, but on UPDATE it means
@@ -539,7 +678,8 @@ export async function saveSharedVar(input: {
   const appIds = input.appIds
     ? await filterTeamApps(teamId, input.appIds)
     : undefined;
-  const teamWide = Boolean(input.teamWide);
+  // Reaching more than one team is what makes a variable inject with no link.
+  const autoInject = teamIds.length > 1;
   const storedLinks = await currentAppLinks(teamId, input.id);
 
   // Both halves of the whole-set link replace are folder-gated writes, exactly like
@@ -560,29 +700,46 @@ export async function saveSharedVar(input: {
   // scope, or linked to ≥1 app.
   const reachesByLink = appIds ? appIds.length > 0 : storedLinks.length > 0;
   if (
-    !teamWide &&
+    teamIds.length === 0 &&
     environmentIds.length === 0 &&
     projectIds.length === 0 &&
     !reachesByLink
   )
-    throw new Error("Share with at least one app, project, or the whole team");
+    throw new Error("Share with at least one app, project, or team");
 
   // The editor sends the MASK back unchanged when only the SCOPE changed on a
   // secret - keep the stored value rather than encrypting the mask string. That
   // round-trip is the only write a secret still accepts (see the refusal below).
   const keepValue = input.value === MASK;
   let savedId = input.id ?? "";
+  // Named in the OTHER teams' activity rows, so "where did this come from" is
+  // answerable there without reading the owner team's trail.
+  const authorTeamName =
+    (
+      await getDb()
+        .select({ name: teamsTable.name })
+        .from(teamsTable)
+        .where(eq(teamsTable.id, teamId))
+        .limit(1)
+    )[0]?.name ?? "another team";
 
   await getDb().transaction(async (tx) => {
     if (input.id) {
+      // OWNER-only, whatever the reach: a team that merely receives a variable
+      // never edits it. An instance-owned one (team_id NULL) answers to an
+      // instance admin instead.
+      const owned = adminHere
+        ? or(eq(varsTable.teamId, teamId), isNull(varsTable.teamId))
+        : eq(varsTable.teamId, teamId);
       const existing = await tx
         .select({
           id: varsTable.id,
           key: varsTable.key,
           type: varsTable.type,
+          teamId: varsTable.teamId,
         })
         .from(varsTable)
-        .where(and(eq(varsTable.id, input.id), eq(varsTable.teamId, teamId)))
+        .where(and(eq(varsTable.id, input.id), owned))
         .limit(1);
       if (!existing[0]) throw new Error("Variable not found");
       // A secret's VALUE, KEY and TYPE are frozen; WHO it reaches is not.
@@ -597,17 +754,20 @@ export async function saveSharedVar(input: {
           key,
           ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
           type: input.type,
-          teamWide,
+          // An instance-owned variable keeps injecting however many teams it
+          // reaches - a single-team instance has exactly one reach row.
+          autoInject: autoInject || existing[0].teamId === null,
           // An edit never rewrites who created the var.
           updatedByUserId: userId,
           updatedAt: nowIso(),
         })
-        .where(and(eq(varsTable.id, input.id), eq(varsTable.teamId, teamId)));
+        .where(and(eq(varsTable.id, input.id), owned));
       // Whole-set replace the scope junctions (targets only if explicitly sent).
       await replaceTargets(tx, input.id, targets);
       await tx.delete(envJunction).where(eq(envJunction.varId, input.id));
       await tx.delete(projJunction).where(eq(projJunction.varId, input.id));
       await insertScopeChildren(tx, input.id, environmentIds, projectIds);
+      await replaceTeams(tx, input.id, teamIds);
       await replaceAppLinks(tx, input.id, appIds);
       savedId = input.id;
     } else {
@@ -619,7 +779,7 @@ export async function saveSharedVar(input: {
         key,
         valueEnc: encryptSecret(input.value),
         type: input.type,
-        teamWide,
+        autoInject,
         createdByUserId: userId,
         updatedByUserId: userId,
         createdAt: now,
@@ -627,17 +787,23 @@ export async function saveSharedVar(input: {
       });
       await replaceTargets(tx, id, targets ?? [...ALL_ENV_TARGETS]);
       await insertScopeChildren(tx, id, environmentIds, projectIds);
+      await replaceTeams(tx, id, teamIds);
       await replaceAppLinks(tx, id, appIds);
       savedId = id;
     }
   });
-  await recordActivity(
-    "env",
-    `Updated shared variable ${key}`,
-    user.name,
-    null,
-    teamId,
-  );
+  // One row per team it reaches, not just the author's: a variable that lands in
+  // another team's apps has to be answerable on THAT team's Activity page.
+  for (const t of new Set([teamId, ...teamIds]))
+    await recordActivity(
+      "env",
+      t === teamId
+        ? `Updated shared variable ${key}`
+        : `Updated shared variable ${key}, shared from ${authorTeamName}`,
+      user.name,
+      null,
+      t,
+    );
   return savedId;
 }
 
@@ -660,11 +826,12 @@ async function linkableFromApp(
       .where(eq(appsTable.id, appId))
       .limit(1)
   )[0];
-  const v = (await loadSharedVarsForTeam(teamId)).find((x) => x.id === varId);
+  const v = (await loadVisibleToTeam(teamId)).find((x) => x.id === varId);
   return (
     v != null &&
     reachableFromApp(v, {
       appId,
+      teamId,
       projectId: app?.projectId ?? null,
       environmentId: app?.environmentId ?? null,
     })
@@ -679,10 +846,12 @@ export async function setSharedVarAppLink(
 ): Promise<void> {
   const { teamId, userId } = await requireAppCapability(appId, "manage_env");
   const user = (await getCurrentUser())!;
+  // Visible, not owned: attaching a variable another team shared with us is THIS
+  // team's opt-in, not an edit of their row (ADR-0027).
   const v = await getDb()
     .select({ key: varsTable.key })
     .from(varsTable)
-    .where(and(eq(varsTable.id, varId), eq(varsTable.teamId, teamId)))
+    .where(and(eq(varsTable.id, varId), visibleTo(teamId)))
     .limit(1);
   if (!v[0]) throw new Error("Variable not found");
   // Belonging to the team is not enough for a NARROWED caller. Same message as an
@@ -720,23 +889,33 @@ export async function deleteSharedVar(id: string): Promise<void> {
   await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
+  // OWNER-only: a team that merely receives a variable must not destroy it for
+  // everyone else. An instance-owned one answers to an instance admin.
+  const owned = (await isInstanceAdmin())
+    ? or(eq(varsTable.teamId, teamId), isNull(varsTable.teamId))
+    : eq(varsTable.teamId, teamId);
   const rows = await getDb()
     .select({ key: varsTable.key })
     .from(varsTable)
-    .where(and(eq(varsTable.id, id), eq(varsTable.teamId, teamId)))
+    .where(and(eq(varsTable.id, id), owned))
     .limit(1);
   if (!rows[0]) throw new Error("Not found");
-  // The four child sets CASCADE on the parent delete.
+  const reached = await getDb()
+    .select({ teamId: teamJunction.teamId })
+    .from(teamJunction)
+    .where(eq(teamJunction.varId, id));
+  // The five child sets CASCADE on the parent delete.
   await getDb()
     .delete(varsTable)
-    .where(and(eq(varsTable.id, id), eq(varsTable.teamId, teamId)));
-  await recordActivity(
-    "env",
-    `Deleted shared variable ${rows[0].key}`,
-    user.name,
-    null,
-    teamId,
-  );
+    .where(and(eq(varsTable.id, id), owned));
+  for (const t of new Set([teamId, ...reached.map((r) => r.teamId)]))
+    await recordActivity(
+      "env",
+      `Deleted shared variable ${rows[0].key}`,
+      user.name,
+      null,
+      t,
+    );
 }
 
 /** Keep only environment ids whose Project belongs to the team. */
@@ -790,44 +969,34 @@ async function filterTeamApps(
 }
 
 /* ------------------------------------------------------------------ */
-/* Deploy-time loader, NO auth gate (the deploy is already authorized). */
+/* Deploy-time loaders, NO auth gate (the deploy is already authorized). */
 /* ------------------------------------------------------------------ */
 
-/**
- * The shared-var entries that inject into one app for the deploy-time merge: ONLY
- * the vars the app is explicitly linked to (ADR-0012 - availability scopes never
- * inject).
- */
-export async function loadSharedVarsForApp(
-  appId: string,
-): Promise<SharedVarEntry[]> {
-  const db = getDb();
-  const app = (
-    await db
-      .select({ teamId: appsTable.teamId })
-      .from(appsTable)
-      .where(eq(appsTable.id, appId))
-      .limit(1)
-  )[0];
-  if (!app) return [];
+/** What the deploy merge reads off a var row. */
+const DEPLOY_COLUMNS = {
+  id: varsTable.id,
+  key: varsTable.key,
+  valueEnc: varsTable.valueEnc,
+  // `plain` | `secret`, and it has to travel with the entry: the fork-preview drop in
+  // lib/deploy/build.ts asks every layer the same question, and a column left out of
+  // this projection answered "not a secret" for a team's whole shared-variable set.
+  type: varsTable.type,
+  createdAt: varsTable.createdAt,
+} as const;
 
-  const rows = await db
-    .select({
-      id: varsTable.id,
-      key: varsTable.key,
-      valueEnc: varsTable.valueEnc,
-      // `plain` | `secret`, and it has to travel with the entry: the fork-preview drop in
-      // lib/deploy/build.ts asks every layer the same question, and a column left out of
-      // this projection answered "not a secret" for a team's whole shared-variable set.
-      type: varsTable.type,
-      createdAt: varsTable.createdAt,
-    })
-    .from(varsTable)
-    .innerJoin(appJunction, eq(appJunction.varId, varsTable.id))
-    .where(and(eq(varsTable.teamId, app.teamId), eq(appJunction.appId, appId)));
+type DeployRow = {
+  id: string;
+  key: string;
+  valueEnc: string;
+  type: string;
+  createdAt: string;
+};
+
+/** Stitch the targets junction on and order the layer (`created_at ASC` breaks a
+ *  same-key collision within it). An empty target set means every runtime. */
+async function toEntries(rows: DeployRow[]): Promise<SharedVarEntry[]> {
   if (rows.length === 0) return [];
-
-  const targetRows = await db
+  const targetRows = await getDb()
     .select()
     .from(targetsTable)
     .where(
@@ -842,7 +1011,6 @@ export async function loadSharedVarsForApp(
     arr.push(t.target as EnvTarget);
     targetsBy.set(t.varId, arr);
   }
-
   return rows
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .map((r) => {
@@ -854,4 +1022,76 @@ export async function loadSharedVarsForApp(
         type: r.type === "secret" ? ("secret" as const) : ("plain" as const),
       };
     });
+}
+
+/** The app's team, or null when the app is gone. */
+async function teamOfApp(appId: string): Promise<string | null> {
+  const app = (
+    await getDb()
+      .select({ teamId: appsTable.teamId })
+      .from(appsTable)
+      .where(eq(appsTable.id, appId))
+      .limit(1)
+  )[0];
+  return app?.teamId ?? null;
+}
+
+/**
+ * The shared-var entries that inject into one app for the deploy-time merge: ONLY
+ * the vars the app is explicitly linked to (ADR-0012 - availability scopes never
+ * inject). Reads what the app's team SEES, so a variable another team shared here
+ * and this app opted into does not silently drop at deploy time.
+ */
+export async function loadSharedVarsForApp(
+  appId: string,
+): Promise<SharedVarEntry[]> {
+  const teamId = await teamOfApp(appId);
+  if (!teamId) return [];
+  return toEntries(
+    await getDb()
+      .select(DEPLOY_COLUMNS)
+      .from(varsTable)
+      .innerJoin(appJunction, eq(appJunction.varId, varsTable.id))
+      .where(and(visibleTo(teamId), eq(appJunction.appId, appId))),
+  );
+}
+
+/**
+ * The shared vars that inject into one app with NO link: those reaching more than
+ * one team, and the instance-owned ones (ADR-0027). They fold at the LOWEST
+ * precedence - exactly the slot instance globals held - so an app's own value
+ * always wins over one it never asked for.
+ */
+export async function loadAutoInjectedVarsForApp(
+  appId: string,
+): Promise<SharedVarEntry[]> {
+  const teamId = await teamOfApp(appId);
+  if (!teamId) return [];
+  return toEntries(
+    await getDb()
+      .select(DEPLOY_COLUMNS)
+      .from(varsTable)
+      .innerJoin(teamJunction, eq(teamJunction.varId, varsTable.id))
+      .where(
+        and(eq(varsTable.autoInject, true), eq(teamJunction.teamId, teamId)),
+      ),
+  );
+}
+
+/**
+ * The teams the current author may share a variable with: their own, minus the
+ * ones where they do not hold `manage_env` across the WHOLE team. Advisory - the
+ * save re-checks every id with the same predicate.
+ */
+export async function listSharedVarTeams(): Promise<
+  { id: string; name: string }[]
+> {
+  const user = await assertUser();
+  const teams = await teamsForUser(user.id);
+  const allowed = await Promise.all(
+    teams.map((t) => holdsTeamWideCapability(t.id, "manage_env")),
+  );
+  return teams
+    .filter((_, i) => allowed[i])
+    .map((t) => ({ id: t.id, name: t.name }));
 }

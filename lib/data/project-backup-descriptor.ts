@@ -6,8 +6,10 @@ import { decryptSecretOrThrow } from "../crypto";
 import { hostVolumeName, usesComposeStack } from "../utils";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import { loadEnvVarsForApp } from "./app-graph-load";
-import { loadInstanceEnv } from "./global-env";
-import { loadSharedVarsForApp } from "./shared-vars";
+import {
+  loadAutoInjectedVarsForApp,
+  loadSharedVarsForApp,
+} from "./shared-vars";
 import { connectAgent } from "../infra/agent-client";
 import type { App, VolumeMount } from "../types";
 
@@ -37,10 +39,10 @@ export interface ProjectBackupDescriptor {
 export async function appEnvSnapshot(
   appId: string,
 ): Promise<Record<string, string>> {
-  const [vars, sharedVars, instanceGlobals] = await Promise.all([
+  const [vars, sharedVars, autoInjected] = await Promise.all([
     loadEnvVarsForApp(appId),
     loadSharedVarsForApp(appId),
-    loadInstanceEnv(),
+    loadAutoInjectedVarsForApp(appId),
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries(
@@ -48,7 +50,7 @@ export async function appEnvSnapshot(
     appId,
     vars,
     sharedVars,
-    instanceGlobals,
+    autoInjected,
   )) {
     // Strict: this descriptor is what a RESTORE writes back as the app's real
     // `.env`, so a value that silently became "" would not break the backup -

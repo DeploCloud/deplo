@@ -389,17 +389,20 @@ type AppRuntime {
 A shared variable as seen from one app. `linked` is the explicit opt-in (the only thing that injects - ADR-0012); `inScope`/`scope` say whether an availability scope suggests it here.
 """
 type AppSharedVar {
+  """It lands here with no link and cannot be removed from this app."""
+  autoInject: Boolean
   id: ID
 
-  """
-  An availability scope (team-wide / environment / project) covers this app.
-  """
+  """An availability scope (team / environment / project) covers this app."""
   inScope: Boolean
   key: String
 
   """The app opted in - the var injects on its next deploy."""
   linked: Boolean
   masked: Boolean
+
+  """The team behind an auto-injected variable."""
+  ownerTeamName: String
 
   """The most specific covering scope: teamWide | environment | project."""
   scope: String
@@ -1938,22 +1941,6 @@ type GithubRepo {
   url: String
 }
 
-"""
-An instance-wide global environment variable. Secret values are masked unless revealed.
-"""
-type GlobalEnvVar {
-  createdAt: String
-  createdBy: VarAuthor
-  id: ID
-  isMasked: Boolean
-  key: String
-  targets: [EnvTarget!]
-  type: EnvVarType
-  updatedAt: String
-  updatedBy: VarAuthor
-  value: String
-}
-
 """A registered user in the instance-wide Users list (no email exposed)."""
 type GlobalUser {
   avatarColor: String
@@ -2821,9 +2808,6 @@ type Mutation {
   """
   deleteFolder(deleteApps: Boolean, id: ID!): Boolean
 
-  """Delete an instance-wide variable. Returns true."""
-  deleteInstanceEnv(id: String!): Boolean
-
   """Remove a channel. Its subscribed alerts go with it."""
   deleteNotificationChannel(id: ID!): Boolean
 
@@ -3683,11 +3667,6 @@ type Mutation {
   upsertEnv(input: UpsertEnvInput!): EnvVar
 
   """
-  Create or update an instance-wide variable (every team). Instance admin only.
-  """
-  upsertInstanceEnv(input: UpsertGlobalEnvInput!): GlobalEnvVar
-
-  """
   Re-check the domain's DNS and (re)issue its certificate. A check that finds the host proxied through Cloudflare also moves a certificate-less domain onto the `cloudflare` provider.
   """
   verifyDomain(id: String!): Domain
@@ -4105,11 +4084,6 @@ type Query {
   hostPortsInUse(ports: [Int!]!, serverId: ID!): HostPortCheck
 
   """
-  Instance-wide env vars - injected into every app of every team. Instance admin only.
-  """
-  instanceEnv: [GlobalEnvVar!]
-
-  """
   This instance's own settings. A plain database read: it never dials a server, so it answers even when the fleet is down.
   """
   instanceSettings: InstanceSettings
@@ -4499,7 +4473,7 @@ enum S3TestStepStatus {
 }
 
 """
-Create (omit id) or update (provide id) one shared variable. It must be shared with something: teamWide, ≥1 environment, ≥1 project, or ≥1 app.
+Create (omit id) or update (provide id) one shared variable. It must be shared with something: ≥1 team, ≥1 environment, ≥1 project, or ≥1 app.
 """
 input SaveSharedVarInput {
   """
@@ -4511,7 +4485,11 @@ input SaveSharedVarInput {
   key: String!
   projectIds: [ID!]!
   targets: [EnvTarget!]
-  teamWide: Boolean!
+
+  """
+  Teams every app of which gets this variable. ONE team ⇒ it is only SUGGESTED there and the per-app link injects (ADR-0012); TWO OR MORE ⇒ it is injected into every app of every one of them, with no link, at the lowest precedence. The caller must hold `manage_env` across the whole of every team named here.
+  """
+  teamIds: [ID!]!
   type: EnvVarType!
   value: String!
 }
@@ -4959,24 +4937,41 @@ input SetUserTeamAccessInput {
 }
 
 """
-A shared environment variable (ADR-0010/0012). Secret values are masked. Team-wide / environment / project scopes say who it is AVAILABLE to; it injects only through explicit per-app links (opt-in).
+A shared environment variable (ADR-0010/0012/0027). Secret values are masked. Team / environment / project scopes say who it is AVAILABLE to, and it injects only through explicit per-app links (opt-in) - UNLESS `autoInject`, which is what reaching more than one team means.
 """
 type SharedVar {
   appIds: [ID!]
   apps: [SharedVarApp!]
+
+  """
+  Injects into every app of every team it reaches, with no per-app link, at the LOWEST precedence. True when it reaches more than one team.
+  """
+  autoInject: Boolean
   createdAt: String
   createdBy: VarAuthor
+
+  """
+  The viewer's team owns it. A variable shared IN from another team is read-only here, and its project/environment/app ids come back empty.
+  """
+  editable: Boolean
   environmentIds: [ID!]
   environments: [SharedVarEnvironment!]
   id: ID
   key: String
   masked: Boolean
+
+  """The owning team; null when the instance owns it."""
+  ownerTeam: SharedVarTeam
   projectIds: [ID!]
   projects: [SharedVarProject!]
 
   """Deploy runtimes this variable applies to."""
   targets: [EnvTarget!]
+  teamIds: [ID!]
+
+  """It reaches the VIEWER's team."""
   teamWide: Boolean
+  teams: [SharedVarTeam!]
   type: EnvVarType
   updatedAt: String
   updatedBy: VarAuthor
@@ -4999,6 +4994,11 @@ type SharedVarProject {
   id: ID
   name: String
   slug: String
+}
+
+type SharedVarTeam {
+  id: ID
+  name: String
 }
 
 input ShellLabelInput {
@@ -5239,13 +5239,6 @@ input UpdateUserAdminInput {
 
 input UpsertEnvInput {
   appId: String!
-  key: String!
-  targets: [EnvTarget!]
-  type: EnvVarType!
-  value: String!
-}
-
-input UpsertGlobalEnvInput {
   key: String!
   targets: [EnvTarget!]
   type: EnvVarType!

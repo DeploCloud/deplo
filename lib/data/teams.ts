@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   currentIdentity,
@@ -9,6 +9,8 @@ import {
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+  sharedEnvVars,
+  sharedEnvVarTeams,
   teams as teamsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
@@ -414,6 +416,16 @@ export async function createTeam(input: { name: string }): Promise<Team> {
         capability: c,
       })),
     );
+    // An instance-owned variable means instance-wide, not "the teams that existed
+    // on upgrade day" - so a team born now joins their reach set (ADR-0027).
+    const instanceVars = await tx
+      .select({ id: sharedEnvVars.id })
+      .from(sharedEnvVars)
+      .where(isNull(sharedEnvVars.teamId));
+    if (instanceVars.length > 0)
+      await tx
+        .insert(sharedEnvVarTeams)
+        .values(instanceVars.map((v) => ({ varId: v.id, teamId: t.id })));
     return t;
   });
   // Team ordering moved to the team_app_order/team_folder_order junctions

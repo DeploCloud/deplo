@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { resolveEnvEntries } from "./env-resolve";
 import type {
-  GlobalEnvEntryLike,
+  AutoInjectedEntry,
   SharedVarEntry,
   TargetedEnvEntry,
 } from "./env-resolve";
@@ -27,11 +27,11 @@ function shared(
   return { key, valueEnc: `enc(${tag})`, targets, type: "plain" };
 }
 
-function globalEntry(
+function autoInjected(
   key: string,
-  targets: GlobalEnvEntryLike["targets"],
+  targets: AutoInjectedEntry["targets"],
   tag = key,
-): GlobalEnvEntryLike {
+): AutoInjectedEntry {
   return { key, valueEnc: `enc(${tag})`, targets, type: "plain" };
 }
 
@@ -80,7 +80,7 @@ test("full precedence order: instance < app-own < linked shared", () => {
     APP,
     [envVar(key, [...ALL])],
     [shared(key, [...ALL], "link")],
-    [globalEntry(key, [...ALL], "instance")],
+    [autoInjected(key, [...ALL], "instance")],
   );
   // Emission is lowest-precedence first; the caller folds into an object so the
   // LAST wins.
@@ -111,7 +111,7 @@ test("instance globals apply to every app and sit lowest", () => {
     APP,
     [envVar(key, ["production"])],
     [],
-    [globalEntry(key, ["production"], "instance")],
+    [autoInjected(key, ["production"], "instance")],
   );
   assert.deepEqual(
     out.map((e) => e.valueEnc),
@@ -134,7 +134,7 @@ test("within the shared layer, the later entry wins on a key collision", () => {
   assert.equal(fold(out)["K"], "enc(newer)");
 });
 
-test("omitting instanceGlobals defaults to the app-own + shared behaviour", () => {
+test("omitting the auto-injected layer defaults to app-own + shared", () => {
   const vars = [envVar("X", ["production"])];
   assert.deepEqual(keys(resolveEnvEntries("production", APP, vars, [])), ["X"]);
 });
@@ -152,7 +152,7 @@ test("a preview override beats the app's own var AND a linked shared var", () =>
     APP,
     [envVar("DATABASE_URL", ["production", "preview"])],
     [shared("DATABASE_URL", ["production", "preview"], "team-default")],
-    [globalEntry("DATABASE_URL", ["production", "preview"], "instance")],
+    [autoInjected("DATABASE_URL", ["production", "preview"], "instance")],
     [{ key: "DATABASE_URL", valueEnc: "enc(scratch)", type: "plain" as const }],
   );
   assert.equal(fold(out)["DATABASE_URL"], "enc(scratch)");

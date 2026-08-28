@@ -85,7 +85,7 @@ function SharedVarEditForm({
             key: trimmedKey,
             value,
             type: secret ? "secret" : "plain",
-            teamWide: editing.teamWide,
+            teamIds: editing.teamIds,
             environmentIds: editing.environmentIds,
             projectIds: editing.projectIds,
             // `appIds` is deliberately ABSENT - see the doc comment above.

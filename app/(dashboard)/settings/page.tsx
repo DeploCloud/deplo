@@ -31,7 +31,16 @@ export default async function SettingsGeneralPage() {
   // The settings themselves, only for a principal who reaches the whole team.
   const [settings, deletion, twoFactor] = wholeTeam
     ? await Promise.all([getTeam(), canDeleteTeam(), membersWithoutTwoFactor()])
-    : [null, { allowed: false, onlyTeam: false }, { without: 0, total: 0 }];
+    : [
+        null,
+        {
+          allowed: false,
+          onlyTeam: false,
+          sharedVars: 0,
+          sharedVarsOtherTeamsUse: 0,
+        },
+        { without: 0, total: 0 },
+      ];
 
   // The crown, not the rank: an assigned owner may hand out the owner role but
   // may not hand over the team itself (lib/data/team-ownership.ts).
@@ -96,6 +105,8 @@ export default async function SettingsGeneralPage() {
                 teamName={team.name}
                 onlyTeam={deletion.onlyTeam}
                 canDelete={deletion.allowed}
+                sharedVars={deletion.sharedVars}
+                sharedVarsOtherTeamsUse={deletion.sharedVarsOtherTeamsUse}
                 canTransfer={canTransfer}
                 candidates={candidates}
                 viewerTwoFactorEnabled={viewer?.twoFactorEnabled ?? false}

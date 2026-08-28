@@ -39,6 +39,8 @@ export function TeamDangerZone({
   teamName,
   onlyTeam,
   canDelete,
+  sharedVars,
+  sharedVarsOtherTeamsUse,
   canTransfer,
   candidates,
   viewerTwoFactorEnabled,
@@ -47,12 +49,21 @@ export function TeamDangerZone({
   teamName: string;
   onlyTeam: boolean;
   canDelete: boolean;
+  /** Shared variables this team owns - they go with it. */
+  sharedVars: number;
+  /** How many of those are landing in ANOTHER team's apps right now. */
+  sharedVarsOtherTeamsUse: number;
   /** Only the team's primary owner may hand it over (lib/data/team-ownership.ts). */
   canTransfer: boolean;
   candidates: TransferCandidate[];
   viewerTwoFactorEnabled: boolean;
 }) {
   const router = useRouter();
+  // The one thing on this screen that reaches OUTSIDE the team being deleted.
+  const sharedVarsCaveat =
+    sharedVarsOtherTeamsUse > 0
+      ? ` It also deletes ${sharedVars} shared variable${sharedVars === 1 ? "" : "s"} this team owns, ${sharedVarsOtherTeamsUse} of which ${sharedVarsOtherTeamsUse === 1 ? "is" : "are"} landing in another team's apps right now - ${sharedVarsOtherTeamsUse === 1 ? "it disappears" : "they disappear"} there on their next deploy.`
+      : "";
 
   return (
     <Card className="border-destructive/40">
@@ -100,7 +111,7 @@ export function TeamDangerZone({
                 </Button>
               }
               title="Delete team?"
-              description={`This tears down every app and database of ${teamName} (data volumes included) and permanently removes its folders, projects, domains, environment variables, members and every backup it has stored, wherever it stored it. Cleanup continues in the background. This cannot be undone.`}
+              description={`This tears down every app and database of ${teamName} (data volumes included) and permanently removes its folders, projects, domains, environment variables, members and every backup it has stored, wherever it stored it.${sharedVarsCaveat} Cleanup continues in the background. This cannot be undone.`}
               confirmLabel="Delete team"
               successMessage="Team deleted"
               confirmText={teamName}

@@ -504,8 +504,12 @@ test("the health check comes across, and what does not fit is a note", async () 
 
 test("shared variables come across at all three levels, linked to the apps", async () => {
   await importAll();
+  // The team level is now a reach ROW, not a boolean (ADR-0027).
   const shared = await db.execute(
-    "select key, team_wide from shared_env_vars order by key",
+    `select v.key, (t.team_id is not null) as team_wide
+       from shared_env_vars v
+       left join shared_env_var_teams t on t.var_id = v.id
+      order by v.key`,
   );
   assert.deepEqual(
     (shared.rows as { key: string; team_wide: boolean }[]).map((r) => [

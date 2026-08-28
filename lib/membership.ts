@@ -463,6 +463,39 @@ export async function requireTeamWide(what: string): Promise<void> {
 }
 
 /**
+ * Does the current principal hold `cap` across the WHOLE of `teamId` - a team that
+ * is NOT necessarily the active one? The question a cross-team share has to ask of
+ * every team it is offered to (ADR-0027).
+ *
+ * Four gates, all load-bearing, and `membershipFor` answers only the last two:
+ * `clampToToken` deliberately bails out for a team other than the request's, so it
+ * would hand back the MEMBER's capabilities and ignore the token's entirely.
+ */
+export async function holdsTeamWideCapability(
+  teamId: string,
+  cap: Capability,
+): Promise<boolean> {
+  const user = await getCurrentUser();
+  if (!user) return false;
+  const token = currentIdentity()?.token;
+  if (token) {
+    if (!token.capabilities.includes(cap)) return false;
+    // Breadth, not depth: a token reaching this team through ONE project does not
+    // hold it, and `scope.teamIds` cannot tell the two apart.
+    if (token.scope && !token.scope.wholeTeamIds.includes(teamId)) return false;
+  }
+  // A role scoped to a folder or a project inside that team is not team-wide there.
+  if ((await memberScopeFor(user.id, teamId)) != null) return false;
+  try {
+    const m = await membershipFor(user.id, teamId);
+    return Boolean(m?.capabilities.includes(cap));
+  } catch {
+    // Not a member, or an unmet 2FA mandate in that team: either way, no.
+    return false;
+  }
+}
+
+/**
  * The CURRENT caller's reach in the active team, or null when they reach all of it -
  * their own nodes when their membership carries a set, their role's scope
  * otherwise ({@link memberScopeFor}).

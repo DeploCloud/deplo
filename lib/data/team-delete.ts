@@ -1,12 +1,14 @@
 import "server-only";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   apps as appsTable,
   appPreviews as appPreviewsTable,
   databases as databasesTable,
   installedPlugins as installedPluginsTable,
+  sharedEnvVars,
+  sharedEnvVarTeams,
   teams as teamsTable,
   backupDestination as backupDestinationTable,
 } from "../db/schema/control-plane";
@@ -88,12 +90,47 @@ async function deleteTeamContext(): Promise<DeleteTeamContext> {
 export async function canDeleteTeam(): Promise<{
   allowed: boolean;
   onlyTeam: boolean;
+  /** Shared variables this team OWNS - they die with it (ADR-0027). */
+  sharedVars: number;
+  /** How many of those another team is running on right now. */
+  sharedVarsOtherTeamsUse: number;
 }> {
   try {
-    const { allowed, onlyTeam } = await deleteTeamContext();
-    return { allowed, onlyTeam };
+    const { allowed, onlyTeam, teamId } = await deleteTeamContext();
+    // A variable this team owns can reach another team's apps, and the FK cascade
+    // takes it with the team. Nothing else on this screen can surprise another
+    // team, so it is the one count worth naming before the button.
+    const owned = await getDb()
+      .select({ id: sharedEnvVars.id })
+      .from(sharedEnvVars)
+      .where(eq(sharedEnvVars.teamId, teamId));
+    const foreign = owned.length
+      ? await getDb()
+          .selectDistinct({ varId: sharedEnvVarTeams.varId })
+          .from(sharedEnvVarTeams)
+          .where(
+            and(
+              inArray(
+                sharedEnvVarTeams.varId,
+                owned.map((v) => v.id),
+              ),
+              ne(sharedEnvVarTeams.teamId, teamId),
+            ),
+          )
+      : [];
+    return {
+      allowed,
+      onlyTeam,
+      sharedVars: owned.length,
+      sharedVarsOtherTeamsUse: foreign.length,
+    };
   } catch {
-    return { allowed: false, onlyTeam: false };
+    return {
+      allowed: false,
+      onlyTeam: false,
+      sharedVars: 0,
+      sharedVarsOtherTeamsUse: 0,
+    };
   }
 }
 

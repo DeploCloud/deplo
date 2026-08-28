@@ -72,8 +72,10 @@ export interface ProjectRef extends WizardRef {
 type StepId = "variable" | "scope" | "details" | "review";
 
 /** The three sharing scopes. Multi-select - a variable may use any combination.
- *  Team/projects only make the variable AVAILABLE (each app still opts in from
- *  its own Environment tab - ADR-0012); "Specific apps" adds it right away. */
+ *  Teams/projects only make the variable AVAILABLE (each app still opts in from
+ *  its own Environment tab - ADR-0012), except a Teams scope covering MORE than
+ *  one team, which adds it everywhere by itself (ADR-0027). "Specific apps" adds
+ *  it right away. */
 type ScopeId = "team" | "projects" | "apps";
 
 const SCOPES: {
@@ -84,9 +86,9 @@ const SCOPES: {
 }[] = [
   {
     id: "team",
-    title: "The whole team",
+    title: "Teams",
     blurb:
-      "Suggested to every app in the team - each app still adds it explicitly, nothing is injected automatically.",
+      "Offered to every app in the teams you pick. Pick one and each app still adds it explicitly; pick two or more and it is added to all of them.",
     icon: Users,
   },
   {
@@ -103,6 +105,12 @@ const SCOPES: {
     icon: AppWindow,
   },
 ];
+
+/** A team the author may share with (they hold manage_env across all of it). */
+export interface TeamRef {
+  id: string;
+  name: string;
+}
 
 /** Creating from inside an app: that app is the destination, fixed. */
 export interface WizardAppContext {
@@ -123,7 +131,7 @@ interface ProjectScope {
 function initialScopes(editing: SharedVarDTO | null): ScopeId[] {
   if (!editing) return [];
   const out: ScopeId[] = [];
-  if (editing.teamWide) out.push("team");
+  if (editing.teamIds.length > 0) out.push("team");
   if (editing.projectIds.length > 0 || editing.environmentIds.length > 0)
     out.push("projects");
   if (editing.appIds.length > 0) out.push("apps");
@@ -166,6 +174,7 @@ export function SharedVarDialog({
   apps,
   projects,
   environments,
+  teams,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -173,6 +182,7 @@ export function SharedVarDialog({
   apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
+  teams: TeamRef[];
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -197,6 +207,7 @@ export function SharedVarDialog({
           apps={apps}
           projects={projects}
           environments={environments}
+          teams={teams}
           onOpenChange={onOpenChange}
         />
       </DialogContent>
@@ -213,6 +224,7 @@ export function SharedVarWizardBody({
   apps,
   projects,
   environments,
+  teams,
   appContext,
   onOpenChange,
 }: {
@@ -221,6 +233,8 @@ export function SharedVarWizardBody({
   apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
+  /** The teams the author may share with. The active team is always among them. */
+  teams: TeamRef[];
   appContext?: WizardAppContext;
   /** Closes on save and re-opens on a refusal, exactly like a Dialog's own. */
   onOpenChange: (v: boolean) => void;
@@ -239,6 +253,11 @@ export function SharedVarWizardBody({
   const [projectScopes, setProjectScopes] = React.useState<
     Record<string, ProjectScope>
   >(() => initialProjectScopes(editing, environments));
+  // Every team the author may reach, ticked: sharing with all of them is the
+  // default, and narrowing is the deliberate act (ADR-0027).
+  const [teamIds, setTeamIds] = React.useState<string[]>(() =>
+    editing ? editing.teamIds : teams.map((t) => t.id),
+  );
   const [appIds, setAppIds] = React.useState<string[]>(editing?.appIds ?? []);
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
@@ -261,9 +280,12 @@ export function SharedVarWizardBody({
     apps: inApp || scopes.includes("apps"),
   };
 
-  // Nothing to configure for a team-wide-only variable, so it never sees Details.
+  // With one team on offer, "Teams" IS that team and there is nothing to pick.
   // In an app context the destination is settled, so there is nothing to review.
-  const needsDetails = picked.projects || (!inApp && picked.apps);
+  const needsDetails =
+    (picked.team && teams.length > 1) ||
+    picked.projects ||
+    (!inApp && picked.apps);
   const steps: StepId[] = [
     "variable",
     "scope",
@@ -284,6 +306,7 @@ export function SharedVarWizardBody({
     // This app is always a destination, so an app context can never be empty.
     scope: inApp || scopes.length > 0,
     details:
+      (!picked.team || teamIds.length > 0) &&
       (!picked.projects || projectsReady) &&
       (inApp || !picked.apps || appIds.length > 0),
     review: true,
@@ -297,7 +320,7 @@ export function SharedVarWizardBody({
   // Only the scopes actually picked reach the server: unchecking "Projects"
   // drops its details rather than saving them invisibly.
   const scoped = {
-    teamWide: picked.team,
+    teamIds: picked.team ? teamIds : [],
     projectIds: picked.projects
       ? checkedProjects.filter(([, s]) => s.mode === "all").map(([id]) => id)
       : [],
@@ -486,6 +509,16 @@ export function SharedVarWizardBody({
 
             {s === "details" && (
               <div className="space-y-6">
+                {picked.team && teams.length > 1 && (
+                  <TeamsSection
+                    teams={teams}
+                    selected={teamIds}
+                    onChange={setTeamIds}
+                  />
+                )}
+                {picked.team && teams.length > 1 && picked.projects && (
+                  <hr className="border-border" />
+                )}
                 {picked.projects && (
                   <ProjectsSection
                     projects={projects}
@@ -511,7 +544,8 @@ export function SharedVarWizardBody({
               <Review
                 varKeys={filled.map((r) => r.key.trim())}
                 secret={secret}
-                teamWide={scoped.teamWide}
+                teams={teams}
+                teamIds={scoped.teamIds}
                 projects={projects}
                 environments={environments}
                 projectScopes={picked.projects ? projectScopes : {}}
@@ -908,7 +942,8 @@ function ProjectTile({ color }: { color: string | null }) {
 function Review({
   varKeys,
   secret,
-  teamWide,
+  teams,
+  teamIds,
   projects,
   environments,
   projectScopes,
@@ -917,7 +952,8 @@ function Review({
 }: {
   varKeys: string[];
   secret: boolean;
-  teamWide: boolean;
+  teams: TeamRef[];
+  teamIds: string[];
   projects: WizardRef[];
   environments: TeamEnvironment[];
   projectScopes: Record<string, ProjectScope>;
@@ -954,14 +990,20 @@ function Review({
     }),
   );
   const appChips = appIds.map((id) => ({ id, label: name(apps, id) }));
-  const teamChips = teamWide
-    ? [
-        {
-          id: "team",
-          label: `Every app in the team can add it - ${appCount(apps.length)} today`,
-        },
-      ]
-    : [];
+  // `apps` only counts the ACTIVE team, so a multi-team reach names the teams
+  // rather than pretending to a total it cannot see.
+  const teamNames = teamIds.map(
+    (id) => teams.find((t) => t.id === id)?.name ?? id,
+  );
+  const teamChips =
+    teamIds.length === 1
+      ? [
+          {
+            id: teamIds[0],
+            label: `Every app in ${teamNames[0]} can add it - ${appCount(apps.length)} today`,
+          },
+        ]
+      : teamIds.map((id, i) => ({ id, label: teamNames[i] }));
 
   return (
     <div className="space-y-4">
@@ -984,9 +1026,70 @@ function Review({
         <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Available to
         </p>
-        <ChipGroup title="Whole team" chips={teamChips} />
+        <ChipGroup
+          title={teamIds.length > 1 ? "Added to every app in" : "Teams"}
+          chips={teamChips}
+        />
+        {teamIds.length > 1 && (
+          <p className="text-xs text-muted-foreground">
+            No opt-in: every app in {list(teamNames)} gets it on its next
+            deploy. An app&apos;s own value for the same name still wins.
+            {secret &&
+              " Being a secret, the value lands in those teams' containers."}
+          </p>
+        )}
         <ChipGroup title="Projects" chips={projectChips} />
         <ChipGroup title="Added to these apps" chips={appChips} />
+      </div>
+    </div>
+  );
+}
+
+/** "a, b and c" - the plain-English join the review sentence reads with. */
+function list(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** Details for the "Teams" scope: every team the author may share with. */
+function TeamsSection({
+  teams,
+  selected,
+  onChange,
+}: {
+  teams: TeamRef[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const set = new Set(selected);
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-sm font-medium">Teams</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Pick one and each app adds it explicitly. Pick two or more and it is
+          added to every app in all of them.
+        </p>
+      </div>
+      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+        {teams.map((t) => (
+          <label
+            key={t.id}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+          >
+            <Checkbox
+              checked={set.has(t.id)}
+              onCheckedChange={(c) =>
+                onChange(
+                  c === true
+                    ? [...selected, t.id]
+                    : selected.filter((id) => id !== t.id),
+                )
+              }
+            />
+            <span className="truncate text-sm">{t.name}</span>
+          </label>
+        ))}
       </div>
     </div>
   );

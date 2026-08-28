@@ -765,8 +765,8 @@ _Avoid_: execution, invocation, cron job (that is the schedule), interrupted (us
 
 **Env target**:
 The axis (`production` | `preview`) that decides which runtime an env var reaches. It
-applies to per-app vars, instance globals, and **Shared variables** (the orthogonal
-runtime axis, alongside their sharing modes). The third value, `development`, died with
+applies to per-app vars and **Shared variables** (the orthogonal runtime axis,
+alongside their sharing modes). The third value, `development`, died with
 dev mode (migration 0041): its only consumer was the dev container's env resolution.
 Since the target picker was removed, every var is written with BOTH targets, so a **pull
 request preview** inherits an app's variables in full, which is exactly what makes previews
@@ -789,8 +789,9 @@ A variable whose value is **write-only and immutable**. It is masked in every DT
 reveal path of any kind, and once stored it cannot be edited: not its value, not its key,
 not its type. Rotating one is **delete + add again**. The reverse - marking a `plain`
 variable secret - is always allowed, because hardening is never the thing you gate. The rule
-holds on all four layers (an app's own vars, **shared variables**, instance globals, preview
-overrides): `upsertEnv` / `renameEnv` / `saveSharedVar` / `upsertInstanceEnv` /
+holds on every layer (an app's own vars, **shared variables** - including the
+auto-injected and instance-owned ones - and preview overrides): `upsertEnv` /
+`renameEnv` / `saveSharedVar` /
 `setPreviewEnvVar` refuse it, `setAppEnv` skips it, `importEnv` counts it in
 `skippedSecrets`. A shared secret can still be **re-shared** (who receives it is not the
 value). It exists because `type` is the sole authority for whether a read decrypts, so a
@@ -798,22 +799,27 @@ downgrade to `plain` was a read-back that `manage_env` alone could perform.
 _Avoid_: "reveal a variable" (there is nothing to reveal), "edit the secret" (it is delete +
 add), masked as a synonym for secret (`masked` is what the DTO does about it).
 
-**Shared variable** (ADR-0010, opt-in per ADR-0012):
-ONE variable owned by a team, the unified replacement for shared-env groups,
-environment-scoped vars, and team-global vars. It INJECTS into an app through exactly one
-mechanism: the explicit **per-app link** (the opt-in - attached from the app's
-Add-variable modal, a shared row's actions, or the wizard's "Specific apps" step). The
-three non-exclusive **availability scopes** - **team-wide** (every app in the team),
-**environment** (apps living in one of the selected **Environments**), **project** (apps
-in one of the selected **Projects**) - only say who the variable is SUGGESTED to; they
-never auto-apply, and they don't gate linking (any team var is linkable from any app).
-At least one scope or link is required. An orthogonal **env target** axis gates the
-runtime (defaults to both). Deploy precedence (low→high): instance globals < an
-app's own var < linked shared var. Managed on the Variables page's **Shared** tab
-(create / edit / assign the scopes). Stored in `shared_env_vars` (+ target / environment
-/ project / app junctions). id prefix `svar_`.
+**Shared variable** (ADR-0010, opt-in per ADR-0012, multi-team per ADR-0027):
+ONE variable, the unified replacement for shared-env groups, environment-scoped vars,
+team-global vars AND the old instance globals. It normally INJECTS into an app through
+exactly one mechanism: the explicit **per-app link** (the opt-in - attached from the
+app's Add-variable modal, a shared row's actions, or the wizard's "Specific apps" step).
+The three non-exclusive **availability scopes** - **teams** (every app in each selected
+team), **environment** (apps living in one of the selected **Environments**), **project**
+(apps in one of the selected **Projects**) - only say who the variable is SUGGESTED to;
+they don't gate linking (any variable a team sees is linkable from its apps). At least
+one scope or link is required. **The one exception is reach: a variable covering MORE
+than one team - or owned by the instance (`team_id` NULL) - is AUTO-INJECTED into every
+app of every team it reaches, with no link, at the lowest precedence** (`auto_inject`,
+a column and never `count(teams) > 1`). `team_id` is OWNERSHIP: only the owner edits,
+every team it reaches sees it read-only and may link it. An orthogonal **env target**
+axis gates the runtime (defaults to both). Deploy precedence (low→high): auto-injected
+< an app's own var < linked shared var. Managed on the Variables page's **Shared** tab
+(create / edit / assign the scopes). Stored in `shared_env_vars` (+ target / team /
+environment / project / app junctions). id prefix `svar_`.
 _Avoid_: shared env group (the old model), sharing mode (pre-0012 auto-apply language),
-shared variables as a single whole-set concept.
+instance global / "All teams" variable (there is one model now), shared variables as a
+single whole-set concept.
 
 **Domain**:
 A hostname routed to an app - one row per `(hostname, path)`, and the **sole** routing

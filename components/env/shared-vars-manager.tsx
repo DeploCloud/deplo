@@ -10,6 +10,7 @@ import {
   AppWindow,
   Boxes,
   Layers,
+  Users,
 } from "lucide-react";
 import {
   Table,
@@ -19,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -42,11 +44,21 @@ import {
   SharedVarDialog,
   type AppRef,
   type ProjectRef,
+  type TeamRef,
 } from "@/components/env/shared-var-wizard";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
+
+/** The "Shared with" facet, as one predicate both the options and the filter use. */
+function matchSharing(v: SharedVarDTO, value: string): boolean {
+  if (value === "team") return v.teamIds.length > 0;
+  if (value === "automatic") return v.autoInject;
+  if (value === "project") return v.projectIds.length > 0;
+  if (value === "environment") return v.environmentIds.length > 0;
+  return v.appIds.length > 0;
+}
 
 /**
  * The unified "Shared" tab: every shared variable of the team with create / edit /
@@ -58,12 +70,15 @@ export function SharedVarsManager({
   apps,
   projects,
   environments,
+  teams,
 }: {
   vars: SharedVarDTO[];
   /** Every app in the active team - the wizard's "specific apps" scope. */
   apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
+  /** The teams the viewer may share a variable with (the wizard's Teams step). */
+  teams: TeamRef[];
 }) {
   // `wizard` is the scope editor (and the creator: `editing: null`); `editing` is
   // the small value form the pencil opens.
@@ -109,29 +124,13 @@ export function SharedVarsManager({
       icon: Share2,
       info: "How the variable is shared. A variable can use several modes at once - it then shows under each.",
       options: [
-        { value: "team", label: "The whole team" },
+        { value: "team", label: "Teams" },
+        { value: "automatic", label: "Added automatically" },
         { value: "project", label: "Projects" },
         { value: "environment", label: "Environments" },
         { value: "app", label: "Specific apps" },
-      ].filter((o) =>
-        rows.some((v) =>
-          o.value === "team"
-            ? v.teamWide
-            : o.value === "project"
-              ? v.projectIds.length > 0
-              : o.value === "environment"
-                ? v.environmentIds.length > 0
-                : v.appIds.length > 0,
-        ),
-      ),
-      match: (v, value) =>
-        value === "team"
-          ? v.teamWide
-          : value === "project"
-            ? v.projectIds.length > 0
-            : value === "environment"
-              ? v.environmentIds.length > 0
-              : v.appIds.length > 0,
+      ].filter((o) => rows.some((v) => matchSharing(v, o.value))),
+      match: matchSharing,
     };
 
     const projectFacet: EnvFacet<SharedVarDTO> = {
@@ -268,7 +267,18 @@ export function SharedVarsManager({
                     <EnvValueCell value={v.value} masked={v.masked} />
                   </TableCell>
                   <TableCell>
-                    <SharedWithChips v={v} />
+                    <div className="flex flex-wrap items-center gap-1">
+                      {!v.editable && (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 text-[10px] font-normal"
+                        >
+                          <Users className="size-3" />
+                          {v.ownerTeam?.name ?? "Every team"}
+                        </Badge>
+                      )}
+                      <SharedWithChips v={v} />
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                     <SimpleTooltip
@@ -283,33 +293,44 @@ export function SharedVarsManager({
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <EnvEditButton
-                        secret={v.type === "secret"}
-                        label="Edit value"
-                        tooltip="Edit value"
-                        onClick={() => setEditing(v)}
-                      />
-                      <SimpleTooltip content="Change sharing">
+                    {v.editable ? (
+                      <div className="flex justify-end gap-1">
+                        <EnvEditButton
+                          secret={v.type === "secret"}
+                          label="Edit value"
+                          tooltip="Edit value"
+                          onClick={() => setEditing(v)}
+                        />
+                        <SimpleTooltip content="Change sharing">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => setWizard({ editing: v })}
+                            aria-label="Change sharing"
+                          >
+                            <Share2 className="size-4" />
+                          </Button>
+                        </SimpleTooltip>
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={() => setWizard({ editing: v })}
-                          aria-label="Change sharing"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteId(v.id)}
+                          aria-label="Delete"
                         >
-                          <Share2 className="size-4" />
+                          <Trash2 className="size-4" />
                         </Button>
-                      </SimpleTooltip>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteId(v.id)}
-                        aria-label="Delete"
+                      </div>
+                    ) : (
+                      /* Another team owns it: it reaches us, we do not edit it. */
+                      <SimpleTooltip
+                        content={`Owned by ${v.ownerTeam?.name ?? "an instance admin"}. Only they can change it.`}
                       >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
+                        <span className="text-xs text-muted-foreground">
+                          Read-only
+                        </span>
+                      </SimpleTooltip>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -332,6 +353,7 @@ export function SharedVarsManager({
       )}
       {wizard && (
         <SharedVarDialog
+          teams={teams}
           key={wizard.editing?.id ?? "new"}
           open
           onOpenChange={(v) => !v && setWizard(null)}

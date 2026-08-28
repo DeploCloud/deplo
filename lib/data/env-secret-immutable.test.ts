@@ -31,7 +31,6 @@ import {
   setAppEnv,
   upsertEnv,
 } from "./env";
-import { listInstanceEnv, upsertInstanceEnv } from "./global-env";
 import { listSharedVars, saveSharedVar } from "./shared-vars";
 import { listPreviewEnvVars, setPreviewEnvVar } from "./previews";
 
@@ -59,7 +58,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}${TRUNCATE_IDENTITY}
-    truncate table instance_env_vars, shared_env_vars restart identity cascade;`);
+    truncate table shared_env_vars restart identity cascade;`);
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
@@ -205,7 +204,7 @@ const sharedSecret = () =>
       key: "STRIPE_KEY",
       value: "sk_live",
       type: "secret",
-      teamWide: true,
+      teamIds: [TEAM_A],
       environmentIds: [],
       projectIds: [],
     }),
@@ -218,7 +217,7 @@ test("saveSharedVar refuses a value, key or type change on a secret", async () =
     key: "STRIPE_KEY",
     value: MASK,
     type: "secret" as const,
-    teamWide: true,
+    teamIds: [TEAM_A],
     environmentIds: [],
     projectIds: [],
   };
@@ -254,7 +253,7 @@ test("but a secret can still be RE-SHARED - that never exposes it", async () => 
       key: "STRIPE_KEY",
       value: MASK,
       type: "secret",
-      teamWide: false,
+      teamIds: [],
       environmentIds: [],
       projectIds: [],
       appIds: [APP],
@@ -271,20 +270,34 @@ test("but a secret can still be RE-SHARED - that never exposes it", async () => 
 /* Instance-wide and preview overrides                                 */
 /* ------------------------------------------------------------------ */
 
-test("upsertInstanceEnv refuses to edit a secret", async () => {
-  await as1(() =>
-    upsertInstanceEnv({ key: "GLOBAL", value: "g", type: "secret" }),
-  );
+test("an INSTANCE-owned secret refuses the same edit", async () => {
+  // team_id NULL: the migrated "All teams" globals, editable only by an instance
+  // admin. The freeze is the same one every other layer has.
+  const now = new Date().toISOString();
+  await pg.exec(`
+    insert into shared_env_vars
+      (id, team_id, key, value_enc, type, auto_inject, created_at, updated_at)
+      values ('svar_ig', null, 'GLOBAL', 'x', 'secret', true, '${now}', '${now}');
+    insert into shared_env_var_teams (var_id, team_id)
+      values ('svar_ig', '${TEAM_A}');
+  `);
+  // USER_1 is the instance admin here, so the refusal is the SECRET freeze, not
+  // the ownership gate.
   await assert.rejects(
     () =>
       as1(() =>
-        upsertInstanceEnv({ key: "GLOBAL", value: MASK, type: "plain" }),
+        saveSharedVar({
+          id: "svar_ig",
+          key: "GLOBAL",
+          value: MASK,
+          type: "plain",
+          teamIds: [TEAM_A],
+          environmentIds: [],
+          projectIds: [],
+        }),
       ),
     /cannot be edited/i,
   );
-  const [v] = await as1(() => listInstanceEnv());
-  assert.equal(v!.type, "secret");
-  assert.equal(v!.masked, true);
 });
 
 test("setPreviewEnvVar refuses to overwrite a secret override", async () => {

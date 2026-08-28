@@ -3434,7 +3434,7 @@ async function importSharedVars(
         // Write-only when it looks like a credential, exactly as a service's
         // own variables are - see the service import.
         type,
-        teamWide: opts.teamWide ?? false,
+        teamIds: opts.teamWide ? [opts.teamId] : [],
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
         appIds: opts.appIds,

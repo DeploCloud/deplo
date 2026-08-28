@@ -47,6 +47,7 @@ import {
 import {
   SharedVarWizardBody,
   type ProjectRef,
+  type TeamRef,
 } from "@/components/env/shared-var-wizard";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
@@ -72,6 +73,7 @@ export function EnvVarDialog({
   canCreateShared = false,
   projects = [],
   environments = [],
+  teams = [],
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -85,6 +87,7 @@ export function EnvVarDialog({
   canCreateShared?: boolean;
   projects?: ProjectRef[];
   environments?: TeamEnvironment[];
+  teams?: TeamRef[];
 }) {
   // A secret has no edit form: it is write-only, and the pencil that opens this is
   // already disabled for a secret row (EnvEditButton).
@@ -109,6 +112,7 @@ export function EnvVarDialog({
       canCreateShared={canCreateShared}
       projects={projects}
       environments={environments}
+      teams={teams}
     />
   );
 }
@@ -290,6 +294,7 @@ function AddDialog({
   canCreateShared,
   projects,
   environments,
+  teams,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -299,6 +304,7 @@ function AddDialog({
   canCreateShared: boolean;
   projects: ProjectRef[];
   environments: TeamEnvironment[];
+  teams: TeamRef[];
 }) {
   const [tab, setTab] = React.useState<AddTab>("standalone");
   // The creator is not a tab - it is where the Shared tab's button leads, and
@@ -381,6 +387,7 @@ function AddDialog({
               ) : (
                 canCreateShared && (
                   <SharedVarWizardBody
+                    teams={teams}
                     editing={null}
                     apps={[]}
                     projects={projects}
@@ -638,7 +645,7 @@ function SharedTab({
 
 /** Why a not-yet-added variable is suggested here - its availability scope. */
 const SCOPE_HINT: Record<string, string> = {
-  teamWide: "Shared with the whole team",
+  teamWide: "Shared with your team",
   project: "Shared with this app's project",
   environment: "Shared with this app's environment",
 };

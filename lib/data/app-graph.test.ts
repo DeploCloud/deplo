@@ -132,7 +132,7 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
       value: "1",
       type: "plain",
       targets: ["production"],
-      teamWide: true,
+      teamIds: [TEAM_A],
       environmentIds: [],
       projectIds: [],
     });
@@ -431,7 +431,7 @@ test("shared-var link attach/detach toggles the junction", async () => {
       value: "1",
       type: "plain",
       targets: ["production"],
-      teamWide: true,
+      teamIds: [TEAM_A],
       environmentIds: [],
       projectIds: [],
     });

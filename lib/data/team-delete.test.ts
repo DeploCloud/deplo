@@ -253,7 +253,12 @@ test("canDeleteTeam reports the gate and the only-team guard", async () => {
     await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
       canDeleteTeam(),
     ),
-    { allowed: true, onlyTeam: true },
+    {
+      allowed: true,
+      onlyTeam: true,
+      sharedVars: 0,
+      sharedVarsOtherTeamsUse: 0,
+    },
   );
 
   // With a second team the guard lifts.
@@ -262,7 +267,12 @@ test("canDeleteTeam reports the gate and the only-team guard", async () => {
     await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
       canDeleteTeam(),
     ),
-    { allowed: true, onlyTeam: false },
+    {
+      allowed: true,
+      onlyTeam: false,
+      sharedVars: 0,
+      sharedVarsOtherTeamsUse: 0,
+    },
   );
 
   // A plain member is never allowed.
@@ -270,7 +280,12 @@ test("canDeleteTeam reports the gate and the only-team guard", async () => {
     await runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () =>
       canDeleteTeam(),
     ),
-    { allowed: false, onlyTeam: true },
+    {
+      allowed: false,
+      onlyTeam: true,
+      sharedVars: 0,
+      sharedVarsOtherTeamsUse: 0,
+    },
   );
 });
 

@@ -41,6 +41,7 @@ import {
   SharedVarDialog,
   type AppRef,
   type ProjectRef,
+  type TeamRef,
 } from "@/components/env/shared-var-wizard";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -202,6 +203,7 @@ export function AllAppsEnvManager({
   apps,
   projects,
   environments,
+  teams,
   canReorderProjects,
 }: {
   groups: AppEnvGroup[];
@@ -213,6 +215,7 @@ export function AllAppsEnvManager({
   /** Projects in the team's own order - the order the sections come out in. */
   projects: ProjectRef[];
   environments: TeamEnvironment[];
+  teams: TeamRef[];
   /** The viewer may change the TEAM-WIDE project order (manage_team / instance
    *  admin) - gates the section drag handles. */
   canReorderProjects: boolean;
@@ -643,6 +646,7 @@ export function AllAppsEnvManager({
       )}
       {sharedScoping && (
         <SharedVarDialog
+          teams={teams}
           key={sharedScoping.id}
           open
           onOpenChange={(v) => !v && setSharedScoping(null)}

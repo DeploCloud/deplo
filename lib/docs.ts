@@ -72,11 +72,10 @@ export const DOCS = {
   "env.overview": "guides/config/environment-variables",
   "env.types": "guides/config/environment-variables#name-it-and-set-the-type",
   "env.allApps": "guides/config/environment-variables#see-everything-at-once",
-  "env.instanceWide":
-    "guides/config/environment-variables#instance-wide-variables",
   "env.previewOverrides":
     "guides/config/environment-variables#preview-overrides",
   "env.shared": "guides/config/shared-variables",
+  "env.sharedTeams": "guides/config/shared-variables#set-availability",
 
   "databases.overview": "guides/data/databases",
   "databases.engine": "guides/data/databases#pick-the-engine",
