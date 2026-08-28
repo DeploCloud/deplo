@@ -1084,7 +1084,7 @@ export async function loadAutoInjectedVarsForApp(
  * save re-checks every id with the same predicate.
  */
 export async function listSharedVarTeams(): Promise<
-  { id: string; name: string }[]
+  { id: string; name: string; avatarUrl: string | null }[]
 > {
   const user = await assertUser();
   const teams = await teamsForUser(user.id);
@@ -1093,5 +1093,5 @@ export async function listSharedVarTeams(): Promise<
   );
   return teams
     .filter((_, i) => allowed[i])
-    .map((t) => ({ id: t.id, name: t.name }));
+    .map((t) => ({ id: t.id, name: t.name, avatarUrl: t.avatarUrl }));
 }

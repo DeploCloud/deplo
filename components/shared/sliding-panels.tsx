@@ -6,6 +6,11 @@ import * as React from "react";
  *  stays inside its 85vh box - the chrome (header + tabs + footer) is ~14rem. */
 export const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
 
+/** The same, for a track nested INSIDE a panel of another one: the chrome is a
+ *  back row and a second header taller (measured 276px), so the outer 14rem
+ *  allowance overflows the modal and clips the inner footer. */
+export const PANEL_BODY_MAX_NESTED = "max-h-[calc(85vh-18rem)]";
+
 /**
  * Panels on ONE horizontal track that slides between them, with the viewport's
  * height easing to whichever panel is showing - so the slide glides instead of

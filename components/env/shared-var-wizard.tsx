@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { AppLogo } from "@/components/shared/project-logo";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, readableTextColor } from "@/lib/utils";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
@@ -33,6 +34,7 @@ import { ChoiceCard, CheckMark } from "@/components/shared/choice-card";
 import {
   SlidingPanels,
   PANEL_BODY_MAX,
+  PANEL_BODY_MAX_NESTED,
 } from "@/components/shared/sliding-panels";
 import {
   EnvRowsEditor,
@@ -110,6 +112,7 @@ const SCOPES: {
 export interface TeamRef {
   id: string;
   name: string;
+  avatarUrl: string | null;
 }
 
 /** Creating from inside an app: that app is the destination, fixed. */
@@ -444,7 +447,7 @@ export function SharedVarWizardBody({
           <div
             className={cn(
               "space-y-4 overflow-y-auto px-6 py-4",
-              PANEL_BODY_MAX,
+              inApp ? PANEL_BODY_MAX_NESTED : PANEL_BODY_MAX,
             )}
           >
             {s === "variable" && (
@@ -995,31 +998,48 @@ function Review({
   const teamNames = teamIds.map(
     (id) => teams.find((t) => t.id === id)?.name ?? id,
   );
+  const teamMark = (id: string) => {
+    const t = teams.find((x) => x.id === id);
+    return t ? (
+      <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="xs" />
+    ) : undefined;
+  };
   const teamChips =
     teamIds.length === 1
       ? [
           {
             id: teamIds[0],
+            icon: teamMark(teamIds[0]),
             label: `Every app in ${teamNames[0]} can add it - ${appCount(apps.length)} today`,
           },
         ]
-      : teamIds.map((id, i) => ({ id, label: teamNames[i] }));
+      : teamIds.map((id, i) => ({
+          id,
+          icon: teamMark(id),
+          label: teamNames[i],
+        }));
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          {varKeys.length === 1 ? "Variable" : `${varKeys.length} variables`}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {varKeys.map((k) => (
-            <code key={k} className="font-mono text-sm font-medium">
-              {k}
-            </code>
-          ))}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            {varKeys.length === 1 ? "Variable" : `${varKeys.length} variables`}
+          </p>
+          {/* The type is one choice for the whole batch, so it is named once
+              here rather than repeated on every row. */}
           <Badge variant="muted" className="text-[10px]">
             {secret ? "Secret" : "Plain"}
           </Badge>
+        </div>
+        {/* One per line: side by side, three names in the same font ran together
+            into one string with no telling where each ended. */}
+        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {varKeys.map((k) => (
+            <p key={k} className="truncate px-3 py-2 font-mono text-xs">
+              {k}
+            </p>
+          ))}
         </div>
       </div>
       <div className="space-y-3">
@@ -1061,21 +1081,51 @@ function TeamsSection({
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
+  const [q, setQ] = React.useState("");
+  const shown = React.useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return teams;
+    return teams.filter((t) => t.name.toLowerCase().includes(needle));
+  }, [teams, q]);
   const set = new Set(selected);
+
   return (
-    <div className="space-y-2">
+    <section className="space-y-2">
       <div>
-        <p className="text-sm font-medium">Teams</p>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h4 className="text-sm font-medium">Teams</h4>
+        <p className="mt-1 text-xs text-muted-foreground">
           Pick one and each app adds it explicitly. Pick two or more and it is
-          added to every app in all of them.
+          added to every app in all of them.{" "}
+          {/* Search hides rows, never selections - the count is the only thing
+              that can vouch for a team the current needle filtered out of view. */}
+          {selected.length > 0 && `${selected.length} selected.`}
         </p>
       </div>
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-        {teams.map((t) => (
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search teams"
+          aria-label="Search teams"
+          className="h-9 pl-9"
+          // A filter box, not a field of the form: Enter here would otherwise
+          // advance the wizard mid-search.
+          onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+        />
+      </div>
+      {shown.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No team matches &ldquo;{q.trim()}&rdquo;.
+        </p>
+      )}
+      {/* No scroller of its own: the dialog's body is the ONE scrolling region,
+          so a long team list never traps the wheel in a nested box. */}
+      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+        {shown.map((t) => (
           <label
             key={t.id}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+            className="flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent/40"
           >
             <Checkbox
               checked={set.has(t.id)}
@@ -1087,11 +1137,14 @@ function TeamsSection({
                 )
               }
             />
-            <span className="truncate text-sm">{t.name}</span>
+            <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="lg" />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+              {t.name}
+            </span>
           </label>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -1101,7 +1154,7 @@ function ChipGroup({
   chips,
 }: {
   title: string;
-  chips: { id: string; label: string }[];
+  chips: { id: string; label: string; icon?: React.ReactNode }[];
 }) {
   if (chips.length === 0) return null;
   return (
@@ -1109,7 +1162,12 @@ function ChipGroup({
       <p className="text-xs font-medium">{title}</p>
       <div className="flex flex-wrap gap-1.5">
         {chips.map((c) => (
-          <Badge key={c.id} variant="muted" className="text-[11px] font-normal">
+          <Badge
+            key={c.id}
+            variant="muted"
+            className="gap-1.5 py-1 text-[11px] font-normal"
+          >
+            {c.icon}
             {c.label}
           </Badge>
         ))}
