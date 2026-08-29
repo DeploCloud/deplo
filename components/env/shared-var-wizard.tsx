@@ -115,12 +115,6 @@ export interface TeamRef {
   avatarUrl: string | null;
 }
 
-/** Creating from inside an app: that app is the destination, fixed. */
-export interface WizardAppContext {
-  id: string;
-  name: string;
-}
-
 /**
  * How one checked project shares: with all of its environments (the project id
  * goes to `projectIds`) or with a hand-picked few (those env ids go to
@@ -131,8 +125,11 @@ interface ProjectScope {
   envIds: string[];
 }
 
-function initialScopes(editing: SharedVarDTO | null): ScopeId[] {
-  if (!editing) return [];
+function initialScopes(
+  editing: SharedVarDTO | null,
+  defaultAppIds?: string[],
+): ScopeId[] {
+  if (!editing) return defaultAppIds?.length ? ["apps"] : [];
   const out: ScopeId[] = [];
   if (editing.teamIds.length > 0) out.push("team");
   if (editing.projectIds.length > 0 || editing.environmentIds.length > 0)
@@ -228,21 +225,24 @@ export function SharedVarWizardBody({
   projects,
   environments,
   teams,
-  appContext,
+  defaultAppIds,
+  nested = false,
   onOpenChange,
 }: {
   editing: SharedVarDTO | null;
-  /** Every app of the team - empty in an app context, where nothing is picked. */
+  /** Every app of the team. */
   apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
   /** The teams the author may share with. The active team is always among them. */
   teams: TeamRef[];
-  appContext?: WizardAppContext;
+  /** Apps ticked from the start when creating - opened from an app, that app. */
+  defaultAppIds?: string[];
+  /** Hosted inside another modal, which already spends a header row above this. */
+  nested?: boolean;
   /** Closes on save and re-opens on a refusal, exactly like a Dialog's own. */
   onOpenChange: (v: boolean) => void;
 }) {
-  const inApp = appContext != null;
   const [step, setStep] = React.useState<StepId>("variable");
   // A secret's DTO value is the MASK, and the server reads that back as "keep
   // the stored value", so prefilling it is what lets a scope-only edit save.
@@ -251,7 +251,7 @@ export function SharedVarWizardBody({
   );
   const [secret, setSecret] = React.useState(editing?.type === "secret");
   const [scopes, setScopes] = React.useState<ScopeId[]>(() =>
-    initialScopes(editing),
+    initialScopes(editing, defaultAppIds),
   );
   const [projectScopes, setProjectScopes] = React.useState<
     Record<string, ProjectScope>
@@ -261,7 +261,9 @@ export function SharedVarWizardBody({
   const [teamIds, setTeamIds] = React.useState<string[]>(() =>
     editing ? editing.teamIds : teams.map((t) => t.id),
   );
-  const [appIds, setAppIds] = React.useState<string[]>(editing?.appIds ?? []);
+  const [appIds, setAppIds] = React.useState<string[]>(
+    editing?.appIds ?? defaultAppIds ?? [],
+  );
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
   /** Editing a stored secret: its value, key and type are frozen server-side. */
@@ -280,7 +282,7 @@ export function SharedVarWizardBody({
   const picked = {
     team: scopes.includes("team"),
     projects: scopes.includes("projects"),
-    apps: inApp || scopes.includes("apps"),
+    apps: scopes.includes("apps"),
   };
 
   // Teams the variable already reaches that this author cannot tick. Shown LOCKED:
@@ -292,16 +294,13 @@ export function SharedVarWizardBody({
   const teamPickerRows = teams.length + lockedTeams.length;
 
   // With one team on offer, "Teams" IS that team and there is nothing to pick.
-  // In an app context the destination is settled, so there is nothing to review.
   const needsDetails =
-    (picked.team && teamPickerRows > 1) ||
-    picked.projects ||
-    (!inApp && picked.apps);
+    (picked.team && teamPickerRows > 1) || picked.projects || picked.apps;
   const steps: StepId[] = [
     "variable",
     "scope",
     ...(needsDetails ? (["details"] as const) : []),
-    ...(inApp ? [] : (["review"] as const)),
+    "review",
   ];
 
   const checkedProjects = Object.entries(projectScopes);
@@ -314,12 +313,11 @@ export function SharedVarWizardBody({
 
   const valid: Record<StepId, boolean> = {
     variable: filled.length > 0 && badRows.length === 0,
-    // This app is always a destination, so an app context can never be empty.
-    scope: inApp || scopes.length > 0,
+    scope: scopes.length > 0,
     details:
       (!picked.team || teamIds.length > 0) &&
       (!picked.projects || projectsReady) &&
-      (inApp || !picked.apps || appIds.length > 0),
+      (!picked.apps || appIds.length > 0),
     review: true,
   };
 
@@ -341,7 +339,7 @@ export function SharedVarWizardBody({
     // Always sent: `saveSharedVar` replaces the whole link set, so an empty
     // array UNLINKS every app. That is deliberate - the wizard checks the "apps"
     // scope whenever the variable has links, so clearing it is an explicit act.
-    appIds: inApp ? [appContext.id] : picked.apps ? appIds : [],
+    appIds: picked.apps ? appIds : [],
   };
 
   function toggleScope(id: ScopeId) {
@@ -364,9 +362,9 @@ export function SharedVarWizardBody({
   function reset() {
     setRows(emptyRow());
     setSecret(false);
-    setScopes([]);
+    setScopes(initialScopes(null, defaultAppIds));
     setProjectScopes({});
-    setAppIds([]);
+    setAppIds(defaultAppIds ?? []);
     setStep("variable");
   }
 
@@ -438,7 +436,7 @@ export function SharedVarWizardBody({
       {/* Nested in an app's Add-variable modal there is a back row above this
           one, so the rail needs its own top padding; under a DialogHeader the
           header's `pb-4` already provides it. */}
-      <div className={cn("border-b border-border px-6 pb-4", inApp && "pt-4")}>
+      <div className={cn("border-b border-border px-6 pb-4", nested && "pt-4")}>
         <WizardStepper
           steps={steps.map((s) => ({ id: s, label: stepLabel[s] }))}
           current={steps[index]}
@@ -459,7 +457,7 @@ export function SharedVarWizardBody({
           <div
             className={cn(
               "space-y-4 overflow-y-auto px-6 py-4",
-              inApp ? PANEL_BODY_MAX_NESTED : PANEL_BODY_MAX,
+              nested ? PANEL_BODY_MAX_NESTED : PANEL_BODY_MAX,
             )}
           >
             {s === "variable" && (
@@ -486,38 +484,34 @@ export function SharedVarWizardBody({
             {s === "scope" && (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  {inApp
-                    ? "This app gets it right away. Pick who else may use it."
-                    : "Pick one or more. Only “Specific apps” adds it somewhere right away."}
+                  Pick one or more. Only “Specific apps” adds it somewhere right
+                  away.
                 </p>
                 <div
                   role="group"
                   aria-label="Shared with"
                   className="space-y-2"
                 >
-                  {inApp && <ThisApp name={appContext.name} />}
-                  {SCOPES.filter((sc) => !inApp || sc.id !== "apps").map(
-                    (sc) => (
-                      <ChoiceCard
-                        multi
-                        key={sc.id}
-                        title={sc.title}
-                        blurb={sc.blurb}
-                        icon={sc.icon}
-                        selected={scopes.includes(sc.id)}
-                        disabled={
-                          (sc.id === "projects" && projects.length === 0) ||
-                          (sc.id === "apps" && apps.length === 0)
-                        }
-                        disabledNote={
-                          sc.id === "projects"
-                            ? "No projects yet."
-                            : "No apps yet."
-                        }
-                        onSelect={() => toggleScope(sc.id)}
-                      />
-                    ),
-                  )}
+                  {SCOPES.map((sc) => (
+                    <ChoiceCard
+                      multi
+                      key={sc.id}
+                      title={sc.title}
+                      blurb={sc.blurb}
+                      icon={sc.icon}
+                      selected={scopes.includes(sc.id)}
+                      disabled={
+                        (sc.id === "projects" && projects.length === 0) ||
+                        (sc.id === "apps" && apps.length === 0)
+                      }
+                      disabledNote={
+                        sc.id === "projects"
+                          ? "No projects yet."
+                          : "No apps yet."
+                      }
+                      onSelect={() => toggleScope(sc.id)}
+                    />
+                  ))}
                 </div>
               </div>
             )}
@@ -543,10 +537,10 @@ export function SharedVarWizardBody({
                     onChange={setProjectScopes}
                   />
                 )}
-                {picked.projects && !inApp && picked.apps && (
+                {picked.projects && picked.apps && (
                   <hr className="border-border" />
                 )}
-                {!inApp && picked.apps && (
+                {picked.apps && (
                   <AppsSection
                     apps={apps}
                     selected={appIds}
@@ -611,26 +605,6 @@ export function SharedVarWizardBody({
         </div>
       </DialogFooter>
     </form>
-  );
-}
-
-/** The destination you cannot unpick: the app the modal was opened from. */
-function ThisApp({ name }: { name: string }) {
-  return (
-    <div className="flex w-full items-start gap-3 rounded-lg border border-primary bg-primary/[0.06] p-3 text-left ring-1 ring-primary/60">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-primary/40 bg-background text-primary">
-        <AppWindow className="size-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">
-          This app · {name}
-        </span>
-        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-          Added right away - it reaches the app on its next deploy.
-        </span>
-      </span>
-      <CheckMark selected />
-    </div>
   );
 }
 

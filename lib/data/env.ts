@@ -112,8 +112,11 @@ async function loadPrimaryDomains(
   return new Map(rows.map((r) => [r.appId, r.name]));
 }
 
-/** Every project's env vars, grouped by project (for the global Variables tab). */
-export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
+/**
+ * The team's apps this caller may manage variables on, name-sorted. Feeds the
+ * shared-variable wizard's "Specific apps" picker as well as {@link listAllAppEnv}.
+ */
+export async function listEnvManageableApps(): Promise<AppEnvGroup["app"][]> {
   const { teamId } = await requireMembership();
   const rows = await getDb()
     .select({
@@ -132,12 +135,28 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
   // someone who legitimately holds it somewhere and, the old bug, wave through
   const reach = await appCapabilitiesForTeam(teamId, rows);
   const apps = rows.filter((p) => reach.get(p.id)?.includes("manage_env"));
+  // One query for the whole team, keyed by app. `domains_one_primary_uq`
+  // guarantees at most one row per app.
+  const primaryDomains = await loadPrimaryDomains(apps.map((p) => p.id));
+  return apps
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      projectId: p.projectId,
+      environmentId: p.environmentId,
+      logo: p.logo ?? null,
+      primaryDomain: primaryDomains.get(p.id) ?? null,
+    }));
+}
+
+/** Every project's env vars, grouped by project (for the global Variables tab). */
+export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
+  const apps = await listEnvManageableApps();
   // Batch-load every var across the team's apps (one pair of queries), then
   // group in memory, no per-project round-trip.
   const all = await loadEnvVarsForApps(apps.map((p) => p.id));
-  // Same shape for the primary domains: one query for the whole team, keyed by
-  // app. `domains_one_primary_uq` guarantees at most one row per app.
-  const primaryDomains = await loadPrimaryDomains(apps.map((p) => p.id));
   // One identity query for the whole page, not one per var / per app.
   const authors = await loadUserIdentities(authorIds(all));
   const byApp = new Map<string, EnvVar[]>();
@@ -146,22 +165,12 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
     list.push(e);
     byApp.set(e.appId, list);
   }
-  return apps
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((p) => ({
-      app: {
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        projectId: p.projectId,
-        environmentId: p.environmentId,
-        logo: p.logo ?? null,
-        primaryDomain: primaryDomains.get(p.id) ?? null,
-      },
-      vars: (byApp.get(p.id) ?? [])
-        .sort((a, b) => a.key.localeCompare(b.key))
-        .map((e) => toDTO(e, authors)),
-    }));
+  return apps.map((app) => ({
+    app,
+    vars: (byApp.get(app.id) ?? [])
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map((e) => toDTO(e, authors)),
+  }));
 }
 
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;

@@ -17,7 +17,13 @@ import {
   apps as appsTable,
   domains as domainsTable,
 } from "../db/schema/control-plane";
-import { listAllAppEnv, listEnv, upsertEnv, renameEnv } from "./env";
+import {
+  listAllAppEnv,
+  listEnvManageableApps,
+  listEnv,
+  upsertEnv,
+  renameEnv,
+} from "./env";
 
 /**
  * The app descriptor `listAllAppEnv` hands the Variables page: its logo and its
@@ -88,6 +94,20 @@ test("listAllAppEnv carries each app's logo and PRIMARY domain", async () => {
   const bare = byId.get("app_bare");
   assert.equal(bare?.logo, null);
   assert.equal(bare?.primaryDomain, null);
+});
+
+test("listEnvManageableApps names the team's apps for the wizard picker", async () => {
+  const apps = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    listEnvManageableApps(),
+  );
+  // Name-sorted, which is the order the "Specific apps" picker shows.
+  assert.deepEqual(
+    apps.map((a) => a.slug),
+    ["bare", "web"],
+  );
+  const web = apps.find((a) => a.id === "app_web");
+  assert.equal(web?.logo, "https://cdn.example/logo.png");
+  assert.equal(web?.primaryDomain, "shop.example.com");
 });
 
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>

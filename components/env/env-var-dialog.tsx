@@ -46,6 +46,7 @@ import {
 } from "@/components/shared/sliding-panels";
 import {
   SharedVarWizardBody,
+  type AppRef,
   type ProjectRef,
   type TeamRef,
 } from "@/components/env/shared-var-wizard";
@@ -67,10 +68,10 @@ export function EnvVarDialog({
   open,
   onOpenChange,
   appId,
-  appName,
   editing,
   sharedVars,
   canCreateShared = false,
+  apps = [],
   projects = [],
   environments = [],
   teams = [],
@@ -78,13 +79,13 @@ export function EnvVarDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   appId: string;
-  /** Named on the "This app" destination of the shared-variable panel. */
-  appName?: string;
   editing: EnvVarDTO | null;
   /** In-scope shared vars for this app; lazy-fetched when omitted. */
   sharedVars?: LinkableSharedVar[];
   /** `manage_env` held TEAM-WIDE - what creating a shared variable needs. */
   canCreateShared?: boolean;
+  /** Every app of the team - the shared-variable wizard's "Specific apps" picker. */
+  apps?: AppRef[];
   projects?: ProjectRef[];
   environments?: TeamEnvironment[];
   teams?: TeamRef[];
@@ -107,9 +108,9 @@ export function EnvVarDialog({
       open={open}
       onOpenChange={onOpenChange}
       appId={appId}
-      appName={appName}
       sharedVars={sharedVars}
       canCreateShared={canCreateShared}
+      apps={apps}
       projects={projects}
       environments={environments}
       teams={teams}
@@ -289,9 +290,9 @@ function AddDialog({
   open,
   onOpenChange,
   appId,
-  appName,
   sharedVars,
   canCreateShared,
+  apps,
   projects,
   environments,
   teams,
@@ -299,9 +300,9 @@ function AddDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   appId: string;
-  appName?: string;
   sharedVars?: LinkableSharedVar[];
   canCreateShared: boolean;
+  apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
   teams: TeamRef[];
@@ -387,12 +388,13 @@ function AddDialog({
               ) : (
                 canCreateShared && (
                   <SharedVarWizardBody
+                    nested
                     teams={teams}
                     editing={null}
-                    apps={[]}
+                    apps={apps}
                     projects={projects}
                     environments={environments}
-                    appContext={{ id: appId, name: appName ?? "this app" }}
+                    defaultAppIds={[appId]}
                     onOpenChange={setCreating}
                   />
                 )

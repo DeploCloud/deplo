@@ -45,7 +45,11 @@ import { timeAgo } from "@/lib/utils";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
-import type { ProjectRef, TeamRef } from "@/components/env/shared-var-wizard";
+import type {
+  AppRef,
+  ProjectRef,
+  TeamRef,
+} from "@/components/env/shared-var-wizard";
 
 /**
  * Standalone and shared variables share ONE row list so that the sort orders the
@@ -64,18 +68,17 @@ const rowKey = (row: EnvRow) => `${row.kind}:${row.id}`;
 
 export function EnvManager({
   appId,
-  appName,
   vars,
   sharedVars,
   sharedVarDetails,
   canCreateShared,
+  apps,
   projects,
   environments,
   teams,
   composeKeys = [],
 }: {
   appId: string;
-  appName: string;
   vars: EnvVarDTO[];
   sharedVars: AppSharedVarDTO[];
   /**
@@ -86,6 +89,8 @@ export function EnvManager({
   sharedVarDetails: SharedVarDTO[];
   /** `manage_env` held team-wide - what creating a shared variable needs. */
   canCreateShared: boolean;
+  /** Every app of the team - the shared-variable wizard's "Specific apps" picker. */
+  apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
   /** The teams the viewer may share a new variable with. */
@@ -370,10 +375,10 @@ export function EnvManager({
         open={addOpen}
         onOpenChange={setAddOpen}
         appId={appId}
-        appName={appName}
         editing={editing}
         sharedVars={sharedVars}
         canCreateShared={canCreateShared}
+        apps={apps}
         projects={projects}
         environments={environments}
         teams={teams}

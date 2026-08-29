@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { listEnv } from "@/lib/data/env";
+import { listEnv, listEnvManageableApps } from "@/lib/data/env";
 import { hasAppCapability } from "@/lib/data/node-access";
 import {
   listSharedVars,
@@ -53,6 +53,7 @@ export default async function AppEnvPage(
     projectSummaries,
     environments,
     shareableTeams,
+    teamApps,
   ] = await Promise.all([
     listEnv(project.id),
     listSharedVarsForApp(project.id),
@@ -66,6 +67,7 @@ export default async function AppEnvPage(
     teamWideEnv ? listProjects() : Promise.resolve([]),
     teamWideEnv ? listAllEnvironmentsForTeam() : Promise.resolve([]),
     teamWideEnv ? listSharedVarTeams() : Promise.resolve([]),
+    teamWideEnv ? listEnvManageableApps() : Promise.resolve([]),
   ]);
   // Same shape the Variables page hands the wizard: colour + counts, so a
   // project is recognised the way it is on the Overview.
@@ -86,12 +88,12 @@ export default async function AppEnvPage(
     <div className="space-y-6">
       <EnvManager
         appId={project.id}
-        appName={project.name}
         vars={vars}
         sharedVars={sharedVars}
         sharedVarDetails={sharedVarDetails}
         composeKeys={composeDeclaredEnvKeys(project.compose)}
         canCreateShared={teamWideEnv}
+        apps={teamApps}
         projects={projects}
         environments={environments}
         teams={shareableTeams}
