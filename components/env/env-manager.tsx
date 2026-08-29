@@ -3,7 +3,16 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LockOpen, Plus, Trash2, Share2, SearchX, Unlink } from "lucide-react";
+import {
+  LockOpen,
+  Plus,
+  Trash2,
+  Share2,
+  SearchX,
+  Settings,
+  Unlink,
+} from "lucide-react";
+import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -15,13 +24,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
@@ -30,7 +32,6 @@ import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { MakePlainDialog } from "@/components/env/make-plain-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
-import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
 import { EnvEditButton } from "@/components/env/env-edit-button";
 import {
   EnvFilters,
@@ -82,9 +83,8 @@ export function EnvManager({
   vars: EnvVarDTO[];
   sharedVars: AppSharedVarDTO[];
   /**
-   * The full shared-var record for every shared var applied to this app, so a
-   * value edit here can round-trip its scope verbatim (SharedVarEditDialog needs
-   * the whole DTO). Keyed by id into `detailsById` below.
+   * The full shared-var record for every shared var applied to this app - what
+   * says whether the variable is OURS to manage. Keyed by id into `detailsById`.
    */
   sharedVarDetails: SharedVarDTO[];
   /** `manage_env` held team-wide - what creating a shared variable needs. */
@@ -340,8 +340,10 @@ export function EnvManager({
                         <SharedRowActions
                           row={row}
                           appId={appId}
-                          detail={detailsById.get(row.id)}
-                          teamWide={canCreateShared}
+                          manageable={
+                            canCreateShared &&
+                            detailsById.get(row.id)?.editable !== false
+                          }
                           onRemoved={() => remove(rowKey(row))}
                           onRestored={() => restore(rowKey(row))}
                         />
@@ -411,37 +413,30 @@ export function EnvManager({
 }
 
 /**
- * Actions for a SHARED row on one app's table: edit its value, and a delete menu
- * that separates the two very different removals a shared var has.
+ * Actions for a SHARED row on one app's table. Neither the value nor the variable
+ * itself is edited here: an app opts in and out, the library is managed on the
+ * Variables page.
  */
 function SharedRowActions({
   row,
   appId,
-  detail,
-  teamWide,
+  manageable,
   onRemoved,
   onRestored,
 }: {
   row: AppSharedVarDTO;
   appId: string;
-  detail: SharedVarDTO | undefined;
-  /** `manage_env` across the whole team - what editing the variable itself needs. */
-  teamWide: boolean;
+  /** Ours to manage: `manage_env` team-wide, and not another team's variable. */
+  manageable: boolean;
   /**
-   * Both removals below take the row off THIS table, so both tell the table to
-   * drop it on the click rather than leaving it clickable until the refresh
-   * lands, and to put it back if the mutation behind it is refused.
+   * Unlinking takes the row off THIS table, so it drops on the click rather than
+   * staying clickable until the refresh lands, and comes back if the mutation
+   * behind it is refused.
    */
   onRemoved: () => void;
   onRestored: () => void;
 }) {
   const router = useRouter();
-  const [editOpen, setEditOpen] = React.useState(false);
-  const [deleteOpen, setDeleteOpen] = React.useState(false);
-  // Another team owns it: the LINK is this app's own opt-in and stays removable, but
-  // its value and its existence are not ours to change - the server refuses both, so
-  // offering the buttons only bought a refusal.
-  const ours = teamWide && detail?.editable !== false;
   // Unlinking one of these does not take it out of the container: it keeps arriving
   // with no link, at the lowest precedence (ADR-0027).
   const keepsArriving = row.autoInject;
@@ -471,110 +466,34 @@ function SharedRowActions({
     })();
   }
 
-  if (!ours)
-    return (
-      <div className="flex justify-end gap-1">
-        <SimpleTooltip content="Remove from this app">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={removeFromApp}
-            aria-label="Remove from this app"
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <Unlink className="size-4" />
-          </Button>
-        </SimpleTooltip>
-      </div>
-    );
-
   return (
     <div className="flex justify-end gap-1">
-      <EnvEditButton
-        secret={row.type === "secret"}
-        disabled={!detail}
-        tooltip="Edit value"
-        onClick={() => setEditOpen(true)}
-      />
-
-      <DropdownMenu>
-        <SimpleTooltip content="Delete">
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground hover:text-destructive"
-              aria-label="Delete"
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
+      {manageable && (
+        <SimpleTooltip content="Manage this shared variable">
+          <Button variant="ghost" size="icon-sm" asChild aria-label="Manage">
+            <Link href={`/variables?tab=shared&edit=${row.id}`}>
+              <Settings className="deplo-gear size-4" />
+            </Link>
+          </Button>
         </SimpleTooltip>
-        <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuItem
-            className="flex-col items-start gap-0.5"
-            onSelect={removeFromApp}
-          >
-            <span className="flex items-center gap-2">
-              <Unlink className="size-4" />
-              Remove from this app
-            </span>
-            <span className="pl-6 text-xs text-muted-foreground">
-              {keepsArriving
-                ? "Unlinks it here. It still arrives from the team that shares it."
-                : "Unlinks it here. Every other app keeps it."}
-            </span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            className="flex-col items-start gap-0.5"
-            onSelect={() => setDeleteOpen(true)}
-          >
-            <span className="flex items-center gap-2">
-              <Trash2 className="size-4" />
-              Delete for all apps
-            </span>
-            <span className="pl-6 text-xs text-muted-foreground">
-              Removes it from every app it reaches.
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {detail && (
-        <SharedVarEditDialog
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          editing={detail}
-          warnShared
-        />
       )}
-      <ConfirmAction
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title="Delete shared variable?"
-        description={
-          <>
-            This deletes <span className="font-mono">{row.key}</span> for the
-            whole team. Every app it reaches, not just this one, stops receiving
-            it on new deployments.
-          </>
+      <SimpleTooltip
+        content={
+          keepsArriving
+            ? "Remove this app's opt-in. It still arrives from the team that shares it."
+            : "Remove from this app. Every other app keeps it."
         }
-        confirmLabel="Delete everywhere"
-        successMessage="Shared variable deleted"
-        optimistic
-        onConfirm={async () => {
-          onRemoved();
-          const res = await gqlAction<{ deleteSharedVar: boolean }>(
-            `mutation($id: String!) { deleteSharedVar(id: $id) }`,
-            { id: row.id },
-          );
-          if (res.ok) router.refresh();
-          else onRestored();
-          return res;
-        }}
-      />
+      >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={removeFromApp}
+          aria-label="Remove from this app"
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <Unlink className="size-4" />
+        </Button>
+      </SimpleTooltip>
     </div>
   );
 }

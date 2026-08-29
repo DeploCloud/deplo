@@ -22,8 +22,9 @@ import { SharedVarsManager } from "@/components/env/shared-vars-manager";
 export const metadata = { title: "Environment Variables" };
 
 export default async function VariablesPage(props: PageProps<"/variables">) {
-  const { tab: tabParam } = await props.searchParams;
+  const { tab: tabParam, edit: editParam } = await props.searchParams;
   const rawTab = Array.isArray(tabParam) ? tabParam[0] : tabParam;
+  const openEditId = Array.isArray(editParam) ? editParam[0] : editParam;
   const wholeTeam = await reachesWholeTeam();
 
   // Env values are gated by manage_env. The sidebar link is hidden without it;
@@ -118,6 +119,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
       <TabsContent value="shared">
         <SharedVarsManager
           vars={sharedVars}
+          openEditId={openEditId}
           apps={apps}
           projects={projects}
           environments={teamEnvironments}

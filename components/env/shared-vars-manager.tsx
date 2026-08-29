@@ -71,6 +71,7 @@ export function SharedVarsManager({
   projects,
   environments,
   teams,
+  openEditId,
 }: {
   vars: SharedVarDTO[];
   /** Every app in the active team - the wizard's "specific apps" scope. */
@@ -79,15 +80,29 @@ export function SharedVarsManager({
   environments: TeamEnvironment[];
   /** The teams the viewer may share a variable with (the wizard's Teams step). */
   teams: TeamRef[];
+  /** `?edit=` - an app's "Manage" button lands here with its dialog already open. */
+  openEditId?: string;
 }) {
   // `wizard` is the scope editor (and the creator: `editing: null`); `editing` is
   // the small value form the pencil opens.
   const [wizard, setWizard] = React.useState<{
     editing: SharedVarDTO | null;
   } | null>(null);
-  const [editing, setEditing] = React.useState<SharedVarDTO | null>(null);
+  const [editing, setEditing] = React.useState<SharedVarDTO | null>(
+    // A secret has no value form, so the deep link only lands the user on the row.
+    () =>
+      vars.find(
+        (v) => v.id === openEditId && v.editable && v.type !== "secret",
+      ) ?? null,
+  );
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
+
+  // The deep link has been consumed: drop it, or leaving and re-entering the tab
+  // would reopen the dialog the user just closed.
+  React.useEffect(() => {
+    if (openEditId) router.replace("/variables?tab=shared", { scroll: false });
+  }, [openEditId, router]);
 
   // A variable narrowed to single environments carries only THEIR ids, so the
   // project it belongs to is only knowable through the environment.
