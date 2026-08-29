@@ -35,6 +35,21 @@ test("nipDomain sanitises the label and words to DNS-safe segments", () => {
   );
 });
 
+test("nipDomain keeps the first label inside the 63-character DNS limit", () => {
+  // `<app slug>-<compose service>` is what an extra domain is labelled with, and
+  // two ordinary names reach the limit together - the host would not resolve.
+  const host = nipDomain(
+    "analytics-production-stack-rybbit_clickhouse_worker",
+    "charming-otter",
+    IP,
+  );
+  const label = host.split(".")[0];
+  assert.ok(label.length <= 63, `label is ${label.length} characters`);
+  // The words and the IP are what make it unique, so they survive whole.
+  assert.ok(host.endsWith(`-charming-otter-${HEX}.nip.io`));
+  assert.ok(!label.includes("--"));
+});
+
 test("nipDomain output round-trips through nipEmbeddedIp", () => {
   const host = nipDomain("svc", "keen-puma", "95.135.208.208");
   assert.equal(nipEmbeddedIp(host), "95.135.208.208");

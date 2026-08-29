@@ -52,6 +52,12 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
+      {
+        id: "member_1",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "create_apps", "deploy_apps"],
+      },
     ],
   });
   await seedServer(db);
@@ -217,4 +223,159 @@ test("an extra domain with no host of its own gets one generated", async () => {
   const extra = rows.find((r) => !r.primary);
   assert.ok(extra, "the host-less extra was dropped");
   assert.match(extra.name, /^shop-admin-/);
+});
+
+/**
+ * The two refusals `addDomain` makes for a human, made on the automatic path too:
+ * either row would be an address that answers nothing.
+ */
+test("an extra naming a container the stack does not have is skipped", async () => {
+  const app = await asUser1(() =>
+    newApp({
+      compose: "services:\n  web:\n    image: nginx\n",
+      // A template that renamed a service in its compose and not in its config.
+      extraDomains: [{ service: "web-ui", port: 3000, host: "" }],
+    }),
+  );
+  const rows = await db
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.equal(rows.length, 1, "only the primary should exist");
+});
+
+test("an extra naming a container Deplo answers to is skipped", async () => {
+  const app = await asUser1(() =>
+    newApp({
+      compose:
+        "services:\n  web:\n    image: nginx\n  postgres:\n    image: postgres:17\n",
+      extraDomains: [{ service: "postgres", port: 5432, host: "" }],
+    }),
+  );
+  const rows = await db
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.equal(rows.length, 1, "only the primary should exist");
+});
+
+test("an extra cannot take a hostname another team already serves", async () => {
+  await runWithIdentity({ userId: "user_2", teamId: TEAM_B }, () =>
+    createApp({
+      name: "theirs",
+      source: "compose",
+      repo: null,
+      compose: COMPOSE,
+      deploy: false,
+      autoDomain: "shared.example.com",
+    }),
+  );
+  const app = await asUser1(() =>
+    newApp({
+      extraDomains: [
+        { service: "web", port: 3001, host: "shared.example.com" },
+      ],
+    }),
+  );
+  const rows = await db
+    .select({ name: domainsTable.name, primary: domainsTable.isPrimary })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  const extra = rows.find((r) => !r.primary);
+  assert.ok(extra, "the extra was dropped");
+  assert.notEqual(extra.name, "shared.example.com");
+});
+
+/**
+ * A generated `…nip.io` host is not a domain claim, so picking which services get
+ * an address must not turn creating an app into a `manage_domains` action - the
+ * whole point of the wizard's picker is that a Member can use it.
+ */
+test("a member who may not manage domains still gets the generated hosts", async () => {
+  const app = await runWithIdentity(
+    { userId: "member_1", teamId: TEAM_A },
+    () =>
+      createApp({
+        name: "member app",
+        source: "compose",
+        repo: null,
+        compose: COMPOSE,
+        deploy: false,
+        extraDomains: [{ service: "web", port: 3001, host: "" }],
+      }),
+  );
+  const rows = await db
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.equal(rows.length, 2);
+});
+
+test("but a REAL hostname on an extra is still a claim", async () => {
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: "member_1", teamId: TEAM_A }, () =>
+        createApp({
+          name: "member app 2",
+          source: "compose",
+          repo: null,
+          compose: COMPOSE,
+          deploy: false,
+          extraDomains: [{ service: "web", port: 3001, host: "api.acme.com" }],
+        }),
+      ),
+    /permission to manage domains/,
+  );
+});
+
+/**
+ * The stack that started this: five services, not one published port, and a
+ * frontend that talks to its own API. What the wizard sends when the user ticks
+ * the backend too.
+ */
+const ANALYTICS_STACK = `services:
+  store_clickhouse:
+    image: clickhouse/clickhouse-server:25.5
+  store_postgres:
+    image: postgres:17.5
+  store_redis:
+    image: redis:7-alpine
+  store_backend:
+    image: acme/backend:v2
+    depends_on:
+      store_clickhouse:
+        condition: service_healthy
+      store_postgres:
+        condition: service_started
+  store_client:
+    image: acme/client:v2
+    depends_on:
+      - store_backend
+`;
+
+test("a five-service stack routes its frontend, and the API only if asked", async () => {
+  const app = await asUser1(() =>
+    newApp({
+      compose: ANALYTICS_STACK,
+      composeService: "store_client",
+      composePort: 80,
+      extraDomains: [{ service: "store_backend", port: 80, host: "" }],
+    }),
+  );
+  const rows = await db
+    .select({
+      name: domainsTable.name,
+      service: domainsTable.service,
+      primary: domainsTable.isPrimary,
+    })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+
+  const primary = rows.find((r) => r.primary);
+  const extra = rows.find((r) => !r.primary);
+  // Not ClickHouse, not Postgres, not Redis: the one nothing waits on.
+  assert.equal(primary?.service, "store_client");
+  assert.equal(extra?.service, "store_backend");
+  assert.notEqual(extra?.name, primary?.name, "each gets its own address");
+  assert.equal(rows.length, 2, "the three datastores get no address");
 });

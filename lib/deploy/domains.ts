@@ -388,7 +388,14 @@ export function nipDomain(
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "-")
       .replace(/^-+|-+$/g, "");
-  return `${clean(label)}-${clean(words)}-${ipToHex(ip)}.nip.io`;
+  const tail = `${clean(words)}-${ipToHex(ip)}`;
+  // A DNS label stops at 63 characters, and an app name plus a compose service
+  // name reaches that - the host would simply not resolve. The words and the IP
+  // carry the uniqueness, so the readable half is the one that gives way.
+  const head = clean(label)
+    .slice(0, Math.max(1, 62 - tail.length))
+    .replace(/-+$/, "");
+  return `${head}-${tail}.nip.io`;
 }
 
 /** Production domain for a project slug, with freshly-generated words. */

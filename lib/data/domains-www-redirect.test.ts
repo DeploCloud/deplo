@@ -109,6 +109,15 @@ test("adding a domain with www:toThis registers the counterpart as a redirect", 
   assert.equal(www.status, "valid", "its own DNS is checked at write time");
 });
 
+test("the app's URL carries the path its primary answers on", async () => {
+  // A stack whose UI lives under `/app` (a template may declare it): the bare
+  // host answers nothing, so the canonical URL must not stop at the hostname.
+  await asUser1(() =>
+    addDomain("prj_1", "example.com", { port: 3000, pathPrefix: "/app" }),
+  );
+  assert.equal(await productionUrl(), "http://example.com/app");
+});
+
 test("the pair is derived, so re-saving the same config writes nothing new", async () => {
   const d = await asUser1(() =>
     addDomain("prj_1", "example.com", { port: 3000, www: "toThis" }),

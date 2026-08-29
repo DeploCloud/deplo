@@ -337,6 +337,20 @@ export async function ensureExtraDomain(
 ): Promise<void> {
   const pathPrefix = normalizePath(route.pathPrefix);
   const asked = normalizePreferredHost(rawName);
+  // The two refusals `addDomain` makes, made here too: a stack has no container
+  // by that name, or it is one the platform answers to. Either way the row would
+  // be an address that answers nothing - and a template typo must cost the
+  // address, not the whole create, so this skips rather than throws.
+  const service = route.service ?? "";
+  const project = service ? await loadAppGraph(appId) : null;
+  if (project && usesComposeStack(project)) {
+    const declared = composeServiceNames(project.compose);
+    if (
+      !declared.includes(service) ||
+      RESERVED_SHARED_NETWORK_NAMES.has(service)
+    )
+      return;
+  }
   const existing = await loadDomainsForApp(appId);
   // No host asked for (a pasted compose, a template domain entry without one):
   // a PATH means "the app's own address, there"; anything else gets a generated
@@ -1586,9 +1600,11 @@ export async function syncProductionUrl(appId: string): Promise<void> {
     .update(appsTable)
     .set({
       // Scheme follows the primary's certificate provider: a cert-less (`none`)
-      // domain is served plain-HTTP, so its canonical URL must say so.
+      // domain is served plain-HTTP, so its canonical URL must say so. The path
+      // travels with it: a host whose primary router matches `/app` answers
+      // nothing at its root.
       productionUrl: primary
-        ? `${domainScheme(primary)}://${primary.name}`
+        ? `${domainScheme(primary)}://${primary.name}${primary.pathPrefix ?? ""}`
         : null,
       updatedAt: nowIso(),
     })

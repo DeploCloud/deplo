@@ -452,6 +452,48 @@ services:
   });
 });
 
+test("a volume with no service named stays where it always landed", () => {
+  const doc = buildDoc(
+    `
+services:
+  db:
+    image: postgres:17
+  web:
+    image: nginx
+`,
+    {
+      domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
+      volumes: [vol({ name: "data", mountPath: "/data" })],
+    },
+  );
+  // A DOMAIN skips a database now; this mount deliberately does not follow that
+  // rule - an existing app would find its data in another container after one
+  // redeploy.
+  assert.deepEqual(volsOf(doc.services.db as Svc & { volumes?: unknown }), [
+    "data:/data",
+  ]);
+  assert.deepEqual(volsOf(doc.services.web as Svc & { volumes?: unknown }), []);
+});
+
+test("a route with no port of its own uses the port the service exposes", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: acme/web
+    expose:
+      - "8080"
+`,
+    { domainRoutes: [route("demo.1.2.3.4.nip.io", "web", null)] },
+  );
+  assert.ok(
+    labelsOf(doc.services.web).some((l) =>
+      l.endsWith("loadbalancer.server.port=8080"),
+    ),
+    "expected the exposed port, not the conventional 80",
+  );
+});
+
 test("a volume mounts into the service it names, read-only flag included", () => {
   const doc = buildDoc(
     `
