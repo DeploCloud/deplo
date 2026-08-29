@@ -716,6 +716,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
   for (const route of domainRoutes) {
     const service = route.service;
     if (!service || !services[service]) continue;
+    // A row written before the domain layer refused these names: wiring it would
+    // put the platform's own name on the shared network, and the throw below would
+    // take the WHOLE stack down with it - deploy included. Skip the route instead.
+    if (RESERVED_SHARED_NETWORK_NAMES.has(service)) continue;
     if (!wireApp(service)) continue;
     const port = route.port ?? portOf(service);
     const keySeed = `${name}-${service}-${route.name}${route.pathPrefix}`;

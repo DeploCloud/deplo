@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { RESERVED_SHARED_NETWORK_NAMES } from "@/lib/deploy/compose-lint";
 import {
   Dialog,
   DialogContent,
@@ -120,6 +121,10 @@ export function DomainRow({
     Boolean(service) &&
     services.length > 0 &&
     !services.includes(service);
+  // The container is there, but it is one of the names the platform answers to on
+  // the shared network, so the renderer refuses to route it (rows predating that
+  // refusal still exist).
+  const reserved = isCompose && RESERVED_SHARED_NETWORK_NAMES.has(service);
 
   // The `www` pairing this hostname is currently in, read off the app's rows.
   const www = React.useMemo(
@@ -466,17 +471,19 @@ export function DomainRow({
       </TableCell>
       {showContainer && (
         <TableCell className="w-56">
-          {unrouted || missing ? (
+          {unrouted || missing || reserved ? (
             <SimpleTooltip
               content={
-                missing
-                  ? `This app's compose file has no container “${service}” any more, so nothing serves this domain. Edit the domain to pick one.`
-                  : "This domain doesn't name a container, so nothing serves it. Edit the domain to pick one."
+                reserved
+                  ? `“${service}” is a name deplo's own network uses, so nothing serves this domain. Rename the container in the compose file, or point this domain at another one.`
+                  : missing
+                    ? `This app's compose file has no container “${service}” any more, so nothing serves this domain. Edit the domain to pick one.`
+                    : "This domain doesn't name a container, so nothing serves it. Edit the domain to pick one."
               }
             >
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-                {missing ? service : "Not set"}
+                {missing || reserved ? service : "Not set"}
               </span>
             </SimpleTooltip>
           ) : (

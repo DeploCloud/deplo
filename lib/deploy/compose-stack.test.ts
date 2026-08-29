@@ -893,6 +893,39 @@ test("a service claiming one of Deplo's own names on the shared network is refus
   }
 });
 
+test("an OLD domain routed at a reserved name is skipped, not fatal", () => {
+  // Stored before the domain layer refused it: the stack has to keep deploying,
+  // with that one hostname unrouted, rather than throwing on every render.
+  const doc = buildDoc(
+    `services:
+  postgres:
+    image: postgres:16
+  web:
+    image: nginx
+`,
+    {
+      domainRoutes: [
+        route("db.1.2.3.4.nip.io", "postgres", 5432),
+        route("app.1.2.3.4.nip.io", "web", 80),
+      ],
+    },
+  );
+  const pg = labelsOf(doc.services.postgres);
+  assert.ok(!pg.some((l) => l.includes("db.1.2.3.4.nip.io")));
+  assert.ok(
+    !(doc.services.postgres.networks as string[] | undefined)?.includes(
+      "deplo",
+    ),
+    "the reserved service must not be put on the shared network",
+  );
+  // The app's real hostname still works.
+  assert.ok(
+    labelsOf(doc.services.web).some((l) =>
+      l.includes("Host(`app.1.2.3.4.nip.io`)"),
+    ),
+  );
+});
+
 test("the shared network is resolved by NAME, not by the key it is given", () => {
   // `{ sneaky: { external: true, name: deplo } }` IS the shared network. A rule
   // that matched the key alone was one rename away from decorative.
