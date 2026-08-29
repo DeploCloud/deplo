@@ -255,6 +255,10 @@ export function ActivityRow({
   const times = repeats ?? [item.createdAt];
   const many = times.length > 1;
   const sentence = messageWithLink(item, appLinks, databaseLinks, showMark);
+  // One column of clocks down the right edge, folded run or not - but only where
+  // there is a page's width for it. In a card the sentence wraps, and a stamp
+  // pinned right lands in the middle of it.
+  const stampAtEnd = size === "lg";
   return (
     <li className="relative flex items-start gap-3">
       <ActivityMarker item={item} size={size} showActor={showActor} />
@@ -283,9 +287,11 @@ export function ActivityRow({
           >
             {timeAgo(item.createdAt)}
           </time>
-          <span className="text-xs text-muted-foreground">
-            · {many ? `${times.length} times` : stamp(item.createdAt)}
-          </span>
+          {(many || !stampAtEnd) && (
+            <span className="text-xs text-muted-foreground">
+              · {many ? `${times.length} times` : stamp(item.createdAt)}
+            </span>
+          )}
         </p>
         {many ? (
           // The sentence once per occurrence with its own clock beside it: a
@@ -301,6 +307,11 @@ export function ActivityRow({
               </li>
             ))}
           </ul>
+        ) : stampAtEnd ? (
+          <p className="mt-1 flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
+            <span className="min-w-0">{sentence}</span>
+            <span className="shrink-0 text-xs">{stamp(item.createdAt)}</span>
+          </p>
         ) : (
           <p className="mt-1 text-sm text-muted-foreground">{sentence}</p>
         )}
