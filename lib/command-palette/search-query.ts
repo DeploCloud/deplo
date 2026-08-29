@@ -72,6 +72,8 @@ export const SEARCH_QUERY = /* GraphQL */ `
         userId
         name
         username
+        avatarUrl
+        avatarColor
         team {
           id
           name

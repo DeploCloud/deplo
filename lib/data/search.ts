@@ -39,6 +39,7 @@ export interface SearchTeam {
   id: ID;
   name: string;
   slug: string;
+  avatarUrl: string | null;
 }
 
 /** Enough to recognise an app and to call `getApp`/`app(slug:)` next. */
@@ -116,6 +117,10 @@ export interface SearchMember {
   name: string;
   username: string;
   roleName: string | null;
+  /** Their picture, already resolved (upload, else Gravatar, else null). */
+  avatarUrl: string | null;
+  /** The monogram's fill, for when there is no picture. */
+  avatarColor: string;
   team: SearchTeam;
 }
 
@@ -283,7 +288,12 @@ export async function search(
 
   const found = await Promise.all(
     teams.map(async (t) => {
-      const team: SearchTeam = { id: t.id, name: t.name, slug: t.slug };
+      const team: SearchTeam = {
+        id: t.id,
+        name: t.name,
+        slug: t.slug,
+        avatarUrl: t.avatarUrl,
+      };
       const home: 0 | 1 = t.id === activeTeamId ? 0 : 1;
       const on = <T>(kind: SearchKind, read: () => Promise<T[]>) =>
         want.has(kind)
@@ -417,6 +427,8 @@ export async function search(
             name: m.name,
             username: m.username,
             roleName: m.roleName,
+            avatarUrl: m.avatarUrl,
+            avatarColor: m.avatarColor,
             team,
           }),
           query,

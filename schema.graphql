@@ -4622,6 +4622,8 @@ enum SearchKind {
 A team member a search matched. Name and username only - a search must never turn a name into an email address.
 """
 type SearchMember {
+  avatarColor: String
+  avatarUrl: String
   name: String
   roleName: String
   team: SearchTeam
@@ -4674,6 +4676,7 @@ type SearchServer {
 
 """The team a search hit was found in."""
 type SearchTeam {
+  avatarUrl: String
   id: ID
   name: String
   slug: String

@@ -17,7 +17,6 @@ import {
   Search,
   Server,
   ShieldCheck,
-  Users,
 } from "lucide-react";
 
 import {
@@ -35,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppLogo } from "@/components/shared/project-logo";
+import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { canSee } from "@/components/layout/nav-config";
 import {
@@ -120,6 +120,8 @@ interface SearchData {
       userId: string;
       name: string;
       username: string;
+      avatarUrl: string | null;
+      avatarColor: string;
       team: HitTeam;
     }[];
     roles: { id: string; name: string; memberCount: number; team: HitTeam }[];
@@ -147,7 +149,9 @@ interface Hit {
   frame?: Exclude<Frame, { kind: "root" }>;
   logo?:
     | { kind: "app"; logo: string | null }
-    | { kind: "database"; logo: string | null; type: DatabaseType };
+    | { kind: "database"; logo: string | null; type: DatabaseType }
+    | { kind: "person"; name: string; avatarUrl: string | null; color: string }
+    | { kind: "team"; name: string; avatarUrl: string | null };
   icon?: React.ComponentType<{ className?: string }>;
 }
 
@@ -237,7 +241,12 @@ function toHits(data: SearchData): Hit[] {
       group: "Members",
       href: `/settings/members/${m.userId}`,
       team: m.team,
-      icon: Users,
+      logo: {
+        kind: "person" as const,
+        name: m.name,
+        avatarUrl: m.avatarUrl,
+        color: m.avatarColor,
+      },
     })),
     ...s.roles.map((r) => ({
       id: `role:${r.id}`,
@@ -312,7 +321,7 @@ export interface CommandPaletteProps {
   userId: string;
   team: TeamIdentity;
   /** Every team the caller can reach - the topbar's switcher already has them. */
-  teams: { id: string; name: string }[];
+  teams: { id: string; name: string; avatarUrl?: string | null }[];
   /** The team's apps and databases, already in the browser for the breadcrumb. */
   breadcrumb: BreadcrumbGraph;
   capabilities: string[];
@@ -880,11 +889,15 @@ function EntryRow({
   entry: Entry;
   onChoose: (entry: Entry) => void | Promise<void>;
 }) {
-  const { owner } = entry;
+  const { owner, team } = entry;
   return (
     <CommandItem value={entry.id} onSelect={() => void onChoose(entry)}>
       {owner ? (
         <OwnedIcon owner={owner} icon={entry.icon} />
+      ) : team ? (
+        <BadgedMark icon={entry.icon}>
+          <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
+        </BadgedMark>
       ) : (
         <entry.icon
           className={cn(
@@ -916,18 +929,33 @@ function EntryRow({
  */
 function OwnedIcon({
   owner,
-  icon: Icon,
+  icon,
 }: {
   owner: EntryOwner;
   icon: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <span className="relative inline-flex shrink-0">
+    <BadgedMark icon={icon}>
       {owner.kind === "app" ? (
         <AppLogo logo={owner.logo} size={20} />
       ) : (
         <DatabaseLogo type={owner.type} logo={owner.logo} size={20} />
       )}
+    </BadgedMark>
+  );
+}
+
+/** Whose page this is, with the page's own glyph badged onto it. */
+function BadgedMark({
+  icon: Icon,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      {children}
       <span className="absolute -right-0.5 -bottom-0.5 flex size-3 items-center justify-center rounded-full border border-border bg-background">
         <Icon className="size-2 text-muted-foreground" />
       </span>
@@ -951,6 +979,19 @@ function HitRow({
         <AppLogo logo={hit.logo.logo} size={20} />
       ) : hit.logo?.kind === "database" ? (
         <DatabaseLogo type={hit.logo.type} logo={hit.logo.logo} size={20} />
+      ) : hit.logo?.kind === "person" ? (
+        <UserAvatar
+          name={hit.logo.name}
+          avatarUrl={hit.logo.avatarUrl}
+          avatarColor={hit.logo.color}
+          size="sm"
+        />
+      ) : hit.logo?.kind === "team" ? (
+        <TeamAvatar
+          name={hit.logo.name}
+          avatarUrl={hit.logo.avatarUrl}
+          size="sm"
+        />
       ) : (
         <Icon className="size-4 shrink-0 text-muted-foreground" />
       )}

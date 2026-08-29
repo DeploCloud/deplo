@@ -50,6 +50,7 @@ const SearchTeamRef = builder.objectRef<SearchTeam>("SearchTeam").implement({
     id: t.exposeID("id"),
     name: t.exposeString("name"),
     slug: t.exposeString("slug"),
+    avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
   }),
 });
 
@@ -162,6 +163,8 @@ const SearchMemberRef = builder
       name: t.exposeString("name"),
       username: t.exposeString("username"),
       roleName: t.exposeString("roleName", { nullable: true }),
+      avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
+      avatarColor: t.exposeString("avatarColor"),
       team: t.field({ type: SearchTeamRef, resolve: (m) => m.team }),
     }),
   });
