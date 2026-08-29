@@ -807,6 +807,7 @@ const DOMAIN_FIELDS = /* GraphQL */ `
   certProvider
   service
   port
+  pathPrefix
   entrypoint
   proxied
 `;
@@ -850,6 +851,18 @@ const DOMAINS: McpToolDef[] = [
           "Container port to route to. Required on a multi-container app.",
         ),
       certProvider: z.enum(["none", "letsencrypt", "custom"]).optional(),
+      pathPrefix: z
+        .string()
+        .optional()
+        .describe(
+          'Serve this app under a path of the hostname, e.g. "/api". Omit to serve the whole host.',
+        ),
+      stripPrefix: z
+        .boolean()
+        .optional()
+        .describe(
+          "Remove the path prefix before the container sees the request.",
+        ),
     }),
     query: /* GraphQL */ `
       mutation McpAddDomain($appId: String!, $name: String!, $config: DomainConfigInput) {
@@ -859,10 +872,48 @@ const DOMAINS: McpToolDef[] = [
     variables: (a) => ({
       appId: a.appId,
       name: a.name,
-      config:
-        a.service || a.port || a.certProvider
-          ? { service: a.service, port: a.port, certProvider: a.certProvider }
-          : undefined,
+      config: {
+        service: a.service,
+        port: a.port,
+        certProvider: a.certProvider,
+        pathPrefix: a.pathPrefix,
+        stripPrefix: a.stripPrefix,
+      },
+    }),
+  }),
+  tool({
+    name: "update_domain",
+    title: "Update a domain",
+    description:
+      "Change a domain that is already attached: its hostname, the container it routes to, its port or its certificate. Only what you pass changes.",
+    group: "Domains",
+    requires: "manage_domains",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("The domain's id, as returned by list_domains."),
+      name: z.string().optional().describe("A different hostname."),
+      service: z
+        .string()
+        .optional()
+        .describe(
+          "Multi-container app only: the compose service that serves it.",
+        ),
+      port: z.number().int().optional().describe("Container port to route to."),
+      certProvider: z.enum(["none", "letsencrypt", "custom"]).optional(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpUpdateDomain($id: String!, $patch: DomainPatchInput!) {
+        updateDomain(id: $id, patch: $patch) { ${DOMAIN_FIELDS} }
+      }
+    `,
+    variables: (a) => ({
+      id: a.id,
+      patch: {
+        name: a.name,
+        service: a.service,
+        port: a.port,
+        certProvider: a.certProvider,
+      },
     }),
   }),
   tool({
@@ -1084,7 +1135,9 @@ const LOGS: McpToolDef[] = [
       container: z
         .string()
         .optional()
-        .describe("A specific container; defaults to the app's own."),
+        .describe(
+          "One container of the app, by compose service name; defaults to the app's own.",
+        ),
     }),
     query: "",
     run: async (a) => {
@@ -1414,6 +1467,12 @@ const CRON: McpToolDef[] = [
       schedule: z.string().describe('Cron syntax, e.g. "0 3 * * *".'),
       timezone: z.string().optional().describe("IANA zone, e.g. Europe/Rome."),
       description: z.string().optional(),
+      service: z
+        .string()
+        .optional()
+        .describe(
+          "Multi-container app: the compose service to run the command in. Omitted, the job lands in whichever container of the stack is up.",
+        ),
     }),
     query: /* GraphQL */ `
       mutation McpCreateCronJob($targetId: ID!, $targetKind: String!, $input: CronJobInput!) {
@@ -1429,6 +1488,7 @@ const CRON: McpToolDef[] = [
         schedule: a.schedule,
         timezone: a.timezone,
         description: a.description,
+        service: a.service,
         enabled: true,
       },
     }),

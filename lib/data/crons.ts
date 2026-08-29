@@ -687,10 +687,19 @@ export async function createCronJob(
   input: CronJobInput,
 ): Promise<CronJobDTO> {
   const user = await getCurrentUser();
-  const teamId =
+  const gated =
     targetKind === "app"
-      ? (await gateApp(targetId)).teamId
-      : (await gateDatabase(targetId)).teamId;
+      ? await gateApp(targetId)
+      : { app: null, teamId: (await gateDatabase(targetId)).teamId };
+  const teamId = gated.teamId;
+  // A container that is not in the stack is refused HERE: unchecked, the job is
+  // stored and only says so at 3am, as "not running".
+  const service = input.service?.trim();
+  if (service && gated.app) {
+    const names = appServices(gated.app.compose, gated.app.slug);
+    if (!names.includes(service))
+      throw new Error(`No container named "${service}" in this app`);
+  }
 
   // Required on create, optional on edit - so the patch builder is shared and the
   // requiredness lives in exactly one place.

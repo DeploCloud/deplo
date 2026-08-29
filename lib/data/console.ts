@@ -568,7 +568,12 @@ export async function resolveLogsTarget(
   // Default to the app's own container (orderInstances puts it first), NOT to "the
   // first one that happens to be running": when the app is crash-looping, the only
   // running container in the stack is a sidecar, and defaulting to it streams
-  const pick = target ? instances.find((i) => i.name === target) : instances[0];
+  // By CONTAINER (what the picker sends) or by compose SERVICE, the only name a
+  // caller reading the app's own compose file has.
+  const pick = target
+    ? (instances.find((i) => i.name === target) ??
+      instances.find((i) => i.service === target))
+    : instances[0];
   if (!pick) return { ok: false, reason: "no-instance" };
   return { ok: true, instance: pick, server: await serverOf(p) };
 }

@@ -135,7 +135,10 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         // Every tool takes the team as an optional argument. Added centrally so
         // the 78 rows stay a table of what deplo can do, with nothing about
         // tenancy repeated in each of them.
-        inputSchema: tool.input.extend({ team: TEAM_ARG }),
+        // STRICT: an argument the tool does not take is a refusal naming the key,
+        // never a silent drop - a model that invents `container` for `service`
+        // otherwise reads the server's "pick one" as its own mistake and retries.
+        inputSchema: tool.input.extend({ team: TEAM_ARG }).strict(),
         annotations: {
           title: tool.title,
           readOnlyHint: tool.readOnly ?? false,
