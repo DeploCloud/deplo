@@ -6,7 +6,7 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
-import { cn, gitProfileUrl, timeAgo } from "@/lib/utils";
+import { cn, gitProfileUrl, timeAgoShort } from "@/lib/utils";
 import type {
   Activity,
   ActivityType,
@@ -203,6 +203,9 @@ function ActivityMarker({
   showActor: boolean;
 }) {
   const box = size === "lg" ? "size-8" : "size-6";
+  // The ring masks the rail behind the marker, so it only belongs where there is
+  // a rail: in a card it paints a fat page-background halo around the glyph.
+  const rail = size === "lg" ? "ring-4 ring-background" : "";
   // `relative` with NO z-index on purpose: it already paints over the rail (a
   // positioned sibling earlier in the list), and any z of its own would raise it
   // through the sticky month heading on the way past.
@@ -214,14 +217,15 @@ function ActivityMarker({
         avatarColor={item.actorUser.avatarColor}
         avatarUrl={item.actorUser.avatarUrl}
         size={size}
-        className="relative shrink-0 ring-4 ring-background"
+        className={cn("relative shrink-0", rail)}
       />
     );
   const Icon = ACTIVITY_ICON[item.type] ?? UNKNOWN_ACTIVITY_ICON;
   return (
     <span
       className={cn(
-        "relative flex shrink-0 items-center justify-center rounded-full border border-border bg-secondary ring-4 ring-background",
+        "relative flex shrink-0 items-center justify-center rounded-full border border-border bg-secondary",
+        rail,
         box,
       )}
     >
@@ -285,7 +289,7 @@ export function ActivityRow({
             // The server and the browser render this a moment apart.
             suppressHydrationWarning
           >
-            {timeAgo(item.createdAt)}
+            {timeAgoShort(item.createdAt)}
           </time>
           {(many || !stampAtEnd) && (
             <span className="text-xs text-muted-foreground">
