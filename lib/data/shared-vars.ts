@@ -222,7 +222,7 @@ export interface SharedVarDTO {
   /** Decorations for the Shared-tab display (names never leak secret values). */
   environments: { id: string; name: string; projectName: string }[];
   projects: { id: string; name: string; slug: string }[];
-  apps: { id: string; name: string; slug: string }[];
+  apps: { id: string; name: string; slug: string; logo: string | null }[];
   createdBy: VarAuthor | null;
   updatedBy: VarAuthor | null;
   createdAt: string;
@@ -233,7 +233,10 @@ export interface SharedVarDTO {
 async function teamLookups(teamId: string): Promise<{
   environments: Map<string, { id: string; name: string; projectName: string }>;
   projects: Map<string, { id: string; name: string; slug: string }>;
-  apps: Map<string, { id: string; name: string; slug: string }>;
+  apps: Map<
+    string,
+    { id: string; name: string; slug: string; logo: string | null }
+  >;
 }> {
   const db = getDb();
   const [envRows, projRows, appRows] = await Promise.all([
@@ -258,7 +261,12 @@ async function teamLookups(teamId: string): Promise<{
       .from(projectsTable)
       .where(eq(projectsTable.teamId, teamId)),
     db
-      .select({ id: appsTable.id, name: appsTable.name, slug: appsTable.slug })
+      .select({
+        id: appsTable.id,
+        name: appsTable.name,
+        slug: appsTable.slug,
+        logo: appsTable.logo,
+      })
       .from(appsTable)
       .where(eq(appsTable.teamId, teamId)),
   ]);
