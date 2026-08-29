@@ -5,10 +5,6 @@ on:
     tags:
       - "v*.*"
 
-# Node.js 20 is deprecated on the runners; force JS-based actions onto Node 24.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,7 +19,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -34,10 +30,10 @@ jobs:
         run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and push Docker images
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@v7.3.0
         with:
           context: .
           push: true
@@ -52,6 +48,6 @@ jobs:
       # behind it, so `install.sh` on that version pulls a tag that was never
       # pushed. A release now means an image exists.
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true

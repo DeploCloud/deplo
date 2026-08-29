@@ -24,10 +24,6 @@ on:
 permissions:
   contents: read
 
-# Node.js 20 is deprecated on the runners; force JS-based actions onto Node 24.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 # A second push to the same branch cancels the first: the suite is ~12 minutes
 # and nobody reads the result of a superseded commit.
 concurrency:
