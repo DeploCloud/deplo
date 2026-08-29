@@ -26,6 +26,7 @@ import {
   type NavItem,
   type NavSection,
 } from "@/components/layout/nav-config";
+import { CAPABILITY_META } from "@/lib/capabilities";
 import { foldQuery } from "@/lib/match-query";
 import { newAppHref } from "@/lib/overview-links";
 import type { Capability, DatabaseType } from "@/lib/types";
@@ -518,7 +519,9 @@ export function matchOwnedPages(
   for (const entry of entries) {
     if (!entry.owner) continue;
     const owner = ownerText.get(entry.owner.name)!;
-    const page = foldQuery(`${entry.label} ${entry.hint ?? ""}`);
+    const page = foldQuery(
+      `${entry.label} ${entry.hint ?? ""}${capabilityText(entry)}`,
+    );
     let namesPage = false;
     let covered = true;
     for (const word of words) {
@@ -554,9 +557,27 @@ export function queryTerms(query: string): string[] {
   return query.trim().split(/\s+/).map(foldQuery).filter(Boolean);
 }
 
+/**
+ * What the capability behind a row is CALLED, plus the words the catalogue
+ * already lists for it. "manage mcp" reaches the MCP Server page that way, and
+ * so does "claude" - the word is nowhere on the row, only in `manage_mcp`.
+ * Descriptions stay out: they are sentences, and would match on anything.
+ */
+function capabilityText(entry: Entry): string {
+  const caps = [entry.requires, ...(entry.requiresAny ?? [])];
+  let out = "";
+  for (const cap of caps) {
+    const meta = cap ? CAPABILITY_META[cap as Capability] : undefined;
+    if (meta) out += ` ${meta.label} ${meta.keywords ?? ""}`;
+  }
+  return out;
+}
+
 /** Everything a row can be found by, including the heading it sits under. */
 const searchText = (entry: Entry) =>
-  foldQuery(`${entry.label} ${entry.hint ?? ""} ${entry.group}`);
+  foldQuery(
+    `${entry.label} ${entry.hint ?? ""} ${entry.group}${capabilityText(entry)}`,
+  );
 
 /** How well one term matched: the label first, its description last. */
 function rankTerm(entry: Entry, term: string): number {

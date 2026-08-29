@@ -336,3 +336,25 @@ test("only a resource's own verbs are coloured, and never red", () => {
     [],
   );
 });
+
+test("a row is findable by what its capability is called", () => {
+  // "manage" is nowhere on the MCP row - it lives only in `manage_mcp`, whose
+  // catalogue entry is called "Manage MCP access" and lists the agents by name.
+  const all = staticEntries();
+  const label = (q: string) => matchEntries(all, q).map((e) => e.label);
+
+  assert.deepEqual(label("manage mcp"), ["MCP Server"]);
+  assert.deepEqual(label("claude"), ["MCP Server"], "a curated keyword");
+  assert.deepEqual(label("secrets"), ["Variables"]);
+  assert.deepEqual(label("discord"), ["Notifications"]);
+
+  // The same corpus reaches one app's pages, where nav-config gates them.
+  const owned = ownedPageEntries(
+    [{ id: "p1", slug: "blog", name: "blog", logo: null }],
+    [],
+  );
+  assert.deepEqual(
+    matchOwnedPages(owned, "blog basic auth").map((e) => e.label),
+    ["Access"],
+  );
+});
