@@ -133,12 +133,12 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         title: tool.title,
         description: tool.description,
         // Every tool takes the team as an optional argument. Added centrally so
-        // the 78 rows stay a table of what deplo can do, with nothing about
+        // the 79 rows stay a table of what deplo can do, with nothing about
         // tenancy repeated in each of them.
-        // STRICT: an argument the tool does not take is a refusal naming the key,
-        // never a silent drop - a model that invents `container` for `service`
-        // otherwise reads the server's "pick one" as its own mistake and retries.
-        inputSchema: tool.input.extend({ team: TEAM_ARG }).strict(),
+        // Unknown keys are kept, not stripped, so the handler below can REFUSE
+        // them by name. Advertising `additionalProperties: false` instead would
+        // make a client's own validator answer, and never in deplo's words.
+        inputSchema: tool.input.extend({ team: TEAM_ARG }).passthrough(),
         annotations: {
           title: tool.title,
           readOnlyHint: tool.readOnly ?? false,
@@ -153,6 +153,20 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         // Capabilities and nothing on top: a second gate here would be a second permission
         // system, and it could only ever drift from the first.
         try {
+          // An argument this tool does not take is a REFUSAL that names it. Dropped
+          // silently (zod's default), `container` instead of `service` reaches the
+          // resolver as "no container was given", and the model reads deplo's "pick
+          // one" as its own mistake and tries another spelling. `_`-prefixed keys
+          // are protocol metadata some clients add, never the model's doing.
+          const accepted = new Set([...Object.keys(tool.input.shape), "team"]);
+          const unknown = Object.keys(args).filter(
+            (k) => !accepted.has(k) && !k.startsWith("_"),
+          );
+          if (unknown.length)
+            return failure(
+              `${tool.name} takes no argument "${unknown[0]}". It takes: ${[...accepted].join(", ")}.`,
+            );
+
           // `team` is deplo's, not the tool's: taken out before the arguments
           // become GraphQL variables, and resolved into a whole principal
           // rather than passed down as a value some resolver might trust.

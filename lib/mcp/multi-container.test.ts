@@ -519,7 +519,10 @@ test("an argument the tool does not take is refused, not silently dropped", asyn
   assert.equal(res.error, true, res.text);
   // Refused for the ARGUMENT, not for the missing container: a silent drop would
   // fail with "select the container" and read as the model's own mistake.
-  assert.match(res.text, /container/i, "the refusal must name the bad key");
+  // deplo's own words, and it lists what the tool DOES take, so the next call is
+  // the right one instead of another spelling.
+  assert.match(res.text, /takes no argument "container"/);
+  assert.match(res.text, /service/, "the refusal must list the real arguments");
   assert.doesNotMatch(res.text, /Select the container this domain routes to/);
   assert.deepEqual(await domainRows(), []);
 });
