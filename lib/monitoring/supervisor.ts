@@ -182,6 +182,9 @@ function hostSampleFrom(
     containers: h.runningContainers,
     agentVersion: facts.agentVersion,
     expectedAgentVersion: facts.expectedAgentVersion,
+    // Which sampler produced this frame, so "this host is on the slow path" is
+    // visible without a second RPC. Empty from an agent too old to label it.
+    source: frame.source,
     ts: Date.now(),
   };
 }

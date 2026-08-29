@@ -1,7 +1,10 @@
 import { builder } from "../builder";
 import {
+  getFleetMetrics,
   getServerMetrics,
   getServerMetricsHistory,
+  type FleetServerMetrics,
+  type FleetSpark,
   type ServerMetrics,
 } from "@/lib/data/monitoring";
 import {
@@ -64,6 +67,11 @@ const ServerMetricsRef = builder
       // target update with the poll rather than waiting for a reload.
       agentVersion: t.exposeString("agentVersion", { nullable: true }),
       expectedAgentVersion: t.exposeString("expectedAgentVersion"),
+      source: t.exposeString("source", {
+        description:
+          'Which sampler produced this frame: "cgroup2" | "docker-stats". Empty ' +
+          "when the reading did not come from the telemetry stream.",
+      }),
       // Epoch milliseconds; expose as Float to avoid 32-bit Int overflow.
       ts: t.exposeFloat("ts"),
     }),
@@ -90,6 +98,22 @@ const ContainerInstanceMetricsRef = builder
       blockRead: t.exposeFloat("blockRead"),
       blockWrite: t.exposeFloat("blockWrite"),
       pids: t.exposeInt("pids"),
+      state: t.exposeString("state", {
+        description:
+          "Raw docker state: running | restarting | exited | created | paused | " +
+          "dead | removing. Empty from an agent too old to report it.",
+      }),
+      health: t.exposeString("health", {
+        description:
+          "The healthcheck verdict when the image defines one: healthy | " +
+          "unhealthy | starting. EMPTY means there is no healthcheck at all, " +
+          "which is not a synonym for healthy.",
+      }),
+      restartCount: t.exposeInt("restartCount", {
+        description:
+          "How many times docker has restarted this container - what tells a " +
+          "container that is starting from one that has been dying for an hour.",
+      }),
       netNsHost: t.exposeBoolean("netNsHost", {
         description:
           "This container is on the host's network (`network_mode: host`), so " +
@@ -173,6 +197,46 @@ const ContainerMetricsRef = builder
     }),
   });
 
+const FleetSparkRef = builder.objectRef<FleetSpark>("FleetSpark").implement({
+  description: "One thinned point of a fleet row's sparkline.",
+  fields: (t) => ({
+    ts: t.exposeFloat("ts"),
+    cpu: t.exposeFloat("cpu"),
+    mem: t.exposeFloat("mem"),
+  }),
+});
+
+const FleetServerMetricsRef = builder
+  .objectRef<FleetServerMetrics>("FleetServerMetrics")
+  .implement({
+    description:
+      "One server's headline reading for the Monitoring page's fleet list, plus " +
+      "a thinned CPU/memory trace.",
+    fields: (t) => ({
+      serverId: t.exposeID("serverId"),
+      online: t.exposeBoolean("online", {
+        description: "Whether the buffer holds a reading at all.",
+      }),
+      ts: t.exposeFloat("ts", {
+        description:
+          "Newest sample time, epoch ms. 0 means nothing has been measured - the " +
+          "row says so rather than drawing zeros.",
+      }),
+      cpu: t.exposeFloat("cpu"),
+      memPct: t.exposeFloat("memPct"),
+      diskPct: t.exposeFloat("diskPct"),
+      containers: t.exposeInt("containers"),
+      agentVersion: t.exposeString("agentVersion", { nullable: true }),
+      expectedAgentVersion: t.exposeString("expectedAgentVersion"),
+      source: t.exposeString("source"),
+      spark: t.field({
+        type: [FleetSparkRef],
+        description: "Oldest first, at most 30 points.",
+        resolve: (m) => m.spark,
+      }),
+    }),
+  });
+
 const MonitoringSettingsRef = builder
   .objectRef<MonitoringSettings>("MonitoringSettings")
   .implement({
@@ -210,6 +274,15 @@ builder.queryFields((t) => ({
       "is off or the control plane restarted recently.",
     args: { serverId: t.arg.string({ required: true }) },
     resolve: (_r, { serverId }) => getServerMetricsHistory(serverId),
+  }),
+  fleetMetrics: t.field({
+    type: [FleetServerMetricsRef],
+    authScopes: { capability: "view_metrics" },
+    description:
+      "Every server's newest reading plus a thinned trace, for the Monitoring " +
+      "page's fleet list. Reads the control plane's buffers only - no agent is " +
+      "dialled, so watching N hosts costs what watching one does.",
+    resolve: () => getFleetMetrics(),
   }),
   monitoringSettings: t.field({
     type: MonitoringSettingsRef,

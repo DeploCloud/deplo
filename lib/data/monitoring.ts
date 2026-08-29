@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getServer } from "./servers";
+import { getServer, listServers } from "./servers";
 import { hasCapability, requireCapability } from "../membership";
 import { connectAgent } from "../infra/agent-client";
 import { markServerSeen, observedTraefik } from "./servers";
@@ -9,6 +9,7 @@ import { classifyServerHealth } from "../infra/server-health";
 import { reportedAgentVersion, resolveExpectedAgentVersion } from "../version";
 import { nowIso } from "../ids";
 import { getMetricsHistory, recordMetricsSample } from "../monitoring/history";
+import { downsample } from "../monitoring/chart-geometry";
 import { isMetricsSavingEnabled } from "./monitoring-settings";
 import type { Server } from "../types";
 
@@ -51,6 +52,12 @@ export interface ServerMetrics {
    * resolved once per poll and stamped onto every server's snapshot.
    */
   expectedAgentVersion: string;
+  /**
+   * Which backend produced the sample: "cgroup2" | "docker-stats". Empty when the
+   * measurement did not come from a telemetry frame (the Metrics RPC, or offline).
+   * Only "docker-stats" is worth saying out loud - it is the ~18x costlier path.
+   */
+  source: string;
   ts: number;
 }
 
@@ -94,6 +101,7 @@ function unavailable(
     uptimeSec: 0,
     containers: 0,
     ...agentVersionFields(expected, server),
+    source: "",
     ts: Date.now(),
   };
 }
@@ -171,6 +179,8 @@ async function measureRemote(
       containers: m.runningContainers,
       agentVersion: liveAgentVersion,
       expectedAgentVersion: expected,
+      // The one-shot RPC carries no backend label; only a stream frame does.
+      source: "",
       ts: Date.now(),
     };
   } finally {
@@ -222,6 +232,71 @@ export async function getServerMetricsHistory(
   const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
   return getMetricsHistory(serverId);
+}
+
+/** How many points a fleet row's sparkline carries. A 72px-wide spark cannot
+ *  resolve more, and the row is a glance, not a reading. */
+const FLEET_SPARK_POINTS = 30;
+
+/** One point of a fleet row's sparkline. */
+export interface FleetSpark {
+  ts: number;
+  cpu: number;
+  mem: number;
+}
+
+/**
+ * One row of the fleet list: the newest reading plus a thinned CPU/memory trace.
+ * `ts: 0` means the buffer is empty - the row says so instead of drawing zeros,
+ * which would read as an idle host rather than an unmeasured one.
+ */
+export interface FleetServerMetrics {
+  serverId: string;
+  online: boolean;
+  ts: number;
+  cpu: number;
+  memPct: number;
+  diskPct: number;
+  containers: number;
+  agentVersion: string | null;
+  expectedAgentVersion: string;
+  source: string;
+  spark: FleetSpark[];
+}
+
+/**
+ * Every server's headline reading in one round trip, for the Monitoring page's
+ * fleet list. Reads the in-RAM buffers only: no agent is dialled and no row is
+ * queried, so watching N hosts costs the same as watching one.
+ */
+export async function getFleetMetrics(): Promise<FleetServerMetrics[]> {
+  // Soft (empty) rather than a throw, like getServerMetricsHistory: this seeds a
+  // list on page load, and a lock screen is the page's decision, not ours.
+  if (!(await hasCapability("view_metrics"))) return [];
+  const servers = await listServers();
+  return servers
+    .filter((s) => !s.importOnly)
+    .map((server) => {
+      const history = getMetricsHistory(server.id);
+      const last = history[history.length - 1];
+      return {
+        serverId: server.id,
+        online: Boolean(last),
+        ts: last?.ts ?? 0,
+        cpu: last?.cpu ?? 0,
+        memPct: last?.memPct ?? 0,
+        diskPct: last?.diskPct ?? 0,
+        containers: last?.containers ?? 0,
+        agentVersion: reportedAgentVersion(server),
+        expectedAgentVersion: last?.expectedAgentVersion ?? "",
+        source: last?.source ?? "",
+        spark: downsample(history, FLEET_SPARK_POINTS).map((h) => ({
+          ts: h.ts,
+          cpu: h.cpu,
+          mem: h.memPct,
+        })),
+      };
+    });
 }
 
 /**

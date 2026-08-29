@@ -831,6 +831,11 @@ type ContainerInstanceMetrics {
   blockRead: Float
   blockWrite: Float
   cpu: Float
+
+  """
+  The healthcheck verdict when the image defines one: healthy | unhealthy | starting. EMPTY means there is no healthcheck at all, which is not a synonym for healthy.
+  """
+  health: String
   memLimit: Float
   memPct: Float
   memUsed: Float
@@ -848,7 +853,17 @@ type ContainerInstanceMetrics {
   netRx: Float
   netTx: Float
   pids: Int
+
+  """
+  How many times docker has restarted this container - what tells a container that is starting from one that has been dying for an hour.
+  """
+  restartCount: Int
   running: Boolean
+
+  """
+  Raw docker state: running | restarting | exited | created | paused | dead | removing. Empty from an agent too old to report it.
+  """
+  state: String
 }
 
 """
@@ -1750,6 +1765,38 @@ input ExtraDomainInput {
   path: String
   port: Int!
   service: String!
+}
+
+"""
+One server's headline reading for the Monitoring page's fleet list, plus a thinned CPU/memory trace.
+"""
+type FleetServerMetrics {
+  agentVersion: String
+  containers: Int
+  cpu: Float
+  diskPct: Float
+  expectedAgentVersion: String
+  memPct: Float
+
+  """Whether the buffer holds a reading at all."""
+  online: Boolean
+  serverId: ID
+  source: String
+
+  """Oldest first, at most 30 points."""
+  spark: [FleetSpark!]
+
+  """
+  Newest sample time, epoch ms. 0 means nothing has been measured - the row says so rather than drawing zeros.
+  """
+  ts: Float
+}
+
+"""One thinned point of a fleet row's sparkline."""
+type FleetSpark {
+  cpu: Float
+  mem: Float
+  ts: Float
 }
 
 """
@@ -4021,6 +4068,11 @@ type Query {
   environments(projectId: ID!): [Environment!]
 
   """
+  Every server's newest reading plus a thinned trace, for the Monitoring page's fleet list. Reads the control plane's buffers only - no agent is dialled, so watching N hosts costs what watching one does.
+  """
+  fleetMetrics: [FleetServerMetrics!]
+
+  """
   Who can access a folder - its owner plus every user it's shared with. Owner/admin only.
   """
   folderGrants(folderId: ID!): [FolderGrant!]
@@ -4878,6 +4930,11 @@ type ServerMetrics {
   netTx: Float
   online: Boolean
   serverId: ID
+
+  """
+  Which sampler produced this frame: "cgroup2" | "docker-stats". Empty when the reading did not come from the telemetry stream.
+  """
+  source: String
   traefik: Boolean
   ts: Float
   uptimeSec: Int

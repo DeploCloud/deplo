@@ -31,6 +31,15 @@ export interface ContainerInstanceMetrics {
   blockRead: number; // cumulative bytes
   blockWrite: number;
   pids: number;
+  /** Raw docker state: running | restarting | exited | created | paused | dead |
+   *  removing. Empty from an agent too old to send it - not a synonym for stopped. */
+  state: string;
+  /** The healthcheck verdict when the image defines one: healthy | unhealthy |
+   *  starting. Empty when there is NO healthcheck, which is not "healthy". */
+  health: string;
+  /** How many times docker has restarted this container - what turns "it is
+   *  starting" into "it has been dying for an hour". */
+  restartCount: number;
   /** The container's network namespace. Containers sharing one report the SAME
    *  counters, so the stack total must count them once. 0 = agent too old. */
   netNsId: number;
@@ -114,6 +123,9 @@ function toInstance(s: PbContainerStat): ContainerInstanceMetrics {
     blockRead: s.blockRead,
     blockWrite: s.blockWrite,
     pids: s.pids,
+    state: s.state,
+    health: s.health,
+    restartCount: s.restartCount,
     netNsId: s.netNsId,
     netNsHost: s.netNsHost,
   };

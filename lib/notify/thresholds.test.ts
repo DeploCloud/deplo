@@ -35,6 +35,7 @@ function sample(over: Partial<ServerMetrics> = {}): ServerMetrics {
     containers: 3,
     agentVersion: "1.0.0",
     expectedAgentVersion: "1.0.0",
+    source: "cgroup2",
     ts: 0,
     ...over,
   } as ServerMetrics;
