@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/server";
 import { DEPLO_VERSION } from "../version";
+import { DOCS_BASE } from "../docs";
 import { runWithIdentity } from "../auth/request-context";
 import type { Capability } from "../types";
 import type { GraphQLContext } from "../graphql/context";
@@ -98,10 +99,29 @@ function failure(message: string) {
   };
 }
 
+/**
+ * Sent once at `initialize`. The tool table says what deplo can DO; this says
+ * what deplo IS, so an agent uses deplo's own words and knows where to read more.
+ */
+const INSTRUCTIONS = `deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
+
+Its vocabulary, which the tools use literally:
+- App: the deployable unit. Never call it a service or a project.
+- Project: a container of Environments (production, staging). Each Environment owns its own Apps and shared variables.
+- Folder: a grouping of Apps with its own access grants.
+- Server: a machine in the fleet. Servers are shared; everything else belongs to one team.
+
+How to work here:
+- Every call runs in one team. \`find\` searches every granted team and says which team each hit is in; pass that as \`team\` on the next call.
+- What you may do is exactly the token's Capabilities. A refusal is an answer, not something to retry another way.
+- Secret variables are write-only: nothing reveals a secret's value, by design.
+
+The user manual is at ${DOCS_BASE} - read it there when you need to explain how something works.`;
+
 export function buildMcpServer(principal: McpPrincipal): McpServer {
   const server = new McpServer(
     { name: "deplo", version: DEPLO_VERSION },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
   );
 
   for (const tool of MCP_TOOLS) {

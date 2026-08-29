@@ -112,6 +112,13 @@ const ALL: Capability[] = [
   ),
 ];
 
+test("discovery carries the instructions, with the link to the manual", async () => {
+  const { json } = await rpc("server/discover", principal(["view"]));
+  const instructions = json.result.instructions as string;
+  assert.match(instructions, /https:\/\/deplo\.build\/docs/);
+  assert.match(instructions, /App: the deployable unit/);
+});
+
 test("tools/list answers, and every tool survives JSON Schema conversion", async () => {
   const { status, json } = await rpc("tools/list", principal(ALL, true));
   assert.equal(status, 200, JSON.stringify(json));
