@@ -9,6 +9,7 @@ import { ALL_CAPABILITIES } from "@/lib/types";
 import { SEARCH_QUERY } from "./search-query";
 import {
   APP_ACTIONS,
+  countOwnedPages,
   matchOwnedPages,
   ownedPageEntries,
   DB_ACTIONS,
@@ -227,10 +228,45 @@ test("two words reach a page nav-config spells exactly", () => {
   );
 });
 
-test("one word answers nothing - that is what the resource row is for", () => {
-  assert.deepEqual(matchOwnedPages(OWNED, "domains"), []);
-  assert.deepEqual(matchOwnedPages(OWNED, "deplo"), []);
-  assert.deepEqual(matchOwnedPages(OWNED, ""), []);
+test("one word naming a page reaches every app's copy of it", () => {
+  assert.deepEqual(
+    matchOwnedPages(OWNED, "domains").map((e) => [e.owner?.name, e.label]),
+    [
+      ["deplo-web", "Domains"],
+      ["GameWatcher", "Domains"],
+    ],
+  );
+  assert.deepEqual(
+    matchOwnedPages(OWNED, ""),
+    [],
+    "nothing typed, nothing to show",
+  );
+});
+
+test("a word that names the app is spent on the app, not on its pages", () => {
+  // "deplo" is a prefix of "deployments", so without that rule typing an app's
+  // name would bury the app under its own fourteen pages.
+  assert.deepEqual(
+    matchOwnedPages(OWNED, "deplo").map((e) => e.owner?.name),
+    [],
+  );
+});
+
+test("the cap counts, and the total behind it is knowable", () => {
+  assert.equal(countOwnedPages(OWNED, "logs"), 3, "two apps and a database");
+  assert.equal(matchOwnedPages(OWNED, "logs", 2).length, 2);
+  assert.equal(
+    matchOwnedPages(OWNED, "logs", Number.POSITIVE_INFINITY).length,
+    countOwnedPages(OWNED, "logs"),
+  );
+});
+
+test("a resource's own tab outranks the same name inside its settings", () => {
+  const hits = matchOwnedPages(OWNED, "deplo deployments");
+  assert.deepEqual(
+    hits.map((e) => (e.run.kind === "href" ? e.run.href : "")),
+    ["/apps/deplo-web/deployments", "/apps/deplo-web/settings/deployments"],
+  );
 });
 
 test("a word naming neither the owner nor the page rules the row out", () => {

@@ -79,6 +79,11 @@ export interface Entry {
    * mistaken for deplo's own.
    */
   owner?: EntryOwner;
+  /**
+   * The team this page belongs to, when it is not the active one. Choosing it
+   * switches team first, the same way a cross-team search hit does.
+   */
+  team?: { id: string; name: string };
   requires?: string;
   requiresAny?: string[];
   requiresAdmin?: boolean;
@@ -205,6 +210,28 @@ export function staticEntries(): Entry[] {
     ...SETTINGS_EXTRAS,
     ...GLOBAL_ACTIONS,
   ];
+}
+
+/**
+ * The Team section of the settings menu, once per team the caller can reach.
+ * Account is one person's and System is the whole instance's, so neither is
+ * copied - saying "Security, in team Acme" would be a lie.
+ */
+export function teamPageEntries(
+  teams: { id: string; name: string }[],
+  activeTeamId: string,
+): Entry[] {
+  const team = SETTINGS_NAV.find((s) => s.title === "Team");
+  if (!team) return [];
+  return teams
+    .filter((t) => t.id !== activeTeamId)
+    .flatMap((t) =>
+      fromSections([team], () => "Settings", `team:${t.id}`).map((entry) => ({
+        ...entry,
+        hint: t.name,
+        team: { id: t.id, name: t.name },
+      })),
+    );
 }
 
 /**
@@ -452,68 +479,111 @@ export function ownedPageEntries(
 }
 
 /**
- * "deplo variables" finds deplo-web's Environment page - the page is matched on
- * its description as well as its name, because nav-config calls that one
- * "Environment" and nobody types that. Two words at least, one naming the
- * resource and one naming the page: with a single word, "logs" would put every
- * app's copy of it on screen in front of deplo's own.
+ * `deployments` lists every app's Deployments page; `deplo variables` narrows to
+ * one app's. Pages are matched on their description as well as their name,
+ * because nav-config calls that one "Environment" and nobody types that.
+ *
+ * At least one word must name the PAGE: without that rule, typing an app's name
+ * would bury the app itself under its own fourteen pages.
  */
 export function matchOwnedPages(
   entries: Entry[],
   query: string,
-  limit = 8,
+  limit = 6,
 ): Entry[] {
-  const words = query.trim().split(/\s+/).map(foldQuery).filter(Boolean);
-  if (words.length < 2) return [];
+  const words = queryTerms(query);
+  if (words.length === 0) return [];
+
+  // A word that names ANY resource is spent naming it, for the whole query.
+  // "deplo" is a prefix of "deployments", so without this rule typing an app's
+  // name would list every OTHER app's Deployments page underneath it.
+  const ownerText = new Map<string, string>();
+  const ownerWords = new Set<string>();
+  for (const entry of entries) {
+    if (!entry.owner) continue;
+    const key = entry.owner.name;
+    let hay = ownerText.get(key);
+    if (hay === undefined) {
+      hay = foldQuery(
+        entry.owner.kind === "app"
+          ? `${entry.owner.name} ${entry.owner.slug}`
+          : entry.owner.name,
+      );
+      ownerText.set(key, hay);
+      for (const word of words) if (hay.includes(word)) ownerWords.add(word);
+    }
+  }
+
   const out: Entry[] = [];
   for (const entry of entries) {
     if (!entry.owner) continue;
-    const owner = foldQuery(
-      entry.owner.kind === "app"
-        ? `${entry.owner.name} ${entry.owner.slug}`
-        : entry.owner.name,
-    );
+    const owner = ownerText.get(entry.owner.name)!;
     const page = foldQuery(`${entry.label} ${entry.hint ?? ""}`);
-    let namesOwner = false;
     let namesPage = false;
     let covered = true;
     for (const word of words) {
       const hitOwner = owner.includes(word);
-      const hitPage = page.includes(word);
+      const hitPage = !ownerWords.has(word) && page.includes(word);
       if (!hitOwner && !hitPage) {
         covered = false;
         break;
       }
-      namesOwner ||= hitOwner;
       namesPage ||= hitPage;
     }
-    if (covered && namesOwner && namesPage) out.push(entry);
-    if (out.length >= limit) break;
+    if (covered && namesPage) out.push(entry);
   }
-  return out;
+  // A resource's own tab before the same name buried in its settings, then
+  // catalogue order - which is the order the apps themselves are in.
+  return out
+    .sort(
+      (a, b) => Number(a.group === "Settings") - Number(b.group === "Settings"),
+    )
+    .slice(0, limit);
 }
 
 /**
- * Rank the catalogue against what was typed: a label that starts with it beats a
- * word inside the label, which beats anything else in the label, which beats the
- * hint. `sort` is stable, so ties keep catalogue order.
+ * How many owned pages the query would reach if nothing were capped. Feeds the
+ * "show the rest" row, which has to say how many are behind it.
+ */
+export function countOwnedPages(entries: Entry[], query: string): number {
+  return matchOwnedPages(entries, query, Number.POSITIVE_INFINITY).length;
+}
+
+/** Split what was typed into the words it is made of, folded. */
+export function queryTerms(query: string): string[] {
+  return query.trim().split(/\s+/).map(foldQuery).filter(Boolean);
+}
+
+/** Everything a row can be found by, including the heading it sits under. */
+const searchText = (entry: Entry) =>
+  foldQuery(`${entry.label} ${entry.hint ?? ""} ${entry.group}`);
+
+/** How well one term matched: the label first, its description last. */
+function rankTerm(entry: Entry, term: string): number {
+  const label = foldQuery(entry.label);
+  if (label.startsWith(term)) return 3;
+  if (entry.label.split(/\s+/).some((w) => foldQuery(w).startsWith(term)))
+    return 2;
+  if (label.includes(term)) return 1;
+  return 0;
+}
+
+/**
+ * Every word has to land somewhere, in any order - the same rule
+ * `searchCapabilities` uses. Folding the whole query into one needle instead
+ * meant "team settings" found nothing at all, because no row is called that:
+ * the words live in the heading and the label separately.
  */
 export function matchEntries(entries: Entry[], query: string): Entry[] {
-  const needle = foldQuery(query);
-  if (!needle) return entries;
+  const terms = queryTerms(query);
+  if (terms.length === 0) return entries;
   const scored: [Entry, number][] = [];
   for (const entry of entries) {
-    const label = foldQuery(entry.label);
-    const score = label.startsWith(needle)
-      ? 3
-      : entry.label.split(/\s+/).some((w) => foldQuery(w).startsWith(needle))
-        ? 2
-        : label.includes(needle)
-          ? 1
-          : entry.hint && foldQuery(entry.hint).includes(needle)
-            ? 0
-            : -1;
-    if (score >= 0) scored.push([entry, score]);
+    const hay = searchText(entry);
+    if (!terms.every((t) => hay.includes(t))) continue;
+    // Ranked on the first word: what you started typing is what you meant.
+    scored.push([entry, rankTerm(entry, terms[0]!)]);
   }
+  // `sort` is stable, so ties keep catalogue order.
   return scored.sort((a, b) => b[1] - a[1]).map(([entry]) => entry);
 }
