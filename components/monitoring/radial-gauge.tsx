@@ -30,8 +30,6 @@ export function RadialGauge({
   color?: string;
   ariaLabel: string;
 }) {
-  const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const gradId = `gauge-${uid}`;
   const frac = gaugeFraction(value, full);
   const over = frac >= WARN_AT;
   const stroke = over ? "var(--warning)" : color;
@@ -50,12 +48,6 @@ export function RadialGauge({
       role="img"
       aria-label={ariaLabel}
     >
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor={stroke} stopOpacity={0.45} />
-          <stop offset="100%" stopColor={stroke} stopOpacity={1} />
-        </linearGradient>
-      </defs>
       {/* The unfilled track has to be visible or the ceiling is invisible too -
           `--secondary` is one step off the card in dark and disappears. */}
       <path
@@ -69,7 +61,7 @@ export function RadialGauge({
         <path
           d={fill}
           fill="none"
-          stroke={`url(#${gradId})`}
+          stroke={stroke}
           strokeWidth={7}
           strokeLinecap="round"
         />

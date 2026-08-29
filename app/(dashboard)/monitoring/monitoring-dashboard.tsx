@@ -18,11 +18,8 @@ import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import { GaugeTile } from "@/components/monitoring/radial-gauge";
 import { MonitoringGraphic } from "@/components/monitoring/monitoring-graphic";
 import { EmptyState } from "@/components/shared/empty-state";
-import {
-  FleetList,
-  ManageServerButton,
-  type FleetRow,
-} from "@/components/monitoring/fleet-list";
+import { FleetList, type FleetRow } from "@/components/monitoring/fleet-list";
+import { ManageServerButton } from "@/components/monitoring/host-chip";
 import { ServerPicker } from "@/components/monitoring/server-picker";
 import {
   ChartCard,
@@ -222,15 +219,41 @@ export function MonitoringDashboard({
 
   return (
     <div className="space-y-6">
-      {showFleet && (
-        <FleetList
-          servers={servers}
-          rows={fleet}
-          selectedId={selected.id}
-          onSelect={setSelectedId}
-          canManageServers={canManageServers}
-        />
-      )}
+      {/* Whose panels these are, whether the feed is live, and the window that
+          scopes every chart below. OUTSIDE the empty branch on purpose: the
+          picker is navigation, and a host that has gone quiet must not be a
+          dead end. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {showFleet ? (
+            <ServerPicker
+              servers={servers}
+              rows={fleet}
+              selectedId={selected.id}
+              onSelect={setSelectedId}
+            />
+          ) : (
+            // One host: there is nothing to pick, so the name is just a name -
+            // and its Manage link has no row to live on.
+            <>
+              <span className="text-sm font-medium">
+                {serverLabel(selected)}
+              </span>
+              {canManageServers && (
+                <ManageServerButton id={selected.id} className="mr-0" />
+              )}
+            </>
+          )}
+          {/**
+           * The shared status line, not a local copy of it: the per-app Monitoring tab shows
+           * the same claim, and two hand-maintained versions of "is this feed live?"
+           */}
+          {cur && <LiveStatusLine stale={stale} asOf={cur.ts} />}
+        </div>
+        {online && cur && (
+          <WindowSelector windowMs={windowMs} onChange={setWindowMs} />
+        )}
+      </div>
 
       {!online || !cur ? (
         <EmptyState
@@ -245,38 +268,6 @@ export function MonitoringDashboard({
         />
       ) : (
         <>
-          {/* Whose panels these are, whether the feed is live, and the window
-              that scopes every chart below. */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              {showFleet ? (
-                <ServerPicker
-                  servers={servers}
-                  rows={fleet}
-                  selectedId={selected.id}
-                  onSelect={setSelectedId}
-                />
-              ) : (
-                // One host: there is nothing to pick, so the name is just a
-                // name - and its Manage link has no row to live on.
-                <>
-                  <span className="text-sm font-medium">
-                    {serverLabel(selected)}
-                  </span>
-                  {canManageServers && (
-                    <ManageServerButton id={selected.id} className="mr-0" />
-                  )}
-                </>
-              )}
-              {/**
-               * The shared status line, not a local copy of it: the per-app Monitoring tab shows
-               * the same claim, and two hand-maintained versions of "is this feed live?"
-               */}
-              <LiveStatusLine stale={stale} asOf={cur.ts} />
-            </div>
-            <WindowSelector windowMs={windowMs} onChange={setWindowMs} />
-          </div>
-
           {/* Saturation against the machine - three arcs asking one question. */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <GaugeTile
@@ -410,33 +401,46 @@ export function MonitoringDashboard({
               />
             </ChartCard>
           </div>
-
-          {/* Info strip */}
-          <Card>
-            <CardContent className="grid grid-cols-2 gap-4 py-4 sm:grid-cols-4">
-              <InfoItem
-                icon={Clock}
-                label="Uptime"
-                value={fmtUptime(cur.uptimeSec)}
-              />
-              <InfoItem
-                icon={Boxes}
-                label="Containers"
-                value={`${cur.containers}`}
-              />
-              <InfoItem
-                icon={Gauge}
-                label="Load (1/5/15m)"
-                value={cur.load.map((l) => l.toFixed(2)).join(" / ")}
-              />
-              <InfoItem
-                icon={Cpu}
-                label="Docker"
-                value={selected.dockerVersion || "—"}
-              />
-            </CardContent>
-          </Card>
         </>
+      )}
+
+      {/* The fleet, under this host's own numbers rather than above them: the
+          page answers "how is the one I picked" first. */}
+      {showFleet && (
+        <FleetList
+          servers={servers}
+          rows={fleet}
+          selectedId={selected.id}
+          onSelect={setSelectedId}
+          canManageServers={canManageServers}
+        />
+      )}
+
+      {online && cur && (
+        <Card>
+          <CardContent className="grid grid-cols-2 gap-4 py-4 sm:grid-cols-4">
+            <InfoItem
+              icon={Clock}
+              label="Uptime"
+              value={fmtUptime(cur.uptimeSec)}
+            />
+            <InfoItem
+              icon={Boxes}
+              label="Containers"
+              value={`${cur.containers}`}
+            />
+            <InfoItem
+              icon={Gauge}
+              label="Load (1/5/15m)"
+              value={cur.load.map((l) => l.toFixed(2)).join(" / ")}
+            />
+            <InfoItem
+              icon={Cpu}
+              label="Docker"
+              value={selected.dockerVersion || "—"}
+            />
+          </CardContent>
+        </Card>
       )}
     </div>
   );

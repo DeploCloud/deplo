@@ -1,9 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ManageServerButton } from "@/components/monitoring/host-chip";
 import { Badge } from "@/components/ui/badge";
 import { Info } from "lucide-react";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -24,26 +23,6 @@ export interface FleetRow {
   expectedAgentVersion: string;
   source: string;
   spark: { ts: number; cpu: number; mem: number }[];
-}
-
-/** The link to a server's own page - its agent, cleanup, teams and uninstall. */
-export function ManageServerButton({
-  id,
-  className,
-}: {
-  id: string;
-  className?: string;
-}) {
-  return (
-    <Button
-      asChild
-      variant="ghost"
-      size="sm"
-      className={cn("mr-2 shrink-0 text-muted-foreground", className)}
-    >
-      <Link href={`/settings/servers/${id}`}>Manage</Link>
-    </Button>
-  );
 }
 
 /** Amber past this, matching the gauges and the old saturation bar. */
