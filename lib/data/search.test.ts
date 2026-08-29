@@ -10,9 +10,10 @@ import { apps as appsTable } from "../db/schema/control-plane";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
-import { runWithIdentity } from "../auth/request-context";
+import { runWithIdentity, type TokenGrant } from "../auth/request-context";
+import { ALL_CAPABILITIES } from "../types";
 import { listApps } from "./apps";
-import { search } from "./search";
+import { search, type SearchKind } from "./search";
 
 /**
  * The one read that spans teams.
@@ -20,6 +21,20 @@ import { search } from "./search";
 
 let db: TestDb;
 let pg: PGlite;
+
+/** Every kind but `template`: the catalogue is a real HTTP fetch, and the suite
+ *  must not go to the network. */
+const KINDS: SearchKind[] = [
+  "app",
+  "database",
+  "server",
+  "project",
+  "environment",
+  "folder",
+  "domain",
+  "member",
+  "cron",
+];
 
 /** Seeded, with an app in it, and USER_1 is not a member. */
 const TEAM_C = "team_c";
@@ -86,7 +101,7 @@ const asUser1 = <T>(fn: () => Promise<T>) =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
 test("finds hits in another team and stamps each with the team it is in", async () => {
-  const found = await asUser1(() => search("better auth"));
+  const found = await asUser1(() => search("better auth", KINDS));
 
   assert.deepEqual(
     found.apps.map((a) => [a.id, a.team.slug]),
@@ -103,7 +118,7 @@ test("finds hits in another team and stamps each with the team it is in", async 
 test("a team the caller is not a member of contributes nothing", async () => {
   // `better-auth-private` matches the query as well as anything in alpha does.
   // It must be absent because the search never enters gamma at all.
-  const found = await asUser1(() => search("better"));
+  const found = await asUser1(() => search("better", KINDS));
   const ids = found.apps.map((a) => a.id);
 
   assert.ok(ids.includes("prj_a1"), ids.join());
@@ -111,21 +126,25 @@ test("a team the caller is not a member of contributes nothing", async () => {
 });
 
 test("case, separators and ids are all one match rule", async () => {
-  const bySpaces = await asUser1(() => search("BETTER auth docs"));
+  const bySpaces = await asUser1(() => search("BETTER auth docs", KINDS));
   assert.deepEqual(
     bySpaces.apps.map((a) => a.id),
     ["prj_a1"],
   );
 
   // A pasted id finds its app in whichever team holds it.
-  const byId = await asUser1(() => search("prj_b1"));
+  const byId = await asUser1(() => search("prj_b1", KINDS));
   assert.deepEqual(
     byId.apps.map((a) => [a.id, a.team.slug]),
     [["prj_b1", "beta"]],
   );
 
-  const blank = await asUser1(() => search("   "));
-  assert.deepEqual(blank, { apps: [], databases: [] }, "blank finds nothing");
+  const blank = await asUser1(() => search("   ", KINDS));
+  assert.deepEqual(
+    { apps: blank.apps, databases: blank.databases },
+    { apps: [], databases: [] },
+    "blank finds nothing",
+  );
 });
 
 test("the same match filters one team's list", async () => {
@@ -141,4 +160,82 @@ test("the same match filters one team's list", async () => {
     listApps("better auth"),
   );
   assert.deepEqual(there, [], "the filter never reaches outside the team");
+});
+
+test("hits are ranked exact, then prefix, then substring", async () => {
+  await seedApp(db, { id: "prj_api", teamId: TEAM_A, slug: "api" });
+  await seedApp(db, { id: "prj_gw", teamId: TEAM_A, slug: "api-gateway" });
+  await seedApp(db, { id: "prj_leg", teamId: TEAM_A, slug: "legacy-api" });
+  for (const [id, name] of [
+    ["prj_api", "api"],
+    ["prj_gw", "api-gateway"],
+    ["prj_leg", "legacy-api"],
+  ] as const) {
+    await db.update(appsTable).set({ name }).where(eq(appsTable.id, id));
+  }
+
+  const found = await asUser1(() => search("api", ["app"]));
+  // Alpha's three by how well they matched, and only then beta's `quotedb-api`:
+  // the active team wins before the rank is even consulted.
+  assert.deepEqual(
+    found.apps.map((a) => a.id),
+    ["prj_api", "prj_gw", "prj_leg", "prj_b1"],
+  );
+});
+
+test("the active team outranks a closer match in another one", async () => {
+  // `prj_a1` is "Better Auth Docs" in alpha; `db_b1` is "better-auth-store" in
+  // beta. Whichever team the caller is IN comes first.
+  const fromAlpha = await asUser1(() =>
+    search("better auth", ["app", "database"]),
+  );
+  assert.deepEqual(
+    [
+      ...fromAlpha.apps.map((a) => a.team.slug),
+      ...fromAlpha.databases.map((d) => d.team.slug),
+    ],
+    ["alpha", "beta"],
+  );
+
+  await seedApp(db, { id: "prj_b2", teamId: TEAM_B, slug: "better-auth-api" });
+  const fromBeta = await runWithIdentity(
+    { userId: USER_1, teamId: TEAM_B },
+    () => search("better auth", ["app"]),
+  );
+  assert.deepEqual(
+    fromBeta.apps.map((a) => a.team.slug),
+    ["beta", "alpha"],
+    "standing in beta puts beta's hit first",
+  );
+});
+
+test("a team-wide gate that refuses costs its kind, not the search", async () => {
+  // A token narrowed to one app reaches no server, member or database list -
+  // every one of those reads throws `requireTeamWide`. The app must still land.
+  const grant: TokenGrant = {
+    id: "tok_search",
+    capabilities: [...ALL_CAPABILITIES],
+    scope: {
+      teamIds: [TEAM_A],
+      wholeTeamIds: [],
+      projectIds: [],
+      folderIds: [],
+      appIds: ["prj_a1"],
+      appProjectIds: [],
+    },
+    instanceAdmin: false,
+  };
+  const found = await runWithIdentity(
+    { userId: USER_1, teamId: TEAM_A, token: grant },
+    () => search("better", ["app", "database", "server", "member"]),
+  );
+
+  assert.deepEqual(
+    found.apps.map((a) => a.id),
+    ["prj_a1"],
+    "the one app the token names is still found",
+  );
+  assert.deepEqual(found.databases, [], "databases refused the narrowed token");
+  assert.deepEqual(found.servers, [], "servers refused the narrowed token");
+  assert.deepEqual(found.members, [], "members refused the narrowed token");
 });

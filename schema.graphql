@@ -4181,9 +4181,14 @@ type Query {
   registries: [Registry!]
 
   """
-  Find apps and databases by name, slug or id across EVERY team the caller can reach - the one read in deplo that is not scoped to the active team. Each hit says which team it is in. Separators and case are ignored, so "better auth" finds `better-auth-docs`. Teams the caller cannot enter right now (an unmet two-factor policy, a narrowed token) contribute nothing rather than failing the search.
+  Find anything by name, slug or id across EVERY team the caller can reach - the one read in deplo that is not scoped to the active team. Each hit says which team it is in. Separators and case are ignored, so "better auth" finds `better-auth-docs`. Hits from the active team come first, then the closest match. Teams the caller cannot enter right now (an unmet two-factor policy, a narrowed token) contribute nothing rather than failing the search.
   """
   search(
+    """
+    Which kinds to look through. Omitted means all ten - and each is a separate read PER TEAM, so name the ones you need.
+    """
+    kinds: [SearchKind!]
+
     """Part of a name, slug or id. Blank finds nothing."""
     q: String!
   ): SearchResults
@@ -4510,6 +4515,7 @@ An app a search matched. Deliberately small: enough to recognise it and to read 
 """
 type SearchApp {
   id: ID
+  logo: String
   name: String
   productionUrl: String
   slug: String
@@ -4517,24 +4523,127 @@ type SearchApp {
   team: SearchTeam
 }
 
+"""A cron job a search matched, with the app or database it runs on."""
+type SearchCron {
+  enabled: Boolean
+  id: ID
+  name: String
+  schedule: String
+  targetKind: String
+  targetName: String
+
+  """The app's SLUG or the database's ID - the deep link, either way."""
+  targetRef: String
+  team: SearchTeam
+}
+
 """A database a search matched."""
 type SearchDatabase {
   id: ID
+  logo: String
   name: String
   status: DatabaseStatus
   team: SearchTeam
   type: DatabaseType
 }
 
+"""A domain a search matched, with the app that serves it."""
+type SearchDomain {
+  appName: String
+  appSlug: String
+  id: ID
+  name: String
+  status: DomainStatus
+  team: SearchTeam
+}
+
+"""An environment a search matched, with the project it is in."""
+type SearchEnvironment {
+  id: ID
+  kind: String
+  name: String
+  projectId: ID
+  projectName: String
+  slug: String
+  team: SearchTeam
+}
+
+"""A folder a search matched. Folders have no slug: open one by id."""
+type SearchFolder {
+  appCount: Int
+  id: ID
+  name: String
+  team: SearchTeam
+}
+
+"""One kind of thing a search can return."""
+enum SearchKind {
+  app
+  cron
+  database
+  domain
+  environment
+  folder
+  member
+  project
+  server
+  template
+}
+
+"""
+A team member a search matched. Name and username only - a search must never turn a name into an email address.
+"""
+type SearchMember {
+  name: String
+  roleName: String
+  team: SearchTeam
+  userId: ID
+  username: String
+}
+
+"""A project a search matched."""
+type SearchProject {
+  appCount: Int
+  id: ID
+  name: String
+  slug: String
+  team: SearchTeam
+}
+
 """What a search found, grouped by kind. At most 50 of each."""
 type SearchResults {
   apps: [SearchApp!]
+  cronJobs: [SearchCron!]
   databases: [SearchDatabase!]
+  domains: [SearchDomain!]
+  environments: [SearchEnvironment!]
+  folders: [SearchFolder!]
+  members: [SearchMember!]
+  projects: [SearchProject!]
+  servers: [SearchServer!]
+  templates: [SearchTemplate!]
+}
+
+"""
+A server a search matched. Servers are the one resource shared across teams, so a hit names none.
+"""
+type SearchServer {
+  host: String
+  id: ID
+  name: String
+  status: ServerStatus
 }
 
 """The team a search hit was found in."""
 type SearchTeam {
   id: ID
+  name: String
+  slug: String
+}
+
+"""A catalogue template a search matched. Public, so it names no team."""
+type SearchTemplate {
+  logo: String
   name: String
   slug: String
 }

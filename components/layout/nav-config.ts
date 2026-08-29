@@ -81,6 +81,22 @@ export interface NavItem {
   disabledReason?: string;
 }
 
+/**
+ * May this viewer see the item at all? The one rule, shared by the sidebar and
+ * the command palette so the two can never disagree about what is reachable.
+ */
+export function canSee(
+  item: Pick<NavItem, "requires" | "requiresAny" | "requiresAdmin">,
+  caps: ReadonlySet<string>,
+  isAdmin: boolean,
+): boolean {
+  return (
+    (!item.requires || caps.has(item.requires)) &&
+    (!item.requiresAny || item.requiresAny.some((c) => caps.has(c))) &&
+    (!item.requiresAdmin || isAdmin)
+  );
+}
+
 export interface NavSection {
   title?: string;
   items: NavItem[];

@@ -31,7 +31,7 @@ import {
   requireTeamWide,
 } from "../membership";
 import { recordActivity } from "./activity";
-import { matchesQuery } from "./match-query";
+import { matchesQuery } from "../match-query";
 import { dispatchAlert } from "../notify/dispatch";
 import {
   encryptSecret,

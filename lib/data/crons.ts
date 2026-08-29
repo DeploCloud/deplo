@@ -15,7 +15,11 @@ import {
 import { encryptSecret } from "../crypto";
 import { composeServiceNames } from "../deploy/compose-stack";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import {
+  currentCapabilities,
+  requireActiveTeamId,
+  requireCapability,
+} from "../membership";
 import { invalidScheduleMessage, isValidSchedule } from "../schedule";
 import {
   canonicalTimeZone,
@@ -36,6 +40,8 @@ import type {
 } from "../types";
 import { recordActivity } from "./activity";
 import { loadAppGraph } from "./app-graph-load";
+import { listApps } from "./apps";
+import { listDatabases } from "./databases";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { requireAppCapability } from "./node-access";
 
@@ -517,6 +523,85 @@ export const listDatabaseCronJobs = cache(
     };
   },
 );
+
+/** A cron job as a search result renders it: name it, and open its page. */
+export interface TeamCronJob {
+  id: string;
+  teamId: string;
+  name: string;
+  schedule: string;
+  enabled: boolean;
+  targetKind: CronTargetKind;
+  /** The App's SLUG or the Database's ID - the whole deep link, either way. */
+  targetRef: string;
+  targetName: string;
+}
+
+/**
+ * Every cron job in the active team the caller may actually manage. Visibility
+ * comes from the PARENT, never from the job row: the two lists below already
+ * apply team scope, token scope and the per-folder gates.
+ */
+export async function listTeamCronJobs(): Promise<TeamCronJob[]> {
+  const teamId = await requireActiveTeamId();
+  const [apps, databases, caps] = await Promise.all([
+    listApps(),
+    // A narrowed token can't reach databases, and so can't reach their jobs -
+    // but that must not cost it the App jobs it CAN see.
+    listDatabases().catch(() => []),
+    currentCapabilities(),
+  ]);
+  const byApp = new Map(
+    apps
+      .filter((a) => a.capabilities?.includes("manage_crons"))
+      .map((a) => [a.id, { ref: a.slug, name: a.name }] as const),
+  );
+  // `gateDatabase` wants both, for the reason in this module's header.
+  const dbOk =
+    caps.includes("manage_crons") && caps.includes("open_database_console");
+  const byDb = new Map(
+    dbOk
+      ? databases.map((d) => [d.id, { ref: d.id, name: d.name }] as const)
+      : [],
+  );
+  if (byApp.size === 0 && byDb.size === 0) return [];
+
+  // A slim projection on purpose: `jobsFor` adds envKeys, the in-flight run and a
+  // parsed nextRunAt - three queries a search result never renders.
+  const rows = await getDb()
+    .select({
+      id: cronJobsTable.id,
+      teamId: cronJobsTable.teamId,
+      name: cronJobsTable.name,
+      schedule: cronJobsTable.schedule,
+      enabled: cronJobsTable.enabled,
+      targetKind: cronJobsTable.targetKind,
+      appId: cronJobsTable.appId,
+      databaseId: cronJobsTable.databaseId,
+    })
+    .from(cronJobsTable)
+    .where(eq(cronJobsTable.teamId, teamId))
+    .orderBy(cronJobsTable.name);
+
+  return rows.flatMap((r) => {
+    const target =
+      (r.appId ? byApp.get(r.appId) : undefined) ??
+      (r.databaseId ? byDb.get(r.databaseId) : undefined);
+    if (!target) return [];
+    return [
+      {
+        id: r.id,
+        teamId: r.teamId,
+        name: r.name,
+        schedule: r.schedule,
+        enabled: r.enabled,
+        targetKind: r.targetKind as CronTargetKind,
+        targetRef: target.ref,
+        targetName: target.name,
+      },
+    ];
+  });
+}
 
 /**
  * One job's run history, newest first.

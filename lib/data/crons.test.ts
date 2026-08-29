@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
+  apps as appsTable,
   cronJobEnv,
   cronJobs as cronJobsTable,
   cronRuns as cronRunsTable,
@@ -409,5 +410,46 @@ test("Run now refuses while the master switch is off", async () => {
   await assert.rejects(
     () => asOwner(() => crons.runCronJobNow(job.id)),
     /switched off/,
+  );
+});
+
+/* ---- The team-wide list ------------------------------------------ */
+
+test("listTeamCronJobs finds a job through the app it hangs off", async () => {
+  // `seedApp` names an app after its id; give it a real one so ref and name
+  // cannot be confused for each other.
+  await db
+    .update(appsTable)
+    .set({ name: "Web" })
+    .where(eq(appsTable.id, "prj_1"));
+  await asOwner(() => crons.createCronJob("app", "prj_1", validJob));
+
+  const mine = await asOwner(() => crons.listTeamCronJobs());
+  assert.deepEqual(
+    mine.map((j) => [j.name, j.targetKind, j.targetRef, j.targetName]),
+    [["Nightly invoices", "app", "web", "Web"]],
+    "the deep link is the app's SLUG, the label is its NAME",
+  );
+
+  const theirs = await asOtherTeam(() => crons.listTeamCronJobs());
+  assert.deepEqual(theirs, [], "another team sees none of it");
+});
+
+test("a job whose parent the caller cannot see is not listed", async () => {
+  const id = await asOwner(
+    async () => (await crons.createCronJob("app", "prj_1", validJob)).id,
+  );
+  // Re-home the APP, leaving the job row in team A: visibility has to come from
+  // the parent, so the job must vanish even though its own team_id still matches.
+  await db
+    .update(appsTable)
+    .set({ teamId: TEAM_B })
+    .where(eq(appsTable.id, "prj_1"));
+
+  const mine = await asOwner(() => crons.listTeamCronJobs());
+  assert.deepEqual(
+    mine.map((j) => j.id),
+    [],
+    `job ${id} outlived the app it belongs to`,
   );
 });

@@ -246,12 +246,13 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   folded into resolvers.
 - **A new module registers only if you add `import "./types/<name>";` to `lib/graphql/schema.ts`**
   (alphabetical, side-effect import).
-- **Regenerate SDL after touching any `types/*`:**
-  `node --require ./lib/test/server-only-shim.cjs --import tsx scripts/gen-schema.ts`.
-  (The bare `bunx tsx scripts/gen-schema.ts` this used to document **fails** with
-  `MODULE_NOT_FOUND: server-only` - the builder pulls in `lib/data/*`, which is
-  `server-only`, and that package's real entrypoint throws outside a Next build.
-  The shim is the same one the test runner preloads.)
+- **Regenerate SDL after touching any `types/*`: `bun run gen:schema`**, which is
+  `NODE_TEST_CONTEXT=1 node --require ./lib/test/server-only-shim.cjs --import tsx
+scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
+  answers `MODULE_NOT_FOUND: server-only` (the builder pulls in `lib/data/*`, whose
+  real entrypoint throws outside a Next build, and it is the same shim the test
+  runner preloads), and `NODE_TEST_CONTEXT` answers the fail-fast in `lib/db/pg.ts`,
+  which throws at module load without a database URL.
   `schema.graphql` is generated output, **never hand-edit**, and nothing auto-runs it (no hook,
   no CI drift check).
 - Validation = **Pothos arg requiredness** + hand-rolled cleaners (`cleanName`,

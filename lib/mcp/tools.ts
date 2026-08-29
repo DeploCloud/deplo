@@ -192,7 +192,7 @@ const APPS_READ: McpToolDef[] = [
     }),
     query: /* GraphQL */ `
       query McpFind($q: String!) {
-        search(q: $q) {
+        search(q: $q, kinds: [app, database]) {
           apps {
             id
             name

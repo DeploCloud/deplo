@@ -65,8 +65,9 @@ import type { Server } from "@/lib/types";
 /* ------------------------------------------------------------------ */
 
 // These two unions back the Server DTO but are not shared across modules, so they
-// live locally here rather than in enums.ts (exported nothing).
-const ServerStatusEnum = builder.enumType("ServerStatus", {
+// live locally here rather than in enums.ts. Status is exported for the search
+// results, which describe a server without owning its type.
+export const ServerStatusEnum = builder.enumType("ServerStatus", {
   values: ["online", "warning", "error", "offline", "provisioning"] as const,
 });
 

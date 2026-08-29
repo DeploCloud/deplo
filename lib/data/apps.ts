@@ -67,7 +67,7 @@ import type { EnvEntryType } from "../deploy/env-resolve";
 import { recordActivity } from "./activity";
 import { setSharedVarAppLink } from "./shared-vars";
 import { teardownOrQueue } from "./teardown-queue";
-import { matchesQuery } from "./match-query";
+import { matchesQuery } from "../match-query";
 import { buildConfigFor } from "../frameworks";
 import type {
   App,

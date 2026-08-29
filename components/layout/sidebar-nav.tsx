@@ -9,6 +9,7 @@ import {
   SETTINGS_NAV,
   appNav,
   appSettingsNav,
+  canSee,
   isGearIcon,
   sidebarMenuFor,
   databaseNav,
@@ -158,12 +159,8 @@ export function SidebarNav({
   const rendered = sections
     .map((section) => ({
       ...section,
-      items: section.items.filter(
-        (item) =>
-          (!item.requires || (appSlug ? appCaps : caps).has(item.requires)) &&
-          (!item.requiresAny ||
-            item.requiresAny.some((c) => (appSlug ? appCaps : caps).has(c))) &&
-          (!item.requiresAdmin || isAdmin),
+      items: section.items.filter((item) =>
+        canSee(item, appSlug ? appCaps : caps, isAdmin),
       ),
     }))
     .filter((section) => section.items.length > 0);
