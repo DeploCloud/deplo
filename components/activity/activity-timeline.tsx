@@ -1,5 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
 import { GitAccount } from "@/components/shared/git-account";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -249,61 +250,80 @@ export function ActivityRow({
   // there is a page's width for it. In a card the sentence wraps, and a stamp
   // pinned right lands in the middle of it.
   const stampAtEnd = size === "lg";
+  const header = (
+    <>
+      {showActor &&
+        (item.actorProvider ? (
+          // A push is an account on a git host, and the trail says so with the
+          // host's mark rather than a name nobody here answers to.
+          <GitAccount
+            login={item.actor}
+            provider={item.actorProvider}
+            url={gitProfileUrl(item.actorProvider, item.actor)}
+            size="xs"
+            className="font-medium text-foreground"
+          />
+        ) : (
+          <span className="font-medium text-foreground">{item.actor}</span>
+        ))}
+      <time
+        dateTime={item.createdAt}
+        title={new Date(item.createdAt).toUTCString()}
+        className="text-xs text-muted-foreground"
+        // The server and the browser render this a moment apart.
+        suppressHydrationWarning
+      >
+        {timeAgoShort(item.createdAt)}
+      </time>
+      {(many || !stampAtEnd) && (
+        <span className="text-xs text-muted-foreground">
+          · {many ? `${times.length} times` : stamp(item.createdAt)}
+        </span>
+      )}
+    </>
+  );
   return (
     <li className="relative flex items-start gap-3">
       <ActivityMarker item={item} size={size} showActor={showActor} />
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
-          {showActor &&
-            (item.actorProvider ? (
-              // A push is an account on a git host, and the trail says so with the
-              // host's mark rather than a name nobody here answers to.
-              <GitAccount
-                login={item.actor}
-                provider={item.actorProvider}
-                url={gitProfileUrl(item.actorProvider, item.actor)}
-                size="xs"
-                className="font-medium text-foreground"
-              />
-            ) : (
-              <span className="font-medium text-foreground">{item.actor}</span>
-            ))}
-          <time
-            dateTime={item.createdAt}
-            title={new Date(item.createdAt).toUTCString()}
-            className="text-xs text-muted-foreground"
-            // The server and the browser render this a moment apart.
-            suppressHydrationWarning
-          >
-            {timeAgoShort(item.createdAt)}
-          </time>
-          {(many || !stampAtEnd) && (
-            <span className="text-xs text-muted-foreground">
-              · {many ? `${times.length} times` : stamp(item.createdAt)}
-            </span>
-          )}
-        </p>
         {many ? (
-          // The sentence once per occurrence with its own clock beside it: a
-          // folded run must not cost the trail a single "what" or "when".
-          <ul className="mt-1 space-y-1">
-            {times.map((t, i) => (
-              <li
-                key={`${t}-${i}`}
-                className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground"
-              >
-                <span className="min-w-0">{sentence}</span>
-                <span className="shrink-0 text-xs">{stamp(t)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : stampAtEnd ? (
-          <p className="mt-1 flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
-            <span className="min-w-0">{sentence}</span>
-            <span className="shrink-0 text-xs">{stamp(item.createdAt)}</span>
-          </p>
+          // `details` rather than React state: a run folds and unfolds with no
+          // JavaScript, which is what keeps this row renderable from an RSC.
+          <details open className="group">
+            <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-1.5 text-sm [&::-webkit-details-marker]:hidden">
+              {header}
+              <ChevronRight className="size-3.5 self-center text-muted-foreground transition-transform group-open:rotate-90" />
+            </summary>
+            {/* The sentence once per occurrence with its own clock beside it: a
+                folded run must not cost the trail a single "what" or "when". */}
+            <ul className="mt-1 space-y-1">
+              {times.map((t, i) => (
+                <li
+                  key={`${t}-${i}`}
+                  className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground"
+                >
+                  <span className="min-w-0">{sentence}</span>
+                  <span className="shrink-0 text-xs">{stamp(t)}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
         ) : (
-          <p className="mt-1 text-sm text-muted-foreground">{sentence}</p>
+          <>
+            <p className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
+              {header}
+            </p>
+            {stampAtEnd ? (
+              <p className="mt-1 flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
+                <span className="min-w-0">{sentence}</span>
+                <span className="shrink-0 text-xs">
+                  {stamp(item.createdAt)}
+                </span>
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">{sentence}</p>
+            )}
+          </>
         )}
       </div>
     </li>
