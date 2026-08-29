@@ -13,6 +13,7 @@ import {
   type SearchMember,
   type SearchProject,
   type SearchResults,
+  type SearchRole,
   type SearchServer,
   type SearchTeam,
   type SearchTemplate,
@@ -33,6 +34,7 @@ const SearchKindEnum = builder.enumType("SearchKind", {
     "folder",
     "domain",
     "member",
+    "role",
     "cron",
     "template",
   ] as const,
@@ -164,6 +166,17 @@ const SearchMemberRef = builder
     }),
   });
 
+const SearchRoleRef = builder.objectRef<SearchRole>("SearchRole").implement({
+  description: "A team role a search matched, by name or description.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    description: t.exposeString("description", { nullable: true }),
+    memberCount: t.exposeInt("memberCount"),
+    team: t.field({ type: SearchTeamRef, resolve: (r) => r.team }),
+  }),
+});
+
 const SearchCronRef = builder.objectRef<SearchCron>("SearchCron").implement({
   description:
     "A cron job a search matched, with the app or database it runs on.",
@@ -216,6 +229,7 @@ const SearchResultsRef = builder
       folders: t.field({ type: [SearchFolderRef], resolve: (r) => r.folders }),
       domains: t.field({ type: [SearchDomainRef], resolve: (r) => r.domains }),
       members: t.field({ type: [SearchMemberRef], resolve: (r) => r.members }),
+      roles: t.field({ type: [SearchRoleRef], resolve: (r) => r.roles }),
       cronJobs: t.field({ type: [SearchCronRef], resolve: (r) => r.cronJobs }),
       templates: t.field({
         type: [SearchTemplateRef],

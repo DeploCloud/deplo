@@ -25,6 +25,7 @@ import { listAllEnvironmentsForTeam } from "./environments";
 import { listFolders } from "./folders";
 import { listMembers } from "./members";
 import { listProjects } from "./projects";
+import { listRoles } from "./roles";
 import { listServers } from "./servers";
 import { listMyTeams } from "./teams";
 
@@ -102,6 +103,14 @@ export interface SearchDomain {
   team: SearchTeam;
 }
 
+export interface SearchRole {
+  id: ID;
+  name: string;
+  description: string | null;
+  memberCount: number;
+  team: SearchTeam;
+}
+
 export interface SearchMember {
   userId: ID;
   name: string;
@@ -138,6 +147,7 @@ export interface SearchResults {
   folders: SearchFolder[];
   domains: SearchDomain[];
   members: SearchMember[];
+  roles: SearchRole[];
   cronJobs: SearchCron[];
   templates: SearchTemplate[];
 }
@@ -151,6 +161,7 @@ export type SearchKind =
   | "folder"
   | "domain"
   | "member"
+  | "role"
   | "cron"
   | "template";
 
@@ -163,6 +174,7 @@ export const ALL_SEARCH_KINDS: SearchKind[] = [
   "folder",
   "domain",
   "member",
+  "role",
   "cron",
   "template",
 ];
@@ -183,6 +195,7 @@ const EMPTY: SearchResults = {
   folders: [],
   domains: [],
   members: [],
+  roles: [],
   cronJobs: [],
   templates: [],
 };
@@ -286,6 +299,7 @@ export async function search(
         folders,
         domains,
         members,
+        roles,
         crons,
       ] = await Promise.all([
         on("app", listApps),
@@ -296,6 +310,7 @@ export async function search(
         on("folder", listFolders),
         on("domain", () => listDomains()),
         on("member", listMembers),
+        on("role", listRoles),
         on("cron", listTeamCronJobs),
       ]);
 
@@ -407,6 +422,19 @@ export async function search(
           query,
           home,
         ),
+        roles: rank(
+          roles,
+          (r) => [r.name, r.description ?? ""],
+          (r) => ({
+            id: r.id,
+            name: r.name,
+            description: r.description,
+            memberCount: r.memberCount,
+            team,
+          }),
+          query,
+          home,
+        ),
         cronJobs: rank(
           mine(crons),
           (c) => [c.name, c.targetName, c.id],
@@ -453,6 +481,7 @@ export async function search(
     folders: top(found.flatMap((f) => f.folders)),
     domains: top(found.flatMap((f) => f.domains)),
     members: top(found.flatMap((f) => f.members)),
+    roles: top(found.flatMap((f) => f.roles)),
     cronJobs: top(found.flatMap((f) => f.cronJobs)),
     templates: top(templates),
   };

@@ -4613,6 +4613,7 @@ enum SearchKind {
   folder
   member
   project
+  role
   server
   template
 }
@@ -4647,8 +4648,18 @@ type SearchResults {
   folders: [SearchFolder!]
   members: [SearchMember!]
   projects: [SearchProject!]
+  roles: [SearchRole!]
   servers: [SearchServer!]
   templates: [SearchTemplate!]
+}
+
+"""A team role a search matched, by name or description."""
+type SearchRole {
+  description: String
+  id: ID
+  memberCount: Int
+  name: String
+  team: SearchTeam
 }
 
 """

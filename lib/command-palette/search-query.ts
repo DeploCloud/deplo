@@ -77,6 +77,15 @@ export const SEARCH_QUERY = /* GraphQL */ `
           name
         }
       }
+      roles {
+        id
+        name
+        memberCount
+        team {
+          id
+          name
+        }
+      }
       cronJobs {
         id
         name
