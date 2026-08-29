@@ -1,13 +1,11 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
   Archive,
-  ArrowUpRight,
   CalendarClock,
   ChevronDown,
   ChevronLeft,
@@ -55,6 +53,7 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
+import { PageHeader } from "@/components/shared/page-header";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { BackupGraphic } from "@/components/apps/backup-graphic";
 import { BackupScheduleGraphic } from "@/components/storage/backup-schedule-graphic";
@@ -94,13 +93,6 @@ export interface BackupTarget {
 
 /** The noun for this target, for the sentences that have to name it. */
 const noun = (t: BackupTarget) => (t.kind === "app" ? "app" : "database");
-
-/** What a backup of this target actually captures, in one line. */
-function capturedBlurb(target: BackupTarget): string {
-  return target.kind === "app"
-    ? "Captures the app's persistent volumes, files and its compose/env snapshot to a backup destination. Linked databases are backed up separately, as databases."
-    : `Captures a full dump of ${target.name} to a backup destination, ready to restore from any run.`;
-}
 
 /**
  * The Backups tab - schedules, one-off runs, and the artifacts they produced.
@@ -199,6 +191,45 @@ export function BackupsPanel({
         active={anythingRunning}
         intervalMs={pending.length > 0 ? 2_000 : 5_000}
       />
+      {/* The page's own header, because the one button belongs at the end of it -
+          and this panel is both tabs, so neither can drift from the other. */}
+      <PageHeader
+        level="section"
+        docs="backups.overview"
+        title="Backups"
+        description={`Scheduled backups of this ${noun(target)} to a backup destination, and restore.`}
+        actions={
+          <BackUpMenu
+            canManage={canManage}
+            canRestore={canRestore}
+            noDestinations={noDeps}
+            onRunNow={() => setRunOpen(true)}
+            onNewSchedule={() => setScheduleOpen(true)}
+            onRestoreFromFile={() => setFileOpen(true)}
+          />
+        }
+      />
+      {/* Closed, each of these renders nothing at all. */}
+      <BackUpNow
+        target={target}
+        destinations={destinations}
+        canTestDestinations={canTestDestinations}
+        open={runOpen}
+        onOpenChange={setRunOpen}
+        onStart={startRun}
+      />
+      <ScheduleBackup
+        target={target}
+        destinations={destinations}
+        canTestDestinations={canTestDestinations}
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+      />
+      <RestoreFromFile
+        target={target}
+        open={fileOpen}
+        onOpenChange={setFileOpen}
+      />
       {/**
        * The recovery key, asked for where the backups actually are. Only the destinations
        * THIS target writes to, so a page for one app never nags about a bucket it has
@@ -213,45 +244,6 @@ export function BackupsPanel({
           onSaved={() => router.refresh()}
         />
       ))}
-      {/* Actions: ad-hoc run + schedule editor, under one button */}
-      <section className="space-y-4">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-medium">Back up this {noun(target)}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {capturedBlurb(target)}
-            </p>
-          </div>
-          <BackUpMenu
-            canManage={canManage}
-            canRestore={canRestore}
-            noDestinations={noDeps}
-            onRunNow={() => setRunOpen(true)}
-            onNewSchedule={() => setScheduleOpen(true)}
-            onRestoreFromFile={() => setFileOpen(true)}
-          />
-        </div>
-        <BackUpNow
-          target={target}
-          destinations={destinations}
-          canTestDestinations={canTestDestinations}
-          open={runOpen}
-          onOpenChange={setRunOpen}
-          onStart={startRun}
-        />
-        <ScheduleBackup
-          target={target}
-          destinations={destinations}
-          canTestDestinations={canTestDestinations}
-          open={scheduleOpen}
-          onOpenChange={setScheduleOpen}
-        />
-        <RestoreFromFile
-          target={target}
-          open={fileOpen}
-          onOpenChange={setFileOpen}
-        />
-      </section>
 
       {/**
        * Schedules. The empty state is a nudge, not a first impression: on a target
@@ -303,30 +295,6 @@ export function BackupsPanel({
             </div>
           )}
         </section>
-      )}
-
-      {/* No destination yet - backups have nowhere to go without one. This
-          sits right above the artifacts so the empty state is explained, with a
-          link straight to Storage → Destinations (dialog pre-opened). */}
-      {noDeps && (
-        <div className="flex flex-col gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-4 sm:flex-row sm:items-center">
-          <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">
-              No backup destination configured
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Pick a server to keep backups on, or connect an S3 bucket, and
-              backups can run - completed artifacts then appear here.
-            </p>
-          </div>
-          <Button asChild size="sm" className="shrink-0 sm:ml-auto">
-            <Link href="/storage?new=destination">
-              Add destination
-              <ArrowUpRight className="size-4" />
-            </Link>
-          </Button>
-        </div>
       )}
 
       {/* Restore points (runs) */}

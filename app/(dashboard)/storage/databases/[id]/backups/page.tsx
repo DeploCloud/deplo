@@ -7,7 +7,6 @@ import {
   ensureDefaultDestination,
   listDestinationOptions,
 } from "@/lib/data/destinations";
-import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { BackupsPanel } from "@/components/storage/backups-panel";
 
@@ -57,28 +56,21 @@ export default async function DatabaseBackupsPage(
   );
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        level="section"
-        docs="backups.overview"
-        title="Backups"
-        description="Scheduled backups of this database to a backup destination, and restore."
-      />
-      <BackupsPanel
-        target={{
-          kind: "database",
-          id: db.id,
-          name: db.name,
-          serverId: db.serverId ?? null,
-        }}
-        schedules={schedules}
-        runs={runs}
-        destinations={destinations}
-        canManage
-        canRestore={canRestore}
-        canDelete={canDelete}
-        canTestDestinations={canTestDestinations}
-      />
-    </div>
+    // Same panel as an app's Backups tab, header included.
+    <BackupsPanel
+      target={{
+        kind: "database",
+        id: db.id,
+        name: db.name,
+        serverId: db.serverId ?? null,
+      }}
+      schedules={schedules}
+      runs={runs}
+      destinations={destinations}
+      canManage
+      canRestore={canRestore}
+      canDelete={canDelete}
+      canTestDestinations={canTestDestinations}
+    />
   );
 }

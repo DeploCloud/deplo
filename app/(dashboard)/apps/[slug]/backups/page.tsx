@@ -9,7 +9,6 @@ import {
   listDestinationOptions,
 } from "@/lib/data/destinations";
 import { BackupsPanel } from "@/components/storage/backups-panel";
-import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Backups" };
@@ -65,30 +64,22 @@ export default async function AppBackupsPage(
   );
 
   return (
-    // Same page as a database's Backups tab, down to the header: one panel
-    // serves both, so neither can quietly grow a feature the other lacks.
-    <div className="space-y-5">
-      <PageHeader
-        level="section"
-        docs="backups.overview"
-        title="Backups"
-        description="Scheduled backups of this app to a backup destination, and restore."
-      />
-      <BackupsPanel
-        target={{
-          kind: "app",
-          id: project.id,
-          name: project.name,
-          serverId: project.serverId ?? null,
-        }}
-        schedules={schedules}
-        runs={runs}
-        destinations={destinations}
-        canManage
-        canRestore={canRestore}
-        canDelete={canDelete}
-        canTestDestinations={canTestDestinations}
-      />
-    </div>
+    // Same page as a database's Backups tab, header included: one panel serves
+    // both, so neither can quietly grow a feature the other lacks.
+    <BackupsPanel
+      target={{
+        kind: "app",
+        id: project.id,
+        name: project.name,
+        serverId: project.serverId ?? null,
+      }}
+      schedules={schedules}
+      runs={runs}
+      destinations={destinations}
+      canManage
+      canRestore={canRestore}
+      canDelete={canDelete}
+      canTestDestinations={canTestDestinations}
+    />
   );
 }
