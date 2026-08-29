@@ -97,6 +97,7 @@ export function AppShell({
             <CommandPalette
               userId={user.id}
               team={team}
+              teams={teams}
               breadcrumb={breadcrumb}
               capabilities={capabilities}
               isAdmin={isAdmin}

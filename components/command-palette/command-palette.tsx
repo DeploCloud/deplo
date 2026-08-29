@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Box,
   BookOpen,
+  ChevronDown,
   Braces,
   Clock,
   FolderTree,
@@ -15,6 +16,7 @@ import {
   LayoutTemplate,
   Search,
   Server,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 
@@ -38,9 +40,11 @@ import { canSee } from "@/components/layout/nav-config";
 import {
   appFrameEntries,
   dbFrameEntries,
+  countOwnedPages,
   matchEntries,
   matchOwnedPages,
   ownedPageEntries,
+  teamPageEntries,
   staticEntries,
   type Entry,
   type EntryOwner,
@@ -58,11 +62,13 @@ import {
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { DatabaseType, TeamIdentity } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { PaletteEmptyGraphic } from "./palette-empty-graphic";
 import { PaletteKbd } from "./palette-kbd";
 import {
   closePalette,
   togglePalette,
   openPalette,
+  usePaletteGeneration,
   usePaletteOpen,
 } from "./palette-open";
 import { useRecents } from "./use-recents";
@@ -116,6 +122,7 @@ interface SearchData {
       username: string;
       team: HitTeam;
     }[];
+    roles: { id: string; name: string; memberCount: number; team: HitTeam }[];
     cronJobs: {
       id: string;
       name: string;
@@ -232,6 +239,15 @@ function toHits(data: SearchData): Hit[] {
       team: m.team,
       icon: Users,
     })),
+    ...s.roles.map((r) => ({
+      id: `role:${r.id}`,
+      label: r.name,
+      hint: `${r.memberCount} ${r.memberCount === 1 ? "member" : "members"}`,
+      group: "Roles",
+      href: `/settings/roles/${r.id}`,
+      team: r.team,
+      icon: ShieldCheck,
+    })),
     ...s.cronJobs.map((c) => ({
       id: `cron:${c.id}`,
       label: c.name,
@@ -282,6 +298,12 @@ const ROOT: Frame = { kind: "root" };
 /** The always-last row, named because the highlight logic has to know it. */
 const DOCS_ROW = "docs:search";
 
+/** The row that opens the rest of them. */
+const MORE_PAGES_ROW = "owned:more";
+
+/** How many of one resource's pages are shown before the palette offers the rest. */
+const OWNED_CAP = 6;
+
 /* ------------------------------------------------------------------ */
 /* The palette                                                         */
 /* ------------------------------------------------------------------ */
@@ -289,6 +311,8 @@ const DOCS_ROW = "docs:search";
 export interface CommandPaletteProps {
   userId: string;
   team: TeamIdentity;
+  /** Every team the caller can reach - the topbar's switcher already has them. */
+  teams: { id: string; name: string }[];
   /** The team's apps and databases, already in the browser for the breadcrumb. */
   breadcrumb: BreadcrumbGraph;
   capabilities: string[];
@@ -297,6 +321,7 @@ export interface CommandPaletteProps {
 
 export function CommandPalette(props: CommandPaletteProps) {
   const open = usePaletteOpen();
+  const generation = usePaletteGeneration();
 
   // ⌘K / Ctrl K works ANYWHERE, a field included - that is the point of it.
   // "/" keeps the contract it had in the sidebar: never while typing.
@@ -335,7 +360,7 @@ export function CommandPalette(props: CommandPaletteProps) {
           // Beat the base centring: tailwind-merge lets the later class win.
           "top-[12vh] flex max-w-2xl translate-y-0 flex-col gap-0 overflow-hidden p-0",
           // The card is glass too, not only the page behind it.
-          "bg-background/80 backdrop-blur-xl",
+          "bg-background/30 backdrop-blur-xl",
           // Full screen on a phone, where this is the only search there is.
           "max-sm:inset-0 max-sm:h-dvh max-sm:max-w-none max-sm:translate-x-0 max-sm:rounded-none max-sm:border-0",
         )}
@@ -344,8 +369,11 @@ export function CommandPalette(props: CommandPaletteProps) {
         <DialogDescription className="sr-only">
           Search apps, pages, settings and actions
         </DialogDescription>
-        {/* Mounted only while open, so every frame and query resets by itself. */}
-        {open && <PaletteBody {...props} />}
+        {/* NOT gated on `open`: Radix unmounts these children itself once the
+            closing animation ends, and gating emptied the card the instant you
+            hit Escape - a blurred pane with nothing in it. Keyed on the opening
+            instead, so a re-open that beats the animation still starts clean. */}
+        <PaletteBody key={generation} {...props} />
       </DialogContent>
     </Dialog>
   );
@@ -354,6 +382,7 @@ export function CommandPalette(props: CommandPaletteProps) {
 function PaletteBody({
   userId,
   team,
+  teams,
   breadcrumb,
   capabilities,
   isAdmin,
@@ -399,22 +428,54 @@ function PaletteBody({
     [catalogue, query],
   );
 
-  // "deplo variables" reaches deplo-web's own Environment page, without stepping
-  // into the app first. Built off the breadcrumb snapshot, so no extra request -
-  // and only once two words are on screen, since that is the shape that can
-  // match at all and this is a dozen rows per app.
-  const twoWords = query.trim().split(/\s+/).filter(Boolean).length >= 2;
+  // "deployments" reaches every app's own Deployments page, and "deplo
+  // variables" narrows to one - without stepping into the app first. Built off
+  // the breadcrumb snapshot, so no extra request, and only once something has
+  // been typed, since this is a dozen rows per app.
+  const typing = frame.kind === "root" && Boolean(foldQuery(query));
   const owned = React.useMemo(
     () =>
-      twoWords ? ownedPageEntries(breadcrumb.apps, breadcrumb.databases) : [],
-    [breadcrumb, twoWords],
+      typing ? ownedPageEntries(breadcrumb.apps, breadcrumb.databases) : [],
+    [breadcrumb, typing],
+  );
+  const visibleOwned = React.useMemo(
+    () => owned.filter((e) => canSee(e, caps, isAdmin)),
+    [owned, caps, isAdmin],
+  );
+  // Reset with the query and with the frame, exactly like the highlight.
+  const [expandedPages, setExpandedPages] = React.useState<string | null>(null);
+  const pagesExpanded = expandedPages === query;
+  const ownedTotal = React.useMemo(
+    () => countOwnedPages(visibleOwned, query),
+    [visibleOwned, query],
   );
   const ownedMatched = React.useMemo(
     () =>
-      frame.kind === "root"
-        ? matchOwnedPages(owned, query).filter((e) => canSee(e, caps, isAdmin))
+      matchOwnedPages(
+        visibleOwned,
+        query,
+        pagesExpanded ? Number.POSITIVE_INFINITY : OWNED_CAP,
+      ),
+    [visibleOwned, query, pagesExpanded],
+  );
+  const hiddenPages = ownedTotal - ownedMatched.length;
+
+  // The same team pages, once for every other team the caller can reach: the
+  // palette is cross-team for apps, and settings were the odd one out.
+  // `caps` is the ACTIVE team's, so a page can be filtered by a capability held
+  // somewhere else - a UX approximation, like every other check here. The gate
+  // that counts is `requireCapability`, in the data layer, per team.
+  const otherTeamPages = React.useMemo(
+    () =>
+      frame.kind === "root" && query
+        ? matchEntries(
+            teamPageEntries(teams, team.id).filter((e) =>
+              canSee(e, caps, isAdmin),
+            ),
+            query,
+          )
         : [],
-    [owned, query, frame.kind, caps, isAdmin],
+    [frame.kind, query, teams, team.id, caps, isAdmin],
   );
 
   /* -- the server half, debounced -- */
@@ -464,6 +525,11 @@ function PaletteBody({
   /* -- choosing a row -- */
 
   async function runEntry(entry: Entry) {
+    if (entry.team && entry.run.kind === "href") {
+      closePalette();
+      await switchTeamAndGo(entry.team, entry.run.href);
+      return;
+    }
     if (entry.run.kind === "href") {
       remember({
         id: entry.id,
@@ -540,6 +606,7 @@ function PaletteBody({
   const showRecents = frame.kind === "root" && !query && recents.length > 0;
   const showDocs = frame.kind === "root" && Boolean(query);
   const nothing =
+    otherTeamPages.length === 0 &&
     matched.length === 0 &&
     ownedMatched.length === 0 &&
     here.length === 0 &&
@@ -554,13 +621,25 @@ function PaletteBody({
   const rowIds = React.useMemo(
     () => [
       ...(showRecents ? recents.map((r) => `recent:${r.id}`) : []),
-      ...ownedMatched.map((e) => e.id),
       ...matched.map((e) => e.id),
       ...here.map((h) => h.id),
+      ...ownedMatched.map((e) => e.id),
+      ...(hiddenPages > 0 ? [MORE_PAGES_ROW] : []),
       ...elsewhere.map((h) => h.id),
+      ...otherTeamPages.map((e) => e.id),
       ...(showDocs ? [DOCS_ROW] : []),
     ],
-    [showRecents, recents, ownedMatched, matched, here, elsewhere, showDocs],
+    [
+      showRecents,
+      recents,
+      matched,
+      here,
+      ownedMatched,
+      hiddenPages,
+      elsewhere,
+      otherTeamPages,
+      showDocs,
+    ],
   );
   // cmdk also fires onValueChange when it re-selects on its own; only a real
   // arrow key or a pointer over the list counts as moving.
@@ -640,18 +719,22 @@ function PaletteBody({
           userMoved.current = true;
         }}
         // cmdk measures its own content into --cmdk-list-height; +1rem is this
-        // element's own p-2, since the box is border-box. Full height on a
-        // phone, where the palette owns the screen and there is nothing to grow
-        // into.
+        // element's own p-2, since the box is border-box. NO fallback on
+        // purpose: until cmdk has measured, the whole declaration is invalid and
+        // the height stays `auto`. With one (`0px`) the list opened a sliver
+        // tall, cmdk scrolled the selected row into that sliver, and the list
+        // stayed scrolled past "Recent" once it grew. max-h-96 caps that first
+        // frame. Full height on a phone, where the palette owns the screen.
         style={{
-          height: "min(calc(var(--cmdk-list-height, 0px) + 1rem), 24rem)",
+          height: "min(calc(var(--cmdk-list-height) + 1rem), 24rem)",
         }}
-        className="min-h-0 overscroll-contain p-2 transition-[height] duration-200 ease-out max-sm:h-auto! max-sm:flex-1 max-sm:transition-none"
+        className="max-h-96 min-h-0 overscroll-contain p-2 transition-[height] duration-200 ease-out max-sm:h-auto! max-sm:max-h-none max-sm:flex-1 max-sm:transition-none"
       >
         {/* Ours, not cmdk's CommandEmpty: that one counts MOUNTED items, and
             the documentation row below is always one of them. */}
         {nothing && !loading && (
-          <div className="py-10 text-center">
+          <div className="flex flex-col items-center py-8 text-center">
+            <PaletteEmptyGraphic className="mb-3" />
             <p className="text-sm">No results for &ldquo;{query}&rdquo;</p>
             <p className="mt-1 text-xs text-muted-foreground">
               Try an app name, a page, or a command.
@@ -677,14 +760,6 @@ function PaletteBody({
           </CommandGroup>
         )}
 
-        {ownedMatched.length > 0 && (
-          <CommandGroup heading="Pages">
-            {ownedMatched.map((entry) => (
-              <EntryRow key={entry.id} entry={entry} onChoose={runEntry} />
-            ))}
-          </CommandGroup>
-        )}
-
         {groupBy(matched).map(([group, entries]) => (
           <CommandGroup key={group} heading={group}>
             {entries.map((entry) => (
@@ -701,10 +776,32 @@ function PaletteBody({
           </CommandGroup>
         ))}
 
-        {elsewhere.length > 0 && (
+        {ownedMatched.length > 0 && (
+          <CommandGroup heading="Pages">
+            {ownedMatched.map((entry) => (
+              <EntryRow key={entry.id} entry={entry} onChoose={runEntry} />
+            ))}
+            {hiddenPages > 0 && (
+              <CommandItem
+                value={MORE_PAGES_ROW}
+                onSelect={() => setExpandedPages(query)}
+              >
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate text-muted-foreground">
+                  Show {hiddenPages} more
+                </span>
+              </CommandItem>
+            )}
+          </CommandGroup>
+        )}
+
+        {(elsewhere.length > 0 || otherTeamPages.length > 0) && (
           <CommandGroup heading="Other teams">
             {elsewhere.map((hit) => (
               <HitRow key={hit.id} hit={hit} onChoose={openHit} showTeam />
+            ))}
+            {otherTeamPages.map((entry) => (
+              <EntryRow key={entry.id} entry={entry} onChoose={runEntry} />
             ))}
           </CommandGroup>
         )}
