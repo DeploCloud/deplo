@@ -536,6 +536,13 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
         ]
       : []),
     {
+      label: "Activity",
+      href: `${base}/activity`,
+      icon: Activity,
+      tooltip: "Who changed what, and when",
+      requires: "view_activity",
+    },
+    {
       label: "Settings",
       href: `${base}/settings`,
       icon: Settings,
@@ -637,13 +644,6 @@ export function appSettingsNav(
           // alone (ADR-0016) - so the entry follows what the page's own loader
           // asks for. Mirrors how Environment/Backups are capability-gated.
           requires: "manage_basic_auth",
-        },
-        {
-          label: "Activity",
-          href: `${base}/activity`,
-          icon: Activity,
-          tooltip: "Who changed what, and when",
-          requires: "view_activity",
         },
         {
           label: "Advanced",

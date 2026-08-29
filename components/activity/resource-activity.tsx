@@ -23,8 +23,8 @@ import {
 import type { FacetOption } from "@/components/env/env-filters";
 
 /**
- * The team's trail narrowed to ONE app or database - the Activity tab in each
- * one's settings. The same feed as /activity with the resource fixed, so the
+ * The team's trail narrowed to ONE app or database. The same feed as /activity
+ * with the resource fixed, so the
  * Resource facet is left out and "Clear filters" comes back here.
  */
 export async function ResourceActivity({
