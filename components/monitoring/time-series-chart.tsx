@@ -3,6 +3,12 @@
 import * as React from "react";
 import { cn, formatBytes } from "@/lib/utils";
 import { GAP_MS, isInGap, visibleGapSpans } from "@/lib/monitoring/chart-gaps";
+import {
+  areaPath,
+  clamp,
+  linePath,
+  type XY,
+} from "@/lib/monitoring/chart-geometry";
 
 /* ------------------------------------------------------------------ */
 /* Public contract                                                     */
@@ -15,7 +21,7 @@ export interface ChartSeriesDef {
   label: string;
   /** CSS color for the line (a `--chart-*` token). Marks only, never text. */
   color: string;
-  /** Render a soft ~10% wash under the line (single-series charts). */
+  /** Fade a gradient wash under the line (single-series charts). */
   fill?: boolean;
 }
 
@@ -111,18 +117,9 @@ function fmtTime(ts: number, withSeconds: boolean): string {
   return withSeconds ? `${base}:${p(d.getSeconds())}` : base;
 }
 
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, v));
-}
-
 /* ------------------------------------------------------------------ */
 /* Geometry                                                            */
 /* ------------------------------------------------------------------ */
-
-interface XY {
-  x: number;
-  y: number;
-}
 
 /** Split a series into gap-free runs of screen coordinates. */
 function segmentsFor(
@@ -151,22 +148,6 @@ function segmentsFor(
   }
   if (cur.length) segs.push(cur);
   return segs;
-}
-
-function linePath(seg: XY[]): string {
-  return seg
-    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`)
-    .join("");
-}
-
-function areaPath(seg: XY[], baseY: number): string {
-  const first = seg[0];
-  const last = seg[seg.length - 1];
-  return (
-    `M${first.x.toFixed(2)},${baseY.toFixed(2)}` +
-    seg.map((p) => `L${p.x.toFixed(2)},${p.y.toFixed(2)}`).join("") +
-    `L${last.x.toFixed(2)},${baseY.toFixed(2)}Z`
-  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -202,6 +183,7 @@ export function TimeSeriesChart({
   const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const clipId = `tschart-clip-${uid}`;
   const hatchId = `tschart-gap-${uid}`;
+  const gradId = (key: string) => `tschart-fill-${uid}-${key}`;
 
   React.useEffect(() => {
     const el = wrapRef.current;
@@ -340,6 +322,26 @@ export function TimeSeriesChart({
             <clipPath id={clipId}>
               <rect x={mLeft} y={M_TOP} width={plotW} height={plotH} />
             </clipPath>
+            {/* The area wash. A vertical gradient rather than a flat 10%: the
+                line's own end of the fill carries the hue and the baseline lets
+                the grid through, so a busy chart stays readable. */}
+            {series
+              .filter((s) => s.fill)
+              .map((s) => (
+                <linearGradient
+                  key={s.key}
+                  id={gradId(s.key)}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor={s.color} stopOpacity={0.38} />
+                  <stop offset="55%" stopColor={s.color} stopOpacity={0.1} />
+                  <stop offset="100%" stopColor={s.color} stopOpacity={0} />
+                </linearGradient>
+              ))}
+
             {/* Diagonal hatch for "No data" spans - recessive in both themes. */}
             <pattern
               id={hatchId}
@@ -451,7 +453,7 @@ export function TimeSeriesChart({
             </g>
           )}
 
-          {/* Series marks: ~10% area wash, 2px gap-aware lines, isolated dots */}
+          {/* Series marks: gradient area wash, 2px gap-aware lines, isolated dots */}
           <g clipPath={`url(#${clipId})`}>
             {visibleSeries.map((s) => {
               const segs = segmentsFor(drawPoints, s.key, xOf, yOf);
@@ -464,8 +466,7 @@ export function TimeSeriesChart({
                         <path
                           key={`a${i}`}
                           d={areaPath(seg, M_TOP + plotH)}
-                          fill={s.color}
-                          fillOpacity={0.1}
+                          fill={`url(#${gradId(s.key)})`}
                         />
                       ))}
                   {segs.map((seg, i) =>
