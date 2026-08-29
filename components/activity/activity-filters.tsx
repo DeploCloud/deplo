@@ -182,14 +182,15 @@ export function ActivityFilters({
           />
         </div>
       )}
-      <Button
-        variant="ghost"
-        disabled={!on}
-        onClick={() => router.replace(base)}
-        className={cn("shrink-0", layout === "rail" && "lg:justify-start")}
-      >
-        Clear filters
-      </Button>
+      {on && (
+        <Button
+          variant="ghost"
+          onClick={() => router.replace(base)}
+          className={cn("shrink-0", layout === "rail" && "lg:justify-start")}
+        >
+          Clear filters
+        </Button>
+      )}
     </div>
   );
 }
