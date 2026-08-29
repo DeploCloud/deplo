@@ -45,8 +45,7 @@ export interface ProjectBucket<R extends { app: GroupableApp }> {
 
 /**
  * Fold rows into Project → App buckets. The SECTIONS come out in `projects` order -
- * the team-wide Project order the Overview grid shows and the Variables page
- * lets you drag - with Standalone always last.
+ * the team-wide Project order the Overview grid shows - with Standalone last.
  */
 export function groupRowsByProject<R extends { app: GroupableApp }>(
   rows: readonly R[],

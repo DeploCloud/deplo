@@ -8,11 +8,7 @@ import {
 import type { AppliedSharedVarDTO } from "@/lib/data/shared-vars";
 import { listProjects } from "@/lib/data/projects";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
-import {
-  hasCapability,
-  isInstanceAdmin,
-  reachesWholeTeam,
-} from "@/lib/membership";
+import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Tabs,
@@ -43,7 +39,6 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     );
   }
 
-  const admin = await isInstanceAdmin();
   const [
     allAppGroups,
     sharedVars,
@@ -51,7 +46,6 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     projectSummaries,
     teamEnvironments,
     shareableTeams,
-    canManageTeam,
   ] = await Promise.all([
     listAllAppEnv(),
     // The team's shared library is a team-wide read: a member limited to part of
@@ -64,11 +58,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     // The teams the wizard may offer: the viewer's own, minus the ones where they
     // do not hold manage_env across the whole team.
     wholeTeam ? listSharedVarTeams() : Promise.resolve([]),
-    hasCapability("manage_team"),
   ]);
-  // The project order this page drags is the TEAM-WIDE one the Overview grid
-  // shows, so it takes the same super-user gate `reorderProjects` enforces.
-  const canReorderProjects = admin || canManageTeam;
 
   const sharedByApp: Record<string, AppliedSharedVarDTO[]> = {};
   for (const s of appliedShared) (sharedByApp[s.appId] ??= []).push(s);
@@ -121,7 +111,6 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
           projects={projects}
           environments={teamEnvironments}
           teams={shareableTeams}
-          canReorderProjects={canReorderProjects}
         />
       </TabsContent>
 
