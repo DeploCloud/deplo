@@ -2605,11 +2605,11 @@ export async function rerouteApp(
   if (!serverId) return "deferred"; // no owning agent (server removed); nothing to do
 
   // Route exactly what a production DEPLOY would: every valid domain (primary first)
-  // PLUS the pending primary as a fallback. Empty ⇒ the project has no domain at all
-  // (never resurrected): nothing to write, leave it deferred.
+  // PLUS the pending primary as a fallback. Empty is a legitimate render (both
+  // renderers emit `traefik.enable=false` / no routers): it is what takes the LAST
+  // removed hostname off the running container instead of leaving it served.
   const primary = await primaryDomainName(appId);
   const routes = await routableForDeploy(appId, "production", primary);
-  if (routes.length === 0) return "deferred"; // never write an empty Host() rule
 
   const hasCompose = Boolean(project.compose && project.compose.trim());
   const useCompose = usesComposeStack(project);

@@ -305,10 +305,20 @@ builder.mutationFields((t) => ({
 }));
 
 /**
- * Push an app's current routing to its RUNNING container.
+ * Push an app's current routing to its RUNNING container. The write is already
+ * committed when this runs, so a failure has to say so: told only "unreachable",
+ * a caller (an AI agent especially) retries an add that in fact landed.
  */
 async function applyRouting(appId: string): Promise<void> {
-  await rerouteApp(appId);
+  try {
+    await rerouteApp(appId);
+  } catch (e) {
+    throw new Error(
+      `The domain was saved, but the routing could not be applied on the server: ${
+        e instanceof Error ? e.message : String(e)
+      }. Deploy the app to apply it.`,
+    );
+  }
 }
 
 /** Reload a domain by id after updateDomain (which returns only the appId)
