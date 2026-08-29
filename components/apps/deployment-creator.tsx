@@ -35,6 +35,7 @@ export function DeploymentCreator({
   size?: AvatarSize;
   className?: string;
 }) {
+  const linked = Boolean(creatorProvider && creatorUrl);
   const body = (
     <>
       {creatorProvider ? (
@@ -51,16 +52,25 @@ export function DeploymentCreator({
           size={size}
         />
       )}
-      <span className="truncate">{creator}</span>
+      {/* Same affordance the commit sha next to it carries: a dotted underline is
+          how this product says "this opens the git host". */}
+      <span
+        className={cn(
+          "truncate",
+          linked && "underline decoration-dotted underline-offset-2",
+        )}
+      >
+        {creator}
+      </span>
     </>
   );
   const cls = cn("flex min-w-0 items-center gap-1.5", className);
-  return creatorProvider && creatorUrl ? (
+  return linked ? (
     <a
-      href={creatorUrl}
+      href={creatorUrl!}
       target="_blank"
       rel="noopener noreferrer"
-      className={cn(cls, "hover:underline")}
+      className={cn(cls, "transition-colors hover:text-foreground")}
     >
       {body}
     </a>
