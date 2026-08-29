@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { Menu, Settings } from "lucide-react";
+import { Menu, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -16,6 +16,7 @@ import { SidebarExpandButton } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { MigrationChip } from "./migration-activity";
 import { UserMenu } from "./user-menu";
+import { openPalette } from "@/components/command-palette/palette-open";
 import { TeamSwitcher } from "./team-switcher";
 import { Breadcrumbs } from "./breadcrumbs";
 import { isNonTeamSettings } from "./nav-config";
@@ -109,6 +110,17 @@ export function Topbar({
       </React.Suspense>
 
       <div className="flex flex-1 items-center justify-end gap-2">
+        {/* The sidebar is hidden here, so this is the only way into search. */}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="md:hidden"
+          aria-label="Search"
+          aria-keyshortcuts="Meta+K Control+K"
+          onClick={openPalette}
+        >
+          <Search className="size-5" />
+        </Button>
         {/**
          * Creation lives on the Overview's "Add New" menu only - the header stays lean
          * (theme + account).

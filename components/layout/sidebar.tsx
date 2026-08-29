@@ -1,14 +1,12 @@
 "use client";
 
-import * as React from "react";
 import Link from "next/link";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
-  Search,
   Settings,
 } from "lucide-react";
 import { DeploLogo, DeploMark } from "@/components/logo";
@@ -17,7 +15,7 @@ import { SidebarNav } from "./sidebar-nav";
 import { SidebarTips } from "./sidebar-tips";
 import { useSidebar } from "./sidebar-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchTrigger } from "@/components/command-palette/palette-kbd";
 import {
   Tooltip,
   TooltipContent,
@@ -46,33 +44,10 @@ export function Sidebar({
   /** Feeds the nudge cards above the footer; see sidebar-tips. */
   hasSecondFactor?: boolean;
 }) {
-  const router = useRouter();
   // The footer stands down inside a drill-in; the nav there has its own way out.
   const { menu } = sidebarMenuFor(usePathname());
   const { collapsed, hydrated, width, dragging, toggle, startResize } =
     useSidebar();
-  const [query, setQuery] = React.useState("");
-  const searchRef = React.useRef<HTMLInputElement>(null);
-
-  // "/" focuses search.
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key !== "/") return;
-      e.preventDefault();
-      searchRef.current?.focus();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  function submitSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const q = query.trim();
-    router.push(q ? `/?q=${encodeURIComponent(q)}` : "/");
-  }
-
   return (
     <aside
       data-collapsed={collapsed}
@@ -116,22 +91,9 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Search */}
+      {/* Opens the command palette - the sidebar has no search of its own. */}
       <div className="px-3 pb-1">
-        <form onSubmit={submitSearch} className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search apps"
-            aria-label="Search apps"
-            className="h-9 pr-7 pl-8"
-          />
-          <kbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded border border-border bg-muted px-1.5 text-[10px] text-muted-foreground lg:inline">
-            /
-          </kbd>
-        </form>
+        <SearchTrigger />
       </div>
 
       <div className="flex-1 overflow-x-hidden overflow-y-auto">

@@ -11,6 +11,7 @@ import { GitConnectToast } from "@/components/shared/git-connect-toast";
 import { DeployActivityProvider } from "./deploy-activity";
 import { MigrationActivityProvider } from "./migration-activity";
 import { LogsDisplayVars } from "@/components/shared/logs-display";
+import { CommandPalette } from "@/components/command-palette/command-palette";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { PublicUser, TeamIdentity, TeamSummary } from "@/lib/types";
 
@@ -93,6 +94,12 @@ export function AppShell({
             >
               {children}
             </ShellFrame>
+            <CommandPalette
+              userId={user.id}
+              team={team}
+              capabilities={capabilities}
+              isAdmin={isAdmin}
+            />
           </UpdateProvider>
         </MigrationActivityProvider>
       </DeployActivityProvider>
