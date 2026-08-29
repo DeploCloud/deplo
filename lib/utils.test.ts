@@ -254,6 +254,13 @@ test("gitProfileUrl links a pusher's account, and only when it can", () => {
   assert.equal(gitProfileUrl(null, "Owner"), null);
   assert.equal(gitProfileUrl("svn", "idradev"), null);
   assert.equal(gitProfileUrl("bitbucket", "Ada Lovelace"), null);
+  // The parsers' own fallback: a push with no pusher names the HOST, and
+  // github.com/github is not who did it.
+  assert.equal(gitProfileUrl("github", "github"), null);
+  assert.equal(
+    gitProfileUrl("gitea", "Gitea", "https://git.acme.com/t/a"),
+    null,
+  );
   assert.equal(
     gitProfileUrl("gitlab", "../admin", "https://gitlab.com/a/b"),
     null,

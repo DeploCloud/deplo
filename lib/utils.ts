@@ -185,6 +185,9 @@ export function gitProfileUrl(
   const name = login?.trim().replace(/^@/, "");
   if (!provider || !name || !/^[\w.-]+$/.test(name)) return null;
   if (!(provider in PROFILE_ORIGIN)) return null;
+  // Every provider's parser falls back to its OWN name when the delivery carries
+  // no pusher: that is "we don't know who", not an account to link to.
+  if (name.toLowerCase() === provider) return null;
   let origin = PROFILE_ORIGIN[provider];
   if (!origin) {
     try {
