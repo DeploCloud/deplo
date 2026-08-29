@@ -152,7 +152,7 @@ export default async function ActivityPage(props: PageProps<"/activity">) {
   );
 
   return (
-    <div className="grid items-start gap-6 lg:max-w-6xl lg:grid-cols-[minmax(0,42rem)_20rem] lg:justify-between">
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <aside className="h-fit space-y-4 sm:sticky sm:top-14 sm:z-20 lg:top-20 lg:col-start-2 lg:row-start-1">
         {filters("rail")}
         {summary("hidden lg:block")}

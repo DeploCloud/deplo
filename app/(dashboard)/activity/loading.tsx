@@ -11,7 +11,7 @@ export default function Loading() {
       role="status"
       aria-busy
       aria-label="Loading activity"
-      className="grid items-start gap-6 lg:max-w-6xl lg:grid-cols-[minmax(0,42rem)_20rem] lg:justify-between"
+      className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
     >
       <div className="space-y-4 lg:col-start-2 lg:row-start-1">
         <div className="flex gap-2 py-3 lg:flex-col lg:py-0">
