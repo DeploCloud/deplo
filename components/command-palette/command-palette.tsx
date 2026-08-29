@@ -279,6 +279,9 @@ type Frame =
 
 const ROOT: Frame = { kind: "root" };
 
+/** The always-last row, named because the highlight logic has to know it. */
+const DOCS_ROW = "docs:search";
+
 /* ------------------------------------------------------------------ */
 /* The palette                                                         */
 /* ------------------------------------------------------------------ */
@@ -331,6 +334,8 @@ export function CommandPalette(props: CommandPaletteProps) {
         className={cn(
           // Beat the base centring: tailwind-merge lets the later class win.
           "top-[12vh] flex max-w-2xl translate-y-0 flex-col gap-0 overflow-hidden p-0",
+          // The card is glass too, not only the page behind it.
+          "bg-background/80 backdrop-blur-xl",
           // Full screen on a phone, where this is the only search there is.
           "max-sm:inset-0 max-sm:h-dvh max-sm:max-w-none max-sm:translate-x-0 max-sm:rounded-none max-sm:border-0",
         )}
@@ -533,14 +538,52 @@ function PaletteBody({
   /* -- rendering -- */
 
   const showRecents = frame.kind === "root" && !query && recents.length > 0;
+  const showDocs = frame.kind === "root" && Boolean(query);
   const nothing =
     matched.length === 0 &&
     ownedMatched.length === 0 &&
     here.length === 0 &&
     elsewhere.length === 0;
 
+  /*
+   * cmdk keeps a selection that still exists, and the documentation row exists
+   * from the first keystroke - so typing an app name selected THAT, and the app
+   * itself arriving 250ms later changed nothing. Own the highlight instead: the
+   * first row, unless the person moved off it themselves within this query.
+   */
+  const rowIds = React.useMemo(
+    () => [
+      ...(showRecents ? recents.map((r) => `recent:${r.id}`) : []),
+      ...ownedMatched.map((e) => e.id),
+      ...matched.map((e) => e.id),
+      ...here.map((h) => h.id),
+      ...elsewhere.map((h) => h.id),
+      ...(showDocs ? [DOCS_ROW] : []),
+    ],
+    [showRecents, recents, ownedMatched, matched, here, elsewhere, showDocs],
+  );
+  // cmdk also fires onValueChange when it re-selects on its own; only a real
+  // arrow key or a pointer over the list counts as moving.
+  const userMoved = React.useRef(false);
+  const [moved, setMoved] = React.useState<{ q: string; value: string } | null>(
+    null,
+  );
+  const selected =
+    moved && moved.q === query && rowIds.includes(moved.value)
+      ? moved.value
+      : (rowIds[0] ?? "");
+
   return (
-    <Command shouldFilter={false} className="flex min-h-0 flex-1 flex-col">
+    <Command
+      shouldFilter={false}
+      value={selected}
+      onValueChange={(next) => {
+        if (!userMoved.current) return;
+        userMoved.current = false;
+        setMoved({ q: query, value: next });
+      }}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
         <Search className="size-4 shrink-0 text-muted-foreground" />
         {frame.kind !== "root" && (
@@ -568,6 +611,15 @@ function PaletteBody({
               e.preventDefault();
               e.stopPropagation();
               pop();
+              return;
+            }
+            if (
+              e.key === "ArrowDown" ||
+              e.key === "ArrowUp" ||
+              e.key === "Home" ||
+              e.key === "End"
+            ) {
+              userMoved.current = true;
             }
           }}
           placeholder={
@@ -584,7 +636,17 @@ function PaletteBody({
           would lose focus the moment you stepped into an app. */}
       <CommandList
         key={stack.length}
-        className="min-h-0 flex-1 overscroll-contain p-2 sm:max-h-96"
+        onMouseMove={() => {
+          userMoved.current = true;
+        }}
+        // cmdk measures its own content into --cmdk-list-height; +1rem is this
+        // element's own p-2, since the box is border-box. Full height on a
+        // phone, where the palette owns the screen and there is nothing to grow
+        // into.
+        style={{
+          height: "min(calc(var(--cmdk-list-height, 0px) + 1rem), 24rem)",
+        }}
+        className="min-h-0 overscroll-contain p-2 transition-[height] duration-200 ease-out max-sm:h-auto! max-sm:flex-1 max-sm:transition-none"
       >
         {/* Ours, not cmdk's CommandEmpty: that one counts MOUNTED items, and
             the documentation row below is always one of them. */}
@@ -602,7 +664,7 @@ function PaletteBody({
             {recents.map((r) => (
               <CommandItem
                 key={r.id}
-                value={r.id}
+                value={`recent:${r.id}`}
                 onSelect={() => {
                   closePalette();
                   router.push(r.href);
@@ -661,10 +723,10 @@ function PaletteBody({
           </p>
         )}
 
-        {frame.kind === "root" && query && (
+        {showDocs && (
           <CommandGroup heading="Documentation">
             <CommandItem
-              value="docs:search"
+              value={DOCS_ROW}
               onSelect={() => {
                 closePalette();
                 // The manual has its own search, on the same chord. It does not
@@ -705,6 +767,15 @@ function groupBy<T extends { group: string }>(rows: T[]): [string, T[]][] {
   return [...out];
 }
 
+/** Only the verbs that act on a running container are coloured; red stays for
+ *  a failure, never for a control. */
+const TONE = {
+  info: "text-[var(--info)]",
+  success: "text-[var(--success)]",
+  warning: "text-[var(--warning)]",
+  violet: "text-[var(--violet)]",
+} as const;
+
 function EntryRow({
   entry,
   onChoose,
@@ -718,7 +789,12 @@ function EntryRow({
       {owner ? (
         <OwnedIcon owner={owner} icon={entry.icon} />
       ) : (
-        <entry.icon className="size-4 shrink-0 text-muted-foreground" />
+        <entry.icon
+          className={cn(
+            "size-4 shrink-0",
+            entry.tone ? TONE[entry.tone] : "text-muted-foreground",
+          )}
+        />
       )}
       <span className="truncate">
         {owner && (
