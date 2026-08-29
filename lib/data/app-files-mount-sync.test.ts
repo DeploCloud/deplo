@@ -15,7 +15,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
-import { writeAppFile, deleteAppFile, renameAppFile } from "./app-files";
+import { writeAppFile } from "./app-files";
 
 /**
  * A compose stack's config files live in `app_mounts` and the agent re-writes them
@@ -42,9 +42,6 @@ before(async () => {
     async () =>
       ({
         writeFile: async (_s: string, path: string) => entry(path),
-        deleteFile: async () => true,
-        renameFile: async (_s: string, _p: string, newPath: string) =>
-          entry(newPath),
         close: () => {},
       }) as unknown as Awaited<
         ReturnType<typeof import("../infra/agent-client").connectAgent>
@@ -87,21 +84,6 @@ test("editing a config file updates the copy the deploy writes back", async () =
   assert.deepEqual(
     (await mounts()).map((m) => m.content),
     ["server { listen 8080; }\n"],
-  );
-});
-
-test("deleting one stops it coming back on the next deploy", async () => {
-  await asUser(() => deleteAppFile("prj_web", "nginx.conf"));
-  assert.deepEqual(await mounts(), []);
-});
-
-test("renaming one moves the row instead of resurrecting the old name", async () => {
-  await asUser(() =>
-    renameAppFile("prj_web", "nginx.conf", "conf.d/nginx.conf"),
-  );
-  assert.deepEqual(
-    (await mounts()).map((m) => m.filePath),
-    ["conf.d/nginx.conf"],
   );
 });
 

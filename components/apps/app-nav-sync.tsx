@@ -12,7 +12,6 @@ export function AppNavSync({
   slug,
   logo,
   running: serverRunning,
-  showFiles,
   isGithubApp,
   previewsEnabled,
   cronsEnabled,
@@ -24,7 +23,6 @@ export function AppNavSync({
   logo: string | null;
   /** Server-rendered running state; the live subscription takes over after mount. */
   running: boolean;
-  showFiles: boolean;
   isGithubApp: boolean;
   previewsEnabled: boolean;
   cronsEnabled: boolean;
@@ -42,7 +40,6 @@ export function AppNavSync({
       slug,
       logo,
       running,
-      showFiles,
       capabilities: caps ? caps.split(",") : [],
       isGithubApp,
       previewsEnabled,
@@ -53,7 +50,6 @@ export function AppNavSync({
     slug,
     logo,
     running,
-    showFiles,
     caps,
     isGithubApp,
     previewsEnabled,

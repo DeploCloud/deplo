@@ -19,7 +19,6 @@ const ALL_CAPS: BreadcrumbCaps = {
 };
 const NO_FLAGS: BreadcrumbFlags = {
   running: false,
-  showFiles: false,
   slugMatches: false,
 };
 
@@ -331,7 +330,6 @@ test("flag-gated sections hidden until the store confirms; current always shown"
   );
   const live: BreadcrumbFlags = {
     running: true,
-    showFiles: false,
     slugMatches: true,
   };
   const onLogsLive = svc("/apps/web/logs", graph(), ALL_CAPS, live)!;

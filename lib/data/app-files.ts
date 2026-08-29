@@ -1,12 +1,10 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/observability/console-and-files
+// https://deplo.build/docs/guides/data/persistent-storage
 
 import { realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { status as GrpcStatus } from "@grpc/grpc-js";
-import { getActiveTeamId } from "../membership";
-import type { Capability } from "../types";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
 import { and, eq } from "drizzle-orm";
@@ -14,7 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { appMounts as appMountsTable } from "../db/schema/control-plane";
 import { loadTeamApp } from "./app-graph-load";
-import { hasAppCapability, requireAppCapability } from "./node-access";
+import { requireAppCapability } from "./node-access";
 import {
   connectAgent,
   AgentUnreachableError,
@@ -22,35 +20,13 @@ import {
 } from "../infra/agent-client";
 
 /**
- * Browse and edit a single-container project's files directory - the on-disk
- * `<stacks>/files/<slug>` tree that backs the `./` app-files volume convention
+ * Read and write the files a **File** volume points at - the on-disk
+ * `<stacks>/files/<slug>` tree that backs the `./` app-files convention
  * (see `lib/deploy/compose-stack.ts`).
  */
 
 /** Reject writes whose body exceeds this - the editor is for config, not blobs. */
 const MAX_WRITE_BYTES = 1024 * 1024; // 1 MiB
-
-export interface FileEntry {
-  /** Path relative to the project files root, POSIX-separated, no leading slash. */
-  path: string;
-  /** Final path segment (the display name). */
-  name: string;
-  /** "dir" or "file" - symlinks are resolved; anything else is skipped. */
-  kind: "dir" | "file";
-  /** Byte size (0 for directories). */
-  size: number;
-  /** Last-modified ISO timestamp. */
-  modifiedAt: string;
-}
-
-export interface FileContent {
-  path: string;
-  /** UTF-8 text body. Null when the file is binary or too large to view. */
-  text: string | null;
-  size: number;
-  /** Why `text` is null: "binary" or "too-large"; null when text is present. */
-  reason: "binary" | "too-large" | null;
-}
 
 /**
  * Resolve `relPath` (user-supplied) to an absolute host path that is PROVABLY
@@ -93,11 +69,10 @@ export function normalizeRel(relPath: string): string {
  * owning server id so each op can route to that host's agent. */
 async function requireAppInTeam(
   appId: string,
-  // Reading a file and changing one are separate permissions, so each op names
-  // which it needs. Defaults to the read side - the weaker of the two.
-  cap: Capability = "read_app_files",
 ): Promise<{ slug: string; teamId: string; serverId: string }> {
-  const { teamId } = await requireAppCapability(appId, cap);
+  // A File volume's body is part of the app's configuration, so it rides the
+  // same capability the rest of Settings → Storage does.
+  const { teamId } = await requireAppCapability(appId, "configure_apps");
   const project = await loadTeamApp(appId, teamId);
   if (!project) {
     throw new Error("App not found");
@@ -110,107 +85,28 @@ function agentFor(serverId: string): Promise<AgentConnection> {
   return connectAgent(serverId);
 }
 
-/** Narrow the agent's structural FileEntry (kind: string) to the local union. */
-function toEntry(e: {
-  path: string;
-  name: string;
-  kind: string;
-  size: number;
-  modifiedAt: string;
-}): FileEntry {
-  return {
-    path: e.path,
-    name: e.name,
-    kind: e.kind === "dir" ? "dir" : "file",
-    size: e.size,
-    modifiedAt: e.modifiedAt,
-  };
-}
-
-/**
- * Whether a project's on-disk files directory exists AND the caller may manage it -
- * the single gate that drives the Files tab's visibility.
- */
-export async function appFilesExist(appId: string): Promise<boolean> {
-  // Per-app, not team-wide: `read_app_files` held somewhere else in the team is
-  // not permission to read THIS app's files, and the tab must match what the
-  // read itself (requireAppCapability) will allow.
-  if (!(await hasAppCapability(appId, "read_app_files"))) return false;
-  const teamId = await getActiveTeamId();
-  if (!teamId) return false;
-  const project = await loadTeamApp(appId, teamId);
-  if (!project) return false;
-  // Ask the owning agent - the files dir is on its host's disk (PLAN Part C, D9),
-  // the host running Deplo included. An unreachable agent yields false so the tab
-  // is hidden (never a 500 during the project layout render).
-  let conn: AgentConnection | undefined;
-  try {
-    conn = await agentFor(project.serverId);
-    return await conn.filesExist(project.slug);
-  } catch {
-    return false;
-  } finally {
-    conn?.close();
-  }
-}
-
-/**
- * List the immediate children of `path` (the root when omitted), directories
- * first then files, each alphabetical. Symlinks and special files are skipped -
- * only real dirs/files inside the sandbox are returned.
- */
-export async function listAppFiles(
-  appId: string,
-  path = "",
-): Promise<FileEntry[]> {
-  const { slug, serverId } = await requireAppInTeam(appId);
-  if (path) normalizeRel(path); // fast-fail guard (agent re-checks)
-  const conn = await agentFor(serverId);
-  try {
-    return (await conn.listFiles(slug, path)).map(toEntry);
-  } finally {
-    conn.close();
-  }
-}
-
-/** Read a file's text body, refusing binary or oversized files. */
-export async function readAppFile(
-  appId: string,
-  path: string,
-): Promise<FileContent> {
-  const { slug, serverId } = await requireAppInTeam(appId);
-  normalizeRel(path);
-  const conn = await agentFor(serverId);
-  try {
-    const r = await conn.readFile(slug, path);
-    return { path: r.path, text: r.text, size: r.size, reason: r.reason };
-  } finally {
-    conn.close();
-  }
-}
-
 /**
  * Write (create or overwrite) a text file at `path`. Parent dirs are created as
  * needed. The body is capped so the editor stays a config editor, not an upload
- * channel. Returns the entry's fresh metadata.
+ * channel. Answers the path that was written.
  */
 export async function writeAppFile(
   appId: string,
   path: string,
   content: string,
-): Promise<FileEntry> {
-  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
+): Promise<string> {
+  const { slug, serverId } = await requireAppInTeam(appId);
   if (Buffer.byteLength(content, "utf8") > MAX_WRITE_BYTES) {
     throw new Error("File is too large to save (1 MiB max)");
   }
   normalizeRel(path);
   const conn = await agentFor(serverId);
   try {
-    const entry = toEntry(await conn.writeFile(slug, path, content));
+    const entry = await conn.writeFile(slug, path, content);
     // The stored copy moves with the file, or the next deploy undoes this.
-    await syncAppMount(appId, path, { content });
+    await syncAppMount(appId, path, content);
     await note(appId, `Edited file ${entry.path}`);
-    return entry;
+    return entry.path;
   } finally {
     conn.close();
   }
@@ -286,101 +182,12 @@ export async function readAppStorageFile(
 }
 
 /**
- * Upload a file from a base64 body - the path the UI uses for binary files the
- * text editor can't represent. Same sandboxing and size cap as a text write.
- * Returns the entry's fresh metadata.
- */
-export async function uploadAppFile(
-  appId: string,
-  path: string,
-  base64: string,
-): Promise<FileEntry> {
-  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
-  let buf: Buffer;
-  try {
-    buf = Buffer.from(base64, "base64");
-  } catch {
-    throw new Error("Invalid file data");
-  }
-  if (buf.byteLength > MAX_WRITE_BYTES) {
-    throw new Error("File is too large to upload (1 MiB max)");
-  }
-  normalizeRel(path);
-  const conn = await agentFor(serverId);
-  try {
-    const entry = toEntry(await conn.uploadFile(slug, path, buf));
-    await note(appId, `Uploaded file ${entry.path}`);
-    return entry;
-  } finally {
-    conn.close();
-  }
-}
-
-/** Create an empty directory at `path` (recursive). Returns its entry. */
-export async function createAppDir(
-  appId: string,
-  path: string,
-): Promise<FileEntry> {
-  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
-  normalizeRel(path);
-  const conn = await agentFor(serverId);
-  try {
-    const entry = toEntry(await conn.createDir(slug, path));
-    await note(appId, `Created folder ${entry.path}`);
-    return entry;
-  } finally {
-    conn.close();
-  }
-}
-
-/**
- * Delete a file or directory (recursively) at `path`. The root itself can't be
- * deleted - only entries strictly inside it.
- */
-export async function deleteAppFile(
-  appId: string,
-  path: string,
-): Promise<boolean> {
-  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
-  normalizeRel(path);
-  const conn = await agentFor(serverId);
-  try {
-    const ok = await conn.deleteFile(slug, path);
-    if (ok) await syncAppMount(appId, path, { deleted: true });
-    await note(appId, `Deleted ${normalizeRel(path)}`);
-    return ok;
-  } finally {
-    conn.close();
-  }
-}
-
-/** Rename / move an entry within the sandbox. Both ends are contained-checked. */
-export async function renameAppFile(
-  appId: string,
-  path: string,
-  newPath: string,
-): Promise<FileEntry> {
-  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
-  normalizeRel(path);
-  normalizeRel(newPath);
-  const conn = await agentFor(serverId);
-  try {
-    const entry = toEntry(await conn.renameFile(slug, path, newPath));
-    await syncAppMount(appId, path, { renamedTo: entry.path });
-    await note(appId, `Moved ${normalizeRel(path)} → ${entry.path}`);
-    return entry;
-  } finally {
-    conn.close();
-  }
-}
-
-/**
  * Keep the app's stored CONFIG FILES in step with what just happened on disk.
  */
 async function syncAppMount(
   appId: string,
   path: string,
-  change: { content: string } | { deleted: true } | { renamedTo: string },
+  content: string,
 ): Promise<void> {
   const filePath = normalizeRel(path);
   if (!filePath) return;
@@ -395,24 +202,9 @@ async function syncAppMount(
       ),
     );
   if (rows.length === 0) return;
-  if ("deleted" in change) {
-    await db
-      .delete(appMountsTable)
-      .where(
-        and(
-          eq(appMountsTable.appId, appId),
-          eq(appMountsTable.filePath, filePath),
-        ),
-      );
-    return;
-  }
-  const patch =
-    "content" in change
-      ? { content: change.content }
-      : { filePath: normalizeRel(change.renamedTo) };
   await db
     .update(appMountsTable)
-    .set(patch)
+    .set({ content })
     .where(
       and(
         eq(appMountsTable.appId, appId),

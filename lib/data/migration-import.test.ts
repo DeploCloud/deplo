@@ -376,7 +376,7 @@ beforeEach(async () => {
           "create_databases",
           "manage_env",
           "manage_domains",
-          "write_app_files",
+          "configure_apps",
         ],
       },
     ],

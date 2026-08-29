@@ -364,8 +364,8 @@ a control-plane restart mid-build does not lose the deploy. **Part C** moves the
 host-coupled surface onto the owning agent: live **logs** (`FollowLogs`), **console/attach** (bidi
 `Attach`, pty now Go `creack/pty`), the **console exec + introspection**
 (`Exec`/`ListInstances`/`ShellLabel`), per-server **metrics** (`Metrics`), the **lifecycle verbs**
-(`Stop`/`Start`/`DestroyStack`), and the **Files** tab (`ListFiles`/`ReadFile`/`WriteFile`/…,
-re-enabled for remote). **Part D** moved the last per-host singletons (the dev-container lifecycle, the SSH
+(`Stop`/`Start`/`DestroyStack`), and an app's **files** (`ReadFile`/`WriteFile`, what a **File**
+volume is edited through). **Part D** moved the last per-host singletons (the dev-container lifecycle, the SSH
 gateway, the VS Code tunnel) onto the agent; **dev mode was later removed from the
 product entirely**, so the control plane no longer calls that surface - the RPCs stay
 dormant in the Go binary because the V1 contract is additive-only. The browser GraphQL + SSE contracts
@@ -576,8 +576,8 @@ An **ephemeral** deploy of one App for one open **pull request**, running as its
 `deplo-<slug>__pr-<n>` with its own host, volumes and files dir, and torn down - volumes
 included, when the pull request closes. Recorded as an `app_previews` row plus one
 `Deployment` per build (`environment: "preview"`). It is **neither an App nor an
-Environment**: it has no team placement, no domains of its own, and no Console, Files,
-Backups or Monitoring surface. Only a `source: "github"` App can have one, off by default,
+Environment**: it has no team placement, no domains of its own, and no Console, Backups
+or Monitoring surface. Only a `source: "github"` App can have one, off by default,
 and a pull request from a **fork** waits for a member with `manage_previews` to approve it, even then
 it never receives a `secret`-typed variable. See
 [ADR-0017](./docs/adr/0017-pull-request-previews-are-per-pull-request-stacks.md).
@@ -908,7 +908,7 @@ and the UI name is what every screen, tooltip and doc says:
 - **Volume** (`named`): disk space deplo creates and keeps. The default.
 - **File** (`app`): a file or folder from the app's own **Files** (its isolated files dir).
   Its CONTENT is written from the Storage editor too (`appStorageFile` / `writeAppFile`,
-  over the agent) (not a copy in the database, the same file the Files tab shows), so an
+  over the agent) (not a copy in the database, the file itself on the host), so an
   entry never points at a path with nothing behind it. Files are written **before** the
   rows, because Docker answers a missing bind source by inventing an empty _directory_.
 - **Bind** (`host`): a folder that already exists on the server: outside deplo and shared

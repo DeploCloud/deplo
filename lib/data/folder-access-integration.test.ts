@@ -77,7 +77,6 @@ beforeEach(async () => {
           "configure_apps",
           "manage_domains",
           "manage_env",
-          "write_app_files",
         ],
       },
       {
@@ -92,7 +91,6 @@ beforeEach(async () => {
           "configure_apps",
           "manage_domains",
           "manage_env",
-          "write_app_files",
         ],
       },
       {

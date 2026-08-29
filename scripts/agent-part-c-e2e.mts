@@ -282,7 +282,7 @@ networks:
     }
   }
 
-  // ---- Files CRUD + sandbox ----
+  // ---- Files read/write + sandbox ----
   console.log("== Files ==");
   {
     const conn = await connectAgent("srv-local");
@@ -302,12 +302,8 @@ networks:
         "ListFiles shows the conf dir",
         ls.some((e) => e.name === "conf" && e.kind === "dir"),
       );
-      const mv = await conn.renameFile(SLUG, "conf/app.yml", "conf/app2.yml");
-      check("RenameFile moves within the sandbox", mv.path === "conf/app2.yml");
       const exists = await conn.filesExist(SLUG);
       check("FilesExist is true for the slug", exists === true);
-      const del = await conn.deleteFile(SLUG, "conf/app2.yml");
-      check("DeleteFile removes the file", del === true);
 
       // Sandbox: a traversal escape must be rejected (InvalidArgument).
       let escaped = false;

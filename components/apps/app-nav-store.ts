@@ -4,15 +4,14 @@ import * as React from "react";
 
 /**
  * The per-app facts the global sidebar can't work out on its own: the slug comes
- * from the URL, but whether the container is *running* (Console/Logs), whether it
- * has an on-disk files dir (Files) and what this viewer may do to THIS app are
+ * from the URL, but whether the container is *running* (Console/Logs) and what
+ * this viewer may do to THIS app are
  */
 export type AppNavState = {
   slug: string;
   /** The app's own logo, so its Overview entry is marked with the app itself. */
   logo: string | null;
   running: boolean;
-  showFiles: boolean;
   /** The viewer's effective capabilities on this app. */
   capabilities: string[];
   /** The app deploys from GitHub - the only source that gets pull requests. */

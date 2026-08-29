@@ -42,8 +42,6 @@ test("member ships apps and their config, but touches no infrastructure or admin
     "delete_apps",
     "manage_domains",
     "manage_env",
-    "read_app_files",
-    "write_app_files",
     "create_projects",
     "manage_environments",
   ] as const) {
@@ -131,7 +129,6 @@ test("the legacy split preserves access: the old eight expand, nothing is orphan
   // `manage_backup_destinations` when a destination stopped necessarily being a
   assert.deepEqual(RETIRED_CAPABILITY_NAMES.sort(), [
     "deploy",
-    "manage_files",
     "manage_infra",
     "manage_s3",
   ]);
@@ -150,10 +147,7 @@ test("expandLegacyCapabilities expands only the RETIRED names", () => {
   assert.deepEqual(expandLegacyCapabilities(["manage_members"]), [
     "manage_members",
   ]);
-  // …while the three that no longer exist do expand.
-  assert.ok(
-    expandLegacyCapabilities(["manage_files"]).includes("write_app_files"),
-  );
+  // …while the ones that no longer exist do expand.
   assert.ok(
     expandLegacyCapabilities(["manage_infra"]).includes(
       "manage_backup_destinations",

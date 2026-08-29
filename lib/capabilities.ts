@@ -114,16 +114,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "show unmask decrypt password connection",
     sensitive: true,
   },
-  read_app_files: {
-    label: "Browse app files",
-    description: "Open and download the files in an app's storage directory.",
-    keywords: "download view directory storage",
-  },
-  write_app_files: {
-    label: "Edit app files",
-    description: "Create, edit, upload, rename and delete an app's files.",
-    keywords: "upload write delete rename directory",
-  },
 
   /* ---- Organization ---- */
   create_folders: {
@@ -350,8 +340,6 @@ export const CAPABILITY_CATEGORIES: {
       "manage_basic_auth",
       "manage_env",
       "reveal_secrets",
-      "read_app_files",
-      "write_app_files",
     ],
   },
   {
@@ -448,7 +436,6 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   ],
   manage_domains: ["manage_domains", "manage_basic_auth"],
   manage_env: ["manage_env", "reveal_secrets"],
-  manage_files: ["read_app_files", "write_app_files"],
   manage_infra: [
     "create_databases",
     "configure_databases",
@@ -492,7 +479,7 @@ export const RETIRED_CAPABILITY_NAMES = LEGACY_CAPABILITY_NAMES.filter(
 
 /**
  * Normalise a capability list that may still use one of the RETIRED names
- * (`deploy`, `manage_files`, `manage_infra`), dropping anything unrecognised.
+ * (`deploy`, `manage_infra`), dropping anything unrecognised.
  */
 export function expandLegacyCapabilities(caps: string[]): Capability[] {
   const out = new Set<Capability>();

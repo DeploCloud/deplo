@@ -212,7 +212,6 @@ export const PALETTE_APP_FLAGS: AppNavFlags = {
   canManageEnv: true,
   canBackup: true,
   running: false,
-  showFiles: false,
   isGithubApp: false,
   previewsEnabled: false,
   cronsEnabled: false,

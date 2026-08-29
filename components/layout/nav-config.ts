@@ -385,7 +385,6 @@ export interface AppNavFlags {
   canManageEnv: boolean;
   canBackup: boolean;
   running: boolean;
-  showFiles: boolean;
   /**
    * The app deploys from GitHub.
    */
@@ -513,17 +512,6 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       tooltip: "Live resource usage",
       requires: "view_metrics",
     },
-    // Files - only when an on-disk files dir exists and the viewer can manage it.
-    ...(f.showFiles || on("/files")
-      ? [
-          {
-            label: "Files",
-            href: `${base}/files`,
-            icon: FolderTree,
-            tooltip: "App files",
-          } as NavItem,
-        ]
-      : []),
     // Backups are infra ops - manage_infra only.
     ...(f.canBackup || on("/backups")
       ? [

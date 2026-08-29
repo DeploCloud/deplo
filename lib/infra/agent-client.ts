@@ -586,14 +586,6 @@ export interface AgentConnection {
     path: string,
     content: string,
   ): Promise<AgentFileEntry>;
-  uploadFile(slug: string, path: string, data: Buffer): Promise<AgentFileEntry>;
-  createDir(slug: string, path: string): Promise<AgentFileEntry>;
-  deleteFile(slug: string, path: string): Promise<boolean>;
-  renameFile(
-    slug: string,
-    path: string,
-    newPath: string,
-  ): Promise<AgentFileEntry>;
   filesExist(slug: string): Promise<boolean>;
 
   close(): void;
@@ -1936,55 +1928,6 @@ function dial(target: DialTarget): AgentConnection {
       return new Promise<AgentFileEntry>((resolve, reject) => {
         client.writeFile(
           { slug, path, content },
-          new Metadata(),
-          filesDeadline(),
-          (err, resp) =>
-            err || !resp.entry
-              ? reject(toAgentError(err ?? new Error("no entry")))
-              : resolve(mapEntry(resp.entry)),
-        );
-      });
-    },
-    uploadFile(slug: string, path: string, data: Buffer) {
-      return new Promise<AgentFileEntry>((resolve, reject) => {
-        client.uploadFile(
-          { slug, path, data },
-          new Metadata(),
-          filesDeadline(),
-          (err, resp) =>
-            err || !resp.entry
-              ? reject(toAgentError(err ?? new Error("no entry")))
-              : resolve(mapEntry(resp.entry)),
-        );
-      });
-    },
-    createDir(slug: string, path: string) {
-      return new Promise<AgentFileEntry>((resolve, reject) => {
-        client.createDir(
-          { slug, path },
-          new Metadata(),
-          filesDeadline(),
-          (err, resp) =>
-            err || !resp.entry
-              ? reject(toAgentError(err ?? new Error("no entry")))
-              : resolve(mapEntry(resp.entry)),
-        );
-      });
-    },
-    deleteFile(slug: string, path: string) {
-      return new Promise<boolean>((resolve, reject) => {
-        client.deleteFile(
-          { slug, path },
-          new Metadata(),
-          filesDeadline(),
-          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.ok)),
-        );
-      });
-    },
-    renameFile(slug: string, path: string, newPath: string) {
-      return new Promise<AgentFileEntry>((resolve, reject) => {
-        client.renameFile(
-          { slug, path, newPath },
           new Metadata(),
           filesDeadline(),
           (err, resp) =>

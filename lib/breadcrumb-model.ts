@@ -111,12 +111,10 @@ export interface BreadcrumbCaps {
 }
 
 /**
- * Live per-app facts the section dropdown needs (Console only while running, Files
- * only when present).
+ * Live per-app facts the section dropdown needs (Console only while running).
  */
 export interface BreadcrumbFlags {
   running: boolean;
-  showFiles: boolean;
   slugMatches: boolean;
 }
 
@@ -136,7 +134,7 @@ const MAIN_SECTIONS: {
   seg: string;
   label: string;
   requires?: keyof BreadcrumbCaps;
-  flag?: "running" | "showFiles";
+  flag?: "running";
 }[] = [
   { seg: "", label: "Overview" },
   { seg: "deployments", label: "Deployments" },
@@ -144,7 +142,6 @@ const MAIN_SECTIONS: {
   { seg: "domains", label: "Domains" },
   { seg: "console", label: "Console", flag: "running" },
   { seg: "logs", label: "Logs" },
-  { seg: "files", label: "Files", flag: "showFiles" },
   { seg: "backups", label: "Backups", requires: "manageBackups" },
   { seg: "settings", label: "Settings" },
 ];

@@ -29,8 +29,6 @@ export type Capability =
   | "manage_basic_auth"
   | "manage_env"
   | "reveal_secrets"
-  | "read_app_files"
-  | "write_app_files"
   // Folders & projects
   | "create_folders"
   | "organize_folders"
@@ -88,8 +86,6 @@ export const ALL_CAPABILITIES: Capability[] = [
   "manage_basic_auth",
   "manage_env",
   "reveal_secrets",
-  "read_app_files",
-  "write_app_files",
   "create_folders",
   "organize_folders",
   "delete_folders",

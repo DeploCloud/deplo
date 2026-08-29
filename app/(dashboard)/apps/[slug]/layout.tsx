@@ -4,7 +4,6 @@ import { ExternalLink } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { appCapabilities } from "@/lib/data/node-access";
 import { appTypeLabel, truncate } from "@/lib/utils";
-import { appFilesExist } from "@/lib/data/app-files";
 import { AppCapabilitiesProvider } from "@/components/apps/app-capabilities";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -48,10 +47,6 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
   // confirmed, so the app's pages stop existing then rather than when its host
   // finishes the teardown, otherwise a reload during that window serves back every
   if (!project || project.deletingAt) notFound();
-  // The Files entry only appears when the caller can manage files AND the app
-  // actually has an on-disk files dir (appFilesExist returns false for both
-  // a missing capability and a missing directory, so this one call covers both).
-  const showFiles = await appFilesExist(project.id);
   // What this viewer may do to THIS app - grants included, which the sidebar's
   // team-wide union can't answer.
   const capabilities = await appCapabilities(project.id);
@@ -145,7 +140,6 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
               slug={slug}
               logo={project.logo}
               running={project.status === "active"}
-              showFiles={showFiles}
               capabilities={capabilities}
               isGithubApp={project.source === "github"}
               previewsEnabled={project.previewEnabled}

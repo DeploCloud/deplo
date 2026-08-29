@@ -22,7 +22,6 @@ const FLAGS: AppNavFlags = {
   canManageEnv: true,
   canBackup: true,
   running: true,
-  showFiles: true,
   isGithubApp: true,
   previewsEnabled: true,
   cronsEnabled: true,

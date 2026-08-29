@@ -140,7 +140,6 @@ export function SidebarNav({
       canManageEnv: appCaps.has("manage_env"),
       canBackup: appCaps.has("manage_backups"),
       running: matches ? service!.running : false,
-      showFiles: matches ? service!.showFiles : false,
       isGithubApp: matches ? service!.isGithubApp : false,
       previewsEnabled: matches ? service!.previewsEnabled : false,
       cronsEnabled: matches ? service!.cronsEnabled : false,

@@ -74,9 +74,7 @@ const READ_FILE = /* GraphQL */ `
 
 const WRITE_FILE = /* GraphQL */ `
   mutation WriteAppFile($appId: String!, $path: String!, $content: String!) {
-    writeAppFile(appId: $appId, path: $path, content: $content) {
-      path
-    }
+    writeAppFile(appId: $appId, path: $path, content: $content)
   }
 `;
 
@@ -125,7 +123,7 @@ export function StorageSettingsForm({
   defaultComposeService?: string | null;
   /** Whether the viewer may save a Bind (the host-volume grant). */
   canMountHostVolumes: boolean;
-  /** Whether the viewer may read and write this app's files (`manage_files`). */
+  /** Whether the viewer may read and write this app's files (`configure_apps`). */
   canManageFiles: boolean;
   /** Where this app's code runs in its container; null for a prebuilt image. */
   containerWorkdir?: string | null;

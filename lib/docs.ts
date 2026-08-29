@@ -117,8 +117,7 @@ export const DOCS = {
   "cron.turnOn": "guides/observability/cron-jobs#turn-it-on",
   "cron.create": "guides/observability/cron-jobs#create-a-job",
   "cron.history": "guides/observability/cron-jobs#reading-the-run-history",
-  "console.overview": "guides/observability/console-and-files",
-  "files.browse": "guides/observability/console-and-files#browse-files",
+  "console.overview": "guides/observability/console",
 
   "team.overview": "guides/team",
   "team.members": "guides/team/members",

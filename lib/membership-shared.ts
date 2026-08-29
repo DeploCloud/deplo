@@ -28,13 +28,7 @@ export {
  */
 export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
   owner: [...ALL_CAPABILITIES],
-  member: presetOf(
-    "view",
-    "deploy",
-    "manage_domains",
-    "manage_env",
-    "manage_files",
-  ),
+  member: presetOf("view", "deploy", "manage_domains", "manage_env"),
   viewer: presetOf("view"),
 };
 
@@ -114,8 +108,6 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "manage_basic_auth",
   "manage_env",
   "reveal_secrets",
-  "read_app_files",
-  "write_app_files",
   "manage_backups",
   "restore_backups",
   // A backup belongs to ONE app, so deleting one means something inside a

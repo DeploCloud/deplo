@@ -65,7 +65,7 @@ test("a folder, a binary and an oversized file each say so and stay mounted", ()
   for (const state of ["folder", "binary", "too-large"]) {
     const d = storageFileDraft({ path: "x", state, text: "" });
     assert.equal(d.status, "blocked", state);
-    assert.match(d.message, /Files tab/, state);
+    assert.match(d.message, /stays mounted/, state);
     assert.ok(!d.message.includes("…"), "no ellipsis in UI copy");
   }
 });

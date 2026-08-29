@@ -58,7 +58,7 @@ export function isGithubRepo(
  * repo's own tree, read over the GitHub API. - `upload`: the uploaded archive,
  * extracted control-plane-side. - `app-files`: the app's files dir ON ITS OWNING
  * SERVER: a **compose stack** has no repo and no archive, its files are the
- * `<stacks>/files/<slug>` tree its `./x` bind mounts resolve into (the Files tab),
+ * `<stacks>/files/<slug>` tree its `./x` bind mounts resolve into,
  * so that is where its own web assets, favicon included, actually live. - `none`:
  * a prebuilt docker image and nothing else: no files to scan.
  */

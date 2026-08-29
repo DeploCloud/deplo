@@ -40,7 +40,7 @@ export function StorageFileEditor({
   state: StorageFileDraft | undefined;
   /**
    * Whether the viewer may read and write this app's files. COSMETIC - the
-   * authoritative gate is the `manage_files` capability on the `appStorageFile`
+   * authoritative gate is the `configure_apps` capability on the `appStorageFile`
    * query and the `writeAppFile` mutation.
    */
   canManageFiles: boolean;
@@ -50,7 +50,7 @@ export function StorageFileEditor({
   const label = (
     <FieldLabel
       className="text-xs"
-      info="What deplo writes into the file. It is the same file the Files tab shows, so an edit here and an edit there are the same edit. The app sees the new contents on its next deploy."
+      info="What deplo writes into the file. The app sees the new contents on its next deploy."
       docs="storage.source"
     >
       What&apos;s in the file

@@ -35,9 +35,9 @@ export default async function AppStorageSettingsPage(
   // A Bind stays selectable without the grant - the editor says plainly that
   // saving one needs it, which beats hiding the option and the reason with it.
   const mayBind = await canMountHostVolumes();
-  // A File entry's content IS this app's files tree, so writing one is the
-  // `manage_files` capability.
-  const mayEditFiles = await hasAppCapability(project.id, "write_app_files");
+  // A File entry's content is part of the app's configuration, so it rides the
+  // same capability the rest of this page does.
+  const mayEditFiles = await hasAppCapability(project.id, "configure_apps");
 
   return (
     <section className="space-y-4">

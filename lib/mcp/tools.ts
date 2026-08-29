@@ -1813,76 +1813,6 @@ const TEAM: McpToolDef[] = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Files
- * ------------------------------------------------------------------ */
-
-const FILES: McpToolDef[] = [
-  tool({
-    name: "list_app_files",
-    title: "List an app's files",
-    description: "Directory listing inside an app's persistent files.",
-    group: "Files",
-    requires: "read_app_files",
-    readOnly: true,
-    idempotent: true,
-    input: z.object({ appId, path: z.string().optional() }),
-    query: /* GraphQL */ `
-      query McpListAppFiles($appId: String!, $path: String) {
-        appFiles(appId: $appId, path: $path) {
-          name
-          path
-          kind
-          size
-          modifiedAt
-        }
-      }
-    `,
-  }),
-  tool({
-    name: "read_app_file",
-    title: "Read an app file",
-    description: "Read a text file from an app's persistent files.",
-    group: "Files",
-    requires: "read_app_files",
-    readOnly: true,
-    idempotent: true,
-    input: z.object({ appId, path: z.string() }),
-    query: /* GraphQL */ `
-      query McpReadAppFile($appId: String!, $path: String!) {
-        appFile(appId: $appId, path: $path) {
-          path
-          text
-          size
-          reason
-        }
-      }
-    `,
-  }),
-  tool({
-    name: "write_app_file",
-    title: "Write an app file",
-    description:
-      "Create or overwrite a text file in an app's persistent files.",
-    group: "Files",
-    requires: "write_app_files",
-    destructive: true,
-    input: z.object({ appId, path: z.string(), content: z.string() }),
-    query: /* GraphQL */ `
-      mutation McpWriteAppFile(
-        $appId: String!
-        $path: String!
-        $content: String!
-      ) {
-        writeAppFile(appId: $appId, path: $path, content: $content) {
-          path
-          size
-        }
-      }
-    `,
-  }),
-];
-
-/* ------------------------------------------------------------------ *
  * Servers - read for everyone, writes for instance admins
  * ------------------------------------------------------------------ */
 
@@ -2078,7 +2008,6 @@ export const MCP_TOOLS: McpToolDef[] = [
   ...PREVIEWS,
   ...ORGANIZATION,
   ...TEAM,
-  ...FILES,
   ...SERVERS,
 ];
 

@@ -25,7 +25,7 @@ import { tags as t } from "@lezer/highlight";
 
 /**
  * A plain-text CodeMirror editor sharing the dashboard's neutral theme - used by
- * the app file explorer to edit arbitrary config files.
+ * the Storage editor to edit an app's config files.
  */
 
 const editorTheme = EditorView.theme({

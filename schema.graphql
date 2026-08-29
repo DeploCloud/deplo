@@ -727,7 +727,6 @@ enum Capability {
   manage_domains
   manage_env
   manage_environments
-  manage_files @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: read_app_files, write_app_files.")
   manage_git
   manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, delete_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_mcp, manage_notifications, manage_monitoring.")
   manage_mcp
@@ -745,7 +744,6 @@ enum Capability {
   open_database_console
   organize_folders
   organize_projects
-  read_app_files
   restore_backups
   reveal_secrets
   rollback_apps
@@ -753,7 +751,6 @@ enum Capability {
   view_activity
   view_logs
   view_metrics
-  write_app_files
 }
 
 enum CertProvider {
@@ -1755,25 +1752,6 @@ input ExtraDomainInput {
   service: String!
 }
 
-"""A project file's text body (null when binary or too large)."""
-type FileContent {
-  path: String
-  reason: String
-  size: Int
-  text: String
-}
-
-"""
-One entry in an app's files directory (the on-disk /data/stacks/files/<slug> tree).
-"""
-type FileEntry {
-  kind: String
-  modifiedAt: String
-  name: String
-  path: String
-  size: Int
-}
-
 """
 A team-wide grouping of apps on the Overview. Apps reference their folder via `App.folderId`; folders nest via `parentId` (a tree).
 """
@@ -2738,9 +2716,6 @@ type Mutation {
   connectGitProvider(input: ConnectGitProviderInput!): GitConnection
   createApp(input: CreateAppInput!): App
 
-  """Create a new (empty) folder in the app files tree."""
-  createAppDir(appId: String!, path: String!): FileEntry
-
   """Create a backup schedule. Returns true."""
   createBackup(input: CreateBackupInput!): Boolean
   createCronJob(
@@ -2786,9 +2761,6 @@ type Mutation {
   Delete the app. Returns as soon as the deletion is RECORDED - from that moment the app is refused by every gate and gone from the product, and the stack teardown finishes on the host behind the response.
   """
   deleteApp(id: String!): Boolean
-
-  """Delete a file or folder (recursively). Returns true."""
-  deleteAppFile(appId: String!, path: String!): Boolean
 
   """
   Bulk-delete several apps. Returns how many were recorded as deleted; the bounded-concurrency teardown runs behind the response.
@@ -3122,9 +3094,6 @@ type Mutation {
   """
   removeUserFromTeam(input: UserTeamInput!): [UserTeamAccess!]
   renameApp(id: String!, name: String!): App
-
-  """Rename or move a file/folder within the app files tree."""
-  renameAppFile(appId: String!, newPath: String!, path: String!): FileEntry
 
   """
   Rename a database - its DISPLAY name only. The container's identity (compose project, data volume, DNS name and therefore the connection string) is fixed at creation and is untouched, so nothing restarts. The name must be unique within the team.
@@ -3691,9 +3660,6 @@ type Mutation {
   """Edit a user's instance-admin flag, suspended state, and password."""
   updateUserAdmin(input: UpdateUserAdminInput!): UserDetail
 
-  """Upload a file from a base64 body (used for binary files)."""
-  uploadAppFile(appId: String!, base64: String!, path: String!): FileEntry
-
   """Create or update an env var, then return the stored entity."""
   upsertEnv(input: UpsertEnvInput!): EnvVar
 
@@ -3712,8 +3678,8 @@ type Mutation {
   """
   verifyTwoFactorLogin(code: String!, recoveryCode: Boolean): AuthPayload
 
-  """Create or overwrite a text file in the app files tree."""
-  writeAppFile(appId: String!, content: String!, path: String!): FileEntry
+  """Write the file a File storage entry points at. Answers its path."""
+  writeAppFile(appId: String!, content: String!, path: String!): String
 }
 
 """
@@ -3863,17 +3829,6 @@ type Query {
 
   """An app's cron jobs, its master switch and its pickable services."""
   appCronJobs(appId: ID!): CronJobsView
-
-  """Read a single project file's text body."""
-  appFile(appId: String!, path: String!): FileContent
-
-  """
-  List the immediate children of a directory in the app files tree (the root when path is omitted), directories first.
-  """
-  appFiles(appId: String!, path: String): [FileEntry!]
-
-  """Whether the app has an on-disk files directory (drives the Files tab)."""
-  appFilesExist(appId: String!): Boolean
 
   """A fresh live per-container metrics snapshot for one app."""
   appMetrics(appId: String!): ContainerMetrics

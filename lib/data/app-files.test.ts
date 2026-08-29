@@ -13,7 +13,7 @@ import {
 import { AgentUnreachableError } from "../infra/agent-client";
 
 /**
- * The file explorer hands user-supplied relative paths straight to the filesystem,
+ * The Storage editor hands user-supplied relative paths straight to the filesystem,
  * so its two containment guards are the whole security story: a traversal must be
  * rejected before it forms a path, and a path that resolves (through symlinks)
  */
