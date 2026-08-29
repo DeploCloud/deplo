@@ -909,6 +909,7 @@ type ContainerMetricsSample {
 input CreateAppInput {
   autoDeploy: Boolean
   autoDomain: String
+  autoDomainPath: String
   build: BuildConfigInput
 
   """
@@ -1745,10 +1746,11 @@ type ExecResult {
 }
 
 """
-A multi-domain template's extra (non-primary) routed host: the compose service + port it targets and its hostname. Registered as an auto Domain row at creation; the `domains` table is the sole routing source after.
+An extra (non-primary) routed host: the compose service + port it targets, its hostname and the path it answers on. No hostname ⇒ one is generated. Registered as an auto Domain row at creation; the `domains` table is the sole routing source after.
 """
 input ExtraDomainInput {
-  host: String!
+  host: String
+  path: String
   port: Int!
   service: String!
 }

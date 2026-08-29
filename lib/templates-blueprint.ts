@@ -19,6 +19,8 @@ export interface BlueprintExpose {
   port: number;
   /** Resolved public hostname this service is routed on (from config.domains). */
   host?: string;
+  /** Path this service answers on (`/api`); absent ⇒ the whole host. */
+  path?: string;
 }
 
 export interface BlueprintMount {
@@ -128,6 +130,7 @@ interface ParsedToml {
     serviceName: string;
     port: number;
     host: string;
+    path: string;
     primary: boolean;
   }[];
   mounts: BlueprintMount[];
@@ -146,6 +149,7 @@ function parseToml(toml: string): ParsedToml {
     serviceName: string;
     port: number;
     host: string;
+    path: string;
     primary: boolean;
   }[] = [];
   const mounts: BlueprintMount[] = [];
@@ -190,7 +194,13 @@ function parseToml(toml: string): ParsedToml {
     if (line.startsWith("[")) {
       section = line.replace(/\s+#.*$/, "");
       if (section === "[[config.domains]]") {
-        domains.push({ serviceName: "", port: 0, host: "", primary: false });
+        domains.push({
+          serviceName: "",
+          port: 0,
+          host: "",
+          path: "",
+          primary: false,
+        });
       } else if (section === "[[config.mounts]]") {
         mounts.push({ filePath: "", content: "" });
       }
@@ -246,6 +256,7 @@ function parseToml(toml: string): ParsedToml {
       if (key === "serviceName") cur.serviceName = value;
       else if (key === "port") cur.port = parseTomlInt(value);
       else if (key === "host") cur.host = value;
+      else if (key === "path") cur.path = value;
       else if (key === "primary") cur.primary = parseTomlBool(value);
     } else if (section === "[[config.mounts]]") {
       const cur = mounts[mounts.length - 1];
@@ -374,6 +385,7 @@ export function getTemplateBlueprint(
         service: d.serviceName,
         port: d.port,
         host: d.host ? substituteRefs(d.host, vars, domain) : undefined,
+        ...(d.path ? { path: d.path } : {}),
       }));
       expose = exposes[0] ?? null;
 

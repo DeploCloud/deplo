@@ -16,6 +16,7 @@ import {
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -78,6 +79,8 @@ import {
   hasBlockingErrors,
   lintCompose,
   composeServiceNames,
+  composeRouteCandidates,
+  type ComposeRouteCandidate,
   type LintDiagnostic,
 } from "@/lib/deploy/compose-lint";
 import { validateComposeUpArgs } from "@/lib/deploy/compose-args";
@@ -118,9 +121,9 @@ export interface WizardTemplate {
   compose: string;
   env: { key: string; value: string }[];
   /** Which compose service + port Traefik exposes for this template (first). */
-  expose: { service: string; port: number } | null;
+  expose: { service: string; port: number; path?: string } | null;
   /** Every publicly-routed service (multi-domain templates expose 2+). */
-  exposes: { service: string; port: number; host?: string }[];
+  exposes: { service: string; port: number; host?: string; path?: string }[];
   /** Pre-generated nip.io domain baked into the template's env. */
   autoDomain: string | null;
   /** Template config files to materialise at deploy time. */
@@ -251,6 +254,8 @@ export function NewAppWizard({
   const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>(
     () => (template?.compose ? lintCompose(template.compose) : []),
   );
+  // Services the user asked to give an address to, on top of the primary one.
+  const [extraRouted, setExtraRouted] = React.useState<string[]>([]);
 
   const [name, setName] = React.useState(
     presetName ??
@@ -364,6 +369,7 @@ export function NewAppWizard({
   function onComposeSaved(next: string, diagnostics: LintDiagnostic[]) {
     setCompose(next);
     setComposeDiags(diagnostics);
+    setExtraRouted([]);
     suggestName(composeServiceNames(next)[0] ?? "");
   }
 
@@ -372,6 +378,14 @@ export function NewAppWizard({
     () => (compose.trim() ? composeServiceNames(compose) : []),
     [compose],
   );
+  // Which services of a hand-written stack get an address. A template declares
+  // its own domains, so the picker is only for a compose the user wrote.
+  const routeCandidates = React.useMemo(
+    () =>
+      compose.trim() && !isTemplate ? composeRouteCandidates(compose) : [],
+    [compose, isTemplate],
+  );
+  const primaryService = routeCandidates.find((c) => c.isPrimary) ?? null;
   const composeArgsProblem = composeUpArgs.trim()
     ? validateComposeUpArgs(composeUpArgs.trim())
     : null;
@@ -540,25 +554,35 @@ export function NewAppWizard({
               port: payloadBuild.port,
             },
             autoDeploy: usesGit ? autoDeploy : false,
-            // Routing metadata is template-only; a hand-written compose stack
-            // lets the engine auto-detect which service to expose.
+            // Where the first domain points: what a template declares, else what
+            // the wizard showed the user for their own stack.
             composeService: templateCompose
               ? (template!.expose?.service ?? null)
-              : null,
+              : (primaryService?.name ?? null),
             composePort: templateCompose
               ? (template!.expose?.port ?? null)
-              : null,
+              : (primaryService?.port ?? null),
             extraDomains: templateCompose
-              ? template!.exposes
-                  .slice(1)
-                  .filter((e) => e.host)
-                  .map((e) => ({
-                    service: e.service,
-                    port: e.port,
-                    host: e.host!,
-                  }))
-              : null,
+              ? template!.exposes.slice(1).map((e) => ({
+                  service: e.service,
+                  port: e.port,
+                  host: e.host ?? null,
+                  path: e.path ?? null,
+                }))
+              : useCompose
+                ? routeCandidates
+                    .filter((c) => extraRouted.includes(c.name))
+                    .map((c) => ({
+                      service: c.name,
+                      port: c.port,
+                      host: null,
+                      path: null,
+                    }))
+                : null,
             autoDomain: templateCompose ? template!.autoDomain : null,
+            autoDomainPath: templateCompose
+              ? (template!.expose?.path ?? null)
+              : null,
             mounts: templateCompose ? template!.mounts : null,
             folderId: placement?.folderId ?? null,
             projectId: placement?.projectId ?? null,
@@ -929,6 +953,18 @@ export function NewAppWizard({
               />
             )}
 
+            {useCompose && routeCandidates.length > 1 && (
+              <ComposeDomainPicker
+                candidates={routeCandidates}
+                selected={extraRouted}
+                onToggle={(service, on) =>
+                  setExtraRouted((prev) =>
+                    on ? [...prev, service] : prev.filter((s) => s !== service),
+                  )
+                }
+              />
+            )}
+
             {!usesGit && nameField}
             {!usesGit && noServer}
             {!usesGit && servers.length > 0 && advanced}
@@ -1037,6 +1073,57 @@ function detailsDescription(source: DeploySource): string {
  * What the card says about a stack it is not showing: how big it is, whether the
  * linter is happy, and the way into the editor.
  */
+/**
+ * Which services of a hand-written stack get an address. The primary is the one
+ * Deplo would pick on its own and is always routed; anything else is a choice,
+ * and a database is never pre-selected.
+ */
+function ComposeDomainPicker({
+  candidates,
+  selected,
+  onToggle,
+}: {
+  candidates: ComposeRouteCandidate[];
+  selected: string[];
+  onToggle: (service: string, on: boolean) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <p className="text-sm font-medium">Domains</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Every service you pick gets its own address.
+      </p>
+      <div className="mt-3 grid gap-2">
+        {candidates.map((c) => (
+          <div key={c.name} className="flex items-center gap-2">
+            <Checkbox
+              id={`route-${c.name}`}
+              checked={c.isPrimary || selected.includes(c.name)}
+              disabled={c.isPrimary || c.isReserved}
+              onCheckedChange={(v) => onToggle(c.name, v === true)}
+            />
+            <label
+              htmlFor={`route-${c.name}`}
+              className="min-w-0 flex-1 truncate text-sm"
+            >
+              {c.name}
+              <span className="ml-2 text-xs text-muted-foreground">
+                port {c.port}
+              </span>
+            </label>
+            {c.isPrimary && <Badge variant="secondary">Primary</Badge>}
+            {c.isReserved ? (
+              <Badge variant="outline">Reserved name</Badge>
+            ) : (
+              c.isDatastore && <Badge variant="outline">Database</Badge>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ComposeSummary({
   services,
   diagnostics,

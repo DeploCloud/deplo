@@ -440,13 +440,15 @@ const BuildConfigInput = builder.inputType("BuildConfigInput", {
 
 const ExtraDomainInput = builder.inputType("ExtraDomainInput", {
   description:
-    "A multi-domain template's extra (non-primary) routed host: the compose " +
-    "service + port it targets and its hostname. Registered as an auto Domain " +
-    "row at creation; the `domains` table is the sole routing source after.",
+    "An extra (non-primary) routed host: the compose service + port it targets, " +
+    "its hostname and the path it answers on. No hostname ⇒ one is generated. " +
+    "Registered as an auto Domain row at creation; the `domains` table is the " +
+    "sole routing source after.",
   fields: (t) => ({
     service: t.string({ required: true }),
     port: t.int({ required: true }),
-    host: t.string({ required: true }),
+    host: t.string({ required: false }),
+    path: t.string({ required: false }),
   }),
 });
 
@@ -533,6 +535,7 @@ const CreateAppInputType = builder.inputType("CreateAppInput", {
     composePort: t.int({ required: false }),
     extraDomains: t.field({ type: [ExtraDomainInput], required: false }),
     autoDomain: t.string({ required: false }),
+    autoDomainPath: t.string({ required: false }),
     mounts: t.field({ type: [MountInput], required: false }),
     // Where the app is created (ADR-0009 - one home only): the folder, or the
     // project environment, the user had open on the Overview. Omitted ⇒ top
@@ -854,10 +857,12 @@ builder.mutationFields((t) => ({
           ? input.extraDomains.map((e) => ({
               service: e.service,
               port: e.port,
-              host: e.host,
+              host: e.host ?? "",
+              path: e.path ?? null,
             }))
           : null,
         autoDomain: input.autoDomain ?? null,
+        autoDomainPath: input.autoDomainPath ?? null,
         mounts: input.mounts
           ? input.mounts.map((m) => ({
               filePath: m.filePath,

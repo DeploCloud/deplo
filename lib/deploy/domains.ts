@@ -326,7 +326,9 @@ export function rehostEmbeddedNip(
  * against the master IP and must follow the project to its target server. */
 export interface BlueprintHosts {
   autoDomain?: string | null;
-  extraDomains?: { service: string; port: number; host: string }[] | null;
+  extraDomains?:
+    | { service: string; port: number; host: string; path?: string | null }[]
+    | null;
   env?: { key: string; value: string }[];
 }
 

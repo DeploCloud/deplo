@@ -327,21 +327,46 @@ export async function ensureExtraDomain(
     ip: string;
     /** TLS choice - same rule as {@link ensureAutoDomain}: absent ⇒ `none`. */
     certProvider?: CertProvider;
+    /**
+     * The path this host routes here. Two rows may share one hostname on
+     * different paths (a UI on `/`, its API on `/api`) - which is the only way a
+     * stack with ONE base URL can be routed at all.
+     */
+    pathPrefix?: string;
   },
 ): Promise<void> {
-  const clean = normalizePreferredHost(rawName);
-  if (!clean || !DOMAIN_RE.test(clean)) return;
+  const pathPrefix = normalizePath(route.pathPrefix);
+  const asked = normalizePreferredHost(rawName);
   const existing = await loadDomainsForApp(appId);
+  // No host asked for (a pasted compose, a template domain entry without one):
+  // a PATH means "the app's own address, there"; anything else gets a generated
+  // host rather than leaving the service with no address at all.
+  const wanted =
+    asked && DOMAIN_RE.test(asked)
+      ? asked
+      : pathPrefix
+        ? ((existing.find((d) => d.primary) ?? existing[0])?.name ?? "")
+        : "";
   // Already on this project (idempotent re-run) ⇒ nothing to do.
-  if (existing.some((d) => d.name === clean && !d.primary)) return;
-  // Honor the template host when globally free; otherwise regenerate a unique
-  // one (labelled by slug + service so it stays recognizable) rather than skip.
-  const name = (await domainNameExists(clean))
-    ? await uniqueAutoDomainName(
-        route.service ? `${route.slug}-${route.service}` : route.slug,
-        route.ip,
-      )
-    : clean;
+  if (
+    wanted &&
+    existing.some(
+      (d) =>
+        d.name === wanted && (d.pathPrefix ?? "") === pathPrefix && !d.primary,
+    )
+  )
+    return;
+  // Honor the asked-for host when it is free AT THIS PATH - the app's own
+  // primary holding it on `/` must not push its `/api` sibling onto an invented
+  // address. Taken by another team, or by another app, regenerates a unique one
+  // (labelled by slug + service so it stays recognizable) rather than skip.
+  const name =
+    wanted && !(await domainNameExists(wanted, pathPrefix))
+      ? wanted
+      : await uniqueAutoDomainName(
+          route.service ? `${route.slug}-${route.service}` : route.slug,
+          route.ip,
+        );
   // Same explicit-store rule as the primary: absent reads as letsencrypt at the
   // deploy edge (back-compat), so the born-without-a-cert default is written.
   const certProvider = route.certProvider ?? "none";
@@ -359,6 +384,7 @@ export async function ensureExtraDomain(
     // equal that host's default expose, so the renderer keeps it byte-identical.
     port: route.port,
     ...(route.service ? { service: route.service } : {}),
+    ...(pathPrefix ? { pathPrefix } : {}),
     certProvider,
     createdAt: nowIso(),
   };

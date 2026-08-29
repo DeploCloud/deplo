@@ -13,6 +13,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import {
+  domains as domainsTable,
   envVars as envVarsTable,
   sharedEnvVarApps as sharedLinksTable,
 } from "../db/schema/control-plane";
@@ -159,4 +160,61 @@ test("another team's shared variable is not linkable at creation", async () => {
     () => asUser1(() => newApp({ sharedVarIds: [foreign] })),
     /not found/i,
   );
+});
+
+/**
+ * One hostname, two services: the shape a stack with a single BASE_URL needs.
+ * The extra used to be pushed onto an invented host, because its own primary had
+ * just taken the name.
+ */
+test("an extra domain shares the primary's host when it answers on a path", async () => {
+  const app = await asUser1(() =>
+    newApp({
+      compose:
+        "services:\n" +
+        "  db:\n    image: postgres:17\n" +
+        "  backend:\n    image: acme/api\n" +
+        "  client:\n    image: acme/web\n    depends_on:\n      - backend\n",
+      extraDomains: [
+        { service: "backend", port: 3001, host: "", path: "/api" },
+      ],
+    }),
+  );
+  const rows = await db
+    .select({
+      name: domainsTable.name,
+      service: domainsTable.service,
+      port: domainsTable.port,
+      pathPrefix: domainsTable.pathPrefix,
+      primary: domainsTable.isPrimary,
+    })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+
+  const primary = rows.find((r) => r.primary);
+  const extra = rows.find((r) => !r.primary);
+  // The database is never the front door, and the client is what nothing depends on.
+  assert.equal(primary?.service, "client");
+  assert.equal(extra?.service, "backend");
+  assert.equal(extra?.pathPrefix, "/api");
+  assert.equal(extra?.port, 3001);
+  // Same address, different path - not a second invented hostname.
+  assert.equal(extra?.name, primary?.name);
+});
+
+test("an extra domain with no host of its own gets one generated", async () => {
+  const app = await asUser1(() =>
+    newApp({
+      compose:
+        "services:\n  web:\n    image: nginx\n  admin:\n    image: acme/admin\n",
+      extraDomains: [{ service: "admin", port: 3003, host: "" }],
+    }),
+  );
+  const rows = await db
+    .select({ name: domainsTable.name, primary: domainsTable.isPrimary })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  const extra = rows.find((r) => !r.primary);
+  assert.ok(extra, "the host-less extra was dropped");
+  assert.match(extra.name, /^shop-admin-/);
 });

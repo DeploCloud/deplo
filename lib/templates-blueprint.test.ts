@@ -111,6 +111,48 @@ test("an explicitly marked primary wins over document order", () => {
   assert.deepEqual(bp.expose, bp.exposes[0]);
 });
 
+/**
+ * One base URL, two services: the split a stack whose frontend and API share a
+ * hostname needs. Deplo never guesses a path - the template says it or nobody does.
+ */
+const PATH_CONFIG = `
+[variables]
+main_domain = "\${domain}"
+
+[config]
+[config.env]
+BASE_URL = "https://\${main_domain}"
+
+[[config.domains]]
+serviceName = "client"
+port = 3002
+host = "\${main_domain}"
+
+[[config.domains]]
+serviceName = "backend"
+port = 3001
+host = "\${main_domain}"
+path = "/api"
+
+[[config.domains]]
+serviceName = "admin"
+port = 3003
+`;
+
+test("a domain entry carries its path, and one without a host survives", () => {
+  const bp = getTemplateBlueprint(
+    { slug: "split", compose: "services: {}\n", config: PATH_CONFIG },
+    { domain: "demo.example.com" },
+  );
+
+  assert.deepEqual(bp.exposes, [
+    { service: "client", port: 3002, host: "demo.example.com" },
+    { service: "backend", port: 3001, host: "demo.example.com", path: "/api" },
+    // No host declared: creation generates one rather than dropping the service.
+    { service: "admin", port: 3003, host: undefined },
+  ]);
+});
+
 test("a template with no config still deploys its compose", () => {
   const bp = getTemplateBlueprint({ slug: "bare", compose: "x", config: "" });
   assert.deepEqual(bp, {

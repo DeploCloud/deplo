@@ -591,7 +591,9 @@ export interface CreateAppInput {
   /** A multi-domain template's EXTRA (non-primary) routed hosts - each becomes
    * its own auto Domain row at creation (the primary is the `autoDomain`). The
    * `domains` table is the sole routing source afterward; there is no `exposes`. */
-  extraDomains?: { service: string; port: number; host: string }[] | null;
+  extraDomains?:
+    | { service: string; port: number; host: string; path?: string | null }[]
+    | null;
   /** Pre-generated PRIMARY domain a template baked into its env; kept consistent. */
   autoDomain?: string | null;
   /** The path {@link autoDomain} routes here. An import brings apps that share one
@@ -1152,25 +1154,23 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // never resurrected by a later deploy. The `domains` table is the sole routing
   // source from here on.
   //
-  // An extra landing on the SAME host as the primary is not a duplicate to drop:
-  // the primary's own declared host is discarded in favour of the generated one,
-  // so a template that marks a non-first entry `primary = true` leaves the
-  // displaced entry declaring a host the primary just took. Handing it to
-  // `ensureExtraDomain` anyway gets it a generated host of its own instead of
-  // leaving that service with no address at all.
+  // An extra on the primary's own host is kept: same path ⇒ a generated host of
+  // its own, different path ⇒ the same host, which is how one base URL routes to
+  // two services.
   for (const ex of input.extraDomains ?? []) {
-    const host = ex.host.trim();
-    if (host)
-      await ensureExtraDomain(project.id, host, {
-        port: ex.port,
-        service: ex.service,
-        // Passed so a globally-colliding template host regenerates a unique one.
-        slug,
-        ip,
-        // Same TLS choice as the primary: a blueprint that expects HTTPS gets it
-        // on every host it declares; anything else is born plain-HTTP.
-        certProvider,
-      });
+    await ensureExtraDomain(project.id, ex.host.trim(), {
+      port: ex.port,
+      service: ex.service,
+      // A host-less entry gets a generated one; a path lets it share the
+      // primary's host (a UI on `/`, its API on `/api`).
+      pathPrefix: ex.path ?? undefined,
+      // Passed so a globally-colliding template host regenerates a unique one.
+      slug,
+      ip,
+      // Same TLS choice as the primary: a blueprint that expects HTTPS gets it
+      // on every host it declares; anything else is born plain-HTTP.
+      certProvider,
+    });
   }
 
   // Link the shared variables the create asked for, through the same gated call
