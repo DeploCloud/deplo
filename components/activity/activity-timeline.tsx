@@ -105,6 +105,7 @@ function messageWithLink(
   item: ActivityItem,
   appLinks: AppLinks | undefined,
   databaseLinks: DatabaseLinks | undefined,
+  showMark: boolean,
 ): React.ReactNode {
   const target = mentioned(item, appLinks, databaseLinks);
   if (!target) return item.message;
@@ -119,9 +120,11 @@ function messageWithLink(
       >
         {/* Inline-block on the MARK, not on the link: a flex link takes its
             baseline from the picture and lifts the name off the line. */}
-        <span className="mr-1 inline-block align-text-bottom">
-          {target.mark}
-        </span>
+        {showMark && (
+          <span className="mr-1 inline-block align-text-bottom">
+            {target.mark}
+          </span>
+        )}
         {target.name}
       </Link>
       {item.message.slice(at + target.name.length)}
@@ -233,6 +236,7 @@ export function ActivityRow({
   repeats,
   size = "lg",
   showActor = true,
+  showMark = true,
   appLinks,
   databaseLinks,
 }: {
@@ -242,12 +246,15 @@ export function ActivityRow({
   size?: "md" | "lg";
   /** Off on a page that already names the person, like a member's own tab. */
   showActor?: boolean;
+  /** The resource's own picture beside its name. Off where the row is already
+   *  small, like the Overview card. */
+  showMark?: boolean;
   appLinks?: AppLinks;
   databaseLinks?: DatabaseLinks;
 }) {
   const times = repeats ?? [item.createdAt];
   const many = times.length > 1;
-  const sentence = messageWithLink(item, appLinks, databaseLinks);
+  const sentence = messageWithLink(item, appLinks, databaseLinks, showMark);
   return (
     <li className="relative flex items-start gap-3">
       <ActivityMarker item={item} size={size} showActor={showActor} />
@@ -356,6 +363,7 @@ export function ActivityTimeline({
   variant = "full",
   monthCounts,
   showActor = true,
+  showMark = true,
   appLinks,
   databaseLinks,
   children,
@@ -365,6 +373,7 @@ export function ActivityTimeline({
   /** `{ "2026-08": 42 }`, for the month headings. */
   monthCounts?: Record<string, number>;
   showActor?: boolean;
+  showMark?: boolean;
   appLinks?: AppLinks;
   databaseLinks?: DatabaseLinks;
   /** The loader / end-of-list footer, inside the rail. */
@@ -394,6 +403,7 @@ export function ActivityTimeline({
         repeats={run.times}
         size={size}
         showActor={showActor}
+        showMark={showMark}
         appLinks={appLinks}
         databaseLinks={databaseLinks}
       />,

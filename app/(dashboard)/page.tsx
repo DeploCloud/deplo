@@ -266,6 +266,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
             )}
             <ActivityTimeline
               variant="compact"
+              showMark={false}
               items={activity.map(toActivityItem)}
               appLinks={Object.fromEntries(
                 services.map((s) => [
