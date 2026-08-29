@@ -9,6 +9,8 @@ import { ALL_CAPABILITIES } from "@/lib/types";
 import { SEARCH_QUERY } from "./search-query";
 import {
   APP_ACTIONS,
+  matchOwnedPages,
+  ownedPageEntries,
   DB_ACTIONS,
   PALETTE_APP_FLAGS,
   appFrameEntries,
@@ -178,5 +180,91 @@ test("the palette's own query is valid against the schema", () => {
   assert.deepEqual(
     errors.map((e) => e.message),
     [],
+  );
+});
+
+/* ---- One resource's pages, from the root ------------------------- */
+
+const KNOWN_APPS = [
+  { id: "prj_1", slug: "deplo-web", name: "deplo-web", logo: null },
+  { id: "prj_2", slug: "gamewatcher", name: "GameWatcher", logo: null },
+];
+const KNOWN_DBS = [{ id: "db_1", name: "main", type: "postgres", logo: null }];
+const OWNED = ownedPageEntries(KNOWN_APPS, KNOWN_DBS);
+
+test("every owned page names its owner and has a unique id", () => {
+  assert.ok(OWNED.length > 0);
+  assert.ok(
+    OWNED.every((e) => e.owner),
+    "a page with no owner would render as one of deplo's own",
+  );
+  const ids = OWNED.map((e) => e.id);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+test("two words reach one app's page: 'deplo variables'", () => {
+  // nav-config calls that page "Environment" and nobody types that, so the
+  // match has to read its description too. This is the case that motivated it.
+  assert.deepEqual(
+    matchOwnedPages(OWNED, "deplo variables").map((e) => [
+      e.owner?.name,
+      e.label,
+      e.run.kind === "href" ? e.run.href : "",
+    ]),
+    [["deplo-web", "Environment", "/apps/deplo-web/environment"]],
+  );
+});
+
+test("two words reach a page nav-config spells exactly", () => {
+  const hits = matchOwnedPages(OWNED, "gamewatcher domains");
+  assert.deepEqual(
+    hits.map((e) => [e.owner?.name, e.label]),
+    [["GameWatcher", "Domains"]],
+  );
+  assert.equal(
+    hits[0]?.run.kind === "href" ? hits[0].run.href : "",
+    "/apps/gamewatcher/domains",
+  );
+});
+
+test("one word answers nothing - that is what the resource row is for", () => {
+  assert.deepEqual(matchOwnedPages(OWNED, "domains"), []);
+  assert.deepEqual(matchOwnedPages(OWNED, "deplo"), []);
+  assert.deepEqual(matchOwnedPages(OWNED, ""), []);
+});
+
+test("a word naming neither the owner nor the page rules the row out", () => {
+  assert.deepEqual(matchOwnedPages(OWNED, "deplo domains xyzzy"), []);
+});
+
+test("databases answer the same way", () => {
+  const hits = matchOwnedPages(OWNED, "main backups");
+  assert.deepEqual(
+    hits.map((e) => [e.owner?.kind, e.owner?.name, e.label]),
+    [["database", "main", "Backups"]],
+  );
+});
+
+test("the list is capped, so one common word cannot flood the palette", () => {
+  const many = ownedPageEntries(
+    Array.from({ length: 40 }, (_, i) => ({
+      id: `prj_${i}`,
+      slug: `app-${i}`,
+      name: `app-${i}`,
+      logo: null,
+    })),
+    [],
+  );
+  assert.equal(matchOwnedPages(many, "app logs", 8).length, 8);
+});
+
+test("an app is named by its slug too, as it is on the server", () => {
+  const owned = ownedPageEntries(
+    [{ id: "prj_9", slug: "acme-api-prod", name: "API", logo: null }],
+    [],
+  );
+  assert.deepEqual(
+    matchOwnedPages(owned, "acme logs").map((e) => e.label),
+    ["Logs"],
   );
 });

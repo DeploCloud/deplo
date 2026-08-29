@@ -39,8 +39,11 @@ import {
   appFrameEntries,
   dbFrameEntries,
   matchEntries,
+  matchOwnedPages,
+  ownedPageEntries,
   staticEntries,
   type Entry,
+  type EntryOwner,
 } from "@/lib/command-palette/entries";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { SEARCH_QUERY } from "@/lib/command-palette/search-query";
@@ -52,6 +55,7 @@ import {
   projectHref,
   templateHref,
 } from "@/lib/overview-links";
+import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { DatabaseType, TeamIdentity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { PaletteKbd } from "./palette-kbd";
@@ -282,6 +286,8 @@ const ROOT: Frame = { kind: "root" };
 export interface CommandPaletteProps {
   userId: string;
   team: TeamIdentity;
+  /** The team's apps and databases, already in the browser for the breadcrumb. */
+  breadcrumb: BreadcrumbGraph;
   capabilities: string[];
   isAdmin: boolean;
 }
@@ -319,6 +325,9 @@ export function CommandPalette(props: CommandPaletteProps) {
       <DialogContent
         selfManaged
         hideClose
+        // Heavier than the house dialog's: the palette covers the whole page
+        // and the blur is what says the rest of it is out of play.
+        overlayClassName="bg-black/60 backdrop-blur-lg"
         className={cn(
           // Beat the base centring: tailwind-merge lets the later class win.
           "top-[12vh] flex max-w-2xl translate-y-0 flex-col gap-0 overflow-hidden p-0",
@@ -340,6 +349,7 @@ export function CommandPalette(props: CommandPaletteProps) {
 function PaletteBody({
   userId,
   team,
+  breadcrumb,
   capabilities,
   isAdmin,
 }: CommandPaletteProps) {
@@ -382,6 +392,20 @@ function PaletteBody({
   const matched = React.useMemo(
     () => matchEntries(catalogue, query),
     [catalogue, query],
+  );
+
+  // "deplo variables" reaches deplo-web's own Variables page, without stepping
+  // into the app first. Built off the breadcrumb snapshot, so no extra request.
+  const owned = React.useMemo(
+    () => ownedPageEntries(breadcrumb.apps, breadcrumb.databases),
+    [breadcrumb],
+  );
+  const ownedMatched = React.useMemo(
+    () =>
+      frame.kind === "root"
+        ? matchOwnedPages(owned, query).filter((e) => canSee(e, caps, isAdmin))
+        : [],
+    [owned, query, frame.kind, caps, isAdmin],
   );
 
   /* -- the server half, debounced -- */
@@ -434,7 +458,11 @@ function PaletteBody({
     if (entry.run.kind === "href") {
       remember({
         id: entry.id,
-        label: entry.label,
+        // A page of an app is remembered WITH the app: "Environment" on its own
+        // says nothing about whose it was.
+        label: entry.owner
+          ? `${entry.owner.name} / ${entry.label}`
+          : entry.label,
         href: entry.run.href,
         kind: "nav",
       });
@@ -502,7 +530,10 @@ function PaletteBody({
 
   const showRecents = frame.kind === "root" && !query && recents.length > 0;
   const nothing =
-    matched.length === 0 && here.length === 0 && elsewhere.length === 0;
+    matched.length === 0 &&
+    ownedMatched.length === 0 &&
+    here.length === 0 &&
+    elsewhere.length === 0;
 
   return (
     <Command shouldFilter={false} className="flex min-h-0 flex-1 flex-col">
@@ -580,22 +611,18 @@ function PaletteBody({
           </CommandGroup>
         )}
 
+        {ownedMatched.length > 0 && (
+          <CommandGroup heading="Pages">
+            {ownedMatched.map((entry) => (
+              <EntryRow key={entry.id} entry={entry} onChoose={runEntry} />
+            ))}
+          </CommandGroup>
+        )}
+
         {groupBy(matched).map(([group, entries]) => (
           <CommandGroup key={group} heading={group}>
             {entries.map((entry) => (
-              <CommandItem
-                key={entry.id}
-                value={entry.id}
-                onSelect={() => void runEntry(entry)}
-              >
-                <entry.icon className="size-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">{entry.label}</span>
-                {entry.hint && (
-                  <span className="ml-auto shrink-0 truncate text-xs text-muted-foreground">
-                    {entry.hint}
-                  </span>
-                )}
-              </CommandItem>
+              <EntryRow key={entry.id} entry={entry} onChoose={runEntry} />
             ))}
           </CommandGroup>
         ))}
@@ -672,6 +699,63 @@ function groupBy<T extends { group: string }>(rows: T[]): [string, T[]][] {
     else out.set(row.group, [row]);
   }
   return [...out];
+}
+
+function EntryRow({
+  entry,
+  onChoose,
+}: {
+  entry: Entry;
+  onChoose: (entry: Entry) => void | Promise<void>;
+}) {
+  const { owner } = entry;
+  return (
+    <CommandItem value={entry.id} onSelect={() => void onChoose(entry)}>
+      {owner ? (
+        <OwnedIcon owner={owner} icon={entry.icon} />
+      ) : (
+        <entry.icon className="size-4 shrink-0 text-muted-foreground" />
+      )}
+      <span className="truncate">
+        {owner && (
+          <span className="text-muted-foreground">
+            {owner.name} /{entry.group === "Settings" ? " Settings /" : ""}{" "}
+          </span>
+        )}
+        {entry.label}
+      </span>
+      {entry.hint && !owner && (
+        <span className="ml-auto shrink-0 truncate text-xs text-muted-foreground">
+          {entry.hint}
+        </span>
+      )}
+    </CommandItem>
+  );
+}
+
+/**
+ * The resource's own logo, badged with the page's glyph: at a glance this is
+ * deplo-web's Environment page, not deplo's own.
+ */
+function OwnedIcon({
+  owner,
+  icon: Icon,
+}: {
+  owner: EntryOwner;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      {owner.kind === "app" ? (
+        <AppLogo logo={owner.logo} size={20} />
+      ) : (
+        <DatabaseLogo type={owner.type} logo={owner.logo} size={20} />
+      )}
+      <span className="absolute -right-1 -bottom-1 flex size-3.5 items-center justify-center rounded-full border border-border bg-background">
+        <Icon className="size-2 text-muted-foreground" />
+      </span>
+    </span>
+  );
 }
 
 function HitRow({

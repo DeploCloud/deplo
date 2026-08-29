@@ -47,6 +47,17 @@ export type Run =
     }
   | { kind: "copy"; text: string };
 
+/** The resource a page belongs to, when it is not a page of deplo itself. */
+export type EntryOwner =
+  | {
+      kind: "app";
+      name: string;
+      /** Searched alongside the name, exactly as the server's own search does. */
+      slug: string;
+      logo: string | null;
+    }
+  | { kind: "database"; name: string; logo: string | null; type: DatabaseType };
+
 export interface Entry {
   /** cmdk's `value` and the recents key: unique, opaque, stable. */
   id: string;
@@ -56,6 +67,12 @@ export interface Entry {
   icon: ComponentType<{ className?: string }>;
   group: string;
   run: Run;
+  /**
+   * Whose page this is. The row then wears the resource's own logo with
+   * {@link Entry.icon} badged onto it, so "deplo-web's Variables" cannot be
+   * mistaken for deplo's own.
+   */
+  owner?: EntryOwner;
   requires?: string;
   requiresAny?: string[];
   requiresAdmin?: boolean;
@@ -324,19 +341,23 @@ export function appFrameEntries(
           },
         ]
       : []),
-    ...byDestination([
-      ...fromSections(
-        appNav(app.slug, flags),
-        () => "Pages",
-        `app:${app.slug}`,
-      ),
-      ...fromSections(
-        appSettingsNav(app.slug, flags.isGithubApp),
-        () => "Settings",
-        `app:${app.slug}`,
-      ),
-    ]),
+    ...appFramePages(app.slug, flags),
   ];
+}
+
+/** Where you can go inside one app. Shared with {@link ownedPageEntries}. */
+export function appFramePages(
+  slug: string,
+  flags: AppNavFlags = PALETTE_APP_FLAGS,
+): Entry[] {
+  return byDestination([
+    ...fromSections(appNav(slug, flags), () => "Pages", `app:${slug}`),
+    ...fromSections(
+      appSettingsNav(slug, flags.isGithubApp),
+      () => "Settings",
+      `app:${slug}`,
+    ),
+  ]);
 }
 
 export interface FrameDatabase {
@@ -349,17 +370,114 @@ export function dbFrameEntries(
   db: FrameDatabase,
   flags: typeof PALETTE_DB_FLAGS = PALETTE_DB_FLAGS,
 ): Entry[] {
-  return [
-    ...actionEntries(DB_ACTIONS, db.id),
-    ...byDestination([
-      ...fromSections(databaseNav(db.id, flags), () => "Pages", `db:${db.id}`),
-      ...fromSections(
-        databaseSettingsNav(db.id),
-        () => "Settings",
-        `db:${db.id}`,
-      ),
-    ]),
-  ];
+  return [...actionEntries(DB_ACTIONS, db.id), ...dbFramePages(db.id, flags)];
+}
+
+/** Where you can go inside one database. Shared with {@link ownedPageEntries}. */
+export function dbFramePages(
+  id: string,
+  flags: typeof PALETTE_DB_FLAGS = PALETTE_DB_FLAGS,
+): Entry[] {
+  return byDestination([
+    ...fromSections(databaseNav(id, flags), () => "Pages", `db:${id}`),
+    ...fromSections(databaseSettingsNav(id), () => "Settings", `db:${id}`),
+  ]);
+}
+
+/* ------------------------------------------------------------------ */
+/* One resource's pages, reachable without stepping into it            */
+/* ------------------------------------------------------------------ */
+
+/** What the palette knows about a resource without asking the server. */
+export interface KnownApp {
+  id: string;
+  slug: string;
+  name: string;
+  logo?: string | null;
+}
+
+export interface KnownDatabase {
+  id: string;
+  name: string;
+  type: string;
+  logo?: string | null;
+}
+
+/**
+ * Every page of every app and database, as one flat list. Built once per team
+ * snapshot, not per keystroke: it is roughly fifteen rows per resource, and
+ * {@link matchOwnedPages} is what keeps all but a handful off the screen.
+ */
+export function ownedPageEntries(
+  apps: KnownApp[],
+  databases: KnownDatabase[],
+): Entry[] {
+  const out: Entry[] = [];
+  for (const app of apps) {
+    const owner: EntryOwner = {
+      kind: "app",
+      name: app.name,
+      slug: app.slug,
+      logo: app.logo ?? null,
+    };
+    for (const page of appFramePages(app.slug)) {
+      out.push({ ...page, id: `owned:${app.id}:${page.id}`, owner });
+    }
+  }
+  for (const db of databases) {
+    const owner: EntryOwner = {
+      kind: "database",
+      name: db.name,
+      logo: db.logo ?? null,
+      type: db.type as DatabaseType,
+    };
+    for (const page of dbFramePages(db.id)) {
+      out.push({ ...page, id: `owned:${db.id}:${page.id}`, owner });
+    }
+  }
+  return out;
+}
+
+/**
+ * "deplo variables" finds deplo-web's Environment page - the page is matched on
+ * its description as well as its name, because nav-config calls that one
+ * "Environment" and nobody types that. Two words at least, one naming the
+ * resource and one naming the page: with a single word, "logs" would put every
+ * app's copy of it on screen in front of deplo's own.
+ */
+export function matchOwnedPages(
+  entries: Entry[],
+  query: string,
+  limit = 8,
+): Entry[] {
+  const words = query.trim().split(/\s+/).map(foldQuery).filter(Boolean);
+  if (words.length < 2) return [];
+  const out: Entry[] = [];
+  for (const entry of entries) {
+    if (!entry.owner) continue;
+    const owner = foldQuery(
+      entry.owner.kind === "app"
+        ? `${entry.owner.name} ${entry.owner.slug}`
+        : entry.owner.name,
+    );
+    const page = foldQuery(`${entry.label} ${entry.hint ?? ""}`);
+    let namesOwner = false;
+    let namesPage = false;
+    let covered = true;
+    for (const word of words) {
+      const hitOwner = owner.includes(word);
+      const hitPage = page.includes(word);
+      if (!hitOwner && !hitPage) {
+        covered = false;
+        break;
+      }
+      namesOwner ||= hitOwner;
+      namesPage ||= hitPage;
+    }
+    if (covered && namesOwner && namesPage) out.push(entry);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /**

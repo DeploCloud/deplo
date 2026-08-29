@@ -40,6 +40,8 @@ const DialogContent = React.forwardRef<
      * children, and the backup wizard, whose animated height must overflow.
      */
     selfManaged?: boolean;
+    /** Extra classes for the backdrop - a heavier blur, say. */
+    overlayClassName?: string;
   }
 >(
   (
@@ -48,6 +50,7 @@ const DialogContent = React.forwardRef<
       children,
       hideClose,
       selfManaged,
+      overlayClassName,
       onInteractOutside,
       onOpenAutoFocus,
       ...props
@@ -58,7 +61,7 @@ const DialogContent = React.forwardRef<
     const contentRef = React.useRef<HTMLDivElement | null>(null);
     return (
       <DialogPortal>
-        <DialogOverlay />
+        <DialogOverlay className={overlayClassName} />
         <DialogPrimitive.Content
           ref={(node) => {
             contentRef.current = node;
