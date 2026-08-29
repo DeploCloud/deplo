@@ -156,36 +156,41 @@ export function PreviewOverrides({
     <section className="space-y-4">
       {/* The heading matches "Environment Variables" above, with the chevron
           making it a disclosure rather than a second permanent section. */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="group flex w-full items-start gap-2 text-left"
-      >
-        <ChevronDown
-          className={cn(
-            "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-        />
-        <div>
-          <h3 className="flex items-center gap-2 text-sm font-medium">
-            Preview overrides
-            {visibleOverrides.length > 0 && (
-              <Badge variant="muted" className="text-[10px] font-normal">
-                {visibleOverrides.length}
-              </Badge>
-            )}
-            <InfoTip
-              content="A pull request preview inherits every variable above. An override replaces one of them in previews only - the usual reason is pointing previews at a scratch database instead of the production one. It outranks the app's own value and any shared variable."
-              docs="env.previewOverrides"
+      <div>
+        {/* The info button is a SIBLING of the disclosure, never inside it: a
+            button nested in a button is invalid HTML and the browser unnests it,
+            which is a hydration mismatch on every render. */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="group flex items-center gap-2 text-left"
+          >
+            <ChevronDown
+              className={cn(
+                "size-4 shrink-0 text-muted-foreground transition-transform",
+                open && "rotate-180",
+              )}
             />
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Values used only by pull request previews. Production is untouched.
-          </p>
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              Preview overrides
+              {visibleOverrides.length > 0 && (
+                <Badge variant="muted" className="text-[10px] font-normal">
+                  {visibleOverrides.length}
+                </Badge>
+              )}
+            </h3>
+          </button>
+          <InfoTip
+            content="A pull request preview inherits every variable above. An override replaces one of them in previews only - the usual reason is pointing previews at a scratch database instead of the production one. It outranks the app's own value and any shared variable."
+            docs="env.previewOverrides"
+          />
         </div>
-      </button>
+        <p className="mt-1 pl-6 text-sm text-muted-foreground">
+          Values used only by pull request previews. Production is untouched.
+        </p>
+      </div>
 
       {open &&
         (visibleOverrides.length === 0 ? (
