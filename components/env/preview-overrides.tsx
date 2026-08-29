@@ -23,7 +23,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoTip } from "@/components/ui/info-tip";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -41,8 +40,9 @@ import {
 } from "@/components/env/env-rows-editor";
 import { SecretRow } from "@/components/env/secret-row";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import { TimeAgo } from "@/components/shared/time-ago";
 import { gqlAction } from "@/lib/graphql-client";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export interface PreviewOverride {
   key: string;
@@ -235,11 +235,7 @@ export function PreviewOverrides({
                         <EnvValueCell value="" masked />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                        <SimpleTooltip
-                          content={new Date(o.updatedAt).toLocaleString()}
-                        >
-                          <span>{timeAgo(o.updatedAt)}</span>
-                        </SimpleTooltip>
+                        <TimeAgo at={o.updatedAt} />
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">

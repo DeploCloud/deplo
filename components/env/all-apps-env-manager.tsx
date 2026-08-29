@@ -41,6 +41,7 @@ import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { AppsGraphic } from "@/components/apps/apps-graphic";
 import { AppVarsGraphic } from "@/components/env/app-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
+import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
@@ -56,7 +57,7 @@ import {
   type EnvFacet,
 } from "@/components/env/env-filters";
 import { gqlAction } from "@/lib/graphql-client";
-import { cn, readableTextColor, timeAgo } from "@/lib/utils";
+import { cn, readableTextColor } from "@/lib/utils";
 import {
   groupRowsByProject,
   TOP_LEVEL,
@@ -724,11 +725,7 @@ function AppVarsCard({
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                        <SimpleTooltip
-                          content={new Date(row.updatedAt).toLocaleString()}
-                        >
-                          <span>{timeAgo(row.updatedAt)}</span>
-                        </SimpleTooltip>
+                        <TimeAgo at={row.updatedAt} />
                       </TableCell>
                       <TableCell>
                         <EnvAuthorCell
@@ -771,11 +768,7 @@ function AppVarsCard({
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                        <SimpleTooltip
-                          content={new Date(row.updatedAt).toLocaleString()}
-                        >
-                          <span>{timeAgo(row.updatedAt)}</span>
-                        </SimpleTooltip>
+                        <TimeAgo at={row.updatedAt} />
                       </TableCell>
                       <TableCell>
                         <EnvAuthorCell author={row.updatedBy ?? null} />

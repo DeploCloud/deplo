@@ -28,6 +28,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { SharedVarsGraphic } from "@/components/env/shared-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
+import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
 import { EnvEditButton } from "@/components/env/env-edit-button";
@@ -47,7 +48,6 @@ import {
   type TeamRef,
 } from "@/components/env/shared-var-wizard";
 import { gqlAction } from "@/lib/graphql-client";
-import { timeAgo } from "@/lib/utils";
 import type { SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
@@ -296,11 +296,7 @@ export function SharedVarsManager({
                     </div>
                   </TableCell>
                   <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                    <SimpleTooltip
-                      content={new Date(v.updatedAt).toLocaleString()}
-                    >
-                      <span>{timeAgo(v.updatedAt)}</span>
-                    </SimpleTooltip>
+                    <TimeAgo at={v.updatedAt} />
                   </TableCell>
                   <TableCell>
                     <EnvAuthorCell

@@ -29,6 +29,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EnvGraphic } from "@/components/env/env-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
+import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { MakePlainDialog } from "@/components/env/make-plain-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
@@ -42,7 +43,6 @@ import {
   updatedFacet,
 } from "@/components/env/env-filters";
 import { gqlAction } from "@/lib/graphql-client";
-import { timeAgo } from "@/lib/utils";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
@@ -245,11 +245,7 @@ export function EnvManager({
                       <EnvValueCell value={row.value} masked={row.masked} />
                     </TableCell>
                     <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                      <SimpleTooltip
-                        content={new Date(row.updatedAt).toLocaleString()}
-                      >
-                        <span>{timeAgo(row.updatedAt)}</span>
-                      </SimpleTooltip>
+                      <TimeAgo at={row.updatedAt} />
                     </TableCell>
                     <TableCell>
                       <EnvAuthorCell
@@ -325,11 +321,7 @@ export function EnvManager({
                       <EnvValueCell value={row.value} masked={row.masked} />
                     </TableCell>
                     <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                      <SimpleTooltip
-                        content={new Date(row.updatedAt).toLocaleString()}
-                      >
-                        <span>{timeAgo(row.updatedAt)}</span>
-                      </SimpleTooltip>
+                      <TimeAgo at={row.updatedAt} />
                     </TableCell>
                     <TableCell>
                       {/* A shared row carries no creator - it falls back server-side. */}
