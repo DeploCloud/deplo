@@ -394,11 +394,15 @@ function PaletteBody({
     [catalogue, query],
   );
 
-  // "deplo variables" reaches deplo-web's own Variables page, without stepping
-  // into the app first. Built off the breadcrumb snapshot, so no extra request.
+  // "deplo variables" reaches deplo-web's own Environment page, without stepping
+  // into the app first. Built off the breadcrumb snapshot, so no extra request -
+  // and only once two words are on screen, since that is the shape that can
+  // match at all and this is a dozen rows per app.
+  const twoWords = query.trim().split(/\s+/).filter(Boolean).length >= 2;
   const owned = React.useMemo(
-    () => ownedPageEntries(breadcrumb.apps, breadcrumb.databases),
-    [breadcrumb],
+    () =>
+      twoWords ? ownedPageEntries(breadcrumb.apps, breadcrumb.databases) : [],
+    [breadcrumb, twoWords],
   );
   const ownedMatched = React.useMemo(
     () =>
