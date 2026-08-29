@@ -43,10 +43,11 @@ function fmtMemMb(mb: number): string {
   return mb >= 1024 ? `${Number((mb / 1024).toFixed(2))} GiB` : `${mb} MiB`;
 }
 
-/** A stack's CPU as a person reads it. `cpu` is a percentage of ONE core - the
- *  same convention htop and `docker stats` use - so 299% is three busy cores. */
-function fmtCoresUsed(cpuPct: number, hostCores: number): string | null {
-  if (hostCores <= 0) return null;
+/** A stack's CPU in cores, but ONLY once the percentage stops explaining itself.
+ *  `cpu` is a percentage of ONE core - htop's and `docker stats`' convention - so
+ *  299% needs saying as 3 cores, while 0.9% just reads "0.01 of 8 cores". */
+export function fmtCoresUsed(cpuPct: number, hostCores: number): string | null {
+  if (hostCores <= 0 || cpuPct < 100) return null;
   return `${(cpuPct / 100).toFixed(2)} of ${hostCores} core${hostCores === 1 ? "" : "s"}`;
 }
 

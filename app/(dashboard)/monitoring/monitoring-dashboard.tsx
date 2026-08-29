@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
@@ -361,22 +361,25 @@ export function MonitoringDashboard({
               icon={MemoryStick}
               label="Memory"
               value={`${cur.memPct.toFixed(1)}%`}
-              sub={
-                <>
-                  {formatBytes(cur.memUsed)} of {formatBytes(cur.memTotal)}
-                  {cur.memCache > 0 && (
-                    // The headline is total-available, the figure `free` calls
-                    // used. htop counts the reclaimable half as free instead, so
-                    // spelling out both stops the two from looking contradictory.
-                    <span className="mt-1 block">
+              sub={`${formatBytes(cur.memUsed)} of ${formatBytes(cur.memTotal)}`}
+              info={
+                cur.memCache > 0 ? (
+                  <>
+                    <p>
                       processes{" "}
                       {formatBytes(
                         Math.max(0, cur.memTotal - cur.memFree - cur.memCache),
                       )}{" "}
-                      · cache {formatBytes(cur.memCache)}
-                    </span>
-                  )}
-                </>
+                      · cache {formatBytes(cur.memCache)} · free{" "}
+                      {formatBytes(cur.memFree)}
+                    </p>
+                    <p className="mt-1">
+                      The figure above counts cache the kernel cannot reclaim as
+                      used, the same way `free` does. htop counts all cache as
+                      free, so it reads lower.
+                    </p>
+                  </>
+                ) : undefined
               }
               pct={cur.memPct}
             />
@@ -511,13 +514,16 @@ function StatTile({
   label,
   value,
   sub,
+  info,
   pct,
 }: {
   icon: typeof Cpu;
   label: string;
   value: string;
-  /** A node, not a string, so the memory tile can carry its breakdown line. */
   sub: React.ReactNode;
+  /** The explanation the number cannot carry itself - a tooltip, not a second
+   *  body line, so the tile still reads as one figure. */
+  info?: React.ReactNode;
   pct: number;
 }) {
   const over = pct > 80;
@@ -527,6 +533,7 @@ function StatTile({
         <div className="flex items-center gap-1.5 text-muted-foreground">
           <Icon className="size-4" />
           <span className="text-xs">{label}</span>
+          {info && <InfoTip content={info} side="top" />}
         </div>
         <p className="text-2xl font-semibold tracking-tight">{value}</p>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
