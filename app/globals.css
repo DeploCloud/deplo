@@ -211,6 +211,16 @@ p:not([class*="leading-"]) {
   background-color: var(--card);
 }
 
+/* The gutter below is reserved ALWAYS, so the compensation react-remove-scroll
+   adds when a dialog, sheet or menu locks the body is a SECOND one - and every
+   modal in the app slid the whole page left by a scrollbar's width on open.
+   Unlayered and more specific than its own `body[data-scroll-locked]`, which it
+   injects into <head> at runtime. The lock itself (overflow) is untouched. */
+html body[data-scroll-locked] {
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+}
+
 @layer base {
   * {
     border-color: var(--border);
