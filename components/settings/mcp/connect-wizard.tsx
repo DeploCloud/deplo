@@ -4,7 +4,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ArrowRight,
   Check,
   ExternalLink,
   Loader2,
@@ -51,6 +50,7 @@ import {
 } from "./agents";
 import { RobotGraphic, type RobotState } from "./robot-graphic";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
+import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { ToolsDialog, type McpToolSummary } from "./tools-dialog";
 import { veilProps } from "@/components/templates/veil";
 
@@ -76,9 +76,9 @@ const CUSTOM = "custom";
 /** The template a first-time connection starts from. */
 const MCP_PRESET = TOKEN_PRESETS.find((p) => p.id === "mcp")!;
 
-/** How long the last step keeps asking before it offers a manual retry. */
+/** How long the wizard listens before it offers a manual retry. */
 const POLL_MS = 2000;
-const POLL_LIMIT = 90;
+const POLL_LIMIT = 150;
 
 export function ConnectWizard({
   mcpEnabled,
@@ -187,13 +187,48 @@ function WizardRun({
 
   const [secret, setSecret] = React.useState<string | null>(null);
   const [tokenId, setTokenId] = React.useState<string | null>(null);
-  // Lifted out of the last step, because the illustration that reacts to it now
-  // lives in the other column. `DoneStep` still owns the polling.
+  // Lifted out of the last step, because the illustration that reacts to it
+  // lives in the other column and the listening now starts a step earlier.
   const [connected, setConnected] = React.useState(false);
+  const [attempt, setAttempt] = React.useState(0);
+  const [round, setRound] = React.useState(0);
+  // Frozen on mount: the web branch reads success as "one more connection than
+  // there was", so a baseline moved by any refresh would mean nothing.
+  const [baseline] = React.useState(connectionCount);
 
   const agent = agentId ? AGENTS.find((a) => a.id === agentId)! : null;
   const web = agent?.kind === "web";
   const minted = secret !== null;
+
+  // Listening starts with the snippet on screen: pasting it IS the action, so a
+  // button to confirm it afterwards only delays the tick that follows.
+  React.useEffect(() => {
+    if (!agent || connected || attempt >= POLL_LIMIT) return;
+    if (step !== "connect" && step !== "done") return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const hit = await probe(agent.kind, tokenId, baseline);
+      if (cancelled) return;
+      if (!hit) {
+        setAttempt((n) => n + 1);
+        return;
+      }
+      setConnected(true);
+      setStep("done");
+      // The Manage tab reads from the server, so it has to be told.
+      onRefresh();
+    }, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [agent, tokenId, baseline, connected, attempt, round, step, onRefresh]);
+
+  const gaveUp = !connected && attempt >= POLL_LIMIT;
+  function checkAgain() {
+    setAttempt(0);
+    setRound((n) => n + 1);
+  }
 
   const steps: StepId[] = [
     ...(mcpEnabled ? [] : (["enable"] as StepId[])),
@@ -332,10 +367,13 @@ function WizardRun({
           current={step}
           // Once the secret exists there is nothing left to edit: revisiting the
           // permissions step could only mint a second token for the same agent.
+          // "Done" is the agent's to reach, never a click's.
           reachable={(s) =>
-            minted
-              ? s === "connect" || s === "done"
-              : steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
+            s === "done"
+              ? connected
+              : minted
+                ? s === "connect"
+                : steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
           }
           onSelect={setStep}
         />
@@ -547,30 +585,44 @@ function WizardRun({
                 </a>
               </div>
 
-              <Button onClick={() => setStep("done")}>
-                I have added it
-                <ArrowRight className="size-4" />
-              </Button>
+              {gaveUp ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Deplo has not heard from {agent.label} yet. Start it, or ask
+                    it to list its tools.
+                  </p>
+                  <Button variant="outline" onClick={checkAgain}>
+                    Check again
+                  </Button>
+                </div>
+              ) : (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Waiting for {agent.label} to call Deplo
+                </p>
+              )}
             </StepShell>
           )}
 
           {step === "done" && agent && (
             <DoneStep
               agent={agent}
-              tokenId={tokenId}
-              baselineConnections={connectionCount}
-              connected={connected}
-              onConnected={() => {
-                setConnected(true);
-                // The Manage tab reads from the server, so it has to be told.
-                onRefresh();
-              }}
               onGoToManage={onGoToManage}
               onRestart={onRestart}
             />
           )}
         </div>
       </div>
+
+      {/* The token is on screen and shown once, and leaving also stops the
+          listening - so the way out asks first. */}
+      <UnsavedChangesGuard
+        when={minted && !connected}
+        title="Leave before the agent connects?"
+        description="Deplo shows this token once. If you leave now you'll have to create a new one for this agent."
+        confirmLabel="Leave anyway"
+        cancelLabel="Stay on this page"
+      />
 
       {/* Advanced, on demand: two dialogs rather than one, because narrowing
           the reach and choosing what may be done there are two decisions, and
@@ -803,95 +855,34 @@ function AgentCard({
 }
 
 /**
- * The last step: wait for a real request, then celebrate it. It gives up after
- * three minutes rather than polling a forgotten tab forever, and says so with a
- * button instead of going quiet.
+ * The last step, reached only by a real request from the agent.
  */
 function DoneStep({
   agent,
-  tokenId,
-  baselineConnections,
-  connected,
-  onConnected,
   onGoToManage,
   onRestart,
 }: {
   agent: AgentDef;
-  tokenId: string | null;
-  baselineConnections: number;
-  /** Owned by the run, because the illustration in the other column reads it. */
-  connected: boolean;
-  onConnected: () => void;
   onGoToManage: () => void;
   onRestart: () => void;
 }) {
-  const [round, setRound] = React.useState(0);
-  const [attempt, setAttempt] = React.useState(0);
-  // Frozen on mount, via the lazy initialiser. The web branch detects success as "one
-  // more connection than there was", so a baseline that moved under it - any
-  // `router.refresh` elsewhere on the page - would make the comparison meaningless.
-  const [baseline] = React.useState(baselineConnections);
-
-  React.useEffect(() => {
-    if (connected || attempt >= POLL_LIMIT) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const hit = await probe(agent.kind, tokenId, baseline);
-      if (cancelled) return;
-      if (hit) onConnected();
-      else setAttempt((n) => n + 1);
-    }, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [agent.kind, tokenId, baseline, connected, attempt, round, onConnected]);
-
-  const gaveUp = !connected && attempt >= POLL_LIMIT;
-
   return (
     <StepShell
-      title={
-        connected ? `${agent.label} is connected` : `Waiting for ${agent.label}`
-      }
-      lead={
-        connected
-          ? "It made its first call to Deplo. You can revoke its access at any time under Manage."
-          : gaveUp
-            ? "Deplo has not heard from it yet. Start the agent, or ask it to list its tools, then check again."
-            : "This lights up the moment the agent actually calls Deplo, not when the configuration is saved."
-      }
+      title={`${agent.label} is connected`}
+      lead="It made its first call to Deplo. You can revoke its access at any time under Manage."
     >
-      {connected ? (
-        // Two ways on, because there are two things people do next: look at
-        // what they just let in, or let in the next one. Neither is a
-        // navigation away from this page.
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={onGoToManage}>
-            <Check className="size-4" />
-            Done
-          </Button>
-          <Button variant="outline" onClick={onRestart}>
-            <Plug className="size-4" />
-            Connect another
-          </Button>
-        </div>
-      ) : gaveUp ? (
-        <Button
-          variant="outline"
-          onClick={() => {
-            setAttempt(0);
-            setRound((n) => n + 1);
-          }}
-        >
-          Check again
+      {/* Two ways on, because there are two things people do next: look at what
+          they just let in, or let in the next one. Neither leaves this page. */}
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={onGoToManage}>
+          <Check className="size-4" />
+          Done
         </Button>
-      ) : (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          Listening
-        </p>
-      )}
+        <Button variant="outline" onClick={onRestart}>
+          <Plug className="size-4" />
+          Connect another
+        </Button>
+      </div>
     </StepShell>
   );
 }
