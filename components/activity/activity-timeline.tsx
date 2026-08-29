@@ -6,6 +6,7 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
+import { MONTH_SHORT } from "@/lib/activity-filter";
 import { cn, gitProfileUrl, timeAgoShort } from "@/lib/utils";
 import type {
   Activity,
@@ -131,21 +132,6 @@ function messageWithLink(
     </>
   );
 }
-
-const MONTH_SHORT = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
 
 /**
  * `2026-08-26T14:32:11Z` -> `26 Aug, 14:32`. Read straight off the ISO string in
@@ -351,11 +337,22 @@ export function foldRuns(
 }
 
 /** The month's own heading, riding the rail. */
-function MonthHeading({ month, count }: { month: string; count?: number }) {
+function MonthHeading({
+  month,
+  count,
+  offset,
+}: {
+  month: string;
+  count?: number;
+  offset: string;
+}) {
   return (
-    // Under the topbar (h-14) on a phone, under the filter row (+60px) once that
-    // row is itself pinned.
-    <li className="sticky top-14 z-10 -mx-1 bg-background/95 px-1 py-2 backdrop-blur-sm sm:top-[7.25rem]">
+    <li
+      className={cn(
+        "sticky z-10 -mx-1 bg-background/95 px-1 py-2 backdrop-blur-sm",
+        offset,
+      )}
+    >
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
         {monthLabel(month)}
         {count != null && (
@@ -367,6 +364,10 @@ function MonthHeading({ month, count }: { month: string; count?: number }) {
     </li>
   );
 }
+
+/** Under the topbar (h-14) on a phone, under the filter row (+60px) once that row
+ *  is itself pinned. */
+const DEFAULT_HEADING_OFFSET = "top-14 sm:top-[7.25rem]";
 
 /**
  * The vertical trail: one rail, the actor's face on it, the sentence beside it.
@@ -381,6 +382,7 @@ export function ActivityTimeline({
   showMark = true,
   appLinks,
   databaseLinks,
+  headingOffset = DEFAULT_HEADING_OFFSET,
   children,
 }: {
   items: ActivityItem[];
@@ -391,6 +393,8 @@ export function ActivityTimeline({
   showMark?: boolean;
   appLinks?: AppLinks;
   databaseLinks?: DatabaseLinks;
+  /** Where a month heading pins, when the page above it is not the usual one. */
+  headingOffset?: string;
   /** The loader / end-of-list footer, inside the rail. */
   children?: React.ReactNode;
 }) {
@@ -408,6 +412,7 @@ export function ActivityTimeline({
           key={`m-${key}`}
           month={key}
           count={monthCounts?.[key]}
+          offset={headingOffset}
         />,
       );
     month = key;

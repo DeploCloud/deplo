@@ -91,6 +91,25 @@ export function activityHref(p: ActivityParams, base = "/activity"): string {
   return s ? `${base}?${s}` : base;
 }
 
+/** Short month names, for every date the trail spells out itself. */
+export const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/** What the rail counts over when the reader has picked no dates of their own. */
+const DEFAULT_COUNT_RANGE = ACTIVITY_RANGES.find((r) => r.value === "30d")!;
+
 /**
  * Turn the picked range into the half-open window the query wants. A custom `to`
  * is the last day the reader means to INCLUDE, so it becomes the start of the
@@ -109,4 +128,36 @@ export function activityWindow(
       ? new Date(Date.parse(`${p.to}T00:00:00.000Z`) + 86_400_000).toISOString()
       : undefined,
   };
+}
+
+/**
+ * The window the rail's counts describe: the reader's own dates when they picked
+ * any, else the last 30 days. `activities` has no retention and grows for ever,
+ * so an aggregate over it is never left unbounded.
+ */
+export function activityCountWindow(
+  p: ActivityParams,
+  now = Date.now(),
+): { from?: string; to?: string } {
+  const window = activityWindow(p, now);
+  if (window.from || window.to) return window;
+  return {
+    from: new Date(now - DEFAULT_COUNT_RANGE.days * 86_400_000).toISOString(),
+  };
+}
+
+/** What {@link activityCountWindow} chose, said out loud above the counts. */
+export function activityCountWindowLabel(p: ActivityParams): string {
+  const preset = ACTIVITY_RANGES.find((r) => r.value === p.range);
+  if (preset) return preset.label;
+  if (p.from && p.to) return `${day(p.from)} - ${day(p.to)}`;
+  if (p.from) return `Since ${day(p.from)}`;
+  if (p.to) return `Until ${day(p.to)}`;
+  return DEFAULT_COUNT_RANGE.label;
+}
+
+/** `2026-08-15` -> `15 Aug`. Sliced, never parsed, like every other date here. */
+function day(iso: string): string {
+  const [, month, d] = iso.split("-");
+  return `${Number(d)} ${MONTH_SHORT[Number(month) - 1]}`;
 }

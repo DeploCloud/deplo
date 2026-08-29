@@ -251,6 +251,68 @@ export async function activityMonths(
 }
 
 /**
+ * How many events of each kind fall in the window, for the rail's Events block.
+ * Same shape as {@link activityMonths}: same filters, same scope, so the numbers
+ * can never describe rows the reader cannot see.
+ */
+export async function activityCountsByType(
+  filter: ActivityFilter = {},
+): Promise<{ type: ActivityType; count: number }[]> {
+  const teamId = await requireActiveTeamId();
+  if (!(await hasCapability("view_activity"))) return [];
+  const rows = await getDb()
+    .select({
+      type: activitiesTable.type,
+      count: sql<number>`count(*)::int`.as("count"),
+    })
+    .from(activitiesTable)
+    .where(
+      and(
+        eq(activitiesTable.teamId, teamId),
+        ...activityFilterWhere(teamId, { ...filter, cursor: undefined }),
+        await scopedActivityWhere(),
+      ),
+    )
+    .groupBy(sql`1`)
+    // The key breaks a tie: two kinds at the same count must not swap places
+    // between two renders of the same page.
+    .orderBy(sql`2 desc, 1 asc`);
+  return rows.map((r) => ({ type: r.type as ActivityType, count: r.count }));
+}
+
+/**
+ * The twin of {@link activityCountsByType}, per person. Non-human writers collapse
+ * into the one {@link ACTOR_SYSTEM} bucket, the same way `listActivityActors`
+ * names them and `activityFilterWhere` picks them.
+ */
+export async function activityCountsByActor(
+  filter: ActivityFilter = {},
+): Promise<{ actorUserId: string; count: number }[]> {
+  const teamId = await requireActiveTeamId();
+  if (!(await hasCapability("view_activity"))) return [];
+  const actor = sql<string>`coalesce(${activitiesTable.actorUserId}, ${ACTOR_SYSTEM})`;
+  return (
+    getDb()
+      .select({
+        actorUserId: actor.as("actor_user_id"),
+        count: sql<number>`count(*)::int`.as("count"),
+      })
+      .from(activitiesTable)
+      .where(
+        and(
+          eq(activitiesTable.teamId, teamId),
+          ...activityFilterWhere(teamId, { ...filter, cursor: undefined }),
+          await scopedActivityWhere(),
+        ),
+      )
+      .groupBy(sql`1`)
+      // The key breaks a tie: two kinds at the same count must not swap places
+      // between two renders of the same page.
+      .orderBy(sql`2 desc, 1 asc`)
+  );
+}
+
+/**
  * Everyone who appears in this team's trail, for the feed's actor filter. Read
  * off the activity itself rather than the member list, so someone who has since
  * left stays pickable. Every non-human writer ("Deplo", "system", a webhook)

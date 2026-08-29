@@ -7,13 +7,26 @@ const ROWS = ["w-64", "w-80", "w-56", "w-72", "w-48", "w-64", "w-40"];
 
 export default function Loading() {
   return (
-    <div role="status" aria-busy aria-label="Loading activity">
-      <div className="flex gap-2 py-3">
-        {["flex-1", "w-40", "flex-1", "flex-1"].map((w, i) => (
-          <Skeleton key={i} className={cn("h-9 rounded-md", w)} />
-        ))}
+    <div
+      role="status"
+      aria-busy
+      aria-label="Loading activity"
+      className="grid items-start gap-6 lg:max-w-6xl lg:grid-cols-[minmax(0,42rem)_20rem] lg:justify-between"
+    >
+      <div className="space-y-4 lg:col-start-2 lg:row-start-1">
+        <div className="flex gap-2 py-3 lg:flex-col lg:py-0">
+          {["flex-1", "w-40", "flex-1", "flex-1"].map((w, i) => (
+            <Skeleton key={i} className={cn("h-9 rounded-md lg:w-full", w)} />
+          ))}
+        </div>
+        <div className="hidden space-y-2 lg:block">
+          <Skeleton className="h-3 w-28" />
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-6 w-full" />
+          ))}
+        </div>
       </div>
-      <ol className="relative space-y-6">
+      <ol className="relative min-w-0 space-y-6 lg:col-start-1 lg:row-start-1">
         <span
           aria-hidden
           className="absolute inset-y-0 left-4 w-px -translate-x-1/2 bg-border"

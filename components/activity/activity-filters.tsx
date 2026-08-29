@@ -81,6 +81,9 @@ export function ActivityFilters({
   folders,
   projects,
   databases,
+  actorCounts,
+  typeCounts,
+  layout = "bar",
   base = "/activity",
 }: {
   params: ActivityParams;
@@ -90,6 +93,11 @@ export function ActivityFilters({
   folders?: ResourceOption[];
   projects?: ResourceOption[];
   databases?: DatabaseResourceOption[];
+  /** How many events each option covers in the window the rail counts over. */
+  actorCounts?: Record<string, number>;
+  typeCounts?: Record<string, number>;
+  /** `rail` turns the row into the Activity page's right-hand column at `lg`. */
+  layout?: "bar" | "rail";
   base?: string;
 }) {
   const router = useRouter();
@@ -136,15 +144,22 @@ export function ActivityFilters({
   return (
     <div
       className={cn(
+        "z-20 flex flex-col gap-2 bg-background py-3 sm:flex-row sm:items-center",
         // Sticky only once the row fits on ONE line: stacked on a phone it is
-        // half the screen, and pinning that leaves nothing to read.
-        "z-20 flex flex-col gap-2 bg-background py-3 sm:sticky sm:top-14 sm:flex-row sm:items-center",
+        // half the screen, and pinning that leaves nothing to read. In the rail
+        // the pinned element is the COLUMN, which is as tall as this row - a
+        // sticky child of it would have nowhere to travel.
+        layout === "bar" && "sm:sticky sm:top-14",
+        // Stretch is what squares the date button and Clear up with the
+        // comboboxes above them.
+        layout === "rail" && "lg:flex-col lg:items-stretch lg:py-0",
         pending && "opacity-60",
       )}
     >
       <div className="flex min-w-0 flex-1">
         <FacetCombobox
           facet={facet("actor", "User", "Anyone", UserRound, actors)}
+          counts={actorCounts}
           values={params.actorUserIds}
           onChange={(actorUserIds) => go({ actorUserIds })}
         />
@@ -153,6 +168,7 @@ export function ActivityFilters({
       <div className="flex min-w-0 flex-1">
         <FacetCombobox
           facet={facet("event", "Event", "Any event", Zap, EVENT_OPTIONS)}
+          counts={typeCounts}
           values={params.types}
           onChange={(types) => go({ types: types as ActivityType[] })}
         />
@@ -170,7 +186,7 @@ export function ActivityFilters({
         variant="ghost"
         disabled={!on}
         onClick={() => router.replace(base)}
-        className="shrink-0"
+        className={cn("shrink-0", layout === "rail" && "lg:justify-start")}
       >
         Clear filters
       </Button>
