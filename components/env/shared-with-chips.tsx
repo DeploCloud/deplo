@@ -10,7 +10,8 @@ import type { SharedVarDTO } from "@/lib/data/shared-vars";
 /** How many named scopes a chip row spells out before it starts counting. */
 const CHIP_LIMIT = 2;
 
-type Chip = { name: string; icon: React.ReactNode };
+/** `key` is the row's id: two apps (or two projects) may share a display name. */
+type Chip = { key: string; name: string; icon: React.ReactNode };
 
 const glyph = (Icon: React.ComponentType<{ className?: string }>) => (
   <Icon className="size-3 shrink-0" />
@@ -28,13 +29,15 @@ export function SharedWithChips({
   limit?: number;
 }) {
   const groups: Chip[][] = [
-    v.teams.map((t) => ({ name: t.name, icon: glyph(Users) })),
-    v.projects.map((p) => ({ name: p.name, icon: glyph(Boxes) })),
+    v.teams.map((t) => ({ key: t.id, name: t.name, icon: glyph(Users) })),
+    v.projects.map((p) => ({ key: p.id, name: p.name, icon: glyph(Boxes) })),
     v.environments.map((e) => ({
+      key: e.id,
       name: `${e.projectName} · ${e.name}`,
       icon: glyph(Layers),
     })),
     v.apps.map((a) => ({
+      key: a.id,
       name: a.name,
       icon: <AppLogo logo={a.logo} size={14} className="rounded-[3px]" />,
     })),
@@ -58,7 +61,7 @@ export function SharedWithChips({
           <React.Fragment key={i}>
             {shown.map((chip) => (
               <Badge
-                key={chip.name}
+                key={chip.key}
                 variant="muted"
                 className="max-w-[14rem] gap-1 text-[10px] font-normal"
               >

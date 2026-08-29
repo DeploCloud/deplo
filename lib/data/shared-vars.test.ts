@@ -163,6 +163,19 @@ test("create + list is decorated and team-scoped", async () => {
   assert.deepEqual(await asUser2(() => listSharedVars()), []);
 });
 
+test("an app decoration carries the app's logo (the chip wears it)", async () => {
+  await db
+    .update(appsTable)
+    .set({ logo: "data:image/svg+xml;base64,PHN2Zy8+" })
+    .where(eq(appsTable.id, "app_p"));
+  await asUser1(() => mkVar({ key: "WITHLOGO", appIds: ["app_p", "app_top"] }));
+  const [v] = await asUser1(() => listSharedVars());
+  assert.deepEqual(v!.apps.map((a) => [a.id, a.logo]).sort(), [
+    ["app_p", "data:image/svg+xml;base64,PHN2Zy8+"],
+    ["app_top", null],
+  ]);
+});
+
 test("saveSharedVar rejects a var with no sharing mode", async () => {
   await assert.rejects(
     asUser1(() =>
