@@ -5,6 +5,7 @@ import {
   cn,
   formatBuildDuration,
   formatClockTime,
+  formatDateTime,
   gitProfileUrl,
   isHexColor,
   normalizeHexColor,
@@ -232,6 +233,15 @@ test("formatClockTime pads UTC and only shows millis when asked", () => {
     "00:00:00.000",
   );
   assert.equal(formatClockTime("not a date"), "");
+});
+
+test("formatDateTime pairs a date with a clock, and refuses junk", () => {
+  // The timezone is the reader's, so only the SHAPE is assertable here.
+  assert.match(
+    formatDateTime("2026-08-22T03:00:00Z"),
+    /^\d{1,2} \w{3}, \d{2}:\d{2}$/,
+  );
+  assert.equal(formatDateTime("not a date"), "");
 });
 
 test("gitProfileUrl links a pusher's account, and only when it can", () => {

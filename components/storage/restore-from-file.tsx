@@ -2,14 +2,11 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Upload } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { FieldLabel } from "@/components/ui/info-tip";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import {
   ARTIFACT_MAGIC_BYTES,
@@ -25,11 +22,14 @@ import type { ActionResult } from "@/lib/result";
  */
 export function RestoreFromFile({
   target,
-  canRestore,
+  open,
+  onOpenChange,
 }: {
   target: { kind: "app" | "database"; id: string; name: string };
-  /** `restore_backups` - the same gate the row-level restore carries. */
-  canRestore: boolean;
+  /** Opened from the page's Back up menu, which carries the `restore_backups`
+   *  gate; this dialog renders no trigger of its own. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
   const fileId = React.useId();
@@ -40,31 +40,6 @@ export function RestoreFromFile({
   const [percent, setPercent] = React.useState<number | null>(null);
   const [lines, setLines] = React.useState<string[]>([]);
   const noun = target.kind === "app" ? "app" : "database";
-
-  const trigger = (
-    <Button size="sm" variant="outline" disabled={!canRestore}>
-      <Upload className="size-4" />
-      Restore from file
-      {/**
-       * On the button, not inside the dialog: this is the newest way to put data back and
-       * the only one whose input comes from outside the fleet, so the maturity note
-       * belongs where someone decides to start - not after they have already picked a
-       */}
-      <Badge variant="info" className="text-[10px] font-normal">
-        Beta
-      </Badge>
-    </Button>
-  );
-
-  if (!canRestore) {
-    return (
-      <SimpleTooltip content="You don't have permission to restore backups">
-        {/* Disabled buttons swallow pointer events, so wrap in a focusable span
-            to keep the tooltip reachable. */}
-        <span tabIndex={0}>{trigger}</span>
-      </SimpleTooltip>
-    );
-  }
 
   async function pick(picked: File | null) {
     setFile(picked);
@@ -121,9 +96,10 @@ export function RestoreFromFile({
 
   return (
     <ConfirmAction
-      trigger={trigger}
-      onOpenChange={(open) => {
-        if (!open) reset();
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) reset();
+        onOpenChange(next);
       }}
       title="Restore from a file"
       confirmLabel="Restore"

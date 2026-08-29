@@ -49,6 +49,22 @@ const SHORT_UNITS: Record<string, string> = {
 };
 
 /**
+ * An absolute timestamp to sit beside a relative one: `22 Aug, 03:00`. Local to
+ * the reader, so a call site that also renders on the server needs
+ * `suppressHydrationWarning`.
+ */
+export function formatDateTime(input: Date | string | number): string {
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
  * A log/build clock as a stable `HH:MM:SS[.mmm]`. UTC on purpose: a locale-aware
  * format renders in the server's timezone during SSR and the browser's during
  * hydration, so the two never match.

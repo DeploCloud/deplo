@@ -9,17 +9,20 @@ import {
   Archive,
   ArrowUpRight,
   CalendarClock,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Play,
-  Plus,
   RotateCcw,
   Square,
   Trash2,
+  Upload,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -30,8 +33,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -41,19 +50,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  SimpleTooltip,
-} from "@/components/ui/tooltip";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { BackupGraphic } from "@/components/apps/backup-graphic";
-import { cn, formatBytes, timeAgo } from "@/lib/utils";
+import { BackupScheduleGraphic } from "@/components/storage/backup-schedule-graphic";
+import { cn, formatBytes, formatDateTime, timeAgo } from "@/lib/utils";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import {
@@ -128,6 +133,11 @@ export function BackupsPanel({
 }) {
   const router = useRouter();
   const noDeps = destinations.length === 0;
+  // The three things the Back up menu opens. They live here because the menu is
+  // one button and the dialogs are three components.
+  const [runOpen, setRunOpen] = React.useState(false);
+  const [scheduleOpen, setScheduleOpen] = React.useState(false);
+  const [fileOpen, setFileOpen] = React.useState(false);
   const destName = React.useMemo(
     () => new Map(destinations.map((d) => [d.id, d.name] as const)),
     [destinations],
@@ -203,7 +213,7 @@ export function BackupsPanel({
           onSaved={() => router.refresh()}
         />
       ))}
-      {/* Actions: ad-hoc run + schedule editor */}
+      {/* Actions: ad-hoc run + schedule editor, under one button */}
       <section className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -212,64 +222,86 @@ export function BackupsPanel({
               {capturedBlurb(target)}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <BackUpNow
-              target={target}
-              destinations={destinations}
-              canManage={canManage}
-              canTestDestinations={canTestDestinations}
-              onStart={startRun}
-            />
-            {/* Deliberately here even when there is no destination at all: this
-                is the one restore that needs nothing this instance remembers,
-                and the operator reaching for it has usually just lost the rest. */}
-            <RestoreFromFile target={target} canRestore={canRestore} />
-            <ScheduleBackup
-              target={target}
-              destinations={destinations}
-              canManage={canManage}
-              canTestDestinations={canTestDestinations}
-            />
-          </div>
+          <BackUpMenu
+            canManage={canManage}
+            canRestore={canRestore}
+            noDestinations={noDeps}
+            onRunNow={() => setRunOpen(true)}
+            onNewSchedule={() => setScheduleOpen(true)}
+            onRestoreFromFile={() => setFileOpen(true)}
+          />
         </div>
+        <BackUpNow
+          target={target}
+          destinations={destinations}
+          canTestDestinations={canTestDestinations}
+          open={runOpen}
+          onOpenChange={setRunOpen}
+          onStart={startRun}
+        />
+        <ScheduleBackup
+          target={target}
+          destinations={destinations}
+          canTestDestinations={canTestDestinations}
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+        />
+        <RestoreFromFile
+          target={target}
+          open={fileOpen}
+          onOpenChange={setFileOpen}
+        />
       </section>
 
-      {/* Schedules */}
-      {schedules.length > 0 && (
+      {/**
+       * Schedules. The empty state is a nudge, not a first impression: on a target
+       * with nothing at all the section stays away, so a new page is one empty
+       * state and not two stacked.
+       */}
+      {(schedules.length > 0 || runs.length > 0 || pending.length > 0) && (
         <section className="space-y-3">
           <h2 className="text-sm font-medium">Schedules</h2>
-          <div className="rounded-xl border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Destination</TableHead>
-                  <TableHead>Schedule</TableHead>
-                  <TableHead>Retention</TableHead>
-                  <TableHead>Last run</TableHead>
-                  <TableHead>Enabled</TableHead>
-                  <TableHead className="text-right" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* A deleted schedule leaves the table on the click - see
+          {schedules.length === 0 ? (
+            <EmptyState
+              graphic={<BackupScheduleGraphic />}
+              title="No schedules yet"
+              docs="backups.schedule"
+              description={`Deplo can back this ${noun(target)} up on its own, on a schedule you pick.`}
+            />
+          ) : (
+            <div className="rounded-xl border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Destination</TableHead>
+                    <TableHead>Schedule</TableHead>
+                    <TableHead>Retention</TableHead>
+                    <TableHead>Last run</TableHead>
+                    <TableHead>Enabled</TableHead>
+                    <TableHead className="text-right" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {/* A deleted schedule leaves the table on the click - see
                     `OptimisticList`; the rows ask to be hidden themselves. */}
-                <OptimisticList>
-                  {schedules.map((s) => (
-                    <ScheduleRow
-                      key={s.id}
-                      schedule={s}
-                      target={target}
-                      destinations={destinations}
-                      canManage={canManage}
-                      canTestDestinations={canTestDestinations}
-                      onStart={startRun}
-                    />
-                  ))}
-                </OptimisticList>
-              </TableBody>
-            </Table>
-          </div>
+                  <OptimisticList>
+                    {schedules.map((s) => (
+                      <ScheduleRow
+                        key={s.id}
+                        schedule={s}
+                        target={target}
+                        destinations={destinations}
+                        canManage={canManage}
+                        canTestDestinations={canTestDestinations}
+                        onStart={startRun}
+                      />
+                    ))}
+                  </OptimisticList>
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </section>
       )}
 
@@ -297,9 +329,9 @@ export function BackupsPanel({
         </div>
       )}
 
-      {/* Artifacts (runs) */}
+      {/* Restore points (runs) */}
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">Backup artifacts</h2>
+        <h2 className="text-sm font-medium">Restore points</h2>
         {runs.length === 0 && pending.length === 0 ? (
           <EmptyState
             graphic={<BackupGraphic />}
@@ -312,11 +344,9 @@ export function BackupsPanel({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>When</TableHead>
-                  <TableHead>Destination</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Backup</TableHead>
+                  <TableHead className="text-right">Size</TableHead>
+                  <TableHead className="w-px" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -354,34 +384,129 @@ export function BackupsPanel({
 }
 
 /* ------------------------------------------------------------------ */
+/* The one button                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every way to put data in or take it back, under one button. The trigger is
+ * never disabled: a member who cannot act still gets to see what exists and
+ * which permission to ask for, and `Restore from file` stays reachable on an
+ * instance that has no destination left to read.
+ */
+function BackUpMenu({
+  canManage,
+  canRestore,
+  noDestinations,
+  onRunNow,
+  onNewSchedule,
+  onRestoreFromFile,
+}: {
+  canManage: boolean;
+  canRestore: boolean;
+  noDestinations: boolean;
+  onRunNow: () => void;
+  onNewSchedule: () => void;
+  onRestoreFromFile: () => void;
+}) {
+  const blocked = !canManage
+    ? null
+    : noDestinations
+      ? "Add a backup destination first"
+      : null;
+  const runBlocked = !canManage
+    ? "You don't have permission to run backups"
+    : blocked;
+  const scheduleBlocked = !canManage
+    ? "You don't have permission to schedule backups"
+    : blocked;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm">
+          <Archive className="size-4" />
+          Back up
+          <ChevronDown className="size-3.5 opacity-70" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <MenuAction
+          disabled={!!runBlocked}
+          tooltip={runBlocked ?? "Run a one-off backup now"}
+        >
+          <DropdownMenuItem disabled={!!runBlocked} onSelect={onRunNow}>
+            <Play className="size-4" />
+            Back up now
+          </DropdownMenuItem>
+        </MenuAction>
+        <MenuAction
+          disabled={!!scheduleBlocked}
+          tooltip={scheduleBlocked ?? "Schedule recurring backups"}
+        >
+          <DropdownMenuItem
+            disabled={!!scheduleBlocked}
+            onSelect={onNewSchedule}
+          >
+            <CalendarClock className="size-4" />
+            New schedule
+          </DropdownMenuItem>
+        </MenuAction>
+        <DropdownMenuSeparator />
+        {/* Deliberately reachable even when there is no destination at all: this
+            is the one restore that needs nothing this instance remembers, and
+            the operator reaching for it has usually just lost the rest. */}
+        <MenuAction
+          disabled={!canRestore}
+          tooltip={
+            canRestore
+              ? "Restore from a backup file on your own machine"
+              : "You don't have permission to restore backups"
+          }
+        >
+          <DropdownMenuItem disabled={!canRestore} onSelect={onRestoreFromFile}>
+            <Upload className="size-4" />
+            Restore from file
+            {/**
+             * The maturity note rides the way in, not the dialog: this is the newest
+             * way to put data back and the only one whose input comes from outside
+             * the fleet.
+             */}
+            <Badge variant="info" className="ml-auto text-[10px] font-normal">
+              Beta
+            </Badge>
+          </DropdownMenuItem>
+        </MenuAction>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Back up now (ad-hoc)                                                 */
 /* ------------------------------------------------------------------ */
 
 function BackUpNow({
   target,
   destinations,
-  canManage,
   canTestDestinations,
+  open,
+  onOpenChange,
   onStart,
 }: {
   target: BackupTarget;
   destinations: Destination[];
-  canManage: boolean;
   canTestDestinations: boolean;
+  /** Opened from the Back up menu, which carries the gate; no trigger here. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   /** Puts a placeholder row on the page and keeps it refreshing until this
    *  backup lands. */
   onStart: (destinationId: string, run: () => Promise<unknown>) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
   const [destinationId, setDestinationId] = React.useState(
     destinations[0]?.id ?? "",
   );
-  const blocked = !canManage
-    ? "You don't have permission to run backups"
-    : destinations.length === 0
-      ? "Add a backup destination first"
-      : null;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -390,7 +515,7 @@ function BackUpNow({
 
   function submit() {
     // The mutation runs the WHOLE dump - it resolves only once the archive is written.
-    setOpen(false);
+    onOpenChange(false);
     const mutation =
       target.kind === "app"
         ? `mutation($id: String!, $destinationId: String!) {
@@ -404,7 +529,7 @@ function BackUpNow({
         if (res.ok) toast.success("Backup finished");
         else {
           toast.error(res.error);
-          setOpen(true);
+          onOpenChange(true);
         }
         router.refresh();
       }),
@@ -412,29 +537,7 @@ function BackUpNow({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {blocked ? (
-            // Disabled buttons swallow pointer events, so wrap in a focusable
-            // span to keep the tooltip reachable.
-            <span tabIndex={0}>
-              <Button size="sm" variant="outline" disabled>
-                <Play className="size-4" />
-                Back up now
-              </Button>
-            </span>
-          ) : (
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline">
-                <Play className="size-4" />
-                Back up now
-              </Button>
-            </DialogTrigger>
-          )}
-        </TooltipTrigger>
-        <TooltipContent>{blocked ?? "Run a one-off backup now"}</TooltipContent>
-      </Tooltip>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Back up now</DialogTitle>
@@ -464,7 +567,7 @@ function BackUpNow({
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={!destinationId}>
@@ -528,16 +631,18 @@ const STEP_COPY: Record<
 function ScheduleBackup({
   target,
   destinations,
-  canManage,
   canTestDestinations,
+  open,
+  onOpenChange,
 }: {
   target: BackupTarget;
   destinations: Destination[];
-  canManage: boolean;
   canTestDestinations: boolean;
+  /** Opened from the Back up menu, which carries the gate; no trigger here. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [step, setStep] = React.useState<StepId>("destination");
   // The name follows the frequency until the user types their own.
@@ -549,12 +654,6 @@ function ScheduleBackup({
     timezone: browserTimezone(),
     retention: DEFAULT_RETENTION,
   }));
-  const blocked = !canManage
-    ? "You don't have permission to schedule backups"
-    : destinations.length === 0
-      ? "Add a backup destination first"
-      : null;
-
   /** What each step needs before the next one means anything. */
   const complete: Record<StepId, boolean> = {
     destination: !!fields.destinationId,
@@ -564,7 +663,7 @@ function ScheduleBackup({
   const { icon: StepIcon, title, blurb } = STEP_COPY[step];
 
   function close() {
-    setOpen(false);
+    onOpenChange(false);
     // Deferred so the close animation does not play over a form that has
     // already snapped back to step one.
     setTimeout(() => setStep("destination"), 200);
@@ -581,7 +680,7 @@ function ScheduleBackup({
   function submit() {
     // Closes on the click and writes behind it; a refusal reopens the wizard
     // with the destination and schedule still filled in.
-    setOpen(false);
+    onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: CreateBackupInput!) { createBackup(input: $input) }`,
@@ -602,7 +701,7 @@ function ScheduleBackup({
         toast.success("Backup schedule created");
         close();
       } else {
-        setOpen(true);
+        onOpenChange(true);
         toast.error(res.error);
       }
       router.refresh();
@@ -610,29 +709,10 @@ function ScheduleBackup({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {blocked ? (
-            <span tabIndex={0}>
-              <Button size="sm" disabled>
-                <Plus className="size-4" />
-                New schedule
-              </Button>
-            </span>
-          ) : (
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="size-4" />
-                New schedule
-              </Button>
-            </DialogTrigger>
-          )}
-        </TooltipTrigger>
-        <TooltipContent>
-          {blocked ?? "Schedule recurring backups"}
-        </TooltipContent>
-      </Tooltip>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => (o ? onOpenChange(true) : close())}
+    >
       {/* `selfManaged`: the step box below animates its own height and has to be
           free to overflow, so a combobox menu can hang past its field. */}
       <DialogContent selfManaged className="sm:max-w-lg">
@@ -1040,46 +1120,67 @@ function ScheduleRow({
         />
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
-          <IconAction
-            label="Run backup now"
-            disabled={pending || isRunning || !canManage}
-            tooltip={
-              !canManage
-                ? "You don't have permission to run backups"
-                : isRunning
-                  ? "This backup is already running"
-                  : "Run this backup now"
-            }
-            onClick={run}
-          >
-            <Play className="size-4" />
-          </IconAction>
-          <IconAction
-            label="Edit schedule"
-            disabled={!canManage}
-            tooltip={
-              canManage
-                ? "Edit this schedule"
-                : "You don't have permission to edit backup schedules"
-            }
-            onClick={() => setEditOpen(true)}
-          >
-            <Pencil className="size-4" />
-          </IconAction>
-          <IconAction
-            label="Delete schedule"
-            disabled={!canManage}
-            tooltip={
-              canManage
-                ? "Delete this schedule"
-                : "You don't have permission to delete backup schedules"
-            }
-            onClick={() => setConfirmOpen(true)}
-          >
-            <Trash2 className="size-4 text-destructive" />
-          </IconAction>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label="Schedule menu">
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <MenuAction
+              disabled={pending || isRunning || !canManage}
+              tooltip={
+                !canManage
+                  ? "You don't have permission to run backups"
+                  : isRunning
+                    ? "This backup is already running"
+                    : "Run this backup now"
+              }
+            >
+              <DropdownMenuItem
+                onSelect={run}
+                disabled={pending || isRunning || !canManage}
+              >
+                <Play className="size-4" />
+                Run now
+              </DropdownMenuItem>
+            </MenuAction>
+            <MenuAction
+              disabled={!canManage}
+              tooltip={
+                canManage
+                  ? "Edit this schedule"
+                  : "You don't have permission to edit backup schedules"
+              }
+            >
+              <DropdownMenuItem
+                disabled={!canManage}
+                onSelect={() => setEditOpen(true)}
+              >
+                <Pencil className="size-4" />
+                Edit
+              </DropdownMenuItem>
+            </MenuAction>
+            <DropdownMenuSeparator />
+            <MenuAction
+              disabled={!canManage}
+              tooltip={
+                canManage
+                  ? "Delete this schedule"
+                  : "You don't have permission to delete backup schedules"
+              }
+            >
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={!canManage}
+                onSelect={() => setConfirmOpen(true)}
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </DropdownMenuItem>
+            </MenuAction>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {/* key on `editOpen` so each open remounts the dialog with fresh state
             seeded from the current schedule, no reset effect needed. */}
         <EditScheduleDialog
@@ -1116,35 +1217,22 @@ function ScheduleRow({
 }
 
 /**
- * One icon button with a tooltip that survives being disabled.
+ * A menu item whose tooltip survives being disabled: a disabled item drops its
+ * pointer events, so the reason needs a wrapper to hover on.
  */
-function IconAction({
-  label,
+function MenuAction({
   tooltip,
   disabled,
-  onClick,
   children,
 }: {
-  label: string;
   tooltip: string;
   disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+  /** Exactly one element - `TooltipTrigger asChild` clones it. */
+  children: React.ReactElement;
 }) {
-  const button = (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-    >
-      {children}
-    </Button>
-  );
   return (
-    <SimpleTooltip content={tooltip}>
-      {disabled ? <span tabIndex={0}>{button}</span> : button}
+    <SimpleTooltip content={tooltip} side="left">
+      {disabled ? <span className="block">{children}</span> : children}
     </SimpleTooltip>
   );
 }
@@ -1166,26 +1254,28 @@ function PendingRunRow({
 }) {
   return (
     <TableRow aria-busy className="animate-pulse select-none">
-      <TableCell className="text-sm">just now</TableCell>
-      <TableCell className="text-muted-foreground">{destinationName}</TableCell>
-      <TableCell className="text-muted-foreground">—</TableCell>
       <TableCell>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" />
-          Running
-        </span>
+        <div className="flex items-center gap-2">
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+          <span className="text-sm font-medium">Running</span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          just now · {destinationName}
+        </p>
       </TableCell>
-      <TableCell className="text-right">
-        <RunActions href={null} running ok={false} canRestore={canRestore} />
+      <TableCell className="text-right text-muted-foreground">-</TableCell>
+      <TableCell className="w-px text-right">
+        <RunMenu href={null} running ok={false} canRestore={canRestore} />
       </TableCell>
     </TableRow>
   );
 }
 
 /**
- * The two things you can do with an artifact.
+ * Everything you can do with one artifact, behind one menu - the same shape the
+ * Storage list wears.
  */
-function RunActions({
+function RunMenu({
   href,
   running,
   ok,
@@ -1228,9 +1318,9 @@ function RunActions({
     if (running) return "This backup is still running";
     return "Delete this backup permanently";
   }
-  // Icon + label as DIRECT children of the button, never wrapped: one <span> around
-  // them makes the pair a single flex item, and the button's `gap-2` and
-  // `items-center` stop applying - the icon glues to the text and drops onto its
+  // Icon + label as DIRECT children of the item, never wrapped: one <span> around
+  // them makes the pair a single flex item, and the item's `gap-2` and
+  // `items-center` stop applying - the icon glues to the text.
   const downloadLabel = (
     <>
       <Download className="size-4" />
@@ -1239,69 +1329,66 @@ function RunActions({
   );
 
   return (
-    <div className="flex items-center justify-end gap-1">
-      {/* The file itself, decrypted. The reason a folder on your own server is
-          worth having: the backup is a thing you can hold, not only a thing
-          Deplo can put back. */}
-      <TooltipWhenDisabled disabled={!canDownload} tooltip={reason("download")}>
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild={canDownload}
-          disabled={!canDownload}
-        >
-          {canDownload ? (
-            <a href={href} download>
-              {downloadLabel}
-            </a>
-          ) : (
-            downloadLabel
-          )}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label="Backup menu">
+          <MoreHorizontal className="size-4" />
         </Button>
-      </TooltipWhenDisabled>
-      <TooltipWhenDisabled
-        disabled={!ok || !canRestore}
-        tooltip={reason("restore")}
-      >
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!ok || !canRestore}
-          onClick={onRestore}
-        >
-          <RotateCcw className="size-4" />
-          Restore
-        </Button>
-      </TooltipWhenDisabled>
-      {/* Only while it is running, and then it is the ONLY thing to do with the
-          row: nothing else on it can act on a dump that has not finished. */}
-      {running && onCancel && (
-        <IconAction
-          label="Stop this backup"
-          tooltip={
-            canManage
-              ? "Stop this backup and discard what it has written"
-              : "You don't have permission to stop backups"
-          }
-          disabled={!canManage}
-          onClick={onCancel}
-        >
-          <Square className="size-4" />
-        </IconAction>
-      )}
-      {/**
-       * Icon-only, unlike its two neighbours: this is the destructive one, and a third
-       * labelled button would give it the same weight as Download.
-       */}
-      <IconAction
-        label="Delete this backup"
-        tooltip={deleteReason()}
-        disabled={!canDelete || running}
-        onClick={() => onDelete?.()}
-      >
-        <Trash2 className="size-4" />
-      </IconAction>
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {/* The file itself, decrypted. The reason a folder on your own server is
+            worth having: the backup is a thing you can hold, not only a thing
+            Deplo can put back. */}
+        <MenuAction disabled={!canDownload} tooltip={reason("download")}>
+          <DropdownMenuItem asChild={canDownload} disabled={!canDownload}>
+            {canDownload ? (
+              <a href={href} download>
+                {downloadLabel}
+              </a>
+            ) : (
+              downloadLabel
+            )}
+          </DropdownMenuItem>
+        </MenuAction>
+        <MenuAction disabled={!ok || !canRestore} tooltip={reason("restore")}>
+          <DropdownMenuItem
+            disabled={!ok || !canRestore}
+            onSelect={() => onRestore?.()}
+          >
+            <RotateCcw className="size-4" />
+            Restore
+          </DropdownMenuItem>
+        </MenuAction>
+        {/* Only while it is running, and then it is the ONLY thing to do with the
+            row: nothing else on it can act on a dump that has not finished. */}
+        {running && onCancel && (
+          <MenuAction
+            disabled={!canManage}
+            tooltip={
+              canManage
+                ? "Stop this backup and discard what it has written"
+                : "You don't have permission to stop backups"
+            }
+          >
+            <DropdownMenuItem disabled={!canManage} onSelect={onCancel}>
+              <Square className="size-4" />
+              Stop
+            </DropdownMenuItem>
+          </MenuAction>
+        )}
+        <DropdownMenuSeparator />
+        <MenuAction disabled={!canDelete || running} tooltip={deleteReason()}>
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={!canDelete || running}
+            onSelect={() => onDelete?.()}
+          >
+            <Trash2 className="size-4" />
+            Delete
+          </DropdownMenuItem>
+        </MenuAction>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1326,48 +1413,57 @@ function RunRow({
   const { hide, restore } = useOptimisticRow(run.id);
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const ok = run.status === "success";
+  const running = run.status === "running";
 
   return (
     <TableRow>
-      <TableCell className="text-sm">
-        {timeAgo(run.startedAt)}
+      <TableCell>
+        <div className="flex items-center gap-2">
+          {running ? (
+            <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+          ) : (
+            <StatusDot status={run.status} />
+          )}
+          <span className="text-sm font-medium">
+            {running ? "Running" : timeAgo(run.startedAt)}
+          </span>
+          {/* The green dot already says "success"; the word is only worth room
+              when the answer is anything else. */}
+          {!running && !ok && (
+            <span className="text-xs text-muted-foreground capitalize">
+              {run.status}
+            </span>
+          )}
+        </div>
+        <p
+          className="mt-1 text-xs text-muted-foreground"
+          suppressHydrationWarning
+        >
+          {formatDateTime(run.startedAt)} · {destinationName}
+          {/* See RestoreRunsDialog: only the runs from before checksums say so. */}
+          {ok && !run.sha256 && (
+            <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
+              <span> · not checksummed</span>
+            </SimpleTooltip>
+          )}
+        </p>
+        {/* Wrapped and clamped, never `truncate`: a nowrap line in an auto-width
+            cell has nothing to truncate against and widens the whole table. */}
         {run.error && (
           <SimpleTooltip content={run.error}>
-            <span className="block max-w-xs truncate text-xs text-destructive">
+            <p className="mt-1 line-clamp-2 text-xs text-destructive">
               {run.error}
-            </span>
+            </p>
           </SimpleTooltip>
         )}
       </TableCell>
-      <TableCell className="text-muted-foreground">{destinationName}</TableCell>
-      <TableCell className="text-muted-foreground">
-        {ok ? formatBytes(run.sizeBytes) : "—"}
+      <TableCell className="text-right text-muted-foreground">
+        {ok ? formatBytes(run.sizeBytes) : "-"}
       </TableCell>
-      <TableCell>
-        {run.status === "running" ? (
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" />
-            Running
-          </span>
-        ) : (
-          <span className="flex items-center gap-1.5 text-xs capitalize">
-            <StatusDot status={run.status} />
-            {run.status}
-          </span>
-        )}
-        {/* See RestoreRunsDialog: only the runs from before checksums say so. */}
-        {ok && !run.sha256 && (
-          <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
-            <span className="mt-1 block text-[10px] text-muted-foreground">
-              Not checksummed
-            </span>
-          </SimpleTooltip>
-        )}
-      </TableCell>
-      <TableCell className="text-right">
-        <RunActions
+      <TableCell className="w-px text-right">
+        <RunMenu
           href={`/api/backups/${run.id}/download`}
-          running={run.status === "running"}
+          running={running}
           ok={ok}
           canRestore={canRestore}
           canDelete={canDelete}
@@ -1452,23 +1548,5 @@ function RunRow({
         />
       </TableCell>
     </TableRow>
-  );
-}
-
-/** {@link IconAction}'s wrapper, for buttons that carry their own label. */
-function TooltipWhenDisabled({
-  disabled,
-  tooltip,
-  children,
-}: {
-  disabled: boolean;
-  tooltip: string;
-  /** Exactly one element - `TooltipTrigger asChild` clones it. */
-  children: React.ReactElement;
-}) {
-  return (
-    <SimpleTooltip content={tooltip}>
-      {disabled ? <span tabIndex={0}>{children}</span> : children}
-    </SimpleTooltip>
   );
 }
