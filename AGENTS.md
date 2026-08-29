@@ -299,10 +299,10 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   silently lossy: it retries the insert once, and an entry it still could not write becomes a
   visible "N activity entries could not be recorded" row on the next successful write. A gap in an
   audit trail has to be legible **in the trail**, not only in stderr.
-- **Capabilities are FINE-GRAINED (46)**: one action each, catalogued with labels,
+- **Capabilities are FINE-GRAINED (44)**: one action each, catalogued with labels,
   descriptions, search keywords and browse categories in **`lib/capabilities.ts`**
-  (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `read_app_files` vs
-  `write_app_files`, `create_databases`, `restore_backups`, `manage_tokens`, `manage_mcp`,
+  (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `rollback_apps` vs
+  `control_apps`, `create_databases`, `restore_backups`, `manage_tokens`, `manage_mcp`,
   `organize_folders`, `manage_previews`, `view_logs`, `manage_roles`, `delete_team`, …). `view` is the always-on
   floor; plus instance-wide `instanceAdmin` and the orthogonal grants `canExposePorts` /
   `canMountHostVolumes`. **Never add a capability that covers two actions**, if an admin
@@ -310,7 +310,9 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   point: `deleteApp` is `delete_apps`, not `deploy_apps`.
   The eight coarse names (`deploy`, `manage_infra`, …) are RETIRED - migration 0056 expanded
   every stored row via `LEGACY_CAPABILITY_EXPANSION` (which is also what still translates an
-  old name arriving from an API client). Never reintroduce one.
+  old name arriving from an API client). Never reintroduce one. `manage_files` is off that
+  list since the Files browser went: both halves it expanded to are gone, so an API client
+  sending it now gets an enum error rather than a silent nothing.
 - **`canMountHostVolumes` gates EVERY way out of the container, not only a path.** A compose
   stack is user-written YAML shipped to the agent almost verbatim, so `privileged`, `cap_add`,
   `devices`, `pid|ipc|uts: host`, `userns_mode`, an unconfining `security_opt`, `cgroup_parent`

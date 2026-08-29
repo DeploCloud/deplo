@@ -2,8 +2,6 @@ import "server-only";
 
 // https://deplo.build/docs/guides/data/persistent-storage
 
-import { realpath } from "node:fs/promises";
-import { join, sep } from "node:path";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
@@ -27,25 +25,6 @@ import {
 
 /** Reject writes whose body exceeds this - the editor is for config, not blobs. */
 const MAX_WRITE_BYTES = 1024 * 1024; // 1 MiB
-
-/**
- * Resolve `relPath` (user-supplied) to an absolute host path that is PROVABLY
- * inside `root`, with symlinks resolved. Both `root` and the resolved candidate
- * must already exist.
- */
-export async function resolveWithinRoot(
-  root: string,
-  relPath: string,
-): Promise<string> {
-  const rel = normalizeRel(relPath);
-  const candidate = rel ? join(root, rel) : root;
-  const realRoot = await realpath(root); // root always exists by the time we read
-  const realCandidate = await realpath(candidate);
-  if (realCandidate !== realRoot && !realCandidate.startsWith(realRoot + sep)) {
-    throw new Error("Path escapes the project files directory");
-  }
-  return realCandidate;
-}
 
 /**
  * Normalise a relative path to a clean POSIX form, rejecting absolute paths and

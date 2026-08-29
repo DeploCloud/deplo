@@ -51,7 +51,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   configure_apps: {
     label: "Configure apps",
     description:
-      "Change an app's name, logo, deploy source, build settings, volumes, resource limits and auto-deploy.",
+      "Change an app's name, logo, deploy source, build settings, volumes and the config files they mount, resource limits and auto-deploy.",
     keywords: "settings build rename resources volumes limits auto deploy",
   },
   delete_apps: {

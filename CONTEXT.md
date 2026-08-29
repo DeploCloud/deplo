@@ -906,7 +906,7 @@ Nobody has to hand-write `volumes:` into their YAML to keep data. Stored on the 
 and the UI name is what every screen, tooltip and doc says:
 
 - **Volume** (`named`): disk space deplo creates and keeps. The default.
-- **File** (`app`): a file or folder from the app's own **Files** (its isolated files dir).
+- **File** (`app`): a file or folder from the app's own isolated files directory.
   Its CONTENT is written from the Storage editor too (`appStorageFile` / `writeAppFile`,
   over the agent) (not a copy in the database, the file itself on the host), so an
   entry never points at a path with nothing behind it. Files are written **before** the
@@ -921,7 +921,7 @@ and the UI name is what every screen, tooltip and doc says:
   is dropped for them on write.
   Only the **source** is ever required. `mountPath` left empty is **derived** -
   `derivedMountPath`: the storage lands in the app's own working directory under the name its
-  source gives (`uploads` → `/app/uploads`, Files `conf/app.toml` → `/app/conf/app.toml`,
+  source gives (`uploads` → `/app/uploads`, a File `conf/app.toml` → `/app/conf/app.toml`,
   `/srv/media` → `/app/media`), and the editor sends that path explicitly, so the row stores
   what it previewed. Offered ONLY where `containerWorkdir` is a fact (anything deplo builds);
   a prebuilt image or a compose service picked its own, and mounting at an invented path is

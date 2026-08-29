@@ -372,7 +372,7 @@ test("sibling links preserve a settings subsection but drop deep detail ids", ()
   );
 });
 
-test("runtime sections (console/dev/files) are NOT preserved on siblings", () => {
+test("a runtime section (Console) is NOT preserved on siblings", () => {
   const segs = svc("/apps/web/console")!;
   assert.equal(
     segs.find((s) => s.kind === "app")!.items.find((i) => i.label === "Api")!

@@ -133,7 +133,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         title: tool.title,
         description: tool.description,
         // Every tool takes the team as an optional argument. Added centrally so
-        // the 79 rows stay a table of what deplo can do, with nothing about
+        // the rows stay a table of what deplo can do, with nothing about
         // tenancy repeated in each of them.
         // Unknown keys are kept, not stripped, so the handler below can REFUSE
         // them by name. Advertising `additionalProperties: false` instead would
