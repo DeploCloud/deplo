@@ -112,8 +112,14 @@ export function DomainRow({
   const service = (domain.service ?? "").trim();
   const container = service || `deplo-${domain.appSlug}`;
   // A compose row that names no service: the stack renderer has no target to
-  // wire, so the hostname reaches nothing until one is picked.
+  // wire, so the hostname reaches nothing until one is picked. Same outcome, and
+  // just as silent, when the compose file no longer has the container it names.
   const unrouted = isCompose && !service;
+  const missing =
+    isCompose &&
+    Boolean(service) &&
+    services.length > 0 &&
+    !services.includes(service);
 
   // The `www` pairing this hostname is currently in, read off the app's rows.
   const www = React.useMemo(
@@ -460,11 +466,17 @@ export function DomainRow({
       </TableCell>
       {showContainer && (
         <TableCell className="w-56">
-          {unrouted ? (
-            <SimpleTooltip content="This domain doesn't name a container, so nothing serves it. Edit the domain to pick one.">
+          {unrouted || missing ? (
+            <SimpleTooltip
+              content={
+                missing
+                  ? `This app's compose file has no container “${service}” any more, so nothing serves this domain. Edit the domain to pick one.`
+                  : "This domain doesn't name a container, so nothing serves it. Edit the domain to pick one."
+              }
+            >
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-                Not set
+                {missing ? service : "Not set"}
               </span>
             </SimpleTooltip>
           ) : (
