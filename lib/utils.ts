@@ -8,10 +8,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Human-readable byte count (powered by `pretty-bytes`). */
+/**
+ * Human-readable byte count, in BINARY units (KiB/MiB/GiB) - the ones `df`,
+ * `free`, `htop` and `docker` print. Decimal units made the monitoring page
+ * claim 141 GB of a disk `df` called 132G.
+ */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes)) return "";
-  return prettyBytes(Math.max(0, bytes));
+  return prettyBytes(Math.max(0, bytes), { binary: true });
 }
 
 /** Relative "time ago" formatting (powered by `date-fns`). */
