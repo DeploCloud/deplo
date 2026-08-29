@@ -757,6 +757,13 @@ export function databaseNav(
           requires: "manage_backups",
         },
         {
+          label: "Activity",
+          href: `${base}/activity`,
+          icon: Activity,
+          tooltip: "Who changed what, and when",
+          requires: "view_activity",
+        },
+        {
           label: "Settings",
           href: `${base}/settings`,
           icon: Settings,
@@ -808,13 +815,6 @@ export function databaseSettingsNav(id: string): NavSection[] {
           href: `${base}/resources`,
           icon: Cpu,
           tooltip: "RAM, CPU & other limits",
-        },
-        {
-          label: "Activity",
-          href: `${base}/activity`,
-          icon: Activity,
-          tooltip: "Who changed what, and when",
-          requires: "view_activity",
         },
         {
           label: "Advanced",

@@ -126,26 +126,27 @@ test("Cron jobs has no settings entry of its own - the switch is under Advanced"
   }
 });
 
-test("an app's Activity sits just before Settings, gated on view_activity", () => {
-  const items = appNav("blog", flags()).flatMap((s) => s.items);
-  const activity = items.at(-2);
-  assert.equal(activity?.label, "Activity");
-  assert.equal(activity?.requires, "view_activity");
-  assert.equal(items.at(-1)?.label, "Settings");
-  // And it left the settings menu behind.
-  assert.ok(
-    !appSettingsNav("blog")
-      .flatMap((s) => s.items)
-      .some((i) => i.label === "Activity"),
-  );
-});
-
-test("Activity sits second-to-last in a database's settings menu", () => {
-  const items = databaseSettingsNav("db_1").flatMap((s) => s.items);
-  const activity = items.at(-2);
-  assert.equal(activity?.label, "Activity");
-  assert.equal(activity?.requires, "view_activity");
-  assert.equal(items.at(-1)?.label, "Advanced");
+test("Activity sits just before Settings, never in a settings menu", () => {
+  // It answers "what happened", not "how is this configured", so it is an
+  // operational entry in both main menus - like Logs and Monitoring.
+  const menus = [
+    appNav("blog", flags()),
+    databaseNav("db_1", {
+      pathname: "/storage/databases/db_1",
+      consoleAcknowledged: false,
+      cronsEnabled: false,
+    }),
+  ];
+  for (const nav of menus) {
+    const items = nav.flatMap((s) => s.items);
+    const activity = items.at(-2);
+    assert.equal(activity?.label, "Activity");
+    assert.equal(activity?.requires, "view_activity");
+    assert.equal(items.at(-1)?.label, "Settings");
+  }
+  for (const nav of [appSettingsNav("blog"), databaseSettingsNav("db_1")]) {
+    assert.ok(!nav.flatMap((s) => s.items).some((i) => i.label === "Activity"));
+  }
 });
 
 test("a database gets Cron jobs on the same rule", () => {
