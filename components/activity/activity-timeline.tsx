@@ -290,7 +290,17 @@ export function ActivityRow({
           // `details` rather than React state: a run folds and unfolds with no
           // JavaScript, which is what keeps this row renderable from an RSC.
           <details open className="group">
-            <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-1.5 text-sm [&::-webkit-details-marker]:hidden">
+            <summary
+              className={cn(
+                "flex cursor-pointer list-none flex-wrap items-baseline gap-x-1.5 text-sm [&::-webkit-details-marker]:hidden",
+                // Shut, this line IS the row: centre it on the marker rather
+                // than leave the avatar hanging below one line of text.
+                "transition-[min-height] group-[:not([open])]:items-center",
+                size === "lg"
+                  ? "group-[:not([open])]:min-h-8"
+                  : "group-[:not([open])]:min-h-6",
+              )}
+            >
               {header}
               <ChevronRight className="size-3.5 self-center text-muted-foreground transition-transform group-open:rotate-90" />
             </summary>
