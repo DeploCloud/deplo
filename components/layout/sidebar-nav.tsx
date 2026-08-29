@@ -211,9 +211,9 @@ export function SidebarNav({
     <nav
       ref={navRef}
       className={cn(
-        // No top padding: the search box above already leaves its own gap, and a
-        // second one made the first row float away from it.
-        "relative isolate flex flex-col pb-3",
+        // pt-1 is the focus ring's room, not a gap: the scroller above clips
+        // the first row's outline without it. The search box gives up 4px.
+        "relative isolate flex flex-col pt-1 pb-3",
         collapsed ? "px-2" : "px-3",
         slide,
       )}
