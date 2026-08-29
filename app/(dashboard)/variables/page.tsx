@@ -10,20 +10,14 @@ import { listProjects } from "@/lib/data/projects";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
-import {
-  Tabs,
-  TabsContent,
-  UnderlineTabsList,
-  UnderlineTabsTrigger,
-} from "@/components/ui/tabs";
+import { VariablesTabs } from "@/components/env/variables-tabs";
 import { AllAppsEnvManager } from "@/components/env/all-apps-env-manager";
 import { SharedVarsManager } from "@/components/env/shared-vars-manager";
 
 export const metadata = { title: "Environment Variables" };
 
 export default async function VariablesPage(props: PageProps<"/variables">) {
-  const { tab: tabParam, edit: editParam } = await props.searchParams;
-  const rawTab = Array.isArray(tabParam) ? tabParam[0] : tabParam;
+  const { edit: editParam } = await props.searchParams;
   const openEditId = Array.isArray(editParam) ? editParam[0] : editParam;
   const wholeTeam = await reachesWholeTeam();
 
@@ -78,32 +72,10 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
   // returns a group per app (name-sorted), so there is nothing more to fetch.
   const apps = allAppGroups.map((g) => g.app);
 
-  // Two tabs. Legacy deep links (?tab=service|environments|team|instance) fold
-  // gracefully - `instance` was the "All teams" tab, now a Teams scope on a
-  // shared variable (ADR-0027).
-  const legacy: Record<string, string> = {
-    service: "app",
-    environments: "app",
-    team: "app",
-    instance: "shared",
-  };
-  const tab = rawTab ? (legacy[rawTab] ?? rawTab) : "app";
-  const allowedTabs = new Set(["app", "shared"]);
-  const defaultTab = allowedTabs.has(tab) ? tab : "app";
-
   return (
-    /* `key` forces a remount when ?tab= changes: Radix Tabs is uncontrolled, so
-       a soft-navigation (the "Manage" links → ?tab=shared) would otherwise keep
-       the old panel and the click would appear to do nothing. */
-    <Tabs key={defaultTab} defaultValue={defaultTab}>
-      <UnderlineTabsList>
-        {/* The value stays `app` - it is what every ?tab= deep link carries. */}
-        <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
-      </UnderlineTabsList>
-
-      {/* All: every app's variables (standalone + applied shared), editable */}
-      <TabsContent value="app" className="space-y-4">
+    <VariablesTabs
+      // All: every app's variables (standalone + applied shared), editable
+      all={
         <AllAppsEnvManager
           groups={allAppGroups}
           sharedByApp={sharedByApp}
@@ -113,10 +85,9 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
           environments={teamEnvironments}
           teams={shareableTeams}
         />
-      </TabsContent>
-
-      {/* Shared: individual shared variables + their sharing modes */}
-      <TabsContent value="shared">
+      }
+      // Shared: individual shared variables + their sharing modes
+      shared={
         <SharedVarsManager
           vars={sharedVars}
           openEditId={openEditId}
@@ -125,7 +96,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
           environments={teamEnvironments}
           teams={shareableTeams}
         />
-      </TabsContent>
-    </Tabs>
+      }
+    />
   );
 }
