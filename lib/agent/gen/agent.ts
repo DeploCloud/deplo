@@ -491,6 +491,14 @@ export interface HostMetrics {
   load15: number;
   uptimeSec: number;
   runningContainers: number;
+  /**
+   * Fields 16-17 are ADDITIVE (contract stays V1). mem_used is total-available,
+   * the same figure `free` prints as "used"; these two let the panel also show
+   * the reclaimable half rather than leaving the gap with htop unexplained.
+   */
+  memFree: number;
+  /** Buffers + Cached + SReclaimable */
+  memCache: number;
 }
 
 /**
@@ -2143,6 +2151,20 @@ export interface ContainerStat {
    * "it is starting" into "it has been dying for an hour".
    */
   restartCount: number;
+  /**
+   * Fields 17-18 are ADDITIVE (contract stays V1). net_* is read out of the
+   * container's network NAMESPACE, and a namespace can have several containers
+   * in it: a compose sidecar on `network_mode: service:x` reports the SAME
+   * counters as its host container, so summing a stack double-counted them.
+   * 0 from an agent too old to send it, or when the namespace is unreadable.
+   */
+  netNsId: number;
+  /**
+   * True when that namespace is the HOST's - `network_mode: host`. net_rx/net_tx
+   * are then the whole machine's counters, so the agent reports them as 0 and
+   * the panel points at the host chart instead.
+   */
+  netNsHost: boolean;
 }
 
 export interface ContainerStatsResponse {
@@ -2842,6 +2864,8 @@ function createBaseHostMetrics(): HostMetrics {
     load15: 0,
     uptimeSec: 0,
     runningContainers: 0,
+    memFree: 0,
+    memCache: 0,
   };
 }
 
@@ -2891,6 +2915,12 @@ export const HostMetrics: MessageFns<HostMetrics> = {
     }
     if (message.runningContainers !== 0) {
       writer.uint32(120).int32(message.runningContainers);
+    }
+    if (message.memFree !== 0) {
+      writer.uint32(128).int64(message.memFree);
+    }
+    if (message.memCache !== 0) {
+      writer.uint32(136).int64(message.memCache);
     }
     return writer;
   },
@@ -3022,6 +3052,22 @@ export const HostMetrics: MessageFns<HostMetrics> = {
           message.runningContainers = reader.int32();
           continue;
         }
+        case 16: {
+          if (tag !== 128) {
+            break;
+          }
+
+          message.memFree = longToNumber(reader.int64());
+          continue;
+        }
+        case 17: {
+          if (tag !== 136) {
+            break;
+          }
+
+          message.memCache = longToNumber(reader.int64());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3092,6 +3138,16 @@ export const HostMetrics: MessageFns<HostMetrics> = {
         : isSet(object.running_containers)
         ? globalThis.Number(object.running_containers)
         : 0,
+      memFree: isSet(object.memFree)
+        ? globalThis.Number(object.memFree)
+        : isSet(object.mem_free)
+        ? globalThis.Number(object.mem_free)
+        : 0,
+      memCache: isSet(object.memCache)
+        ? globalThis.Number(object.memCache)
+        : isSet(object.mem_cache)
+        ? globalThis.Number(object.mem_cache)
+        : 0,
     };
   },
 
@@ -3142,6 +3198,12 @@ export const HostMetrics: MessageFns<HostMetrics> = {
     if (message.runningContainers !== 0) {
       obj.runningContainers = Math.round(message.runningContainers);
     }
+    if (message.memFree !== 0) {
+      obj.memFree = Math.round(message.memFree);
+    }
+    if (message.memCache !== 0) {
+      obj.memCache = Math.round(message.memCache);
+    }
     return obj;
   },
 
@@ -3165,6 +3227,8 @@ export const HostMetrics: MessageFns<HostMetrics> = {
     message.load15 = object.load15 ?? 0;
     message.uptimeSec = object.uptimeSec ?? 0;
     message.runningContainers = object.runningContainers ?? 0;
+    message.memFree = object.memFree ?? 0;
+    message.memCache = object.memCache ?? 0;
     return message;
   },
 };
@@ -14896,6 +14960,8 @@ function createBaseContainerStat(): ContainerStat {
     state: "",
     health: "",
     restartCount: 0,
+    netNsId: 0,
+    netNsHost: false,
   };
 }
 
@@ -14948,6 +15014,12 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     }
     if (message.restartCount !== 0) {
       writer.uint32(128).int32(message.restartCount);
+    }
+    if (message.netNsId !== 0) {
+      writer.uint32(136).uint64(message.netNsId);
+    }
+    if (message.netNsHost !== false) {
+      writer.uint32(144).bool(message.netNsHost);
     }
     return writer;
   },
@@ -15087,6 +15159,22 @@ export const ContainerStat: MessageFns<ContainerStat> = {
           message.restartCount = reader.int32();
           continue;
         }
+        case 17: {
+          if (tag !== 136) {
+            break;
+          }
+
+          message.netNsId = longToNumber(reader.uint64());
+          continue;
+        }
+        case 18: {
+          if (tag !== 144) {
+            break;
+          }
+
+          message.netNsHost = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -15158,6 +15246,16 @@ export const ContainerStat: MessageFns<ContainerStat> = {
         : isSet(object.restart_count)
         ? globalThis.Number(object.restart_count)
         : 0,
+      netNsId: isSet(object.netNsId)
+        ? globalThis.Number(object.netNsId)
+        : isSet(object.net_ns_id)
+        ? globalThis.Number(object.net_ns_id)
+        : 0,
+      netNsHost: isSet(object.netNsHost)
+        ? globalThis.Boolean(object.netNsHost)
+        : isSet(object.net_ns_host)
+        ? globalThis.Boolean(object.net_ns_host)
+        : false,
     };
   },
 
@@ -15211,6 +15309,12 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     if (message.restartCount !== 0) {
       obj.restartCount = Math.round(message.restartCount);
     }
+    if (message.netNsId !== 0) {
+      obj.netNsId = Math.round(message.netNsId);
+    }
+    if (message.netNsHost !== false) {
+      obj.netNsHost = message.netNsHost;
+    }
     return obj;
   },
 
@@ -15235,6 +15339,8 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     message.state = object.state ?? "";
     message.health = object.health ?? "";
     message.restartCount = object.restartCount ?? 0;
+    message.netNsId = object.netNsId ?? 0;
+    message.netNsHost = object.netNsHost ?? false;
     return message;
   },
 };

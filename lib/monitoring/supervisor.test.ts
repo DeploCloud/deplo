@@ -75,9 +75,6 @@ async function seedEnrolledServer(
       cpuCores: 4,
       memoryMb: 8192,
       diskGb: 100,
-      cpuUsage: 1,
-      memoryUsage: 1,
-      diskUsage: 1,
       agentPort: 9443,
       agentCertFingerprint: `fp_${id}`,
       agentCertPem: "pem",
@@ -183,6 +180,8 @@ function containerStat(
     state: "running",
     health: "",
     restartCount: 0,
+    netNsId: 0,
+    netNsHost: false,
     ...over,
   };
 }
@@ -195,6 +194,8 @@ function frame(containers: ContainerStat[] = []): MetricsSample {
       memUsed: 1_000,
       memTotal: 4_000,
       memPct: 25,
+      memFree: 2_000,
+      memCache: 1_000,
       diskUsed: 10,
       diskTotal: 100,
       diskPct: 10,

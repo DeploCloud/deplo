@@ -619,9 +619,6 @@ export const servers = pgTable(
     cpuCores: integer("cpu_cores").notNull(),
     memoryMb: integer("memory_mb").notNull(),
     diskGb: integer("disk_gb").notNull(),
-    cpuUsage: integer("cpu_usage").notNull(),
-    memoryUsage: integer("memory_usage").notNull(),
-    diskUsage: integer("disk_usage").notNull(),
     // Flattened ServerAgent (present once provisioned; NULL while provisioning).
     agentPort: integer("agent_port"),
     agentCertFingerprint: text("agent_cert_fingerprint"),

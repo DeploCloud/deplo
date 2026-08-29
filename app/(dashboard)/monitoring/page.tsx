@@ -1,5 +1,5 @@
 import { listServers } from "@/lib/data/servers";
-import { getInitialServerMetrics } from "@/lib/data/monitoring";
+import { getServerMetricsHistory } from "@/lib/data/monitoring";
 import { getMonitoringSettings } from "@/lib/data/monitoring-settings";
 import { Lock } from "lucide-react";
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
@@ -21,30 +21,33 @@ export default async function MonitoringPage() {
       />
     );
 
-  const [servers, initialMetrics, settings, canManageInfra] = await Promise.all(
-    [
-      listServers(),
-      getInitialServerMetrics(),
-      getMonitoringSettings(),
-      // Cosmetic gate for the "save metrics" switch; the mutation enforces it.
-      hasCapability("manage_monitoring"),
-    ],
-  );
+  const [servers, settings, canManageInfra] = await Promise.all([
+    listServers(),
+    getMonitoringSettings(),
+    // Cosmetic gate for the "save metrics" switch; the mutation enforces it.
+    hasCapability("manage_monitoring"),
+  ]);
+
+  // Seed the FIRST server's real buffered window, the way the app tab does. This
+  // replaced a synthetic snapshot built from three columns nothing writes, which
+  // rendered an online host as 0% CPU, 0% memory and 0 containers.
+  const shown = servers.filter((s) => !s.importOnly);
+  const initialHistory = shown[0]
+    ? await getServerMetricsHistory(shown[0].id)
+    : [];
 
   return (
     <MonitoringDashboard
       // Migration sources are not the fleet: no telemetry stream is opened to
       // them, so a row here could only ever read "No data".
-      servers={servers
-        .filter((s) => !s.importOnly)
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          status: s.status,
-          ip: s.ip,
-          dockerVersion: s.dockerVersion,
-        }))}
-      initialMetrics={initialMetrics}
+      servers={shown.map((s) => ({
+        id: s.id,
+        name: s.name,
+        status: s.status,
+        ip: s.ip,
+        dockerVersion: s.dockerVersion,
+      }))}
+      initialHistory={initialHistory}
       initialSaveMetrics={settings.saveMetrics}
       canManageInfra={canManageInfra}
     />

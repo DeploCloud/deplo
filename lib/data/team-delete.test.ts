@@ -207,8 +207,8 @@ test("a team with a database, a backup destination, schedules and run history de
   await addMembership(USER_1, TEAM_B);
   const T0 = "2026-01-01T00:00:00.000Z";
   await pg.exec(`
-    insert into servers (id, name, host, type, status, ip, docker_version, traefik_enabled, cpu_cores, memory_mb, disk_gb, cpu_usage, memory_usage, disk_usage, created_at)
-      values ('srv_1', 's', 'h', 'remote', 'online', '1.2.3.4', 'x', true, 1, 1, 1, 0, 0, 0, '${T0}')
+    insert into servers (id, name, host, type, status, ip, docker_version, traefik_enabled, cpu_cores, memory_mb, disk_gb, created_at)
+      values ('srv_1', 's', 'h', 'remote', 'online', '1.2.3.4', 'x', true, 1, 1, 1, '${T0}')
       on conflict do nothing;
     insert into databases (id, team_id, name, type, version, username, db_name, status, server_id, host, port, connection_string_enc, exposed_publicly, size_mb, created_at)
       values ('db_x', '${TEAM_A}', 'd', 'postgres', '16', 'app', 'app', 'running', 'srv_1', 'db-d', 5432, 'enc', false, 0, '${T0}');
@@ -297,8 +297,8 @@ test("a deleted team's stacks are queued for teardown, with no team left to name
   const T0 = "2026-01-01T00:00:00.000Z";
   await pg.exec(`delete from pending_teardowns;`);
   await pg.exec(`
-    insert into servers (id, name, host, type, status, ip, docker_version, traefik_enabled, cpu_cores, memory_mb, disk_gb, cpu_usage, memory_usage, disk_usage, created_at)
-      values ('srv_1', 's', 'h', 'remote', 'online', '1.2.3.4', 'x', true, 1, 1, 1, 0, 0, 0, '${T0}')
+    insert into servers (id, name, host, type, status, ip, docker_version, traefik_enabled, cpu_cores, memory_mb, disk_gb, created_at)
+      values ('srv_1', 's', 'h', 'remote', 'online', '1.2.3.4', 'x', true, 1, 1, 1, '${T0}')
       on conflict do nothing;
     insert into databases (id, team_id, name, type, version, username, db_name, status, server_id, host, port, connection_string_enc, exposed_publicly, size_mb, created_at)
       values ('db_x', '${TEAM_A}', 'd', 'postgres', '16', 'app', 'app', 'running', 'srv_1', 'db-d', 5432, 'enc', false, 0, '${T0}');

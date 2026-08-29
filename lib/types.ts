@@ -434,9 +434,6 @@ export interface Server {
   memoryMb: number;
   diskGb: number;
   /** live-ish metrics 0-100 */
-  cpuUsage: number;
-  memoryUsage: number;
-  diskUsage: number;
   /**
    * Team access scope.
    */

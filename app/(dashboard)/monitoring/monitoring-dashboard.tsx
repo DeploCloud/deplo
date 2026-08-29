@@ -30,7 +30,7 @@ import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import {
   LiveStatusLine,
   MAX_POINTS,
-  POLL_MS,
+  pollIntervalFor,
   STALE_AFTER_MS,
   WINDOWS,
 } from "@/components/monitoring/dashboard-parts";
@@ -49,12 +49,14 @@ interface ServerLite {
 
 export function MonitoringDashboard({
   servers,
-  initialMetrics,
+  initialHistory,
   initialSaveMetrics,
   canManageInfra,
 }: {
   servers: ServerLite[];
-  initialMetrics: ServerMetrics[];
+  /** The FIRST server's buffered window, so its charts paint full on the first
+   *  render. Real measurements: there is no synthetic snapshot any more. */
+  initialHistory: ServerMetrics[];
   /** The stored "save metrics on server" switch state (instance-wide). */
   initialSaveMetrics: boolean;
   /** Cosmetic gate for the switch; the mutation enforces `manage_infra` itself. */
@@ -68,13 +70,21 @@ export function MonitoringDashboard({
   // net/load) is a placeholder, not a measurement - charting it would draw a fake dip
   // to 0.
   const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>(
-    {},
+    () =>
+      initialHistory.length && servers[0]
+        ? { [servers[0].id]: initialHistory }
+        : {},
   );
   // A render clock, advanced by the read loop below, so staleness can assert
   // itself even when reads stop succeeding (nothing else would re-render).
   const [now, setNow] = React.useState<number>(() => Date.now());
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
+  // Read at the rate the samples ARRIVE, not a fixed 1s - see pollIntervalFor.
+  const pollMs = React.useMemo(
+    () => pollIntervalFor((history[selectedId] ?? []).map((x) => x.ts)),
+    [history, selectedId],
+  );
   // Read the buffer for anything that HAS an agent, not just a server whose last
   // stored status was `online`.
   const online = Boolean(selected) && selected.status !== "provisioning";
@@ -106,6 +116,8 @@ export function MonitoringDashboard({
               memUsed
               memTotal
               memPct
+              memFree
+              memCache
               diskUsed
               diskTotal
               diskPct
@@ -145,7 +157,7 @@ export function MonitoringDashboard({
       }
     };
     void seed();
-    const iv = setInterval(seed, POLL_MS);
+    const iv = setInterval(seed, pollMs);
     // Read on wake as well as on the timer. A soft-nav back or a bfcache/Router-Cache
     // restore may not remount this component, so a mount-only read would never re-run;
     // `pageshow` covers the bfcache restore.
@@ -162,7 +174,7 @@ export function MonitoringDashboard({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [selectedId, online]);
+  }, [selectedId, online, pollMs]);
 
   // Flip the instance-wide "save metrics on server" switch. Optimistic (the
   // switch answers immediately) with a revert + the server's message on failure.
@@ -192,12 +204,10 @@ export function MonitoringDashboard({
   }
 
   const samples = history[selectedId] ?? [];
-  // Latest measurement for the tiles, while nothing is arriving they freeze on the
-  // last real values (the status line says so) instead of zeroing.
-  const cur =
-    samples[samples.length - 1] ??
-    initialMetrics.find((m) => m.serverId === selectedId && m.online) ??
-    null;
+  // Latest MEASUREMENT for the tiles. While nothing is arriving they freeze on the
+  // last real values (the status line says so) instead of zeroing, and before the
+  // first one there is an honest waiting state rather than a fabricated snapshot.
+  const cur = samples[samples.length - 1] ?? null;
   // "Live" is a claim about the FEED, not about the last request: a read that
   // succeeds and returns the same frame it returned a minute ago is not live.
   const stale = cur ? now - cur.ts > STALE_AFTER_MS : false;
@@ -351,7 +361,23 @@ export function MonitoringDashboard({
               icon={MemoryStick}
               label="Memory"
               value={`${cur.memPct.toFixed(1)}%`}
-              sub={`${formatBytes(cur.memUsed)} / ${formatBytes(cur.memTotal)}`}
+              sub={
+                <>
+                  {formatBytes(cur.memUsed)} of {formatBytes(cur.memTotal)}
+                  {cur.memCache > 0 && (
+                    // The headline is total-available, the figure `free` calls
+                    // used. htop counts the reclaimable half as free instead, so
+                    // spelling out both stops the two from looking contradictory.
+                    <span className="mt-1 block">
+                      processes{" "}
+                      {formatBytes(
+                        Math.max(0, cur.memTotal - cur.memFree - cur.memCache),
+                      )}{" "}
+                      · cache {formatBytes(cur.memCache)}
+                    </span>
+                  )}
+                </>
+              }
               pct={cur.memPct}
             />
             <StatTile
@@ -490,7 +516,8 @@ function StatTile({
   icon: typeof Cpu;
   label: string;
   value: string;
-  sub: string;
+  /** A node, not a string, so the memory tile can carry its breakdown line. */
+  sub: React.ReactNode;
   pct: number;
 }) {
   const over = pct > 80;

@@ -65,6 +65,7 @@ function sample(id: string, ts: number, cpu = 1): ContainerMetricsSample {
     pids: 1,
     running: 1,
     containers: 1,
+    hostCores: 8,
   };
 }
 
@@ -104,6 +105,8 @@ test("getAppMetrics serves the newest buffered sample plus the breakdown cell", 
       blockRead: 0,
       blockWrite: 0,
       pids: 1,
+      netNsId: 0,
+      netNsHost: false,
     },
   ]);
 
@@ -155,6 +158,8 @@ test("getAppMetrics is team-scoped: a cross-team id gets NOTHING, buffer or not"
       blockRead: 0,
       blockWrite: 0,
       pids: 1,
+      netNsId: 0,
+      netNsHost: false,
     },
   ]);
 

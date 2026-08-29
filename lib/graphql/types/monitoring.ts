@@ -39,6 +39,14 @@ const ServerMetricsRef = builder
       memUsed: t.exposeFloat("memUsed"),
       memTotal: t.exposeFloat("memTotal"),
       memPct: t.exposeFloat("memPct"),
+      memFree: t.exposeFloat("memFree", {
+        description:
+          "MemFree. `memUsed` is total-available (what `free` calls used), so " +
+          "this and `memCache` are what let the tile show the reclaimable half.",
+      }),
+      memCache: t.exposeFloat("memCache", {
+        description: "Buffers + Cached + SReclaimable.",
+      }),
       diskUsed: t.exposeFloat("diskUsed"),
       diskTotal: t.exposeFloat("diskTotal"),
       diskPct: t.exposeFloat("diskPct"),
@@ -82,6 +90,18 @@ const ContainerInstanceMetricsRef = builder
       blockRead: t.exposeFloat("blockRead"),
       blockWrite: t.exposeFloat("blockWrite"),
       pids: t.exposeInt("pids"),
+      netNsHost: t.exposeBoolean("netNsHost", {
+        description:
+          "This container is on the host's network (`network_mode: host`), so " +
+          "net_rx/net_tx are 0 here - its traffic is the machine's, on the " +
+          "server's own network chart.",
+      }),
+      netNsId: t.exposeFloat("netNsId", {
+        description:
+          "The container's network namespace. Two containers reporting the same " +
+          "one (a sidecar on `network_mode: service:x`) read the SAME counters, " +
+          "and the stack total counts them once. 0 from an older agent.",
+      }),
     }),
   });
 
@@ -109,6 +129,12 @@ const ContainerMetricsSampleRef = builder
       pids: t.exposeInt("pids"),
       running: t.exposeInt("running"),
       containers: t.exposeInt("containers"),
+      hostCores: t.exposeInt("hostCores", {
+        description:
+          "The owning machine's core count. `cpu` is a percentage of ONE core " +
+          "(like `docker stats` and htop), so 299% is three busy cores of this " +
+          "many. 0 before the first frame.",
+      }),
     }),
   });
 
@@ -136,6 +162,9 @@ const ContainerMetricsRef = builder
       pids: t.exposeInt("pids"),
       running: t.exposeInt("running"),
       containers: t.exposeInt("containers"),
+      hostCores: t.exposeInt("hostCores", {
+        description: "The owning machine's core count - see the sample type.",
+      }),
       instances: t.field({
         type: [ContainerInstanceMetricsRef],
         description: "Per-container usage (multi-container stacks). Live only.",

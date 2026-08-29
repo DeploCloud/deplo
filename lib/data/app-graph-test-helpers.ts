@@ -69,9 +69,6 @@ export async function seedServer(
       cpuCores: 4,
       memoryMb: 8192,
       diskGb: 100,
-      cpuUsage: 1,
-      memoryUsage: 1,
-      diskUsage: 1,
       createdAt: T0,
     })
     .onConflictDoNothing();

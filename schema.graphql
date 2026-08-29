@@ -838,6 +838,16 @@ type ContainerInstanceMetrics {
   memPct: Float
   memUsed: Float
   name: String
+
+  """
+  This container is on the host's network (`network_mode: host`), so net_rx/net_tx are 0 here - its traffic is the machine's, on the server's own network chart.
+  """
+  netNsHost: Boolean
+
+  """
+  The container's network namespace. Two containers reporting the same one (a sidecar on `network_mode: service:x`) read the SAME counters, and the stack total counts them once. 0 from an older agent.
+  """
+  netNsId: Float
   netRx: Float
   netTx: Float
   pids: Int
@@ -852,6 +862,9 @@ type ContainerMetrics {
   blockWrite: Float
   containers: Int
   cpu: Float
+
+  """The owning machine's core count - see the sample type."""
+  hostCores: Int
   id: ID
 
   """Per-container usage (multi-container stacks). Live only."""
@@ -876,6 +889,11 @@ type ContainerMetricsSample {
   blockWrite: Float
   containers: Int
   cpu: Float
+
+  """
+  The owning machine's core count. `cpu` is a percentage of ONE core (like `docker stats` and htop), so 299% is three busy cores of this many. 0 before the first frame.
+  """
+  hostCores: Int
   id: ID
   memLimit: Float
   memPct: Float
@@ -4662,7 +4680,6 @@ type Server {
   """
   allTeams: Boolean
   cpuCores: Int
-  cpuUsage: Int
   createdAt: String
 
   """
@@ -4670,7 +4687,6 @@ type Server {
   """
   deployConcurrency: Int
   diskGb: Int
-  diskUsage: Int
   dockerVersion: String
 
   """
@@ -4694,7 +4710,6 @@ type Server {
   """Heartbeat cache (P5) - a hint, not the source of truth."""
   lastSeenAt: String
   memoryMb: Int
-  memoryUsage: Int
   name: String
 
   """True once the server's agent has called home and been trusted."""
@@ -4891,6 +4906,14 @@ type ServerMetrics {
 
   """Load averages over [1m, 5m, 15m]."""
   load: [Float!]
+
+  """Buffers + Cached + SReclaimable."""
+  memCache: Float
+
+  """
+  MemFree. `memUsed` is total-available (what `free` calls used), so this and `memCache` are what let the tile show the reclaimable half.
+  """
+  memFree: Float
   memPct: Float
   memTotal: Float
   memUsed: Float

@@ -90,6 +90,8 @@ function sample(ts: number, over: Partial<ServerMetrics> = {}): ServerMetrics {
     memUsed: 1,
     memTotal: 2,
     memPct: 50,
+    memFree: 1,
+    memCache: 0,
     diskUsed: 1,
     diskTotal: 2,
     diskPct: 50,

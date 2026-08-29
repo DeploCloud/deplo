@@ -346,9 +346,6 @@ export async function addServer(
     cpuCores: 0,
     memoryMb: 0,
     diskGb: 0,
-    cpuUsage: 0,
-    memoryUsage: 0,
-    diskUsage: 0,
     allTeams,
     // Exclusive by CHECK constraint too, but decided here so a client that sends
     // both gets the safer of the two rather than a database error: storage-only is
@@ -467,9 +464,6 @@ export async function ensureDeploHostServer(): Promise<void> {
     cpuCores: 0,
     memoryMb: 0,
     diskGb: 0,
-    cpuUsage: 0,
-    memoryUsage: 0,
-    diskUsage: 0,
     // Instance-wide: it is the only server a new install has, so restricting it
     // to whichever team happens to be created first would strand every other one.
     allTeams: true,

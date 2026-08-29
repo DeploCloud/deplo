@@ -1,8 +1,7 @@
 import "server-only";
 
-import { listServersForCurrentTeam, getServer } from "./servers";
+import { getServer } from "./servers";
 import { hasCapability, requireCapability } from "../membership";
-import { hostFacts } from "../infra/host";
 import { connectAgent } from "../infra/agent-client";
 import { markServerSeen, observedTraefik } from "./servers";
 import { recordServerHealth } from "./server-health";
@@ -29,6 +28,11 @@ export interface ServerMetrics {
   memUsed: number;
   memTotal: number;
   memPct: number;
+  /** MemFree, and Buffers+Cached+SReclaimable. `memUsed` is total-available (what
+   *  `free` calls used); these two let the tile show the reclaimable half rather
+   *  than leaving the gap with htop's number unexplained. */
+  memFree: number;
+  memCache: number;
   diskUsed: number;
   diskTotal: number;
   diskPct: number;
@@ -67,16 +71,20 @@ function unavailable(
   expected: string,
   server?: Server,
 ): ServerMetrics {
-  const facts = hostFacts();
   return {
     serverId,
     online: false,
     traefik: false,
     cpu: 0,
-    cpuCores: facts.cpuCores,
+    // The server's OWN stored core count, never the control plane's: reading
+    // os.cpus() here rendered an offline 2-core host as an 8-core one, because
+    // that is what the machine answering the question happens to have.
+    cpuCores: server?.cpuCores ?? 0,
     memUsed: 0,
     memTotal: 0,
     memPct: 0,
+    memFree: 0,
+    memCache: 0,
     diskUsed: 0,
     diskTotal: 0,
     diskPct: 0,
@@ -151,6 +159,8 @@ async function measureRemote(
       memUsed: Number(m.memUsed),
       memTotal: Number(m.memTotal),
       memPct: m.memPct,
+      memFree: Number(m.memFree),
+      memCache: Number(m.memCache),
       diskUsed: Number(m.diskUsed),
       diskTotal: Number(m.diskTotal),
       diskPct: m.diskPct,
@@ -268,43 +278,4 @@ export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
       }
     }),
   );
-}
-
-export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
-  if (!(await hasCapability("view_metrics"))) return [];
-  const facts = hostFacts();
-  const expected = await resolveExpectedAgentVersion();
-  // A migration source is out: it is another platform's machine, borrowed to read
-  // volumes from, and no telemetry stream is opened to it in the first place - a
-  // card for it would sit permanently blank and count as fleet capacity.
-  return (await listServersForCurrentTeam())
-    .filter((s) => !s.importOnly)
-    .map((s) => ({
-      serverId: s.id,
-      // Cheap hydration hint from the stored status; the first live poll replaces it. A
-      // not-yet-provisioned server has no agent and reports offline, exactly as
-      // metricsFor() would, keeping the card UI consistent.
-      online:
-        Boolean(s.agent?.certFingerprint) &&
-        (s.status === "online" || s.status === "warning"),
-      // Cheap hydration value from the stored flag; the first live poll replaces it.
-      traefik: s.traefikEnabled,
-      cpu: s.cpuUsage,
-      cpuCores: s.cpuCores || facts.cpuCores,
-      memUsed: 0,
-      memTotal: s.memoryMb * 1024 * 1024,
-      memPct: s.memoryUsage,
-      diskUsed: 0,
-      diskTotal: s.diskGb * 1024 * 1024 * 1024,
-      diskPct: s.diskUsage,
-      netRx: 0,
-      netTx: 0,
-      load: [0, 0, 0],
-      uptimeSec: 0,
-      containers: 0,
-      // Stored version + the resolved "latest" - keeps the hydration badge identical
-      // to what the RSC card renders, so the first poll doesn't visibly flip it.
-      ...agentVersionFields(expected, s),
-      ts: Date.now(),
-    }));
 }

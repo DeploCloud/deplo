@@ -36,6 +36,10 @@ import type {
 import { checkResourceThresholds } from "../notify/thresholds";
 import { pruneMetricsHistoryTo, recordMetricsSample } from "./history";
 import {
+  clearMetricsStreamUnsupported,
+  markMetricsStreamUnsupported,
+} from "./stream-modes";
+import {
   pruneContainerHistoryTo,
   recordContainerInstances,
   recordContainerSample,
@@ -166,6 +170,8 @@ function hostSampleFrom(
     memUsed: Number(h.memUsed),
     memTotal: Number(h.memTotal),
     memPct: h.memPct,
+    memFree: Number(h.memFree),
+    memCache: Number(h.memCache),
     diskUsed: Number(h.diskUsed),
     diskTotal: Number(h.diskTotal),
     diskPct: h.diskPct,
@@ -206,8 +212,13 @@ async function ingestFrame(
     else byProject.set(c.projectId, [c]);
   }
   const ts = Date.now();
+  // The machine is every stack's ceiling - see aggregateContainerStats.
+  const capacity = {
+    memTotal: host?.memTotal ?? 0,
+    cpuCores: host?.cpuCores ?? 0,
+  };
   for (const [projectId, stats] of byProject) {
-    const agg = aggregateContainerStats(projectId, stats, ts);
+    const agg = aggregateContainerStats(projectId, stats, ts, capacity);
     // The breakdown replaces its cell; the aggregate appends to the window. Two
     // different lifetimes on purpose - see recordContainerInstances.
     recordContainerInstances(projectId, agg.instances);
@@ -275,6 +286,10 @@ async function runStreamLoop(
       conn = opened.conn;
       const hello: HelloResponse = opened.hello;
       openedAt = Date.now();
+      // The stream opened, so the agent is new enough - clears a demotion an
+      // earlier attempt recorded, which is what makes the tab's "update the
+      // agent" state disappear on its own after a fleet update.
+      clearMetricsStreamUnsupported(serverId);
 
       const facts: ConnectionFacts = {
         agentVersion: hello.agentVersion || null,
@@ -325,6 +340,17 @@ async function runStreamLoop(
             connHealth,
             new Date(now).toISOString(),
           );
+          // Every frame carries the host's CAPACITY, and nothing else refreshes it
+          // any more: the Servers page kept showing the size the machine was when
+          // it was first measured, so a resized VPS never grew there.
+          const cap = frame.host;
+          if (cap && cap.cpuCores > 0) {
+            await markServerSeen(serverId, undefined, undefined, {
+              cpuCores: cap.cpuCores,
+              memoryMb: Math.round(Number(cap.memTotal) / (1024 * 1024)),
+              diskGb: Math.round(Number(cap.diskTotal) / (1024 * 1024 * 1024)),
+            });
+          }
         }
 
         // Status reconcile, on its own much slower clock - see APP_STATUS_RECONCILE_MS.
@@ -353,7 +379,10 @@ async function runStreamLoop(
 
       if (e instanceof AgentMetricsStreamUnsupportedError) {
         // Not a failure - this one server's agent predates the stream. Demote it
-        // alone and keep the rest of the fleet streaming.
+        // alone and keep the rest of the fleet streaming. Recorded so the app tab
+        // can name the real cause: the poll path carries HOST metrics only, so no
+        // container on this server will ever report.
+        markMetricsStreamUnsupported(serverId);
         conn?.close();
         await runPollLoop(serverId, signal);
         return;

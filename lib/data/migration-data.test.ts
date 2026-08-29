@@ -461,9 +461,6 @@ async function seedMigrationHostServer(): Promise<void> {
       cpuCores: 4,
       memoryMb: 8192,
       diskGb: 100,
-      cpuUsage: 1,
-      memoryUsage: 1,
-      diskUsage: 1,
       createdAt: "2026-01-01T00:00:00.000Z",
     })
     .onConflictDoNothing();

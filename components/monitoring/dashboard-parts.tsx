@@ -12,10 +12,34 @@ import { cn } from "@/lib/utils";
  */
 
 /**
- * How often a dashboard re-reads the ring buffer. A BUFFER READ RATE, not a
- * measurement rate. Kept at 1s, not the 5s cadence: the agent may clamp anywhere
- * in [1s, 60s], so an assumed 5s renders a fast host slower than it reports. */
+ * The FLOOR for a dashboard's buffer read rate, and what it uses before it has
+ * seen two samples. A BUFFER READ RATE, not a measurement rate.
+ */
 export const POLL_MS = 1000;
+
+/** The ceiling, so a host reporting once a minute still moves its "as of" clock. */
+const MAX_POLL_MS = 10_000;
+
+/**
+ * How often to re-read the buffer, derived from the cadence the samples actually
+ * ARRIVE at rather than assumed. The agent clamps its own interval anywhere in
+ * [1s, 60s], so a fixed 1s poll returned the frame already on screen four times
+ * out of five at the 5s default - the cost of watching, per viewer, which is the
+ * one axis the telemetry stream exists to keep flat. Half the observed spacing
+ * keeps a new sample at most half a beat old.
+ */
+export function pollIntervalFor(timestamps: readonly number[]): number {
+  const gaps: number[] = [];
+  for (let i = Math.max(1, timestamps.length - 6); i < timestamps.length; i++) {
+    const gap = timestamps[i] - timestamps[i - 1];
+    if (gap > 0) gaps.push(gap);
+  }
+  if (gaps.length === 0) return POLL_MS;
+  gaps.sort((a, b) => a - b);
+  const median = gaps[Math.floor(gaps.length / 2)];
+  if (!Number.isFinite(median)) return POLL_MS;
+  return Math.min(MAX_POLL_MS, Math.max(POLL_MS, Math.round(median / 2)));
+}
 /**
  * How stale the newest sample may get before a dashboard stops calling itself
  * live. The SAME threshold the charts band "No data" at, so the status line and
@@ -47,7 +71,9 @@ export function StatTile({
   icon: LucideIcon;
   label: string;
   value: string;
-  sub: string;
+  /** A node, not a string, so a tile can carry a second muted line (the memory
+   *  breakdown) without a second prop. */
+  sub: React.ReactNode;
   /** 0-100 saturation for the bar; omit for a value with no natural ceiling. */
   pct?: number;
 }) {

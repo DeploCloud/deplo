@@ -62,8 +62,12 @@ function linearTicks(max: number, target: number): number[] {
 
 function yTicksFor(unit: ChartUnit, dataMax: number): number[] {
   // Percent axes are pinned to 0-100: utilization only reads honestly against
-  // its full range (a 3% wiggle must not fill the panel).
-  if (unit === "percent") return [0, 25, 50, 75, 100];
+  // its full range (a 3% wiggle must not fill the panel). Above 100 the axis
+  // GROWS instead: a container's CPU is a percentage of one core, so three busy
+  // cores really is 299%, and clamping drew it as a flat line on the ceiling
+  // while the tooltip said otherwise.
+  if (unit === "percent")
+    return dataMax <= 100 ? [0, 25, 50, 75, 100] : linearTicks(dataMax, 4);
   // Idle network still gets a real axis (1 kB/s) instead of a degenerate 0-0.
   if (unit === "bytesPerSec") return linearTicks(Math.max(dataMax, 1000), 4);
   return linearTicks(Math.max(dataMax, 1), 4);

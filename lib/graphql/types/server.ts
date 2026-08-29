@@ -121,10 +121,6 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     cpuCores: t.exposeInt("cpuCores"),
     memoryMb: t.exposeInt("memoryMb"),
     diskGb: t.exposeInt("diskGb"),
-    // Live-ish metrics, 0-100.
-    cpuUsage: t.exposeInt("cpuUsage"),
-    memoryUsage: t.exposeInt("memoryUsage"),
-    diskUsage: t.exposeInt("diskUsage"),
     createdAt: t.exposeString("createdAt"),
     allTeams: t.exposeBoolean("allTeams", {
       description:

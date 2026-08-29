@@ -46,6 +46,7 @@ function sample(
     pids: 1,
     running: 1,
     containers: 1,
+    hostCores: 8,
     ...over,
   };
 }
@@ -66,6 +67,8 @@ function instance(
     blockRead: 0,
     blockWrite: 0,
     pids: 1,
+    netNsId: 0,
+    netNsHost: false,
     ...over,
   };
 }

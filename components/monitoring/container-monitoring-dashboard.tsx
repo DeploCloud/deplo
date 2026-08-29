@@ -21,7 +21,7 @@ import {
   WindowSelector,
   LiveStatusLine,
   WINDOWS,
-  POLL_MS,
+  pollIntervalFor,
   MAX_POINTS,
   STALE_AFTER_MS,
 } from "@/components/monitoring/dashboard-parts";
@@ -37,11 +37,29 @@ function fmtCores(cores: number): string {
   return `${s} core${cores === 1 ? "" : "s"}`;
 }
 
-/** A configured memory cap, in the SAME "MB (1024 = 1 GB)" convention as
- *  Settings → Resources, so the label matches what the operator typed
- *  ("512 MB", "2 GB"), not pretty-bytes' decimal rendering ("537 MB"). */
+/** A configured memory cap. The NUMBER is the one the operator typed in
+ *  Settings → Resources; the unit is binary like every other byte in the app. */
 function fmtMemMb(mb: number): string {
-  return mb >= 1024 ? `${Number((mb / 1024).toFixed(2))} GB` : `${mb} MB`;
+  return mb >= 1024 ? `${Number((mb / 1024).toFixed(2))} GiB` : `${mb} MiB`;
+}
+
+/** A stack's CPU as a person reads it. `cpu` is a percentage of ONE core - the
+ *  same convention htop and `docker stats` use - so 299% is three busy cores. */
+function fmtCoresUsed(cpuPct: number, hostCores: number): string | null {
+  if (hostCores <= 0) return null;
+  return `${(cpuPct / 100).toFixed(2)} of ${hostCores} core${hostCores === 1 ? "" : "s"}`;
+}
+
+/** Who a container shares its network counters with. Two containers in one
+ *  namespace read the SAME bytes, so the stack total counts them once and the
+ *  table has to say why a row looks like a duplicate. */
+function netNoteFor(c: InstanceMetrics, all: InstanceMetrics[]): string | null {
+  if (c.netNsHost) return "host network";
+  if (!c.netNsId) return null;
+  const owner = all.find((o) => o.running && o.netNsId === c.netNsId);
+  return owner && owner.name !== c.name
+    ? `network shared with ${owner.name}`
+    : null;
 }
 
 /* The client-side shape of a ContainerMetrics / ContainerMetricsSample (the
@@ -58,6 +76,8 @@ interface InstanceMetrics {
   blockRead: number;
   blockWrite: number;
   pids: number;
+  netNsId: number;
+  netNsHost: boolean;
 }
 export interface ContainerSample {
   online: boolean;
@@ -73,14 +93,15 @@ export interface ContainerSample {
   pids: number;
   running: number;
   containers: number;
+  hostCores: number;
 }
 interface ContainerLive extends ContainerSample {
   unsupported: boolean;
   instances: InstanceMetrics[];
 }
 
-const SAMPLE_FIELDS = `online ts cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids running containers`;
-const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported instances { name running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids }`;
+const SAMPLE_FIELDS = `online ts cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids running containers hostCores`;
+const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported instances { name running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids netNsId netNsHost }`;
 
 /** Per-second rate from two cumulative-counter samples; a counter reset
  *  (container restart, so the total dropped) clamps to 0 rather than a spike. */
@@ -139,6 +160,11 @@ export function ContainerMonitoringDashboard({
   const [last, setLast] = React.useState<ContainerLive | null>(null);
   // A render clock, advanced by the read loop below.
   const [now, setNow] = React.useState<number>(() => Date.now());
+  // Read at the rate the samples ARRIVE, not a fixed 1s - see pollIntervalFor.
+  const pollMs = React.useMemo(
+    () => pollIntervalFor(samples.map((x) => x.ts)),
+    [samples],
+  );
 
   // ONE read, on POLL_MS, for both halves. They are two reads of the same in-RAM
   // buffer; splitting them into two timers would double the request rate for no extra
@@ -197,7 +223,7 @@ export function ContainerMonitoringDashboard({
     };
 
     void read();
-    const iv = setInterval(read, POLL_MS);
+    const iv = setInterval(read, pollMs);
     // Read on wake as well as on the timer. A soft-nav back or a bfcache restore may
     // not remount this component, so a mount-only read would never re-run - `pageshow`
     // covers the bfcache case.
@@ -214,7 +240,7 @@ export function ContainerMonitoringDashboard({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [id, metricsField, historyField, idArg]);
+  }, [id, metricsField, historyField, idArg, pollMs]);
 
   // One shared point list feeds every chart; net/block are cumulative counters,
   // so each point's rate is derived from the previous sample's delta.
@@ -261,8 +287,8 @@ export function ContainerMonitoringDashboard({
     cpuLimitCores != null ? cpuLimitCores * capMult : null;
   const memLimitAggMb = memLimitMb != null ? memLimitMb * capMult : null;
   const pidsLimitAgg = pidsLimit != null ? pidsLimit * capMult : null;
-  // Memory denominator to display when uncapped: docker's memLimit (the host
-  // total). When capped, the aggregate cap above is used instead.
+  // Uncapped, the denominator is the MACHINE's RAM - counted once, so it does not
+  // move when a container stops. When capped, the aggregate cap above wins.
   const memDenom = cur?.memLimit ?? 0;
   // Current network / block rates from the last two chart samples.
   const prev = samples[samples.length - 2];
@@ -282,6 +308,13 @@ export function ContainerMonitoringDashboard({
   const stale =
     Boolean(last && !last.online) ||
     (cur ? now - cur.ts > STALE_AFTER_MS : false);
+  // A stopped stack reports real zeros, and the buffer records them, so without
+  // this the tab drew 16 minutes of flat zero under a "Live" line before the
+  // samples aged out and the empty state below finally appeared.
+  const latest = last ?? cur;
+  const nothingRunning = Boolean(
+    latest && latest.containers > 0 && latest.running === 0,
+  );
 
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -333,6 +366,14 @@ export function ContainerMonitoringDashboard({
         />
       );
     }
+  } else if (nothingRunning) {
+    body = (
+      <EmptyCard
+        icon={ServerOff}
+        title="Not running"
+        text={`This ${noun} isn't running, so there's nothing to measure. Start it to see live resource usage here.`}
+      />
+    );
   } else {
     body = (
       <>
@@ -366,7 +407,8 @@ export function ContainerMonitoringDashboard({
                 ? multiContainer
                   ? `of ${fmtCores(cpuLimitAggCores)} (${fmtCores(cpuLimitCores!)} × ${runningCount})`
                   : `of ${fmtCores(cpuLimitAggCores)} limit`
-                : `${cur.running} of ${cur.containers} container${cur.containers === 1 ? "" : "s"} running`
+                : (fmtCoresUsed(curCpu, cur.hostCores) ??
+                  `${cur.running} of ${cur.containers} container${cur.containers === 1 ? "" : "s"} running`)
             }
             pct={curCpu}
           />
@@ -426,7 +468,9 @@ export function ContainerMonitoringDashboard({
             caption={
               cpuLimitAggCores != null
                 ? `${curCpu.toFixed(1)}% of the ${fmtCores(cpuLimitAggCores)} limit`
-                : `${curCpu.toFixed(1)}%`
+                : [`${curCpu.toFixed(1)}%`, fmtCoresUsed(curCpu, cur.hostCores)]
+                    .filter(Boolean)
+                    .join(" · ")
             }
           >
             <TimeSeriesChart
@@ -441,7 +485,12 @@ export function ContainerMonitoringDashboard({
                   fill: true,
                 },
               ]}
-              ariaLabel={`CPU usage over time, currently ${curCpu.toFixed(1)}%${cpuLimitAggCores != null ? ` of the ${fmtCores(cpuLimitAggCores)} limit` : ""}`}
+              ariaLabel={`CPU usage over time, currently ${curCpu.toFixed(1)}%${
+                cpuLimitAggCores != null
+                  ? ` of the ${fmtCores(cpuLimitAggCores)} limit`
+                  : (fmtCoresUsed(curCpu, cur.hostCores)?.replace(/^/, ", ") ??
+                    "")
+              }`}
             />
           </ChartCard>
 
@@ -563,6 +612,11 @@ function ContainerBreakdown({ instances }: { instances: InstanceMetrics[] }) {
                       />
                       <span className="font-mono text-xs">{c.name}</span>
                     </span>
+                    {netNoteFor(c, instances) && (
+                      <span className="mt-1 block pl-4 text-xs text-muted-foreground">
+                        {netNoteFor(c, instances)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">
                     {c.running ? `${c.cpu.toFixed(1)}%` : "—"}

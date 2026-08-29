@@ -10,6 +10,7 @@ import {
   latestContainerSample,
   latestContainerInstances,
 } from "../monitoring/container-history";
+import { metricsStreamUnsupported } from "../monitoring/stream-modes";
 
 /**
  * Per-app / per-database live resource metrics - the data behind the Monitoring
@@ -30,6 +31,12 @@ export interface ContainerInstanceMetrics {
   blockRead: number; // cumulative bytes
   blockWrite: number;
   pids: number;
+  /** The container's network namespace. Containers sharing one report the SAME
+   *  counters, so the stack total must count them once. 0 = agent too old. */
+  netNsId: number;
+  /** `network_mode: host` - net is 0 here because those bytes are the machine's,
+   *  and the host chart already draws them. */
+  netNsHost: boolean;
 }
 
 /**
@@ -41,11 +48,11 @@ export interface ContainerMetricsSample {
   online: boolean;
   /** epoch ms (control-plane clock at measurement). */
   ts: number;
-  cpu: number; // percent, summed across running containers
+  cpu: number; // percent of ONE core, summed across running containers
   memUsed: number; // bytes, summed
-  memLimit: number; // bytes, summed
-  memPct: number; // memUsed/memLimit*100 (0 when no limit)
-  netRx: number; // cumulative bytes, summed
+  memLimit: number; // the HOST's RAM - the machine is the ceiling, counted once
+  memPct: number; // memUsed/memLimit*100
+  netRx: number; // cumulative bytes, one counter per network namespace
   netTx: number;
   blockRead: number; // cumulative bytes, summed
   blockWrite: number;
@@ -54,6 +61,9 @@ export interface ContainerMetricsSample {
   running: number;
   /** Total containers in the stack (running + stopped). */
   containers: number;
+  /** The owning machine's core count, so `cpu` (a percentage of ONE core) can
+   *  also be read as "3.0 of 8 cores". 0 before the first frame. */
+  hostCores: number;
 }
 
 /** The live DTO: a sample plus the "update the agent" flag and the breakdown. */
@@ -86,6 +96,7 @@ function unavailable(
     pids: 0,
     running: 0,
     containers: 0,
+    hostCores: 0,
     instances: [],
   };
 }
@@ -103,7 +114,18 @@ function toInstance(s: PbContainerStat): ContainerInstanceMetrics {
     blockRead: s.blockRead,
     blockWrite: s.blockWrite,
     pids: s.pids,
+    netNsId: s.netNsId,
+    netNsHost: s.netNsHost,
   };
+}
+
+/** What the OWNING MACHINE can give a stack - the denominators the tab reads
+ *  usage against, taken from the same telemetry frame as the usage itself. */
+export interface HostCapacity {
+  /** RAM. Every stack's memory ceiling, counted once. */
+  memTotal: number;
+  /** Cores, so a stack's CPU also reads as "3.0 of 8 cores". */
+  cpuCores: number;
 }
 
 /** Fold the agent's per-container stats into the app-total DTO. */
@@ -111,20 +133,51 @@ export function aggregateContainerStats(
   id: string,
   stats: PbContainerStat[],
   ts: number,
+  host: HostCapacity,
 ): ContainerMetrics {
-  return aggregate(id, stats, ts);
+  return aggregate(id, stats, ts, host);
+}
+
+/**
+ * The containers whose network counters are the stack's OWN traffic, counted
+ * once. Two containers in one namespace (a compose sidecar on
+ * `network_mode: service:x`) read the same bytes out of the same
+ * `/proc/<pid>/net/dev`, and a host-networked one reads the whole machine's.
+ */
+function netContributors(running: PbContainerStat[]): PbContainerStat[] {
+  const byNs = new Map<string, PbContainerStat>();
+  for (const s of running) {
+    if (s.netNsHost) continue;
+    // No namespace id (an agent too old to send one) means no way to prove a
+    // shared namespace, so each container counts for itself, as it always did.
+    const key = s.netNsId ? `ns:${s.netNsId}` : `c:${s.containerId || s.name}`;
+    if (!byNs.has(key)) byNs.set(key, s);
+  }
+  return [...byNs.values()];
 }
 
 function aggregate(
   id: string,
   stats: PbContainerStat[],
   ts: number,
+  host: HostCapacity,
 ): ContainerMetrics {
   const running = stats.filter((s) => s.running);
   const sum = (f: (s: PbContainerStat) => number) =>
     running.reduce((a, s) => a + f(s), 0);
   const memUsed = sum((s) => s.memUsed);
-  const memLimit = sum((s) => s.memLimit);
+  // The MACHINE is the ceiling. The agent reports an uncapped container's limit as
+  // the whole machine, so summing put 50.3 GB on a 23.4 GiB host and moved the
+  // denominator with the running count - the percentage stepped on every deploy
+  // without the usage changing. Clamping keeps a real `mem_limit` meaningful and
+  // collapses the uncapped case to one machine.
+  const memLimit = Math.min(
+    sum((s) => s.memLimit),
+    host.memTotal > 0 ? host.memTotal : Number.POSITIVE_INFINITY,
+  );
+  const net = netContributors(running);
+  const netSum = (f: (s: PbContainerStat) => number) =>
+    net.reduce((a, s) => a + f(s), 0);
   return {
     id,
     online: true,
@@ -134,13 +187,14 @@ function aggregate(
     memUsed,
     memLimit,
     memPct: memLimit > 0 ? (memUsed / memLimit) * 100 : 0,
-    netRx: sum((s) => s.netRx),
-    netTx: sum((s) => s.netTx),
+    netRx: netSum((s) => s.netRx),
+    netTx: netSum((s) => s.netTx),
     blockRead: sum((s) => s.blockRead),
     blockWrite: sum((s) => s.blockWrite),
     pids: sum((s) => s.pids),
     running: running.length,
     containers: stats.length,
+    hostCores: host.cpuCores,
     instances: stats.map(toInstance),
   };
 }
@@ -185,16 +239,22 @@ export async function getAppMetrics(
   if (!(await hasAppCapability(appId, "view_metrics"))) return null;
   const app = await loadTeamApp(appId, teamId);
   if (!app) return null;
-  return fromBuffer(app.id);
+  return fromBuffer(app.id, app.serverId ?? null);
 }
 
 /**
  * Rebuild the live DTO from what the supervisor buffered. That is an honest "no
  * data", never a fabricated zero.
  */
-function fromBuffer(id: string): ContainerMetrics {
+function fromBuffer(id: string, serverId: string | null): ContainerMetrics {
   const s = latestContainerSample(id);
-  if (!s) return unavailable(id, Date.now(), false);
+  // Nothing buffered AND the owning agent cannot stream: that is not "no data
+  // yet", it is an agent too old to report containers at all, and the tab has a
+  // state that says so with the right action.
+  if (!s) {
+    const stale = Boolean(serverId) && metricsStreamUnsupported(serverId!);
+    return unavailable(id, Date.now(), stale);
+  }
   return { ...s, unsupported: false, instances: latestContainerInstances(id) };
 }
 
@@ -223,7 +283,7 @@ export async function getDatabaseMetrics(
   if (!(await hasCapability("view_metrics"))) return null;
   const db = await loadDatabaseForTeam(databaseId, teamId);
   if (!db) return null;
-  return fromBuffer(db.id);
+  return fromBuffer(db.id, db.serverId ?? null);
 }
 
 /** The buffered window for one database (team-scoped). */
