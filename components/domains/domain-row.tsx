@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { RESERVED_SHARED_NETWORK_NAMES } from "@/lib/deploy/compose-lint";
+import { isReservedSharedName } from "@/lib/deploy/compose-lint";
 import {
   Dialog,
   DialogContent,
@@ -124,7 +124,7 @@ export function DomainRow({
   // The container is there, but it is one of the names the platform answers to on
   // the shared network, so the renderer refuses to route it (rows predating that
   // refusal still exist).
-  const reserved = isCompose && RESERVED_SHARED_NETWORK_NAMES.has(service);
+  const reserved = isCompose && isReservedSharedName(service);
 
   // The `www` pairing this hostname is currently in, read off the app's rows.
   const www = React.useMemo(

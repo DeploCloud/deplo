@@ -261,11 +261,12 @@ export function lintCompose(source: string): LintDiagnostic[] {
     // only REFUSED once the service is actually on that network (giving it a
     // domain is what puts it there), so a stack can be saved and imported with
     // one - and then fail its first deploy on a rule nothing had mentioned.
-    if (RESERVED_SHARED_NETWORK_NAMES.has(name)) {
+    const reservedClaim = serviceReservedClaim(name, svc);
+    if (reservedClaim) {
       diags.push({
         severity: "warning",
         rule: "reserved-service-name",
-        message: `\`${name}\` is a name Deplo's own infrastructure uses. This service cannot be given a domain under it - rename it if it needs one.`,
+        message: `\`${reservedClaim}\` is a name Deplo's own infrastructure uses. This service cannot be given a domain under it - rename it if it needs one.`,
         line: svcLine,
       });
     }
@@ -766,7 +767,91 @@ export const RESERVED_SHARED_NETWORK_NAMES = new Set([
   "postgres",
   "traefik",
   "deplo-traefik",
+  // Traefik reads its whole routing config from the socket proxy BY NAME
+  // (`--providers.docker.endpoint=tcp://…:2375`), and it straddles the shared
+  // network, where the shared leg wins the lookup. Both spellings ever installed.
+  "deplo-socket-proxy",
+  "docker-socket-proxy",
 ]);
+
+/**
+ * Whether a name is one the platform answers to. Compared LOWERCASE: Docker's
+ * embedded DNS is case-insensitive, so a service called `Postgres` answers a
+ * `postgres` query exactly like the real one.
+ */
+export function isReservedSharedName(name: string): boolean {
+  return RESERVED_SHARED_NETWORK_NAMES.has(name.trim().toLowerCase());
+}
+
+/**
+ * Every name a service answers to on a network: its own, plus `hostname:`, which
+ * Docker registers in the embedded DNS just like the service name does.
+ */
+export function serviceClaimedNames(name: string, svc: unknown): string[] {
+  const out = [name];
+  const host =
+    svc && typeof svc === "object" && !Array.isArray(svc)
+      ? (svc as Record<string, unknown>).hostname
+      : null;
+  if (typeof host === "string" && host.trim() !== "") out.push(host.trim());
+  return out;
+}
+
+/**
+ * Every name any service in this compose would answer to on a network, lowercased
+ * and deduped. What a collision check compares against - Docker's DNS is
+ * case-insensitive and registers `hostname:` alongside the service name.
+ */
+export function composeClaimedNames(composeYaml: string): string[] {
+  let doc: { services?: Record<string, unknown> } | null;
+  try {
+    doc = yaml.load(composeYaml) as {
+      services?: Record<string, unknown>;
+    } | null;
+  } catch {
+    return [];
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object" || Array.isArray(services))
+    return [];
+  const out = new Set<string>();
+  for (const [name, svc] of Object.entries(services))
+    for (const claimed of serviceClaimedNames(name, svc))
+      out.add(claimed.toLowerCase());
+  return [...out];
+}
+
+/**
+ * The reserved name ONE named service of this compose would claim, or null.
+ * Routing a service puts it on the shared network, so the domain path asks this
+ * before it stores a row the renderer would then refuse to wire.
+ */
+export function composeServiceReservedClaim(
+  composeYaml: string | null | undefined,
+  service: string,
+): string | null {
+  if (!composeYaml) return isReservedSharedName(service) ? service : null;
+  let doc: { services?: Record<string, unknown> } | null;
+  try {
+    doc = yaml.load(composeYaml) as {
+      services?: Record<string, unknown>;
+    } | null;
+  } catch {
+    return null;
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object" || Array.isArray(services))
+    return isReservedSharedName(service) ? service : null;
+  return serviceReservedClaim(service, services[service]);
+}
+
+/** The first reserved name this service would claim, or null. */
+export function serviceReservedClaim(
+  name: string,
+  svc: unknown,
+): string | null {
+  return serviceClaimedNames(name, svc).find(isReservedSharedName) ?? null;
+}
 
 /** The shared network's name, as `compose-stack.ts` declares it. */
 const SHARED_NETWORK = "deplo";
@@ -847,22 +932,20 @@ export function composeClaimsReservedName(composeYaml: string): string | null {
   const shared = sharedNetworkKeys(doc ?? {});
   for (const [name, raw] of Object.entries(services)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-    if (
-      RESERVED_SHARED_NETWORK_NAMES.has(name) &&
-      joinsSharedNetwork(raw as Record<string, unknown>, shared)
-    )
-      return name;
+    if (!joinsSharedNetwork(raw as Record<string, unknown>, shared)) continue;
+    const claim = serviceReservedClaim(name, raw);
+    if (claim) return claim;
   }
   return null;
 }
 
 /** The message both checks use, so the editor and the deploy say the same thing. */
-export function reservedNameMessage(service: string): string {
+export function reservedNameMessage(claimed: string): string {
   return (
-    `The service \`${service}\` can't be on Deplo's shared network under that name - ` +
-    `it is the name the platform itself answers to there, and two containers ` +
-    `claiming one name split the traffic between them. Rename the service, or ` +
-    `take it off the \`deplo\` network.`
+    `\`${claimed}\` can't be claimed on Deplo's shared network - it is a name the ` +
+    `platform itself answers to there, and two containers claiming one name split ` +
+    `the traffic between them. Rename the service (or its \`hostname:\`), or take ` +
+    `it off the \`deplo\` network.`
   );
 }
 
@@ -1017,9 +1100,7 @@ function imageOf(svc: unknown): string | null {
  * there is.
  */
 function routableNames(services: Record<string, unknown>): string[] {
-  const names = Object.keys(services).filter(
-    (n) => !RESERVED_SHARED_NETWORK_NAMES.has(n),
-  );
+  const names = Object.keys(services).filter((n) => !isReservedSharedName(n));
   const web = names.filter((n) => !isDatastoreImage(imageOf(services[n])));
   return web.length > 0 ? web : names;
 }
@@ -1073,7 +1154,7 @@ export function composeRouteCandidates(
     name,
     port: declaredPort(services[name]) ?? 80,
     isDatastore: isDatastoreImage(imageOf(services[name])),
-    isReserved: RESERVED_SHARED_NETWORK_NAMES.has(name),
+    isReserved: serviceReservedClaim(name, services[name]) != null,
     isPrimary: name === primary,
   }));
 }

@@ -19,6 +19,7 @@ import {
 } from "../db/schema/control-plane";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import { seedDatabase } from "./backup-test-helpers";
 import { createApp } from "./apps";
 import { saveSharedVar } from "./shared-vars";
 import { loadAppGraph } from "./app-graph-load";
@@ -378,4 +379,43 @@ test("a five-service stack routes its frontend, and the API only if asked", asyn
   assert.equal(extra?.service, "store_backend");
   assert.notEqual(extra?.name, primary?.name, "each gets its own address");
   assert.equal(rows.length, 2, "the three datastores get no address");
+});
+
+test("a service that would take over a database's address is refused", async () => {
+  // `databases.host` IS the container's DNS name on the shared network, so a
+  // same-named service collects the connections its owner's apps make to it.
+  // The victim here is ANOTHER team, which is the whole point of the check.
+  await seedDatabase(db, { id: "db_1", name: "analytics", teamId: TEAM_B });
+
+  for (const [label, svc] of [
+    ["the bare name", "db-analytics"],
+    ["a case variant, since DNS is case-insensitive", "DB-Analytics"],
+  ] as const)
+    await assert.rejects(
+      () =>
+        asUser1(() =>
+          newApp({ compose: `services:\n  ${svc}:\n    image: nginx:1.27\n` }),
+        ),
+      /already running on this server/,
+      label,
+    );
+
+  // `hostname:` registers in the embedded DNS exactly like the service name.
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        newApp({
+          compose:
+            "services:\n  web:\n    image: nginx:1.27\n    hostname: db-analytics\n",
+        }),
+      ),
+    /already running on this server/,
+    "via hostname",
+  );
+
+  // A name nothing else answers to is nobody's business.
+  const ok = await asUser1(() =>
+    newApp({ compose: "services:\n  db-orders:\n    image: nginx:1.27\n" }),
+  );
+  assert.ok(ok.id);
 });

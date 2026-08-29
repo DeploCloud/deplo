@@ -13,8 +13,9 @@ import { mergeResourceLimits } from "./resources";
 import {
   declaredPort,
   keepAuthoredEnvText,
-  RESERVED_SHARED_NETWORK_NAMES,
+  isReservedSharedName,
   reservedNameMessage,
+  serviceReservedClaim,
   sharedNetworkKeys,
 } from "./compose-lint";
 
@@ -471,9 +472,7 @@ function appNetworks(svc: App): string[] {
  * move an existing app's mount into another container on its next deploy.
  */
 function defaultVolumeService(services: Record<string, App>): string {
-  const names = Object.keys(services).filter(
-    (n) => !RESERVED_SHARED_NETWORK_NAMES.has(n),
-  );
+  const names = Object.keys(services).filter((n) => !isReservedSharedName(n));
   const published = names.find((n) => {
     const ports = services[n]?.ports;
     return Array.isArray(ports) && ports.length > 0;
@@ -679,7 +678,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
     // A row written before the domain layer refused these names: wiring it would
     // put the platform's own name on the shared network, and the throw below would
     // take the WHOLE stack down with it - deploy included. Skip the route instead.
-    if (RESERVED_SHARED_NETWORK_NAMES.has(service)) continue;
+    if (serviceReservedClaim(service, services[service])) continue;
     if (!wireApp(service)) continue;
     const port = route.port ?? portOf(service);
     const keySeed = `${name}-${service}-${route.name}${route.pathPrefix}`;
@@ -721,8 +720,8 @@ export function buildComposeStack(input: ComposeStackInput): string {
         ? Object.keys(nets).filter((k) => sharedKeys.has(k))
         : [];
     if (joined.length === 0) continue;
-    if (RESERVED_SHARED_NETWORK_NAMES.has(name))
-      throw new Error(reservedNameMessage(name));
+    const claim = serviceReservedClaim(name, svc);
+    if (claim) throw new Error(reservedNameMessage(claim));
     // Long form: keep the entry, drop whatever it carried. `null` is compose's
     // own "join with no options" and is what the short form means.
     if (!Array.isArray(nets) && nets && typeof nets === "object")

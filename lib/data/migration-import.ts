@@ -797,7 +797,7 @@ function composeBlockers(
   const reserved = composeClaimsReservedName(compose);
   if (reserved)
     out.push(
-      `A service is called "${reserved}", a name Deplo's own infrastructure uses on the shared network - rename it.`,
+      `A service claims the name "${reserved}", which Deplo's own infrastructure answers to on the shared network - rename it (or its \`hostname:\`).`,
     );
   if (!grants.mayExposePorts && composePublishesPorts(compose))
     out.push("Publishes host ports, which needs the expose-ports grant.");

@@ -336,6 +336,15 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   network by NAME, never by key** (`sharedNetworkKeys`): compose lets it be referenced under any key
   while pointing at it with `name:`, so `{ sneaky: { external: true, name: deplo } }` is the same
   network, and a rule matching the key alone is one rename from decorative.
+  **A service claims more than its own name, and it claims it case-insensitively**
+  (`serviceReservedClaim`): Docker registers `hostname:` in the embedded DNS exactly like the
+  service name, and answers a lowercase query from an upper-case alias - so `hostname: postgres`
+  and a service called `Postgres` both walked past a check that compared `name` against a Set.
+  **Traefik's socket proxy is on that list too**: it is dialled BY NAME
+  (`--providers.docker.endpoint=tcp://deplo-socket-proxy:2375`) from a container straddling both
+  networks, so whoever answers that name writes the instance's whole routing table.
+  A managed database's `db-<slug>` is the same kind of name, checked against the server's real
+  databases in `createApp`/`updateAppSource` rather than from a constant list.
 - **`canMountHostVolumes` gates the top-level `volumes:` block too**
   (`composeMountsForeignStorage`). `composeHasHostBindMount` reads SERVICE mounts and calls a source
   a host bind when it starts with `/` or climbs with `..`; a NAMED volume is neither, so

@@ -14,6 +14,7 @@ import {
 } from "./servers";
 import { getDb } from "../db/client";
 import {
+  databases as databasesTable,
   domains as domainsTable,
   apps as appsTable,
   appBuild as appBuildTable,
@@ -38,6 +39,7 @@ import {
   requireTeamWide,
 } from "../membership";
 import {
+  composeClaimedNames,
   composeClaimsReservedName,
   composeHostReach,
   composeOwnVolumeKeys,
@@ -788,6 +790,31 @@ function cleanAppName(name: string): string {
   return trimmed;
 }
 
+/**
+ * A compose service that would take over a managed database's DNS name on the
+ * shared network. `databases.host` (`db-<slug>`) IS that container's name there,
+ * so a same-named service collects the connections the owner's apps make to it -
+ * credentials included. Deliberately instance-wide, like the database path's own
+ * slug check: the victim is usually another team.
+ */
+async function assertNoDatabaseNameClash(
+  compose: string | null | undefined,
+  serverId: string,
+): Promise<void> {
+  if (compose == null) return;
+  const claimed = new Set(composeClaimedNames(compose));
+  if (claimed.size === 0) return;
+  const rows = await getDb()
+    .select({ host: databasesTable.host })
+    .from(databasesTable)
+    .where(eq(databasesTable.serverId, serverId));
+  const clash = rows.find((r) => claimed.has(r.host.trim().toLowerCase()));
+  if (clash)
+    throw new Error(
+      `\`${clash.host}\` is a database already running on this server, and a service of that name would take over its address. Rename the service (or its \`hostname:\`).`,
+    );
+}
+
 export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const { membership, userId } = await requireCapability("create_apps");
   input = { ...input, name: cleanAppName(input.name) };
@@ -900,6 +927,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     throw new Error(
       "No server available - add a server from Settings, Servers and run its install command first.",
     );
+  await assertNoDatabaseNameClash(input.compose, server.id);
 
   // Where it COMPILES, on the same terms `setAppBuildServer` applies later: it has
   // to be a host this team can reach, a storage-only box has no Docker to build
@@ -1473,6 +1501,19 @@ export async function updateAppSource(
       (s) => [s.id, s] as const,
     ),
   );
+  // Before the transaction, never inside one: this reads on its own connection.
+  if (input.compose != null) {
+    const [row] = await getDb()
+      .select({ serverId: appsTable.serverId })
+      .from(appsTable)
+      .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+      .limit(1);
+    if (row)
+      await assertNoDatabaseNameClash(
+        input.compose,
+        input.serverId ?? row.serverId,
+      );
+  }
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;
   // The repo this app deployed from BEFORE this save, so its push webhook can be

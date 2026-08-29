@@ -929,7 +929,7 @@ test("a service claiming one of Deplo's own names on the shared network is refus
           appId: "p1",
           domainRoutes: [],
         }),
-      /can't be on Deplo's shared network/,
+      /can't be claimed on Deplo's shared network/,
       `${name} was allowed`,
     );
   }
@@ -989,7 +989,7 @@ networks:
         appId: "p1",
         domainRoutes: [],
       }),
-    /can't be on Deplo's shared network/,
+    /can't be claimed on Deplo's shared network/,
   );
 
   const out = buildComposeStack({

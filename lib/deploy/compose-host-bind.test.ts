@@ -5,6 +5,7 @@ import {
   composeBuildReachesHost,
   composeFileBindings,
   composeJoinsForeignNetwork,
+  composeClaimedNames,
   composeClaimsReservedName,
   composeHasHostBindMount,
   composeHostReach,
@@ -757,5 +758,55 @@ test("no host-escape gate is blind to a value that arrives through an anchor", (
     composeNeedsHostPrivileges(via("  restart: always\n")),
     false,
     "a clean anchor",
+  );
+});
+
+test("a reserved name is claimed by case and by `hostname:`, not only by the service name", () => {
+  const onShared = (svc: string) => `services:
+${svc}
+networks:
+  deplo: {external: true}`;
+
+  // Docker's embedded DNS is case-insensitive: `Postgres` answers `postgres`.
+  assert.equal(
+    composeClaimsReservedName(
+      onShared("  Postgres:\n    image: alpine\n    networks: [deplo]"),
+    ),
+    "Postgres",
+    "an upper-case service name is the same name",
+  );
+  // `hostname:` is registered in the embedded DNS just like the service name.
+  assert.equal(
+    composeClaimsReservedName(
+      onShared(
+        "  web:\n    image: alpine\n    hostname: postgres\n    networks: [deplo]",
+      ),
+    ),
+    "postgres",
+    "a hostname claims the name too",
+  );
+  // Traefik dials the socket proxy BY NAME and straddles the shared network.
+  for (const proxy of ["deplo-socket-proxy", "docker-socket-proxy"])
+    assert.equal(
+      composeClaimsReservedName(
+        onShared(`  ${proxy}:\n    image: alpine\n    networks: [deplo]`),
+      ),
+      proxy,
+      proxy,
+    );
+  // A service off the shared network is still nobody's business.
+  assert.equal(
+    composeClaimsReservedName("services:\n  Postgres:\n    image: alpine\n"),
+    null,
+    "not on the shared network",
+  );
+});
+
+test("composeClaimedNames lists service names AND hostnames, lowercased", () => {
+  assert.deepEqual(
+    composeClaimedNames(
+      "services:\n  Api:\n    image: alpine\n    hostname: DB-Main\n  worker:\n    image: alpine\n",
+    ).sort(),
+    ["api", "db-main", "worker"],
   );
 });

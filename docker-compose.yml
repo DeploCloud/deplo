@@ -59,12 +59,11 @@ services:
       - POSTGRES_DB=deplo
     volumes:
       - deplo-postgres:/var/lib/postgresql/data
-    # NOT the shared `deplo` network. Every deployed app sits on that one, and
-    # every container there can register a DNS name: a stack with a service
-    # called `postgres` would round-robin the control plane's own database
-    # lookups onto a container a tenant controls, which is the credential in the
-    # connection string. This leg is internal (no route off the host) and holds
-    # only these two.
+    # NOT the shared `deplo` network: this leg is internal and holds only these
+    # two, so no app can reach the database directly. It does NOT decide the NAME
+    # `postgres` - the panel is on both networks and the shared leg wins that
+    # lookup (measured), so RESERVED_SHARED_NETWORK_NAMES is what stops a tenant
+    # claiming it.
     networks:
       - deplo-internal
     healthcheck:

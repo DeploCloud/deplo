@@ -37,7 +37,7 @@ import {
   type DomainDnsClass,
 } from "../deploy/cloudflare";
 import {
-  RESERVED_SHARED_NETWORK_NAMES,
+  composeServiceReservedClaim,
   reservedNameMessage,
 } from "../deploy/compose-lint";
 import { usesComposeStack } from "../utils";
@@ -347,7 +347,7 @@ export async function ensureExtraDomain(
     const declared = composeServiceNames(project.compose);
     if (
       !declared.includes(service) ||
-      RESERVED_SHARED_NETWORK_NAMES.has(service)
+      composeServiceReservedClaim(project.compose, service)
     )
       return;
   }
@@ -853,8 +853,8 @@ function resolveApp(
   // Routing puts the service on the SHARED network, where these four names are
   // the platform's own - stored, the domain would throw on every later render
   // of the stack (reroute and deploy alike), not here.
-  if (RESERVED_SHARED_NETWORK_NAMES.has(service))
-    throw new Error(reservedNameMessage(service));
+  const claim = composeServiceReservedClaim(project.compose, service);
+  if (claim) throw new Error(reservedNameMessage(claim));
   return service;
 }
 

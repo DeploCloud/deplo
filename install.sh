@@ -385,10 +385,10 @@ $TRAEFIK_PANEL_CONFIG
 networks:
   deplo:
     external: true
-  # NOT the shared \`deplo\` network: every deployed app sits on that one, and a
-  # socket proxy reachable from them would let any app enumerate every other
-  # team's containers - environment variables included. Traefik straddles both;
-  # this leg is internal (no route off the host) and holds only these two.
+  # NOT the shared \`deplo\` network: a socket proxy reachable from every app
+  # would let any of them enumerate every other team's containers, environment
+  # included. Traefik straddles both and the shared leg wins a name lookup, so the
+  # proxy's NAME is reserved too (RESERVED_SHARED_NETWORK_NAMES).
   deplo-socket:
     internal: true
 YAML
@@ -429,12 +429,10 @@ services:
     volumes:
       - deplo-postgres:/var/lib/postgresql/data
     # NOT the shared \`deplo\` network - the same rule the socket proxy above
-    # follows, for the same reason one layer down. Every deployed app sits on
-    # that network and every container there can register a DNS name, so a
-    # tenant stack with a service called \`postgres\` would round-robin the
-    # control plane's own database lookups onto a container they control - and
-    # what arrives on the first packet is the password in the connection string.
-    # This leg is internal (no route off the host) and holds only these two.
+    # follows. This leg is internal and holds only these two, so no app reaches
+    # the database directly; the NAME \`postgres\` is a separate problem the leg
+    # does not solve (the panel is on both and the shared one wins the lookup),
+    # and RESERVED_SHARED_NETWORK_NAMES is what does.
     networks:
       - deplo-internal
     healthcheck:
