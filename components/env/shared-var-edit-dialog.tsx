@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Share2, AlertTriangle } from "lucide-react";
+import { Loader2, Share2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -42,12 +42,6 @@ interface SharedVarEditDialogProps {
   editing: SharedVarDTO;
   /** Hand this variable to the wizard to change WHO gets it. */
   onChangeSharing?: () => void;
-  /**
-   * Opened from a single app's table, where the variable is one row among the
-   * app's own - surface that this edit is NOT local (it lands on every app the
-   * variable reaches).
-   */
-  warnShared?: boolean;
 }
 
 function SharedVarEditForm({
@@ -55,7 +49,6 @@ function SharedVarEditForm({
   onOpenChange,
   editing,
   onChangeSharing,
-  warnShared = false,
 }: SharedVarEditDialogProps) {
   // Prefill: a plain var shows its value.
   const [key, setKey] = React.useState(editing.key);
@@ -114,17 +107,6 @@ function SharedVarEditForm({
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="space-y-4">
-            {warnShared && (
-              <div className="flex gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
-                <p className="text-sm text-muted-foreground">
-                  This is a{" "}
-                  <span className="font-medium text-foreground">shared</span>{" "}
-                  variable. Your changes apply to every app it reaches, not just
-                  this one.
-                </p>
-              </div>
-            )}
             <div className="space-y-2">
               <FieldLabel
                 info="The variable's name, exposed to every app it reaches. Renaming it takes effect on their next deploy."
