@@ -43,6 +43,7 @@ import {
   type Entry,
 } from "@/lib/command-palette/entries";
 import { gql, gqlAction } from "@/lib/graphql-client";
+import { SEARCH_QUERY } from "@/lib/command-palette/search-query";
 import { DOCS_BASE } from "@/lib/docs";
 import { foldQuery } from "@/lib/match-query";
 import {
@@ -65,100 +66,6 @@ import { useRecents } from "./use-recents";
 /* ------------------------------------------------------------------ */
 /* The server half                                                     */
 /* ------------------------------------------------------------------ */
-
-const SEARCH_QUERY = /* GraphQL */ `
-  query PaletteSearch($q: String!) {
-    search(q: $q) {
-      apps {
-        id
-        name
-        slug
-        logo
-        productionUrl
-        team {
-          id
-          name
-        }
-      }
-      databases {
-        id
-        name
-        logo
-        type
-        team {
-          id
-          name
-        }
-      }
-      servers {
-        id
-        name
-        host
-      }
-      projects {
-        id
-        name
-        team {
-          id
-          name
-        }
-      }
-      environments {
-        id
-        name
-        projectId
-        projectName
-        team {
-          id
-          name
-        }
-      }
-      folders {
-        id
-        name
-        team {
-          id
-          name
-        }
-      }
-      domains {
-        id
-        name
-        appSlug
-        appName
-        team {
-          id
-          name
-        }
-      }
-      members {
-        userId
-        name
-        username
-        team {
-          id
-          name
-        }
-      }
-      cronJobs {
-        id
-        name
-        targetKind
-        targetRef
-        targetName
-        team {
-          id
-          name
-        }
-      }
-      templates {
-        slug
-        name
-        logo
-      }
-    }
-  }
-`;
 
 interface HitTeam {
   id: string;

@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { buildSchema, parse, validate } from "graphql";
+
 import { NAV, SETTINGS_NAV, canSee } from "@/components/layout/nav-config";
 import { ALL_CAPABILITIES } from "@/lib/types";
+import { SEARCH_QUERY } from "./search-query";
 import {
   APP_ACTIONS,
   DB_ACTIONS,
@@ -163,4 +166,17 @@ test("no two rows wear the same label", () => {
   const labels = staticEntries().map((e) => e.label);
   const twice = labels.filter((l, i) => labels.indexOf(l) !== i);
   assert.deepEqual(twice, [], `duplicated: ${twice.join(", ")}`);
+});
+
+test("the palette's own query is valid against the schema", () => {
+  // Nothing else catches a renamed field here: the document is a string, so it
+  // would only fail on a keystroke, in front of a user.
+  const errors = validate(
+    buildSchema(readFileSync("schema.graphql", "utf8")),
+    parse(SEARCH_QUERY),
+  );
+  assert.deepEqual(
+    errors.map((e) => e.message),
+    [],
+  );
 });
