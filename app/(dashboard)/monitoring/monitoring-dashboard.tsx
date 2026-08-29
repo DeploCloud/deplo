@@ -13,31 +13,24 @@ import {
   ArrowDown,
   ArrowUp,
 } from "lucide-react";
-import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
-import { SimpleTooltip } from "@/components/ui/tooltip";
-import { StatusDot } from "@/components/shared/status-badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
+import { GaugeTile } from "@/components/monitoring/radial-gauge";
+import { FleetList, type FleetRow } from "@/components/monitoring/fleet-list";
 import {
+  ChartCard,
+  InfoItem,
   LiveStatusLine,
   MAX_POINTS,
   pollIntervalFor,
   STALE_AFTER_MS,
+  WindowSelector,
   WINDOWS,
 } from "@/components/monitoring/dashboard-parts";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 import type { ServerStatus } from "@/lib/types";
-import { cn, formatBytes, serverLabel } from "@/lib/utils";
+import { formatBytes, serverLabel } from "@/lib/utils";
 
 interface ServerLite {
   id: string;
@@ -47,25 +40,26 @@ interface ServerLite {
   dockerVersion: string;
 }
 
+const SERVER_FIELDS = `serverId online ts cpu cpuCores memUsed memTotal memPct
+  memFree memCache diskUsed diskTotal diskPct netRx netTx load uptimeSec
+  containers agentVersion expectedAgentVersion source`;
+const FLEET_FIELDS = `serverId online ts cpu memPct diskPct containers
+  agentVersion expectedAgentVersion source spark { ts cpu mem }`;
+
 export function MonitoringDashboard({
   servers,
   initialHistory,
-  initialSaveMetrics,
-  canManageInfra,
+  initialFleet,
 }: {
   servers: ServerLite[];
   /** The FIRST server's buffered window, so its charts paint full on the first
    *  render. Real measurements: there is no synthetic snapshot any more. */
   initialHistory: ServerMetrics[];
-  /** The stored "save metrics on server" switch state (instance-wide). */
-  initialSaveMetrics: boolean;
-  /** Cosmetic gate for the switch; the mutation enforces `manage_infra` itself. */
-  canManageInfra: boolean;
+  /** Every server's headline reading, so the fleet list paints full too. */
+  initialFleet: FleetRow[];
 }) {
   const [selectedId, setSelectedId] = React.useState(servers[0]?.id ?? "");
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
-  const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
-  const [savingToggle, setSavingToggle] = React.useState(false);
   // Chart history holds live MEASUREMENTS only. The SSR hint (stored status, zeroed
   // net/load) is a placeholder, not a measurement - charting it would draw a fake dip
   // to 0.
@@ -75,11 +69,16 @@ export function MonitoringDashboard({
         ? { [servers[0].id]: initialHistory }
         : {},
   );
+  const [fleet, setFleet] = React.useState<Record<string, FleetRow>>(() =>
+    Object.fromEntries(initialFleet.map((r) => [r.serverId, r])),
+  );
   // A render clock, advanced by the read loop below, so staleness can assert
   // itself even when reads stop succeeding (nothing else would re-render).
   const [now, setNow] = React.useState<number>(() => Date.now());
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
+  // One host is not a fleet: with nothing to pick, the list is first-run surface.
+  const showFleet = servers.length > 1;
   // Read at the rate the samples ARRIVE, not a fixed 1s - see pollIntervalFor.
   const pollMs = React.useMemo(
     () => pollIntervalFor((history[selectedId] ?? []).map((x) => x.ts)),
@@ -89,7 +88,9 @@ export function MonitoringDashboard({
   // stored status was `online`.
   const online = Boolean(selected) && selected.status !== "provisioning";
 
-  // ONE read, on POLL_MS, of the control plane's ring buffer.
+  // ONE read, on POLL_MS, of the control plane's ring buffers. The fleet rows ride
+  // the same document rather than a second request: both are RAM reads on the
+  // control plane, and one round trip cannot interleave two clocks.
   React.useEffect(() => {
     if (!selectedId || !online) return;
     let active = true;
@@ -103,36 +104,29 @@ export function MonitoringDashboard({
       busy = true;
       try {
         const res = await gqlAction<
-          { serverMetricsHistory: ServerMetrics[] },
-          ServerMetrics[]
+          {
+            serverMetricsHistory: ServerMetrics[];
+            fleetMetrics?: FleetRow[];
+          },
+          { history: ServerMetrics[]; fleet: FleetRow[] }
         >(
-          `query ServerMetricsHistory($serverId: String!) {
-            serverMetricsHistory(serverId: $serverId) {
-              serverId
-              online
-              ts
-              cpu
-              cpuCores
-              memUsed
-              memTotal
-              memPct
-              memFree
-              memCache
-              diskUsed
-              diskTotal
-              diskPct
-              netRx
-              netTx
-              load
-              uptimeSec
-              containers
-            }
+          `query MonitoringTick($serverId: String!, $withFleet: Boolean!) {
+            serverMetricsHistory(serverId: $serverId) { ${SERVER_FIELDS} }
+            fleetMetrics @include(if: $withFleet) { ${FLEET_FIELDS} }
           }`,
-          { serverId: selectedId },
-          (d) => d.serverMetricsHistory,
+          { serverId: selectedId, withFleet: showFleet },
+          (d) => ({
+            history: d.serverMetricsHistory,
+            fleet: d.fleetMetrics ?? [],
+          }),
         );
-        if (!active || !res.ok || !res.data || res.data.length === 0) return;
-        const seeded = res.data;
+        if (!active || !res.ok || !res.data) return;
+        if (res.data.fleet.length)
+          setFleet(
+            Object.fromEntries(res.data.fleet.map((r) => [r.serverId, r])),
+          );
+        const seeded = res.data.history;
+        if (seeded.length === 0) return;
         setHistory((h) => {
           const prev = h[selectedId] ?? [];
           const byTs = new Map<number, ServerMetrics>();
@@ -174,34 +168,7 @@ export function MonitoringDashboard({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [selectedId, online, pollMs]);
-
-  // Flip the instance-wide "save metrics on server" switch. Optimistic (the
-  // switch answers immediately) with a revert + the server's message on failure.
-  async function toggleSaveMetrics(next: boolean) {
-    setSaveMetrics(next);
-    setSavingToggle(true);
-    try {
-      const res = await gqlAction<
-        { setSaveMetrics: { saveMetrics: boolean } },
-        boolean
-      >(
-        `mutation SetSaveMetrics($enabled: Boolean!) {
-          setSaveMetrics(enabled: $enabled) {
-            saveMetrics
-          }
-        }`,
-        { enabled: next },
-        (d) => d.setSaveMetrics.saveMetrics,
-      );
-      if (!res.ok) {
-        setSaveMetrics(!next);
-        toast.error(res.error);
-      }
-    } finally {
-      setSavingToggle(false);
-    }
-  }
+  }, [selectedId, online, pollMs, showFleet]);
 
   const samples = history[selectedId] ?? [];
   // Latest MEASUREMENT for the tiles. While nothing is arriving they freeze on the
@@ -238,70 +205,25 @@ export function MonitoringDashboard({
       <Card>
         <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
           <ServerOff className="size-8 text-muted-foreground" />
-          <p className="font-medium">No servers connected</p>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Add a server from Settings → Servers (start with this host) and run
-            its install command to see live metrics here.
+          <p className="text-sm font-medium">No servers yet</p>
+          <p className="max-w-sm text-xs text-muted-foreground">
+            Add a server to start seeing live CPU, memory, disk and network.
           </p>
         </CardContent>
       </Card>
     );
   }
 
-  // The switch is rendered for everyone (so the page never hides where the
-  // behavior is controlled) but only `manage_infra` can flip it - the tooltip
-  // says so instead of leaving a dead control unexplained.
-  const saveSwitch = (
-    <div className="flex items-center gap-2">
-      <Switch
-        id="save-metrics"
-        checked={saveMetrics}
-        disabled={!canManageInfra || savingToggle}
-        onCheckedChange={toggleSaveMetrics}
-        aria-label="Save metrics on server"
-      />
-      <FieldLabel
-        htmlFor="save-metrics"
-        className="text-sm font-normal text-muted-foreground"
-        info="Keeps ~16 minutes of history in memory, so charts survive a reload. Never stored in the database; turning it off clears it."
-        docs="monitoring.saveMetrics"
-      >
-        Save metrics on server
-      </FieldLabel>
-    </div>
-  );
-
   return (
     <div className="space-y-6">
-      {/* Server selector + the instance-wide history switch */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Select value={selected?.id ?? ""} onValueChange={setSelectedId}>
-          <SelectTrigger className="w-full sm:w-80" aria-label="Server">
-            <SelectValue placeholder="Select a server" />
-          </SelectTrigger>
-          <SelectContent>
-            {servers.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                <span className="flex items-center gap-2">
-                  <StatusDot status={s.status} />
-                  <span className="font-medium">{serverLabel(s)}</span>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {s.ip}
-                  </span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {canManageInfra ? (
-          saveSwitch
-        ) : (
-          <SimpleTooltip content="Requires the Manage infrastructure capability">
-            {/* span so the tooltip still fires over the disabled switch */}
-            <span tabIndex={0}>{saveSwitch}</span>
-          </SimpleTooltip>
-        )}
-      </div>
+      {showFleet && (
+        <FleetList
+          servers={servers}
+          rows={fleet}
+          selectedId={selected.id}
+          onSelect={setSelectedId}
+        />
+      )}
 
       {!online || !cur ? (
         <Card>
@@ -309,7 +231,7 @@ export function MonitoringDashboard({
             <ServerOff className="size-6 text-muted-foreground" />
             <p className="text-sm font-medium">No live metrics</p>
             <p className="max-w-xs text-xs text-muted-foreground">
-              {selected?.status === "provisioning"
+              {selected.status === "provisioning"
                 ? "This server is still provisioning. Metrics appear once its agent is online."
                 : "Nothing has arrived from this server yet. Metrics appear as soon as it starts reporting."}
             </p>
@@ -317,51 +239,39 @@ export function MonitoringDashboard({
         </Card>
       ) : (
         <>
-          {/* Live status line + chart time window (scopes every chart below) */}
+          {/* Whose panels these are, whether the feed is live, and the window
+              that scopes every chart below. */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {/**
-             * The shared status line, not a local copy of it: the per-app Monitoring tab shows
-             * the same claim, and two hand-maintained versions of "is this feed live?"
-             */}
-            <LiveStatusLine stale={stale} asOf={cur.ts} />
-            <div
-              className="flex items-center gap-0.5 rounded-lg border p-0.5"
-              role="group"
-              aria-label="Chart time window"
-            >
-              {WINDOWS.map((w) => (
-                <button
-                  key={w.label}
-                  type="button"
-                  onClick={() => setWindowMs(w.ms)}
-                  aria-pressed={windowMs === w.ms}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-xs transition-colors",
-                    windowMs === w.ms
-                      ? "bg-secondary font-medium"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  Last {w.label}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-sm font-medium">
+                {serverLabel(selected)}
+              </span>
+              {/**
+               * The shared status line, not a local copy of it: the per-app Monitoring tab shows
+               * the same claim, and two hand-maintained versions of "is this feed live?"
+               */}
+              <LiveStatusLine stale={stale} asOf={cur.ts} />
             </div>
+            <WindowSelector windowMs={windowMs} onChange={setWindowMs} />
           </div>
 
-          {/* Current-value tiles */}
+          {/* Saturation against the machine - three arcs asking one question. */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile
+            <GaugeTile
               icon={Cpu}
               label="CPU"
-              value={`${cur.cpu.toFixed(1)}%`}
-              sub={`${cur.cpuCores} cores · load ${cur.load[0].toFixed(2)}`}
-              pct={cur.cpu}
+              value={cur.cpu}
+              full={100}
+              display={`${cur.cpu.toFixed(1)}%`}
+              caption={`${cur.cpuCores} cores · load ${cur.load[0].toFixed(2)}`}
             />
-            <StatTile
+            <GaugeTile
               icon={MemoryStick}
               label="Memory"
-              value={`${cur.memPct.toFixed(1)}%`}
-              sub={`${formatBytes(cur.memUsed)} of ${formatBytes(cur.memTotal)}`}
+              value={cur.memPct}
+              full={100}
+              display={`${cur.memPct.toFixed(1)}%`}
+              caption={`${formatBytes(cur.memUsed)} of ${formatBytes(cur.memTotal)}`}
               info={
                 cur.memCache > 0 ? (
                   <>
@@ -381,15 +291,16 @@ export function MonitoringDashboard({
                   </>
                 ) : undefined
               }
-              pct={cur.memPct}
             />
-            <StatTile
+            <GaugeTile
               icon={HardDrive}
               label="Disk"
-              value={`${cur.diskPct.toFixed(1)}%`}
-              sub={`${formatBytes(cur.diskUsed)} / ${formatBytes(cur.diskTotal)}`}
-              pct={cur.diskPct}
+              value={cur.diskPct}
+              full={100}
+              display={`${cur.diskPct.toFixed(1)}%`}
+              caption={`${formatBytes(cur.diskUsed)} of ${formatBytes(cur.diskTotal)}`}
             />
+            {/* Throughput has no ceiling to fill, so it stays a reading. */}
             <Card>
               <CardContent className="space-y-1.5 p-4">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -505,95 +416,6 @@ export function MonitoringDashboard({
           </Card>
         </>
       )}
-    </div>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  info,
-  pct,
-}: {
-  icon: typeof Cpu;
-  label: string;
-  value: string;
-  sub: React.ReactNode;
-  /** The explanation the number cannot carry itself - a tooltip, not a second
-   *  body line, so the tile still reads as one figure. */
-  info?: React.ReactNode;
-  pct: number;
-}) {
-  const over = pct > 80;
-  return (
-    <Card>
-      <CardContent className="space-y-2 p-4">
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Icon className="size-4" />
-          <span className="text-xs">{label}</span>
-          {info && <InfoTip content={info} side="top" />}
-        </div>
-        <p className="text-2xl font-semibold tracking-tight">{value}</p>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-          <div
-            className={cn(
-              "h-full rounded-full transition-all",
-              over ? "bg-[var(--warning)]" : "bg-foreground/80",
-            )}
-            style={{ width: `${Math.min(100, Math.max(2, pct))}%` }}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">{sub}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ChartCard({
-  title,
-  caption,
-  className,
-  children,
-}: {
-  title: string;
-  /** Live current-value readout. Multi-series charts omit it - their legend carries the values. */
-  caption?: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card className={className}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm lg:text-sm">{title}</CardTitle>
-        {caption && (
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {caption}
-          </p>
-        )}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
-
-function InfoItem({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof Cpu;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon className="size-3.5" />
-        {label}
-      </div>
-      <p className="truncate font-mono text-sm tabular-nums">{value}</p>
     </div>
   );
 }

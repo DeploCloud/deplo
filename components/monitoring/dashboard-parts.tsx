@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InfoTip } from "@/components/ui/info-tip";
 import { GAP_MS } from "@/lib/monitoring/chart-gaps";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +67,7 @@ export function StatTile({
   label,
   value,
   sub,
+  info,
   pct,
 }: {
   icon: LucideIcon;
@@ -74,6 +76,9 @@ export function StatTile({
   /** A node, not a string, so a tile can carry a second muted line (the memory
    *  breakdown) without a second prop. */
   sub: React.ReactNode;
+  /** The explanation the number cannot carry itself - a tooltip, not a second
+   *  body line, so the tile still reads as one figure. */
+  info?: React.ReactNode;
   /** 0-100 saturation for the bar; omit for a value with no natural ceiling. */
   pct?: number;
 }) {
@@ -84,6 +89,7 @@ export function StatTile({
         <div className="flex items-center gap-1.5 text-muted-foreground">
           <Icon className="size-4" />
           <span className="text-xs">{label}</span>
+          {info && <InfoTip content={info} side="top" />}
         </div>
         <p className="text-2xl font-semibold tracking-tight">{value}</p>
         {pct !== undefined && (

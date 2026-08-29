@@ -1,8 +1,10 @@
 import { listServers } from "@/lib/data/servers";
-import { getServerMetricsHistory } from "@/lib/data/monitoring";
-import { getMonitoringSettings } from "@/lib/data/monitoring-settings";
+import {
+  getFleetMetrics,
+  getServerMetricsHistory,
+} from "@/lib/data/monitoring";
 import { Lock } from "lucide-react";
-import { hasCapability, reachesWholeTeam } from "@/lib/membership";
+import { reachesWholeTeam } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
 import { MonitoringDashboard } from "./monitoring-dashboard";
 
@@ -21,11 +23,9 @@ export default async function MonitoringPage() {
       />
     );
 
-  const [servers, settings, canManageInfra] = await Promise.all([
+  const [servers, fleet] = await Promise.all([
     listServers(),
-    getMonitoringSettings(),
-    // Cosmetic gate for the "save metrics" switch; the mutation enforces it.
-    hasCapability("manage_monitoring"),
+    getFleetMetrics(),
   ]);
 
   // Seed the FIRST server's real buffered window, the way the app tab does. This
@@ -48,8 +48,7 @@ export default async function MonitoringPage() {
         dockerVersion: s.dockerVersion,
       }))}
       initialHistory={initialHistory}
-      initialSaveMetrics={settings.saveMetrics}
-      canManageInfra={canManageInfra}
+      initialFleet={fleet}
     />
   );
 }
