@@ -16,6 +16,8 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import { GaugeTile } from "@/components/monitoring/radial-gauge";
+import { MonitoringGraphic } from "@/components/monitoring/monitoring-graphic";
+import { EmptyState } from "@/components/shared/empty-state";
 import { FleetList, type FleetRow } from "@/components/monitoring/fleet-list";
 import {
   ChartCard,
@@ -202,15 +204,11 @@ export function MonitoringDashboard({
   // (After all hooks above, so the hook order stays stable across renders.)
   if (!selected) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
-          <ServerOff className="size-8 text-muted-foreground" />
-          <p className="text-sm font-medium">No servers yet</p>
-          <p className="max-w-sm text-xs text-muted-foreground">
-            Add a server to start seeing live CPU, memory, disk and network.
-          </p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={ServerOff}
+        title="No servers yet"
+        description="Add a server to start seeing live CPU, memory, disk and network."
+      />
     );
   }
 
@@ -226,17 +224,16 @@ export function MonitoringDashboard({
       )}
 
       {!online || !cur ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-            <ServerOff className="size-6 text-muted-foreground" />
-            <p className="text-sm font-medium">No live metrics</p>
-            <p className="max-w-xs text-xs text-muted-foreground">
-              {selected.status === "provisioning"
-                ? "This server is still provisioning. Metrics appear once its agent is online."
-                : "Nothing has arrived from this server yet. Metrics appear as soon as it starts reporting."}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          graphic={<MonitoringGraphic />}
+          title="No live metrics"
+          docs="monitoring.overview"
+          description={
+            selected.status === "provisioning"
+              ? "This server is still provisioning. Metrics appear once its agent is online."
+              : "Nothing has arrived from this server yet. Metrics appear as soon as it starts reporting."
+          }
+        />
       ) : (
         <>
           {/* Whose panels these are, whether the feed is live, and the window

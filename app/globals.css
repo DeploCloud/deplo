@@ -3454,3 +3454,108 @@ label:hover .deplo-gear,
     opacity: 0.18;
   }
 }
+
+/* The monitoring empty state draws the chart it is standing in for: the trace
+   arrives, its live edge lights and throws a ring, then the panel clears and
+   waits again. 97.41 is the polyline's real length, so one dash covers it, and
+   the trace ends short of the frame so the ring never escapes the panel. */
+@keyframes deplo-metrics-trace {
+  0% {
+    stroke-dashoffset: 97.41;
+    opacity: 0;
+  }
+  6%,
+  78% {
+    opacity: 1;
+  }
+  50%,
+  78% {
+    stroke-dashoffset: 0;
+  }
+  88%,
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* The live edge, on the same pop the cron fire uses: it lands with the trace,
+   not before, so the dot reads as the last sample rather than a decoration. */
+@keyframes deplo-metrics-live {
+  0%,
+  50% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  56% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  62%,
+  78% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  88%,
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* The ring the sample throws off, outliving the pop by a beat so the two read
+   as cause and effect rather than one blob. */
+@keyframes deplo-metrics-halo {
+  0%,
+  52% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  58% {
+    opacity: 0.5;
+  }
+  80%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.deplo-metrics-trace {
+  stroke-dasharray: 97.41;
+  animation: deplo-metrics-trace 6s ease-in-out infinite;
+  opacity: 0;
+}
+
+.deplo-metrics-live,
+.deplo-metrics-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+}
+
+.deplo-metrics-live {
+  animation: deplo-metrics-live 6s ease-out infinite;
+}
+
+.deplo-metrics-halo {
+  animation: deplo-metrics-halo 6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the drawn frame: trace complete, live edge lit. The ring goes - a
+     frozen halo is just a stray circle. */
+  .deplo-metrics-trace {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  .deplo-metrics-live {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .deplo-metrics-halo {
+    animation: none;
+  }
+}

@@ -562,7 +562,7 @@ export function TimeSeriesChart({
           style={{ height }}
           className="flex items-center justify-center rounded-lg bg-secondary/40 text-xs text-muted-foreground"
         >
-          Collecting metrics…
+          Collecting metrics
         </div>
       )}
 

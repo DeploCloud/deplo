@@ -5,9 +5,7 @@ import {
   Cpu,
   MemoryStick,
   Network,
-  Boxes,
   ListTree,
-  ServerOff,
   ArrowDown,
   ArrowUp,
   ArrowUpCircle,
@@ -16,6 +14,9 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import { GaugeTile } from "@/components/monitoring/radial-gauge";
+import { MonitoringGraphic } from "@/components/monitoring/monitoring-graphic";
+import { NotRunningGraphic } from "@/components/apps/not-running-graphic";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   StatTile,
   ChartCard,
@@ -350,45 +351,46 @@ export function ContainerMonitoringDashboard({
   let body: React.ReactNode;
   if (last?.unsupported) {
     body = (
-      <EmptyCard
+      <EmptyState
         icon={ArrowUpCircle}
         title="Update the agent"
-        text={`The agent on this ${noun}'s server is too old to report per-container metrics. Update the agent on that server (Servers → the server → update) to enable this tab.`}
+        description={`The agent on this ${noun}'s server is too old to report per-container metrics. Update the agent on that server (Servers → the server → update) to enable this tab.`}
       />
     );
   } else if (!cur) {
     if (last && !last.online) {
       // "Offline" now means the control plane holds NO frame for this stack.
       body = (
-        <EmptyCard
-          icon={ServerOff}
+        <EmptyState
+          graphic={<MonitoringGraphic />}
           title="No metrics yet"
-          text={`Nothing has arrived for this ${noun}. Metrics appear as soon as its server starts reporting - check that server on the Servers page if this persists.`}
+          docs="monitoring.overview"
+          description={`Nothing has arrived for this ${noun}. Metrics appear as soon as its server starts reporting - check that server on the Servers page if this persists.`}
         />
       );
     } else if (last && last.running === 0) {
       body = (
-        <EmptyCard
-          icon={ServerOff}
+        <EmptyState
+          graphic={<NotRunningGraphic />}
           title="Not running"
-          text={`This ${noun} isn't running, so there's nothing to measure. Start it to see live resource usage here.`}
+          description={`This ${noun} isn't running, so there's nothing to measure. Start it to see live resource usage here.`}
         />
       );
     } else {
       body = (
-        <EmptyCard
-          icon={Boxes}
-          title="Collecting…"
-          text="Waiting for the first measurement to arrive from this server."
+        <EmptyState
+          graphic={<MonitoringGraphic />}
+          title="Collecting"
+          description="Waiting for the first measurement to arrive from this server."
         />
       );
     }
   } else if (nothingRunning) {
     body = (
-      <EmptyCard
-        icon={ServerOff}
+      <EmptyState
+        graphic={<NotRunningGraphic />}
         title="Not running"
-        text={`This ${noun} isn't running, so there's nothing to measure. Start it to see live resource usage here.`}
+        description={`This ${noun} isn't running, so there's nothing to measure. Start it to see live resource usage here.`}
       />
     );
   } else {
@@ -595,26 +597,6 @@ export function ContainerMonitoringDashboard({
       {header}
       {body}
     </div>
-  );
-}
-
-function EmptyCard({
-  icon: Icon,
-  title,
-  text,
-}: {
-  icon: typeof ServerOff;
-  title: string;
-  text: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-        <Icon className="size-6 text-muted-foreground" />
-        <p className="text-sm font-medium">{title}</p>
-        <p className="max-w-sm text-xs text-muted-foreground">{text}</p>
-      </CardContent>
-    </Card>
   );
 }
 
