@@ -38,9 +38,6 @@ import type { FacetOption } from "@/components/env/env-filters";
 
 export const metadata = { title: "Activity" };
 
-/** The feed's own filter row is gone at `lg`, so a month pins under the topbar. */
-const HEADING_OFFSET = "top-14 sm:top-[7.25rem] lg:top-14";
-
 export default async function ActivityPage(props: PageProps<"/activity">) {
   const params = parseActivityParams(await props.searchParams);
   const filter = {
@@ -167,7 +164,6 @@ export default async function ActivityPage(props: PageProps<"/activity">) {
           )}
           appLinks={appLinks(apps)}
           databaseLinks={databaseLinks(databases)}
-          headingOffset={HEADING_OFFSET}
           variables={{
             actorUserIds: nonEmpty(params.actorUserIds),
             types: nonEmpty(params.types),

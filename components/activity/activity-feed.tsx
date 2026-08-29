@@ -61,7 +61,6 @@ export function ActivityFeed({
   monthCounts,
   appLinks,
   databaseLinks,
-  headingOffset,
   variables,
   pageSize,
 }: {
@@ -69,7 +68,6 @@ export function ActivityFeed({
   monthCounts: Record<string, number>;
   appLinks: AppLinks;
   databaseLinks: DatabaseLinks;
-  headingOffset?: string;
   /** The filter arguments, repeated verbatim for every later page. */
   variables: Record<string, unknown>;
   pageSize: number;
@@ -119,7 +117,6 @@ export function ActivityFeed({
       monthCounts={monthCounts}
       appLinks={appLinks}
       databaseLinks={databaseLinks}
-      headingOffset={headingOffset}
     >
       {!done && (
         <li className="relative flex items-start gap-3">

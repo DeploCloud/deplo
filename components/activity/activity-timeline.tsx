@@ -395,9 +395,10 @@ function MonthHeading({
   );
 }
 
-/** Under the topbar (h-14) on a phone, under the filter row (+60px) once that row
- *  is itself pinned. */
-const DEFAULT_HEADING_OFFSET = "top-14 sm:top-[7.25rem]";
+/** Where a month pins: under the topbar (h-14), plus the 60px filter row while
+ *  that row is above the feed. From `lg` the filters move into the rail, so the
+ *  heading goes back to riding the topbar. */
+const HEADING_OFFSET = "top-14 sm:top-[7.25rem] lg:top-14";
 
 /**
  * The vertical trail: one rail, the actor's face on it, the sentence beside it.
@@ -412,7 +413,6 @@ export function ActivityTimeline({
   showMark = true,
   appLinks,
   databaseLinks,
-  headingOffset = DEFAULT_HEADING_OFFSET,
   children,
 }: {
   items: ActivityItem[];
@@ -423,8 +423,6 @@ export function ActivityTimeline({
   showMark?: boolean;
   appLinks?: AppLinks;
   databaseLinks?: DatabaseLinks;
-  /** Where a month heading pins, when the page above it is not the usual one. */
-  headingOffset?: string;
   /** The loader / end-of-list footer, inside the rail. */
   children?: React.ReactNode;
 }) {
@@ -442,7 +440,7 @@ export function ActivityTimeline({
           key={`m-${key}`}
           month={key}
           count={monthCounts?.[key]}
-          offset={headingOffset}
+          offset={HEADING_OFFSET}
         />,
       );
     month = key;
