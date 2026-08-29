@@ -241,7 +241,12 @@ export function composeDeclaredEnvKeys(compose: string | null): string[] {
 function detectExpose(
   services: Record<string, App>,
 ): { service: string; port: number } | null {
-  const names = Object.keys(services);
+  // Never seed a route onto a name the platform answers to on the shared network:
+  // routing it there is refused at render time, which would brick every deploy of
+  // a stack whose first service happens to be called `postgres`.
+  const names = Object.keys(services).filter(
+    (n) => !RESERVED_SHARED_NETWORK_NAMES.has(n),
+  );
   if (names.length === 0) return null;
   // Prefer a service that publishes a port.
   for (const name of names) {

@@ -313,6 +313,32 @@ services:
   );
 });
 
+test("detectDefaultApp skips a service named after deplo's own network names", () => {
+  // The first-service fallback used to hand back `postgres`, and a domain routed
+  // there makes every later render of the stack throw - the app deploys once and
+  // never again.
+  assert.deepEqual(
+    detectDefaultApp(`
+services:
+  postgres:
+    image: postgres:16
+  web:
+    image: nginx
+`),
+    { service: "web", port: 80 },
+  );
+  assert.equal(
+    detectDefaultApp(`
+services:
+  traefik:
+    image: traefik:v3
+    ports:
+      - "80:80"
+`),
+    null,
+  );
+});
+
 test("detectDefaultApp is null for empty / unparseable compose", () => {
   assert.equal(detectDefaultApp(null), null);
   assert.equal(detectDefaultApp(""), null);

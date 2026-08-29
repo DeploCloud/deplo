@@ -36,6 +36,10 @@ import {
   isRoutableDomain,
   type DomainDnsClass,
 } from "../deploy/cloudflare";
+import {
+  RESERVED_SHARED_NETWORK_NAMES,
+  reservedNameMessage,
+} from "../deploy/compose-lint";
 import { usesComposeStack } from "../utils";
 import { portFor } from "../deploy/ports";
 import {
@@ -806,6 +810,11 @@ function resolveApp(
   const names = composeServiceNames(project.compose);
   if (!names.includes(service))
     throw new Error(`No container named "${service}" in the compose file`);
+  // Routing puts the service on the SHARED network, where these four names are
+  // the platform's own - stored, the domain would throw on every later render
+  // of the stack (reroute and deploy alike), not here.
+  if (RESERVED_SHARED_NETWORK_NAMES.has(service))
+    throw new Error(reservedNameMessage(service));
   return service;
 }
 
