@@ -6,7 +6,15 @@
  * Fold a value down to what a person means when they type a name.
  */
 export function foldQuery(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return (
+    value
+      .toLowerCase()
+      // Decompose first, so an accent becomes a mark that the strip below
+      // removes on its own: without it "Café" folded to "caf" and nobody could
+      // find it by typing "cafe".
+      .normalize("NFD")
+      .replace(/[^a-z0-9]/g, "")
+  );
 }
 
 /** Does any of `fields` contain `query`, ignoring case and separators? */

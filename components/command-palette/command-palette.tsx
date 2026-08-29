@@ -80,6 +80,7 @@ import { useRecents } from "./use-recents";
 interface HitTeam {
   id: string;
   name: string;
+  avatarUrl: string | null;
 }
 
 interface SearchData {
@@ -476,7 +477,7 @@ function PaletteBody({
   // that counts is `requireCapability`, in the data layer, per team.
   const otherTeamPages = React.useMemo(
     () =>
-      frame.kind === "root" && query
+      typing
         ? matchEntries(
             teamPageEntries(teams, team.id).filter((e) =>
               canSee(e, caps, isAdmin),
@@ -484,7 +485,7 @@ function PaletteBody({
             query,
           )
         : [],
-    [frame.kind, query, teams, team.id, caps, isAdmin],
+    [typing, query, teams, team.id, caps, isAdmin],
   );
 
   /* -- the server half, debounced -- */
@@ -504,6 +505,9 @@ function PaletteBody({
           controller.signal,
         );
         setResult({ q: query, rows: toHits(data) });
+        // Clear it: without this a query that failed once kept its error row
+        // for the whole session, underneath the results of a later retry.
+        setFailedQuery((q) => (q === query ? null : q));
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           setFailedQuery(query);
@@ -594,7 +598,10 @@ function PaletteBody({
     void switchTeamAndGo(hit.team, hit.href);
   }
 
-  async function switchTeamAndGo(to: HitTeam, href: string) {
+  async function switchTeamAndGo(
+    to: { id: string; name: string },
+    href: string,
+  ) {
     const res = await gqlAction(
       `mutation($teamId: String!) { switchTeam(teamId: $teamId) }`,
       { teamId: to.id },
@@ -613,7 +620,7 @@ function PaletteBody({
   /* -- rendering -- */
 
   const showRecents = frame.kind === "root" && !query && recents.length > 0;
-  const showDocs = frame.kind === "root" && Boolean(query);
+  const showDocs = typing;
   const nothing =
     otherTeamPages.length === 0 &&
     matched.length === 0 &&
@@ -996,9 +1003,22 @@ function HitRow({
         <Icon className="size-4 shrink-0 text-muted-foreground" />
       )}
       <span className="truncate">{hit.label}</span>
-      <span className="ml-auto shrink-0 truncate text-xs text-muted-foreground">
-        {showTeam && hit.team ? hit.team.name : hit.hint}
-      </span>
+      {showTeam && hit.team ? (
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <TeamAvatar
+            name={hit.team.name}
+            avatarUrl={hit.team.avatarUrl}
+            size="xs"
+          />
+          <span className="max-w-32 truncate">{hit.team.name}</span>
+        </span>
+      ) : (
+        hit.hint && (
+          <span className="ml-auto shrink-0 truncate text-xs text-muted-foreground">
+            {hit.hint}
+          </span>
+        )
+      )}
     </CommandItem>
   );
 }

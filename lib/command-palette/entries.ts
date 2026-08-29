@@ -65,6 +65,8 @@ export interface Entry {
   label: string;
   /** The muted line at the row's right edge. */
   hint?: string;
+  /** Words people type for this that its own label and description do not say. */
+  keywords?: string;
   icon: ComponentType<{ className?: string }>;
   group: string;
   run: Run;
@@ -80,6 +82,12 @@ export interface Entry {
    * mistaken for deplo's own.
    */
   owner?: EntryOwner;
+  /**
+   * Folded text naming {@link Entry.owner}, computed once when the row is built.
+   * Two apps may share a display name - the same app in two environments - so
+   * this cannot be looked up by name at match time.
+   */
+  ownerSearch?: string[];
   /**
    * The team this page belongs to, when it is not the active one. Choosing it
    * switches team first, the same way a cross-team search hit does.
@@ -119,11 +127,51 @@ function byDestination(entries: Entry[]): Entry[] {
   });
 }
 
+/**
+ * What a nav row is missing to be findable. Measured, not guessed: each of these
+ * is a word that reached nothing while its page sat right there.
+ */
+const EXTRA_KEYWORDS: Record<string, string> = {
+  "/settings/security": "2fa totp otp mfa webauthn",
+  "/settings/account": "avatar picture profile",
+  "/settings/notifications": "smtp alert",
+  "/settings/registries": "registry ghcr dockerhub image pull",
+  "/settings/servers": "cleanup prune disk fleet agent",
+  "/settings/roles": "permission permissions capability access",
+  "/settings/tokens": "apikey bearer cli automation",
+  "/settings/migrations": "import migrate move",
+  "/deployments": "rollback release build history",
+};
+
+/**
+ * The same, for a page that belongs to an app or a database: their hrefs carry
+ * the slug, so these are keyed on what comes after it.
+ */
+const EXTRA_KEYWORDS_BY_TAB: Record<string, string> = {
+  "/domains": "ssl tls https certificate dns route",
+  "/deployments": "build rollback release history",
+  "/console": "shell terminal exec command",
+  "/settings/storage": "volume mount disk file",
+  "/settings/resources": "cpu memory ram limit quota",
+  "/settings/connection": "connection string uri host port password",
+};
+
+/** What a nav item is findable by beyond its own words, whatever page it is. */
+function keywordsFor(href: string): string | undefined {
+  const own = EXTRA_KEYWORDS[href];
+  if (own) return own;
+  const tab =
+    href.match(/^\/apps\/[^/]+(\/.+)$/) ??
+    href.match(/^\/storage\/databases\/[^/]+(\/.+)$/);
+  return tab ? EXTRA_KEYWORDS_BY_TAB[tab[1]!] : undefined;
+}
+
 function toEntry(item: NavItem, group: string, idPrefix: string): Entry {
   return {
     id: `${idPrefix}:${item.href}`,
     label: item.label,
     hint: item.tooltip,
+    keywords: keywordsFor(item.href),
     icon: item.icon,
     group,
     run: { kind: "href", href: item.href },
@@ -141,6 +189,7 @@ function toEntry(item: NavItem, group: string, idPrefix: string): Entry {
 const SETTINGS_EXTRAS: Entry[] = [
   {
     id: "setting:password",
+    keywords: "password credentials sign in",
     label: "Change password",
     hint: "Account security",
     icon: KeyRound,
@@ -149,6 +198,7 @@ const SETTINGS_EXTRAS: Entry[] = [
   },
   {
     id: "setting:2fa",
+    keywords: "2fa totp otp mfa authenticator",
     label: "Two-factor authentication",
     hint: "Account security",
     icon: ShieldCheck,
@@ -157,6 +207,7 @@ const SETTINGS_EXTRAS: Entry[] = [
   },
   {
     id: "setting:passkeys",
+    keywords: "passkey webauthn fido security key",
     label: "Passkeys",
     hint: "Account security",
     icon: Fingerprint,
@@ -165,6 +216,7 @@ const SETTINGS_EXTRAS: Entry[] = [
   },
   {
     id: "setting:picture",
+    keywords: "avatar photo profile",
     label: "Profile picture",
     hint: "Your account",
     icon: SlidersHorizontal,
@@ -475,8 +527,14 @@ export function ownedPageEntries(
       cronsEnabled: app.features?.cronJobs ?? false,
       consoleEnabled: app.features?.console ?? false,
     };
+    const ownerSearch = [app.name, app.slug].map(foldQuery).filter(Boolean);
     for (const page of appFramePages(app.slug, flags)) {
-      out.push({ ...page, id: `owned:${app.id}:${page.id}`, owner });
+      out.push({
+        ...page,
+        id: `owned:${app.id}:${page.id}`,
+        owner,
+        ownerSearch,
+      });
     }
   }
   for (const db of databases) {
@@ -486,8 +544,14 @@ export function ownedPageEntries(
       logo: db.logo ?? null,
       type: db.type as DatabaseType,
     };
+    const ownerSearch = [foldQuery(db.name)].filter(Boolean);
     for (const page of dbFramePages(db.id)) {
-      out.push({ ...page, id: `owned:${db.id}:${page.id}`, owner });
+      out.push({
+        ...page,
+        id: `owned:${db.id}:${page.id}`,
+        owner,
+        ownerSearch,
+      });
     }
   }
   return out;
@@ -512,35 +576,31 @@ export function matchOwnedPages(
   // A word that names ANY resource is spent naming it, for the whole query.
   // "deplo" is a prefix of "deployments", so without this rule typing an app's
   // name would list every OTHER app's Deployments page underneath it.
-  const ownerText = new Map<string, string>();
   const ownerWords = new Set<string>();
   for (const entry of entries) {
-    if (!entry.owner) continue;
-    const key = entry.owner.name;
-    let hay = ownerText.get(key);
-    if (hay === undefined) {
-      hay = foldQuery(
-        entry.owner.kind === "app"
-          ? `${entry.owner.name} ${entry.owner.slug}`
-          : entry.owner.name,
-      );
-      ownerText.set(key, hay);
-      for (const word of words) if (hay.includes(word)) ownerWords.add(word);
+    if (!entry.ownerSearch) continue;
+    for (const word of words) {
+      if (entry.ownerSearch.some((piece) => piece.includes(word))) {
+        ownerWords.add(word);
+      }
     }
   }
 
   const out: Entry[] = [];
   for (const entry of entries) {
     if (!entry.owner) continue;
-    const owner = ownerText.get(entry.owner.name)!;
-    const page = foldQuery(
-      `${entry.label} ${entry.hint ?? ""}${capabilityText(entry)}`,
-    );
+    const owner = entry.ownerSearch ?? [];
+    // A word that IS one of the page's words names the page even when a
+    // resource happens to be called that too - otherwise one app named "logs"
+    // would stop `logs` reaching any app's Logs page, for everyone.
+    const { pieces, exact } = searchable(entry);
     let namesPage = false;
     let covered = true;
     for (const word of words) {
-      const hitOwner = owner.includes(word);
-      const hitPage = !ownerWords.has(word) && page.includes(word);
+      const hitOwner = owner.some((piece) => piece.includes(word));
+      const hitPage =
+        exact.has(word) ||
+        (!ownerWords.has(word) && pieces.some((p) => p.includes(word)));
       if (!hitOwner && !hitPage) {
         covered = false;
         break;
@@ -587,11 +647,42 @@ function capabilityText(entry: Entry): string {
   return out;
 }
 
-/** Everything a row can be found by, including the heading it sits under. */
-const searchText = (entry: Entry) =>
-  foldQuery(
-    `${entry.label} ${entry.hint ?? ""} ${entry.group}${capabilityText(entry)}`,
-  );
+/**
+ * Everything a row can be found by, as separate folded WORDS. Folding the whole
+ * thing into one string invents words across the joins - "access login" becomes
+ * "...accesslogin...", which answers to "ssl" - while a hyphen inside one word
+ * still folds away, so "better auth" keeps finding `better-auth-docs`.
+ */
+interface Searchable {
+  pieces: string[];
+  /** The same, as a set: a term that IS one of them names the page outright. */
+  exact: ReadonlySet<string>;
+}
+
+// Keyed on the row itself, which is rebuilt only when the team snapshot
+// changes - so a fleet's worth of rows is folded once, not on every keystroke.
+const folded = new WeakMap<Entry, Searchable>();
+
+function searchable(entry: Entry): Searchable {
+  const hit = folded.get(entry);
+  if (hit) return hit;
+  const pieces = (
+    `${entry.label} ${entry.hint ?? ""} ${entry.keywords ?? ""} ${entry.group}` +
+    capabilityText(entry)
+  )
+    .split(/\s+/)
+    .map(foldQuery)
+    .filter(Boolean);
+  const made = { pieces, exact: new Set(pieces) };
+  folded.set(entry, made);
+  return made;
+}
+
+const searchPieces = (entry: Entry): string[] => searchable(entry).pieces;
+
+/** Does every word the person typed land in one of `pieces`? */
+const covers = (pieces: string[], terms: string[]): boolean =>
+  terms.every((term) => pieces.some((piece) => piece.includes(term)));
 
 /** How well one term matched: the label first, its description last. */
 function rankTerm(entry: Entry, term: string): number {
@@ -614,8 +705,7 @@ export function matchEntries(entries: Entry[], query: string): Entry[] {
   if (terms.length === 0) return entries;
   const scored: [Entry, number][] = [];
   for (const entry of entries) {
-    const hay = searchText(entry);
-    if (!terms.every((t) => hay.includes(t))) continue;
+    if (!covers(searchPieces(entry), terms)) continue;
     // Ranked on the first word: what you started typing is what you meant.
     scored.push([entry, rankTerm(entry, terms[0]!)]);
   }

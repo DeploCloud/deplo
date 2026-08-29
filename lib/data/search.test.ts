@@ -239,3 +239,60 @@ test("a team-wide gate that refuses costs its kind, not the search", async () =>
   assert.deepEqual(found.servers, [], "servers refused the narrowed token");
   assert.deepEqual(found.members, [], "members refused the narrowed token");
 });
+
+test("a role is found by name, in whichever team holds it", () => {
+  // `ensureTeamRoles` seeds Owner/Member/Viewer lazily on the first read, so
+  // the roles a team has are the ones a person actually sees on its Roles page.
+  return asUser1(async () => {
+    const found = await search("owner", ["role"]);
+    assert.ok(found.roles.length >= 1, "the default Owner role");
+    assert.ok(
+      found.roles.every((r) => r.name.toLowerCase().includes("owner")),
+      found.roles.map((r) => r.name).join(),
+    );
+    // USER_1 is in alpha and beta, not gamma - and a role is a team's own row,
+    // so both teams answer with their own.
+    const teams = new Set(found.roles.map((r) => r.team.slug));
+    assert.deepEqual([...teams].sort(), ["alpha", "beta"]);
+  });
+});
+
+test("a member hit carries the picture and never the email", async () => {
+  const found = await asUser1(() => search("user", ["member"]));
+  assert.ok(found.members.length > 0, "USER_1 is named user_1");
+  for (const m of found.members) {
+    assert.ok("avatarUrl" in m, "resolved picture, or null for the monogram");
+    assert.equal(typeof m.avatarColor, "string");
+    assert.ok(
+      !JSON.stringify(m).includes("@"),
+      `an address leaked into a member hit: ${JSON.stringify(m)}`,
+    );
+  }
+});
+
+test("every team a hit names can be drawn", async () => {
+  const found = await asUser1(() => search("better", ["app", "database"]));
+  for (const hit of [...found.apps, ...found.databases]) {
+    assert.ok(hit.team.id && hit.team.name && hit.team.slug, "named");
+    assert.ok("avatarUrl" in hit.team, "and drawable");
+  }
+});
+
+test("asking for one kind reads only that kind", async () => {
+  const found = await asUser1(() => search("better", ["app"]));
+  assert.ok(found.apps.length > 0);
+  for (const kind of [
+    "databases",
+    "servers",
+    "projects",
+    "environments",
+    "folders",
+    "domains",
+    "members",
+    "roles",
+    "cronJobs",
+    "templates",
+  ] as const) {
+    assert.deepEqual(found[kind], [], kind);
+  }
+});

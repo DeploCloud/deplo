@@ -14,15 +14,17 @@ import { openPalette } from "./palette-open";
 /** Nothing ever changes, so there is nothing to subscribe to. */
 const noSubscription = () => () => {};
 
+/** Parsed once: the machine does not change under the tab. */
+let isMac: boolean | undefined;
+const readIsMac = () =>
+  (isMac ??= describeUserAgent(navigator.userAgent).os === "macOS");
+const notMac = () => false;
+
 export function PaletteKbd({ className }: { className?: string }) {
   // Not an effect: the server has no user agent, and this is exactly the "one
   // value on the server, another in the browser" case useSyncExternalStore
   // exists for - so there is no mismatch and no second render to schedule.
-  const mac = React.useSyncExternalStore(
-    noSubscription,
-    () => describeUserAgent(navigator.userAgent).os === "macOS",
-    () => false,
-  );
+  const mac = React.useSyncExternalStore(noSubscription, readIsMac, notMac);
 
   return (
     <kbd

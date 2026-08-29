@@ -15,6 +15,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       databases {
@@ -25,6 +26,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       servers {
@@ -38,6 +40,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       environments {
@@ -48,6 +51,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       folders {
@@ -56,6 +60,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       domains {
@@ -66,6 +71,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       members {
@@ -77,6 +83,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       roles {
@@ -86,6 +93,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       cronJobs {
@@ -97,6 +105,7 @@ export const SEARCH_QUERY = /* GraphQL */ `
         team {
           id
           name
+          avatarUrl
         }
       }
       templates {

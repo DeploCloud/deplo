@@ -34,3 +34,14 @@ test("rank agrees with the gate: 3 exactly when matchesQuery is false", () => {
     assert.equal(matchRank(q, f) < 3, matchesQuery(q, f), `${q} / ${f}`);
   }
 });
+
+test("an accent folds to the letter under it, not to nothing", () => {
+  // A team writing in Italian, French or Spanish names things with accents, and
+  // nobody types them into a search box.
+  assert.equal(foldQuery("Café"), "cafe");
+  assert.equal(foldQuery("Münchén"), "munchen");
+  assert.equal(foldQuery("naïve"), "naive");
+  assert.ok(matchesQuery("cafe", "Café"), "typed plain, stored accented");
+  assert.ok(matchesQuery("café", "Cafe"), "typed accented, stored plain");
+  assert.equal(matchRank("cafe", "Café"), 0, "and it still counts as exact");
+});

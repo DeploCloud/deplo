@@ -9,11 +9,13 @@ import { ALL_CAPABILITIES } from "@/lib/types";
 import { SEARCH_QUERY } from "./search-query";
 import {
   APP_ACTIONS,
+  teamPageEntries,
   countOwnedPages,
   matchOwnedPages,
   ownedPageEntries,
   DB_ACTIONS,
   PALETTE_APP_FLAGS,
+  PALETTE_DB_FLAGS,
   appFrameEntries,
   dbFrameEntries,
   matchEntries,
@@ -388,4 +390,200 @@ test("a row is findable by what its capability is called", () => {
     matchOwnedPages(owned, "blog basic auth").map((e) => e.label),
     ["Access"],
   );
+});
+
+/* ---- The rules that keep one odd name from breaking the rest ---- */
+
+test("two apps may share a display name - the same app in two environments", () => {
+  const owned = ownedPageEntries(
+    [
+      { id: "p1", slug: "api-prod", name: "API", logo: null },
+      { id: "p2", slug: "api-staging", name: "API", logo: null },
+    ],
+    [],
+  );
+  const which = (q: string) =>
+    matchOwnedPages(owned, q).map((e) =>
+      e.run.kind === "href" ? e.run.href : "",
+    );
+
+  assert.deepEqual(which("staging logs"), ["/apps/api-staging/logs"]);
+  assert.deepEqual(which("prod logs"), ["/apps/api-prod/logs"]);
+  assert.deepEqual(which("api logs").sort(), [
+    "/apps/api-prod/logs",
+    "/apps/api-staging/logs",
+  ]);
+});
+
+test("an app called after a page does not take that word away from everyone", () => {
+  // Someone WILL name an app "logs". Before, that made `logs` unable to reach
+  // any app's Logs page at all, for the whole team.
+  const owned = ownedPageEntries(
+    [
+      { id: "p1", slug: "logs", name: "logs", logo: null },
+      { id: "p2", slug: "blog", name: "blog", logo: null },
+    ],
+    [],
+  );
+  assert.deepEqual(
+    matchOwnedPages(owned, "logs").map((e) => e.owner?.name),
+    ["logs", "blog"],
+  );
+});
+
+test("an accent is not a different letter", () => {
+  const owned = ownedPageEntries(
+    [{ id: "p1", slug: "muc", name: "Café Münchén", logo: null }],
+    [],
+  );
+  for (const q of ["cafe logs", "café logs", "munchen logs", "münchén logs"]) {
+    assert.equal(matchOwnedPages(owned, q).length, 1, q);
+  }
+});
+
+test("a word that only PREFIXES a page name still names the app", () => {
+  // "deplo" is a prefix of "deployments"; the app is what was meant.
+  const owned = ownedPageEntries(
+    [
+      { id: "p1", slug: "deplo-web", name: "deplo-web", logo: null },
+      { id: "p2", slug: "blog", name: "blog", logo: null },
+    ],
+    [],
+  );
+  assert.deepEqual(matchOwnedPages(owned, "deplo"), []);
+  assert.equal(
+    matchOwnedPages(owned, "deployments").length,
+    4,
+    "both apps, both tabs",
+  );
+});
+
+test("every gate names a capability that exists", () => {
+  // A typo here is invisible twice over: `canSee` hides the row for everyone,
+  // and the capability's own words never join what the row can be found by.
+  const rows = [
+    ...staticEntries(),
+    ...appFrameEntries(APP),
+    ...dbFrameEntries({ id: "db_1", name: "Main", type: "postgres" }),
+    ...teamPageEntries([{ id: "t2", name: "Acme" }], "t1"),
+  ];
+  const known = new Set<string>(ALL_CAPABILITIES);
+  for (const row of rows) {
+    for (const cap of [row.requires, ...(row.requiresAny ?? [])]) {
+      if (!cap) continue;
+      assert.ok(known.has(cap), `"${row.label}" is gated on "${cap}"`);
+    }
+  }
+});
+
+test("a capability's words reach the row it gates, wherever the row is", () => {
+  const inTeam = teamPageEntries([{ id: "t2", name: "Acme" }], "t1");
+  assert.deepEqual(
+    matchEntries(inTeam, "manage mcp").map((e) => e.label),
+    ["MCP Server"],
+    "and not only in the active team's copy",
+  );
+});
+
+test("a database frame stays inside that database", () => {
+  const db = { id: "db_1", name: "Main", type: "postgres" as const };
+  const entries = dbFrameEntries(db);
+  const labels = entries.map((e) => e.label);
+
+  assert.deepEqual(
+    entries.filter((e) => e.group === "Actions").map((e) => e.label),
+    ["Redeploy", "Restart"],
+    "the two verbs a database has - there is no Start/Stop for one",
+  );
+  for (const want of [
+    "Overview",
+    "Logs",
+    "Backups",
+    "Settings",
+    "Connection",
+  ]) {
+    assert.ok(labels.includes(want), `missing "${want}"`);
+  }
+  for (const entry of entries) {
+    if (entry.run.kind !== "href") continue;
+    assert.ok(
+      entry.run.href.startsWith("/storage/databases/db_1"),
+      `${entry.label} leaves the database: ${entry.run.href}`,
+    );
+  }
+  // Its Overview and its settings root are one page, listed once.
+  const hrefs = entries.flatMap((e) =>
+    e.run.kind === "href" ? [e.run.href] : [],
+  );
+  assert.equal(new Set(hrefs).size, hrefs.length, "no destination twice");
+});
+
+test("a database's switched-off tabs are not offered either", () => {
+  const off = dbFrameEntries({ id: "db_1", name: "Main", type: "postgres" });
+  assert.ok(!off.map((e) => e.label).includes("Cron jobs"));
+
+  const on = dbFrameEntries(
+    { id: "db_1", name: "Main", type: "postgres" },
+    { ...PALETTE_DB_FLAGS, cronsEnabled: true },
+  );
+  assert.ok(on.map((e) => e.label).includes("Cron jobs"));
+});
+
+test("folding never invents a word across two real ones", () => {
+  // "access login" folded to one string reads "...accesSSLogin...", so the
+  // Access page answered to "ssl". Certificates live on Domains, not there.
+  const frame = appFrameEntries(APP);
+  assert.deepEqual(
+    matchEntries(frame, "ssl").map((e) => e.label),
+    ["Domains"],
+    "and not Access, which only spelled it across a word boundary",
+  );
+
+  // ...and the hyphen inside ONE word still folds away, which is the whole
+  // reason the rule ignores separators.
+  const rows = [
+    {
+      id: "x",
+      label: "better-auth-docs",
+      icon: APP_ACTIONS[0]!.icon,
+      group: "Apps",
+      run: { kind: "href" as const, href: "/x" },
+    },
+  ];
+  assert.equal(matchEntries(rows, "better auth").length, 1);
+  assert.equal(matchEntries(rows, "betterauth").length, 1);
+  assert.equal(matchEntries(rows, "authdocs").length, 1);
+});
+
+test("the words people type reach the page that answers them", () => {
+  // Each of these reached nothing while its page sat right there.
+  const stat = staticEntries();
+  const expected: [string, string][] = [
+    ["2fa", "Security"],
+    ["totp", "Security"],
+    ["smtp", "Notifications"],
+    ["registry", "Registries"],
+    ["dockerhub", "Registries"],
+    ["permissions", "Roles"],
+    ["apikey", "API tokens"],
+    ["migrate", "Migrations"],
+    ["rollback", "Deployments"],
+    ["cleanup", "Servers"],
+  ];
+  for (const [typed, page] of expected) {
+    assert.ok(
+      matchEntries(stat, typed).some((e) => e.label === page),
+      `"${typed}" should reach ${page}`,
+    );
+  }
+
+  // And the per-app tabs, which carry the slug in their href.
+  const tabs = appFrameEntries(APP);
+  for (const typed of ["ssl", "https", "certificate"]) {
+    assert.deepEqual(
+      matchEntries(tabs, typed).map((e) => e.label),
+      ["Domains"],
+      typed,
+    );
+  }
 });
