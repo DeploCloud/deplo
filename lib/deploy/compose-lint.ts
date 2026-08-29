@@ -1036,14 +1036,13 @@ export function detectDefaultApp(
   if (!services) return null;
   const names = routableNames(services);
   if (names.length === 0) return null;
-  // A declared port is the author saying "here" - it wins over any guess.
-  for (const name of names) {
-    const port = declaredPort(services[name]);
-    if (port) return { service: name, port };
-  }
-  // Nothing declared: the front door is the service no other service waits on.
+  // A declared port is the author saying "here", so those candidates come first;
+  // among equals, the front door is the service no other one waits on.
   const depended = dependedUpon(services);
-  const service = names.find((n) => !depended.has(n)) ?? names[0];
+  const front = (list: string[]): string =>
+    list.find((n) => !depended.has(n)) ?? list[0];
+  const withPort = names.filter((n) => declaredPort(services[n]));
+  const service = front(withPort.length > 0 ? withPort : names);
   return { service, port: declaredPort(services[service]) ?? 80 };
 }
 

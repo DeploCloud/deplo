@@ -14,12 +14,16 @@ export const DB_REPOS: Record<DatabaseType, string> = {
   clickhouse: "clickhouse/clickhouse-server",
 };
 
-/** The repo half of an image ref: `clickhouse/clickhouse-server:25.5` -> `clickhouse/clickhouse-server`. */
+/**
+ * The repo half of an image ref, as Docker Hub names it: `postgres:17`,
+ * `library/postgres` and `docker.io/library/postgres` are all `postgres`.
+ */
 function repoOf(image: string): string {
   const ref = image.split("@")[0];
   const slash = ref.lastIndexOf("/");
   const colon = ref.lastIndexOf(":");
-  return colon > slash ? ref.slice(0, colon) : ref;
+  const repo = colon > slash ? ref.slice(0, colon) : ref;
+  return repo.replace(/^docker\.io\//, "").replace(/^library\//, "");
 }
 
 /**
@@ -32,11 +36,7 @@ export function isOfficialEngineImage(
 ): boolean {
   const s = image?.trim();
   if (!s) return false;
-  const repo = repoOf(s);
-  const want = DB_REPOS[type];
-  return (
-    repo === want || repo === `library/${want}` || repo === `docker.io/${want}`
-  );
+  return repoOf(s) === DB_REPOS[type];
 }
 
 /**

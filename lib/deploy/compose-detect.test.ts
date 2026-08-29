@@ -126,3 +126,93 @@ services:
     ],
   );
 });
+
+test("a fully-qualified image is still the database it is", () => {
+  // Podman and pinned registries write the long form; the short check read it as
+  // some unknown web image and handed it the app's address.
+  assert.deepEqual(
+    detectDefaultApp(`
+services:
+  db:
+    image: docker.io/library/postgres:17
+  app:
+    image: acme/app
+`),
+    { service: "app", port: 80 },
+  );
+});
+
+test("an image Deplo does not know is saved by the dependency graph", () => {
+  // `bitnami/postgresql` is not one of the six repos, so the graph is what keeps
+  // the address off it: the app waits on the database, nothing waits on the app.
+  assert.deepEqual(
+    detectDefaultApp(`
+services:
+  db:
+    image: bitnami/postgresql:16
+  app:
+    image: acme/app
+    depends_on:
+      - db
+`),
+    { service: "app", port: 80 },
+  );
+});
+
+test("a dependency cycle falls back to document order", () => {
+  assert.deepEqual(
+    detectDefaultApp(`
+services:
+  a:
+    image: acme/a
+    depends_on: [b]
+  b:
+    image: acme/b
+    depends_on: [a]
+`),
+    { service: "a", port: 80 },
+  );
+});
+
+test("a service written with no body at all is still a candidate", () => {
+  assert.deepEqual(
+    detectDefaultApp(`
+services:
+  web:
+  db:
+    image: postgres:17
+`),
+    { service: "web", port: 80 },
+  );
+});
+
+test("declaredPort reads the long form and ignores a range it cannot resolve", () => {
+  assert.equal(
+    declaredPort({ ports: [{ target: 3000, published: 8080 }] }),
+    3000,
+  );
+  assert.equal(declaredPort({ ports: ["127.0.0.1:8080:3000"] }), 3000);
+  assert.equal(declaredPort({ expose: ["3000-3005"] }), null);
+  assert.equal(declaredPort({ ports: { web: 80 } }), null);
+});
+
+test("with two published services, the one nothing waits on is the front door", () => {
+  // A published port says "route here" for BOTH tiers, so document order is not
+  // the tie-breaker: the API is written first, the UI is what a visitor wants.
+  assert.deepEqual(
+    detectDefaultApp(`
+services:
+  api:
+    image: acme/api
+    ports:
+      - "8000:8000"
+  web:
+    image: acme/web
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+`),
+    { service: "web", port: 3000 },
+  );
+});
