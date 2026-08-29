@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GitBranch, GitFork, Loader2, Plus } from "lucide-react";
 
+import { GitAccount } from "@/components/shared/git-account";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { gql, gqlAction } from "@/lib/graphql-client";
+import { gitProfileUrl } from "@/lib/utils";
 
 interface OpenPullRequest {
   number: number;
@@ -160,7 +162,14 @@ export function DeployPullRequestDialog({
                           <span aria-hidden>to</span>
                           <span className="font-mono">{p.baseRef}</span>
                         </span>
-                        {p.authorLogin && <span>@{p.authorLogin}</span>}
+                        {p.authorLogin && (
+                          <GitAccount
+                            login={p.authorLogin}
+                            provider="github"
+                            url={gitProfileUrl("github", p.authorLogin)}
+                            size="xs"
+                          />
+                        )}
                         {p.draft && <Badge variant="secondary">Draft</Badge>}
                         {p.fromFork && (
                           <Badge variant="secondary" className="gap-1">
