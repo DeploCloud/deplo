@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
+import { GaugeTile } from "@/components/monitoring/radial-gauge";
 import {
   StatTile,
   ChartCard,
@@ -26,7 +27,7 @@ import {
   STALE_AFTER_MS,
 } from "@/components/monitoring/dashboard-parts";
 import { gqlAction } from "@/lib/graphql-client";
-import { formatBytes } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import type { ResourceLimits } from "@/lib/types";
 
 /** "0.5 core" / "1 core" / "2 cores" from a fractional core count. */
@@ -77,6 +78,11 @@ interface InstanceMetrics {
   blockRead: number;
   blockWrite: number;
   pids: number;
+  /** Raw docker state; empty from an agent too old to send it. */
+  state: string;
+  /** healthy | unhealthy | starting. EMPTY means no healthcheck at all. */
+  health: string;
+  restartCount: number;
   netNsId: number;
   netNsHost: boolean;
 }
@@ -102,7 +108,7 @@ interface ContainerLive extends ContainerSample {
 }
 
 const SAMPLE_FIELDS = `online ts cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids running containers hostCores`;
-const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported instances { name running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids netNsId netNsHost }`;
+const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported instances { name running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids state health restartCount netNsId netNsHost }`;
 
 /** Per-second rate from two cumulative-counter samples; a counter reset
  *  (container restart, so the total dropped) clamps to 0 rather than a spike. */
@@ -291,6 +297,16 @@ export function ContainerMonitoringDashboard({
   // Uncapped, the denominator is the MACHINE's RAM - counted once, so it does not
   // move when a container stops. When capped, the aggregate cap above wins.
   const memDenom = cur?.memLimit ?? 0;
+  // The arc's ceiling: the configured cap when there is one, else the whole
+  // machine. `curCpu` is a percentage of ONE core when uncapped, so the display
+  // divides by the core count to agree with the arc - the chart below keeps the
+  // per-core reading, and both captions name the cores that bridge them.
+  const hostCores = cur?.hostCores ?? 0;
+  const cpuAgainstHost = cpuLimitAggCores == null && hostCores > 0;
+  const cpuGaugeFull = cpuAgainstHost ? hostCores * 100 : 100;
+  const cpuDisplay = cpuAgainstHost
+    ? `${(curCpu / hostCores).toFixed(1)}%`
+    : `${curCpu.toFixed(1)}%`;
   // Current network / block rates from the last two chart samples.
   const prev = samples[samples.length - 2];
   const dt = cur && prev ? (cur.ts - prev.ts) / 1000 : 0;
@@ -399,34 +415,46 @@ export function ContainerMonitoringDashboard({
 
         {/* Current-value tiles */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatTile
+          <GaugeTile
             icon={Cpu}
             label="CPU"
-            value={`${curCpu.toFixed(1)}%`}
-            sub={
+            value={curCpu}
+            full={cpuGaugeFull}
+            display={cpuDisplay}
+            caption={
               cpuLimitAggCores != null
                 ? multiContainer
                   ? `of ${fmtCores(cpuLimitAggCores)} (${fmtCores(cpuLimitCores!)} × ${runningCount})`
                   : `of ${fmtCores(cpuLimitAggCores)} limit`
-                : (fmtCoresUsed(curCpu, cur.hostCores) ??
-                  `${cur.running} of ${cur.containers} container${cur.containers === 1 ? "" : "s"} running`)
+                : cur.hostCores > 0
+                  ? `${fmtCores(curCpu / 100)} of ${fmtCores(cur.hostCores)}`
+                  : `${cur.running} of ${cur.containers} container${cur.containers === 1 ? "" : "s"} running`
             }
-            pct={curCpu}
+            info={
+              cpuLimitAggCores == null && cur.hostCores > 0 ? (
+                <p>
+                  The arc fills against the whole machine. The chart below plots
+                  the same reading the way `docker stats` does, as a percentage
+                  of ONE core, so a busy stack there goes past 100%.
+                </p>
+              ) : undefined
+            }
           />
-          <StatTile
+          <GaugeTile
             icon={MemoryStick}
             label="Memory"
-            value={`${curMemPct.toFixed(1)}%`}
-            sub={
+            value={curMemPct}
+            full={100}
+            display={`${curMemPct.toFixed(1)}%`}
+            caption={
               memLimitAggMb != null
                 ? multiContainer
                   ? `${formatBytes(cur.memUsed)} of ${fmtMemMb(memLimitAggMb)} (${fmtMemMb(memLimitMb!)} × ${runningCount})`
                   : `${formatBytes(cur.memUsed)} of ${fmtMemMb(memLimitAggMb)} limit`
                 : memDenom > 0
-                  ? `${formatBytes(cur.memUsed)} / ${formatBytes(memDenom)}`
+                  ? `${formatBytes(cur.memUsed)} of ${formatBytes(memDenom)}`
                   : formatBytes(cur.memUsed)
             }
-            pct={curMemPct}
           />
           <Card>
             <CardContent className="space-y-1.5 p-4">
@@ -444,22 +472,28 @@ export function ContainerMonitoringDashboard({
               </div>
             </CardContent>
           </Card>
-          <StatTile
-            icon={ListTree}
-            label="Processes"
-            value={
-              pidsLimitAgg != null
-                ? `${cur.pids} / ${pidsLimitAgg}`
-                : `${cur.pids}`
-            }
-            sub={
-              pidsLimitAgg != null
-                ? multiContainer
+          {pidsLimitAgg != null ? (
+            <GaugeTile
+              icon={ListTree}
+              label="Processes"
+              value={cur.pids}
+              full={pidsLimitAgg}
+              display={`${cur.pids} / ${pidsLimitAgg}`}
+              caption={
+                multiContainer
                   ? `PIDs of ${pidsLimit} × ${runningCount}`
                   : "PIDs of the limit"
-                : "PIDs across the stack"
-            }
-          />
+              }
+            />
+          ) : (
+            // No limit is no ceiling to fill, so the count stays a reading.
+            <StatTile
+              icon={ListTree}
+              label="Processes"
+              value={`${cur.pids}`}
+              sub="PIDs across the stack"
+            />
+          )}
         </div>
 
         {/* Real-time charts */}
@@ -584,6 +618,39 @@ function EmptyCard({
   );
 }
 
+/**
+ * The dot and the word beside it. Never colour alone - the word is always there,
+ * and an agent too old to report a state says so rather than showing a dot that
+ * means nothing. Grey is "stopped", red is only a real failure.
+ */
+function stateOf(c: InstanceMetrics): { dot: string; label: string } {
+  if (c.health === "unhealthy")
+    return { dot: "bg-destructive", label: "unhealthy" };
+  if (c.health === "starting")
+    return { dot: "bg-[var(--warning)]", label: "starting" };
+  switch (c.state) {
+    case "running":
+      // An empty `health` is NO healthcheck, not a passing one - so the word
+      // stays "running" and never promises health nothing measured.
+      return {
+        dot: "bg-[var(--success)]",
+        label: c.health === "healthy" ? "healthy" : "running",
+      };
+    case "restarting":
+      return { dot: "bg-[var(--warning)]", label: "restarting" };
+    case "dead":
+      return { dot: "bg-destructive", label: "dead" };
+    case "":
+      // An agent too old to send a state. The running flag still arrives.
+      return {
+        dot: c.running ? "bg-[var(--success)]" : "bg-muted-foreground",
+        label: c.running ? "running" : "stopped",
+      };
+    default:
+      return { dot: "bg-muted-foreground", label: c.state };
+  }
+}
+
 /** A compact per-container table for multi-container (compose) stacks. */
 function ContainerBreakdown({ instances }: { instances: InstanceMetrics[] }) {
   return (
@@ -594,30 +661,34 @@ function ContainerBreakdown({ instances }: { instances: InstanceMetrics[] }) {
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="px-4 py-2 font-medium">Container</th>
+                <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 text-right font-medium">CPU</th>
                 <th className="px-4 py-2 text-right font-medium">Memory</th>
                 <th className="px-4 py-2 text-right font-medium">PIDs</th>
+                <th className="px-4 py-2 text-right font-medium">Restarts</th>
               </tr>
             </thead>
             <tbody>
               {instances.map((c) => (
                 <tr key={c.name} className="border-b last:border-0">
                   <td className="px-4 py-2">
-                    <span className="flex items-center gap-2">
-                      <span
-                        className={
-                          c.running
-                            ? "inline-flex size-2 rounded-full bg-[var(--success)]"
-                            : "inline-flex size-2 rounded-full bg-muted-foreground/40"
-                        }
-                      />
-                      <span className="font-mono text-xs">{c.name}</span>
-                    </span>
+                    <span className="font-mono text-xs">{c.name}</span>
                     {netNoteFor(c, instances) && (
-                      <span className="mt-1 block pl-4 text-xs text-muted-foreground">
+                      <span className="mt-1 block text-xs text-muted-foreground">
                         {netNoteFor(c, instances)}
                       </span>
                     )}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span className="flex items-center gap-2 whitespace-nowrap">
+                      <span
+                        className={cn(
+                          "inline-flex size-2 shrink-0 rounded-full",
+                          stateOf(c).dot,
+                        )}
+                      />
+                      <span className="text-xs">{stateOf(c).label}</span>
+                    </span>
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">
                     {c.running ? `${c.cpu.toFixed(1)}%` : "—"}
@@ -627,6 +698,14 @@ function ContainerBreakdown({ instances }: { instances: InstanceMetrics[] }) {
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">
                     {c.running ? c.pids : "—"}
+                  </td>
+                  <td
+                    className={cn(
+                      "px-4 py-2 text-right tabular-nums",
+                      c.restartCount > 0 && "text-[var(--warning)]",
+                    )}
+                  >
+                    {c.restartCount}
                   </td>
                 </tr>
               ))}
