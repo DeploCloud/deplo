@@ -243,7 +243,11 @@ export function SharedVarWizardBody({
   /** Closes on save and re-opens on a refusal, exactly like a Dialog's own. */
   onOpenChange: (v: boolean) => void;
 }) {
-  const [step, setStep] = React.useState<StepId>("variable");
+  // Editing opens on the scope: the key and value are already what they are,
+  // and the only way in is "Change sharing".
+  const [step, setStep] = React.useState<StepId>(
+    editing ? "scope" : "variable",
+  );
   // A secret's DTO value is the MASK, and the server reads that back as "keep
   // the stored value", so prefilling it is what lets a scope-only edit save.
   const [rows, setRows] = React.useState<EnvRow[]>(() =>
