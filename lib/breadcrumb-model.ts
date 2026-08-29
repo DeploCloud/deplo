@@ -18,6 +18,16 @@ export interface BreadcrumbApp {
   /** The app's own logo, so the menu shows the same avatar its card and header
    *  do instead of a generic glyph. Optional: absent ⇒ the generic glyph. */
   logo?: string | null;
+  /**
+   * The tabs this app has switched on. The breadcrumb ignores them; the command
+   * palette needs them to know whether Console and Pull requests are pages this
+   * app actually has.
+   */
+  features?: {
+    pullRequests: boolean;
+    cronJobs: boolean;
+    console: boolean;
+  };
 }
 
 export interface BreadcrumbProject {

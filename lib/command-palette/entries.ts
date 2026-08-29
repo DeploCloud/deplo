@@ -84,7 +84,7 @@ export interface Entry {
    * The team this page belongs to, when it is not the active one. Choosing it
    * switches team first, the same way a cross-team search hit does.
    */
-  team?: { id: string; name: string };
+  team?: { id: string; name: string; avatarUrl?: string | null };
   requires?: string;
   requiresAny?: string[];
   requiresAdmin?: boolean;
@@ -219,7 +219,7 @@ export function staticEntries(): Entry[] {
  * copied - saying "Security, in team Acme" would be a lie.
  */
 export function teamPageEntries(
-  teams: { id: string; name: string }[],
+  teams: { id: string; name: string; avatarUrl?: string | null }[],
   activeTeamId: string,
 ): Entry[] {
   const team = SETTINGS_NAV.find((s) => s.title === "Team");
@@ -230,7 +230,7 @@ export function teamPageEntries(
       fromSections([team], () => "Settings", `team:${t.id}`).map((entry) => ({
         ...entry,
         hint: t.name,
-        team: { id: t.id, name: t.name },
+        team: { id: t.id, name: t.name, avatarUrl: t.avatarUrl ?? null },
       })),
     );
 }
@@ -435,6 +435,8 @@ export interface KnownApp {
   slug: string;
   name: string;
   logo?: string | null;
+  /** The tabs this app has switched on. Absent ⇒ assume none of them. */
+  features?: { pullRequests: boolean; cronJobs: boolean; console: boolean };
 }
 
 export interface KnownDatabase {
@@ -461,7 +463,19 @@ export function ownedPageEntries(
       slug: app.slug,
       logo: app.logo ?? null,
     };
-    for (const page of appFramePages(app.slug)) {
+    // The app's REAL switches, so a console someone turned on is reachable and
+    // one nobody did is not offered. `running` is deliberately true: it is live
+    // state the breadcrumb has no business carrying, and the console page says
+    // "not running" better than a missing row does.
+    const flags: AppNavFlags = {
+      ...PALETTE_APP_FLAGS,
+      running: true,
+      isGithubApp: app.features?.pullRequests ?? false,
+      previewsEnabled: app.features?.pullRequests ?? false,
+      cronsEnabled: app.features?.cronJobs ?? false,
+      consoleEnabled: app.features?.console ?? false,
+    };
+    for (const page of appFramePages(app.slug, flags)) {
       out.push({ ...page, id: `owned:${app.id}:${page.id}`, owner });
     }
   }

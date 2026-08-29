@@ -147,6 +147,37 @@ test("a feature switched off is not offered; switched on it is", () => {
   assert.ok(open.includes("Cron jobs"));
 });
 
+test("an app's own switches decide which of its pages are reachable", () => {
+  // The palette used to assume every switch was off, so a console someone had
+  // turned on could not be searched for at all.
+  const pagesOf = (features: {
+    pullRequests: boolean;
+    cronJobs: boolean;
+    console: boolean;
+  }) =>
+    ownedPageEntries(
+      [{ id: "p1", slug: "blog", name: "blog", logo: null, features }],
+      [],
+    ).map((e) => e.label);
+
+  const on = pagesOf({ pullRequests: true, cronJobs: true, console: true });
+  for (const label of ["Console", "Cron jobs", "Pull requests"]) {
+    assert.ok(on.includes(label), `"${label}" is switched on`);
+  }
+
+  const off = pagesOf({ pullRequests: false, cronJobs: false, console: false });
+  for (const label of ["Console", "Cron jobs", "Pull requests"]) {
+    assert.ok(!off.includes(label), `"${label}" is switched off`);
+  }
+
+  // Nothing said at all is the safe assumption, not an optimistic one.
+  const unknown = ownedPageEntries(
+    [{ id: "p2", slug: "quiet", name: "quiet", logo: null }],
+    [],
+  ).map((e) => e.label);
+  assert.ok(!unknown.includes("Console"));
+});
+
 test("every action names a real capability and a real mutation", () => {
   const sdl = readFileSync("schema.graphql", "utf8");
   for (const action of [...APP_ACTIONS, ...DB_ACTIONS]) {

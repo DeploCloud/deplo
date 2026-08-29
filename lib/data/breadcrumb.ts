@@ -42,6 +42,10 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
         projectId: appsTable.projectId,
         environmentId: appsTable.environmentId,
         logo: appsTable.logo,
+        source: appsTable.source,
+        previewEnabled: appsTable.previewEnabled,
+        cronEnabled: appsTable.cronEnabled,
+        consoleEnabled: appsTable.consoleEnabled,
       })
       .from(appsTable)
       .where(and(eq(appsTable.teamId, teamId), appScopeWhere())),
@@ -82,6 +86,11 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
         projectId: s.projectId ?? null,
         environmentId: s.environmentId ?? null,
         logo: s.logo ?? null,
+        features: {
+          pullRequests: s.source === "github" && s.previewEnabled,
+          cronJobs: s.cronEnabled,
+          console: s.consoleEnabled,
+        },
       })),
     projects: projects.map((p) => ({ id: p.id, name: p.name })),
     databases: databaseRows.map((d) => ({
