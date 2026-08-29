@@ -4,11 +4,12 @@ import * as React from "react";
 
 const COLLAPSE_KEY = "deplo:sidebar-collapsed";
 const WIDTH_KEY = "deplo:sidebar-width";
-const MIN_WIDTH = 200;
 const MAX_WIDTH = 420;
+// The default is also the floor: narrower than this the nav labels stop fitting.
 const DEFAULT_WIDTH = 240;
 
-const clampWidth = (n: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, n));
+const clampWidth = (n: number) =>
+  Math.min(MAX_WIDTH, Math.max(DEFAULT_WIDTH, n));
 
 type SidebarState = {
   collapsed: boolean;

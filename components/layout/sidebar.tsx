@@ -61,34 +61,12 @@ export function Sidebar({
       <div
         className={cn(
           "flex h-14 items-center",
-          collapsed ? "justify-center px-2" : "justify-between gap-2 pr-2 pl-5",
+          collapsed ? "justify-center px-2" : "px-5",
         )}
       >
         <Link href="/" className="cursor-pointer" aria-label="Deplo home">
           {collapsed ? <DeploMark /> : <DeploLogo />}
         </Link>
-
-        {!collapsed && (
-          <Tooltip delayDuration={400}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={toggle}
-                aria-label="Collapse sidebar"
-                className="shrink-0 text-muted-foreground"
-              >
-                <PanelLeftClose className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              Collapse sidebar
-              <kbd className="ml-1.5 rounded border border-border bg-muted px-1 text-[10px]">
-                [
-              </kbd>
-            </TooltipContent>
-          </Tooltip>
-        )}
       </div>
 
       {/* Opens the command palette - the sidebar has no search of its own. */}
@@ -161,17 +139,41 @@ export function Sidebar({
         </div>
       )}
 
-      {/* Drag-to-resize handle on the right edge */}
+      {/* Drag-to-resize handle on the right edge; the collapse control rides
+          its middle and appears on hover. */}
       <div
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize sidebar"
         className={cn(
-          "absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-foreground/15",
+          "group absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-foreground/15",
           dragging && "bg-foreground/25",
         )}
-      />
+      >
+        {!collapsed && (
+          <Tooltip delayDuration={400}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={toggle}
+                aria-label="Collapse sidebar"
+                className="absolute top-1/2 right-1 size-6 -translate-y-1/2 cursor-pointer rounded-full border border-sidebar-border bg-sidebar text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                <PanelLeftClose className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              Collapse sidebar
+              <kbd className="ml-1.5 rounded border border-border bg-muted px-1 text-[10px]">
+                [
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
     </aside>
   );
 }
