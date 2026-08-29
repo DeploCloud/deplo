@@ -755,7 +755,7 @@ function OwnedIcon({
       ) : (
         <DatabaseLogo type={owner.type} logo={owner.logo} size={20} />
       )}
-      <span className="absolute -right-1 -bottom-1 flex size-3.5 items-center justify-center rounded-full border border-border bg-background">
+      <span className="absolute -right-0.5 -bottom-0.5 flex size-3 items-center justify-center rounded-full border border-border bg-background">
         <Icon className="size-2 text-muted-foreground" />
       </span>
     </span>
