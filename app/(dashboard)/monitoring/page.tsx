@@ -4,7 +4,7 @@ import {
   getServerMetricsHistory,
 } from "@/lib/data/monitoring";
 import { Lock } from "lucide-react";
-import { reachesWholeTeam } from "@/lib/membership";
+import { isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
 import { MonitoringDashboard } from "./monitoring-dashboard";
 
@@ -23,9 +23,11 @@ export default async function MonitoringPage() {
       />
     );
 
-  const [servers, fleet] = await Promise.all([
+  const [servers, fleet, canManageServers] = await Promise.all([
     listServers(),
     getFleetMetrics(),
+    // The server pages are instance-admin only; without it the link would 404.
+    isInstanceAdmin(),
   ]);
 
   // Seed the FIRST server's real buffered window, the way the app tab does. This
@@ -49,6 +51,7 @@ export default async function MonitoringPage() {
       }))}
       initialHistory={initialHistory}
       initialFleet={fleet}
+      canManageServers={canManageServers}
     />
   );
 }

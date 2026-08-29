@@ -1,9 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { InfoTip } from "@/components/ui/info-tip";
+import { Info } from "lucide-react";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { Sparkline } from "@/components/monitoring/sparkline";
 import type { ServerStatus } from "@/lib/types";
@@ -23,8 +26,55 @@ export interface FleetRow {
   spark: { ts: number; cpu: number; mem: number }[];
 }
 
+/** The link to a server's own page - its agent, cleanup, teams and uninstall. */
+export function ManageServerButton({
+  id,
+  className,
+}: {
+  id: string;
+  className?: string;
+}) {
+  return (
+    <Button
+      asChild
+      variant="ghost"
+      size="sm"
+      className={cn("mr-2 shrink-0 text-muted-foreground", className)}
+    >
+      <Link href={`/settings/servers/${id}`}>Manage</Link>
+    </Button>
+  );
+}
+
 /** Amber past this, matching the gauges and the old saturation bar. */
 const WARN_PCT = 80;
+
+/** Rows past this and the list scrolls instead of pushing the panels off screen. */
+const MAX_ROWS = 6;
+
+/**
+ * How hard a host is working: its fullest of the three. Unmeasured sorts last -
+ * it is not "idle", it is unknown, and it does not belong above a busy machine.
+ */
+function severity(row: FleetRow | undefined): number {
+  if (!row || row.ts <= 0) return -1;
+  return Math.max(row.cpu, row.memPct, row.diskPct);
+}
+
+/**
+ * Worst first, in 10-point buckets. The bucket is the whole point: sorting on the
+ * raw percentage would reshuffle the list every second on CPU jitter, and a row
+ * that moves under the pointer is worse than a row in the wrong place.
+ */
+function worstFirst(rows: Record<string, FleetRow>) {
+  return (a: { id: string; name: string }, b: { id: string; name: string }) => {
+    const bucket = (v: number) => (v < 0 ? -1 : Math.floor(v / 10));
+    return (
+      bucket(severity(rows[b.id])) - bucket(severity(rows[a.id])) ||
+      a.name.localeCompare(b.name)
+    );
+  };
+}
 
 /** One reading. The column header names it, so the cell is just the number. */
 function Pct({ value, className }: { value: number; className?: string }) {
@@ -51,12 +101,29 @@ export function FleetList({
   rows,
   selectedId,
   onSelect,
+  canManageServers,
 }: {
   servers: { id: string; name: string; status: ServerStatus; ip: string }[];
   rows: Record<string, FleetRow>;
   selectedId: string;
   onSelect: (id: string) => void;
+  /** The server pages are instance-admin only, so the link is hidden without it
+   *  rather than offered and answered with a 404. */
+  canManageServers: boolean;
 }) {
+  // Sorted here, not by the caller: the order IS this list's reading of the fleet.
+  const ordered = React.useMemo(
+    () => [...servers].sort(worstFirst(rows)),
+    [servers, rows],
+  );
+
+  // A pick from the search box can land on a row that is scrolled out of sight,
+  // and a list showing someone else than the panels do is just wrong.
+  const selectedRef = React.useRef<HTMLLIElement>(null);
+  React.useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
+
   return (
     <Card>
       <CardContent className="p-0">
@@ -68,10 +135,16 @@ export function FleetList({
           <span className="w-14 text-right">CPU</span>
           <span className="w-14 text-right">RAM</span>
           <span className="hidden w-14 text-right sm:block">Disk</span>
-          <span className="hidden w-16 text-right lg:block">Containers</span>
+          <span className="hidden w-20 text-right lg:block">Containers</span>
+          {canManageServers && <span className="w-[5.25rem]" aria-hidden />}
         </div>
-        <ul className="divide-y divide-border">
-          {servers.map((s) => {
+        <ul
+          className={cn(
+            "divide-y divide-border",
+            servers.length > MAX_ROWS && "max-h-[21.5rem] overflow-y-auto",
+          )}
+        >
+          {ordered.map((s) => {
             const row = rows[s.id];
             const measured = Boolean(row && row.ts > 0);
             const selected = s.id === selectedId;
@@ -84,15 +157,19 @@ export function FleetList({
               row.agentVersion !== row.expectedAgentVersion,
             );
             return (
-              <li key={s.id}>
+              <li
+                key={s.id}
+                ref={selected ? selectedRef : undefined}
+                className={cn(
+                  "relative flex items-center transition-colors",
+                  selected ? "bg-accent/40" : "hover:bg-accent/20",
+                )}
+              >
                 <button
                   type="button"
                   onClick={() => onSelect(s.id)}
                   aria-pressed={selected}
-                  className={cn(
-                    "relative flex w-full items-center gap-3 px-4 py-3 text-left transition-colors",
-                    selected ? "bg-accent/40" : "hover:bg-accent/20",
-                  )}
+                  className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
                 >
                   {/* The accent bar is what says "these panels are this host's". */}
                   <span
@@ -116,11 +193,17 @@ export function FleetList({
                     </Badge>
                   )}
                   {row?.source === "docker-stats" && (
-                    <InfoTip
-                      side="top"
-                      label="Sampling backend"
-                      content="This host samples through docker stats instead of cgroups, which costs the machine noticeably more CPU. Updating the agent usually switches it back."
-                    />
+                    // A SPAN, not InfoTip: that one is a <button>, and a button
+                    // inside the row's own button is invalid HTML that React
+                    // answers by regenerating the whole tree on hydration.
+                    <SimpleTooltip content="This host samples through docker stats instead of cgroups, which costs the machine noticeably more CPU. Updating the agent usually switches it back.">
+                      <span
+                        role="img"
+                        aria-label="Sampling through docker stats, the slower path"
+                      >
+                        <Info className="size-3.5 text-muted-foreground" />
+                      </span>
+                    </SimpleTooltip>
                   )}
 
                   {measured ? (
@@ -133,7 +216,7 @@ export function FleetList({
                       <Pct value={row.cpu} />
                       <Pct value={row.memPct} />
                       <Pct value={row.diskPct} className="hidden sm:block" />
-                      <p className="hidden w-16 text-right text-sm font-medium tabular-nums lg:block">
+                      <p className="hidden w-20 text-right text-sm font-medium tabular-nums lg:block">
                         {row.containers}
                       </p>
                     </>
@@ -143,6 +226,7 @@ export function FleetList({
                     </span>
                   )}
                 </button>
+                {canManageServers && <ManageServerButton id={s.id} />}
               </li>
             );
           })}

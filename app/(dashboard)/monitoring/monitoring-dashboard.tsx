@@ -18,7 +18,12 @@ import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import { GaugeTile } from "@/components/monitoring/radial-gauge";
 import { MonitoringGraphic } from "@/components/monitoring/monitoring-graphic";
 import { EmptyState } from "@/components/shared/empty-state";
-import { FleetList, type FleetRow } from "@/components/monitoring/fleet-list";
+import {
+  FleetList,
+  ManageServerButton,
+  type FleetRow,
+} from "@/components/monitoring/fleet-list";
+import { ServerPicker } from "@/components/monitoring/server-picker";
 import {
   ChartCard,
   InfoItem,
@@ -52,6 +57,7 @@ export function MonitoringDashboard({
   servers,
   initialHistory,
   initialFleet,
+  canManageServers,
 }: {
   servers: ServerLite[];
   /** The FIRST server's buffered window, so its charts paint full on the first
@@ -59,6 +65,8 @@ export function MonitoringDashboard({
   initialHistory: ServerMetrics[];
   /** Every server's headline reading, so the fleet list paints full too. */
   initialFleet: FleetRow[];
+  /** Cosmetic gate on the link to a server's own page (instance admins only). */
+  canManageServers: boolean;
 }) {
   const [selectedId, setSelectedId] = React.useState(servers[0]?.id ?? "");
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
@@ -220,6 +228,7 @@ export function MonitoringDashboard({
           rows={fleet}
           selectedId={selected.id}
           onSelect={setSelectedId}
+          canManageServers={canManageServers}
         />
       )}
 
@@ -240,9 +249,25 @@ export function MonitoringDashboard({
               that scopes every chart below. */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-sm font-medium">
-                {serverLabel(selected)}
-              </span>
+              {showFleet ? (
+                <ServerPicker
+                  servers={servers}
+                  rows={fleet}
+                  selectedId={selected.id}
+                  onSelect={setSelectedId}
+                />
+              ) : (
+                // One host: there is nothing to pick, so the name is just a
+                // name - and its Manage link has no row to live on.
+                <>
+                  <span className="text-sm font-medium">
+                    {serverLabel(selected)}
+                  </span>
+                  {canManageServers && (
+                    <ManageServerButton id={selected.id} className="mr-0" />
+                  )}
+                </>
+              )}
               {/**
                * The shared status line, not a local copy of it: the per-app Monitoring tab shows
                * the same claim, and two hand-maintained versions of "is this feed live?"
