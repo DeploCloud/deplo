@@ -53,6 +53,13 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
       nullable: true,
       resolve: (a) => a.actorUser,
     }),
+    actorProvider: t.exposeString("actorProvider", {
+      nullable: true,
+      description:
+        "The git host `actor` is a login on, when a webhook push wrote this " +
+        "row (`github`, `gitlab`, `bitbucket`, `gitea`). Null for a person on " +
+        "this instance and for an actor with no host, like `system`.",
+    }),
     appId: t.exposeID("appId", { nullable: true }),
     databaseId: t.exposeID("databaseId", { nullable: true }),
     createdAt: t.exposeString("createdAt"),

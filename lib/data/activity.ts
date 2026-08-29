@@ -296,6 +296,12 @@ export async function listActivityActors(): Promise<
 }
 
 /**
+ * Who acted: a name, or an account on a git host when a webhook did it. The object
+ * form is what keeps a push from being hunted for a member it can never match.
+ */
+export type ActivityActor = string | { name: string; provider: string };
+
+/**
  * Internal: record an event. When neither resolves - e.g. a background deploy with
  * no request context - it falls back to the first team so the row is never written
  * team-less (which would make it invisible to every team).
@@ -303,12 +309,14 @@ export async function listActivityActors(): Promise<
 export async function recordActivity(
   type: ActivityType,
   message: string,
-  actor: string,
+  actor: ActivityActor,
   appId: string | null = null,
   teamId: string | null = null,
   alert: AlertKey | null = null,
   databaseId: string | null = null,
 ): Promise<void> {
+  const name = typeof actor === "string" ? actor : actor.name;
+  const provider = typeof actor === "string" ? null : actor.provider;
   // Best-effort (PLAN §1(c): an audit-log insert must NEVER roll back the user's
   // action - it stays a standalone, non-transactional, fire-and-forget insert).
   let written = false;
@@ -335,10 +343,12 @@ export async function recordActivity(
       teamId: resolved,
       type,
       message,
-      actor,
-      actorUserId: await resolveActorUserId(actor),
+      actor: name,
+      // A login on a git host belongs to no account here, so it is never looked up.
+      actorUserId: provider ? null : await resolveActorUserId(name),
       // Resolved on the way OUT, per list. Nothing on the write path needs it.
       actorUser: null,
+      actorProvider: provider,
       appId,
       databaseId,
       createdAt: nowIso(),
@@ -355,7 +365,7 @@ export async function recordActivity(
         teamId: resolved,
         key: alert,
         title: message,
-        body: `By ${actor}.`,
+        body: `By ${name}.`,
         path: "/activity",
       });
   } catch (e) {
@@ -411,6 +421,7 @@ async function flushDroppedMarker(teamId: string): Promise<void> {
               : `${n} activity entries could not be recorded on this instance`,
           actor: "Deplo",
           actorUserId: null,
+          actorProvider: null,
           appId: null,
           databaseId: null,
           createdAt: nowIso(),

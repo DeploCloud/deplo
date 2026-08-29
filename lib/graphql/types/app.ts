@@ -152,6 +152,13 @@ export const DeploymentRef = builder
         nullable: true,
         resolve: (d) => d.creatorUser,
       }),
+      creatorProvider: t.exposeString("creatorProvider", {
+        nullable: true,
+        description:
+          "The git host `creator` is a login on, when a webhook push started " +
+          "this build (`github`, `gitlab`, `bitbucket`, `gitea`). Null when " +
+          "somebody on this instance ran it.",
+      }),
       rollbackOf: t.exposeID("rollbackOf", {
         nullable: true,
         description:

@@ -14,6 +14,7 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-creator-"));
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
+  activities as activitiesTable,
   apps as appsTable,
   deployments as deploymentsTable,
 } from "../db/schema/control-plane";
@@ -187,4 +188,24 @@ test("the deployment page reads the host off the row it is showing", async () =>
   const dep = await asUser(() => getDeployment(row!.id));
   assert.equal(dep?.creatorProvider, "github");
   assert.equal(dep?.creatorUser, null, "a login resolves to no account here");
+});
+
+test("the trail credits the same account the deployment does", async () => {
+  await push("IdraDev", "github");
+  await startDeployment(APP, { creator: "Idra", commitMessage: "Redeploy" });
+
+  const rows = await db
+    .select({
+      actor: activitiesTable.actor,
+      provider: activitiesTable.actorProvider,
+      userId: activitiesTable.actorUserId,
+    })
+    .from(activitiesTable);
+  const pushed = rows.find((r) => r.actor === "IdraDev");
+  const person = rows.find((r) => r.actor === "Idra");
+  assert.ok(pushed, "the push wrote a trail entry");
+  assert.equal(pushed.provider, "github");
+  assert.equal(pushed.userId, null);
+  assert.ok(person, "so did the person");
+  assert.equal(person.provider, null, "a member carries no host");
 });

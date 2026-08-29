@@ -280,6 +280,7 @@ export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
     // makes a new field impossible to forget here. It is a display DECORATION
     // resolved from `actor_user_id` on the way out; there is no column to write.
     actorUser: undefined,
+    actorProvider: a.actorProvider,
     appId: a.appId,
     databaseId: a.databaseId,
     createdAt: a.createdAt,
@@ -302,6 +303,7 @@ export function assembleActivity(row: ActivityRow): Activity {
     // A DECORATION the caller batch-resolves, never a column. Null here so the
     // one shape stays honest: a list that has not looked the actor up says so.
     actorUser: null,
+    actorProvider: row.actorProvider ?? null,
     appId: row.appId,
     databaseId: row.databaseId,
     createdAt: row.createdAt,

@@ -1,11 +1,12 @@
 import * as React from "react";
 import Link from "next/link";
 
+import { GitAccount } from "@/components/shared/git-account";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn, gitProfileUrl, timeAgo } from "@/lib/utils";
 import type {
   Activity,
   ActivityType,
@@ -20,6 +21,9 @@ export interface ActivityItem {
   message: string;
   actor: string;
   actorUser: VarAuthor | null;
+  /** The git host `actor` is a login on - a webhook push. Null for a member here
+   *  and for an actor with no host, like `system`. */
+  actorProvider: string | null;
   createdAt: string;
   /** The app this happened to, when it happened to one. */
   appId: string | null;
@@ -51,6 +55,7 @@ export function toActivityItem(a: Activity): ActivityItem {
     message: a.message,
     actor: a.actor,
     actorUser: a.actorUser,
+    actorProvider: a.actorProvider,
     createdAt: a.createdAt,
     appId: a.appId,
     databaseId: a.databaseId,
@@ -248,9 +253,20 @@ export function ActivityRow({
       <ActivityMarker item={item} size={size} showActor={showActor} />
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
-          {showActor && (
-            <span className="font-medium text-foreground">{item.actor}</span>
-          )}
+          {showActor &&
+            (item.actorProvider ? (
+              // A push is an account on a git host, and the trail says so with the
+              // host's mark rather than a name nobody here answers to.
+              <GitAccount
+                login={item.actor}
+                provider={item.actorProvider}
+                url={gitProfileUrl(item.actorProvider, item.actor)}
+                size="xs"
+                className="font-medium text-foreground"
+              />
+            ) : (
+              <span className="font-medium text-foreground">{item.actor}</span>
+            ))}
           <time
             dateTime={item.createdAt}
             title={new Date(item.createdAt).toUTCString()}

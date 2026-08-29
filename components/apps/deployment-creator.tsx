@@ -1,17 +1,11 @@
-import { GitProviderIcon } from "@/components/shared/brand-icons";
+import { GitAccount } from "@/components/shared/git-account";
 import { UserAvatar, type AvatarSize } from "@/components/shared/user-avatar";
 import { cn } from "@/lib/utils";
 
-/** The host's mark, a step under the avatar it stands in for. */
-const MARK: Partial<Record<AvatarSize, string>> = {
-  xs: "size-3.5",
-  sm: "size-4",
-};
-
 /**
- * Who ran a deployment. A webhook push credits an account on the git host, so it
- * gets that host's mark and a link to the profile - never a monogram for somebody
- * this instance has no user for.
+ * Who ran a deployment: a member here, drawn with their own face, or the account
+ * that pushed, drawn as {@link GitAccount} - never a monogram for somebody this
+ * instance has no user for.
  */
 export function DeploymentCreator({
   creator,
@@ -35,46 +29,26 @@ export function DeploymentCreator({
   size?: AvatarSize;
   className?: string;
 }) {
-  const linked = Boolean(creatorProvider && creatorUrl);
-  const body = (
-    <>
-      {creatorProvider ? (
-        <GitProviderIcon
-          provider={creatorProvider}
-          className={cn("shrink-0", MARK[size] ?? "size-4")}
-        />
-      ) : (
-        <UserAvatar
-          name={creatorUser?.name ?? creator}
-          username={creatorUser?.username}
-          avatarColor={creatorUser?.avatarColor}
-          avatarUrl={creatorUser?.avatarUrl}
-          size={size}
-        />
-      )}
-      {/* Same affordance the commit sha next to it carries: a dotted underline is
-          how this product says "this opens the git host". */}
-      <span
-        className={cn(
-          "truncate",
-          linked && "underline decoration-dotted underline-offset-2",
-        )}
-      >
-        {creator}
-      </span>
-    </>
-  );
-  const cls = cn("flex min-w-0 items-center gap-1.5", className);
-  return linked ? (
-    <a
-      href={creatorUrl!}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={cn(cls, "transition-colors hover:text-foreground")}
-    >
-      {body}
-    </a>
-  ) : (
-    <span className={cls}>{body}</span>
+  if (creatorProvider)
+    return (
+      <GitAccount
+        login={creator}
+        provider={creatorProvider}
+        url={creatorUrl}
+        size={size}
+        className={className}
+      />
+    );
+  return (
+    <span className={cn("flex min-w-0 items-center gap-1.5", className)}>
+      <UserAvatar
+        name={creatorUser?.name ?? creator}
+        username={creatorUser?.username}
+        avatarColor={creatorUser?.avatarColor}
+        avatarUrl={creatorUser?.avatarUrl}
+        size={size}
+      />
+      <span className="truncate">{creator}</span>
+    </span>
   );
 }

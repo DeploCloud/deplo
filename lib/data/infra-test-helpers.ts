@@ -135,6 +135,7 @@ export async function seedActivity(
     actor: opts.actor ?? "owner",
     actorUser: opts.actorUser ?? null,
     actorUserId: opts.actorUserId ?? null,
+    actorProvider: opts.actorProvider ?? null,
     appId: opts.appId ?? null,
     databaseId: opts.databaseId ?? null,
     createdAt: opts.createdAt ?? T0,

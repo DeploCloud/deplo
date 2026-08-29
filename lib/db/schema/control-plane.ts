@@ -2056,6 +2056,9 @@ export const activities = pgTable(
     message: text("message").notNull(),
     actor: text("actor").notNull(),
     actorUserId: text("actor_user_id"),
+    // The git host `actor` is a login ON, when a webhook push wrote this row.
+    // NULL ⇒ a person here, or an actor with no host at all (`system`).
+    actorProvider: text("actor_provider"),
     appId: text("app_id").references(() => apps.id, {
       onDelete: "set null",
     }),

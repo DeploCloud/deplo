@@ -15,6 +15,7 @@ function row(over: Partial<ActivityItem> & { id: string }): ActivityItem {
     message: "Deploying docs",
     actor: "IdraDev",
     actorUser: null,
+    actorProvider: null,
     createdAt: "2026-08-26T14:32:11.000Z",
     appId: "prj_api",
     databaseId: null,

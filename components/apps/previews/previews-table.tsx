@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { GitAccount } from "@/components/shared/git-account";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -42,7 +43,7 @@ import { useLiveApp } from "@/components/apps/app-live-status";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppPreviewDTO } from "@/lib/data/previews";
-import { timeAgo } from "@/lib/utils";
+import { gitProfileUrl, timeAgo } from "@/lib/utils";
 
 /**
  * The pull request previews of one app.
@@ -149,7 +150,17 @@ export function PreviewsTable({
                         <span aria-hidden>to</span>
                         <span className="font-mono">{p.baseBranch}</span>
                       </span>
-                      {p.author && <span>@{p.author}</span>}
+                      {/* Previews only ever come from a GitHub pull request, so
+                          the author is an account there - drawn like every other
+                          pusher, not as bare text. */}
+                      {p.author && (
+                        <GitAccount
+                          login={p.author}
+                          provider="github"
+                          url={gitProfileUrl("github", p.author)}
+                          size="xs"
+                        />
+                      )}
                       {p.isFork && (
                         <Badge variant="secondary" className="gap-1">
                           <GitFork className="size-3" />

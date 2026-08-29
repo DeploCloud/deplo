@@ -1634,6 +1634,9 @@ export interface Activity {
    * the name.
    */
   actorUser: VarAuthor | null;
+  /** The git host {@link actor} is a login on, set only by a webhook push. Null ⇒
+   *  a person here, or an actor with no host at all (`system`). */
+  actorProvider: string | null;
   appId: ID | null;
   /** The database this happened to. A database is not an App, so it needs its
    *  own pointer; both are null for a team-level event. */

@@ -35,6 +35,7 @@ const PAGE = /* GraphQL */ `
       type
       message
       actor
+      actorProvider
       createdAt
       appId
       databaseId

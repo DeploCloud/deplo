@@ -1182,7 +1182,11 @@ export async function startDeployment(
               : `the build from ${rollback.builtAt.slice(0, 10)}`
           }`
         : `Deploying ${project.name}`,
-    opts.creator,
+    // The trail credits the same account the deployment does: a push is a login
+    // on its host, never a member here.
+    opts.creatorProvider
+      ? { name: opts.creator, provider: opts.creatorProvider }
+      : opts.creator,
     appId,
   );
 

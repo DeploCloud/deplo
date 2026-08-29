@@ -18,6 +18,11 @@ enum AccessNodeKind {
 """A single audit-log event in the active team's timeline."""
 type Activity {
   actor: String
+
+  """
+  The git host `actor` is a login on, when a webhook push wrote this row (`github`, `gitlab`, `bitbucket`, `gitea`). Null for a person on this instance and for an actor with no host, like `system`.
+  """
+  actorProvider: String
   actorUser: VarAuthor
   actorUserId: ID
   appId: ID
@@ -1347,6 +1352,11 @@ type Deployment {
   commitSha: String
   createdAt: String
   creator: String
+
+  """
+  The git host `creator` is a login on, when a webhook push started this build (`github`, `gitlab`, `bitbucket`, `gitea`). Null when somebody on this instance ran it.
+  """
+  creatorProvider: String
   creatorUser: VarAuthor
 
   """
