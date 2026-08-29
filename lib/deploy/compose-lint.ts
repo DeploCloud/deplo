@@ -15,6 +15,8 @@
 
 import yaml, { isMap, isScalar, Scalar, visit, type Document } from "../yaml";
 
+import { isDatastoreImage } from "../databases/images";
+
 /**
  * An `environment:` value is TEXT by the time the container reads it, so the text
  * the author typed IS the value. `UMASK: 022` parses to the number 22 and would
@@ -945,6 +947,136 @@ export function composeServiceNames(composeYaml: string): string[] {
   if (!services || typeof services !== "object" || Array.isArray(services))
     return [];
   return Object.keys(services as Record<string, unknown>);
+}
+
+/** The services map of a compose file, or null when there isn't one. */
+function servicesOf(
+  composeYaml: string | null,
+): Record<string, unknown> | null {
+  if (!composeYaml || !composeYaml.trim()) return null;
+  let doc: { services?: Record<string, unknown> } | null;
+  try {
+    doc = yaml.load(composeYaml) as typeof doc;
+  } catch {
+    return null;
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object" || Array.isArray(services))
+    return null;
+  return services;
+}
+
+/** First entry of a `ports:`/`expose:` list as a container port (`"8080:80"` -> 80). */
+function portFromList(raw: unknown): number | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const first = raw[0];
+  let n = NaN;
+  if (typeof first === "number") n = first;
+  else if (typeof first === "string") {
+    const parts = first.split(":");
+    const target = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+    n = Number(target.replace(/\/.*$/, "").trim());
+  } else if (first && typeof first === "object")
+    n = Number((first as Record<string, unknown>).target);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * The container port a service answers on: the port it publishes, else the one it
+ * only `expose:`s - which is all a template has left, since the catalog strips
+ * `ports:` from every blueprint.
+ */
+export function declaredPort(svc: unknown): number | null {
+  const s = (svc ?? {}) as { ports?: unknown; expose?: unknown };
+  return portFromList(s.ports) ?? portFromList(s.expose);
+}
+
+/** Every service another service names in `depends_on` (list form and map form). */
+function dependedUpon(services: Record<string, unknown>): Set<string> {
+  const out = new Set<string>();
+  for (const svc of Object.values(services)) {
+    const dep = (svc as { depends_on?: unknown })?.depends_on;
+    if (Array.isArray(dep)) {
+      for (const d of dep) if (typeof d === "string") out.add(d);
+    } else if (dep && typeof dep === "object") {
+      for (const k of Object.keys(dep)) out.add(k);
+    }
+  }
+  return out;
+}
+
+function imageOf(svc: unknown): string | null {
+  const img = (svc as { image?: unknown })?.image;
+  return typeof img === "string" ? img : null;
+}
+
+/**
+ * The services a domain may point at: not a name the platform answers to on the
+ * shared network, and not a database. A stack of nothing BUT databases keeps the
+ * whole list - it is the one case where routing at a datastore is the only answer
+ * there is.
+ */
+function routableNames(services: Record<string, unknown>): string[] {
+  const names = Object.keys(services).filter(
+    (n) => !RESERVED_SHARED_NETWORK_NAMES.has(n),
+  );
+  const web = names.filter((n) => !isDatastoreImage(imageOf(services[n])));
+  return web.length > 0 ? web : names;
+}
+
+/**
+ * Pick a default `{service, port}` to seed a compose project's FIRST domain when
+ * neither the template nor the user named one. Used at project creation only -
+ * after that the `domains` table (each row's `service`) is authoritative.
+ */
+export function detectDefaultApp(
+  compose: string | null,
+): { service: string; port: number } | null {
+  const services = servicesOf(compose);
+  if (!services) return null;
+  const names = routableNames(services);
+  if (names.length === 0) return null;
+  // A declared port is the author saying "here" - it wins over any guess.
+  for (const name of names) {
+    const port = declaredPort(services[name]);
+    if (port) return { service: name, port };
+  }
+  // Nothing declared: the front door is the service no other service waits on.
+  const depended = dependedUpon(services);
+  const service = names.find((n) => !depended.has(n)) ?? names[0];
+  return { service, port: declaredPort(services[service]) ?? 80 };
+}
+
+/** One row of the wizard's "which services get a domain" list. */
+export interface ComposeRouteCandidate {
+  name: string;
+  port: number;
+  /** Runs one of the engines Deplo provisions - offered, but never pre-selected. */
+  isDatastore: boolean;
+  /** Deplo's own name on the shared network: it can never hold a domain. */
+  isReserved: boolean;
+  /** The one the auto domain is born on. */
+  isPrimary: boolean;
+}
+
+/**
+ * Every service of a stack with what the new-app wizard needs to offer it a
+ * domain. Same reading as {@link detectDefaultApp}, so the row marked primary is
+ * the one the server would have picked on its own.
+ */
+export function composeRouteCandidates(
+  compose: string | null,
+): ComposeRouteCandidate[] {
+  const services = servicesOf(compose);
+  if (!services) return [];
+  const primary = detectDefaultApp(compose)?.service ?? null;
+  return Object.keys(services).map((name) => ({
+    name,
+    port: declaredPort(services[name]) ?? 80,
+    isDatastore: isDatastoreImage(imageOf(services[name])),
+    isReserved: RESERVED_SHARED_NETWORK_NAMES.has(name),
+    isPrimary: name === primary,
+  }));
 }
 
 /**

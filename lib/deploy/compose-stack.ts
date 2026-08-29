@@ -11,11 +11,16 @@ import { certResolver } from "./domains";
 import { traefikRouterLabels, hash6 } from "./routing";
 import { mergeResourceLimits } from "./resources";
 import {
+  declaredPort,
   keepAuthoredEnvText,
   RESERVED_SHARED_NETWORK_NAMES,
   reservedNameMessage,
   sharedNetworkKeys,
 } from "./compose-lint";
+
+// The detection reads the AUTHORED compose and has to answer in the wizard too,
+// so it lives in the client-safe module; this stays its address for the server.
+export { detectDefaultApp } from "./compose-lint";
 
 /**
  * Turn a raw template/user docker-compose file into a Deplo-deployable stack. (Two
@@ -129,46 +134,6 @@ export function escapeComposeDollars(encoded: string): string {
   return encoded.replace(/\$/g, "$$$$");
 }
 
-/** First published container port of a service, if any (`"8080:80"` -> 80, `8080` -> 8080). */
-function publishedPort(svc: App): number | null {
-  const ports = svc.ports;
-  if (!Array.isArray(ports) || ports.length === 0) return null;
-  const first = ports[0];
-  if (typeof first === "number") return first;
-  if (typeof first === "string") {
-    const parts = first.split(":");
-    const target = parts.length > 1 ? parts[parts.length - 1] : parts[0];
-    const n = Number(target.replace(/\/.*$/, "").trim());
-    return Number.isFinite(n) ? n : null;
-  }
-  if (first && typeof first === "object") {
-    const t = (first as Record<string, unknown>).target;
-    const n = Number(t);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-/**
- * Pick a default `{service, port}` to seed a compose project's FIRST domain when
- * neither the template nor the user named one. Used at project creation only -
- * after that the `domains` table (each row's `service`) is authoritative.
- */
-export function detectDefaultApp(
-  compose: string | null,
-): { service: string; port: number } | null {
-  if (!compose || !compose.trim()) return null;
-  let doc: ComposeDoc;
-  try {
-    doc = (yaml.load(compose) as ComposeDoc) ?? {};
-  } catch {
-    return null;
-  }
-  const services = doc.services;
-  if (!services || typeof services !== "object") return null;
-  return detectExpose(services as Record<string, App>);
-}
-
 /**
  * The container port ONE named service of a compose app answers on: the port it
  * publishes, else the conventional web port a route with no explicit port falls
@@ -187,7 +152,7 @@ export function composeServicePort(
   }
   const svc = doc.services?.[service];
   if (!svc || typeof svc !== "object") return null;
-  return publishedPort(svc as App) ?? 80;
+  return declaredPort(svc) ?? 80;
 }
 
 /**
@@ -235,26 +200,6 @@ export function composeDeclaredEnvKeys(compose: string | null): string[] {
     }
   }
   return [...out];
-}
-
-/** Pick the service Traefik should route to when the template did not say. */
-function detectExpose(
-  services: Record<string, App>,
-): { service: string; port: number } | null {
-  // Never seed a route onto a name the platform answers to on the shared network:
-  // routing it there is refused at render time, which would brick every deploy of
-  // a stack whose first service happens to be called `postgres`.
-  const names = Object.keys(services).filter(
-    (n) => !RESERVED_SHARED_NETWORK_NAMES.has(n),
-  );
-  if (names.length === 0) return null;
-  // Prefer a service that publishes a port.
-  for (const name of names) {
-    const p = publishedPort(services[name]);
-    if (p) return { service: name, port: p };
-  }
-  // Otherwise the first service on a conventional web port.
-  return { service: names[0], port: 80 };
 }
 
 /**
@@ -521,6 +466,22 @@ function appNetworks(svc: App): string[] {
 }
 
 /**
+ * Where a Storage volume with no service named lands. Deliberately NOT
+ * `detectDefaultApp`: that one learned to skip databases, and following it would
+ * move an existing app's mount into another container on its next deploy.
+ */
+function defaultVolumeService(services: Record<string, App>): string {
+  const names = Object.keys(services).filter(
+    (n) => !RESERVED_SHARED_NETWORK_NAMES.has(n),
+  );
+  const published = names.find((n) => {
+    const ports = services[n]?.ports;
+    return Array.isArray(ports) && ports.length > 0;
+  });
+  return published ?? names[0] ?? Object.keys(services)[0];
+}
+
+/**
  * Mount the app's Storage-settings volumes into the stack and declare the named
  * ones at the top level.
  */
@@ -532,7 +493,7 @@ function injectAppVolumes(
   const volumes = input.volumes ?? [];
   if (volumes.length === 0) return;
 
-  const fallback = detectExpose(services)?.service ?? Object.keys(services)[0];
+  const fallback = defaultVolumeService(services);
   // Existing top-level volume keys - ours must not collide with a key the user
   // already declared (that would silently re-point their volume at our mount).
   const topLevel = (
@@ -689,8 +650,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
 
   // Resolve a service's container port from the compose doc.
   const portOf = (service: string): number => {
-    const p = publishedPort(services[service] as App);
-    return p ?? 80; // conventional web port when the service declares none
+    return declaredPort(services[service]) ?? 80; // conventional web port when the service declares none
   };
 
   // Apps we've already joined to the network, so a service routed on two

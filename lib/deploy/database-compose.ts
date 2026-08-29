@@ -6,6 +6,7 @@
 import { deploLabels, escapeComposeDollars } from "./compose-stack";
 import { renderResourceLimitsYaml } from "./resources";
 import type { DatabaseType, ResourceLimits } from "../types";
+import { isOfficialEngineImage } from "../databases/images";
 
 /**
  * Derived engine image per type+version.
@@ -18,40 +19,6 @@ export const DB_IMAGES: Record<DatabaseType, (v: string) => string> = {
   redis: (v) => `redis:${v}-alpine`,
   clickhouse: (v) => `clickhouse/clickhouse-server:${v}`,
 };
-
-/**
- * The repository each engine's OFFICIAL image lives at - the same repos
- * {@link DB_IMAGES} derives from, split out so a `customImage` can be recognised
- * as "still the official image, just pinned differently".
- */
-const DB_REPOS: Record<DatabaseType, string> = {
-  postgres: "postgres",
-  mysql: "mysql",
-  mariadb: "mariadb",
-  mongodb: "mongo",
-  redis: "redis",
-  clickhouse: "clickhouse/clickhouse-server",
-};
-
-/**
- * Is `image` the engine's official image at some tag or digest? A pinned
- * `postgres:18` still ships `pg_isready`, so it must keep a real probe.
- */
-export function isOfficialEngineImage(
-  type: DatabaseType,
-  image: string | null | undefined,
-): boolean {
-  const s = image?.trim();
-  if (!s) return false;
-  const ref = s.split("@")[0];
-  const slash = ref.lastIndexOf("/");
-  const colon = ref.lastIndexOf(":");
-  const repo = colon > slash ? ref.slice(0, colon) : ref;
-  const want = DB_REPOS[type];
-  return (
-    repo === want || repo === `library/${want}` || repo === `docker.io/${want}`
-  );
-}
 
 const DB_PORTS: Record<DatabaseType, number> = {
   postgres: 5432,
