@@ -805,6 +805,7 @@ const DOMAIN_FIELDS = /* GraphQL */ `
   status
   ssl
   certProvider
+  service
   port
   entrypoint
   proxied
@@ -829,13 +830,25 @@ const DOMAINS: McpToolDef[] = [
     name: "add_domain",
     title: "Add a domain",
     description:
-      "Point a hostname at an app. Certificates stay off unless you ask for letsencrypt.",
+      "Point a hostname at an app. Certificates stay off unless you ask for letsencrypt. A multi-container app also needs the container this hostname routes to.",
     group: "Domains",
     requires: "manage_domains",
     input: z.object({
       appId,
       name: z.string().describe("The hostname, e.g. api.acme.com."),
-      port: z.number().int().optional().describe("Container port to route to."),
+      service: z
+        .string()
+        .optional()
+        .describe(
+          "Multi-container app only, and required there: the compose service that serves this hostname. get_app returns the compose file with the names.",
+        ),
+      port: z
+        .number()
+        .int()
+        .optional()
+        .describe(
+          "Container port to route to. Required on a multi-container app.",
+        ),
       certProvider: z.enum(["none", "letsencrypt", "custom"]).optional(),
     }),
     query: /* GraphQL */ `
@@ -847,8 +860,8 @@ const DOMAINS: McpToolDef[] = [
       appId: a.appId,
       name: a.name,
       config:
-        a.port || a.certProvider
-          ? { port: a.port, certProvider: a.certProvider }
+        a.service || a.port || a.certProvider
+          ? { service: a.service, port: a.port, certProvider: a.certProvider }
           : undefined,
     }),
   }),
