@@ -68,6 +68,12 @@ export interface Entry {
   group: string;
   run: Run;
   /**
+   * Colours the glyph. Only the verbs that act on a running container carry
+   * one, and only inside that resource's own menu - so the colour means "this
+   * touches the thing", never decoration.
+   */
+  tone?: "info" | "success" | "warning" | "violet";
+  /**
    * Whose page this is. The row then wears the resource's own logo with
    * {@link Entry.icon} badged onto it, so "deplo-web's Variables" cannot be
    * mistaken for deplo's own.
@@ -228,6 +234,7 @@ interface ActionSpec {
   id: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
+  tone: NonNullable<Entry["tone"]>;
   requires: Capability;
   query: string;
   success: string;
@@ -241,6 +248,7 @@ export const APP_ACTIONS: ActionSpec[] = [
   {
     id: "redeploy",
     label: "Redeploy",
+    tone: "info",
     icon: RotateCw,
     requires: "deploy_apps",
     query: `mutation($id: String!) { redeploy(appId: $id) { id } }`,
@@ -249,6 +257,7 @@ export const APP_ACTIONS: ActionSpec[] = [
   {
     id: "start",
     label: "Start",
+    tone: "success",
     icon: Play,
     requires: "control_apps",
     query: `mutation($id: String!) { startApp(id: $id) { id } }`,
@@ -257,6 +266,7 @@ export const APP_ACTIONS: ActionSpec[] = [
   {
     id: "stop",
     label: "Stop",
+    tone: "warning",
     icon: Square,
     requires: "control_apps",
     query: `mutation($id: String!) { stopApp(id: $id) { id } }`,
@@ -265,6 +275,7 @@ export const APP_ACTIONS: ActionSpec[] = [
   {
     id: "reload",
     label: "Reload",
+    tone: "violet",
     icon: RefreshCw,
     requires: "control_apps",
     query: `mutation($id: String!) { reloadApp(id: $id) }`,
@@ -276,6 +287,7 @@ export const DB_ACTIONS: ActionSpec[] = [
   {
     id: "redeploy",
     label: "Redeploy",
+    tone: "info",
     icon: RotateCw,
     requires: "control_databases",
     query: `mutation($id: String!) { redeployDatabase(id: $id) { id } }`,
@@ -284,6 +296,7 @@ export const DB_ACTIONS: ActionSpec[] = [
   {
     id: "restart",
     label: "Restart",
+    tone: "violet",
     icon: RefreshCw,
     requires: "control_databases",
     query: `mutation($id: String!) { restartDatabase(id: $id) { id } }`,
@@ -297,6 +310,7 @@ const actionEntries = (specs: ActionSpec[], targetId: string): Entry[] =>
     label: a.label,
     icon: a.icon,
     group: "Actions",
+    tone: a.tone,
     run: {
       kind: "mutation" as const,
       query: a.query,

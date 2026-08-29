@@ -268,3 +268,35 @@ test("an app is named by its slug too, as it is on the server", () => {
     ["Logs"],
   );
 });
+
+test("only a resource's own verbs are coloured, and never red", () => {
+  const app = appFrameEntries({
+    id: "prj_1",
+    slug: "blog",
+    name: "Blog",
+    productionUrl: "https://blog.example.com",
+  });
+  const toned = new Map(
+    app.filter((e) => e.tone).map((e) => [e.label, e.tone]),
+  );
+  assert.deepEqual(Object.fromEntries(toned), {
+    Redeploy: "info",
+    Start: "success",
+    Stop: "warning",
+    Reload: "violet",
+  });
+
+  // Navigation, and the two verbs that touch nothing, stay muted.
+  for (const label of ["Overview", "Logs", "Copy URL", "Open in a new tab"]) {
+    assert.equal(
+      app.find((e) => e.label === label)?.tone,
+      undefined,
+      `"${label}" is not a control`,
+    );
+  }
+  // And so does every row outside a resource's own menu.
+  assert.deepEqual(
+    staticEntries().filter((e) => e.tone),
+    [],
+  );
+});
