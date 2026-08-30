@@ -71,6 +71,8 @@ import {
   stackName,
 } from "./deploy-key";
 import { deployNetwork } from "./network";
+import { crossNetworkMessage, crossNetworkRefs } from "./cross-network";
+import { foreignNamesForApp } from "../data/cross-network";
 import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -664,7 +666,7 @@ function previewEnvExtras(ctx: PreviewEnvContext): Record<string, string> {
  * runtime, plus every shared var the app opted into (linked) that also targets it,
  * plus instance globals.
  */
-async function appEnv(
+export async function appEnv(
   appId: string,
   target: EnvTarget = "production",
   opts: { preview?: PreviewEnvContext | null } = {},
@@ -1521,6 +1523,10 @@ async function tryAgent(opts: {
       );
       return { outcome: "failed", commitSha: "" };
     }
+    // Say which neighbours this stack is about to stop resolving, BEFORE the
+    // container tries and prints a DNS error nobody can act on. A warning, never a
+    // refusal: the match is a heuristic and a false positive must not stop a deploy.
+    await warnCrossNetwork(opts.depId, opts.project.id, opts.network, opts.env);
     // The plan the TARGET runs, and the commit the BUILD resolved. Both are only
     // rewritten by the build-server leg below; without one they stay as passed and
     // this function behaves exactly as it always did.
@@ -2750,6 +2756,42 @@ export async function rerouteApp(
     return "rerouted";
   } finally {
     conn.close();
+  }
+}
+
+/**
+ * Log one line per neighbour this app names but can no longer reach. Best-effort
+ * in every direction: the detector is a heuristic, and a deploy must never fail
+ * because the warning could not be produced.
+ */
+async function warnCrossNetwork(
+  depId: string,
+  appId: string,
+  network: string,
+  env: Record<string, string>,
+): Promise<void> {
+  try {
+    const app = (
+      await getDb()
+        .select({
+          id: appsTable.id,
+          serverId: appsTable.serverId,
+          teamId: appsTable.teamId,
+          environmentId: appsTable.environmentId,
+        })
+        .from(appsTable)
+        .where(eq(appsTable.id, appId))
+        .limit(1)
+    )[0];
+    if (!app) return;
+    const foreign = (await foreignNamesForApp(app)).filter(
+      (f) => f.network !== network,
+    );
+    for (const ref of crossNetworkRefs(env, foreign))
+      log(depId, "warn", crossNetworkMessage(ref));
+  } catch {
+    // Nothing to say is better than a deploy that fell over telling the user
+    // something it only suspected.
   }
 }
 

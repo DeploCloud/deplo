@@ -1760,7 +1760,8 @@ export async function moveDatabaseToEnvironment(
  * Best-effort and sequential: an unreachable host leaves the row moved and the
  * container where it was, and the next redeploy finishes the job.
  */
-export async function reapplyDatabaseNetwork(ids: string[]): Promise<void> {
+export async function reapplyDatabaseNetwork(ids: string[]): Promise<number> {
+  let failed = 0;
   for (const id of ids) {
     try {
       const rows = await getDb()
@@ -1788,6 +1789,7 @@ export async function reapplyDatabaseNetwork(ids: string[]): Promise<void> {
         conn.close();
       }
     } catch (e) {
+      failed++;
       console.warn(
         `[deplo] ${id} was moved but could not be put on its new network: ${
           e instanceof Error ? e.message : String(e)
@@ -1795,6 +1797,7 @@ export async function reapplyDatabaseNetwork(ids: string[]): Promise<void> {
       );
     }
   }
+  return failed;
 }
 
 /**

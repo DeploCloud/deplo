@@ -33,6 +33,8 @@ import {
 } from "@/lib/overview-links";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { PageHeader } from "@/components/shared/page-header";
+import { NetworkSweepNotice } from "@/components/shared/network-sweep-notice";
+import { networkSweepFailures } from "@/lib/deploy/network-migration";
 import {
   ActivityTimeline,
   toActivityItem,
@@ -93,6 +95,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
     hasCapabilityAnywhere("move_apps"),
   ]);
   const activityDatabases = teamWideReach ? await listDatabases() : [];
+  // How many stacks stayed on the old shared network. 0 on every instance that
+  // never had one, which is every new install.
+  const networkSweepFailed = await networkSweepFailures();
   const canManageOrder = isAdmin || canManageTeam;
   // Shown instead of a create button wherever the viewer can't create apps, so
   // an empty Overview says what is missing instead of looking broken.
@@ -311,6 +316,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
             />
           }
         />
+
+        {/* The stacks the network-isolation move could not reach, if any. */}
+        <NetworkSweepNotice failed={networkSweepFailed} canRetry={isAdmin} />
 
         {/**
          * The project drill-in's environment dropdown (ADR-0009) sits inline in the

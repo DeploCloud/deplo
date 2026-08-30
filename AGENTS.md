@@ -323,28 +323,25 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   `composeHasHostBindMount`. Adding a compose key that escapes the sandbox means adding it to
   that list, and HARDENING is never gated (`no-new-privileges`, `cap_drop`, `read_only`), because
   a permission prompt in front of the safer choice is one people learn to route around.
-- **The shared `deplo` network is the PLATFORM's, not the stack's.** Postgres sits on its own
-  `internal: true` leg (install.sh + docker-compose.yml), because every app joins the shared one and
-  every container there registers its SERVICE NAME as a DNS alias - Docker round-robins a name two
-  containers both claim, so a tenant service called `postgres` collected the control plane's own
-  database connections, password and all, and one called `deplo` collects the PANEL's traffic
-  (Traefik forwards it to `http://deplo:3000`). `buildComposeStack` is the choke point: every
-  service that ends up on that network has its hand-written `aliases:` dropped, and a
-  RESERVED_SHARED_NETWORK_NAMES service on it is refused outright (`composeClaimsReservedName`
-  gives the same refusal early, at save). Both halves are needed - the network split alone does not
-  help, because the control plane is on both networks and its resolver sees both. **Resolve that
-  network by NAME, never by key** (`sharedNetworkKeys`): compose lets it be referenced under any key
-  while pointing at it with `name:`, so `{ sneaky: { external: true, name: deplo } }` is the same
-  network, and a rule matching the key alone is one rename from decorative.
-  **A service claims more than its own name, and it claims it case-insensitively**
-  (`serviceReservedClaim`): Docker registers `hostname:` in the embedded DNS exactly like the
-  service name, and answers a lowercase query from an upper-case alias - so `hostname: postgres`
-  and a service called `Postgres` both walked past a check that compared `name` against a Set.
-  **Traefik's socket proxy is on that list too**: it is dialled BY NAME
-  (`--providers.docker.endpoint=tcp://deplo-socket-proxy:2375`) from a container straddling both
-  networks, so whoever answers that name writes the instance's whole routing table.
-  A managed database's `db-<slug>` is the same kind of name, checked against the server's real
-  databases in `createApp`/`updateAppSource` rather than from a constant list.
+- **An Environment owns a network, and nothing crosses it** (ADR-0028). A stack deploys onto
+  `deplo-env-<environmentId>`, or `deplo-team-<teamId>` when the app has no Environment (top
+  level or in a folder - folders never change the network). A preview gets its own. The name
+  comes from ONE seam, `lib/deploy/network.ts` (`appNetwork` / `previewNetwork` /
+  `deployNetwork`); never re-derive it. A managed database takes the same placement
+  (`databases.environment_id`), so one rule covers both.
+  **The compose KEY stays `deplo` and only its `name:` changes**, so a hand-written
+  `networks: [deplo]` needs no rewriting of the service. `buildComposeStack` is still THE
+  choke point: `aliases:` dropped, and every top-level key that RESOLVES to a platform
+  network - by key or by `name:`/`external.name`, `sharedNetworkKeys` - is re-pointed at the
+  stack's own network. Rewriting beats refusing: the same YAML arrives from an import.
+  **The reserved-name list is down to what Traefik still resolves by DNS.** It sits on every
+  tenant network and dials `tcp://docker-socket-proxy:2375` and `http://deplo:3000`, so those
+  two names stay claimable and stay refused (`composeClaimsReservedName` early at save,
+  `serviceReservedClaim` at render). The claim is case-insensitive and covers `hostname:`,
+  because Docker's DNS registers it exactly like a service name. A managed database's
+  `db-<slug>` is checked against the server's real databases, not a constant list.
+  **The agent has no fallback**: it creates the network the request names and connects
+  Traefik to it, including after the `--force-recreate` a Traefik config apply does.
 - **`canMountHostVolumes` gates the top-level `volumes:` block too**
   (`composeMountsForeignStorage`). `composeHasHostBindMount` reads SERVICE mounts and calls a source
   a host bind when it starts with `/` or climbs with `..`; a NAMED volume is neither, so

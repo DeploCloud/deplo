@@ -33,6 +33,8 @@ repository root.
 | [0024](0024-a-passkey-is-a-full-sign-in-method-and-satisfies-the-2fa-mandate.md)          | A passkey is a full sign-in method, and it satisfies the two-factor mandate. **Amends 0014**                                |
 | [0025](0025-a-migration-source-is-a-server-that-hosts-nothing.md)                         | A migration source is a server that hosts nothing, and Deplo takes itself back off it                                       |
 | [0026](0026-a-source-platform-is-one-adapter-behind-one-client.md)                        | A source platform is one adapter behind one client interface                                                                |
+| [0027](0027-a-shared-variable-reaches-many-teams.md)                                      | A shared variable reaches many teams, and the instance layer is one of them. **Amends 0010 and 0012**                       |
+| [0028](0028-an-environment-owns-a-network.md)                                             | An Environment owns a network, and nothing crosses it                                                                       |
 
 ## Amended or superseded
 

@@ -2610,6 +2610,12 @@ export const instanceSettings = pgTable("instance_settings", {
    * deployment's egress and policy, not of one team's taste.
    */
   gravatarEnabled: boolean("gravatar_enabled").notNull().default(true),
+  /**
+   * When the one-time network-isolation sweep finished, and how many stacks it
+   * could not move. NULL ⇒ it has not run on this instance yet.
+   */
+  networkSweepAt: isoTimestamptz("network_sweep_at"),
+  networkSweepFailed: integer("network_sweep_failed").notNull().default(0),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 

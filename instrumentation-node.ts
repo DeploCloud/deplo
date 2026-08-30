@@ -117,6 +117,17 @@ export async function register(): Promise<void> {
     console.error("[deplo] app delete reconcile failed to start:", e);
   }
   try {
+    // The one-time move of every stack off the single shared network. Floated: it
+    // brings up every container on every host, and nothing at boot waits on it.
+    const { runNetworkIsolationSweep } =
+      await import("./lib/deploy/network-migration");
+    void runNetworkIsolationSweep().catch((e) =>
+      console.error("[deplo] network isolation sweep failed:", e),
+    );
+  } catch (e) {
+    console.error("[deplo] network isolation sweep failed to start:", e);
+  }
+  try {
     // The pull request preview reaper - a third sibling under its own lease.
     const { startPreviewReaper } = await import("./lib/previews/reaper");
     startPreviewReaper();

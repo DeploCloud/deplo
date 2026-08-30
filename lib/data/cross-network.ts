@@ -1,0 +1,112 @@
+import "server-only";
+
+import { and, eq, ne } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import {
+  apps as appsTable,
+  databases as databasesTable,
+  environments as environmentsTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane";
+import { composeClaimedNames } from "../deploy/compose-lint";
+import { appNetwork } from "../deploy/network";
+import { stackName } from "../deploy/deploy-key";
+import type { ForeignName } from "../deploy/cross-network";
+
+/** How many neighbours to read. A host with more than this has bigger problems. */
+const MAX_NEIGHBOURS = 200;
+
+/**
+ * Every DNS name a stack on `serverId` answers to that this app's network does
+ * NOT reach - what turns into "cannot resolve host" the moment it deploys.
+ *
+ * Same server only: a Docker network is local to a host, so a name on another
+ * machine was never reachable and is not news.
+ */
+export async function foreignNamesForApp(a: {
+  id: string;
+  serverId: string;
+  teamId: string;
+  environmentId?: string | null;
+}): Promise<ForeignName[]> {
+  const mine = appNetwork(a);
+  const db = getDb();
+  const [neighbours, dbs] = await Promise.all([
+    db
+      .select({
+        slug: appsTable.slug,
+        compose: appsTable.compose,
+        teamId: appsTable.teamId,
+        environmentId: appsTable.environmentId,
+        envName: environmentsTable.name,
+        projectName: projectsTable.name,
+      })
+      .from(appsTable)
+      .leftJoin(
+        environmentsTable,
+        eq(appsTable.environmentId, environmentsTable.id),
+      )
+      .leftJoin(
+        projectsTable,
+        eq(environmentsTable.projectId, projectsTable.id),
+      )
+      // Same TEAM as well as same host: another team's network is unreachable by
+      // construction, so naming one would only leak their project name.
+      .where(
+        and(
+          eq(appsTable.serverId, a.serverId),
+          eq(appsTable.teamId, a.teamId),
+          ne(appsTable.id, a.id),
+        ),
+      )
+      .limit(MAX_NEIGHBOURS),
+    db
+      .select({
+        host: databasesTable.host,
+        teamId: databasesTable.teamId,
+        environmentId: databasesTable.environmentId,
+        envName: environmentsTable.name,
+        projectName: projectsTable.name,
+      })
+      .from(databasesTable)
+      .leftJoin(
+        environmentsTable,
+        eq(databasesTable.environmentId, environmentsTable.id),
+      )
+      .leftJoin(
+        projectsTable,
+        eq(environmentsTable.projectId, projectsTable.id),
+      )
+      .where(
+        and(
+          eq(databasesTable.serverId, a.serverId),
+          eq(databasesTable.teamId, a.teamId),
+        ),
+      )
+      .limit(MAX_NEIGHBOURS),
+  ]);
+
+  const out: ForeignName[] = [];
+  const add = (name: string, network: string, where: string) => {
+    if (network === mine || !name) return;
+    out.push({ name: name.toLowerCase(), network, where });
+  };
+  for (const n of neighbours) {
+    const net = appNetwork(n);
+    const where = placeLabel(n.projectName, n.envName);
+    // A compose stack answers to every service name it declares; a single-image
+    // one answers to its container, which is the stack name.
+    const names = n.compose?.trim()
+      ? composeClaimedNames(n.compose)
+      : [stackName(n.slug)];
+    for (const name of names) add(name, net, where);
+  }
+  for (const d of dbs)
+    add(d.host, appNetwork(d), placeLabel(d.projectName, d.envName));
+  return out;
+}
+
+function placeLabel(project: string | null, env: string | null): string {
+  return project && env ? `${project} / ${env}` : "another environment";
+}

@@ -97,6 +97,17 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
       </>
     ),
   },
+  {
+    id: "leftover_networks",
+    label: "Leftover networks",
+    info: (
+      <>
+        The networks of environments and previews that are gone. They take no
+        disk, but each one holds a slice of the address range this server can
+        hand out.
+      </>
+    ),
+  },
 ];
 
 /** The policy as the form holds it: the numbers as text, so a half-typed field is a

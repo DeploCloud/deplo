@@ -248,6 +248,7 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
     "orphan_buildkit_cache",
     "unused_app_images",
     "leftover_app_files",
+    "leftover_networks",
   ]);
 });
 

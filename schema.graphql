@@ -3237,6 +3237,11 @@ type Mutation {
   restoreBackup(runId: String!): Boolean
 
   """
+  Run the network-isolation move again for every stack it could not reach the first time. Each app and database is brought up on the network its environment owns, one host at a time; one that still cannot be reached stays where it is and is reported in Activity. Safe to run more than once - a stack already on the right network is a no-op.
+  """
+  retryNetworkIsolation: Boolean
+
+  """
   The app's full deploy hook URL, minting it on first read. Calling it still requires an API token as `Authorization: Bearer deplo_…`.
   """
   revealAppDeployHook(id: String!): String

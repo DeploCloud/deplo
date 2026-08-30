@@ -92,6 +92,7 @@ import {
   startDeployment,
   stopContainer,
   startContainer,
+  rerouteApp,
 } from "../deploy/build";
 import {
   ensureAutoDomain,
@@ -2521,6 +2522,11 @@ export async function startApp(id: string): Promise<void> {
     );
   }
   await setAppStatus(id, "active");
+  // `compose start` starts the container it finds, on whatever network it was
+  // created with - so a stack stopped before the move to per-environment networks
+  // would come back on the old shared one. Re-render it now that the app is active;
+  // an unchanged stack is byte-identical and nothing is recreated.
+  await rerouteApp(id);
   await recordActivity("app", `Started ${project.name}`, user.name, id);
 }
 

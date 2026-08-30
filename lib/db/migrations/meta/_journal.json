@@ -981,6 +981,13 @@
       "when": 1784942221006,
       "tag": "0139_database_environment",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1784942222006,
+      "tag": "0140_network_isolation_sweep",
+      "breakpoints": true
     }
   ]
 }

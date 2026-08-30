@@ -944,10 +944,10 @@ export function composeClaimsReservedName(composeYaml: string): string | null {
 /** The message both checks use, so the editor and the deploy say the same thing. */
 export function reservedNameMessage(claimed: string): string {
   return (
-    `\`${claimed}\` can't be claimed on Deplo's shared network - it is a name the ` +
-    `platform itself answers to there, and two containers claiming one name split ` +
-    `the traffic between them. Rename the service (or its \`hostname:\`), or take ` +
-    `it off the \`deplo\` network.`
+    `\`${claimed}\` is a name Deplo's own infrastructure answers to, and the proxy ` +
+    `resolves it from inside your network - two containers claiming one name split ` +
+    `the traffic between them. Rename the service, or its \`hostname:\` if that is ` +
+    `what this names.`
   );
 }
 

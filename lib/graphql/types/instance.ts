@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import { retryNetworkIsolationSweep } from "@/lib/deploy/network-migration";
 import {
   getInstanceSettings,
   getPanelAddressImpact,
@@ -235,5 +236,15 @@ builder.mutationFields((t) => ({
       "Point every manageable server's certificates at this account email, where Let's Encrypt sends expiry and revocation notices. Each host's proxy is recreated to pick it up, one host at a time, so routing there is interrupted for a few seconds; certificates already issued keep working. Servers Deplo cannot manage are skipped and reported as skipped, never counted as done.",
     args: { email: t.arg.string({ required: true }) },
     resolve: (_r, { email }) => setCertificateEmail(email),
+  }),
+  retryNetworkIsolation: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Run the network-isolation move again for every stack it could not reach the first time. Each app and database is brought up on the network its environment owns, one host at a time; one that still cannot be reached stays where it is and is reported in Activity. Safe to run more than once - a stack already on the right network is a no-op.",
+    resolve: async () => {
+      await retryNetworkIsolationSweep();
+      return true;
+    },
   }),
 }));
