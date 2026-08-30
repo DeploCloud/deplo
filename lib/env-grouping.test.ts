@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { groupRowsByProject, TOP_LEVEL, TOP_LEVEL_NAME } from "./env-grouping";

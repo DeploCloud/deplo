@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /** Brand glyphs not shipped by lucide-react (brand icons were removed). */
 
 import { Boxes } from "lucide-react";

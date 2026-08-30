@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The bookkeeping behind an optimistically changed VALUE: a name the user just
  * typed, a switch they just flipped, a colour they just picked.

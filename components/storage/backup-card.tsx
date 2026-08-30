@@ -1,8 +1,5 @@
 "use client";
 
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import * as React from "react";
 import { Cloud, Loader2, Server } from "lucide-react";
 import { Card } from "@/components/ui/card";

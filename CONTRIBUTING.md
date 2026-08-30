@@ -61,25 +61,6 @@ NODE_TEST_CONTEXT=1 node --require ./lib/test/server-only-shim.cjs --import tsx 
 
 `schema.graphql` is generated output. Never hand-edit it.
 
-## Tests are part of the change, not a follow-up
-
-**Every change that adds behaviour arrives with a test that fails without it, and every bug fix
-arrives with a regression test that reproduces the bug.** A pull request that adds functionality
-with no test is incomplete, and a fix with no regression test is how the same bug comes back.
-
-The bar scales with the change: a new data-layer function, a capability gate, a parser, a
-compose rule or anything touching money, secrets or authorization needs a test. A copy change or
-a one-line style fix does not.
-
-Tests live next to what they test as `*.test.ts`, run under `node --test` with `tsx`, and hit a
-real schema through in-process pglite rather than mocks. Seed with `makeTestDb` plus
-`__setTestDb` / `__resetTestDb`, drive inside `runWithIdentity({ userId, teamId })`, and put
-shared seeders in a `*-test-helpers.ts` file so they dodge the `*.test.ts` glob.
-
-Authorization tests are the ones worth writing twice: assert that the allowed caller succeeds
-**and** that a caller from another team, or one holding the wrong Capability, gets zero rows or
-a refusal.
-
 ## Read these first
 
 deplo has strong opinions and they are written down. Before changing anything structural:

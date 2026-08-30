@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Plugin catalog + manifest contract - PURE. A manifest's `image` and `env` values
  * are treated as OPAQUE, never eval'd.

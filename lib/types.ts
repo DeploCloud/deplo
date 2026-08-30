@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 // Type-only (erased at runtime), so the framework catalog can keep importing
 // BuildMethod from here without either module ever forming a runtime cycle.
 import type { FrameworkId } from "./apps/framework-catalog";

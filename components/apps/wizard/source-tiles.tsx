@@ -1,8 +1,5 @@
 "use client";
 
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import Link from "next/link";
 import { ArrowRight, LayoutTemplate } from "lucide-react";
 

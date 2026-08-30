@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { cn } from "@/lib/utils";
 
 /** The Logs empty-state illustration: an empty pane with a blinking caret, into which log lines arrive one after another before the buffer clears and waits again. */

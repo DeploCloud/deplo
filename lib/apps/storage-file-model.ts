@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The pure model behind a **File** storage entry's content box: what the server's
  * answer means for the editor, and the one rule that decides whether a save must

@@ -1,8 +1,5 @@
 "use client";
 
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Client-side watchdog for the connection to the web server hosting the panel. The
  * in-memory state deliberately LATCHES: once the server is marked unreachable it

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { getCurrentUser } from "@/lib/auth";
 import { listMyPasskeys } from "@/lib/data/passkeys";
 import { listMySessions } from "@/lib/data/sessions";

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * How big a log pane reads. Held per browser (localStorage), not per app and not
  * on the account: it answers "can I read this screen", which belongs to the

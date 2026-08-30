@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { cn } from "@/lib/utils";
 
 /** The All (per-app) variables empty-state illustration: three app cards, each taking delivery of its OWN variable, one after another. */

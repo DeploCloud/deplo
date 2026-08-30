@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { cn } from "@/lib/utils";
 
 /** The command palette's no-results illustration: a query typed into a panel whose floor has given way, its rows lying below. */

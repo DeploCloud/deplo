@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Pure logic for reading an app's icon out of what the app SERVES, rather than out
  * of files it ships - the arm a **compose stack** needs.

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The `www` / non-`www` pair of a hostname - the one place that knows which two
  * hostnames are "the same site" and which of them a browser should end up on.

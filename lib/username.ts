@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Pure username helpers (no `server-only`) so they're usable in the data layer,
  * the migration, and client-side validation alike. A username is the instance-

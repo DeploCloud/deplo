@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The Node-runtime half of the instrumentation hook (instrumentation.ts imports
  * this file only when NEXT_RUNTIME === "nodejs").

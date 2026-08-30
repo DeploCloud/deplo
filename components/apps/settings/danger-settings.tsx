@@ -1,8 +1,5 @@
 "use client";
 
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { useRouter } from "next/navigation";
 import { ArrowLeftRight, Trash2 } from "lucide-react";
 import {

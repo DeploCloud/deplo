@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Every link the interface makes into the user manual, in one place: a docs
  * rename is one edit here instead of a grep across two hundred components.

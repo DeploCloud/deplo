@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Pure geometry for the monitoring charts. Kept out of the client components so
  * the maths is testable with `node --test` - the components stay presentation.

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { cn } from "@/lib/utils";
 
 /** The "app is not running" empty-state illustration: a plug hanging out of its socket, swinging slowly, dipping towards the socket and never going in. */

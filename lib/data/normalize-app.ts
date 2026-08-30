@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { newId } from "../ids";
 import { normalizeBuildConfig } from "../frameworks";
 import { deriveVolumeName } from "../apps/volume-model";

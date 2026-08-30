@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * App-logo constants + validation shared between the browser (the settings file
  * picker) and the server (the updateLogo action).

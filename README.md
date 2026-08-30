@@ -232,18 +232,6 @@ Full tables, including the agent installer, in
 - **Hardened by default**: per-request CSP nonce, HSTS, `X-Frame-Options: DENY`, `nosniff`,
   a referrer policy, a Postgres-backed rate limiter that survives restarts, and API tokens
   that carry a scope and an expiry.
-- **Every published image is signed**, keylessly, by the workflow that built it - there is
-  no private key to leak. It ships with a build provenance attestation and an SBOM. Verify
-  before you run it:
-
-```bash
-cosign verify ghcr.io/deplocloud/deplo:latest \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/DeploCloud/deplo/\.github/workflows/docker-image\.yml@refs/tags/v'
-```
-
-How all of that fits together, what it assumes and where it stops: the
-**[security assurance case](docs/assurance-case.md)**.
 
 Found a hole? **[SECURITY.md](SECURITY.md)** - report it privately, never in an issue.
 
@@ -255,9 +243,6 @@ locally, the three commands CI runs, and how contributions are licensed.
 - Questions and ideas: [Discussions](https://github.com/DeploCloud/deplo/discussions)
 - Bugs and feature requests: [Issues](https://github.com/DeploCloud/deplo/issues)
 - Vulnerabilities: [privately](https://github.com/DeploCloud/deplo/security/advisories/new)
-
-Who decides what, how code is reviewed, and what happens to the project if someone
-disappears: **[GOVERNANCE.md](GOVERNANCE.md)**.
 
 ## 🛠️ Tech stack
 

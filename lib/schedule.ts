@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Schedules the way a person states them, "every day at 03:00", with cron kept
  * as the *storage* format, not the *input* format.

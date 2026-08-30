@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * What the palette asks the server for. Kept out of the component so a test
  * can validate it against `schema.graphql`: a renamed field would otherwise

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Path-containment safety for build trees. A user-supplied `rootDirectory` (or an
  * archive's own layout) must never let a build escape the temp tree Deplo

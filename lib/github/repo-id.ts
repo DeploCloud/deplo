@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * How a stored {@link GitRepo} is turned into the `owner/name` GitHub uses to
  * address it.

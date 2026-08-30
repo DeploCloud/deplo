@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Minimal ANSI → styled-segment parser for rendering raw terminal output (e.g. a
  * container's stdout/stderr from `docker attach`) in the browser.

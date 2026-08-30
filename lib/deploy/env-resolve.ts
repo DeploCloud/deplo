@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The env-gathering rule: which variables reach an app's runtime, and in what
  * order. It selects and orders the *encrypted* entries; the deploy callers decrypt

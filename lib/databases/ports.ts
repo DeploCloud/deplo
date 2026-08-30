@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The host-port rules, shared by the data layer and the exposure UI. Client-safe
  * on purpose: the Save button must enable on exactly the ports the server accepts.

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * What a rendered stack may say to someone who only holds `view`, which is where
  * "View full compose" is served. Masks env values AND the basic-auth htpasswd

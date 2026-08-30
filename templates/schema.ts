@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The shapes the template catalog service serves. Remote input: everything the
  * client in `./catalog.ts` reads is parsed through here before it is used.

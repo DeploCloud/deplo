@@ -1,8 +1,5 @@
 "use client";
 
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";

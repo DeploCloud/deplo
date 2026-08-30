@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Profile-picture constants + validation, shared between the browser (the file
  * picker on the account and team forms) and the server (the mutations that store

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Freeze the whole page around one view. Chrome menus cannot open anyway, because
  * the triggers that open them are inert.

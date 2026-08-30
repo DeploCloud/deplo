@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import "server-only";
 
 import { and, count, eq, inArray, isNull, or, sql } from "drizzle-orm";

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { NextResponse, type NextRequest } from "next/server";
 import { templatesApiBase } from "@/templates/api-base";
 import { GRAVATAR_ORIGINS } from "@/lib/apps/avatar-shared";

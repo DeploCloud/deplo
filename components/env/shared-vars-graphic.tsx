@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { cn } from "@/lib/utils";
 
 /** The Shared variables empty-state illustration: one definition at the top, streaming down three branches into three apps that light up as it lands. */

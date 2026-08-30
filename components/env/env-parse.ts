@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The rule a variable name must satisfy, mirroring the server's
  * (`lib/data/env.ts`) so a bad key fails loudly in the form instead of at the

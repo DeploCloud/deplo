@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { CloudflareIcon } from "@/components/shared/brand-icons";
 import { CopyButton } from "@/components/shared/copy-button";
 

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases";

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The account-password policy, in one place, shared VERBATIM by the browser (the
  * live strength meter) and the server (the real gate). What the meter renders is

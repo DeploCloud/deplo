@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { cn } from "@/lib/utils";
 
 /** The Cron jobs empty-state illustration: a dial with a hand sweeping round it, firing the job every time it crosses the top mark. */

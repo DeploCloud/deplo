@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { version as packageVersion } from "../package.json";
 
 import { FALLBACK_AGENT_VERSION } from "./agent/release";

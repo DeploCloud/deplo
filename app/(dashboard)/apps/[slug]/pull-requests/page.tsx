@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ExternalLink, GitPullRequest } from "lucide-react";

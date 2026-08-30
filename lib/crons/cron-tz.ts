@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Cron evaluated in a named IANA timezone, built on the UTC evaluator in
  * [cron](../backups/cron.ts) rather than beside it. DST breaks the two kinds of

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Folding the Variables page's aggregate "All" tab into Project sections. The tab
  * holds every variable of every app in ONE flat row list (that is what lets its

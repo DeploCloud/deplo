@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Pure logic for auto-detecting an app's display logo from a favicon/icon shipped
  * in its own files (a GitHub repo, an uploaded archive, or, for a compose stack,

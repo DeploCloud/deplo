@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The JavaScript frameworks Deplo recognises in an app's own source, and the one
  * thing it derives from each: the port that framework's production server listens

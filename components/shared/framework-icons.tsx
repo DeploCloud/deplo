@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The real brand marks of the JavaScript frameworks Deplo recognises, one path
  * each, keyed by the catalog id stored on the app row.

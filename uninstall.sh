@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-
-# SPDX-FileCopyrightText: 2026 DeploCloud
-# SPDX-License-Identifier: AGPL-3.0-only
-
 #
 # Deplo UNINSTALLER - the counterpart to install.sh.
 #

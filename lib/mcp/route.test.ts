@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { test, before, after, beforeEach } from "node:test";

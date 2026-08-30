@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { PageHeader } from "@/components/shared/page-header";
 import { SaveMetricsMenu } from "@/components/monitoring/save-metrics-menu";
 import { getMonitoringSettings } from "@/lib/data/monitoring-settings";

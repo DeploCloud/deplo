@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The edit model behind the split one-time-code input
  * (`components/ui/otp-input.tsx`), where each digit gets its own box.

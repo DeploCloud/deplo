@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { toNextJsHandler } from "better-auth/next-js";
 import { getAuth } from "@/lib/auth/better-auth";
 import { rateLimit } from "@/lib/security";

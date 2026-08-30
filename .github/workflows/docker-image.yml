@@ -11,8 +11,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@v5
 
@@ -34,11 +32,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
-
       - name: Build and push Docker images
-        id: build
         uses: docker/build-push-action@v7.3.0
         with:
           context: .
@@ -48,16 +42,6 @@ jobs:
             ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}:${{ steps.version.outputs.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
-
-      # Keyless: the signature is bound to this workflow's OIDC identity, so there
-      # is no private key to store or rotate. Signing the digest covers every tag.
-      - name: Sign the image
-        env:
-          IMAGE: ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
       # LAST, not first. Publishing the release before the build meant a failed
       # build still announced a version: v1.1.0 has a release page and no image

@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The Docker network a stack joins. One per Environment, so a service name means
  * one container and nothing crosses an Environment boundary.

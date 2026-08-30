@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";

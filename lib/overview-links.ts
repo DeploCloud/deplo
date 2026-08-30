@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Overview drill-in URL builders. Client components import from here as well, so
  * the two sides can never disagree on the URL shape.

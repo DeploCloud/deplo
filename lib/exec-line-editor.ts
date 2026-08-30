@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * The wrap-aware line editor behind the exec console's terminal
  * (`components/apps/exec-terminal.tsx`).

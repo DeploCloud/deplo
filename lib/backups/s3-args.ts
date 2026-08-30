@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * A backup destination's advanced S3 flags. A free-form box that accepts anything
  * and silently drops what it cannot use is worse than no box: the flag looks

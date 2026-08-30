@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Liveness probe for the browser's connection watchdog (ServerConnectionGuard).
  * Deliberately dependency-free (no auth, no DB), because it answers exactly one

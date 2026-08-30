@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { PageHeader } from "@/components/shared/page-header";
 
 // The header is static, so it belongs above the page's Suspense boundary: it

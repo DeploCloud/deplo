@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { cn } from "@/lib/utils";
 
 /** The Domains empty-state illustration: a turning globe, a pin dropping onto it, and the address rippling outwards from where it lands. */

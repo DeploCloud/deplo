@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /**
  * Where the one-click template catalog lives. Shared by the catalog client and the
  * CSP in `proxy.ts`, which has to allow the same origin the cards load their logos

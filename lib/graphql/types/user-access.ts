@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 DeploCloud
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import { builder } from "../builder";
 import type { Capability } from "@/lib/types";
 import { CapabilityEnum } from "./enums";
