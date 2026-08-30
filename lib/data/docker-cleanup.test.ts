@@ -252,6 +252,45 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
   ]);
 });
 
+// A saved policy stores the scopes that were SELECTED, so one added later is simply
+// absent from it. Reading that absence as "turned off" made every new scope dead on
+// arrival: this instance's policy was saved 2026-07-19 and had never once run
+// `leftover_app_files` (shipped 08-23), nor would it have run `leftover_networks`.
+test("a scope added after the policy was saved is ON, not silently off", async () => {
+  await seedCleanupPolicy(db, {
+    // The four that existed when this policy was written, and nothing since.
+    scopes: [
+      "build_cache",
+      "dangling_images",
+      "orphan_buildkit_cache",
+      "unused_app_images",
+    ],
+    updatedAt: "2026-07-19T23:28:23.124Z",
+  });
+  const policy = await asOwner(() => getCleanupPolicy());
+  assert.ok(
+    policy.scopes.includes("leftover_app_files"),
+    "a scope that shipped after the save was never a box the operator unticked",
+  );
+  assert.ok(policy.scopes.includes("leftover_networks"));
+});
+
+// The other half, and the reason this is not just "default everything on": a scope
+// the operator DID see and turn off has to stay off.
+test("a scope the operator unticked stays off", async () => {
+  await seedCleanupPolicy(db, {
+    scopes: ["dangling_images", "orphan_buildkit_cache", "unused_app_images"],
+    // Saved after every scope below existed, so the absence IS a decision.
+    updatedAt: "2026-12-01T00:00:00.000Z",
+  });
+  const policy = await asOwner(() => getCleanupPolicy());
+  assert.ok(
+    !policy.scopes.includes("build_cache"),
+    "the unticked one is honoured",
+  );
+  assert.ok(!policy.scopes.includes("leftover_networks"));
+});
+
 test("a saved policy always wins over the defaults - an explicit disable survives", async () => {
   await seedCleanupPolicy(db, { enabled: false });
   const policy = await asOwner(() => getCleanupPolicy());

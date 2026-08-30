@@ -165,8 +165,39 @@ function normalizeScopes(scopes: readonly string[]): CleanupScopeId[] {
 /** The same canonicalization on READ, but TOLERANT: a stored scope this build does not
  *  know (a downgrade after a newer one wrote the policy) is dropped, not thrown on. A
  *  read that fails closed would take the whole settings page down over one stale row. */
-function knownScopes(scopes: readonly string[]): CleanupScopeId[] {
-  return CLEANUP_SCOPES.filter((s) => scopes.includes(s));
+/**
+ * When each scope became a box the operator could tick, ISO-8601.
+ *
+ * A saved policy stores the scopes that were SELECTED, so a scope added later is
+ * absent from it - and absence read as "turned off" made every new scope dead on
+ * arrival for every instance whose settings had ever been saved. Measured: an
+ * instance saved 2026-07-19 never once ran `leftover_app_files` (shipped 08-23),
+ * and would never have run `leftover_networks` either.
+ *
+ * `Record<CleanupScopeId, …>` is exhaustive on purpose: adding a scope without
+ * dating it here does not compile, so the next one cannot repeat this.
+ */
+const SCOPE_SINCE: Record<CleanupScopeId, string> = {
+  build_cache: "2026-01-01T00:00:00.000Z",
+  dangling_images: "2026-01-01T00:00:00.000Z",
+  orphan_buildkit_cache: "2026-01-01T00:00:00.000Z",
+  unused_app_images: "2026-01-01T00:00:00.000Z",
+  leftover_app_files: "2026-08-23T16:31:09.000Z",
+  leftover_networks: "2026-08-30T00:00:00.000Z",
+};
+
+/**
+ * The stored selection, plus every scope that did not exist when it was saved.
+ * A scope the operator SAW and unticked stays off; one they were never offered is
+ * on, which is what "cleanup ships with every scope" is supposed to mean.
+ */
+function effectiveScopes(
+  stored: readonly string[],
+  savedAt: string,
+): CleanupScopeId[] {
+  return CLEANUP_SCOPES.filter(
+    (s) => stored.includes(s) || SCOPE_SINCE[s] > savedAt,
+  );
 }
 
 /** The message every "this host has no agent yet" path produces - one story, one string. */
@@ -263,7 +294,10 @@ async function loadPolicy(): Promise<CleanupPolicy> {
     schedule: row.schedule,
     minAgeHours: row.minAgeHours,
     keepImagesPerApp: row.keepImagesPerApp,
-    scopes: knownScopes(scopeRows.map((r) => r.scope)),
+    scopes: effectiveScopes(
+      scopeRows.map((r) => r.scope),
+      row.updatedAt,
+    ),
     excludedServerIds,
     updatedAt: row.updatedAt,
   };
