@@ -7,6 +7,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   apps as appsTable,
+  databases as databasesTable,
   environments as environmentsTable,
   projects as projectsTable,
 } from "../db/schema/control-plane";
@@ -18,6 +19,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { deleteEnvironment } from "./environments";
+import { seedDatabase } from "./backup-test-helpers";
 
 /**
  * Deleting an environment re-parents its apps rather than deleting them (ADR-0009:
@@ -84,6 +86,29 @@ async function seedProjectWith(defaultId: string | null): Promise<void> {
 
 const homeOf = async (appId: string) =>
   (await db.select().from(appsTable).where(eq(appsTable.id, appId)))[0]!;
+
+// A database follows the apps rather than the FK's `set null`: landing on the team's
+// network would take it away from the very apps that were using it, which is the one
+// thing an environment delete must not do.
+test("deleting an environment re-parents its databases too", async () => {
+  await seedProjectWith("environ_prod");
+  const dbId = await seedDatabase(db, { id: "db_moved", teamId: TEAM_A });
+  await db
+    .update(databasesTable)
+    .set({ environmentId: "environ_dev" })
+    .where(eq(databasesTable.id, dbId));
+
+  await asUser1(() => deleteEnvironment("environ_dev"));
+
+  const row = (
+    await db.select().from(databasesTable).where(eq(databasesTable.id, dbId))
+  )[0]!;
+  assert.equal(
+    row.environmentId,
+    "environ_prod",
+    "the database lands where its apps did, not at the team level",
+  );
+});
 
 test("deleting an environment re-parents its apps to the project's default", async () => {
   await seedProjectWith("environ_prod");

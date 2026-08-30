@@ -668,9 +668,18 @@ export function buildComposeStack(input: ComposeStackInput): string {
     if (!target) return false;
     if (target.network_mode != null) return false;
     if (wired.has(service)) return true;
-    const existing = appNetworks(target);
-    const base = existing.length ? existing : ["default"];
-    target.networks = Array.from(new Set([...base, INFRA_NETWORK]));
+    const nets = target.networks;
+    if (nets && typeof nets === "object" && !Array.isArray(nets)) {
+      // Long form: ADD the key, never rebuild the block as a list. Flattening it
+      // dropped the author's `aliases`/`ipv4_address` on their OWN private networks,
+      // which are legitimate now that a stack is not on a shared network with anyone.
+      const map = nets as Record<string, unknown>;
+      if (!(INFRA_NETWORK in map)) map[INFRA_NETWORK] = null;
+    } else {
+      const existing = appNetworks(target);
+      const base = existing.length ? existing : ["default"];
+      target.networks = Array.from(new Set([...base, INFRA_NETWORK]));
+    }
     wired.add(service);
     return true;
   };

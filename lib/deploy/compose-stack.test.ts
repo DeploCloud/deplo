@@ -929,6 +929,27 @@ networks:
   assert.ok(!out.includes("aliases"), `an alias survived:\n${out}`);
 });
 
+// Flattening the long form to a list dropped the author's own options on their own
+// private networks - legitimate now that a stack shares a network with nobody.
+test("long-form `networks:` keeps its options; the stack's network is added", () => {
+  const doc = buildDoc(`services:
+  web:
+    image: nginx
+    networks:
+      interna:
+        aliases: [cache]
+        ipv4_address: 10.5.0.9
+networks:
+  interna: {}`);
+  const nets = doc.services.web.networks as Record<string, unknown>;
+  assert.ok(!Array.isArray(nets), "the map must stay a map");
+  assert.deepEqual(nets.interna, {
+    aliases: ["cache"],
+    ipv4_address: "10.5.0.9",
+  });
+  assert.equal(nets.deplo, null, "joined with no options");
+});
+
 test("a service claiming one of Deplo's own names on the shared network is refused", () => {
   for (const name of ["deplo", "postgres", "traefik"]) {
     assert.throws(

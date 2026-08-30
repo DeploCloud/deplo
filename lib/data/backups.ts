@@ -55,6 +55,7 @@ import {
   isValidSchedule,
 } from "../schedule";
 import { parseConnectionPassword } from "../deploy/database-compose";
+import { deployNetwork } from "../deploy/network";
 import { canonicalTimeZone } from "../crons/cron-tz";
 import { BACKUP_RUN_MAX_MS, mapBackupUnsupported } from "../infra/agent-client";
 import {
@@ -450,6 +451,7 @@ function databaseDescriptor(db: Database): DatabaseDescriptor {
 /** Map the structural project descriptor to the wire protobuf shape. */
 function toWireProjectDescriptor(
   d: ProjectBackupDescriptor,
+  network: string,
 ): ProjectDescriptor {
   return {
     slug: d.slug,
@@ -458,6 +460,9 @@ function toWireProjectDescriptor(
     composeYaml: d.composeYaml,
     envSnapshot: d.envSnapshot,
     mounts: d.mounts,
+    // The app's network TODAY, not the snapshot's: a restore ends in a Reroute, and
+    // the app may have moved Environment since the backup was taken.
+    network,
   };
 }
 
@@ -527,7 +532,7 @@ async function resolveTarget(
     databaseId: null,
     appId: project.id,
     dbType: null,
-    project: toWireProjectDescriptor(descriptor),
+    project: toWireProjectDescriptor(descriptor, deployNetwork(project)),
     label: `project ${project.name}`,
   };
 }

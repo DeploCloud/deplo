@@ -1297,6 +1297,12 @@ export interface ProjectDescriptor {
    * RerouteRequest.mounts. Empty for single-image projects.
    */
   mounts: MountFile[];
+  /**
+   * The app's CURRENT tenant network, for the Reroute a restore ends in. Set on the
+   * RESTORE path only: a backup does not need it, and the network the app is on today
+   * is not necessarily the one the snapshot was taken on.
+   */
+  network: string;
 }
 
 export interface ProjectDescriptor_EnvSnapshotEntry {
@@ -8069,7 +8075,7 @@ export const DatabaseDescriptor: MessageFns<DatabaseDescriptor> = {
 };
 
 function createBaseProjectDescriptor(): ProjectDescriptor {
-  return { slug: "", volumeNames: [], includeFiles: false, composeYaml: "", envSnapshot: {}, mounts: [] };
+  return { slug: "", volumeNames: [], includeFiles: false, composeYaml: "", envSnapshot: {}, mounts: [], network: "" };
 }
 
 export const ProjectDescriptor: MessageFns<ProjectDescriptor> = {
@@ -8091,6 +8097,9 @@ export const ProjectDescriptor: MessageFns<ProjectDescriptor> = {
     });
     for (const v of message.mounts) {
       MountFile.encode(v!, writer.uint32(50).fork()).join();
+    }
+    if (message.network !== "") {
+      writer.uint32(58).string(message.network);
     }
     return writer;
   },
@@ -8153,6 +8162,14 @@ export const ProjectDescriptor: MessageFns<ProjectDescriptor> = {
           message.mounts.push(MountFile.decode(reader, reader.uint32()));
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.network = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -8200,6 +8217,7 @@ export const ProjectDescriptor: MessageFns<ProjectDescriptor> = {
       mounts: globalThis.Array.isArray(object?.mounts)
         ? object.mounts.map((e: any) => MountFile.fromJSON(e))
         : [],
+      network: isSet(object.network) ? globalThis.String(object.network) : "",
     };
   },
 
@@ -8229,6 +8247,9 @@ export const ProjectDescriptor: MessageFns<ProjectDescriptor> = {
     if (message.mounts?.length) {
       obj.mounts = message.mounts.map((e) => MountFile.toJSON(e));
     }
+    if (message.network !== "") {
+      obj.network = message.network;
+    }
     return obj;
   },
 
@@ -8251,6 +8272,7 @@ export const ProjectDescriptor: MessageFns<ProjectDescriptor> = {
       {},
     );
     message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
+    message.network = object.network ?? "";
     return message;
   },
 };

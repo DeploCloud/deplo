@@ -107,6 +107,11 @@ export async function foreignNamesForApp(a: {
   return out;
 }
 
+/**
+ * Where a neighbour lives, said the way the user could act on it. An app with no
+ * Environment is at the team's top level, and telling someone to "move into that
+ * environment" when there is none is advice they cannot follow.
+ */
 function placeLabel(project: string | null, env: string | null): string {
-  return project && env ? `${project} / ${env}` : "another environment";
+  return project && env ? `${project} / ${env}` : "the team's top level";
 }
