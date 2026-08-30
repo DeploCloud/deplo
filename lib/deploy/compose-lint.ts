@@ -16,7 +16,7 @@
 import yaml, { isMap, isScalar, Scalar, visit, type Document } from "../yaml";
 
 import { isDatastoreImage } from "../databases/images";
-import { PLATFORM_NETWORKS } from "./network";
+import { PLATFORM_NETWORKS, isTenantNetwork } from "./network";
 
 /**
  * An `environment:` value is TEXT by the time the container reads it, so the text
@@ -863,8 +863,34 @@ export function serviceReservedClaim(
 }
 
 /**
- * Every top-level network KEY in this compose that resolves to one of the
- * PLATFORM's networks, which is not only the key `deplo`.
+ * The name a top-level network entry resolves to ON THE HOST, or null when
+ * compose would create it under this project's own prefix.
+ */
+function resolvedNetworkName(key: string, raw: unknown): string | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const n = raw as Record<string, unknown>;
+  if (typeof n.name === "string" && n.name.trim() !== "") return n.name.trim();
+  const ext = n.external;
+  if (ext && typeof ext === "object" && !Array.isArray(ext)) {
+    const name = (ext as Record<string, unknown>).name;
+    if (typeof name === "string" && name.trim() !== "") return name.trim();
+  }
+  // `external: true` attaches the network the KEY names, verbatim.
+  return ext ? key : null;
+}
+
+/** A network Deplo owns: the platform's own, or one it mints for a tenant. */
+export function isDeploNetwork(name: string): boolean {
+  return (
+    (PLATFORM_NETWORKS as readonly string[]).includes(name) ||
+    isTenantNetwork(name)
+  );
+}
+
+/**
+ * Every top-level network KEY in this compose that resolves to a network DEPLO
+ * owns - the platform's own, and every Environment / team / preview network,
+ * none of which is this stack's to name.
  *
  * Compose lets a network be referenced under any key while pointing at another
  * network by `name:`, so
@@ -876,36 +902,33 @@ export function serviceReservedClaim(
  * every rule about these networks has to resolve them by NAME first, or the rule
  * is one rename away from being decorative.
  *
- * `buildComposeStack` re-points every key this returns at the stack's OWN
- * network, so an authored join lands in the app's Environment instead of next to
- * the panel. Exported so the renderer and the editor agree on which keys those are.
+ * A TENANT network counts for the same reason, and that is the one that mattered:
+ * `networks: {default: {external: true, name: deplo-env-…}}` put the whole stack
+ * on another Environment's network, with no key of its own for any check to see.
+ *
+ * `buildComposeStack` collapses every key this returns onto the stack's OWN
+ * network. Exported so the renderer and the editor agree on which keys those are.
  */
 export function sharedNetworkKeys(doc: { networks?: unknown }): Set<string> {
-  const platform = new Set<string>(PLATFORM_NETWORKS);
-  const keys = new Set<string>(platform);
+  const keys = new Set<string>(PLATFORM_NETWORKS);
   const declared = doc.networks;
   if (!declared || typeof declared !== "object" || Array.isArray(declared))
     return keys;
   for (const [key, raw] of Object.entries(
     declared as Record<string, unknown>,
   )) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-    const n = raw as Record<string, unknown>;
-    const ext =
-      n.external != null &&
-      typeof n.external === "object" &&
-      !Array.isArray(n.external)
-        ? (n.external as Record<string, unknown>).name
-        : undefined;
-    const named =
-      (typeof n.name === "string" && platform.has(n.name.trim())) ||
-      (typeof ext === "string" && platform.has(ext.trim()));
-    if (named) keys.add(key);
+    const target = resolvedNetworkName(key, raw);
+    if (target && isDeploNetwork(target)) keys.add(key);
   }
   return keys;
 }
 
-/** True when a service's `networks:` (either shape) joins one of those keys. */
+/**
+ * True when a service's `networks:` (either shape) joins one of those keys. A
+ * service that declares NONE joins `default`, which is a key like any other -
+ * leaving that out is what let a compose point `default` at another
+ * Environment's network and pass every check here.
+ */
 function joinsSharedNetwork(
   svc: Record<string, unknown>,
   shared: Set<string>,
@@ -914,7 +937,7 @@ function joinsSharedNetwork(
   if (Array.isArray(n)) return n.map(String).some((k) => shared.has(k));
   if (n && typeof n === "object")
     return Object.keys(n as object).some((k) => shared.has(k));
-  return false;
+  return shared.has("default");
 }
 
 /**
@@ -1255,30 +1278,22 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
  *    RESERVED_SHARED_NETWORK_NAMES) only fire for the stack's own network, and
  *    `buildComposeStack` leaves every other network exactly as authored.
  *
- * A PLATFORM network is NOT foreign here: the renderer re-points every key naming
- * one at the stack's own network, so it reaches nothing. A plain per-app network
- * (`networks: {internal: {}}`) declares nothing pinned and stays free.
+ * A network DEPLO OWNS is not foreign here: the renderer collapses every key
+ * naming one onto the stack's own network, so it reaches nothing. A plain per-app
+ * network (`networks: {internal: {}}`) declares nothing pinned and stays free.
  */
 function foreignNetworkKeys(networks: Record<string, unknown>): string[] {
-  const PLATFORM = new Set<string>(PLATFORM_NETWORKS);
   const out: string[] = [];
   for (const [key, raw] of Object.entries(networks)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const n = raw as Record<string, unknown>;
-    // The shared network is governed by its own choke point, not by this gate.
+    // A network Deplo owns is governed by its own choke point, not by this gate:
+    // `buildComposeStack` collapses every key naming one onto this stack's own
+    // network, so joining it reaches nothing.
+    const target = resolvedNetworkName(key, raw);
+    if (target !== null && isDeploNetwork(target)) continue;
     const pinnedName =
       typeof n.name === "string" && n.name.trim() !== "" ? n.name.trim() : null;
-    const externalName =
-      n.external != null &&
-      typeof n.external === "object" &&
-      !Array.isArray(n.external)
-        ? String((n.external as Record<string, unknown>).name ?? "").trim()
-        : null;
-    const target =
-      pinnedName ?? externalName ?? (PLATFORM.has(key) ? key : null);
-    // A platform network is not foreign: `buildComposeStack` re-points every key
-    // naming one at this stack's own network, so joining it reaches nothing.
-    if (target !== null && PLATFORM.has(target)) continue;
     const pinned =
       (n.external != null && n.external !== false) ||
       pinnedName !== null ||

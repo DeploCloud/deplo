@@ -8,6 +8,7 @@ import {
   composeDeclaredEnvKeys,
   detectDefaultApp,
   escapeComposeDollars,
+  stackNamesOnNetwork,
   type ComposeStackInput,
   type ComposeDomainRoute,
 } from "./compose-stack";
@@ -1231,4 +1232,106 @@ test("escapeComposeDollars doubles a $ and leaves everything else alone", () => 
   assert.equal(escapeComposeDollars('"plain"'), '"plain"');
   assert.equal(escapeComposeDollars('"a$b"'), '"a$$b"');
   assert.equal(escapeComposeDollars('"${X}"'), '"$${X}"');
+});
+
+/** The top-level `networks:` of a built stack, which `buildDoc` does not model. */
+function networksOf(compose: string, extra: Partial<ComposeStackInput> = {}) {
+  const out = buildComposeStack({
+    network: "deplo-env-environ_mine",
+    compose,
+    name: "deplo-demo",
+    deployKey: "demo",
+    appId: "p1",
+    domainRoutes: [],
+    ...extra,
+  });
+  return yaml.load(out) as {
+    networks: Record<string, { name?: string }>;
+    services: Record<string, { networks?: string[] }>;
+  };
+}
+
+test("a `default` pointed at another tenant's network is collapsed, not honoured", () => {
+  // The bypass this closes: no service declares `networks:`, so every gate that
+  // only looked at an explicit join saw nothing at all.
+  const doc = networksOf(`
+networks:
+  default:
+    external: true
+    name: deplo-env-environ_victim
+services:
+  spy:
+    image: alpine
+`);
+  assert.deepEqual(Object.keys(doc.networks), ["deplo"]);
+  assert.equal(doc.networks.deplo.name, "deplo-env-environ_mine");
+  assert.deepEqual(doc.services.spy.networks, ["deplo"]);
+});
+
+test("a reserved name reached through an implicit `default` is refused", () => {
+  assert.throws(
+    () =>
+      networksOf(`
+networks:
+  default:
+    external: true
+    name: deplo-env-environ_victim
+services:
+  deplo:
+    image: alpine
+`),
+    /answers to/,
+  );
+});
+
+test("a foreign key and the stack's own network never both name it", () => {
+  const doc = networksOf(`
+networks:
+  victim:
+    external: true
+    name: deplo-team-team_victim
+services:
+  a:
+    image: alpine
+    networks: [victim]
+`);
+  assert.deepEqual(Object.keys(doc.networks), ["deplo"]);
+  // Attached ONCE: two keys naming one network is a container docker refuses.
+  assert.deepEqual(doc.services.a.networks, ["deplo"]);
+});
+
+test("a private network of the author's own is left alone", () => {
+  const doc = networksOf(`
+networks:
+  internal:
+    driver: bridge
+services:
+  a:
+    image: alpine
+    networks: [internal]
+`);
+  assert.ok("internal" in doc.networks);
+  assert.deepEqual(doc.services.a.networks, ["internal"]);
+});
+
+test("stackNamesOnNetwork reads only what joined the stack's network", () => {
+  const rendered = buildComposeStack({
+    network: "deplo-env-environ_mine",
+    name: "deplo-demo",
+    deployKey: "demo",
+    appId: "p1",
+    compose: `
+services:
+  web:
+    image: nginx
+    hostname: api
+  sidecar:
+    image: alpine
+    networks: [priv]
+networks:
+  priv: {}
+`,
+    domainRoutes: [route("shop.example.com", "web", 80)],
+  });
+  assert.deepEqual(stackNamesOnNetwork(rendered).sort(), ["api", "web"]);
 });

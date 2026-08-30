@@ -834,3 +834,34 @@ test("every network_mode form warns that the service cannot be routed", () => {
     "a service with no network_mode must not be warned about",
   );
 });
+
+test("composeJoinsForeignNetwork: a network Deplo mints is rewritten, not gated", () => {
+  // It reaches nothing once the renderer collapses it, so charging the host grant
+  // for it would gate a compose that ends up on the app's own network anyway.
+  for (const name of [
+    "deplo-env-environ_victim",
+    "deplo-team-team_victim",
+    "deplo-preview-shop__pr-1",
+  ]) {
+    assert.equal(
+      composeJoinsForeignNetwork(
+        `services:\n  a:\n    image: x\n    networks: [v]\nnetworks:\n  v:\n    external: true\n    name: ${name}`,
+      ),
+      false,
+    );
+    // The same through an implicit `default`, which is the shape no gate saw.
+    assert.equal(
+      composeJoinsForeignNetwork(
+        `services:\n  a:\n    image: x\nnetworks:\n  default:\n    external: true\n    name: ${name}`,
+      ),
+      false,
+    );
+  }
+  // Another compose PROJECT's network is still foreign: nothing rewrites that one.
+  assert.equal(
+    composeJoinsForeignNetwork(
+      `services:\n  a:\n    image: x\nnetworks:\n  default:\n    external: true\n    name: deplo-victim_default`,
+    ),
+    true,
+  );
+});

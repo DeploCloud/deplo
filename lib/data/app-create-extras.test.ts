@@ -382,10 +382,11 @@ test("a five-service stack routes its frontend, and the API only if asked", asyn
 });
 
 test("a service that would take over a database's address is refused", async () => {
-  // `databases.host` IS the container's DNS name on the shared network, so a
-  // same-named service collects the connections its owner's apps make to it.
-  // The victim here is ANOTHER team, which is the whole point of the check.
-  await seedDatabase(db, { id: "db_1", name: "analytics", teamId: TEAM_B });
+  // `databases.host` IS the container's DNS name on the network it sits on, so a
+  // same-named service SHARING that network collects the connections its owner's
+  // apps make to it. The victim is another app of the same team, at the same
+  // placement: since ADR-0028 that is who can still be robbed.
+  await seedDatabase(db, { id: "db_1", name: "analytics", teamId: TEAM_A });
 
   for (const [label, svc] of [
     ["the bare name", "db-analytics"],
@@ -416,6 +417,17 @@ test("a service that would take over a database's address is refused", async () 
   // A name nothing else answers to is nobody's business.
   const ok = await asUser1(() =>
     newApp({ compose: "services:\n  db-orders:\n    image: nginx:1.27\n" }),
+  );
+  assert.ok(ok.id);
+});
+
+test("another team's database is not a clash - it is on another network", async () => {
+  // Before ADR-0028 every container on the host shared one network, so this WAS a
+  // takeover and the check was instance-wide. Now the two never share a network,
+  // and refusing here would only stop a team from using an ordinary name.
+  await seedDatabase(db, { id: "db_2", name: "billing", teamId: TEAM_B });
+  const ok = await asUser1(() =>
+    newApp({ compose: "services:\n  db-billing:\n    image: nginx:1.27\n" }),
   );
   assert.ok(ok.id);
 });
