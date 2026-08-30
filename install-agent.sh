@@ -60,7 +60,7 @@ BUILD_ONLY="${DEPLO_BUILD_ONLY:-0}"
 # install there is, and deliberately: Docker is already there and is never
 # installed, the address pools are NOT rewritten (that edits /etc/docker/
 # daemon.json and can restart the daemon under a live workload), no Traefik, and
-# not even the shared `deplo` network. What is left on the box is the unit, the
+# not even the `deplo` network. What is left on the box is the unit, the
 # binary and the agent state dir - exactly what the agent's SelfUninstall removes
 # when the migration ends.
 # Set by the import wizard, which prefixes the command with DEPLO_IMPORT_ONLY=1.
@@ -344,23 +344,23 @@ if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AG
   ok "Old materials cleared (the agent will re-provision with the new token)"
 fi
 
-# 3a-bis. The shared `deplo` network -----------------------------------------
-# EVERY stack this host runs joins it, so it has to exist before anything is
-# deployed here, and it used to be created only inside the Traefik branch below.
-# A host that already runs a reverse proxy (which is every host anyone MIGRATES
-# from) skips that branch, so the network was never created: an app deploy still
-# worked, because the agent's Deploy opens with EnsureNetwork, but provisioning a
-# DATABASE goes through Reroute, which does not, and failed with
-# "network deplo not found" on a server that looked perfectly healthy.
+# 3a-bis. The platform's `deplo` network -------------------------------------
+# NOT where apps go - since ADR-0028 each Environment owns its own network and the
+# agent creates that one itself, on both Deploy and Reroute. This is the network
+# TRAEFIK sits on, declared `external: true` in the stack written below, so it has
+# to exist before the proxy comes up. It used to be created only inside the Traefik
+# branch, and a host that already runs a reverse proxy (which is every host anyone
+# MIGRATES from) skips that branch and never got one.
 if [ "$IMPORT_ONLY" = "1" ]; then
-  ok "Migration source: skipping the shared 'deplo' network (nothing is deployed here)"
+  ok "Migration source: skipping the 'deplo' network (no proxy is installed here)"
 else
   docker network create deplo >/dev/null 2>&1 || true
 fi
 
 # 3b. Traefik reverse proxy (idempotent) ------------------------------------
-# Deplo's deploys emit `traefik.*` labels and join the shared `deplo` network, but
-# something must READ those labels and route traffic - that is Traefik. The master
+# Deplo's deploys emit `traefik.*` labels and join their Environment's network, but
+# something must READ those labels and route traffic - that is Traefik, which the
+# agent connects to each of those networks as it creates them. The master
 # host runs it; a remote needs its own. Install it here, but never fight for the
 # box: skip if a Traefik is already running (idempotent re-runs, or the operator's
 # own proxy), and only claim :80/:443 if they are free, otherwise warn and let
@@ -454,10 +454,11 @@ services:
 networks:
   deplo:
     external: true
-  # Deliberately NOT the shared \`deplo\` network: every deployed app is on that
-  # one, and a socket proxy they could reach would let any app enumerate every
-  # other team's containers, environment variables included. Internal: no route
-  # off the host, and only Traefik on the other end.
+  # Its own internal leg. Apps live on their Environment's network, but Traefik is
+  # on ALL of them and resolves this proxy BY NAME, so an app that could answer to
+  # that name would write the host's routing table - and one that could REACH the
+  # proxy could enumerate every other team's containers, environment included.
+  # Internal: no route off the host, and only Traefik on the other end.
   deplo-socket:
     internal: true
 YAML

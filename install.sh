@@ -300,9 +300,11 @@ DEPLO_EXPOSE="$(printf '    ports:\n      - "3000:3000"')"
 if is_real_domain "$DEPLO_DOMAIN"; then
   USE_DOMAIN=true
   PUBLIC_URL="https://$DEPLO_DOMAIN"
-  # Traefik reaches the panel over the shared `deplo` network at the service's
-  # own name and the route lives in the file below; the published port above is
-  # the panel's IP address, not how the domain is served.
+  # Traefik reaches the panel over the `deplo` network at the service's own name
+  # and the route lives in the file below; the published port above is the panel's
+  # IP address, not how the domain is served. `deplo` is the PLATFORM's network -
+  # Traefik and the panel, nothing else - since apps moved to one per Environment
+  # (ADR-0028).
   TRAEFIK_CONFIG_MOUNT="$(printf '    configs:\n      - source: deplo-panel\n        target: /deplo-dynamic/deplo-panel.yml\n        mode: 256')"
   # Unquoted scalars on purpose: this is byte-for-byte what `withPanelRoute`
   # re-renders, so the first edit from the panel produces no spurious diff in the
@@ -385,10 +387,11 @@ $TRAEFIK_PANEL_CONFIG
 networks:
   deplo:
     external: true
-  # NOT the shared \`deplo\` network: a socket proxy reachable from every app
-  # would let any of them enumerate every other team's containers, environment
-  # included. Traefik straddles both and the shared leg wins a name lookup, so the
-  # proxy's NAME is reserved too (RESERVED_SHARED_NETWORK_NAMES).
+  # Its own internal leg: a socket proxy an app could reach would let it enumerate
+  # every other team's containers, environment included. Apps are on their own
+  # Environment's network now, but Traefik sits on ALL of them and resolves this
+  # proxy BY NAME, so whoever answers that name writes the routing table - which is
+  # why the name stays reserved (RESERVED_SHARED_NETWORK_NAMES).
   deplo-socket:
     internal: true
 YAML
@@ -428,11 +431,11 @@ services:
       - POSTGRES_DB=deplo
     volumes:
       - deplo-postgres:/var/lib/postgresql/data
-    # NOT the shared \`deplo\` network - the same rule the socket proxy above
-    # follows. This leg is internal and holds only these two, so no app reaches
-    # the database directly; the NAME \`postgres\` is a separate problem the leg
-    # does not solve (the panel is on both and the shared one wins the lookup),
-    # and RESERVED_SHARED_NETWORK_NAMES is what does.
+    # Its own internal leg, the same rule the socket proxy above follows: it holds
+    # only these two, so nothing else reaches the database directly. The panel is
+    # on this leg and on \`deplo\`, and no tenant is on either, so the name
+    # \`postgres\` is no longer answerable by an app - it stays on the reserved
+    # list anyway, because a list costs nothing and an assumption does.
     networks:
       - deplo-internal
     healthcheck:

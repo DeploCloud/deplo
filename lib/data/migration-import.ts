@@ -771,8 +771,9 @@ function composeAdvice(compose: string): string[] {
       (d) =>
         d.rule === "reserved-service-name" ||
         d.rule === "network-aliases-dropped" ||
-        // A service on the host's network namespace is not reachable through Deplo's proxy,
-        // so its address (if it had one over there) is now a host port and nothing else.
+        // A service sharing another namespace (the host's, or a sidecar's) is not
+        // reachable through Deplo's proxy, so its address - if it had one over
+        // there - is now a host port and nothing else.
         d.rule === "network-mode-host" ||
         d.rule === "network-mode-conflict",
     )

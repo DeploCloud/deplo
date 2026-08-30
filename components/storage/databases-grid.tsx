@@ -87,9 +87,15 @@ export function DatabasesGrid({
   canControl,
   canDelete,
   createButton,
+  environments = [],
+  canConfigure = false,
 }: {
   databases: DatabaseDTO[];
   serverNames: Record<string, string>;
+  /** The team's Environments, so a card can offer "Move to environment". */
+  environments?: { id: string; label: string }[];
+  /** `configure_databases` - what the move is gated on. */
+  canConfigure?: boolean;
   canReorder: boolean;
   /** The viewer holds `manage_infra` - the capability `revealConnection` needs. */
   canReveal: boolean;
@@ -318,6 +324,8 @@ export function DatabasesGrid({
                   >
                     {({ handle, dragActive }) => (
                       <DatabaseCard
+                        environments={environments}
+                        canConfigure={canConfigure}
                         db={d}
                         serverName={serverNames[d.serverId]}
                         view={view}
@@ -338,6 +346,8 @@ export function DatabasesGrid({
               {activeDb ? (
                 <DragStack count={activeGroup.length}>
                   <DatabaseCard
+                    environments={environments}
+                    canConfigure={canConfigure}
                     db={activeDb}
                     serverName={serverNames[activeDb.serverId]}
                     view={view}
@@ -358,6 +368,8 @@ export function DatabasesGrid({
                 onSelect={(e) => onItemClick(d.id, e)}
               >
                 <DatabaseCard
+                  environments={environments}
+                  canConfigure={canConfigure}
                   db={d}
                   serverName={serverNames[d.serverId]}
                   view={view}

@@ -810,3 +810,27 @@ test("composeClaimedNames lists service names AND hostnames, lowercased", () => 
     ["api", "db-main", "worker"],
   );
 });
+
+// `wireApp` refuses to wire ANY service that sets `network_mode`, so a domain
+// pointed at one is a router that never gets emitted - a silent 404. The warning
+// used to fire only for `host`, while the VPN-sidecar shape (`service:`) is both
+// just as unroutable and far commoner in self-hosting.
+test("every network_mode form warns that the service cannot be routed", () => {
+  const of = (mode: string) =>
+    lintCompose(
+      `services:\n  side:\n    image: gluetun\n  web:\n    image: nginx\n    network_mode: "${mode}"\n`,
+    ).filter((d) => d.rule === "network-mode-host");
+
+  for (const mode of ["host", "service:side", "container:other"]) {
+    const hits = of(mode);
+    assert.equal(hits.length, 1, `${mode} produced no routing warning`);
+    assert.match(hits[0].message, /won't work|out of Traefik's reach/);
+  }
+  assert.equal(
+    lintCompose("services:\n  web:\n    image: nginx\n").filter(
+      (d) => d.rule === "network-mode-host",
+    ).length,
+    0,
+    "a service with no network_mode must not be warned about",
+  );
+});

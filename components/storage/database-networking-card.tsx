@@ -30,12 +30,16 @@ export function DatabaseNetworkingCard({
   serverHost,
   canExposePorts,
   canConfigure,
+  environmentLabel,
 }: {
   db: DatabaseDTO;
   /** The owning server's address - half of the published endpoint. */
   serverHost: string;
   canExposePorts: boolean;
   canConfigure: boolean;
+  /** Where this database lives (`Project / Environment`), or null for the team's
+   *  top level. It decides WHICH apps the internal address answers for. */
+  environmentLabel?: string | null;
 }) {
   const exposure = useDatabaseExposure(db);
   const internal = `${db.host}:${db.port}`;
@@ -63,8 +67,23 @@ export function DatabaseNetworkingCard({
         <Address
           label="Internal"
           value={internal}
-          hint="Apps on the same server, by name."
+          hint={
+            environmentLabel
+              ? `Apps in ${environmentLabel}, by name.`
+              : "Apps outside any project, by name."
+          }
         />
+
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">Environment</p>
+          <p className="mt-1 truncate text-sm">
+            {environmentLabel ?? "No environment"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Only apps here reach the internal address. Move it from the database
+            list.
+          </p>
+        </div>
 
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">

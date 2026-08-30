@@ -5,6 +5,7 @@ import { getDatabaseBackupSummary } from "@/lib/data/backups";
 import { getDatabaseMetrics } from "@/lib/data/container-metrics";
 import { getServerById } from "@/lib/data/servers";
 import { canExposePorts, currentCapabilities } from "@/lib/membership";
+import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { DatabaseOverview } from "@/components/storage/database-overview";
 import { DataStat } from "@/components/storage/database-stats";
 import { DatabaseRelabelNotice } from "@/components/storage/database-health-stat";
@@ -29,6 +30,14 @@ export default async function DatabaseOverviewPage(
     getDatabaseMetrics(db.id),
   ]);
   const can = new Set(caps);
+  // Which apps the internal address answers for: a database is reachable by name
+  // only from its own environment.
+  const env = db.environmentId
+    ? ((await listAllEnvironmentsForTeam()).find(
+        (e) => e.id === db.environmentId,
+      ) ?? null)
+    : null;
+  const environmentLabel = env ? `${env.projectName} / ${env.name}` : null;
   const monitoringHref = `/storage/databases/${db.id}/monitoring`;
 
   return (
@@ -45,6 +54,7 @@ export default async function DatabaseOverviewPage(
       />
       <DatabaseRelabelNotice id={db.id} status={db.status} />
       <DatabaseOverview
+        environmentLabel={environmentLabel}
         db={db}
         serverName={server?.name ?? db.serverId}
         serverHost={server?.host ?? server?.ip ?? ""}

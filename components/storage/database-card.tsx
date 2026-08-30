@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  Boxes,
   MoreHorizontal,
   Play,
   Square,
@@ -22,7 +23,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import { DatabaseLiveStatusProvider } from "@/components/storage/database-live-status";
@@ -50,9 +55,16 @@ export function DatabaseCard({
   dragActive = false,
   pollMs = 15000,
   canReveal = true,
+  environments = [],
+  canConfigure = false,
 }: {
   db: DatabaseDTO;
   serverName?: string;
+  /** The team's Environments, so a database can be moved into one. Empty ⇒ the
+   *  team uses no projects and the whole affordance is hidden. */
+  environments?: { id: string; label: string }[];
+  /** The viewer holds `configure_databases` - what a move is gated on. */
+  canConfigure?: boolean;
   view?: "grid" | "list";
   /** Injected reorder handle (shown on hover); omit for a non-draggable card. */
   dragHandle?: React.ReactNode;
@@ -82,6 +94,8 @@ export function DatabaseCard({
               dragActive
               pollMs={pollMs}
               canReveal={canReveal}
+              environments={[]}
+              canConfigure={false}
             />
           ) : (
             <DatabaseCardGrid
@@ -90,6 +104,8 @@ export function DatabaseCard({
               dragActive
               pollMs={pollMs}
               canReveal={canReveal}
+              environments={[]}
+              canConfigure={false}
             />
           )}
         </DatabaseLiveStatusProvider>
@@ -108,6 +124,8 @@ export function DatabaseCard({
           dragActive={dragActive}
           pollMs={pollMs}
           canReveal={canReveal}
+          environments={environments}
+          canConfigure={canConfigure}
         />
       ) : (
         <DatabaseCardGrid
@@ -117,6 +135,8 @@ export function DatabaseCard({
           dragActive={dragActive}
           pollMs={pollMs}
           canReveal={canReveal}
+          environments={environments}
+          canConfigure={canConfigure}
         />
       )}
     </DatabaseLiveStatusProvider>
@@ -130,6 +150,8 @@ interface Inner {
   dragActive: boolean;
   pollMs: number;
   canReveal: boolean;
+  environments: { id: string; label: string }[];
+  canConfigure: boolean;
 }
 
 function DatabaseCardGrid({
@@ -139,6 +161,8 @@ function DatabaseCardGrid({
   dragActive,
   pollMs,
   canReveal,
+  environments,
+  canConfigure,
 }: Inner) {
   const href = `/storage/databases/${db.id}`;
   return (
@@ -158,7 +182,13 @@ function DatabaseCardGrid({
               </p>
             </div>
           </div>
-          <CardActions db={db} dragHandle={dragHandle} pollMs={pollMs} />
+          <CardActions
+            environments={environments}
+            canConfigure={canConfigure}
+            db={db}
+            dragHandle={dragHandle}
+            pollMs={pollMs}
+          />
         </div>
 
         {/**
@@ -195,6 +225,8 @@ function DatabaseCardList({
   dragHandle,
   dragActive,
   pollMs,
+  environments,
+  canConfigure,
 }: Inner) {
   const href = `/storage/databases/${db.id}`;
   return (
@@ -226,7 +258,14 @@ function DatabaseCardList({
           <span className="max-w-32 truncate">{serverName ?? "—"}</span>
         </span>
       </div>
-      <CardActions db={db} dragHandle={dragHandle} pollMs={pollMs} listView />
+      <CardActions
+        environments={environments}
+        canConfigure={canConfigure}
+        db={db}
+        dragHandle={dragHandle}
+        pollMs={pollMs}
+        listView
+      />
     </Card>
   );
 }
@@ -263,11 +302,15 @@ function CardActions({
   dragHandle,
   pollMs,
   listView = false,
+  environments,
+  canConfigure,
 }: {
   db: DatabaseDTO;
   dragHandle?: React.ReactNode;
   pollMs: number;
   listView?: boolean;
+  environments: { id: string; label: string }[];
+  canConfigure: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -284,6 +327,26 @@ function CardActions({
       if (!res.ok) toast.error(res.error);
       else {
         toast.success(running ? "Database stopped" : "Database started");
+        router.refresh();
+      }
+    });
+  }
+
+  // An app reaches a database by name only from the same environment, so where a
+  // database lives is a thing you have to be able to change - not only pick once.
+  function moveToEnvironment(environmentId: string | null) {
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation($id: String!, $environmentId: ID) {
+           moveDatabaseToEnvironment(id: $id, environmentId: $environmentId)
+         }`,
+        { id: db.id, environmentId },
+      );
+      if (!res.ok) toast.error(res.error);
+      else {
+        toast.success(
+          environmentId ? "Moved to environment" : "Moved out of environment",
+        );
         router.refresh();
       }
     });
@@ -334,6 +397,54 @@ function CardActions({
               )}
               {running ? "Stop" : "Start"}
             </DropdownMenuItem>
+            {environments.length > 0 && (
+              <MenuSubTooltip
+                Sub={DropdownMenuSub}
+                SubTrigger={DropdownMenuSubTrigger}
+                SubContent={DropdownMenuSubContent}
+                content="Apps reach a database by name only from the same environment"
+                subContentClassName="max-h-72 overflow-y-auto"
+                trigger={
+                  <>
+                    <Boxes className="size-4" />
+                    Move to environment
+                  </>
+                }
+              >
+                {environments.map((e) => (
+                  <SimpleTooltip
+                    key={e.id}
+                    content={`Move to ${e.label}`}
+                    side="left"
+                  >
+                    <DropdownMenuItem
+                      onSelect={() => moveToEnvironment(e.id)}
+                      disabled={
+                        !canConfigure || pending || e.id === db.environmentId
+                      }
+                    >
+                      {e.label}
+                    </DropdownMenuItem>
+                  </SimpleTooltip>
+                ))}
+                {db.environmentId && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <SimpleTooltip
+                      content="Move to the team's top level, out of any environment"
+                      side="left"
+                    >
+                      <DropdownMenuItem
+                        onSelect={() => moveToEnvironment(null)}
+                        disabled={!canConfigure || pending}
+                      >
+                        No environment
+                      </DropdownMenuItem>
+                    </SimpleTooltip>
+                  </>
+                )}
+              </MenuSubTooltip>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"

@@ -248,6 +248,8 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 key={[...databases.map((d) => d.id)].sort().join(",")}
                 databases={databases}
                 serverNames={serverNames}
+                environments={dbEnvironments}
+                canConfigure={canManageDatabases}
                 canReorder={canManageDatabases}
                 // Same capability the reveal mutation is gated on: without it a
                 // card shows the masked string and no reveal/copy affordance.

@@ -439,23 +439,31 @@ export function lintCompose(source: string): LintDiagnostic[] {
       });
     }
 
-    // network_mode: host breaks Traefik routing.
-    if (svc.network_mode === "host") {
+    // ANY network_mode takes the service out of its own network, so `wireApp`
+    // refuses to wire it and the router is skipped: a domain pointed at it answers
+    // 404 with nothing said. `host` is only the form people expect to be told about
+    // - the VPN sidecar (`service:`/`container:`) is just as unroutable and is the
+    // commoner shape by far.
+    if (typeof svc.network_mode === "string" && svc.network_mode.trim()) {
+      const mode = svc.network_mode.trim();
       diags.push({
         severity: "warning",
         rule: "network-mode-host",
-        message: `\`${name}\` uses \`network_mode: host\`, which bypasses the \`deplo\` network and Traefik routing. It won't be reachable via your domain.`,
+        message:
+          `\`${name}\` uses \`network_mode: ${mode}\`, which keeps it off its ` +
+          `environment's network and out of Traefik's reach. A domain pointed at ` +
+          `it won't work - route a service that has its own network instead.`,
         line: lineOfServiceField(lines, svcLine, "network_mode"),
       });
     }
 
     // Compose forbids combining network_mode with networks, and Deplo needs
-    // `networks` to attach the deplo network.
+    // `networks` to attach the stack's own network.
     if ("network_mode" in svc && "networks" in svc && svc.networks != null) {
       diags.push({
         severity: "warning",
         rule: "network-mode-conflict",
-        message: `\`${name}\` sets both \`network_mode\` and \`networks\` - Compose forbids combining them, and Deplo needs \`networks\` to attach the \`deplo\` network.`,
+        message: `\`${name}\` sets both \`network_mode\` and \`networks\` - Compose forbids combining them, and Deplo needs \`networks\` to attach the stack's own network.`,
         line: lineOfServiceField(lines, svcLine, "network_mode"),
       });
     }
