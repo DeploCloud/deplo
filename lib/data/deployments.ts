@@ -40,7 +40,12 @@ import {
   hasAppCapability,
   requireAppCapability,
 } from "./node-access";
-import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
+import type {
+  Deployment,
+  DeploymentEnvironment,
+  DeploySource,
+  LogLine,
+} from "../types";
 
 export async function listDeployments(filter?: {
   appId?: string;
@@ -517,16 +522,32 @@ export async function rollbackDeployment(
   return (await loadDeployment(depId))!;
 }
 
-/** Trigger a fresh production build + deploy of the latest commit. */
+/** What a redeploy re-runs: only a repo has a commit to be latest. */
+const REDEPLOY_MESSAGE: Record<DeploySource, string> = {
+  github: "Redeploy of latest commit",
+  git: "Redeploy of latest commit",
+  "docker-image": "Redeploy of latest image",
+  upload: "Redeploy of the uploaded archive",
+  compose: "Redeploy of the compose stack",
+};
+
+/** Trigger a fresh production build + deploy of what the app deploys from. */
 export async function redeploy(appId: string): Promise<Deployment> {
   const { membership } = await requireAppCapability(appId, "deploy_apps");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
+  const [app] = await getDb()
+    .select({ source: appsTable.source })
+    .from(appsTable)
+    .where(
+      and(eq(appsTable.id, appId), eq(appsTable.teamId, membership.teamId)),
+    )
+    .limit(1);
   const depId = await startDeployment(appId, {
     environment: "production",
     creator: user.name,
-    commitMessage: "Redeploy of latest commit",
+    commitMessage: REDEPLOY_MESSAGE[app?.source as DeploySource] ?? "Redeploy",
   });
   return (await loadDeployment(depId))!;
 }
