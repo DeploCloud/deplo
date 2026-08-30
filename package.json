@@ -98,7 +98,7 @@
     "@electric-sql/pglite": "^0.5.5",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^20.19.43",
+    "@types/node": "^26.4.0",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.21.0",
     "@types/react": "^19.2.18",
