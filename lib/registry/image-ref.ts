@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Parse a Docker / OCI image reference into its registry, repository, and
  * tag/digest, applying Docker's canonical defaulting rules.

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The one rule for "does this thing match what the user typed".
  */

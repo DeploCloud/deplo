@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import Link from "next/link";
 import { Package } from "lucide-react";
 import { LogoImage } from "@/components/shared/project-logo";

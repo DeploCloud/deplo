@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Cloudflare-awareness for the domain DNS check. `cloudflare` therefore means
  * "plausible but unverified", never "confirmed": the domain may just as well be

@@ -1,5 +1,8 @@
 "use client";
 
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as React from "react";
 import { gqlSubscribe } from "@/lib/graphql-client";
 import type { AppStatus, DeploymentStatus } from "@/lib/types";

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The HTTP status that matches what the backup data layer refused.
  */

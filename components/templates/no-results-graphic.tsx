@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { cn } from "@/lib/utils";
 
 /** The "no templates match" illustration: a lens sweeping a row of templates, each one going out as it passes, until the row is empty and the sweep starts again. */

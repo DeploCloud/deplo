@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The store's editorial rows. The catalog has no popularity signal and no dates,
  * so "Most installed" would be an arbitrary order wearing a confident label.

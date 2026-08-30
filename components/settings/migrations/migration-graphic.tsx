@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { LOGO_PATH, MARK_VIEWBOX } from "@/components/logo";

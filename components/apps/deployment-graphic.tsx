@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { cn } from "@/lib/utils";
 
 /** The Deployments empty-state illustration: a crate riding a conveyor into a server, which then boots up and goes live. */

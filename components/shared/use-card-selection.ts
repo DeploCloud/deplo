@@ -1,5 +1,8 @@
 "use client";
 
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as React from "react";
 
 /** True when two sets hold exactly the same members (cheap re-render guard). */

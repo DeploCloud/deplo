@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { listDeployments } from "@/lib/data/deployments";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";

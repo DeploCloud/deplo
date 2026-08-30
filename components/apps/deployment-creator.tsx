@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { GitAccount } from "@/components/shared/git-account";
 import { UserAvatar, type AvatarSize } from "@/components/shared/user-avatar";
 import { cn } from "@/lib/utils";

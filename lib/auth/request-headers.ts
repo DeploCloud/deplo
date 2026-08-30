@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The header set deplo hands to Better Auth's server API. Pure (no `next/headers`)
  * so the selection can be tested, and it needs to be, because BOTH directions of

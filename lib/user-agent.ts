@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Turn a `User-Agent` string into something a person recognises as their own
  * device ("Chrome on macOS", "Safari on iPhone") for the signed-in-devices table

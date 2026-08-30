@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * A tiny standard 5-field cron evaluator - `minute hour day-of-month month
  * day-of-week`. An unparseable expression is treated as "never matches" rather

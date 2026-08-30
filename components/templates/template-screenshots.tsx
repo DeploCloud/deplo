@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * A template's screenshots. Every catalogue `images[]` is empty today, so the
  * caller only mounts this when there is something to show; it exists so the day

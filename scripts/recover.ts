@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Break-glass recovery, run on the host that runs Deplo - `bun run recover`.
  */

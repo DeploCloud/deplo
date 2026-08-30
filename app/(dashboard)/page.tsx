@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import Link from "next/link";
 import { Plus, Rocket, Folder, Boxes, Eye, ArrowUpRight } from "lucide-react";
 import { listApps } from "@/lib/data/apps";

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The curated accent colours offered for a folder tile, alongside a free-form
  * custom HEX.

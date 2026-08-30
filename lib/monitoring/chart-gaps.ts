@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Gap detection for the monitoring time-series charts. Offline snapshots are never
  * recorded (server + container history refuse them), so a gap shows up here purely

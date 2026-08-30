@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * A minimal, streaming TAR reader - enough to pull ONE named entry out of an
  * archive that arrives as a sequence of chunks, without ever holding the whole

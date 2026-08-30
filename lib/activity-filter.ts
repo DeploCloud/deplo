@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { ActivityType } from "./types";
 
 /** How many rows a page of the feed holds, first one included. */

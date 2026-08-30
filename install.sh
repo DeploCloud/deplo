@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: 2026 DeploCloud
+# SPDX-License-Identifier: AGPL-3.0-only
+
 #
 # Deplo installer / updater
 # Usage:  curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The HTTP half both source clients share: one timeout, one test seam, and one
  * vocabulary for a connection that did not work.

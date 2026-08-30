@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { ShieldCheck } from "lucide-react";
 import { hasCapability } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";

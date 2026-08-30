@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: 2026 DeploCloud
+# SPDX-License-Identifier: AGPL-3.0-only
+
 #
 # Deplo SERVER-AGENT installer (PLAN Part B). Run on a remote Linux host to turn
 # it into a Deplo server: installs Docker (if absent) + the `deplo-agent` binary,

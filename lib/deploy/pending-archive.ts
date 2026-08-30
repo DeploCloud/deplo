@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * An archive picked somewhere other than the wizard (dropped on the Overview)
  * and handed to it across a client-side navigation.

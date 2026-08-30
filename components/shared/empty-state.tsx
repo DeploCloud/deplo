@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { cn } from "@/lib/utils";
 import { DocsLink } from "@/components/ui/docs-link";
 import type { DocsTopic } from "@/lib/docs";

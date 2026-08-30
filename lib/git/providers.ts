@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { parsePushEvent, type GitPushEvent } from "../deploy/git-webhook";

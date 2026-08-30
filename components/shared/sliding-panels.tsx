@@ -1,5 +1,8 @@
 "use client";
 
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as React from "react";
 
 /** A panel body caps here so its footer stays on screen and the whole modal

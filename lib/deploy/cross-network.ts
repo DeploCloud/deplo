@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Names an app reaches for that live on ANOTHER network - the "cannot resolve
  * host" a placement makes unreachable, said out loud before the container tries.

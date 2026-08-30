@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Reorder a card grid by dropping `activeId` on `overId`, carrying the whole
  * multi-selection (`blockIds`) with it. Returns null when the drop is a no-op.

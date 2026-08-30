@@ -1,5 +1,8 @@
 "use client";
 
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * What every overlay does with focus on the way in. Radix focuses the first
  * tabbable element, which lands the user on an info icon they cannot act on -

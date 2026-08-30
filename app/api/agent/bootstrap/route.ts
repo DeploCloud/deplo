@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { completeBootstrap } from "@/lib/data/servers";
 import { signResponse, BootstrapError } from "@/lib/agent/bootstrap";
 

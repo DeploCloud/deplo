@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { GitBranch, Container, Upload, FileText } from "lucide-react";
 import type * as React from "react";
 

@@ -1,5 +1,8 @@
 "use client";
 
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as React from "react";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { gqlAction } from "@/lib/graphql-client";

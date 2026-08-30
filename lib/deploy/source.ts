@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The deploy-source seam: decide WHICH source a deployment builds from, and the
  * shared rootDirectory resolution every built source uses.

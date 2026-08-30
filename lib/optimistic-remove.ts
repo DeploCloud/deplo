@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The bookkeeping behind an optimistically removed row: which keys are still worth
  * hiding, and what a list looks like without them.

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { cn } from "@/lib/utils";
 
 /** The environment variables empty-state illustration: a variable being written into an empty list, its value scrambled, and the padlock clicking shut over what is left. */

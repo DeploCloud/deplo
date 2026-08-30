@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { writeFileSync } from "node:fs";
 import { printSchema, lexicographicSortSchema } from "graphql";
 import { schema } from "@/lib/graphql/schema";

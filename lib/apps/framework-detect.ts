@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Pure framework recognition: given the files at an app's build root and its
  * parsed `package.json`, name the framework from the {@link

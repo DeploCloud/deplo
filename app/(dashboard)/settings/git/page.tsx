@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
 import { githubAppsPreviewReadiness, listGithubApps } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";

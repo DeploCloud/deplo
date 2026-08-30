@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getDatabase, getDatabaseVolumeBytes } from "@/lib/data/databases";

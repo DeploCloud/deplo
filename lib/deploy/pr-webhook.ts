@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * What a GitHub `pull_request` delivery MEANS for one app - the preview twin of
  * [git-webhook](./git-webhook.ts), and pure for the same reason: the decision is

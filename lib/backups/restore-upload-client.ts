@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Browser side of the restore-from-file route: stream the artifact up, read the
  * agent's log lines back down, resolve on the verdict.

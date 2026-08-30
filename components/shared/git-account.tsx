@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { GitProviderIcon } from "@/components/shared/brand-icons";
 import type { AvatarSize } from "@/components/shared/user-avatar";
 import { cn } from "@/lib/utils";

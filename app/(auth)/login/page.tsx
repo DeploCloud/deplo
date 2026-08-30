@@ -1,5 +1,8 @@
 "use client";
 
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { gql } from "@/lib/graphql-client";

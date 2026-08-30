@@ -1,5 +1,8 @@
 "use client";
 
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Minimal typed GraphQL client for the browser UI. Errors: a GraphQL error
  * response throws an `Error` carrying the first message, so call sites keep the

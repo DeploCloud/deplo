@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { displayStatus, type RuntimeSnapshot } from "@/lib/apps/display-status";
 import type { DatabaseStatus } from "@/lib/types";
 

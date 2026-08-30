@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { cn } from "@/lib/utils";
 
 /** The Overview empty-state illustration: a rocket sitting on its pad, lifting off, and coming back round for the next one. */

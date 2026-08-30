@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The app's own extra `docker compose up` flags. Here the operator adds only the
  * part that is theirs, deplo keeps owning the rest, and both sides - control plane

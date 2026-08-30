@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { cn } from "@/lib/utils";
 
 /** The Backup artifacts empty-state illustration: copies landing on a shelf, one after another, building the stack the list will show. */

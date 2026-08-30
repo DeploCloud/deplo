@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import type { VarAuthor } from "@/lib/types";

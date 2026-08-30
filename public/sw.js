@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /* Deplo browser push (beta).
  *
  * Plain JS on purpose: a service worker is served as-is from /sw.js and never

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 DeploCloud
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The AI agents deplo knows how to connect, and the exact configuration each one
  * wants. The wizard branches on `kind` and never shows one audience the other's
