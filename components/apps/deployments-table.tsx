@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   GitBranch,
+  GitPullRequest,
   Trash2,
   CircleStop,
   Hammer,
@@ -46,11 +47,11 @@ import { DeploymentActions } from "@/components/apps/deployment-actions";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction, gqlSubscribe } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
-import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
+import type { DeploymentStatus } from "@/lib/types";
 
 const DELETE_DEPLOYMENTS = `mutation ($ids: [ID!]!) { deleteDeployments(ids: $ids) }`;
-const DELETE_ALL = `mutation ($appId: ID, $serverId: ID, $environment: String, $status: String) { deleteAllDeployments(appId: $appId, serverId: $serverId, environment: $environment, status: $status) }`;
-const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID, $environment: String, $status: String) { cancelAllDeployments(appId: $appId, serverId: $serverId, environment: $environment, status: $status) }`;
+const DELETE_ALL = `mutation ($appId: ID, $serverId: ID, $status: String) { deleteAllDeployments(appId: $appId, serverId: $serverId, status: $status) }`;
+const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID, $status: String) { cancelAllDeployments(appId: $appId, serverId: $serverId, status: $status) }`;
 const CANCEL_ONE = `mutation ($id: String!) { cancelDeployment(id: $id) }`;
 
 /** In-progress deployments (queued/building) are still owned by the queue and the
@@ -117,7 +118,6 @@ export function searchHaystack(d: DeploymentRow): string {
     d.creatorUser?.name,
     d.creatorUser?.username,
     d.creatorProvider,
-    d.environment,
     d.status,
   ]
     .filter(Boolean)
@@ -144,13 +144,6 @@ const STATUS_LABELS: Record<DeploymentStatus, string> = {
   ready: "Ready",
   error: "Error",
   canceled: "Canceled",
-};
-
-/** Canonical dropdown order + labels for the Environment filter. */
-const ENV_ORDER: DeploymentEnvironment[] = ["production", "preview"];
-const ENV_LABELS: Record<DeploymentEnvironment, string> = {
-  production: "Production",
-  preview: "Preview",
 };
 
 /** Live status feed. Reuses the app-keyed `appStatus` stream (the one the app
@@ -250,10 +243,10 @@ export interface DeploymentRow {
   commitUrl: string | null;
   /** The pull request this preview build came from, or null for production. */
   pullRequestUrl?: string | null;
-  /** Denormalized pull request number - shown next to the Preview badge. */
+  /** Denormalized pull request number - the mark that says this build came from
+   *  a pull request rather than the app's own branch. Null for every other row. */
   prNumber?: number | null;
   status: DeploymentStatus;
-  environment: DeploymentEnvironment;
   branch: string;
   createdAt: string;
   creator: string;
@@ -330,8 +323,6 @@ export function DeploymentsTable({
   const [appFilter, setAppFilter] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] =
     React.useState<DeploymentStatus | null>(null);
-  const [envFilter, setEnvFilter] =
-    React.useState<DeploymentEnvironment | null>(null);
   const [dateFilter, setDateFilter] = React.useState<string | null>(null);
   // One "now" for the whole mount: reading the clock during render is impure, and
   // a Created window whose edge slides between two renders would reshuffle the
@@ -368,16 +359,12 @@ export function DeploymentsTable({
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [deployments]);
-  // Distinct statuses / environments present, each in its canonical lifecycle order
+  // Distinct statuses present, in their canonical lifecycle order
   // (not insertion order). Also derived from ALL rows so an option never vanishes
   // just because another filter narrowed the table.
   const statusOptions = React.useMemo(() => {
     const present = new Set(deployments.map((d) => d.status));
     return STATUS_ORDER.filter((s) => present.has(s));
-  }, [deployments]);
-  const envOptions = React.useMemo(() => {
-    const present = new Set(deployments.map((d) => d.environment));
-    return ENV_ORDER.filter((e) => present.has(e));
   }, [deployments]);
   // Which Created windows actually hold rows - same "auto-hide until it offers a
   // real choice" rule as the other narrowers. Options and matching share the one
@@ -417,8 +404,6 @@ export function DeploymentsTable({
     appFilter && appOptions.some((s) => s.id === appFilter) ? appFilter : null;
   const effectiveStatusFilter =
     statusFilter && statusOptions.includes(statusFilter) ? statusFilter : null;
-  const effectiveEnvFilter =
-    envFilter && envOptions.includes(envFilter) ? envFilter : null;
   const effectiveDateFilter =
     dateFilter && dateOptions.some((o) => o.value === dateFilter)
       ? dateFilter
@@ -431,7 +416,6 @@ export function DeploymentsTable({
     effectiveServerFilter != null ||
     effectiveAppFilter != null ||
     effectiveStatusFilter != null ||
-    effectiveEnvFilter != null ||
     hasClientNarrower;
 
   // The rows matching the filters - everything downstream (selection, counts, bulk
@@ -443,7 +427,6 @@ export function DeploymentsTable({
           (!effectiveServerFilter || d.serverId === effectiveServerFilter) &&
           (!effectiveAppFilter || d.appId === effectiveAppFilter) &&
           (!effectiveStatusFilter || d.status === effectiveStatusFilter) &&
-          (!effectiveEnvFilter || d.environment === effectiveEnvFilter) &&
           (!effectiveDateFilter || dateMatches(d, effectiveDateFilter)) &&
           terms.every((t) => haystacks.get(d.id)?.includes(t)),
       ),
@@ -452,7 +435,6 @@ export function DeploymentsTable({
       effectiveServerFilter,
       effectiveAppFilter,
       effectiveStatusFilter,
-      effectiveEnvFilter,
       effectiveDateFilter,
       dateMatches,
       terms,
@@ -524,7 +506,6 @@ export function DeploymentsTable({
   // follows the active filters.
   const sweepAppId = scopeAppId ?? effectiveAppFilter ?? null;
   const sweepServerId = effectiveServerFilter ?? null;
-  const sweepEnv = effectiveEnvFilter ?? null;
   const sweepStatus = effectiveStatusFilter ?? null;
   const activeAppName = effectiveAppFilter
     ? (appOptions.find((s) => s.id === effectiveAppFilter)?.name ?? null)
@@ -533,8 +514,8 @@ export function DeploymentsTable({
     ? (serverOptions.find((s) => s.id === effectiveServerFilter)?.name ?? null)
     : null;
   // Human-readable scope for the confirm dialogs, mirroring the sweep args. The
-  // who (app/server) reads as a phrase; the environment/status narrowers ride along
-  // in parentheses so the dialog names exactly what's about to be swept.
+  // who (app/server) reads as a phrase; the status narrower rides along in
+  // parentheses so the dialog names exactly what's about to be swept.
   const scopeWho = scopeAppId
     ? "this app"
     : activeAppName && activeServerName
@@ -545,7 +526,6 @@ export function DeploymentsTable({
           ? `server ${activeServerName}`
           : "all your apps";
   const scopeQualifiers = [
-    effectiveEnvFilter ? ENV_LABELS[effectiveEnvFilter] : null,
     effectiveStatusFilter ? STATUS_LABELS[effectiveStatusFilter] : null,
     effectiveDateFilter
       ? (dateOptions.find((o) => o.value === effectiveDateFilter)?.label ??
@@ -572,10 +552,6 @@ export function DeploymentsTable({
     setStatusFilter(v === ALL ? null : (v as DeploymentStatus));
     setShown(PAGE_SIZE);
   }
-  function applyEnvFilter(v: string) {
-    setEnvFilter(v === ALL ? null : (v as DeploymentEnvironment));
-    setShown(PAGE_SIZE);
-  }
   function applyDateFilter(v: string) {
     setDateFilter(v === ALL ? null : v);
     setShown(PAGE_SIZE);
@@ -595,7 +571,6 @@ export function DeploymentsTable({
     setServerFilter(null);
     setAppFilter(null);
     setStatusFilter(null);
-    setEnvFilter(null);
     setDateFilter(null);
     setQuery("");
     setShown(PAGE_SIZE);
@@ -670,7 +645,6 @@ export function DeploymentsTable({
           {
             appId: sweepAppId,
             serverId: sweepServerId,
-            environment: sweepEnv,
             status: sweepStatus,
           },
           (d) => d.deleteAllDeployments,
@@ -715,7 +689,6 @@ export function DeploymentsTable({
       {
         appId: sweepAppId,
         serverId: sweepServerId,
-        environment: sweepEnv,
         status: sweepStatus,
       },
       (d) => d.cancelAllDeployments,
@@ -731,27 +704,21 @@ export function DeploymentsTable({
   }
 
   const colSpan =
-    6 + (showApp ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
-  // Server/App narrowers only exist on the global page (showServer); Status,
-  // Environment and Sort surface wherever the rows warrant them - the app's own
-  // history included.
+    5 + (showApp ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
+  // Server/App narrowers only exist on the global page (showServer); Status and
+  // Sort surface wherever the rows warrant them - the app's own history included.
   const showServerFilter = showServer && serverOptions.length >= 1;
   const showAppFilter = showServer && appOptions.length >= 2;
   const showStatusFilter = statusOptions.length >= 2;
-  const showEnvFilter = envOptions.length >= 2;
   const showDateFilter = dateOptions.length >= 2;
   // Search earns its place the moment there is more than one row to tell apart.
   const showSearch = deployments.length > 1;
   const showSort = deployments.length > 1;
   // Any actual narrower present? The funnel glyph rides on this, not on the whole
-  // bar, so a sort-only row (e.g. an app whose history is all one status+env)
+  // bar, so a sort-only row (e.g. an app whose history is all one status)
   // doesn't display a filter icon over a control that only sorts.
   const showNarrowers =
-    showServerFilter ||
-    showAppFilter ||
-    showStatusFilter ||
-    showEnvFilter ||
-    showDateFilter;
+    showServerFilter || showAppFilter || showStatusFilter || showDateFilter;
   const showStopAll = canManage && inProgressCount > 0;
   const showDeleteAll = canManage && selectableIds.length > 0;
   const showFilters = showNarrowers || showSearch || showSort;
@@ -876,27 +843,6 @@ export function DeploymentsTable({
               </SelectContent>
             </Select>
           )}
-          {showEnvFilter && (
-            <Select
-              value={effectiveEnvFilter ?? ALL}
-              onValueChange={applyEnvFilter}
-            >
-              <SelectTrigger
-                className="w-[160px]"
-                aria-label="Filter by environment"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All environments</SelectItem>
-                {envOptions.map((e) => (
-                  <SelectItem key={e} value={e}>
-                    {ENV_LABELS[e]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
           {showDateFilter && (
             <Select
               value={effectiveDateFilter ?? ALL}
@@ -996,7 +942,6 @@ export function DeploymentsTable({
               {showApp && <TableHead>App</TableHead>}
               {showServer && <TableHead>Server</TableHead>}
               <TableHead>Status</TableHead>
-              <TableHead>Environment</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className="w-28 text-right">Actions</TableHead>
@@ -1073,6 +1018,22 @@ export function DeploymentsTable({
                         {/**
                          * This build did not produce its code - it went BACK to it.
                          */}
+                        {/* Which pull request this build came from. Read off
+                            the deployment's own denormalized number, so it
+                            survives the preview being reaped. */}
+                        {d.prNumber ? (
+                          <SimpleTooltip
+                            content={`Built for pull request #${d.prNumber}`}
+                          >
+                            <Badge
+                              variant="outline"
+                              className="gap-1 px-1.5 py-0 text-xs font-normal"
+                            >
+                              <GitPullRequest className="size-3" />
+                              {d.prNumber}
+                            </Badge>
+                          </SimpleTooltip>
+                        ) : null}
                         {d.rollbackOf ? (
                           <SimpleTooltip content="This deployment put the app back on an earlier build">
                             <Badge
@@ -1135,27 +1096,6 @@ export function DeploymentsTable({
 
                     <TableCell>
                       <StatusBadge status={liveStatusOf(d.id, d.status)} />
-                    </TableCell>
-
-                    <TableCell>
-                      <Badge
-                        variant={
-                          d.environment === "production"
-                            ? "default"
-                            : "secondary"
-                        }
-                        className="capitalize"
-                      >
-                        {d.environment}
-                      </Badge>
-                      {/* Which pull request this preview came from. Read off the
-                          deployment's own denormalized number, so it survives
-                          the preview being reaped. */}
-                      {d.prNumber ? (
-                        <span className="ml-1.5 font-mono text-xs text-muted-foreground">
-                          #{d.prNumber}
-                        </span>
-                      ) : null}
                     </TableCell>
 
                     <TableCell>

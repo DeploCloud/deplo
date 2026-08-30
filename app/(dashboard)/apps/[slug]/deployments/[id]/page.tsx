@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, GitBranch, Clock, ExternalLink, Lock } from "lucide-react";
+import {
+  ArrowLeft,
+  GitBranch,
+  GitPullRequest,
+  Clock,
+  ExternalLink,
+  Lock,
+} from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -12,11 +19,15 @@ import {
 } from "@/lib/data/deployments";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/apps/commit-link";
 import { CommitMessage } from "@/components/apps/commit-message";
-import { gitProfileUrl, repoCommitUrl, timeAgo } from "@/lib/utils";
+import {
+  githubPullRequestUrl,
+  gitProfileUrl,
+  repoCommitUrl,
+  timeAgo,
+} from "@/lib/utils";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
 import { RollbackButton } from "@/components/apps/rollback-deployment";
@@ -44,6 +55,7 @@ export default async function DeploymentDetailPage(
   // Its live slot in the owning server's build queue (null unless still queued),
   // so the "in queue" banner paints its position without waiting on the first poll.
   const queuePosition = await getQueuePosition(id);
+  const prUrl = githubPullRequestUrl(project.repo, deployment.prNumber);
 
   return (
     <div className="space-y-6">
@@ -64,17 +76,27 @@ export default async function DeploymentDetailPage(
           <Meta label="Status">
             <StatusBadge status={deployment.status} />
           </Meta>
-          <Meta label="Environment">
-            <Badge
-              variant={
-                deployment.environment === "production"
-                  ? "default"
-                  : "secondary"
-              }
-            >
-              {deployment.environment}
-            </Badge>
-          </Meta>
+          {/* Only a pull request preview has anything to say here: a production
+              build is what every other deployment is. */}
+          {deployment.prNumber != null && (
+            <Meta label="Pull request">
+              <span className="flex items-center gap-1.5 text-sm">
+                <GitPullRequest className="size-3.5" />
+                {prUrl ? (
+                  <a
+                    href={prUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline"
+                  >
+                    #{deployment.prNumber}
+                  </a>
+                ) : (
+                  <span>#{deployment.prNumber}</span>
+                )}
+              </span>
+            </Meta>
+          )}
           <Meta label="Source">
             <span className="flex items-center gap-1.5 text-sm">
               <GitBranch className="size-3.5" />

@@ -21,7 +21,6 @@ const row: DeploymentRow = {
   pullRequestUrl: "https://github.com/acme/my-api/pull/42",
   prNumber: 42,
   status: "ready",
-  environment: "preview",
   branch: "feat/login",
   createdAt: "2026-08-25T00:00:00.000Z",
   creator: "octocat",
@@ -41,7 +40,6 @@ test("a deployment is findable by id, sha, PR number, branch and app", () => {
     "eu-main-1",
     "octocat",
     "retry loop",
-    "preview",
   ]) {
     assert.ok(hay.includes(needle.toLowerCase()), `expected to find ${needle}`);
   }

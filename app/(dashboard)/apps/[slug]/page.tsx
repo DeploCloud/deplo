@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   GitBranch,
+  GitPullRequest,
   Clock,
   ScrollText,
   ExternalLink,
@@ -82,7 +83,6 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Production Deployment</CardTitle>
-          <Badge variant="secondary">Production</Badge>
         </CardHeader>
         <CardContent>
           {prod ? (
@@ -261,14 +261,15 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
                     {d.branch}
                   </p>
                 </div>
-                <Badge
-                  variant={
-                    d.environment === "production" ? "default" : "secondary"
-                  }
-                  className="hidden sm:inline-flex"
-                >
-                  {d.environment}
-                </Badge>
+                {d.prNumber != null && (
+                  <Badge
+                    variant="outline"
+                    className="hidden gap-1 font-normal sm:inline-flex"
+                  >
+                    <GitPullRequest className="size-3" />
+                    {d.prNumber}
+                  </Badge>
+                )}
                 <span className="hidden text-xs text-muted-foreground sm:inline">
                   {formatBuildDuration(d.buildDurationMs)}
                 </span>
