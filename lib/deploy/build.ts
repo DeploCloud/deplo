@@ -70,9 +70,15 @@ import {
   stackFilesDir,
   stackName,
 } from "./deploy-key";
-import { deployNetwork } from "./network";
-import { crossNetworkMessage, crossNetworkRefs } from "./cross-network";
-import { foreignNamesForApp } from "../data/cross-network";
+import { appNetwork, deployNetwork, explainNetworkError } from "./network";
+import {
+  crossNetworkMessage,
+  crossNetworkRefs,
+  nameClashMessage,
+  nameClashes,
+  type ForeignName,
+} from "./cross-network";
+import { neighboursForApp } from "../data/cross-network";
 import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -89,7 +95,11 @@ import { sweepSupersededAppImages } from "../data/docker-cleanup";
 import { traefikRouterLabels } from "./routing";
 import { renderResourceLimitsYaml } from "./resources";
 import { renderHealthCheckYaml, renderYamlKeys } from "./health-check";
-import { buildComposeStack, escapeComposeDollars } from "./compose-stack";
+import {
+  buildComposeStack,
+  escapeComposeDollars,
+  stackNamesOnNetwork,
+} from "./compose-stack";
 import { parseComposeUpArgs } from "./compose-args";
 import {
   primaryDomainName,
@@ -118,8 +128,10 @@ import {
 import { enqueueDeployment } from "./deploy-queue";
 import { assertDataCopyIntact } from "../data/data-copy";
 import { assertNotMigrating } from "../data/migration-guard";
+import { userMayReachHost } from "../membership";
 import type {
   App,
+  AppStatus,
   BuildMethod,
   CertProvider,
   Deployment,
@@ -133,6 +145,18 @@ import type {
   VolumeMount,
 } from "../types";
 import { mountOptions, parseMountPropagation } from "../apps/volume-model";
+
+/**
+ * Statuses a reroute must not bring up: stopped on purpose, or mid-deploy. Every
+ * other one may still have containers running, and those have to follow a move.
+ */
+const DEFERS_REROUTE = new Set<AppStatus>([
+  "idle",
+  "stopping",
+  "queued",
+  "building",
+  "restoring",
+]);
 
 /**
  * The owning server id for a DEPLOY KEY's app - its lifecycle verbs run on that
@@ -1076,6 +1100,10 @@ export async function startDeployment(
   // because the git webhook reaches this function with no gate at all: a push
   // landing mid-import would deploy an app whose volumes are still filling.
   assertNotMigrating("app", project.name, project.migrationRunId);
+  // The host grant is checked when a compose is SAVED, and a deploy has no user of
+  // its own, so revoking it used to stop nothing: the stack kept reaching the server
+  // on every later push. Read against whoever authored the reach.
+  await assertHostReachStillGranted(appId, project.name);
   const rollback = opts.rollback ?? null;
   const environment = opts.environment ?? (preview ? "preview" : "production");
   if (preview && environment !== "preview") {
@@ -1531,7 +1559,13 @@ async function tryAgent(opts: {
     // Say which neighbours this stack is about to stop resolving, BEFORE the
     // container tries and prints a DNS error nobody can act on. A warning, never a
     // refusal: the match is a heuristic and a false positive must not stop a deploy.
-    await warnCrossNetwork(opts.depId, opts.project.id, opts.network, opts.env);
+    await warnCrossNetwork(
+      opts.depId,
+      opts.project.id,
+      opts.network,
+      opts.env,
+      opts.composeYaml,
+    );
     // The plan the TARGET runs, and the commit the BUILD resolved. Both are only
     // rewritten by the build-server leg below; without one they stay as passed and
     // this function behaves exactly as it always did.
@@ -2738,10 +2772,11 @@ export async function rerouteApp(
     // (e.g. re-verifying an already-valid domain, or toggling primary back).
     if (current.yaml === rendered) return "unchanged";
 
-    // Only an active project may be recreated. Recreating an idle (deliberately
-    // stopped) project would silently restart it; recreating mid-deploy races the
-    // deploy on the same compose project.
-    if (project.status !== "active") return "deferred";
+    // Recreating a deliberately stopped project would silently restart it, and
+    // recreating mid-deploy races the deploy on the same compose project. Every
+    // OTHER status may still have containers running - an app in `error` that does
+    // not follow a move keeps its containers on the network it left.
+    if (DEFERS_REROUTE.has(project.status)) return "deferred";
 
     // For a single-image stack the env is baked into the YAML, so send no env-file
     // (mirrors the deploy path); compose stacks interpolate ${VAR} from the env.
@@ -2757,7 +2792,10 @@ export async function rerouteApp(
       network: deployNetwork(project),
       composeUpArgs: parseComposeUpArgs(project.composeUpArgs),
     });
-    if (!r.ok) throw new Error(r.error || "agent failed to reroute the stack");
+    if (!r.ok)
+      throw new Error(
+        explainNetworkError(r.error || "agent failed to reroute the stack"),
+      );
     return "rerouted";
   } finally {
     conn.close();
@@ -2765,15 +2803,41 @@ export async function rerouteApp(
 }
 
 /**
- * Log one line per neighbour this app names but can no longer reach. Best-effort
- * in every direction: the detector is a heuristic, and a deploy must never fail
- * because the warning could not be produced.
+ * Refuse a deploy of a compose that reaches past its container when the person who
+ * saved it no longer holds the grant. Nothing to check for the vast majority of
+ * apps: the column is NULL unless a save actually found host reach.
+ */
+async function assertHostReachStillGranted(
+  appId: string,
+  appName: string,
+): Promise<void> {
+  const [row] = await getDb()
+    .select({ by: appsTable.hostReachBy })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  if (!row?.by) return;
+  if (await userMayReachHost(row.by)) return;
+  throw new Error(
+    `${appName}'s compose reaches past its container, and whoever saved it no ` +
+      `longer has permission to let an app reach the server. An admin restores it ` +
+      `with "Bind server folders" in Settings -> Users, or someone who has it saves ` +
+      `the compose again.`,
+  );
+}
+
+/**
+ * Log one line per neighbour this app names but can no longer reach, and one per
+ * name it is about to share with a neighbour it CAN. Best-effort in every
+ * direction: the detectors are heuristics, and a deploy must never fail because
+ * the warning could not be produced.
  */
 async function warnCrossNetwork(
   depId: string,
   appId: string,
   network: string,
   env: Record<string, string>,
+  composeYaml: string,
 ): Promise<void> {
   try {
     const app = (
@@ -2789,11 +2853,19 @@ async function warnCrossNetwork(
         .limit(1)
     )[0];
     if (!app) return;
-    const foreign = (await foreignNamesForApp(app)).filter(
-      (f) => f.network !== network,
+    const neighbours = await neighboursForApp(app);
+    const foreign = neighbours.filter(
+      (n): n is ForeignName => n.why !== "reachable" && n.network !== network,
     );
     for (const ref of crossNetworkRefs(env, foreign))
       log(depId, "warn", crossNetworkMessage(ref));
+    // A preview is sealed in a network of its own, so it shares a name with nobody.
+    if (network === appNetwork(app))
+      for (const clash of nameClashes(
+        stackNamesOnNetwork(composeYaml),
+        neighbours,
+      ))
+        log(depId, "warn", nameClashMessage(clash));
   } catch {
     // Nothing to say is better than a deploy that fell over telling the user
     // something it only suspected.

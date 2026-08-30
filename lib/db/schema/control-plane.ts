@@ -807,6 +807,10 @@ export const apps = pgTable(
     // Extra flags this app adds to the `docker compose up` its server runs (migration
     // 0060) - the RAW string as typed; the deploy edge splits it into argv tokens.
     composeUpArgs: text("compose_up_args"),
+    // Who last saved a compose that reaches past its container (migration 0141).
+    // A deploy has no user of its own, so this is what a revoked grant is read
+    // against. NULL means the compose reaches nothing and nothing is checked.
+    hostReachBy: text("host_reach_by"),
     // How many previous deployments this app can be rolled back to (migration 0094).
     // Defaults to 3 - the point of the feature is that a bad deploy is undoable without
     // anyone configuring anything first.

@@ -957,6 +957,10 @@ export async function setDatabaseRunning(
       .where(eq(databasesTable.id, id));
     publishDatabaseChanged(id);
   });
+  // `compose start` returns the container to the network it was CREATED on, so a
+  // database stopped before a move would come back on the old one. Best-effort:
+  // it has already started, and an unreachable host must not report a failed start.
+  if (running) await reapplyDatabaseNetwork([id]);
 }
 
 /**
@@ -1772,7 +1776,10 @@ export async function reapplyDatabaseNetwork(ids: string[]): Promise<number> {
       const row = rows[0];
       if (!row) continue;
       const cur = assembleDatabase(row, await mountsFor(row.id));
-      if (!cur || cur.status === "provisioning") continue;
+      // A reroute is a `compose up`, so it STARTS what it re-renders: a database
+      // someone stopped must stay stopped, and one still provisioning has no
+      // compose project yet. Both follow the move when they next start.
+      if (!cur || cur.status !== "running") continue;
       const password = parseConnectionPassword(
         decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
       );

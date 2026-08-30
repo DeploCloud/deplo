@@ -10,6 +10,7 @@ import {
 } from "../db/schema/control-plane";
 import { nowIso } from "../ids";
 import { recordActivity } from "../data/activity";
+import { requireInstanceAdmin } from "../membership";
 import { reapplyDatabaseNetwork } from "../data/databases";
 import { usesAsHost } from "./cross-network";
 import { rerouteApp } from "./build";
@@ -132,7 +133,6 @@ async function placeDatabasesByUsage(): Promise<number> {
     { env: Record<string, string>; compose: string }
   >();
   for (const app of users) {
-    if (!app.environmentId) continue;
     haystack.set(app.id, {
       env: await safeAppEnv(app.id),
       compose: (app.compose ?? "").toLowerCase(),
@@ -141,9 +141,11 @@ async function placeDatabasesByUsage(): Promise<number> {
 
   let placed = 0;
   for (const d of loose) {
-    const envs = new Set<string>();
+    // Every PLACEMENT that names this database, the team's top level included -
+    // skipping the top-level users read "one Environment uses it" while three apps
+    // outside every Environment did too, and the move took it away from them.
+    const places = new Set<string>();
     for (const app of users) {
-      if (!app.environmentId) continue;
       // Same TEAM and same HOST, or this would file one team's database into
       // another team's Environment because both happened to use the name.
       if (app.teamId !== d.teamId || app.serverId !== d.serverId) continue;
@@ -152,18 +154,30 @@ async function placeDatabasesByUsage(): Promise<number> {
       const named =
         h.compose.includes(d.host.toLowerCase()) ||
         Object.entries(h.env).some(([k, v]) => usesAsHost(k, v, d.host));
-      if (named) envs.add(app.environmentId);
+      if (named) places.add(app.environmentId ?? "");
     }
-    if (envs.size !== 1) continue;
+    const only = soleEnvironmentUsing(places);
+    if (!only) continue;
     await db
       .update(databasesTable)
-      .set({ environmentId: [...envs][0] })
+      .set({ environmentId: only })
       .where(
         and(eq(databasesTable.id, d.id), isNull(databasesTable.environmentId)),
       );
     placed++;
   }
   return placed;
+}
+
+/**
+ * The Environment to file a loose database into: the one placement that names it,
+ * and only when that placement IS an Environment. Two of them is ambiguous, and
+ * the team's top level (`""`) is where it already sits - moving it there from
+ * there is a no-op, and moving it AWAY from there takes it from its users.
+ */
+export function soleEnvironmentUsing(places: Set<string>): string | null {
+  if (places.size !== 1) return null;
+  return [...places][0] || null;
 }
 
 /** An app's resolved env, or nothing when it cannot be read. */
@@ -194,6 +208,9 @@ export async function networkSweepFailures(): Promise<number> {
 
 /** Re-run the sweep - the banner's "Try again". */
 export async function retryNetworkIsolationSweep(): Promise<void> {
+  // The field's authScopes are a contract, not the boundary: this brings up every
+  // container on every host in the instance.
+  await requireInstanceAdmin();
   await getDb()
     .update(instanceSettings)
     .set({ networkSweepAt: null, updatedAt: nowIso() })

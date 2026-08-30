@@ -14,6 +14,7 @@ import {
   type RegistryAuth,
   type BuildSpec,
 } from "../agent/gen/agent";
+import { explainNetworkError } from "./network";
 import { connectAgent, agentPreflight } from "../infra/agent-client";
 import { loadRegistryAuthsForApp } from "../data/registries";
 import { generateDockerfile } from "./dockerfile";
@@ -411,7 +412,7 @@ function handleEvent(
   }
   if (ev.result) {
     if (!ev.result.ready && ev.result.error) {
-      sink.log("error", ev.result.error);
+      sink.log("error", explainNetworkError(ev.result.error));
     }
     return { ready: ev.result.ready, commitSha: ev.result.commitSha || "" };
   }

@@ -60,3 +60,18 @@ export function deployNetwork(
 ): string {
   return previewDeployKey ? previewNetwork(previewDeployKey) : appNetwork(a);
 }
+
+/**
+ * Docker's own words when the daemon has no address space left, said the way an
+ * operator can act on. Its default pools top out at ~31 networks, and one per
+ * Environment is what finally reaches that ceiling on a host installed before the
+ * installer began widening them.
+ */
+export function explainNetworkError(message: string): string {
+  if (!/predefined address pools/i.test(message)) return message;
+  return (
+    `${message}\n\nThis server has run out of Docker networks (the default is about ` +
+    `31). Set "default-address-pools" in /etc/docker/daemon.json and restart Docker, ` +
+    `or remove unused networks from Servers -> Cleanup.`
+  );
+}

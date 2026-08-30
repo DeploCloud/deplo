@@ -627,6 +627,15 @@ export class AgentUnreachableError extends Error {
 }
 
 /**
+ * An agent that cannot put a stack on the network its placement owns (ADR-0028).
+ * Its own class so a deploy can say which server needs updating.
+ */
+export class AgentNetworkUnsupportedError extends Error {}
+
+/** The Hello capability an agent advertises once it creates the stack's network. */
+const NETWORK_CAPABILITY = "deploy.network";
+
+/**
  * The reachable agent does not (yet) implement the in-place self-update RPC.
  */
 export class AgentUpdateUnsupportedError extends Error {}
@@ -1072,20 +1081,40 @@ function dial(target: DialTarget): AgentConnection {
     return e;
   };
 
+  const sayHello = (timeoutMs = HELLO_TIMEOUT_MS) =>
+    new Promise<HelloResponse>((resolve, reject) => {
+      const deadline = new Date(Date.now() + timeoutMs);
+      client.hello(
+        {
+          contractVersion: ContractVersion.CONTRACT_VERSION_V1,
+          controlPlaneVersion: "",
+        },
+        new Metadata(),
+        { deadline },
+        (err, resp) => (err ? reject(helloError(err)) : resolve(resp)),
+      );
+    });
+
+  /**
+   * A stack joins the network the request NAMES, and an agent that predates
+   * ADR-0028 creates none - `compose up` then fails with docker's own words about
+   * an external network, naming neither the server nor the fix. Asked once per
+   * connection, off the Hello every other host feature is already gated on.
+   */
+  let helloOnce: Promise<HelloResponse> | null = null;
+  const assertNetworkCapable = async (network: string) => {
+    if (!network) return;
+    const hello = await (helloOnce ??= sayHello());
+    if (hello.capabilities?.includes(NETWORK_CAPABILITY)) return;
+    throw new AgentNetworkUnsupportedError(
+      `The agent on this server is too old to place a stack on its own network. ` +
+        `Update it from Servers, then deploy again.`,
+    );
+  };
+
   return {
     hello(timeoutMs = HELLO_TIMEOUT_MS) {
-      return new Promise<HelloResponse>((resolve, reject) => {
-        const deadline = new Date(Date.now() + timeoutMs);
-        client.hello(
-          {
-            contractVersion: ContractVersion.CONTRACT_VERSION_V1,
-            controlPlaneVersion: "",
-          },
-          new Metadata(),
-          { deadline },
-          (err, resp) => (err ? reject(helloError(err)) : resolve(resp)),
-        );
-      });
+      return sayHello(timeoutMs);
     },
     metrics(dataDir = "") {
       return new Promise<HostMetrics>((resolve, reject) => {
@@ -1127,12 +1156,17 @@ function dial(target: DialTarget): AgentConnection {
       );
     },
     deploy(req: DeployRequest) {
-      return streamEvents(
-        client.deploy(req, {
-          deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS),
-        }),
-        { normalise: toAgentError },
-      );
+      // Refuse BEFORE the stream, so the failure names the server and the remedy
+      // instead of arriving as a compose error halfway through a build.
+      return (async function* () {
+        await assertNetworkCapable(req.network);
+        yield* streamEvents(
+          client.deploy(req, {
+            deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS),
+          }),
+          { normalise: toAgentError },
+        );
+      })();
     },
     reattach(req: ReattachRequest) {
       return streamEvents(
@@ -1195,24 +1229,27 @@ function dial(target: DialTarget): AgentConnection {
       network: string;
       composeUpArgs?: string[];
     }) {
-      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.reroute(
-          {
-            slug: req.slug,
-            composeYaml: req.composeYaml,
-            env: req.env,
-            mounts: req.mounts,
-            network: req.network,
-            composeUpArgs: req.composeUpArgs ?? [],
-          },
-          new Metadata(),
-          { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
-          (err, resp) =>
-            err
-              ? reject(toAgentError(err))
-              : resolve({ ok: resp.ok, error: resp.error }),
-        );
-      });
+      return assertNetworkCapable(req.network).then(
+        () =>
+          new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
+            client.reroute(
+              {
+                slug: req.slug,
+                composeYaml: req.composeYaml,
+                env: req.env,
+                mounts: req.mounts,
+                network: req.network,
+                composeUpArgs: req.composeUpArgs ?? [],
+              },
+              new Metadata(),
+              { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
+              (err, resp) =>
+                err
+                  ? reject(toAgentError(err))
+                  : resolve({ ok: resp.ok, error: resp.error }),
+            );
+          }),
+      );
     },
     renewalCsr() {
       return new Promise<{ csrPem: string }>((resolve, reject) => {

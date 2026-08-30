@@ -48,6 +48,7 @@ import {
   externalMergeMessage,
   reservedNameMessage,
 } from "../deploy/compose-lint";
+import { appNetwork } from "../deploy/network";
 import { composeServiceNames } from "../deploy/compose-stack";
 import {
   parseComposeUpArgs,
@@ -92,7 +93,7 @@ import {
   startDeployment,
   stopContainer,
   startContainer,
-  reapplyNetworkAfterMove,
+  rerouteApp,
 } from "../deploy/build";
 import {
   ensureAutoDomain,
@@ -802,15 +803,29 @@ function cleanAppName(name: string): string {
 async function assertNoDatabaseNameClash(
   compose: string | null | undefined,
   serverId: string,
+  placement: { teamId: string; environmentId: string | null },
 ): Promise<void> {
   if (compose == null) return;
   const claimed = new Set(composeClaimedNames(compose));
   if (claimed.size === 0) return;
+  const network = appNetwork({
+    teamId: placement.teamId,
+    environmentId: placement.environmentId,
+  });
   const rows = await getDb()
-    .select({ host: databasesTable.host })
+    .select({
+      host: databasesTable.host,
+      teamId: databasesTable.teamId,
+      environmentId: databasesTable.environmentId,
+    })
     .from(databasesTable)
     .where(eq(databasesTable.serverId, serverId));
-  const clash = rows.find((r) => claimed.has(r.host.trim().toLowerCase()));
+  // Only a database this app would SHARE A NETWORK WITH can lose its name: since
+  // ADR-0028 one in another Environment answers on a network this stack never joins.
+  const clash = rows.find(
+    (r) =>
+      appNetwork(r) === network && claimed.has(r.host.trim().toLowerCase()),
+  );
   if (clash)
     throw new Error(
       `\`${clash.host}\` is a database already running on this server, and a service of that name would take over its address. Rename the service (or its \`hostname:\`).`,
@@ -929,7 +944,10 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     throw new Error(
       "No server available - add a server from Settings, Servers and run its install command first.",
     );
-  await assertNoDatabaseNameClash(input.compose, server.id);
+  await assertNoDatabaseNameClash(input.compose, server.id, {
+    teamId: membership.teamId,
+    environmentId: placement.environmentId,
+  });
 
   // Where it COMPILES, on the same terms `setAppBuildServer` applies later: it has
   // to be a host this team can reach, a storage-only box has no Docker to build
@@ -1100,9 +1118,13 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
         // authorship metadata read only by the delete-a-user flow, never by the
         // renderer or any capability check, so it rides along with the insert
         // instead of widening every App the app graph assembles.
-        await tx
-          .insert(appsTable)
-          .values({ ...appToRow(project), createdByUserId: userId });
+        await tx.insert(appsTable).values({
+          ...appToRow(project),
+          createdByUserId: userId,
+          // Same reasoning as `created_by_user_id`: read only by the deploy's
+          // grant check, so it rides with the insert rather than widening App.
+          hostReachBy: reach.length > 0 ? userId : null,
+        });
         await tx
           .insert(appBuildTable)
           .values(buildToRow(project.id, project.build));
@@ -1506,7 +1528,10 @@ export async function updateAppSource(
   // Before the transaction, never inside one: this reads on its own connection.
   if (input.compose != null) {
     const [row] = await getDb()
-      .select({ serverId: appsTable.serverId })
+      .select({
+        serverId: appsTable.serverId,
+        environmentId: appsTable.environmentId,
+      })
       .from(appsTable)
       .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
       .limit(1);
@@ -1514,6 +1539,7 @@ export async function updateAppSource(
       await assertNoDatabaseNameClash(
         input.compose,
         input.serverId ?? row.serverId,
+        { teamId: membership.teamId, environmentId: row.environmentId },
       );
   }
   // Set inside the tx, consumed after commit to trigger the move's deploy.
@@ -1612,7 +1638,14 @@ export async function updateAppSource(
         dockerImage: input.dockerImage,
         // Persist compose edits when provided; never clear a stored stack on
         // switch so the user can flip back to Compose and recover it.
-        ...(input.compose != null ? { compose: input.compose } : {}),
+        ...(input.compose != null
+          ? {
+              compose: input.compose,
+              // Re-authored, so the reach is this saver's from here on (and null
+              // again when the compose stops reaching anything).
+              hostReachBy: editReach.length > 0 ? user.id : null,
+            }
+          : {}),
         updatedAt: nowIso(),
       })
       .where(eq(appsTable.id, id));
@@ -2513,22 +2546,23 @@ export async function startApp(id: string): Promise<void> {
   // Start is a second door onto the same volumes, and it skips the deploy
   // pipeline entirely - so it needs the same refusal.
   assertDataCopyIntact(project.name, project.dataCopyError);
+  // `compose start` starts the container it FINDS, on the network it was created
+  // with, so a stack stopped before a move would come back on the old one - and if
+  // that network has since been reclaimed, not come back at all. Re-render first:
+  // `up -d` brings the stack up on the right network in one step, and only when
+  // there was nothing to change does the plain start do the work.
+  await setAppStatus(id, "active");
   try {
-    await startContainer(project.slug);
+    if ((await rerouteApp(id)) !== "rerouted")
+      await startContainer(project.slug);
   } catch (e) {
     // Start failure (unreachable, or agent reported start failed): fail clearly
-    // rather than marking it "active" falsely.
+    // rather than leaving it "active" falsely.
+    await setAppStatus(id, "idle");
     throw new Error(
       `The stack on ${project.name}'s server was not started: ${errMsg(e)}`,
     );
   }
-  await setAppStatus(id, "active");
-  // `compose start` starts the container it finds, on whatever network it was
-  // created with - so a stack stopped before the move to per-environment networks
-  // would come back on the old shared one. Re-render it now that the app is active;
-  // an unchanged stack is byte-identical and nothing is recreated. BEST-EFFORT: the
-  // app has already started, so an agent hiccup here must not report a failed start.
-  await reapplyNetworkAfterMove([id]);
   await recordActivity("app", `Started ${project.name}`, user.name, id);
 }
 

@@ -575,6 +575,15 @@ export async function canMountHostVolumes(): Promise<boolean> {
   return hasGrant(await getCurrentUser(), "canMountHostVolumes");
 }
 
+/**
+ * Whether a NAMED user still holds the host grant - what a deploy asks about the
+ * person who authored a compose that reaches the server, since a deploy has no
+ * current user of its own (a push webhook has nobody at all).
+ */
+export async function userMayReachHost(userId: string): Promise<boolean> {
+  return hasGrant({ id: userId }, "canMountHostVolumes");
+}
+
 /** Throwing variant - gate any host bind mount behind this. */
 export async function requireMountHostVolumes(
   /** What asked for it, when it was not a Bind. See `composeHostReach`. */
