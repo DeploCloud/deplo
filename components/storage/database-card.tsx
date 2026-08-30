@@ -402,7 +402,7 @@ function CardActions({
                 Sub={DropdownMenuSub}
                 SubTrigger={DropdownMenuSubTrigger}
                 SubContent={DropdownMenuSubContent}
-                content="Apps reach a database by name only from the same environment"
+                content="Apps reach a database by name only from the same environment, and only on the same server"
                 subContentClassName="max-h-72 overflow-y-auto"
                 trigger={
                   <>

@@ -18,11 +18,19 @@ import type { ForeignName } from "../deploy/cross-network";
 const MAX_NEIGHBOURS = 200;
 
 /**
- * Every DNS name a stack on `serverId` answers to that this app's network does
- * NOT reach - what turns into "cannot resolve host" the moment it deploys.
+ * Every DNS name a stack of this TEAM answers to that this app cannot resolve -
+ * what turns into "cannot resolve host" the moment it deploys. Two ways to be out
+ * of reach, and they need different advice:
  *
- * Same server only: a Docker network is local to a host, so a name on another
- * machine was never reachable and is not news.
+ *  - another network (another Environment, or the team's top level): a placement
+ *    to change;
+ *  - the SAME placement on ANOTHER SERVER: a Docker network is local to its host,
+ *    so sharing an Environment is not enough and no placement fixes it. This one
+ *    used to be skipped as "not news", which left the commonest cross-host mistake
+ *    silent while the docs promised it would work.
+ *
+ * Another TEAM is never named: it is unreachable by construction, so saying so
+ * would only leak their project.
  */
 export async function foreignNamesForApp(a: {
   id: string;
@@ -38,6 +46,7 @@ export async function foreignNamesForApp(a: {
         slug: appsTable.slug,
         compose: appsTable.compose,
         teamId: appsTable.teamId,
+        serverId: appsTable.serverId,
         environmentId: appsTable.environmentId,
         envName: environmentsTable.name,
         projectName: projectsTable.name,
@@ -53,18 +62,13 @@ export async function foreignNamesForApp(a: {
       )
       // Same TEAM as well as same host: another team's network is unreachable by
       // construction, so naming one would only leak their project name.
-      .where(
-        and(
-          eq(appsTable.serverId, a.serverId),
-          eq(appsTable.teamId, a.teamId),
-          ne(appsTable.id, a.id),
-        ),
-      )
+      .where(and(eq(appsTable.teamId, a.teamId), ne(appsTable.id, a.id)))
       .limit(MAX_NEIGHBOURS),
     db
       .select({
         host: databasesTable.host,
         teamId: databasesTable.teamId,
+        serverId: databasesTable.serverId,
         environmentId: databasesTable.environmentId,
         envName: environmentsTable.name,
         projectName: projectsTable.name,
@@ -78,19 +82,29 @@ export async function foreignNamesForApp(a: {
         projectsTable,
         eq(environmentsTable.projectId, projectsTable.id),
       )
-      .where(
-        and(
-          eq(databasesTable.serverId, a.serverId),
-          eq(databasesTable.teamId, a.teamId),
-        ),
-      )
+      .where(eq(databasesTable.teamId, a.teamId))
       .limit(MAX_NEIGHBOURS),
   ]);
 
   const out: ForeignName[] = [];
-  const add = (name: string, network: string, where: string) => {
-    if (network === mine || !name) return;
-    out.push({ name: name.toLowerCase(), network, where });
+  const add = (
+    name: string,
+    network: string,
+    serverId: string,
+    where: string,
+  ) => {
+    if (!name) return;
+    const sameNetwork = network === mine;
+    const sameHost = serverId === a.serverId;
+    // Reachable: same network name AND same machine. Anything else is a name this
+    // app will not resolve, and the two reasons take different advice.
+    if (sameNetwork && sameHost) return;
+    out.push({
+      name: name.toLowerCase(),
+      network,
+      where,
+      why: sameNetwork ? "other-host" : "elsewhere",
+    });
   };
   for (const n of neighbours) {
     const net = appNetwork(n);
@@ -100,10 +114,15 @@ export async function foreignNamesForApp(a: {
     const names = n.compose?.trim()
       ? composeClaimedNames(n.compose)
       : [stackName(n.slug)];
-    for (const name of names) add(name, net, where);
+    for (const name of names) add(name, net, n.serverId, where);
   }
   for (const d of dbs)
-    add(d.host, appNetwork(d), placeLabel(d.projectName, d.envName));
+    add(
+      d.host,
+      appNetwork(d),
+      d.serverId,
+      placeLabel(d.projectName, d.envName),
+    );
   return out;
 }
 

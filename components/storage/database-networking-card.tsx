@@ -69,8 +69,8 @@ export function DatabaseNetworkingCard({
           value={internal}
           hint={
             environmentLabel
-              ? `Apps in ${environmentLabel}, by name.`
-              : "Apps outside any project, by name."
+              ? `Apps in ${environmentLabel} on this server, by name.`
+              : "Apps outside any project, on this server, by name."
           }
         />
 
@@ -80,8 +80,8 @@ export function DatabaseNetworkingCard({
             {environmentLabel ?? "No environment"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Only apps here reach the internal address. Move it from the database
-            list.
+            Only apps here, on this same server, reach the internal address.
+            Move it from the database list.
           </p>
         </div>
 

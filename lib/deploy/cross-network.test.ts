@@ -9,8 +9,18 @@ import {
 } from "./cross-network";
 
 const FOREIGN: ForeignName[] = [
-  { name: "gamewatcher-db", network: "deplo-env-a", where: "GW / Production" },
-  { name: "garage", network: "deplo-env-b", where: "S3 / Production" },
+  {
+    name: "gamewatcher-db",
+    network: "deplo-env-a",
+    where: "GW / Production",
+    why: "elsewhere",
+  },
+  {
+    name: "garage",
+    network: "deplo-env-b",
+    where: "S3 / Production",
+    why: "elsewhere",
+  },
 ];
 
 test("a connection string naming a foreign service is reported", () => {
@@ -62,4 +72,28 @@ test("one line per neighbour, not per variable that names it", () => {
     FOREIGN,
   );
   assert.equal(refs.length, 1);
+});
+
+// A Docker network is local to its host, so two apps that share an Environment but
+// sit on different servers do NOT reach each other. The docs said they did, and the
+// detector used to skip other hosts as "not news" - between them, the commonest
+// cross-host mistake was made silently.
+test("a neighbour in the same environment on another server is reported", () => {
+  const refs = crossNetworkRefs({ DB_HOST: "orders-db" }, [
+    {
+      name: "orders-db",
+      network: "deplo-env-a",
+      where: "Shop / Production",
+      why: "other-host",
+    },
+  ]);
+  assert.equal(refs.length, 1);
+  const msg = crossNetworkMessage(refs[0]);
+  assert.match(msg, /ANOTHER SERVER/);
+  assert.match(msg, /same server|publish a port/);
+  assert.doesNotMatch(
+    msg,
+    /Move this app into the same environment/,
+    "moving it does not help - they are already in the same one",
+  );
 });

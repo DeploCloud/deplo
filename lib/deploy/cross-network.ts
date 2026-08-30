@@ -1,17 +1,26 @@
 /**
- * Names an app reaches for that live on ANOTHER network - the "cannot resolve
- * host" a placement makes unreachable, said out loud before the container tries.
+ * Names an app reaches for that it cannot resolve - the "cannot resolve host" a
+ * placement makes unreachable, said out loud before the container tries.
  * https://deplo.build/docs/advanced/network-isolation
  */
 
-/** A name some other stack answers to, and where it lives. */
+/** Why a name is out of reach - the two produce different advice. */
+export type OutOfReach =
+  /** It lives in another Environment (or at the team's top level). Move one. */
+  | "elsewhere"
+  /** Same placement, ANOTHER SERVER: a Docker network is local to its host, so
+   *  sharing an Environment is not enough. Nothing about the placement fixes it. */
+  | "other-host";
+
+/** A name some other stack answers to, and why this app cannot reach it. */
 export interface ForeignName {
   /** The DNS name, lowercase - a compose service, a `hostname:`, or `db-<slug>`. */
   name: string;
-  /** The network it answers on, which is not this stack's. */
+  /** The network it answers on. Equal to this stack's when `why` is other-host. */
   network: string;
   /** What to tell the user it belongs to, e.g. `Shop / Production`. */
   where: string;
+  why: OutOfReach;
 }
 
 /** An env var (or compose text) pointing at a name this stack cannot resolve. */
@@ -20,6 +29,7 @@ export interface CrossNetworkRef {
   key: string;
   name: string;
   where: string;
+  why: OutOfReach;
 }
 
 /** Keys whose whole VALUE is conventionally a hostname. */
@@ -63,15 +73,28 @@ export function crossNetworkRefs(
       if (!usesAsHost(key, value, f.name)) continue;
       if (seen.has(f.name)) break;
       seen.add(f.name);
-      out.push({ key, name: f.name, where: f.where });
+      out.push({ key, name: f.name, where: f.where, why: f.why });
       break;
     }
   }
   return out;
 }
 
-/** The one line a deploy prints per unreachable neighbour. */
+/**
+ * The one line a deploy prints per unreachable neighbour. The advice differs
+ * because the remedy does: a name in another Environment is a placement to change,
+ * while one on another SERVER is not - a Docker network is local to its host, so
+ * no amount of sharing an Environment brings it into reach.
+ */
 export function crossNetworkMessage(ref: CrossNetworkRef): string {
+  if (ref.why === "other-host") {
+    return (
+      `${ref.key} points at \`${ref.name}\`, which is in ${ref.where} with this ` +
+      `app but runs on ANOTHER SERVER. A network only spans one machine, so the ` +
+      `name will not resolve. Put both on the same server, or publish a port and ` +
+      `use the server's address.`
+    );
+  }
   return (
     `${ref.key} points at \`${ref.name}\`, which lives in ${ref.where} and is ` +
     `not reachable from here. Move this app into the same environment, or use a ` +
