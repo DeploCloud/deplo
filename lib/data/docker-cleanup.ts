@@ -27,6 +27,7 @@ import { CleanupScope } from "../agent/gen/agent";
 import type { CleanupScopeResult } from "../agent/gen/agent";
 import { appBuildsItsOwnImage, formatBytes } from "../utils";
 import { previewDeployKey } from "../deploy/deploy-key";
+import { appNetwork, previewNetwork } from "../deploy/network";
 import { MAX_ROLLBACK_KEEP } from "../types";
 
 /**
@@ -39,7 +40,7 @@ import { MAX_ROLLBACK_KEEP } from "../types";
 const POLICY_ID = "default";
 
 /**
- * The four scopes that exist, in display order.
+ * The scopes that exist, in display order.
  */
 export const CLEANUP_SCOPES = [
   "build_cache",
@@ -47,6 +48,7 @@ export const CLEANUP_SCOPES = [
   "orphan_buildkit_cache",
   "unused_app_images",
   "leftover_app_files",
+  "leftover_networks",
 ] as const;
 
 export type CleanupScopeId = (typeof CLEANUP_SCOPES)[number];
@@ -182,6 +184,7 @@ const SCOPE_TO_WIRE: Record<CleanupScopeId, CleanupScope> = {
   orphan_buildkit_cache: CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE,
   unused_app_images: CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES,
   leftover_app_files: CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
+  leftover_networks: CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS,
 };
 
 const WIRE_TO_SCOPE = new Map<CleanupScope, CleanupScopeId>(
@@ -657,6 +660,10 @@ async function finishCleanupRun(args: {
       liveSlugs: policy.scopes.includes("leftover_app_files")
         ? await liveStackSlugs()
         : [],
+      // The same proof for networks: an empty list SKIPS the scope agent-side.
+      liveNetworks: policy.scopes.includes("leftover_networks")
+        ? await liveNetworkNames()
+        : [],
     });
     // A per-scope `error`/`skipped` is NOT a run failure - the agent declines a scope it
     // cannot prove is safe and sweeps the rest. Only `ok:false` (the sweep could not
@@ -971,6 +978,42 @@ export async function liveStackSlugs(): Promise<string[]> {
 }
 
 /**
+ * Every tenant network this Deplo still knows about - the proof
+ * `leftover_networks` rests on. Environments and teams answer for the stacks
+ * placed in them; previews answer for themselves.
+ *
+ * Instance-wide, like {@link liveStackSlugs}: a network is per host, but which
+ * ones are LIVE is a control-plane fact, and scoping this per server would call
+ * an Environment's network litter on every host but one.
+ */
+export async function liveNetworkNames(): Promise<string[]> {
+  const db = getDb();
+  const [apps, previews] = await Promise.all([
+    db
+      .select({
+        teamId: appsTable.teamId,
+        environmentId: appsTable.environmentId,
+      })
+      .from(appsTable),
+    db
+      .select({ slug: appsTable.slug, prNumber: appPreviewsTable.prNumber })
+      .from(appPreviewsTable)
+      .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId)),
+  ]);
+  const dbs = await db
+    .select({
+      teamId: databasesTable.teamId,
+      environmentId: databasesTable.environmentId,
+    })
+    .from(databasesTable);
+  const names = new Set<string>();
+  for (const a of [...apps, ...dbs]) names.add(appNetwork(a));
+  for (const p of previews)
+    names.add(previewNetwork(previewDeployKey(p.slug, p.prNumber)));
+  return [...names];
+}
+
+/**
  * Remove the superseded app images a deploy just left behind on `serverId` - the
  * deploy-time half of app-image retention. Scope is `unused_app_images` ONLY - the
  * cache scopes stay on the schedule where their age filter belongs.
@@ -998,9 +1041,10 @@ export async function sweepSupersededAppImages(
       // the deploy that superseded the previous image, so if it reads the instance scalar
       // instead of the app's own depth, the rollback target is gone before anybody could
       keepPerSlug: await rollbackKeepBySlug(serverId),
-      // Images only here: the files sweep belongs on the schedule, where an app
-      // deleted an hour ago is already past its grace window.
+      // Images only here: the files and network sweeps belong on the schedule,
+      // where an app deleted an hour ago is already past its grace window.
       liveSlugs: [],
+      liveNetworks: [],
     });
     if (!resp.ok) {
       console.warn(

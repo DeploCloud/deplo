@@ -12,7 +12,12 @@ import type { DatabaseType } from "../types";
  * The username/dbName the pre-parameterization tests implicitly assumed: the
  * service name for the DB, `app` for the login.
  */
-const DEFAULTS = { username: "app", dbName: "mydb", databaseId: "db_test" };
+const DEFAULTS = {
+  username: "app",
+  dbName: "mydb",
+  databaseId: "db_test",
+  network: "deplo-team-team_test",
+};
 
 /**
  * The database compose is the on-host stack the agent provisions for a managed
@@ -72,6 +77,7 @@ for (const type of Object.keys(EXPECTED_DATA_DIR) as DatabaseType[]) {
 
 test("generateDatabaseCompose: redis still sets requirepass via command override", () => {
   const yaml = generateDatabaseCompose({
+    network: "deplo-team-team_test",
     name: "cache",
     databaseId: "db_test",
     type: "redis",
@@ -118,6 +124,7 @@ for (const [type, envLine] of Object.entries(DB_CREATE_ENV) as [
 // DB on the chosen host port - the whole point of the feature.
 test("generateDatabaseCompose: no ports block when hostPort omitted (internal only)", () => {
   const yaml = generateDatabaseCompose({
+    network: "deplo-team-team_test",
     name: "db-internal",
     databaseId: "db_test",
     type: "postgres",
@@ -135,6 +142,7 @@ test("generateDatabaseCompose: no ports block when hostPort omitted (internal on
 test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 when exposed", () => {
   // A postgres DB (engine port 5432) exposed on host port 25432.
   const yaml = generateDatabaseCompose({
+    network: "deplo-team-team_test",
     name: "db-public",
     databaseId: "db_test",
     type: "postgres",
@@ -156,6 +164,7 @@ test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 wh
 
 test("generateDatabaseCompose: hostPort maps to the engine's own port (redis 6379)", () => {
   const yaml = generateDatabaseCompose({
+    network: "deplo-team-team_test",
     name: "cache-public",
     databaseId: "db_test",
     type: "redis",
@@ -176,6 +185,7 @@ test("generateDatabaseCompose: hostPort maps to the engine's own port (redis 637
 // connection string advertises would not actually exist.
 test("generateDatabaseCompose: threads a custom username + dbName into the engine env", () => {
   const yaml = generateDatabaseCompose({
+    network: "deplo-team-team_test",
     name: "db-shop",
     databaseId: "db_test",
     type: "postgres",
@@ -196,6 +206,7 @@ for (const [type, prefix] of [
 ] as const) {
   test(`generateDatabaseCompose(${type}): root username emits no ${prefix}_USER`, () => {
     const yaml = generateDatabaseCompose({
+      network: "deplo-team-team_test",
       name: "db-app",
       databaseId: "db_test",
       type,
@@ -216,6 +227,7 @@ for (const [type, prefix] of [
   // still needed for backups, which dump as root). Both share the one password.
   test(`generateDatabaseCompose(${type}): non-root username emits ${prefix}_USER alongside root`, () => {
     const yaml = generateDatabaseCompose({
+      network: "deplo-team-team_test",
       name: "db-app",
       databaseId: "db_test",
       type,
@@ -359,6 +371,7 @@ test("generateDatabaseCompose: customImage replaces the derived image", () => {
 // password-bearing `--requirepass` (the UI warns; this is the expert hatch).
 test("generateDatabaseCompose: customCommand replaces redis's requirepass command", () => {
   const yaml = generateDatabaseCompose({
+    network: "deplo-team-team_test",
     name: "cache",
     databaseId: "db_test",
     type: "redis",

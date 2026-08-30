@@ -110,6 +110,7 @@ test("the saved volume reaches the rendered stack, on its own service", async ()
   );
   const app = (await loadAppGraph("prj_1"))!;
   const yamlOut = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: app.compose ?? "",
     name: "deplo-shop",
     deployKey: app.slug,

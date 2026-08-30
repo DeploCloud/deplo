@@ -116,6 +116,34 @@ async function requireOwnedProject(projectId: string): Promise<string> {
 }
 
 /** The environments of a Project container, in display order. */
+/**
+ * Resolve an Environment id to its project, refusing one that belongs to another
+ * team. The placement gate every resource that lives in an Environment shares -
+ * an App via `resolvePlacement`, a managed database directly.
+ */
+export async function environmentInTeam(
+  environmentId: string,
+  teamId: string,
+): Promise<{ id: string; projectId: string } | null> {
+  const env = (
+    await getDb()
+      .select({
+        id: environmentsTable.id,
+        projectId: environmentsTable.projectId,
+        teamId: projectsTable.teamId,
+      })
+      .from(environmentsTable)
+      .innerJoin(
+        projectsTable,
+        eq(environmentsTable.projectId, projectsTable.id),
+      )
+      .where(eq(environmentsTable.id, environmentId))
+      .limit(1)
+  )[0];
+  if (!env || env.teamId !== teamId) return null;
+  return { id: env.id, projectId: env.projectId };
+}
+
 export async function listEnvironmentsForProject(
   projectId: string,
 ): Promise<Environment[]> {

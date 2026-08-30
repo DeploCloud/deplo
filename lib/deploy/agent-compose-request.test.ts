@@ -35,6 +35,7 @@ const base = {
   appId: "proj_1",
   imageRef: "",
   composeYaml: "services:\n  web:\n    image: nginx\n",
+  network: "deplo-team-team_test",
   env: { API_KEY: "secret", PORT: "8080" },
 };
 

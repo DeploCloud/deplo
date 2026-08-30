@@ -1472,6 +1472,11 @@ export const databases = pgTable(
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
+    // Placement, exactly like an App's: the Environment this database belongs to,
+    // which is also the network it is reachable on. NULL ⇒ the team's own network.
+    environmentId: text("environment_id").references(() => environments.id, {
+      onDelete: "set null",
+    }),
     // DISPLAY name only - editable in Settings → General, like an App's. The
     // container's identity is `host` (the compose project / volume / DNS name),
     // frozen at create: renaming a database never touches the running stack.
@@ -1530,7 +1535,10 @@ export const databases = pgTable(
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
-  (t) => [uniqueIndex("databases_team_name_uq").on(t.teamId, t.name)],
+  (t) => [
+    uniqueIndex("databases_team_name_uq").on(t.teamId, t.name),
+    index("databases_environment_idx").on(t.environmentId),
+  ],
 );
 
 /**

@@ -89,6 +89,7 @@ async function updateOne(serverId: string, name: string): Promise<void> {
     // inventory: no scope here asks for one.
     keepPerSlug: {},
     liveSlugs: [],
+    liveNetworks: [],
   });
   if (!dry.ok) throw new Error(`${name}: dry-run cleanup failed: ${dry.error}`);
   for (const r of dry.results ?? []) {

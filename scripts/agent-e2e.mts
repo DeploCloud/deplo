@@ -90,6 +90,7 @@ networks:
         generatedDockerfile: "",
       },
       composeYaml,
+      network: "deplo-team-e2e",
       env: {},
       readyTimeoutMs: 60000,
       contextTar: tar,

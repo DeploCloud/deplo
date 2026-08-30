@@ -71,6 +71,7 @@ try {
       generatedDockerfile: "",
     },
     git: undefined,
+    network: "deplo-team-e2e",
     composeYaml: "services: {}\n",
     env: {},
     readyTimeoutMs: 60000,

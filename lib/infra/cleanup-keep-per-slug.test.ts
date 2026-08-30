@@ -29,6 +29,7 @@ const req = (
   keepImagesPerApp: 1,
   keepPerSlug: {},
   liveSlugs: [],
+  liveNetworks: [],
   ...over,
 });
 

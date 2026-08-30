@@ -43,6 +43,7 @@ function buildDoc(
   extra: Partial<ComposeStackInput> = {},
 ): Doc {
   const out = buildComposeStack({
+    network: "deplo-team-team_test",
     compose,
     name: "deplo-demo",
     deployKey: "demo",
@@ -113,7 +114,10 @@ services:
   const labels = labelsOf(doc.services.web);
   // Routing rides the deplo network to the container port - orthogonal to host
   // publishing, so the labels coexist with the kept ports.
-  assert.ok(labels.includes("traefik.docker.network=deplo"));
+  assert.ok(
+    labels.includes("traefik.docker.network=deplo-team-team_test"),
+    "Traefik is pinned to the stack's OWN network, not the platform's",
+  );
   assert.ok(
     labels.some((l) =>
       /^traefik\.http\.services\.deplo-demo-web-[^.]*\.loadbalancer\.server\.port=80$/.test(
@@ -253,7 +257,10 @@ services:
   assert.ok(labels.includes("com.example.keep=yes"));
   // Deplo's own routing for the real domain is present.
   assert.ok(labels.some((l) => l.includes("Host(`real.1.2.3.4.nip.io`)")));
-  assert.ok(labels.includes("traefik.docker.network=deplo"));
+  assert.ok(
+    labels.includes("traefik.docker.network=deplo-team-team_test"),
+    "Traefik is pinned to the stack's OWN network, not the platform's",
+  );
 });
 
 test("a user traefik.* label in MAP form is stripped too", () => {
@@ -650,6 +657,7 @@ services:
 
 test("no volumes ⇒ no `volumes:` key anywhere (byte-identical baseline)", () => {
   const base = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: "services:\n  web:\n    image: nginx\n",
     name: "deplo-demo",
     deployKey: "demo",
@@ -657,6 +665,7 @@ test("no volumes ⇒ no `volumes:` key anywhere (byte-identical baseline)", () =
     domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
   });
   const withEmpty = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: "services:\n  web:\n    image: nginx\n",
     name: "deplo-demo",
     deployKey: "demo",
@@ -789,6 +798,7 @@ test("a map service whose keys are all already declared is left as a MAP (no chu
   // mergeEnvironment must NOT rewrite a map to a list when it adds nothing -
   // that would change the YAML and force a needless reroute restart.
   const out = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: `
 services:
   web:
@@ -902,6 +912,7 @@ services:
  */
 test("a hand-written alias on the shared network does not survive the render", () => {
   const out = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: `services:
   web:
     image: nginx
@@ -923,6 +934,7 @@ test("a service claiming one of Deplo's own names on the shared network is refus
     assert.throws(
       () =>
         buildComposeStack({
+          network: "deplo-team-team_test",
           compose: `services:\n  ${name}:\n    image: alpine\n    networks: [deplo]\nnetworks:\n  deplo: {external: true}`,
           name: "deplo-demo",
           deployKey: "demo",
@@ -983,6 +995,7 @@ networks:
   assert.throws(
     () =>
       buildComposeStack({
+        network: "deplo-team-team_test",
         compose: sneaky("postgres"),
         name: "deplo-demo",
         deployKey: "demo",
@@ -993,6 +1006,7 @@ networks:
   );
 
   const out = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: sneaky("app"),
     name: "deplo-demo",
     deployKey: "demo",
@@ -1013,6 +1027,7 @@ networks:
  */
 test("buildComposeStack: a route with no certificate lands on the web entrypoint", () => {
   const yaml = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: "services:\n  web:\n    image: nginx\n",
     name: "deplo-app",
     deployKey: "app",
@@ -1039,6 +1054,7 @@ test("buildComposeStack: a route with no certificate lands on the web entrypoint
 
 test("buildComposeStack: a route that asked for a certificate still gets one", () => {
   const yaml = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: "services:\n  web:\n    image: nginx\n",
     name: "deplo-app",
     deployKey: "app",

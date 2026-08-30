@@ -195,6 +195,9 @@ export async function runAgentDeploy(opts: {
   appId: string;
   imageRef: string;
   composeYaml: string;
+  /** The stack's own Docker network - its Environment's, its team's, or a
+   *  preview's. The agent creates it and puts Traefik on it. */
+  network: string;
   env: Record<string, string>;
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
@@ -436,6 +439,7 @@ export async function buildDeployRequest(opts: {
   appId: string;
   imageRef: string;
   composeYaml: string;
+  network: string;
   env: Record<string, string>;
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
@@ -459,6 +463,7 @@ export async function buildDeployRequest(opts: {
     buildKind: BuildKind.BUILD_KIND_UNSPECIFIED,
     dockerfile: undefined,
     composeYaml: opts.composeYaml,
+    network: opts.network,
     env: opts.env,
     readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
     contextTar: new Uint8Array(0),

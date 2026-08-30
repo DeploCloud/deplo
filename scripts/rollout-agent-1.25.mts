@@ -76,6 +76,7 @@ async function dryRunImages(
     keepPerSlug,
     // Images only: this dry run asks for no scope that reads the inventory.
     liveSlugs: [],
+    liveNetworks: [],
   });
   if (!resp.ok) throw new Error(`dry-run cleanup failed: ${resp.error}`);
   const r = (resp.results ?? [])[0];

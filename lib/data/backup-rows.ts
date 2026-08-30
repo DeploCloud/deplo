@@ -48,6 +48,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
   return {
     id: d.id,
     teamId: d.teamId,
+    environmentId: d.environmentId,
     name: d.name,
     logo: d.logo,
     type: d.type,
@@ -91,6 +92,7 @@ export function assembleDatabase(
   return {
     id: row.id,
     teamId: row.teamId,
+    environmentId: row.environmentId ?? null,
     name: row.name,
     logo: row.logo,
     type: row.type as DatabaseType,

@@ -20,13 +20,14 @@ import {
 // and, through it, the agent's proto enum.
 const DockerCleanupScopeEnum = builder.enumType("DockerCleanupScope", {
   description:
-    "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible). Deplo pushes to no registry, so a removed image comes back only by a rebuild - the newest image per app always survives. leftover_app_files = the config files of Apps and databases that were DELETED, judged against the stacks this instance still knows about; the only scope that removes something no rebuild recreates, so it is skipped outright on an agent too old to have the list. All five are on by default.",
+    "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible). Deplo pushes to no registry, so a removed image comes back only by a rebuild - the newest image per app always survives. leftover_app_files = the config files of Apps and databases that were DELETED, judged against the stacks this instance still knows about; the only scope that removes something no rebuild recreates, so it is skipped outright on an agent too old to have the list. leftover_networks = the Docker networks of Environments and previews that are gone, judged against the same kind of list; it reclaims address space rather than disk. All are on by default.",
   values: [
     "build_cache",
     "dangling_images",
     "orphan_buildkit_cache",
     "unused_app_images",
     "leftover_app_files",
+    "leftover_networks",
   ] as const,
 });
 

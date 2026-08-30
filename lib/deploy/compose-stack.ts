@@ -18,6 +18,7 @@ import {
   serviceReservedClaim,
   sharedNetworkKeys,
 } from "./compose-lint";
+import { INFRA_NETWORK } from "./network";
 
 // The detection reads the AUTHORED compose and has to answer in the wizard too,
 // so it lives in the client-safe module; this stays its address for the server.
@@ -28,8 +29,6 @@ export { detectDefaultApp } from "./compose-lint";
  * stacks that pin the SAME fixed host port will collide at `compose up` - that's
  * the user's explicit mapping, surfaced loudly rather than silently dropped.) 4.
  */
-
-const NETWORK = "deplo";
 
 /**
  * One routed hostname for a compose stack - the SOLE source of compose routing
@@ -116,6 +115,11 @@ export interface ComposeStackInput {
    * domain would route to).
    */
   volumes?: VolumeMount[] | null;
+  /**
+   * The Docker network this stack's routed services join - the app's Environment,
+   * its team, or a preview's own. See `lib/deploy/network.ts`.
+   */
+  network: string;
 }
 
 type App = Record<string, unknown>;
@@ -212,11 +216,13 @@ export function deploLabels(appId: string, slug: string): string[] {
 
 /**
  * Traefik routing labels for one exposed service, via the shared routing module
- * (compose-stack flavour: a fixed per-route key, the deplo `docker.network` pin,
- * and an always-explicit `.service` label).
+ * (compose-stack flavour: a fixed per-route key, the `docker.network` pin, and an
+ * always-explicit `.service` label).
  */
 function traefikLabels(opts: {
   router: string;
+  /** The stack's own network - what Traefik must route through. */
+  network: string;
   domains: string[];
   port: number;
   /** The route's OWN TLS triplet (`domainTlsConfig` of its stored row). Absent
@@ -265,7 +271,7 @@ function traefikLabels(opts: {
     })),
     defaultPort: port,
     certResolver: certResolver(),
-    dockerNetwork: NETWORK,
+    dockerNetwork: opts.network,
     alwaysService: true,
     ...(basicAuth ? { basicAuth } : {}),
   });
@@ -664,7 +670,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
     if (wired.has(service)) return true;
     const existing = appNetworks(target);
     const base = existing.length ? existing : ["default"];
-    target.networks = Array.from(new Set([...base, NETWORK]));
+    target.networks = Array.from(new Set([...base, INFRA_NETWORK]));
     wired.add(service);
     return true;
   };
@@ -685,6 +691,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
     mergeLabels(
       services[service] as App,
       traefikLabels({
+        network: input.network,
         // `safe()` alone collapses `.`/`/` to `-`, so `api.example.com` and
         // `api-example.com` (or `/api/v1` and `/api-v1`) would produce the SAME router key
         // and mergeLabels would silently drop one router.
@@ -707,8 +714,8 @@ export function buildComposeStack(input: ComposeStackInput): string {
     );
   }
 
-  // THE choke point for the shared network: every service that ends up on it, whether
-  // Deplo wired it for routing or the author attached it by hand.
+  // THE choke point for this stack's own network: every service that ends up on it,
+  // whether Deplo wired it for routing or the author attached it by hand.
   const sharedKeys = sharedNetworkKeys(doc as { networks?: unknown });
   for (const [name, raw] of Object.entries(services)) {
     const svc = raw as App | undefined;
@@ -728,11 +735,21 @@ export function buildComposeStack(input: ComposeStackInput): string {
       for (const key of joined) (nets as Record<string, unknown>)[key] = null;
   }
 
-  // Declare the external deplo network at the top level.
+  // Declare the stack's network at the top level. The KEY stays `deplo` - stable for
+  // every stack and for anything the author wrote by hand - while `name:` points it at
+  // the Environment's own network.
   const networks = (
     doc.networks && typeof doc.networks === "object" ? doc.networks : {}
   ) as Record<string, unknown>;
-  networks[NETWORK] = { external: true };
+  // Every key that named a PLATFORM network is re-pointed at the same place, so an
+  // authored `{sneaky: {external: true, name: deplo}}` lands in the app's Environment
+  // rather than beside the panel. Rewriting beats refusing: the same YAML arrives from
+  // an import, and a copy-pasted `networks: [deplo]` must keep working.
+  for (const key of sharedKeys) {
+    if (key in networks || key === INFRA_NETWORK)
+      networks[key] = { name: input.network, external: true };
+  }
+  networks[INFRA_NETWORK] = { name: input.network, external: true };
   doc.networks = networks;
 
   // Storage-settings volumes → the service each one names. Done last so the

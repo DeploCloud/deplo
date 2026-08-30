@@ -70,6 +70,7 @@ export async function seedDatabase(
   const type = opts.type ?? "postgres";
   const name = opts.name ?? opts.id;
   const row: Database = {
+    environmentId: null,
     id: opts.id,
     teamId: opts.teamId ?? TEAM_A,
     name,

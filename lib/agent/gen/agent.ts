@@ -353,6 +353,12 @@ export enum CleanupScope {
    * period is left alone too, so a stack being written right now is never a candidate.
    */
   CLEANUP_SCOPE_LEFTOVER_APP_FILES = 5,
+  /**
+   * CLEANUP_SCOPE_LEFTOVER_NETWORKS - `deplo-env-*` / `deplo-team-*` / `deplo-preview-*` networks with NO container
+   * attached and absent from live_networks: the networks of Environments and previews
+   * that are gone. Never the platform's own (`deplo`, `deplo-internal`, `deplo-socket`).
+   */
+  CLEANUP_SCOPE_LEFTOVER_NETWORKS = 6,
   UNRECOGNIZED = -1,
 }
 
@@ -376,6 +382,9 @@ export function cleanupScopeFromJSON(object: any): CleanupScope {
     case 5:
     case "CLEANUP_SCOPE_LEFTOVER_APP_FILES":
       return CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES;
+    case 6:
+    case "CLEANUP_SCOPE_LEFTOVER_NETWORKS":
+      return CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -397,6 +406,8 @@ export function cleanupScopeToJSON(object: CleanupScope): string {
       return "CLEANUP_SCOPE_UNUSED_APP_IMAGES";
     case CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES:
       return "CLEANUP_SCOPE_LEFTOVER_APP_FILES";
+    case CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS:
+      return "CLEANUP_SCOPE_LEFTOVER_NETWORKS";
     case CleanupScope.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -731,6 +742,12 @@ export interface DeployRequest {
    * image - can authenticate. Empty for a team that connected no registry.
    */
   registryAuth: RegistryAuth[];
+  /**
+   * The Docker network this stack's routed services join, named after the app's
+   * Environment (or its team when it has none). The agent creates it if missing and
+   * connects Traefik to it. Empty is REJECTED - there is no shared default any more.
+   */
+  network: string;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -992,6 +1009,11 @@ export interface RerouteRequest {
    * flags the operator asked for apply here as well.
    */
   composeUpArgs: string[];
+  /**
+   * Same contract as DeployRequest.network - a reroute brings the stack up too, so
+   * the network must exist and Traefik must be on it.
+   */
+  network: string;
 }
 
 export interface RerouteRequest_EnvEntry {
@@ -2040,6 +2062,11 @@ export interface DockerCleanupRequest {
    * ones placed on this host.
    */
   liveSlugs: string[];
+  /**
+   * LEFTOVER_NETWORKS only: every tenant network the control plane still knows,
+   * INSTANCE-WIDE. Empty list => the scope is skipped, never "remove everything".
+   */
+  liveNetworks: string[];
 }
 
 export interface DockerCleanupRequest_KeepPerSlugEntry {
@@ -3961,6 +3988,7 @@ function createBaseDeployRequest(): DeployRequest {
     composeUpArgs: [],
     buildOnly: false,
     registryAuth: [],
+    network: "",
   };
 }
 
@@ -4028,6 +4056,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     for (const v of message.registryAuth) {
       RegistryAuth.encode(v!, writer.uint32(170).fork()).join();
+    }
+    if (message.network !== "") {
+      writer.uint32(178).string(message.network);
     }
     return writer;
   },
@@ -4210,6 +4241,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           message.registryAuth.push(RegistryAuth.decode(reader, reader.uint32()));
           continue;
         }
+        case 22: {
+          if (tag !== 178) {
+            break;
+          }
+
+          message.network = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -4316,6 +4355,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : globalThis.Array.isArray(object?.registry_auth)
         ? object.registry_auth.map((e: any) => RegistryAuth.fromJSON(e))
         : [],
+      network: isSet(object.network) ? globalThis.String(object.network) : "",
     };
   },
 
@@ -4390,6 +4430,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.registryAuth?.length) {
       obj.registryAuth = message.registryAuth.map((e) => RegistryAuth.toJSON(e));
     }
+    if (message.network !== "") {
+      obj.network = message.network;
+    }
     return obj;
   },
 
@@ -4431,6 +4474,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.composeUpArgs = object.composeUpArgs?.map((e) => e) || [];
     message.buildOnly = object.buildOnly ?? false;
     message.registryAuth = object.registryAuth?.map((e) => RegistryAuth.fromPartial(e)) || [];
+    message.network = object.network ?? "";
     return message;
   },
 };
@@ -6238,7 +6282,7 @@ export const ImageChunk_Header: MessageFns<ImageChunk_Header> = {
 };
 
 function createBaseRerouteRequest(): RerouteRequest {
-  return { slug: "", composeYaml: "", env: {}, mounts: [], composeUpArgs: [] };
+  return { slug: "", composeYaml: "", env: {}, mounts: [], composeUpArgs: [], network: "" };
 }
 
 export const RerouteRequest: MessageFns<RerouteRequest> = {
@@ -6257,6 +6301,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     }
     for (const v of message.composeUpArgs) {
       writer.uint32(42).string(v!);
+    }
+    if (message.network !== "") {
+      writer.uint32(50).string(message.network);
     }
     return writer;
   },
@@ -6311,6 +6358,14 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
           message.composeUpArgs.push(reader.string());
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.network = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -6343,6 +6398,7 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
         : globalThis.Array.isArray(object?.compose_up_args)
         ? object.compose_up_args.map((e: any) => globalThis.String(e))
         : [],
+      network: isSet(object.network) ? globalThis.String(object.network) : "",
     };
   },
 
@@ -6369,6 +6425,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     if (message.composeUpArgs?.length) {
       obj.composeUpArgs = message.composeUpArgs;
     }
+    if (message.network !== "") {
+      obj.network = message.network;
+    }
     return obj;
   },
 
@@ -6390,6 +6449,7 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     );
     message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
     message.composeUpArgs = object.composeUpArgs?.map((e) => e) || [];
+    message.network = object.network ?? "";
     return message;
   },
 };
@@ -14318,7 +14378,15 @@ export const TunnelStatus: MessageFns<TunnelStatus> = {
 };
 
 function createBaseDockerCleanupRequest(): DockerCleanupRequest {
-  return { scopes: [], dryRun: false, minAgeHours: 0, keepImagesPerApp: 0, keepPerSlug: {}, liveSlugs: [] };
+  return {
+    scopes: [],
+    dryRun: false,
+    minAgeHours: 0,
+    keepImagesPerApp: 0,
+    keepPerSlug: {},
+    liveSlugs: [],
+    liveNetworks: [],
+  };
 }
 
 export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
@@ -14342,6 +14410,9 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     });
     for (const v of message.liveSlugs) {
       writer.uint32(50).string(v!);
+    }
+    for (const v of message.liveNetworks) {
+      writer.uint32(58).string(v!);
     }
     return writer;
   },
@@ -14414,6 +14485,14 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
           message.liveSlugs.push(reader.string());
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.liveNetworks.push(reader.string());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -14463,6 +14542,11 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
         : globalThis.Array.isArray(object?.live_slugs)
         ? object.live_slugs.map((e: any) => globalThis.String(e))
         : [],
+      liveNetworks: globalThis.Array.isArray(object?.liveNetworks)
+        ? object.liveNetworks.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.live_networks)
+        ? object.live_networks.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -14492,6 +14576,9 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     if (message.liveSlugs?.length) {
       obj.liveSlugs = message.liveSlugs;
     }
+    if (message.liveNetworks?.length) {
+      obj.liveNetworks = message.liveNetworks;
+    }
     return obj;
   },
 
@@ -14514,6 +14601,7 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
       {},
     );
     message.liveSlugs = object.liveSlugs?.map((e) => e) || [];
+    message.liveNetworks = object.liveNetworks?.map((e) => e) || [];
     return message;
   },
 };

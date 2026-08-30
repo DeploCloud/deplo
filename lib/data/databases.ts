@@ -60,6 +60,8 @@ import {
 } from "../deploy/database-compose";
 import { isDockerLevelStderr } from "../infra/docker";
 import { stackFilesDir } from "../deploy/deploy-key";
+import { appNetwork } from "../deploy/network";
+import { environmentInTeam } from "./environments";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { MIN_USER_PORT, MAX_PORT, isValidExposePort } from "../databases/ports";
 import { withKeyedLock } from "./keyed-mutex";
@@ -587,6 +589,12 @@ export async function createDatabase(input: {
   version: string;
   serverId?: string;
   /**
+   * Where this database lives - the same placement an App takes. It is also the
+   * network the database answers on, so an app reaches `db-<slug>` when the two
+   * share an Environment. Absent ⇒ the team's own network.
+   */
+  environmentId?: string | null;
+  /**
    * The engine login to create. Forced to `default` for redis (there is no
    * mechanism to create a redis ACL user, so any override would emit an unusable
    * connection string).
@@ -726,6 +734,15 @@ export async function createDatabase(input: {
       : randomToken(12);
 
   // The connection host:port depends on reachability.
+  // The placement, resolved before any write - a foreign Environment is refused
+  // here, not silently dropped.
+  const environmentId = input.environmentId
+    ? ((await environmentInTeam(input.environmentId, teamId))?.id ??
+      (() => {
+        throw new Error("Environment not found");
+      })())
+    : null;
+
   const conn = buildConnectionString({
     type: input.type,
     username,
@@ -738,6 +755,7 @@ export async function createDatabase(input: {
   const db: Database = {
     id: newId("db"),
     teamId,
+    environmentId,
     name,
     // Provisioned here, from nothing. Only a migration can hand a database a
     // volume that was supposed to arrive from another host and did not.
@@ -836,6 +854,7 @@ function renderDatabaseStackYaml(db: Database, password: string): string {
     // The engine's config files.
     mounts: db.mounts,
     filesDir: stackFilesDir(db.host),
+    network: appNetwork(db),
   });
 }
 
@@ -859,6 +878,7 @@ async function provisionDatabase(
         composeYaml: yaml,
         env: {},
         mounts: mountFilesFor(db),
+        network: appNetwork(db),
       });
       if (!res.ok)
         throw new Error(res.error || "agent failed to provision the database");
@@ -1062,6 +1082,7 @@ export async function updateDatabase(
         composeYaml: yaml,
         env: {},
         mounts: mountFilesFor(cur),
+        network: appNetwork(cur),
       });
       if (!res.ok)
         throw new Error(res.error || "agent failed to update the database");
@@ -1188,6 +1209,7 @@ async function teardownDatabaseStack(db: Database): Promise<string | null> {
         composeYaml: renderDatabaseStackYaml(db, password),
         env: {},
         mounts: mountFilesFor(db),
+        network: appNetwork(db),
       });
       // A failed heal leaves `res`, the ORIGINAL destroy error, as the reason;
       // it is the actionable one (the heal error is a symptom of the same host).
@@ -1622,6 +1644,7 @@ export async function setDatabaseMounts(
         composeYaml: renderDatabaseStackYaml(next, password),
         env: {},
         mounts: mountFilesFor(next),
+        network: appNetwork(next),
       });
       if (!res.ok)
         throw new Error(
@@ -1727,6 +1750,7 @@ export async function redeployDatabase(id: string): Promise<void> {
         composeYaml: yaml,
         env: {},
         mounts: mountFilesFor(cur),
+        network: appNetwork(cur),
       });
       if (!res.ok)
         throw new Error(res.error || "agent failed to redeploy the database");
@@ -1785,6 +1809,7 @@ export async function rebuildDatabase(id: string): Promise<void> {
         composeYaml: yaml,
         env: {},
         mounts: mountFilesFor(cur),
+        network: appNetwork(cur),
       });
       if (!up.ok) {
         await getDb()
@@ -1984,6 +2009,7 @@ export async function rotateDatabasePassword(
         composeYaml: yaml,
         env: {},
         mounts: mountFilesFor(cur),
+        network: appNetwork(cur),
       });
       if (!res.ok)
         throw new Error(

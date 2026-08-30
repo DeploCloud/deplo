@@ -70,6 +70,7 @@ import {
   stackFilesDir,
   stackName,
 } from "./deploy-key";
+import { deployNetwork } from "./network";
 import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -767,6 +768,11 @@ export function renderCompose(opts: {
   port: number;
   appId: string;
   /**
+   * The Docker network this stack joins - the app's Environment, its team, or a
+   * preview's own. See `lib/deploy/network.ts`.
+   */
+  network: string;
+  /**
    * The stack's DEPLOY KEY - what the files dir, the named volumes and the
    * `deplo.slug` label are named after.
    */
@@ -831,14 +837,16 @@ export function renderCompose(opts: {
   // port. The global web->websecure redirect is configured on the proxy, so no
   // per-router middleware is needed here.
   const labels = [
-    // Single-image production flavour: per-port grouping under the bare baseKey, the
-    // explicit `.service` label only when there's more than one router, and no
-    // `traefik.docker.network` label (the stack joins only `deplo`).
+    // Single-image production flavour: per-port grouping under the bare baseKey and the
+    // explicit `.service` label only when there's more than one router.
     ...traefikRouterLabels({
       baseKey: name,
       routes,
       defaultPort: port,
       certResolver: certResolver(),
+      // Traefik sits on every tenant network, so which one to forward through is no
+      // longer implied by the container being on the only shared one.
+      dockerNetwork: opts.network,
       ...(opts.basicAuthUsers
         ? {
             basicAuth: {
@@ -918,6 +926,7 @@ ${labelsYaml}
 
 networks:
   deplo:
+    name: ${opts.network}
     external: true
 ${topVolsYaml}`;
 }
@@ -1358,6 +1367,8 @@ async function buildOnBuildServer(opts: {
   project: { id: string; deployKey: string; composeUpArgs: string | null };
   imageRef: string;
   composeYaml: string;
+  /** The stack's own Docker network (lib/deploy/network.ts). */
+  network: string;
   env: Record<string, string>;
   plan: AgentBuildPlan;
   noCache?: boolean;
@@ -1377,6 +1388,7 @@ async function buildOnBuildServer(opts: {
       // The builder writes no stack and starts nothing, so the rendered compose is inert
       // there.
       composeYaml: opts.composeYaml,
+      network: opts.network,
       env: opts.env,
       plan: opts.plan,
       noCache: opts.noCache,
@@ -1471,6 +1483,8 @@ async function tryAgent(opts: {
   project: { id: string; deployKey: string; composeUpArgs: string | null };
   imageRef: string;
   composeYaml: string;
+  /** The stack's own Docker network (lib/deploy/network.ts). */
+  network: string;
   env: Record<string, string>;
   plan: AgentBuildPlan;
   /** How long the agent waits for the stack to report running (ms). Defaults to
@@ -1543,6 +1557,7 @@ async function tryAgent(opts: {
         appId: opts.project.id,
         imageRef: opts.imageRef,
         composeYaml: opts.composeYaml,
+        network: opts.network,
         env: opts.env,
         plan,
         readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
@@ -1791,7 +1806,11 @@ async function runDeployment(depId: string): Promise<void> {
     // both are computed here, once, and handed to the agent.
     const renderStack = async (
       image: string,
-    ): Promise<{ composeYaml: string; env: Record<string, string> }> => {
+    ): Promise<{
+      composeYaml: string;
+      env: Record<string, string>;
+      network: string;
+    }> => {
       const env = await appEnv(project.id, dep.environment, {
         preview: preview
           ? {
@@ -1804,6 +1823,9 @@ async function runDeployment(depId: string): Promise<void> {
           : null,
       });
       const basicAuthUsers = await basicAuthUsersValue(project.id);
+      // A preview is sealed in a network of its own; everything else joins its
+      // Environment's (or its team's, when it has no Environment).
+      const network = deployNetwork(project, preview ? deployKey : null);
       const composeYaml = renderCompose({
         name,
         image,
@@ -1811,6 +1833,9 @@ async function runDeployment(depId: string): Promise<void> {
         appId: project.id,
         deployKey,
         trackingId,
+        // A preview is sealed in a network of its own; everything else joins its
+        // Environment's (or its team's, when it has no Environment).
+        network,
         routes: routeDomains,
         env,
         basicAuthUsers,
@@ -1826,7 +1851,7 @@ async function runDeployment(depId: string): Promise<void> {
         resources: project.resources,
         healthCheck: project.healthCheck,
       });
-      return { composeYaml, env };
+      return { composeYaml, env, network };
     };
 
     // For a BUILT source (git/upload): resolve the build dir (one shared rootDirectory
@@ -1847,7 +1872,9 @@ async function runDeployment(depId: string): Promise<void> {
         failOnMissing: treeOpts.failOnMissing,
         notFoundMessage: treeOpts.notFoundMessage,
       });
-      const { composeYaml, env } = await renderStack(treeOpts.imageRef);
+      const { composeYaml, env, network } = await renderStack(
+        treeOpts.imageRef,
+      );
       const { outcome } = await tryAgent({
         depId,
         serverId,
@@ -1858,6 +1885,7 @@ async function runDeployment(depId: string): Promise<void> {
         },
         imageRef: treeOpts.imageRef,
         composeYaml,
+        network,
         env,
         plan: {
           kind: "dockerfile",
@@ -1899,7 +1927,7 @@ async function runDeployment(depId: string): Promise<void> {
           "info",
           `Rolling back to the image from deployment ${plan.of}`,
         );
-        const { composeYaml, env } = await renderStack(imageRef);
+        const { composeYaml, env, network } = await renderStack(imageRef);
         const { outcome } = await tryAgent({
           depId,
           serverId,
@@ -1910,6 +1938,7 @@ async function runDeployment(depId: string): Promise<void> {
           },
           imageRef,
           composeYaml,
+          network,
           env,
           plan: { kind: "image", image: imageRef, pull: false },
           forceRecreate,
@@ -1920,7 +1949,7 @@ async function runDeployment(depId: string): Promise<void> {
       case "docker-image": {
         imageRef = plan.image;
         // A prebuilt image: the owning agent pulls + runs it on its host.
-        const { composeYaml, env } = await renderStack(imageRef);
+        const { composeYaml, env, network } = await renderStack(imageRef);
         const { outcome } = await tryAgent({
           depId,
           serverId,
@@ -1931,6 +1960,7 @@ async function runDeployment(depId: string): Promise<void> {
           },
           imageRef,
           composeYaml,
+          network,
           env,
           plan: { kind: "image", image: plan.image, pull: true },
           forceRecreate,
@@ -1974,7 +2004,7 @@ async function runDeployment(depId: string): Promise<void> {
         // resolves the commit sha but never retags with it.
         imageRef = deployImageRef(deployKey, depId);
         await setDep(depId, { imageRef });
-        const { composeYaml, env } = await renderStack(imageRef);
+        const { composeYaml, env, network } = await renderStack(imageRef);
         // The credential-free address, as it has always been logged: `cloneUrl`
         // carries an installation token for a private repo, and a deploy log is
         // readable by anyone with `view_logs`.
@@ -1993,6 +2023,7 @@ async function runDeployment(depId: string): Promise<void> {
           },
           imageRef,
           composeYaml,
+          network,
           env,
           plan: {
             kind: "git",
@@ -2146,6 +2177,8 @@ interface ComposeStackApp {
   /** Named so a terminal alert can say whose deploy it was - the full app row is
    * what callers actually pass, so these are already there at runtime. */
   teamId: string;
+  /** The app's placement, which is also the network it deploys onto. */
+  environmentId?: string | null;
   name: string;
   slug: string;
   compose: string | null;
@@ -2235,6 +2268,9 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     resources: project.resources,
     // Storage-settings volumes, mounted into the service each one names.
     volumes: project.volumes,
+    // A preview is sealed in a network of its own; everything else joins its
+    // Environment's (or its team's, when it has no Environment).
+    network: deployNetwork(project, opts.preview ? deployKey : null),
   });
   return { stackYaml, filesDir };
 }
@@ -2352,6 +2388,7 @@ async function deployComposeStackViaAgent(
     // agent neither builds nor pulls one. Pass an empty ref.
     imageRef: "",
     composeYaml: stackYaml,
+    network: deployNetwork(project, opts.preview ? deployKey : null),
     env,
     plan: { kind: "compose", mounts: project.mounts ?? [] },
     // several images on the agent before any service reports running.
@@ -2630,6 +2667,8 @@ export async function rerouteApp(
       rendered = buildComposeStack({
         compose: project.compose ?? "",
         name,
+        // Reroute is production-only, so never a preview network.
+        network: deployNetwork(project),
         deployKey,
         appId,
         // The `domains` table is the sole routing source: one router per routable
@@ -2670,6 +2709,8 @@ export async function rerouteApp(
         port: project.build.port,
         appId,
         deployKey,
+        // Reroute is production-only, so never a preview network.
+        network: deployNetwork(project),
         routes,
         env,
         basicAuthUsers,
@@ -2702,6 +2743,7 @@ export async function rerouteApp(
       composeYaml: rendered,
       env,
       mounts,
+      network: deployNetwork(project),
       composeUpArgs: parseComposeUpArgs(project.composeUpArgs),
     });
     if (!r.ok) throw new Error(r.error || "agent failed to reroute the stack");
@@ -2737,6 +2779,7 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       name,
       deployKey,
       appId,
+      network: deployNetwork(project),
       domainRoutes,
       filesDir: composeFilesDir(deployKey),
       basicAuthUsers: await basicAuthUsersValue(appId),

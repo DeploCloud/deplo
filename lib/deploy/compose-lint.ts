@@ -16,6 +16,7 @@
 import yaml, { isMap, isScalar, Scalar, visit, type Document } from "../yaml";
 
 import { isDatastoreImage } from "../databases/images";
+import { PLATFORM_NETWORKS } from "./network";
 
 /**
  * An `environment:` value is TEXT by the time the container reads it, so the text
@@ -853,28 +854,27 @@ export function serviceReservedClaim(
   return serviceClaimedNames(name, svc).find(isReservedSharedName) ?? null;
 }
 
-/** The shared network's name, as `compose-stack.ts` declares it. */
-const SHARED_NETWORK = "deplo";
-
 /**
- * Every top-level network KEY in this compose that resolves to the shared
- * network, which is not only the key `deplo`.
+ * Every top-level network KEY in this compose that resolves to one of the
+ * PLATFORM's networks, which is not only the key `deplo`.
  *
  * Compose lets a network be referenced under any key while pointing at another
  * network by `name:`, so
  *
  *     networks: { sneaky: { external: true, name: deplo } }
  *
- * is the shared network under an alias of the author's choosing. Checking the
+ * is the platform's network under an alias of the author's choosing. Checking the
  * key alone is the same mistake as trusting an identifier that names itself:
- * every rule about the shared network has to resolve it by NAME first, or the
- * rule is one rename away from being decorative.
+ * every rule about these networks has to resolve them by NAME first, or the rule
+ * is one rename away from being decorative.
  *
- * Exported so the renderer and the editor agree on what "on the shared network"
- * means.
+ * `buildComposeStack` re-points every key this returns at the stack's OWN
+ * network, so an authored join lands in the app's Environment instead of next to
+ * the panel. Exported so the renderer and the editor agree on which keys those are.
  */
 export function sharedNetworkKeys(doc: { networks?: unknown }): Set<string> {
-  const keys = new Set<string>([SHARED_NETWORK]);
+  const platform = new Set<string>(PLATFORM_NETWORKS);
+  const keys = new Set<string>(platform);
   const declared = doc.networks;
   if (!declared || typeof declared !== "object" || Array.isArray(declared))
     return keys;
@@ -883,19 +883,21 @@ export function sharedNetworkKeys(doc: { networks?: unknown }): Set<string> {
   )) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const n = raw as Record<string, unknown>;
+    const ext =
+      n.external != null &&
+      typeof n.external === "object" &&
+      !Array.isArray(n.external)
+        ? (n.external as Record<string, unknown>).name
+        : undefined;
     const named =
-      (typeof n.name === "string" && n.name.trim() === SHARED_NETWORK) ||
-      (n.external != null &&
-        typeof n.external === "object" &&
-        !Array.isArray(n.external) &&
-        (n.external as Record<string, unknown>).name === SHARED_NETWORK);
+      (typeof n.name === "string" && platform.has(n.name.trim())) ||
+      (typeof ext === "string" && platform.has(ext.trim()));
     if (named) keys.add(key);
   }
   return keys;
 }
 
-/** True when a service's `networks:` (either shape) joins the shared network,
- *  under whatever key it is referenced by. */
+/** True when a service's `networks:` (either shape) joins one of those keys. */
 function joinsSharedNetwork(
   svc: Record<string, unknown>,
   shared: Set<string>,
@@ -1241,15 +1243,16 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
  *  - a container on a network registers its SERVICE NAME as a DNS alias there,
  *    and Docker round-robins a name two containers both claim, so a service
  *    called `postgres` or `redis` collects the victim's own internal lookups,
- *    password and all. The shared-network protections (`aliases:` drop,
- *    RESERVED_SHARED_NETWORK_NAMES) only fire for the `deplo` network, and
+ *    password and all. The tenant-network protections (`aliases:` drop,
+ *    RESERVED_SHARED_NETWORK_NAMES) only fire for the stack's own network, and
  *    `buildComposeStack` leaves every other network exactly as authored.
  *
- * The shared `deplo` network is NOT foreign here: joining it is what routing
- * does, and its own choke point already governs it. A plain per-app network
+ * A PLATFORM network is NOT foreign here: the renderer re-points every key naming
+ * one at the stack's own network, so it reaches nothing. A plain per-app network
  * (`networks: {internal: {}}`) declares nothing pinned and stays free.
  */
 function foreignNetworkKeys(networks: Record<string, unknown>): string[] {
+  const PLATFORM = new Set<string>(PLATFORM_NETWORKS);
   const out: string[] = [];
   for (const [key, raw] of Object.entries(networks)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
@@ -1264,10 +1267,10 @@ function foreignNetworkKeys(networks: Record<string, unknown>): string[] {
         ? String((n.external as Record<string, unknown>).name ?? "").trim()
         : null;
     const target =
-      pinnedName ??
-      externalName ??
-      (key === SHARED_NETWORK ? SHARED_NETWORK : null);
-    if (target === SHARED_NETWORK) continue;
+      pinnedName ?? externalName ?? (PLATFORM.has(key) ? key : null);
+    // A platform network is not foreign: `buildComposeStack` re-points every key
+    // naming one at this stack's own network, so joining it reaches nothing.
+    if (target !== null && PLATFORM.has(target)) continue;
     const pinned =
       (n.external != null && n.external !== false) ||
       pinnedName !== null ||

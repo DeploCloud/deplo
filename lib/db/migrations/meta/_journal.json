@@ -974,6 +974,13 @@
       "when": 1784942220006,
       "tag": "0138_drop_app_files_capabilities",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1784942221006,
+      "tag": "0139_database_environment",
+      "breakpoints": true
     }
   ]
 }

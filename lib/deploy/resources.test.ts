@@ -131,6 +131,7 @@ const route: RoutableDomain = {
   redirectTo: "",
 };
 const base = {
+  network: "deplo-team-team_test",
   name: "deplo-demo",
   image: "deplo/demo:abc",
   port: 3000,
@@ -200,6 +201,7 @@ test("buildComposeStack applies caps to every service, existing-wins", () => {
     "    mem_limit: 2g",
   ].join("\n");
   const out = buildComposeStack({
+    network: "deplo-team-team_test",
     compose,
     name: "deplo-demo",
     deployKey: "demo",
@@ -221,6 +223,7 @@ test("buildComposeStack applies caps to every service, existing-wins", () => {
 test("buildComposeStack leaves services untouched when there are no limits", () => {
   const compose = "services:\n  web:\n    image: nginx\n";
   const out = buildComposeStack({
+    network: "deplo-team-team_test",
     compose,
     name: "deplo-demo",
     deployKey: "demo",

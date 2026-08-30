@@ -24,6 +24,7 @@ const route: RoutableDomain = {
 };
 
 const base = {
+  network: "deplo-team-team_test",
   name: "deplo-demo",
   image: "deplo/demo:abc123",
   port: 3000,

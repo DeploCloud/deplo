@@ -107,6 +107,7 @@ networks:
         buildKind: BuildKind.BUILD_KIND_NONE,
         dockerfile: undefined,
         composeYaml,
+        network: "deplo-team-e2e",
         env: { GREETING: "hello-from-env-file" },
         readyTimeoutMs: 90000,
         contextTar: new Uint8Array(0),

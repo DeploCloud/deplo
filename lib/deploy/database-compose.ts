@@ -137,6 +137,11 @@ export function generateDatabaseCompose(input: {
    * owns it because the path is the agent's contract, not this renderer's.
    */
   filesDir?: string | null;
+  /**
+   * The Docker network this database joins - its Environment, or its team when it
+   * has none. See `lib/deploy/network.ts`.
+   */
+  network: string;
 }): string {
   const {
     name,
@@ -247,6 +252,7 @@ volumes:
 
 networks:
   deplo:
+    name: ${input.network}
     external: true
 `;
 }

@@ -1221,6 +1221,11 @@ export interface Database {
   /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
   teamId: ID;
   /**
+   * Placement, exactly like an {@link App}'s: the Environment this database lives
+   * in, which is also the network it answers on. Null ⇒ the team's own network.
+   */
+  environmentId: ID | null;
+  /**
    * DISPLAY name, editable in Settings → General.
    */
   name: string;

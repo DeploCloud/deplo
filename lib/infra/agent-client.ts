@@ -297,6 +297,9 @@ export interface AgentConnection {
     composeYaml: string;
     env: Record<string, string>;
     mounts: { path: string; content: string }[];
+    /** The stack's own Docker network - the agent creates it and puts Traefik on
+     *  it before bringing the stack up. See `lib/deploy/network.ts`. */
+    network: string;
     /** The app's extra `compose up` flags (already split into argv tokens). A
      *  reroute brings the stack up too, so they apply here exactly as on a
      *  deploy; an agent without "deploy.compose-args" ignores them. */
@@ -1189,6 +1192,7 @@ function dial(target: DialTarget): AgentConnection {
       composeYaml: string;
       env: Record<string, string>;
       mounts: { path: string; content: string }[];
+      network: string;
       composeUpArgs?: string[];
     }) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
@@ -1198,6 +1202,7 @@ function dial(target: DialTarget): AgentConnection {
             composeYaml: req.composeYaml,
             env: req.env,
             mounts: req.mounts,
+            network: req.network,
             composeUpArgs: req.composeUpArgs ?? [],
           },
           new Metadata(),

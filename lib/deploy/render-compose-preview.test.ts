@@ -46,6 +46,7 @@ const BASE = {
 
 test("a production render names everything after the app slug, and nothing else", () => {
   const yaml = renderCompose({
+    network: "deplo-team-team_test",
     ...BASE,
     name: "deplo-blog",
     deployKey: "blog",
@@ -62,11 +63,13 @@ test("a production render names everything after the app slug, and nothing else"
 
 test("omitting trackingId is byte-identical to passing the app id", () => {
   const implicit = renderCompose({
+    network: "deplo-team-team_test",
     ...BASE,
     name: "deplo-blog",
     deployKey: "blog",
   });
   const explicit = renderCompose({
+    network: "deplo-team-team_test",
     ...BASE,
     name: "deplo-blog",
     deployKey: "blog",
@@ -78,6 +81,7 @@ test("omitting trackingId is byte-identical to passing the app id", () => {
 test("a preview shares no container, volume or files dir with production", () => {
   const key = previewDeployKey("blog", 42);
   const yaml = renderCompose({
+    network: "deplo-team-team_test",
     ...BASE,
     name: `deplo-${key}`,
     deployKey: key,
@@ -97,6 +101,7 @@ test("a preview's telemetry label is its OWN id, with the app kept discoverable"
   // app id there would let a preview's containers satisfy the app's live-status
   // check and land in its monitoring charts.
   const yaml = renderCompose({
+    network: "deplo-team-team_test",
     ...BASE,
     name: "deplo-blog__pr-42",
     deployKey: previewDeployKey("blog", 42),
@@ -112,6 +117,7 @@ test("the reroute volume parser survives a __ in the key", () => {
   // key contains `__`, and the round-trip must not lose it.
   const key = previewDeployKey("blog", 42);
   const yaml = renderCompose({
+    network: "deplo-team-team_test",
     ...BASE,
     name: `deplo-${key}`,
     deployKey: key,
@@ -134,6 +140,7 @@ test("the reroute volume parser survives a __ in the key", () => {
 test("a compose stack isolates its volumes and labels the same way", () => {
   const compose = `services:\n  web:\n    image: nginx\n`;
   const production = buildComposeStack({
+    network: "deplo-team-team_test",
     compose,
     name: "deplo-blog",
     deployKey: "blog",
@@ -149,6 +156,7 @@ test("a compose stack isolates its volumes and labels the same way", () => {
 
   const key = previewDeployKey("blog", 42);
   const preview = buildComposeStack({
+    network: "deplo-team-team_test",
     compose,
     name: `deplo-${key}`,
     deployKey: key,
@@ -185,6 +193,7 @@ services:
 test("a compose preview emits a router that names a service", () => {
   const key = previewDeployKey("blog", 42);
   const yaml = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: COMPOSE,
     name: `deplo-${key}`,
     deployKey: key,
@@ -219,6 +228,7 @@ test("a serviceless route is exactly what used to make it unreachable", () => {
   // Kept so nobody "simplifies" previewRouteTarget back to passing null.
   const key = previewDeployKey("blog", 43);
   const yaml = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: COMPOSE,
     name: `deplo-${key}`,
     deployKey: key,
@@ -244,6 +254,7 @@ test("a serviceless route is exactly what used to make it unreachable", () => {
 test("a preview publishes no host ports, so two of them can coexist", () => {
   const key = previewDeployKey("blog", 44);
   const yaml = buildComposeStack({
+    network: "deplo-team-team_test",
     compose: COMPOSE,
     name: `deplo-${key}`,
     deployKey: key,
@@ -268,6 +279,7 @@ test("a preview publishes no host ports, so two of them can coexist", () => {
 
 test("a $ in a value is escaped, because compose interpolates the file it reads", () => {
   const yaml = renderCompose({
+    network: "deplo-team-team_test",
     ...BASE,
     name: "deplo-blog",
     deployKey: "blog",
