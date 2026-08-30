@@ -11,6 +11,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useGraphqlMutation } from "@/lib/use-graphql";
+import { toast } from "sonner";
 import { CopyButton } from "@/components/shared/copy-button";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
@@ -31,6 +40,8 @@ export function DatabaseNetworkingCard({
   canExposePorts,
   canConfigure,
   environmentLabel,
+  environments = [],
+  serverName,
 }: {
   db: DatabaseDTO;
   /** The owning server's address - half of the published endpoint. */
@@ -40,6 +51,10 @@ export function DatabaseNetworkingCard({
   /** Where this database lives (`Project / Environment`), or null for the team's
    *  top level. It decides WHICH apps the internal address answers for. */
   environmentLabel?: string | null;
+  /** Every Environment of the team - the move lives here, next to the rule. */
+  environments?: { id: string; label: string }[];
+  /** The owning server. A network lives on one machine, so this is half the rule. */
+  serverName: string;
 }) {
   const exposure = useDatabaseExposure(db);
   const internal = `${db.host}:${db.port}`;
@@ -69,19 +84,25 @@ export function DatabaseNetworkingCard({
           value={internal}
           hint={
             environmentLabel
-              ? `Apps in ${environmentLabel} on this server, by name.`
-              : "Apps outside any project, on this server, by name."
+              ? `Apps in ${environmentLabel} on ${serverName}, by name.`
+              : `Apps outside any project, on ${serverName}, by name.`
           }
         />
 
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Environment</p>
-          <p className="mt-1 truncate text-sm">
-            {environmentLabel ?? "No environment"}
-          </p>
+          <div className="mt-1">
+            <EnvironmentPicker
+              value={db.environmentId ?? null}
+              environments={environments}
+              canConfigure={canConfigure}
+              databaseId={db.id}
+              label={environmentLabel ?? "No environment"}
+            />
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Only apps here, on this same server, reach the internal address.
-            Move it from the database list.
+            Only apps here, on {serverName}, reach the internal address. A
+            network lives on one machine, so another server never does.
           </p>
         </div>
 
@@ -163,5 +184,56 @@ function Address({
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
     </div>
+  );
+}
+
+/** The move, where the rule that makes it matter is written. */
+function EnvironmentPicker({
+  value,
+  environments,
+  canConfigure,
+  databaseId,
+  label,
+}: {
+  value: string | null;
+  environments: { id: string; label: string }[];
+  canConfigure: boolean;
+  databaseId: string;
+  label: string;
+}) {
+  const { run, pending, error } = useGraphqlMutation(/* GraphQL */ `
+    mutation ($id: String!, $environmentId: ID) {
+      moveDatabaseToEnvironment(id: $id, environmentId: $environmentId)
+    }
+  `);
+  React.useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+  // Nothing to pick between, or no permission: say where it is and stop there.
+  if (!canConfigure || environments.length === 0)
+    return <p className="truncate text-sm">{label}</p>;
+  return (
+    <Select
+      value={value ?? "none"}
+      disabled={pending}
+      onValueChange={(next) =>
+        void run({
+          id: databaseId,
+          environmentId: next === "none" ? null : next,
+        })
+      }
+    >
+      <SelectTrigger className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">No environment</SelectItem>
+        {environments.map((e) => (
+          <SelectItem key={e.id} value={e.id}>
+            {e.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

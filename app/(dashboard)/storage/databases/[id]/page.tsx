@@ -32,12 +32,16 @@ export default async function DatabaseOverviewPage(
   const can = new Set(caps);
   // Which apps the internal address answers for: a database is reachable by name
   // only from its own environment.
+  const allEnvs = await listAllEnvironmentsForTeam();
   const env = db.environmentId
-    ? ((await listAllEnvironmentsForTeam()).find(
-        (e) => e.id === db.environmentId,
-      ) ?? null)
+    ? (allEnvs.find((e) => e.id === db.environmentId) ?? null)
     : null;
   const environmentLabel = env ? `${env.projectName} / ${env.name}` : null;
+  // The move belongs where the constraint is explained, not one page away.
+  const environments = allEnvs.map((e) => ({
+    id: e.id,
+    label: `${e.projectName} / ${e.name}`,
+  }));
   const monitoringHref = `/storage/databases/${db.id}/monitoring`;
 
   return (
@@ -55,6 +59,7 @@ export default async function DatabaseOverviewPage(
       <DatabaseRelabelNotice id={db.id} status={db.status} />
       <DatabaseOverview
         environmentLabel={environmentLabel}
+        environments={environments}
         db={db}
         serverName={server?.name ?? db.serverId}
         serverHost={server?.host ?? server?.ip ?? ""}

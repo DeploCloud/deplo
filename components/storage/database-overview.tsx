@@ -26,6 +26,7 @@ export function DatabaseOverview({
   backups,
   dataStat,
   environmentLabel,
+  environments,
 }: {
   db: DatabaseDTO;
   serverName: string;
@@ -33,6 +34,8 @@ export function DatabaseOverview({
   /** Where the database lives (`Project / Environment`), or null for the team's
    *  top level - which apps its internal address answers for. */
   environmentLabel?: string | null;
+  /** Every Environment this team has, for the move on the Networking card. */
+  environments?: { id: string; label: string }[];
   /** The viewer holds `reveal_secrets` - what `revealConnection` needs. */
   canReveal: boolean;
   canConfigure: boolean;
@@ -92,6 +95,8 @@ export function DatabaseOverview({
           canExposePorts={canExposePorts}
           canConfigure={canConfigure}
           environmentLabel={environmentLabel}
+          environments={environments ?? []}
+          serverName={serverName}
         />
       </div>
 

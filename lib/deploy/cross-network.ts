@@ -12,6 +12,18 @@ export type OutOfReach =
    *  sharing an Environment is not enough. Nothing about the placement fixes it. */
   | "other-host";
 
+/** A name some other stack of this team answers to, and how it relates to us. */
+export interface Neighbour {
+  /** The DNS name, lowercase - a compose service, a `hostname:`, or `db-<slug>`. */
+  name: string;
+  /** The network it answers on. Equal to this stack's unless `why` is elsewhere. */
+  network: string;
+  /** What to tell the user it belongs to, e.g. `Shop / Production`. */
+  where: string;
+  /** `reachable` is same network AND same host: not a warning, a possible CLASH. */
+  why: OutOfReach | "reachable";
+}
+
 /** A name some other stack answers to, and why this app cannot reach it. */
 export interface ForeignName {
   /** The DNS name, lowercase - a compose service, a `hostname:`, or `db-<slug>`. */
@@ -99,5 +111,41 @@ export function crossNetworkMessage(ref: CrossNetworkRef): string {
     `${ref.key} points at \`${ref.name}\`, which lives in ${ref.where} and is ` +
     `not reachable from here. Move this app into the same environment, or use a ` +
     `managed database placed there.`
+  );
+}
+
+/** One name this stack puts on its network that a neighbour already answers to. */
+export interface NameClash {
+  name: string;
+  where: string;
+}
+
+/**
+ * The names this stack would take over. Docker's DNS round-robins a name two
+ * containers both claim, so half the lookups reach the wrong app - the same theft
+ * ADR-0028 fixed BETWEEN Environments, which inside one is still possible.
+ */
+export function nameClashes(
+  mine: string[],
+  neighbours: Neighbour[],
+): NameClash[] {
+  const claimed = new Set(mine.map((n) => n.toLowerCase()));
+  const out: NameClash[] = [];
+  const seen = new Set<string>();
+  for (const n of neighbours) {
+    if (n.why !== "reachable" || !claimed.has(n.name) || seen.has(n.name))
+      continue;
+    seen.add(n.name);
+    out.push({ name: n.name, where: n.where });
+  }
+  return out;
+}
+
+/** The one line a deploy prints per name two stacks now both answer to. */
+export function nameClashMessage(clash: NameClash): string {
+  return (
+    `\`${clash.name}\` is also answered by a stack in ${clash.where}, on the same ` +
+    `network as this one. Docker splits the lookups between them, so half will reach ` +
+    `the wrong container. Rename the service, or its \`hostname:\`.`
   );
 }

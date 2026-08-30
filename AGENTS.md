@@ -331,17 +331,25 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   (`databases.environment_id`), so one rule covers both.
   **The compose KEY stays `deplo` and only its `name:` changes**, so a hand-written
   `networks: [deplo]` needs no rewriting of the service. `buildComposeStack` is still THE
-  choke point: `aliases:` dropped, and every top-level key that RESOLVES to a platform
-  network - by key or by `name:`/`external.name`, `sharedNetworkKeys` - is re-pointed at the
-  stack's own network. Rewriting beats refusing: the same YAML arrives from an import.
-  **The reserved-name list is down to what Traefik still resolves by DNS.** It sits on every
-  tenant network and dials `tcp://docker-socket-proxy:2375` and `http://deplo:3000`, so those
-  two names stay claimable and stay refused (`composeClaimsReservedName` early at save,
+  choke point: `aliases:` dropped, and every top-level key that RESOLVES to a network DEPLO
+  OWNS - the platform's own OR another tenant's `deplo-env-*` / `deplo-team-*` /
+  `deplo-preview-*`, by key or by `name:`/`external.name` (`sharedNetworkKeys`) - COLLAPSES
+  onto the single `deplo` key. Rewriting beats refusing: the same YAML arrives from an import.
+  **A service that declares no `networks:` joins `default`**, so a `default` aimed at another
+  Environment's network is a join like any other - it read as no join at all, and that put a
+  whole stack on a stranger's network past every gate. Every rule here reads that shape.
+  **The reserved-name list is what Traefik still resolves by DNS.** It sits on every tenant
+  network and dials `tcp://docker-socket-proxy:2375` and `http://deplo:3000`, so those names
+  stay claimable and stay refused (`composeClaimsReservedName` early at save,
   `serviceReservedClaim` at render). The claim is case-insensitive and covers `hostname:`,
   because Docker's DNS registers it exactly like a service name. A managed database's
-  `db-<slug>` is checked against the server's real databases, not a constant list.
-  **The agent has no fallback**: it creates the network the request names and connects
-  Traefik to it, including after the `--force-recreate` a Traefik config apply does.
+  `db-<slug>` is checked against the databases sharing that NETWORK, not the whole server.
+  Inside one Environment two stacks may still claim one name; the deploy warns
+  (`nameClashes`), it does not refuse.
+  **The agent has no fallback**: it creates the network the request names - refusing a name
+  that is not a tenant's - and connects Traefik to it, including after the `--force-recreate`
+  a Traefik config apply does. The control plane gates the deploy on the agent's
+  `deploy.network` capability, so an old agent is named rather than failing at `compose up`.
 - **`canMountHostVolumes` gates the top-level `volumes:` block too**
   (`composeMountsForeignStorage`). `composeHasHostBindMount` reads SERVICE mounts and calls a source
   a host bind when it starts with `/` or climbs with `..`; a NAMED volume is neither, so

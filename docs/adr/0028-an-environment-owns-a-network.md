@@ -3,7 +3,7 @@
 - **Status**: Accepted - 2026-08-30.
 - **Amends**: the shared-`deplo`-network model described in `AGENTS.md`
   ("The shared `deplo` network is the PLATFORM\'s, not the stack\'s"). The reserved-name
-  list it introduced stays, reduced to the two names the proxy still resolves.
+  list it introduced stays, for the names the proxy still resolves.
 
 ## Context
 
@@ -39,14 +39,22 @@ name (`api`, `db`, `gamewatcher-db`), and those are not enumerable.
 
 4. **The compose KEY stays `deplo`; only its `name:` changes.** The rendered stack declares
    `networks: {deplo: {name: deplo-env-…, external: true}}`. A hand-written
-   `networks: [deplo]`, and every key that resolves to a platform network under an alias,
-   is REWRITTEN onto the stack\'s own network rather than refused - the same YAML arrives
-   from an import, and a copy-pasted compose file has to keep working.
+   `networks: [deplo]`, and every key that resolves to a network DEPLO OWNS - the
+   platform's own or another tenant's - COLLAPSES onto that one key rather than being
+   refused: the same YAML arrives from an import, and a copy-pasted compose file has to
+   keep working. It collapses rather than being re-pointed where it stands, because two
+   keys naming one network is a container attached to it twice, which docker refuses.
 
-5. **The reserved-name list survives, at two names.** Traefik sits on every tenant network
-   and still resolves `deplo` (the panel route) and `docker-socket-proxy` (its Docker
-   provider) by DNS, so those two remain claimable and remain refused. Pinning them to
-   addresses instead needs subnet-pinned networks and is deliberately out of scope here.
+5. **The reserved-name list survives.** Traefik sits on every tenant network and still
+   resolves the platform's own names by DNS - `deplo` (the panel route) and
+   `docker-socket-proxy` (its Docker provider) are the two that matter, and the list
+   keeps the older spellings beside them (`RESERVED_SHARED_NETWORK_NAMES`, six in all).
+   They remain claimable and remain refused. Pinning them to addresses instead needs
+   subnet-pinned networks and is deliberately out of scope here.
+
+   A service claims a name by JOINING a network, and a service that declares no
+   `networks:` joins `default` - so a `default` aimed at a network Deplo owns is a join
+   like any other, and every rule here reads that shape too.
 
 6. **No compatibility with older agents.** The agent creates the network named in the
    Deploy/Reroute request and connects Traefik to it; one that does not is a hard failure
@@ -63,9 +71,12 @@ name (`api`, `db`, `gamewatcher-db`), and those are not enumerable.
 - **An app naming a service in another environment stops resolving it.** The deploy warns,
   with the name and where it lives, before the container tries; it never refuses, because
   the match is a heuristic (`S3_REGION=garage` is a region, not a host).
-- **More networks per host.** One per environment in use, plus previews, against one per
-  compose stack before. Both installers already widen Docker\'s address pool, and the
-  cleanup gained a `leftover_networks` scope, fail-closed on an empty live list.
+- **More networks per host.** One per Environment in use, plus one per preview, ON TOP of
+  the `<project>_default` every compose stack already created. Both installers widen
+  Docker\'s address pool, but only at install time and only from the daemon\'s next
+  restart, so a host set up before that keeps its ~31 ceiling: an exhausted pool is
+  explained in the deploy log (`explainNetworkError`), and the cleanup gained a
+  `leftover_networks` scope, fail-closed on an empty live list.
 - **Upgrading is a one-time sweep at boot**, serial per host. A stack it cannot move stays
   where it is and keeps running; the count is on the Overview and the reasons are in
   Activity.

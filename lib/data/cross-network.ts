@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, ne } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, or } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -12,34 +12,34 @@ import {
 import { composeClaimedNames } from "../deploy/compose-lint";
 import { appNetwork } from "../deploy/network";
 import { stackName } from "../deploy/deploy-key";
-import type { ForeignName } from "../deploy/cross-network";
+import type { Neighbour } from "../deploy/cross-network";
 
 /** How many neighbours to read. A host with more than this has bigger problems. */
 const MAX_NEIGHBOURS = 200;
 
 /**
- * Every DNS name a stack of this TEAM answers to that this app cannot resolve -
- * what turns into "cannot resolve host" the moment it deploys. Two ways to be out
- * of reach, and they need different advice:
- *
- *  - another network (another Environment, or the team's top level): a placement
- *    to change;
- *  - the SAME placement on ANOTHER SERVER: a Docker network is local to its host,
- *    so sharing an Environment is not enough and no placement fixes it. This one
- *    used to be skipped as "not news", which left the commonest cross-host mistake
- *    silent while the docs promised it would work.
- *
- * Another TEAM is never named: it is unreachable by construction, so saying so
- * would only leak their project.
+ * Every DNS name a stack of this team answers to that could matter to this app:
+ * the ones it cannot reach, and the ones it CAN, which is what a name collision
+ * is made of. Another TEAM is never named: it is unreachable by construction, so
+ * saying so would only leak their project.
  */
-export async function foreignNamesForApp(a: {
+export async function neighboursForApp(a: {
   id: string;
   serverId: string;
   teamId: string;
   environmentId?: string | null;
-}): Promise<ForeignName[]> {
+}): Promise<Neighbour[]> {
   const mine = appNetwork(a);
   const db = getDb();
+  // The same placement, NULL (the team's top level) included - the other half of
+  // "could matter", since a neighbour there shares this app's network by name.
+  const envId = a.environmentId ?? null;
+  const appPlaced = envId
+    ? eq(appsTable.environmentId, envId)
+    : isNull(appsTable.environmentId);
+  const dbPlaced = envId
+    ? eq(databasesTable.environmentId, envId)
+    : isNull(databasesTable.environmentId);
   const [neighbours, dbs] = await Promise.all([
     db
       .select({
@@ -61,8 +61,17 @@ export async function foreignNamesForApp(a: {
         eq(environmentsTable.projectId, projectsTable.id),
       )
       // Same TEAM as well as same host: another team's network is unreachable by
-      // construction, so naming one would only leak their project name.
-      .where(and(eq(appsTable.teamId, a.teamId), ne(appsTable.id, a.id)))
+      // construction, so naming one would only leak their project name. Narrowed to
+      // the neighbours that can matter - this host, or this placement on another one -
+      // so the cap cannot silently drop the one the app actually names.
+      .where(
+        and(
+          eq(appsTable.teamId, a.teamId),
+          ne(appsTable.id, a.id),
+          or(eq(appsTable.serverId, a.serverId), appPlaced),
+        ),
+      )
+      .orderBy(asc(appsTable.slug))
       .limit(MAX_NEIGHBOURS),
     db
       .select({
@@ -82,11 +91,17 @@ export async function foreignNamesForApp(a: {
         projectsTable,
         eq(environmentsTable.projectId, projectsTable.id),
       )
-      .where(eq(databasesTable.teamId, a.teamId))
+      .where(
+        and(
+          eq(databasesTable.teamId, a.teamId),
+          or(eq(databasesTable.serverId, a.serverId), dbPlaced),
+        ),
+      )
+      .orderBy(asc(databasesTable.host))
       .limit(MAX_NEIGHBOURS),
   ]);
 
-  const out: ForeignName[] = [];
+  const out: Neighbour[] = [];
   const add = (
     name: string,
     network: string,
@@ -96,14 +111,18 @@ export async function foreignNamesForApp(a: {
     if (!name) return;
     const sameNetwork = network === mine;
     const sameHost = serverId === a.serverId;
-    // Reachable: same network name AND same machine. Anything else is a name this
+    // Reachable is same network name AND same machine. Anything else is a name this
     // app will not resolve, and the two reasons take different advice.
-    if (sameNetwork && sameHost) return;
     out.push({
       name: name.toLowerCase(),
       network,
       where,
-      why: sameNetwork ? "other-host" : "elsewhere",
+      why:
+        sameNetwork && sameHost
+          ? "reachable"
+          : sameNetwork
+            ? "other-host"
+            : "elsewhere",
     });
   };
   for (const n of neighbours) {

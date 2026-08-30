@@ -4,8 +4,11 @@ import assert from "node:assert/strict";
 import {
   crossNetworkMessage,
   crossNetworkRefs,
+  nameClashMessage,
+  nameClashes,
   usesAsHost,
   type ForeignName,
+  type Neighbour,
 } from "./cross-network";
 
 const FOREIGN: ForeignName[] = [
@@ -95,5 +98,44 @@ test("a neighbour in the same environment on another server is reported", () => 
     msg,
     /Move this app into the same environment/,
     "moving it does not help - they are already in the same one",
+  );
+});
+
+test("a name a reachable neighbour already answers to is a clash", () => {
+  const neighbours: Neighbour[] = [
+    {
+      name: "redis",
+      network: "deplo-env-a",
+      where: "Shop / Prod",
+      why: "reachable",
+    },
+    {
+      name: "api",
+      network: "deplo-env-b",
+      where: "Blog / Prod",
+      why: "elsewhere",
+    },
+    {
+      name: "queue",
+      network: "deplo-env-a",
+      where: "Shop / Prod",
+      why: "other-host",
+    },
+  ];
+  const clashes = nameClashes(["redis", "api", "queue", "web"], neighbours);
+  // Only the one on this network AND this host: the others cannot answer here.
+  assert.deepEqual(clashes, [{ name: "redis", where: "Shop / Prod" }]);
+});
+
+test("one line per clashing name, whoever else answers to it", () => {
+  const neighbours: Neighbour[] = [
+    { name: "db", network: "n", where: "A / Prod", why: "reachable" },
+    { name: "db", network: "n", where: "B / Prod", why: "reachable" },
+  ];
+  assert.equal(nameClashes(["db"], neighbours).length, 1);
+  assert.equal(nameClashes(["DB"], neighbours).length, 1);
+  assert.match(
+    nameClashMessage({ name: "db", where: "A / Prod" }),
+    /A \/ Prod/,
   );
 });
