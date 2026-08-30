@@ -76,7 +76,12 @@ import { foreignNamesForApp } from "../data/cross-network";
 import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
-import { usesComposeStack, hostVolumeName, formatBytes } from "../utils";
+import {
+  usesComposeStack,
+  hostVolumeName,
+  formatBytes,
+  mapLimit,
+} from "../utils";
 import { detectDefaultApp } from "./compose-stack";
 import { certResolver, domainScheme } from "./domains";
 import { completePendingAppMigration } from "../data/app-migration";
@@ -2804,7 +2809,12 @@ async function warnCrossNetwork(
  * recorded and the stack where it was, and the next deploy finishes the job.
  */
 export async function reapplyNetworkAfterMove(appIds: string[]): Promise<void> {
-  for (const id of appIds) {
+  // Bounded, not serial: a bulk move (or an Environment delete) reroutes every app it
+  // touched INSIDE the request, and one at a time that is N × a round trip to the host
+  // before the mutation answers. Four at a time is fast enough for a selection of
+  // twenty and still nowhere near a deploy's load - these rebuild nothing. Concurrency
+  // here is only safe because a racing network create is no longer a failure.
+  await mapLimit(appIds, 4, async (id) => {
     try {
       await rerouteApp(id);
     } catch (e) {
@@ -2814,7 +2824,7 @@ export async function reapplyNetworkAfterMove(appIds: string[]): Promise<void> {
         }`,
       );
     }
-  }
+  });
 }
 
 /**
