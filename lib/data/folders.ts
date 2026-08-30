@@ -25,6 +25,7 @@ import {
 } from "./folder-access";
 import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import { recordActivity } from "./activity";
+import { reapplyNetworkAfterMove } from "../deploy/build";
 import { inFolderScope } from "../auth/request-context";
 import { normalizeHexColor } from "../utils";
 import { assembleFolder, folderToRow } from "./app-graph-rows";
@@ -512,6 +513,9 @@ export async function moveAppToFolder(
       updatedAt: nowIso(),
     })
     .where(eq(appsTable.id, appId));
+  // The placement IS the network: a folder app is on its team's, an Environment's
+  // is on that Environment's, so the stack has to be brought up again to follow.
+  await reapplyNetworkAfterMove([appId]);
   if (msg) await recordActivity("app", msg, userName, appId, teamId);
 }
 
@@ -586,6 +590,7 @@ export async function moveAppsToFolder(
       updatedAt: nowIso(),
     })
     .where(inArray(appsTable.id, toMove));
+  await reapplyNetworkAfterMove(toMove);
   const n = `${toMove.length} project${toMove.length === 1 ? "" : "s"}`;
   await recordActivity(
     "app",

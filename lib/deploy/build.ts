@@ -2754,6 +2754,28 @@ export async function rerouteApp(
 }
 
 /**
+ * Put moved apps onto the network their new placement owns. Moving between
+ * Environments used to be a pure metadata write; now it changes which network the
+ * containers are on, so the stack has to be brought up again to follow.
+ *
+ * Best-effort and sequential: a host that cannot be reached leaves the move
+ * recorded and the stack where it was, and the next deploy finishes the job.
+ */
+export async function reapplyNetworkAfterMove(appIds: string[]): Promise<void> {
+  for (const id of appIds) {
+    try {
+      await rerouteApp(id);
+    } catch (e) {
+      console.warn(
+        `[deplo] ${id} was moved but could not be put on its new network: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+  }
+}
+
+/**
  * Render the full Deplo-generated stack for a project, for read-only display (the
  * "View full compose" button).
  */

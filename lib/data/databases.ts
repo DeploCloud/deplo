@@ -1718,6 +1718,86 @@ export async function restartDatabase(id: string): Promise<void> {
 }
 
 /**
+ * Move a database into an Environment, or out to the team's top level. The twin
+ * of `moveAppToEnvironment`: the placement IS the network, so the container is
+ * brought up again on it before this returns.
+ */
+export async function moveDatabaseToEnvironment(
+  id: string,
+  environmentId: string | null,
+): Promise<void> {
+  const { teamId } = await requireCapability("configure_databases");
+  const user = (await getCurrentUser())!;
+  const cur = await loadDatabase(id, teamId);
+  if (!cur) throw new Error("Not found");
+  const env = environmentId
+    ? await environmentInTeam(environmentId, teamId)
+    : null;
+  if (environmentId && !env) throw new Error("Environment not found");
+  if ((cur.environmentId ?? null) === (env?.id ?? null)) return;
+
+  await getDb()
+    .update(databasesTable)
+    .set({ environmentId: env?.id ?? null })
+    .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)));
+  await reapplyDatabaseNetwork([id]);
+  await recordActivity(
+    "database",
+    env
+      ? `Moved ${cur.name} to another environment`
+      : `Moved ${cur.name} out of its environment`,
+    user.name,
+    null,
+    teamId,
+  );
+}
+
+/**
+ * Put moved databases onto the network their new placement owns - the database
+ * twin of `reapplyNetworkAfterMove`. The CALLER has already gated the move, so
+ * this asks for no capability of its own.
+ *
+ * Best-effort and sequential: an unreachable host leaves the row moved and the
+ * container where it was, and the next redeploy finishes the job.
+ */
+export async function reapplyDatabaseNetwork(ids: string[]): Promise<void> {
+  for (const id of ids) {
+    try {
+      const rows = await getDb()
+        .select()
+        .from(databasesTable)
+        .where(eq(databasesTable.id, id))
+        .limit(1);
+      const row = rows[0];
+      if (!row) continue;
+      const cur = assembleDatabase(row, await mountsFor(row.id));
+      if (!cur || cur.status === "provisioning") continue;
+      const password = parseConnectionPassword(
+        decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
+      );
+      const conn = await connectAgent(cur.serverId);
+      try {
+        await conn.reroute({
+          slug: cur.host,
+          composeYaml: renderDatabaseStackYaml(cur, password),
+          env: {},
+          mounts: mountFilesFor(cur),
+          network: appNetwork(cur),
+        });
+      } finally {
+        conn.close();
+      }
+    } catch (e) {
+      console.warn(
+        `[deplo] ${id} was moved but could not be put on its new network: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+  }
+}
+
+/**
  * Re-render the database's compose from the CURRENT row and reroute it on its
  * owning server - the "apply my pending settings" verb.
  */

@@ -10,6 +10,7 @@ import {
   getDatabaseForTeam,
   getConnectionString,
   createDatabase,
+  moveDatabaseToEnvironment,
   updateDatabase,
   renameDatabase,
   updateDatabaseLogo,
@@ -76,6 +77,12 @@ export const DatabaseRef = builder
       dbName: t.exposeString("dbName"),
       status: t.field({ type: DatabaseStatusEnum, resolve: (d) => d.status }),
       serverId: t.exposeID("serverId"),
+      environmentId: t.exposeID("environmentId", {
+        nullable: true,
+        description:
+          "The Environment this database lives in, which is also the network it " +
+          "answers on. Null ⇒ the team's top level.",
+      }),
       host: t.exposeString("host"),
       port: t.exposeInt("port"),
       connectionStringMasked: t.exposeString("connectionStringMasked"),
@@ -155,6 +162,9 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     // The server to provision the database on. Optional: omitted defaults to the
     // sole server when there is exactly one (Step 0 - DB-on-agent).
     serverId: t.id({ required: false }),
+    // Where the database lives - the same placement an App takes, and the network
+    // it answers on. Omitted ⇒ the team's top level.
+    environmentId: t.id({ required: false }),
     // Optional custom credentials, applied ONLY at first init against an empty volume
     // (the images honor POSTGRES_USER/DB, MYSQL_DATABASE, etc. only on first boot), so
     // they are create-only / display-only thereafter.
@@ -272,12 +282,33 @@ builder.mutationFields((t) => ({
         type: input.type,
         version: input.version,
         serverId: input.serverId ?? undefined,
+        environmentId: input.environmentId ? String(input.environmentId) : null,
         username: input.username ?? undefined,
         dbName: input.dbName ?? undefined,
         password: input.password ?? undefined,
         exposedPublicly: input.exposedPublicly ?? undefined,
         exposedPort: input.exposedPort ?? undefined,
       }),
+  }),
+  moveDatabaseToEnvironment: t.field({
+    type: "Boolean",
+    authScopes: { capability: "configure_databases" },
+    description:
+      "Move a database into an Environment, or out to the team's top level " +
+      "(null). The placement is also the network it answers on, so the container " +
+      "is brought up again on the new one before this returns - an app reaches " +
+      "`db-<slug>` only from the same Environment.",
+    args: {
+      id: t.arg.string({ required: true }),
+      environmentId: t.arg.id({ required: false }),
+    },
+    resolve: async (_r, { id, environmentId }) => {
+      await moveDatabaseToEnvironment(
+        id,
+        environmentId ? String(environmentId) : null,
+      );
+      return true;
+    },
   }),
   updateDatabase: t.field({
     type: DatabaseRef,

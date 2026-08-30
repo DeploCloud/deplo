@@ -34,6 +34,7 @@ import { nowIso } from "../ids";
 import { membershipFor, requireCapability } from "../membership";
 import { currentIdentity } from "../auth/request-context";
 import { recordActivity } from "./activity";
+import { reapplyNetworkAfterMove } from "../deploy/build";
 import { requireAppCapability } from "./node-access";
 import { assertServerAccessibleTx } from "./servers";
 import { withKeyedLock } from "./keyed-mutex";
@@ -466,6 +467,10 @@ export async function transferAppToTeam(
         .where(eq(activitiesTable.appId, appId));
     });
   });
+
+  // The app changed TEAM, so it changed network too - the destination's top level
+  // is the destination team's own. Outside the transaction: it is an agent call.
+  await reapplyNetworkAfterMove([appId]);
 
   await recordActivity(
     "app",

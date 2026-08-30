@@ -23,6 +23,7 @@ import {
   isInstanceAdmin,
 } from "../membership";
 import { recordActivity } from "./activity";
+import { reapplyNetworkAfterMove } from "../deploy/build";
 import { requireAppCapability } from "./node-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
@@ -599,6 +600,8 @@ export async function moveAppToProject(
       updatedAt: nowIso(),
     })
     .where(eq(appsTable.id, appId));
+  // A different Environment is a different network: bring the stack up again on it.
+  await reapplyNetworkAfterMove([appId]);
   await recordActivity("project", msg, userName, appId, teamId);
 }
 
@@ -666,6 +669,7 @@ export async function moveAppToEnvironment(
       updatedAt: nowIso(),
     })
     .where(eq(appsTable.id, appId));
+  await reapplyNetworkAfterMove([appId]);
   await recordActivity(
     "project",
     `Moved ${s.name} to ${env.name} in project ${env.projectName}`,

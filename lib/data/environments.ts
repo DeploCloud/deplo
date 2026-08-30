@@ -7,9 +7,12 @@ import {
   environments as environmentsTable,
   projects as projectsTable,
   apps as appsTable,
+  databases as databasesTable,
 } from "../db/schema/control-plane";
 import { PREVIEW_SUFFIX_RE } from "../deploy/deploy-key";
 import { newId, nowIso } from "../ids";
+import { reapplyNetworkAfterMove } from "../deploy/build";
+import { reapplyDatabaseNetwork } from "./databases";
 import {
   currentMemberScope,
   requireActiveTeamId,
@@ -383,11 +386,31 @@ export async function deleteEnvironment(id: string): Promise<void> {
   // The project's default, else its FIRST remaining environment, never null.
   const others = siblings.filter((e) => e.id !== id);
   const fallback = others.find((e) => e.isDefault) ?? others[0];
+  // Read the movers BEFORE the delete: after it the rows point at the fallback and
+  // there is no way left to tell which ones changed network.
+  const moved = await getDb()
+    .select({ id: appsTable.id })
+    .from(appsTable)
+    .where(eq(appsTable.environmentId, id));
+  const movedDbs = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .where(eq(databasesTable.environmentId, id));
   await getDb().transaction(async (tx) => {
     await tx
       .update(appsTable)
       .set({ environmentId: fallback.id, updatedAt: nowIso() })
       .where(eq(appsTable.environmentId, id));
+    // Databases follow the apps rather than the FK's `set null`: landing on the
+    // team's network would take them away from the very apps that were using them.
+    await tx
+      .update(databasesTable)
+      .set({ environmentId: fallback.id })
+      .where(eq(databasesTable.environmentId, id));
     await tx.delete(environmentsTable).where(eq(environmentsTable.id, id));
   });
+  // Outside the transaction: each one is an agent call, and the fallback is a
+  // different network from the one they were on.
+  await reapplyNetworkAfterMove(moved.map((a) => a.id));
+  await reapplyDatabaseNetwork(movedDbs.map((d) => d.id));
 }

@@ -9,6 +9,7 @@ import {
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listApps } from "@/lib/data/apps";
+import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import {
   canExposePorts,
   hasCapability,
@@ -131,6 +132,12 @@ export default async function StoragePage(props: PageProps<"/storage">) {
         Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly,
     )
     .map((s) => ({ id: s.id, name: s.name }));
+  // The placement picker's rows: a database takes the same kind of home an App
+  // does, and that home is the network apps reach it on.
+  const dbEnvironments = (await listAllEnvironmentsForTeam()).map((e) => ({
+    id: e.id,
+    label: `${e.projectName} / ${e.name}`,
+  }));
   // serverId → name, so a card can show which host each database runs on.
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
   // A backup destination can live on ANY server the team reaches, including a
@@ -223,6 +230,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                     canCreateDatabase ? (
                       <CreateDatabase
                         servers={dbServers}
+                        environments={dbEnvironments}
                         canCreate={canCreateDatabase}
                         canExposePorts={mayExposePorts}
                         autoOpen={autoOpenDatabase}
@@ -249,6 +257,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 createButton={
                   <CreateDatabase
                     servers={dbServers}
+                    environments={dbEnvironments}
                     canCreate={canCreateDatabase}
                     canExposePorts={mayExposePorts}
                     autoOpen={autoOpenDatabase}

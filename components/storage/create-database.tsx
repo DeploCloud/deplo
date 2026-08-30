@@ -38,14 +38,23 @@ import { DatabaseLogo } from "./database-logo";
 import { DbVersionInput } from "./db-version-input";
 import type { DatabaseType } from "@/lib/types";
 
+/** A Select cannot hold null, so the top level needs a value of its own. */
+const TOP_LEVEL = "__none__";
+
 export function CreateDatabase({
   servers,
+  environments = [],
   canCreate,
   canExposePorts = false,
   autoOpen = false,
   size = "default",
 }: {
   servers: { id: string; name: string }[];
+  /**
+   * The team's Environments, for the placement picker. A database placed in one
+   * answers on that Environment's network; the top level is the team's own.
+   */
+  environments?: { id: string; label: string }[];
   /**
    * Whether the current user may create a database (`create_databases`).
    */
@@ -87,6 +96,7 @@ export function CreateDatabase({
     TYPES.find((t) => t.id === "postgres")!.versions[0],
   );
   const [serverId, setServerId] = React.useState<string>(servers[0]?.id ?? "");
+  const [environmentId, setEnvironmentId] = React.useState<string>(TOP_LEVEL);
   // Optional per-engine credentials. Blank => the server's generated defaults.
   const [username, setUsername] = React.useState("");
   const [dbName, setDbName] = React.useState("");
@@ -164,6 +174,7 @@ export function CreateDatabase({
       type,
       version,
       serverId: effectiveServerId || null,
+      environmentId: environmentId === TOP_LEVEL ? null : environmentId,
       // Send a credential only when the engine supports it AND the user
       // filled it in; null keeps the server's generated default.
       username: creds.username && username.trim() ? username.trim() : null,
@@ -376,6 +387,26 @@ export function CreateDatabase({
                     {servers.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {environments.length > 0 && (
+              <div className="space-y-2">
+                <FieldLabel info="Apps reach this database by name only from the same environment. Leave it at the top level to keep it reachable from apps that aren't in a project.">
+                  Environment
+                </FieldLabel>
+                <Select value={environmentId} onValueChange={setEnvironmentId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={TOP_LEVEL}>No environment</SelectItem>
+                    {environments.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
