@@ -233,6 +233,9 @@ Full tables, including the agent installer, in
   a referrer policy, a Postgres-backed rate limiter that survives restarts, and API tokens
   that carry a scope and an expiry.
 
+How all of that fits together, what it assumes and where it stops: the
+**[security assurance case](docs/assurance-case.md)**.
+
 Found a hole? **[SECURITY.md](SECURITY.md)** - report it privately, never in an issue.
 
 ## 🤝 Contributing
@@ -243,6 +246,9 @@ locally, the three commands CI runs, and how contributions are licensed.
 - Questions and ideas: [Discussions](https://github.com/DeploCloud/deplo/discussions)
 - Bugs and feature requests: [Issues](https://github.com/DeploCloud/deplo/issues)
 - Vulnerabilities: [privately](https://github.com/DeploCloud/deplo/security/advisories/new)
+
+Who decides what, how code is reviewed, and what happens to the project if someone
+disappears: **[GOVERNANCE.md](GOVERNANCE.md)**.
 
 ## 🛠️ Tech stack
 
