@@ -65,7 +65,7 @@ const COPY: Record<
     label: "Redeploy",
     icon: RotateCw,
     does: "Redeploys",
-    then: "Each one rebuilds from what it deploys from.",
+    then: "Each one deploys again from its own source.",
     done: "Redeploying",
     destructive: false,
     deploys: true,

@@ -28,6 +28,7 @@ import {
   loadDeployment,
   loadDeploymentsForApp,
   appInTeam,
+  appSourceInTeam,
   appScopeWhere,
 } from "./app-graph-load";
 import { assembleDeployment } from "./app-graph-rows";
@@ -535,19 +536,12 @@ const REDEPLOY_MESSAGE: Record<DeploySource, string> = {
 export async function redeploy(appId: string): Promise<Deployment> {
   const { membership } = await requireAppCapability(appId, "deploy_apps");
   const user = (await getCurrentUser())!;
-  if (!(await appInTeam(appId, membership.teamId)))
-    throw new Error("App not found");
-  const [app] = await getDb()
-    .select({ source: appsTable.source })
-    .from(appsTable)
-    .where(
-      and(eq(appsTable.id, appId), eq(appsTable.teamId, membership.teamId)),
-    )
-    .limit(1);
+  const source = await appSourceInTeam(appId, membership.teamId);
+  if (!source) throw new Error("App not found");
   const depId = await startDeployment(appId, {
     environment: "production",
     creator: user.name,
-    commitMessage: REDEPLOY_MESSAGE[app?.source as DeploySource] ?? "Redeploy",
+    commitMessage: REDEPLOY_MESSAGE[source],
   });
   return (await loadDeployment(depId))!;
 }

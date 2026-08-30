@@ -155,6 +155,7 @@ import {
   loadTeamApp,
   preloadSummaries,
   appInTeam,
+  appSourceInTeam,
   type SummaryPreload,
 } from "./app-graph-load";
 import {
@@ -1232,7 +1233,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     await startDeployment(project.id, {
       environment: "production",
       creator: user.name,
-      commitMessage: input.repo ? "Initial import" : "Initial deployment",
+      commitMessage: "Initial deployment",
     });
   } else if (!isUpload) {
     await getDb()
@@ -2531,6 +2532,15 @@ export async function startApp(id: string): Promise<void> {
   await recordActivity("app", `Started ${project.name}`, user.name, id);
 }
 
+/** What the button rebuilds: only a source Deplo builds gets a new image. */
+const REBUILD_MESSAGE: Record<DeploySource, string> = {
+  github: "Rebuild container",
+  git: "Rebuild container",
+  upload: "Rebuild container",
+  "docker-image": "Pull and recreate the container",
+  compose: "Recreate the stack's containers",
+};
+
 /**
  * Rebuild the image from the current source and replace the running container -
  * a full deployment that also FORCES the container to be recreated.
@@ -2545,12 +2555,12 @@ export async function startApp(id: string): Promise<void> {
 export async function rebuildApp(id: string): Promise<void> {
   const { membership } = await requireAppCapability(id, "deploy_apps");
   const user = (await getCurrentUser())!;
-  if (!(await appInTeam(id, membership.teamId)))
-    throw new Error("App not found");
+  const source = await appSourceInTeam(id, membership.teamId);
+  if (!source) throw new Error("App not found");
   await startDeployment(id, {
     environment: "production",
     creator: user.name,
-    commitMessage: "Rebuild container",
+    commitMessage: REBUILD_MESSAGE[source],
     forceRecreate: true,
   });
 }

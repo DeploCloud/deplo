@@ -17,7 +17,7 @@ import {
   appMounts,
   appVolumes,
 } from "../db/schema/control-plane";
-import type { Deployment, Domain, EnvVar, App } from "../types";
+import type { Deployment, Domain, EnvVar, App, DeploySource } from "../types";
 import {
   assembleDeployment,
   assembleDomain,
@@ -411,6 +411,24 @@ export async function loadTeamApp(
 ): Promise<App | null> {
   const p = await loadAppGraph(appId, db);
   return p && p.teamId === teamId && inAppScope(p) ? p : null;
+}
+
+/**
+ * What the app deploys from, or null when it isn't this team's (or is outside
+ * the caller's scope) - the existence check of `appInTeam` plus the one column
+ * a message about the deploy needs.
+ */
+export async function appSourceInTeam(
+  appId: string,
+  teamId: string,
+  db: DbReader = getDb(),
+): Promise<DeploySource | null> {
+  const rows = await db
+    .select({ source: apps.source })
+    .from(apps)
+    .where(and(eq(apps.id, appId), eq(apps.teamId, teamId), appScopeWhere()))
+    .limit(1);
+  return (rows[0]?.source as DeploySource) ?? null;
 }
 
 /** True if a project belongs to a team, and is in the caller's scope. */
