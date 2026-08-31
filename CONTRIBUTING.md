@@ -102,16 +102,21 @@ becomes a link to it.
 deplo is **AGPL-3.0-only**, and DeploCloud also offers it under commercial terms. For that
 to keep working, every contribution has to arrive with the right to do both.
 
-> **By opening a pull request, you certify that you wrote the contribution or have the
-> right to submit it, you agree that it is released under AGPL-3.0-only, and you grant
-> DeploCloud a perpetual, worldwide, irrevocable, sublicensable license to use, modify and
-> relicense it, including under a commercial license.**
+That right is the **[CLA](CLA.md)**, and a bot asks for it on your first pull request. You
+read the document and post one sentence as a comment:
+
+```
+I have read the CLA Document and I hereby sign the CLA
+```
+
+Once per person. It covers every pull request you open after it, and everything you
+contributed before it.
 
 You keep the copyright to what you wrote. This is not an assignment: it is the permission
 that lets the same code ship in the open source project and in a commercial license
 without having to track down every contributor.
 
-If your employer owns your work, get their sign-off before opening the pull request.
+If your employer owns your work, get their sign-off before signing.
 
 ## The name is not part of the license
 

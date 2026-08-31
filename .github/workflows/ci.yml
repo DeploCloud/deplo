@@ -10,6 +10,9 @@ on:
     # being pushed and tells you to pull the release, rather than letting one
     # flaky test hold a release hostage.
     tags: ["v*.*"]
+    # The CLA bot commits a signature here on every new contributor. Nothing in
+    # lint, tests or tsc can see that file.
+    paths-ignore: ["signatures/**"]
   pull_request:
   # So a newly-published advisory turns the repo red on its own, without waiting
   # for somebody to push. The audit job is the only one that finds work when the
