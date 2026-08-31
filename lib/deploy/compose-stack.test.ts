@@ -8,6 +8,7 @@ import {
   composeDeclaredEnvKeys,
   detectDefaultApp,
   composeEnvValues,
+  composeNamesOnNetwork,
   escapeComposeDollars,
   retargetStackNetwork,
   stackNamesOnNetwork,
@@ -1302,7 +1303,7 @@ services:
   assert.deepEqual(doc.services.a.networks, ["deplo"]);
 });
 
-test("a private network of the author's own is left exactly as written", () => {
+test("a private network of the author's own is kept, and joined by the stack's", () => {
   const doc = networksOf(`
 networks:
   internal:
@@ -1312,10 +1313,10 @@ services:
     image: alpine
     networks: [internal]
 `);
-  // The author named their own networks, so that IS the choice - a service with a
-  // domain still gets wired for Traefik, but nothing else is added behind their back.
+  // Theirs survives untouched and the Environment's is ADDED: naming a network is
+  // organising, not asking to be cut off. `internal: true` is how you ask for that.
   assert.ok("internal" in doc.networks);
-  assert.deepEqual(doc.services.a.networks, ["internal"]);
+  assert.deepEqual(doc.services.a.networks, ["internal", "deplo"]);
 });
 
 test("every service joins the Environment's network, routed or not", () => {
@@ -1423,9 +1424,14 @@ networks:
 `,
     domainRoutes: [route("shop.example.com", "web", 80)],
   });
-  // `sidecar` named its own network, so Deplo left it there and it answers to
-  // nobody on the Environment's.
-  assert.deepEqual(stackNamesOnNetwork(rendered).sort(), ["api", "web"]);
+  // `sidecar` keeps its own network AND joins the Environment's, so it answers
+  // there too. Only a `network_mode` service, a reserved name or an `internal:
+  // true` network stays off.
+  assert.deepEqual(stackNamesOnNetwork(rendered).sort(), [
+    "api",
+    "sidecar",
+    "web",
+  ]);
 });
 
 test("network_mode may not name a network Deplo manages", () => {
@@ -1492,4 +1498,85 @@ test("composeEnvValues reads what the compose sets itself, both shapes", () => {
     "services:\n  a:\n    environment:\n      DB_HOST: db-shop\n",
   );
   assert.equal(map.DB_HOST, "db-shop");
+});
+
+test("naming your own networks does NOT take you off the Environment's", () => {
+  // The regression this guards: reading "the author named the networks" as "leave
+  // me alone" cut most stacks off from their own database, because organising
+  // services into frontend/backend is what every non-trivial compose file does.
+  const doc = networksOf(`
+networks:
+  appnet: {}
+services:
+  web:
+    image: nginx
+    networks: [appnet]
+  api:
+    image: nginx
+    networks: [appnet]
+`);
+  assert.deepEqual(doc.services.web.networks, ["appnet", "deplo"]);
+  assert.deepEqual(doc.services.api.networks, ["appnet", "deplo"]);
+});
+
+test("`internal: true` IS a deliberate isolation and is honoured", () => {
+  const sealed = networksOf(`
+networks:
+  priv:
+    internal: true
+services:
+  w:
+    image: alpine
+    networks: [priv]
+`);
+  assert.deepEqual(sealed.services.w.networks, ["priv"]);
+  // Joining one sealed network and one open one is not being sealed off.
+  const mixed = networksOf(`
+networks:
+  priv:
+    internal: true
+  pub: {}
+services:
+  w:
+    image: alpine
+    networks: [priv, pub]
+`);
+  assert.deepEqual(mixed.services.w.networks, ["priv", "pub", "deplo"]);
+  // A plain `default: {}` is not an isolation - generators leave it everywhere.
+  const plain = networksOf(`
+networks:
+  default: {}
+services:
+  w:
+    image: alpine
+`);
+  assert.deepEqual(plain.services.w.networks, ["deplo"]);
+});
+
+test("composeNamesOnNetwork agrees with what the render puts on the network", () => {
+  // The two drifting apart is what made the clash guard refuse a move over a
+  // `postgres` that never joins, naming a container that is not there.
+  const cases = [
+    "services:\n  web:\n    image: n\n  worker:\n    image: a\n",
+    "services:\n  postgres:\n    image: p\n  web:\n    image: n\n",
+    "services:\n  vpn:\n    image: v\n    network_mode: host\n  web:\n    image: n\n",
+    "services:\n  side:\n    image: s\n    hostname: traefik\n  web:\n    image: n\n",
+    "networks:\n  priv:\n    internal: true\nservices:\n  w:\n    image: a\n    networks: [priv]\n",
+    "networks:\n  appnet: {}\nservices:\n  web:\n    image: n\n    networks: [appnet]\n",
+  ];
+  for (const compose of cases) {
+    const rendered = buildComposeStack({
+      network: "deplo-env-environ_mine",
+      compose,
+      name: "deplo-demo",
+      deployKey: "demo",
+      appId: "p1",
+      domainRoutes: [],
+    });
+    assert.deepEqual(
+      composeNamesOnNetwork(compose).sort(),
+      stackNamesOnNetwork(rendered).sort(),
+      compose,
+    );
+  }
 });

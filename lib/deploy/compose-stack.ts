@@ -791,21 +791,41 @@ export function buildComposeStack(input: ComposeStackInput): string {
   const reserved = Object.keys(services).filter((name) =>
     serviceReservedClaim(name, services[name]),
   );
-  // An author who declares `default` themselves has said where the services that
-  // name nothing belong, so Deplo does not move them.
-  const authoredDefault = Boolean(
-    doc.networks &&
-    typeof doc.networks === "object" &&
-    !Array.isArray(doc.networks) &&
-    "default" in (doc.networks as Record<string, unknown>),
+  // Networks the author marked `internal: true` - no route off the host. THAT is a
+  // deliberate isolation, and the only thing that keeps a service off the
+  // Environment's network. Naming your own networks is NOT: organising services
+  // into frontend/backend is what every non-trivial compose file does, and reading
+  // that as "leave me alone" cut most stacks off from their own database.
+  const internalNetworks = new Set(
+    Object.entries(
+      doc.networks &&
+        typeof doc.networks === "object" &&
+        !Array.isArray(doc.networks)
+        ? (doc.networks as Record<string, unknown>)
+        : {},
+    )
+      .filter(
+        ([, v]) =>
+          v &&
+          typeof v === "object" &&
+          !Array.isArray(v) &&
+          (v as Record<string, unknown>).internal === true,
+      )
+      .map(([k]) => k),
   );
-  // What the AUTHOR wrote, captured before the `default` below is added - otherwise
-  // the "did they choose their own networks?" test reads Deplo's own edit.
-  const authoredNetworks = new Map(
-    Object.entries(services).map(([name, svc]) => [
-      name,
-      (svc as App | undefined)?.networks != null,
-    ]),
+  /** True when every network this service joins is one the author sealed off. */
+  const onlyInternal = (name: string): boolean => {
+    const nets = (services[name] as App | undefined)?.networks;
+    const joined = Array.isArray(nets)
+      ? nets.map(String)
+      : nets && typeof nets === "object"
+        ? Object.keys(nets)
+        : ["default"]; // no `networks:` ⇒ compose puts it on `default`
+    return joined.length > 0 && joined.every((k) => internalNetworks.has(k));
+  };
+  // Read before the `default` below is added, or the test would see Deplo's own edit.
+  const sealedOff = new Map(
+    Object.keys(services).map((name) => [name, onlyInternal(name)]),
   );
   for (const name of Object.keys(services)) {
     const svc = services[name] as App | undefined;
@@ -822,12 +842,12 @@ export function buildComposeStack(input: ComposeStackInput): string {
         (nets as Record<string, unknown>).default = null;
     }
     if (reserved.includes(name)) continue;
-    // Only where the author said NOTHING. A service that names its own networks
-    // has made a choice - `networks: {default: {internal: true}}` is somebody
-    // deliberately cutting a worker off, and adding the Environment's network to it
-    // would hand back the very egress they removed. A ROUTED service still gets
-    // wired above, because Traefik has to reach it or the domain answers nothing.
-    if (authoredDefault || authoredNetworks.get(name)) continue;
+    // Sealed off on purpose (`internal: true` on every network it joins) ⇒ left
+    // alone, since adding the Environment's network hands back the egress the
+    // author removed. Everything else joins, own networks and all: they keep theirs
+    // AND reach their Environment. A ROUTED service is wired above regardless, or
+    // its domain would answer nothing.
+    if (sealedOff.get(name)) continue;
     wireApp(name);
   }
 
@@ -993,4 +1013,60 @@ export function composeEnvValues(compose: string): Record<string, string> {
     }
   }
   return out;
+}
+
+/**
+ * The DNS names an AUTHORED compose would put on the Environment's network, which
+ * is not every service it declares. A name-clash guard has to ask this and not
+ * `composeClaimedNames`, or it refuses a move over a `postgres` that never joins -
+ * naming, in the refusal, a container that does not exist there.
+ *
+ * Conservative in the one direction that is safe: a service kept off here can still
+ * be wired by a ROUTE, and the deploy's clash warning catches that case.
+ */
+export function composeNamesOnNetwork(compose: string): string[] {
+  let doc: ComposeDoc;
+  try {
+    doc = (yaml.load(compose) as ComposeDoc) ?? {};
+  } catch {
+    return [];
+  }
+  const services = doc.services;
+  if (!services || typeof services !== "object" || Array.isArray(services))
+    return [];
+  const internal = new Set(
+    Object.entries(
+      doc.networks &&
+        typeof doc.networks === "object" &&
+        !Array.isArray(doc.networks)
+        ? (doc.networks as Record<string, unknown>)
+        : {},
+    )
+      .filter(
+        ([, v]) =>
+          v &&
+          typeof v === "object" &&
+          !Array.isArray(v) &&
+          (v as Record<string, unknown>).internal === true,
+      )
+      .map(([k]) => k),
+  );
+  const out = new Set<string>();
+  for (const [name, raw] of Object.entries(services)) {
+    const svc = raw as App | undefined;
+    if (!svc || typeof svc !== "object") continue;
+    // Off the network for the same three reasons the renderer keeps them off.
+    if (serviceReservedClaim(name, svc)) continue;
+    if (svc.network_mode != null) continue;
+    const nets = svc.networks;
+    const joined = Array.isArray(nets)
+      ? nets.map(String)
+      : nets && typeof nets === "object"
+        ? Object.keys(nets)
+        : ["default"];
+    if (joined.length > 0 && joined.every((k) => internal.has(k))) continue;
+    for (const claimed of serviceClaimedNames(name, svc))
+      out.add(claimed.toLowerCase());
+  }
+  return [...out];
 }
