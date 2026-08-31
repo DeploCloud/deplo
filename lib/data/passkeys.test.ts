@@ -89,6 +89,7 @@ async function seedPasskey(
   id = "pk-1",
   name = "Test device",
   rpId: string | null = RP_ID,
+  authenticator: { backedUp?: boolean; transports?: string | null } = {},
 ) {
   await db.insert(passkeyTable).values({
     id,
@@ -97,13 +98,33 @@ async function seedPasskey(
     publicKey: "cHVibGljLWtleQ",
     credentialID: `cred-${id}`,
     counter: 0,
-    deviceType: "singleDevice",
-    backedUp: false,
-    transports: "internal",
+    deviceType: authenticator.backedUp ? "multiDevice" : "singleDevice",
+    backedUp: authenticator.backedUp ?? false,
+    transports: authenticator.transports ?? "internal",
     createdAt: new Date(),
     rpId,
   });
 }
+
+test("the kind comes from the authenticator, not from the name", async () => {
+  // A name is whatever the person typed; these three answers are the platform's.
+  await seedPasskey(USER_1, "pk-phone", "Anything", RP_ID, {
+    backedUp: true,
+    transports: "internal,hybrid",
+  });
+  await seedPasskey(USER_1, "pk-yubi", "Anything", RP_ID, {
+    transports: "usb,nfc",
+  });
+  await seedPasskey(USER_1, "pk-laptop", "Anything", RP_ID, {
+    transports: "internal",
+  });
+  const byId = new Map(
+    (await asUser(USER_1, listMyPasskeys)).map((p) => [p.id, p.kind]),
+  );
+  assert.equal(byId.get("pk-phone"), "synced");
+  assert.equal(byId.get("pk-yubi"), "securityKey");
+  assert.equal(byId.get("pk-laptop"), "device");
+});
 
 const passkeyRows = (userId: string) =>
   db

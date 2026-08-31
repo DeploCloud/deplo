@@ -14,6 +14,12 @@ import {
  * the authenticator's answer means nothing without the challenge it replies to.
  */
 
+const PasskeyKindEnum = builder.enumType("PasskeyKind", {
+  description:
+    "What holds the credential, as the authenticator itself reported it - not as the person named it.",
+  values: ["synced", "device", "securityKey"] as const,
+});
+
 const PasskeyRef = builder.objectRef<PasskeyDTO>("Passkey").implement({
   description:
     "A WebAuthn credential on this account. Carries no key material: the public key and the credential id stay server-side.",
@@ -23,6 +29,7 @@ const PasskeyRef = builder.objectRef<PasskeyDTO>("Passkey").implement({
       description: 'The label shown in the list, e.g. "Chrome on macOS".',
     }),
     createdAt: t.exposeString("createdAt", { nullable: true }),
+    kind: t.field({ type: PasskeyKindEnum, resolve: (p) => p.kind }),
     usableHere: t.exposeBoolean("usableHere", {
       description:
         "False for a credential minted for a different address of this panel: the browser will not offer it here, so the only thing to do with it is remove it.",

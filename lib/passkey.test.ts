@@ -876,7 +876,7 @@ test("the list never projects key material", async () => {
   assert.equal(rows.length, 1);
   assert.deepEqual(
     Object.keys(rows[0]!).sort(),
-    ["createdAt", "id", "name", "usableHere"],
+    ["createdAt", "id", "kind", "name", "usableHere"],
     "publicKey and credentialID must never leave the data layer",
   );
   assert.equal(rows[0]!.name, "Test device");

@@ -19,6 +19,9 @@ export interface UserSessionDTO {
   /** "Chrome on macOS", "curl", "Unknown device". */
   label: string;
   device: DeviceKind;
+  /** The two halves of `label`, for the brand marks. Null when nothing matched. */
+  browser: string | null;
+  os: string | null;
   ipAddress: string | null;
   /**
    * When Better Auth last refreshed this session, which is as close to "last used"
@@ -54,12 +57,14 @@ export const listMySessions = cache(async (): Promise<UserSessionDTO[]> => {
   const user = await assertUser();
   const current = await currentSessionId();
   return (await liveSessions(user.id)).map((s) => {
-    const { label, device } = describeUserAgent(s.userAgent);
+    const { label, device, browser, os } = describeUserAgent(s.userAgent);
     return {
       id: s.id,
       current: s.id === current,
       label,
       device,
+      browser,
+      os,
       // Better Auth writes "" (not null) when it could not determine the address,
       // and an empty string would render as an empty cell rather than "Unknown".
       ipAddress: s.ipAddress || null,

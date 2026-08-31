@@ -39,13 +39,17 @@ export function TwoFactorCard({
    * as whether it owns one: - `none`: no usable passkey.
    */
   passkeyStanding = "none",
+  wizardOpen,
+  onWizardOpenChange,
 }: {
   enabled: boolean;
   requiredBy?: string | null;
   passkeyStanding?: "none" | "idle" | "carrying";
+  /** Owned by the page, so the Account protection card can open it too. */
+  wizardOpen: boolean;
+  onWizardOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [wizard, setWizard] = React.useState(false);
   const [password, setPassword] = React.useState("");
   const [code, setCode] = React.useState("");
   const [codes, setCodes] = React.useState<string[] | null>(null);
@@ -95,7 +99,7 @@ export function TwoFactorCard({
   );
 
   return (
-    <Card>
+    <Card className="flex flex-col">
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Two-factor authentication
@@ -131,7 +135,9 @@ export function TwoFactorCard({
               </p>
             </div>
           </div>
-          {!enabled && <Button onClick={() => setWizard(true)}>Turn on</Button>}
+          {!enabled && (
+            <Button onClick={() => onWizardOpenChange(true)}>Turn on</Button>
+          )}
         </div>
 
         {enabled && (
@@ -198,7 +204,7 @@ export function TwoFactorCard({
         )}
       </CardContent>
 
-      <TwoFactorWizard open={wizard} onOpenChange={setWizard} />
+      <TwoFactorWizard open={wizardOpen} onOpenChange={onWizardOpenChange} />
     </Card>
   );
 }

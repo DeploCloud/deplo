@@ -60,7 +60,7 @@ export function PasswordCard({
   }
 
   return (
-    <Card>
+    <Card className="flex flex-col">
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Password
@@ -74,8 +74,12 @@ export function PasswordCard({
           />
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={onSubmit} method="post" className="space-y-4">
+      <CardContent className="flex flex-1 flex-col">
+        <form
+          onSubmit={onSubmit}
+          method="post"
+          className="flex flex-1 flex-col gap-4"
+        >
           <div className="space-y-2">
             <Label htmlFor="acct-current">Current password</Label>
             <Input
@@ -87,7 +91,7 @@ export function PasswordCard({
               onChange={(e) => setCurrent(e.target.value)}
             />
           </div>
-          <div className="grid items-start gap-4 sm:grid-cols-2">
+          <div className="grid items-start gap-4 xl:grid-cols-2">
             <PasswordField
               id="acct-new"
               name="newPassword"
@@ -107,7 +111,7 @@ export function PasswordCard({
               />
             </div>
           </div>
-          <div className="flex justify-end">
+          <div className="mt-auto flex justify-end">
             <Button
               type="submit"
               size="sm"

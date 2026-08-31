@@ -3,17 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Fingerprint, Plus } from "lucide-react";
+import { Cloud, Fingerprint, Plus, Usb } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +23,7 @@ import {
   passkeyError,
   passkeysSupported,
 } from "@/lib/passkey-client";
-import type { PasskeyDTO } from "@/lib/data/passkeys";
+import type { PasskeyDTO, PasskeyKind } from "@/lib/data/passkeys";
 
 const START = /* GraphQL */ `
   mutation StartPasskeyRegistration($password: String!) {
@@ -47,29 +39,52 @@ const FINISH = /* GraphQL */ `
   }
 `;
 
+/** What each kind of authenticator is, in the words a person would use. */
+const KIND: Record<
+  PasskeyKind,
+  { label: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  synced: { label: "Synced", icon: Cloud },
+  device: { label: "This device", icon: Fingerprint },
+  securityKey: { label: "Security key", icon: Usb },
+};
+
 /**
- * The passkeys on this account: add, rename, remove. Reading `window.location`
- * during render would disagree with the server's HTML and break hydration.
+ * Why this instance cannot register a passkey, or null when it can. Resolved
+ * from props during render - reading `window.location` would disagree with the
+ * server's HTML and break hydration.
+ */
+export function passkeyBlockedReason(
+  panelUrl: string | null,
+  rpId: string | null,
+): string | null {
+  if (!panelUrl)
+    return "Set this instance's address in Settings -> deplo before adding a passkey.";
+  if (!rpId) return `Passkeys need https. This panel answers on ${panelUrl}.`;
+  return null;
+}
+
+/**
+ * The passkeys on this account: add, rename, remove.
  */
 export function PasskeysCard({
   passkeys,
   panelUrl,
   rpId,
+  addOpen,
+  onAddOpenChange,
 }: {
   passkeys: PasskeyDTO[];
   /** This instance's canonical address, or null if the operator never set one. */
   panelUrl: string | null;
   /** The hostname passkeys are bound to, or null when this instance can't have any. */
   rpId: string | null;
+  /** Owned by the page, so the Account protection card can open it too. */
+  addOpen: boolean;
+  onAddOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  // The two reasons the SERVER already knows, resolved during render from props - no
-  // state, no effect, and correct on the first paint.
-  const blocked = !panelUrl
-    ? "Set this instance's address in Settings → deplo before adding a passkey."
-    : !rpId
-      ? `Passkeys need https. This panel answers on ${panelUrl}.`
-      : null;
+  const blocked = passkeyBlockedReason(panelUrl, rpId);
 
   // `sm`, matching the card-header buttons on this page (the house rule reserves
   // the default height for rows that hold a form control).
@@ -81,7 +96,7 @@ export function PasskeysCard({
   );
 
   return (
-    <Card>
+    <Card className="flex flex-col">
       <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Passkeys
@@ -105,62 +120,63 @@ export function PasskeysCard({
             trigger={addButton}
             panelUrl={panelUrl}
             rpId={rpId}
+            open={addOpen}
+            onOpenChange={onAddOpenChange}
           />
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {passkeys.length === 0 ? (
           <EmptyState
+            className="flex-1 py-10"
             icon={Fingerprint}
             title="No passkeys yet"
             docs="team.passkeys"
             description="Add one and this device signs you in without a password."
           />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Passkey</TableHead>
-                <TableHead>Added</TableHead>
-                <TableHead className="w-0" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {passkeys.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <span className="flex items-center gap-2">
-                      <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="font-medium">{p.name}</span>
-                      {/**
-                       * A credential minted for another panel address.
-                       */}
+          <ul className="space-y-2">
+            {passkeys.map((p) => {
+              const kind = KIND[p.kind];
+              return (
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border p-3"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
+                    <kind.icon className="size-4 text-muted-foreground" />
+                  </span>
+                  <div className="min-w-0 flex-1 basis-40">
+                    <p className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">
+                        {p.name}
+                      </span>
+                      {/* A credential minted for another panel address. */}
                       {!p.usableHere && (
                         <SimpleTooltip content="Registered for a different address of this panel, so this browser will not offer it. Remove it.">
                           <Badge variant="secondary">Not usable here</Badge>
                         </SimpleTooltip>
                       )}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {p.createdAt ? timeAgo(p.createdAt) : "Unknown"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className="flex justify-end gap-1">
-                      <RenamePasskey
-                        passkey={p}
-                        onDone={() => router.refresh()}
-                      />
-                      <DeletePasskey
-                        passkey={p}
-                        onDone={() => router.refresh()}
-                      />
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {kind.label}
+                      {p.createdAt ? ` · added ${timeAgo(p.createdAt)}` : ""}
+                    </p>
+                  </div>
+                  <span className="ml-auto flex shrink-0 gap-1">
+                    <RenamePasskey
+                      passkey={p}
+                      onDone={() => router.refresh()}
+                    />
+                    <DeletePasskey
+                      passkey={p}
+                      onDone={() => router.refresh()}
+                    />
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </CardContent>
     </Card>
@@ -176,13 +192,16 @@ function AddPasskeyDialog({
   trigger,
   panelUrl,
   rpId,
+  open,
+  onOpenChange: setOpen,
 }: {
   trigger: React.ReactNode;
   panelUrl: string | null;
   rpId: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
 

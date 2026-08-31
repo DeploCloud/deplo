@@ -3833,6 +3833,7 @@ A WebAuthn credential on this account. Carries no key material: the public key a
 type Passkey {
   createdAt: String
   id: String
+  kind: PasskeyKind
 
   """The label shown in the list, e.g. "Chrome on macOS"."""
   name: String
@@ -3841,6 +3842,15 @@ type Passkey {
   False for a credential minted for a different address of this panel: the browser will not offer it here, so the only thing to do with it is remove it.
   """
   usableHere: Boolean
+}
+
+"""
+What holds the credential, as the authenticator itself reported it - not as the person named it.
+"""
+enum PasskeyKind {
+  device
+  securityKey
+  synced
 }
 
 """
@@ -5528,6 +5538,10 @@ type UserSearchResult {
 A browser or client currently signed in to the viewer's account. Carries no credential - a session is addressed by its id, never by its token.
 """
 type UserSession {
+  """
+  The client half of `label`, e.g. "Chrome". Null when the user agent matched nothing.
+  """
+  browser: String
   createdAt: String
 
   """
@@ -5546,6 +5560,9 @@ type UserSession {
   When the session was last refreshed, which stands in for last used. Accurate to about 15 minutes.
   """
   lastSeenAt: String
+
+  """The platform half of `label`, e.g. "macOS" or "iPhone"."""
+  os: String
 }
 
 """What one person can do in one team, as an instance admin sets it."""

@@ -132,9 +132,15 @@ test("rows are most recently seen first, and describe the device", async () => {
   assert.equal(rows[0]!.label, "Chrome on macOS");
   assert.equal(rows[0]!.device, "desktop");
   assert.equal(rows[0]!.ipAddress, "203.0.113.7");
+  // Both halves of the label survive the DTO, because the brand mark needs them
+  // apart: the row draws Chrome's tile with macOS on its corner.
+  assert.equal(rows[0]!.browser, "Chrome");
+  assert.equal(rows[0]!.os, "macOS");
   // A session with no user agent still renders as a row rather than blowing up.
   assert.equal(rows[1]!.label, "Unknown device");
   assert.equal(rows[1]!.ipAddress, null);
+  assert.equal(rows[1]!.browser, null);
+  assert.equal(rows[1]!.os, null);
 });
 
 test("a bearer request has no `current` session to mark", async () => {

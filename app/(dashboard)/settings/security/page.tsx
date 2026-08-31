@@ -8,10 +8,7 @@ import { passkeyRelyingParty, publicBaseUrl } from "@/lib/public-url";
 import { listMySessions } from "@/lib/data/sessions";
 import { listMyPasskeys } from "@/lib/data/passkeys";
 import { PageHeader } from "@/components/shared/page-header";
-import { PasswordCard } from "@/components/settings/security/password-card";
-import { TwoFactorCard } from "@/components/settings/security/two-factor-card";
-import { PasskeysCard } from "@/components/settings/security/passkeys-card";
-import { SessionsCard } from "@/components/settings/security/sessions-card";
+import { SecurityTabs } from "@/components/settings/security/security-tabs";
 
 export const metadata = { title: "Settings · Security" };
 
@@ -39,30 +36,22 @@ export default async function SettingsSecurityPage() {
   const rp = passkeyRelyingParty();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <PageHeader
         docs="team.security"
         title="Security"
         description="How this account proves it is you, and where it is signed in."
       />
       {user && (
-        <div className="space-y-4">
-          {/* Ordered the way the account is actually protected: what you know,
-              then the two things that can stand as a second factor, then who is
-              currently holding a session on the strength of them. */}
-          <PasswordCard twoFactorEnabled={user.twoFactorEnabled} />
-          <TwoFactorCard
-            enabled={user.twoFactorEnabled}
-            requiredBy={hasPasskey ? null : requiredBy}
-            passkeyStanding={passkeyStanding}
-          />
-          <PasskeysCard
-            passkeys={passkeys}
-            panelUrl={publicBaseUrl()}
-            rpId={rp?.rpId ?? null}
-          />
-          <SessionsCard sessions={sessions} />
-        </div>
+        <SecurityTabs
+          twoFactorEnabled={user.twoFactorEnabled}
+          requiredBy={hasPasskey ? null : requiredBy}
+          passkeyStanding={passkeyStanding}
+          passkeys={passkeys}
+          sessions={sessions}
+          panelUrl={publicBaseUrl()}
+          rpId={rp?.rpId ?? null}
+        />
       )}
     </div>
   );

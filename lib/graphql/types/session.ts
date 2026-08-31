@@ -29,6 +29,15 @@ export const UserSessionRef = builder
         description: 'Human description, e.g. "Chrome on macOS".',
       }),
       device: t.field({ type: DeviceKindEnum, resolve: (s) => s.device }),
+      browser: t.exposeString("browser", {
+        nullable: true,
+        description:
+          'The client half of `label`, e.g. "Chrome". Null when the user agent matched nothing.',
+      }),
+      os: t.exposeString("os", {
+        nullable: true,
+        description: 'The platform half of `label`, e.g. "macOS" or "iPhone".',
+      }),
       ipAddress: t.exposeString("ipAddress", { nullable: true }),
       lastSeenAt: t.exposeString("lastSeenAt", {
         description:

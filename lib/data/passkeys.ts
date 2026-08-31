@@ -26,6 +26,24 @@ import { stepUpPassword } from "./two-factor";
 /** More than this and the list stops being something a person can read. */
 const MAX_PASSKEYS = 20;
 
+/** What kind of thing holds the credential, for the row's icon and subtitle. */
+export type PasskeyKind = "synced" | "device" | "securityKey";
+
+/**
+ * The authenticator's own answer, not the name: a roaming transport means a key
+ * you can unplug, and `backedUp` is the platform saying it copied the credential
+ * into someone's keychain.
+ */
+function passkeyKind(
+  transports: string | null,
+  backedUp: boolean,
+): PasskeyKind {
+  const t = (transports ?? "").toLowerCase();
+  const roaming = ["usb", "nfc", "ble"].some((x) => t.includes(x));
+  if (roaming && !t.includes("internal")) return "securityKey";
+  return backedUp ? "synced" : "device";
+}
+
 export interface PasskeyDTO {
   id: string;
   /** The label the person gave it, e.g. "Chrome on macOS". */
@@ -37,6 +55,7 @@ export interface PasskeyDTO {
    * recorded which).
    */
   usableHere: boolean;
+  kind: PasskeyKind;
 }
 
 /** The passkeys on this account, newest first. */
@@ -50,6 +69,8 @@ export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
       name: passkeyTable.name,
       createdAt: passkeyTable.createdAt,
       rpId: passkeyTable.rpId,
+      transports: passkeyTable.transports,
+      backedUp: passkeyTable.backedUp,
     })
     .from(passkeyTable)
     .where(eq(passkeyTable.userId, user.id))
@@ -64,6 +85,7 @@ export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
     name: r.name?.trim() || "Passkey",
     createdAt: r.createdAt ? r.createdAt.toISOString() : null,
     usableHere: rpId !== null && r.rpId === rpId,
+    kind: passkeyKind(r.transports, r.backedUp),
   }));
 });
 
@@ -125,6 +147,7 @@ export async function finishPasskeyRegistration(input: {
     createdAt:
       row.createdAt instanceof Date ? row.createdAt.toISOString() : null,
     usableHere: rpId !== null,
+    kind: passkeyKind(row.transports ?? null, row.backedUp),
   };
 }
 
