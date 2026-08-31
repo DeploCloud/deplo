@@ -676,6 +676,23 @@ test("a variable that names the old address is moved to the new one", async () =
   assert.match(said, /OLD_ADDRESS, OLD_ADDRESS_URL named the old address/);
 });
 
+test("a report row about the panel itself names the panel", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await asOwner(() =>
+    importMigrationProject({
+      ...CONNECT,
+      runId,
+      projectId: "dok-prj-blink",
+      servers: [{ from: "", to: "srv_not_ours" }],
+    }),
+  );
+
+  const row = (await asOwner(() => getMigrationRun(runId)))!.items.find(
+    (i) => i.sourceKind === "server",
+  )!;
+  assert.equal(row.sourceName, "the Dokploy host");
+});
+
 // The skip is per ENVIRONMENT, which is right - staging and production share a
 // name on purpose - but the team ending up with two apps called the same thing
 // used to happen in silence.

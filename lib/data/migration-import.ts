@@ -1628,9 +1628,11 @@ class Report {
     message?: string | null;
   }): Promise<void> {
     const row: ImportItemDTO = {
-      path: entry.path ?? this.path.join(" / "),
+      path: withPanel(entry.path ?? this.path.join(" / "), this.panel),
       sourceKind: entry.sourceKind,
-      sourceName: entry.sourceName,
+      // Every COLUMN a person reads, not only the message: a row whose subject is
+      // the panel itself has the placeholder in its name.
+      sourceName: withPanel(entry.sourceName, this.panel),
       sourceId: entry.sourceId ?? null,
       outcome: entry.outcome,
       targetKind: entry.targetKind ?? null,
