@@ -121,6 +121,20 @@ test("a privileged port and a duplicate are both refused", async () => {
   );
 });
 
+// The rows are kept so a flip back to a single image recovers them, exactly as
+// the compose file itself is kept - but a stack that publishes nothing must not
+// hold a port away from everyone else.
+test("a stack that became compose stops claiming its old ports", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+  await seedApp(db, { id: "prj_2", teamId: TEAM_B, slug: "two" });
+  await asOwner(() => setAppPorts("prj_1", [port(16379, 6379)]));
+  await db.execute("update apps set source = 'compose' where id = 'prj_1'");
+
+  await runWithIdentity({ userId: "user_2", teamId: TEAM_B }, () =>
+    setAppPorts("prj_2", [port(16379, 6379)]),
+  );
+});
+
 test("a compose stack publishes its ports in its own file", async () => {
   await seedApp(db, {
     id: "prj_1",

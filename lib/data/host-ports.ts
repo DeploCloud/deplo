@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -36,7 +36,13 @@ export async function hostPortClaimed(
     .from(appPortsTable)
     .innerJoin(appsTable, eq(appsTable.id, appPortsTable.appId))
     .where(
-      and(eq(appsTable.serverId, serverId), eq(appPortsTable.published, port)),
+      and(
+        eq(appsTable.serverId, serverId),
+        eq(appPortsTable.published, port),
+        // A stack that became compose publishes what its own YAML says and
+        // nothing else - its rows are kept for a flip back, not as a claim.
+        ne(appsTable.source, "compose"),
+      ),
     );
   return claimed.some((r) => r.id !== except?.appId);
 }
