@@ -48,6 +48,8 @@ import { assertSafeOutboundUrl } from "../outbound-url";
 import {
   composeBuildReachesHost,
   composeClaimsReservedName,
+  composeInterpolatedHostname,
+  interpolatedHostnameMessage,
   composeHasHostBindMount,
   composeJoinsForeignNetwork,
   composeMountsForeignStorage,
@@ -819,6 +821,8 @@ function composeBlockers(
     out.push(
       `A service claims the name "${reserved}", which Deplo's own infrastructure answers to on the shared network - rename it (or its \`hostname:\`).`,
     );
+  const filled = composeInterpolatedHostname(compose);
+  if (filled) out.push(interpolatedHostnameMessage(filled));
   if (!grants.mayExposePorts && composePublishesPorts(compose))
     out.push("Publishes host ports, which needs the expose-ports grant.");
   const reach = grants.mayMountHost ? [] : composeHostReach(compose);

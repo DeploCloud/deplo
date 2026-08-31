@@ -10,6 +10,8 @@ import {
   type YAMLMap,
 } from "yaml";
 
+import { composeTruthy } from "./compose-lint";
+
 /**
  * The `deplo-traefik` stack file, control-plane side. Re-rendering from a template
  * would silently drop all of it, and the operator would find out when their
@@ -434,7 +436,7 @@ function readOnlyMountOver(service: YAMLMap, dir: string): string | null {
       readOnly = (parts[2] ?? "").split(",").includes("ro");
     } else if (isMap(entry)) {
       target = scalar(entry.get("target", true));
-      readOnly = entry.get("read_only") === true;
+      readOnly = composeTruthy(entry.get("read_only"));
     }
     if (readOnly && target && (dir === target || dir.startsWith(`${target}/`)))
       return target;

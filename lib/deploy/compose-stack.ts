@@ -11,16 +11,20 @@ import { certResolver } from "./domains";
 import { traefikRouterLabels, hash6 } from "./routing";
 import { mergeResourceLimits } from "./resources";
 import {
+  composeTruthy,
   declaredPort,
-  keepAuthoredEnvText,
+  interpolatedHostnameMessage,
+  interpolates,
   isDeploNetwork,
+  isInterpolated,
   isReservedSharedName,
+  keepAuthoredEnvText,
   reservedNameMessage,
   serviceClaimedNames,
   serviceReservedClaim,
   sharedNetworkKeys,
 } from "./compose-lint";
-import { INFRA_NETWORK } from "./network";
+import { INFRA_NETWORK, isPreviewNetwork } from "./network";
 
 // The detection reads the AUTHORED compose and has to answer in the wizard too,
 // so it lives in the client-safe module; this stays its address for the server.
@@ -297,8 +301,15 @@ function traefikLabels(opts: {
 function stripTraefikLabels(svc: App): void {
   const isTraefik = (key: string): boolean => /^traefik\./i.test(key.trim());
   if (Array.isArray(svc.labels)) {
+    // A LIST entry is one value, so `- "${LBL}"` becomes a whole `key=value` pair
+    // at `compose up` - a router rule claiming any hostname, past this strip and
+    // past every check that reads the authored text. Dropped by its KEY.
     svc.labels = svc.labels.filter(
-      (l) => !(typeof l === "string" && isTraefik(l.split("=")[0])),
+      (l) =>
+        !(
+          typeof l === "string" &&
+          (isTraefik(l.split("=")[0]) || interpolates(l.split("=")[0]))
+        ),
     );
   } else if (svc.labels && typeof svc.labels === "object") {
     const kept: Record<string, unknown> = {};
@@ -674,9 +685,13 @@ function assertNoInterpolatedNetworkName(doc: ComposeDoc): void {
   }
 }
 
-/** Whether compose would substitute something into this value. `$$` is its escape. */
-function interpolates(value: string): boolean {
-  return /(^|[^$])\$(\$\$)*[^$]/.test(`${value.trim()} `);
+/**
+ * `hostname:` is a second DNS name on the network, so an interpolated one can land
+ * on `deplo` (the panel) or on a neighbour's - the same hole `network_mode` had.
+ */
+function assertHostnameIsWritten(service: string, hostname: unknown): void {
+  if (isInterpolated(hostname))
+    throw new Error(interpolatedHostnameMessage(service));
 }
 
 export function buildComposeStack(input: ComposeStackInput): string {
@@ -722,6 +737,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
       assertNetworkModeIsNotANetwork(serviceName, (svc as App).network_mode);
+      assertHostnameIsWritten(serviceName, (svc as App).hostname);
       delete (svc as App).container_name;
       // A pull request preview publishes NOTHING on the host.
       if (input.stripPublishedPorts) delete (svc as App).ports;
@@ -855,7 +871,15 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // `web` on the Environment's, `postgres` alone on the project's default, and the
   // lookup between them failing. So when one is present, every service also keeps a
   // private `default` - the one network compose creates for exactly this.
-  const taken = new Set((input.takenNames ?? []).map((n) => n.toLowerCase()));
+  // A PREVIEW is sealed in a network of its own, where it has no neighbours - so the
+  // names taken on the app's OWN network mean nothing there. Reading them kept a
+  // service off a network nobody else is on, warned about a clash that cannot
+  // happen, and gave every preview stack a second network for it.
+  const taken = new Set(
+    isPreviewNetwork(input.network)
+      ? []
+      : (input.takenNames ?? []).map((n) => n.toLowerCase()),
+  );
   /** Why this service must stay off the shared network, or "". */
   const keepOff = (name: string): string => {
     const claim = serviceReservedClaim(name, services[name]);
@@ -887,7 +911,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
           v &&
           typeof v === "object" &&
           !Array.isArray(v) &&
-          (v as Record<string, unknown>).internal === true,
+          composeTruthy((v as Record<string, unknown>).internal),
       )
       .map(([k]) => k),
   );
@@ -1143,7 +1167,7 @@ export function composeNamesOnNetwork(compose: string): string[] {
           v &&
           typeof v === "object" &&
           !Array.isArray(v) &&
-          (v as Record<string, unknown>).internal === true,
+          composeTruthy((v as Record<string, unknown>).internal),
       )
       .map(([k]) => k),
   );

@@ -267,6 +267,27 @@ services:
   );
 });
 
+test("a label whose KEY comes from a variable is dropped, router and all", () => {
+  // `- "${LBL}"` is ONE value to compose, so the env-file supplies the whole
+  // `key=value` pair - a router rule claiming any hostname, past a strip that only
+  // ever saw the literal text `${LBL}`.
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    labels:
+      - \${LBL}
+      - com.example.version=\${TAG}
+`,
+    { domainRoutes: [route("real.1.2.3.4.nip.io", "web", 80)] },
+  );
+  const labels = labelsOf(doc.services.web);
+  assert.ok(!labels.some((l) => l.startsWith("${LBL}")));
+  // A label whose VALUE interpolates is ordinary and stays: only the key decides.
+  assert.ok(labels.includes("com.example.version=${TAG}"));
+});
+
 test("a user traefik.* label in MAP form is stripped too", () => {
   const doc = buildDoc(
     `
@@ -1553,6 +1574,40 @@ services:
   assert.deepEqual(plain.services.w.networks, ["deplo"]);
 });
 
+test("a `hostname:` filled in from a variable is refused at the render", () => {
+  // The value decides which name the container answers to on the network - `deplo`
+  // is where the panel lives - and it arrives from the env-file, so no reading of
+  // the authored text can see it. Refused like an interpolated network name.
+  assert.throws(
+    () =>
+      buildComposeStack({
+        network: "deplo-team-team_test",
+        compose: "services:\n  web:\n    image: nginx\n    hostname: ${H}\n",
+        name: "deplo-demo",
+        deployKey: "demo",
+        appId: "p1",
+        domainRoutes: [],
+      }),
+    /filled in from a variable/,
+  );
+});
+
+test("`internal: yes` seals a network too - compose reads it as true", () => {
+  // The renderer parses YAML 1.2, where `yes` is the STRING "yes"; compose decodes
+  // it into a bool. Reading only `=== true` handed a deliberately sealed service
+  // its Environment's network back, egress included.
+  const sealed = networksOf(`
+networks:
+  priv:
+    internal: yes
+services:
+  w:
+    image: alpine
+    networks: [priv]
+`);
+  assert.deepEqual(sealed.services.w.networks, ["priv"]);
+});
+
 test("composeNamesOnNetwork agrees with what the render puts on the network", () => {
   // The two drifting apart is what made the clash guard refuse a move over a
   // `postgres` that never joins, naming a container that is not there.
@@ -1684,6 +1739,25 @@ test("a service whose name a neighbour already answers to stays off the network"
   assert.ok(
     warnings.some((w) => w.includes("already answered by another stack")),
   );
+});
+
+test("a preview has no neighbours, so production's names hold nothing back", () => {
+  // A preview is sealed in a network of its own (ADR-0028). Judging its services
+  // against the names taken on the app's OWN network kept `db` off a network nobody
+  // else is on, warned about a clash that cannot happen, and gave the stack a second
+  // network to carry it.
+  const warnings: string[] = [];
+  const doc = networksOf(
+    "services:\n  web:\n    image: n\n  db:\n    image: postgres:16\n",
+    {
+      network: "deplo-preview-shop__pr-42",
+      takenNames: ["db"],
+      onWarn: (m: string) => warnings.push(m),
+    },
+  );
+  assert.deepEqual(doc.services.db.networks, ["deplo"]);
+  assert.deepEqual(doc.services.web.networks, ["deplo"]);
+  assert.deepEqual(warnings, []);
 });
 
 test("an unclaimed name still joins, so nothing is held back for nothing", () => {

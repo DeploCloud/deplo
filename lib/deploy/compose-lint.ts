@@ -48,6 +48,32 @@ export function keepAuthoredEnvText(doc: Document): boolean {
   return changed;
 }
 
+/**
+ * Whether compose would substitute something into this value. `$$` is its escape,
+ * so `$$HOME` interpolates nothing while `$HOME` and `${HOME}` both do.
+ */
+export function interpolates(value: string): boolean {
+  return /(^|[^$])\$(\$\$)*[^$]/.test(`${value.trim()} `);
+}
+
+/** The same question for a value of any type: only a string can interpolate. */
+export function isInterpolated(v: unknown): boolean {
+  return typeof v === "string" && interpolates(v);
+}
+
+/**
+ * Whether compose would read this value as TRUE. It casts to a typed bool, so the
+ * YAML 1.1 spellings (`yes`, `on`, `y`) and a quoted `"true"` all are, where the
+ * YAML 1.2 parser here sees a plain string - which is how `privileged: yes` reached
+ * the host past a gate testing `=== true`. `1` is in for good measure; compose
+ * itself refuses that one.
+ */
+export function composeTruthy(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v === 1;
+  return typeof v === "string" && /^(y|yes|true|on|1)$/i.test(v.trim());
+}
+
 export type LintSeverity = "error" | "warning" | "info";
 
 export interface LintDiagnostic {
@@ -385,7 +411,17 @@ export function lintCompose(source: string): LintDiagnostic[] {
       for (const v of svc.volumes) {
         const src = volumeSource(v);
         if (!src) continue;
-        if (isFilesConventionSource(src)) {
+        // First: an interpolated source is none of the three shapes below, and the
+        // save gates it as a host bind - the editor has to say so here, or the
+        // refusal arrives out of nowhere.
+        if (interpolates(src)) {
+          diags.push({
+            severity: "warning",
+            rule: "bind-mount-interpolated",
+            message: `\`${name}\` mounts \`${src}\`, whose path is filled in from a variable at \`compose up\`. Deplo can't tell where that points, so it counts as a host bind mount and needs the host-volume permission. Write the path here instead.`,
+            line: volLine,
+          });
+        } else if (isFilesConventionSource(src)) {
           diags.push({
             severity: "info",
             rule: "bind-mount-files-note",
@@ -607,13 +643,19 @@ function checkListOrMap(
 export function volumeSource(v: unknown): string | null {
   if (typeof v === "string") {
     const idx = v.indexOf(":");
-    return idx > 0 ? v.slice(0, idx) : null; // no ":" → a named/anonymous volume
+    if (idx > 0) return v.slice(0, idx);
+    // No ":" → a named/anonymous volume, UNLESS compose fills the whole entry in
+    // from a variable: `- ${MOUNT}` is `/:/host` once the env-file is read.
+    return interpolates(v) ? v : null;
   }
   if (v && typeof v === "object") {
     const rec = v as Record<string, unknown>;
-    if (rec.type === "bind" && typeof rec.source === "string")
-      return rec.source;
-    if (typeof rec.source === "string" && rec.source.includes("/"))
+    if (typeof rec.source !== "string") return null;
+    if (
+      rec.type === "bind" ||
+      rec.source.includes("/") ||
+      interpolates(rec.source)
+    )
       return rec.source;
   }
   return null;
@@ -643,10 +685,14 @@ export function isEscapingSource(src: string | null | undefined): boolean {
  * permission gate so the two never disagree about what counts as a host mount.
  */
 export function isHostBindSource(src: string | null | undefined): boolean {
-  return Boolean(
-    src &&
+  if (!src) return false;
+  // Compose reads the value AFTER the env-file, so nothing here can tell where an
+  // interpolated path points - and `./${X}` is rewritten into the files dir and
+  // then climbs out of it. Fail closed: the grant holder can still write one.
+  if (interpolates(src)) return true;
+  return (
     (src.startsWith("/") || isEscapingSource(src)) &&
-    !isFilesConventionSource(src),
+    !isFilesConventionSource(src)
   );
 }
 
@@ -746,7 +792,7 @@ function volumeTarget(v: unknown): { mountPath: string; readOnly: boolean } {
     const rec = v as Record<string, unknown>;
     return {
       mountPath: typeof rec.target === "string" ? rec.target.trim() : "",
-      readOnly: rec.read_only === true,
+      readOnly: composeTruthy(rec.read_only),
     };
   }
   return { mountPath: "", readOnly: false };
@@ -874,9 +920,11 @@ function resolvedNetworkName(key: string, raw: unknown): string | null {
   if (ext && typeof ext === "object" && !Array.isArray(ext)) {
     const name = (ext as Record<string, unknown>).name;
     if (typeof name === "string" && name.trim() !== "") return name.trim();
+    return key;
   }
-  // `external: true` attaches the network the KEY names, verbatim.
-  return ext ? key : null;
+  // `external: true` attaches the network the KEY names, verbatim - and compose
+  // reads `yes`/`on`/`"true"` as true just the same.
+  return composeTruthy(ext) ? key : null;
 }
 
 /**
@@ -952,10 +1000,16 @@ function joinsSharedNetwork(
   svc: Record<string, unknown>,
   shared: Set<string>,
 ): boolean {
+  if (shared.size === 0) return false;
   const n = svc.networks;
-  if (Array.isArray(n)) return n.map(String).some((k) => shared.has(k));
-  if (n && typeof n === "object")
-    return Object.keys(n as object).some((k) => shared.has(k));
+  const keys = Array.isArray(n)
+    ? n.map(String)
+    : n && typeof n === "object"
+      ? Object.keys(n as object)
+      : null;
+  // A LIST entry is a value, so compose fills `- ${NET}` in from the env-file and
+  // it can name any key declared here - including one nothing else may join.
+  if (keys) return keys.some((k) => shared.has(k) || interpolates(k));
   return shared.has("default");
 }
 
@@ -1002,6 +1056,34 @@ export function reservedNameMessage(claimed: string): string {
 }
 
 /**
+ * The first service whose `hostname:` compose fills in from a variable, or null.
+ * That value decides which name the container answers to on the network - `deplo`
+ * included, which is where the panel lives - and it arrives from the env-file, so
+ * no reading of the authored text can see it. Refused like an interpolated network
+ * name, at the save AND at the render.
+ */
+export function composeInterpolatedHostname(
+  composeYaml: string,
+): string | null {
+  const services = servicesOf(composeYaml);
+  if (!services) return null;
+  for (const [name, svc] of Object.entries(services)) {
+    const host = (svc as Record<string, unknown> | null)?.hostname;
+    if (isInterpolated(host)) return name;
+  }
+  return null;
+}
+
+/** The message both of those checks use. */
+export function interpolatedHostnameMessage(service: string): string {
+  return (
+    `\`hostname\` on service \`${service}\` is filled in from a variable, so Deplo ` +
+    `cannot tell which name that container answers to on its network. Write the ` +
+    `value in the compose file.`
+  );
+}
+
+/**
  * Whether a TOP-LEVEL `volumes:` entry points at storage Deplo did not create
  * for this app - the other half of the host-volume permission, and the half no
  * check used to look at.
@@ -1036,7 +1118,8 @@ function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
     const v = raw as Record<string, unknown>;
     const external = v.external;
     const pinned =
-      (external != null && external !== false) ||
+      (typeof external === "object" && external !== null) ||
+      composeTruthy(external) ||
       (typeof v.name === "string" && v.name.trim() !== "") ||
       (v.driver_opts != null &&
         typeof v.driver_opts === "object" &&
@@ -1449,7 +1532,8 @@ export function composeBuildReachesHost(composeYaml: string): boolean {
     if (acSources.some((s) => isHostBindSource(s))) return true;
     if (rec.ssh != null && (Array.isArray(rec.ssh) ? rec.ssh.length > 0 : true))
       return true;
-    if (rec.privileged === true) return true;
+    if (composeTruthy(rec.privileged) || isInterpolated(rec.privileged))
+      return true;
   }
   return false;
 }
@@ -1542,6 +1626,13 @@ export function externalMergeMessage(key: string): string {
  * `file:`-sourced half of the top-level `secrets:`/`configs:` blocks is the same
  * host-file read one level up, handled in {@link composeMountsForeignStorage}.
  *
+ * A `post_start`/`pre_stop` HOOK runs `docker exec` on the container, and
+ * `privileged: true` there gives that process every capability whatever the
+ * container itself was given - `privileged:` one level down, on a key added to
+ * compose long after this list was first written. `deploy:` is here for its
+ * device RESERVATIONS alone (`compose up` honours those): they hand over host
+ * hardware exactly as `devices:` does, and the rest of `deploy:` is ordinary.
+ *
  * `oom_score_adj` is here for the same reason as `oom_kill_disable`, and only
  * when NEGATIVE: it tells the kernel to kill the neighbours first.
  * `group_add` adds supplementary HOST groups inside the container, and `logging`
@@ -1567,6 +1658,9 @@ const HOST_PRIVILEGE_KEYS = [
   "group_add",
   "logging",
   "userns_mode",
+  "post_start",
+  "pre_stop",
+  "deploy",
 ] as const;
 
 /**
@@ -1583,11 +1677,13 @@ const SAFE_NETWORK_MODE = /^(none|default)$/i;
  *
  * `no-new-privileges` is the one people actually write, and refusing it would
  * mean asking an admin for the host permission in order to HARDEN a container -
- * a gate that punishes the right thing teaches people to skip it.
+ * a gate that punishes the right thing teaches people to skip it. The VALUE is
+ * read: `no-new-privileges:false` is the option turned off, and a prefix match
+ * called it safe.
  *
  * `cap_drop` and `read_only` are not on the list at all, for the same reason.
  */
-const SAFE_SECURITY_OPTS = /^no-new-privileges\b/i;
+const SAFE_SECURITY_OPTS = /^no-new-privileges(?:[:=]\s*true)?$/i;
 
 /**
  * The keys of {@link HOST_PRIVILEGE_KEYS} this service actually sets, in
@@ -1613,7 +1709,7 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       // `oom_kill_disable: true` means the kernel kills OTHER tenants' containers
       // under memory pressure instead of this one - a cross-tenant availability
       // hit, so it takes the same grant.
-      if (v === true) out.push(key);
+      if (composeTruthy(v) || isInterpolated(v)) out.push(key);
       continue;
     }
     if (key === "oom_score_adj") {
@@ -1622,7 +1718,7 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       // platform's own containers) when the host runs out of memory. A positive
       // value only volunteers this container first, which is safe and free.
       const n = typeof v === "number" ? v : Number(String(v).trim());
-      if (Number.isFinite(n) && n < 0) out.push(key);
+      if ((Number.isFinite(n) && n < 0) || isInterpolated(v)) out.push(key);
       continue;
     }
     if (key === "group_add") {
@@ -1668,11 +1764,13 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       if (typeof v === "string") {
         const val = v.trim().toLowerCase();
         // `host` shares the host namespace; `container:`/`service:` joins ANOTHER
-        // container's namespace on the same daemon (not limited to this stack).
+        // container's namespace on the same daemon (not limited to this stack). An
+        // interpolated value is any of them once the env-file is read.
         if (
           val === "host" ||
           val.startsWith("container:") ||
-          val.startsWith("service:")
+          val.startsWith("service:") ||
+          interpolates(val)
         )
           out.push(key);
       }
@@ -1687,7 +1785,8 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
         list.some(
           (e) =>
             typeof e === "string" &&
-            e.trim().toLowerCase().startsWith("container:"),
+            (e.trim().toLowerCase().startsWith("container:") ||
+              interpolates(e)),
         )
       )
         out.push(key);
@@ -1705,6 +1804,32 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
           : String(e),
       );
       if (names.some((n) => isHostBindSource(n.trim()))) out.push(key);
+      continue;
+    }
+    if (key === "post_start" || key === "pre_stop") {
+      const hooks = (Array.isArray(v) ? v : [v]).filter(
+        (h): h is Record<string, unknown> =>
+          Boolean(h) && typeof h === "object",
+      );
+      if (
+        hooks.some(
+          (h) => composeTruthy(h.privileged) || isInterpolated(h.privileged),
+        )
+      )
+        out.push(key);
+      continue;
+    }
+    if (key === "deploy") {
+      // Only the device reservations: `deploy.resources.limits` is the ordinary
+      // way to cap a service and must stay free. Named in full, because a refusal
+      // saying `deploy` sends the reader looking at the wrong key.
+      const asMap = (x: unknown): Record<string, unknown> =>
+        x && typeof x === "object" && !Array.isArray(x)
+          ? (x as Record<string, unknown>)
+          : {};
+      const devices = asMap(asMap(asMap(v).resources).reservations).devices;
+      if (Array.isArray(devices) && devices.length > 0)
+        out.push("deploy.resources.reservations.devices");
       continue;
     }
     if (key === "security_opt") {
@@ -1887,6 +2012,9 @@ function hasExplicitTagOrDigest(image: string): boolean {
 function isValidPortMapping(p: unknown): boolean {
   if (typeof p === "number") return p > 0 && p < 65536;
   if (typeof p === "string") {
+    // `- "${PORT}:80"` is a host binding the moment the env-file is read, and the
+    // shape below cannot match it. Counted, so the grant is asked for.
+    if (interpolates(p)) return true;
     // "8080:80", "8080:80/tcp", "127.0.0.1:8080:80", "80", "8000-8010:8000-8010"
     return /^(\d{1,3}(\.\d{1,3}){3}:)?[\d-]+(:[\d-]+){0,2}(\/(tcp|udp))?$/.test(
       p.trim(),

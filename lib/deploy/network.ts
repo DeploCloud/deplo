@@ -41,6 +41,14 @@ export function previewNetwork(deployKey: string): string {
   return `deplo-preview-${deployKey}`;
 }
 
+/**
+ * A pull request preview's own network. It holds that preview and nothing else, so
+ * nothing there is a neighbour and no name on it is taken.
+ */
+export function isPreviewNetwork(name: string): boolean {
+  return name.startsWith("deplo-preview-");
+}
+
 /** Whether a name is one Deplo mints for a tenant - never a platform network. */
 export function isTenantNetwork(name: string): boolean {
   return (
