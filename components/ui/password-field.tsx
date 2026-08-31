@@ -6,13 +6,17 @@ import { Check, Eye, EyeOff, X } from "lucide-react";
 import { FieldLabel } from "@/components/ui/info-tip";
 import type { DocsTopic } from "@/lib/docs";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@/components/ui/popover";
 import { passwordRuleStatus } from "@/lib/password-policy";
 import { cn } from "@/lib/utils";
 
 /**
  * The field for choosing a password: reveal toggle, strength bar, live checklist.
- * Cosmetic - the gate that counts is `assertPasswordPolicy` server-side. The
- * meter only appears once there is something to measure.
+ * Cosmetic - the gate that counts is `assertPasswordPolicy` server-side.
  */
 export function PasswordField({
   id,
@@ -47,50 +51,76 @@ export function PasswordField({
   const generatedId = React.useId();
   const fieldId = id ?? generatedId;
   const [visible, setVisible] = React.useState(false);
+  const [hintOpen, setHintOpen] = React.useState(false);
 
   const rules = passwordRuleStatus(value);
   const score = rules.filter((rule) => rule.met).length;
   const complete = score === rules.length;
+  // The meter rides a popover rather than the form: growing a checklist under a
+  // field pushes every control below it down on the first keystroke.
+  const open = hintOpen && value !== "";
 
   return (
     <div className={cn("space-y-2", className)}>
       <FieldLabel htmlFor={fieldId} info={info} docs={docs}>
         {label}
       </FieldLabel>
-      <div className="relative">
-        <Input
-          id={fieldId}
-          name={name}
-          type={visible ? "text" : "password"}
-          className="pe-9"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          autoComplete={autoComplete}
-          placeholder={placeholder}
-          required={required}
-          disabled={disabled}
-          autoFocus={autoFocus}
-          aria-describedby={`${fieldId}-strength`}
-        />
-        <button
-          type="button"
-          onClick={() => setVisible((v) => !v)}
-          aria-label={visible ? "Hide password" : "Show password"}
-          aria-pressed={visible}
-          aria-controls={fieldId}
-          disabled={disabled}
-          className="absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md text-muted-foreground/80 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+      <Popover open={open} onOpenChange={setHintOpen}>
+        <PopoverAnchor asChild>
+          {/* Focus is watched on the wrapper, not the input: clicking the reveal
+              toggle is still being in the field, and must not close the meter. */}
+          <div
+            className="relative"
+            onFocus={() => setHintOpen(true)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget))
+                setHintOpen(false);
+            }}
+          >
+            <Input
+              id={fieldId}
+              name={name}
+              type={visible ? "text" : "password"}
+              className="pe-9"
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value);
+                setHintOpen(true);
+              }}
+              autoComplete={autoComplete}
+              placeholder={placeholder}
+              required={required}
+              disabled={disabled}
+              autoFocus={autoFocus}
+              aria-describedby={open ? `${fieldId}-strength` : undefined}
+            />
+            <button
+              type="button"
+              onClick={() => setVisible((v) => !v)}
+              aria-label={visible ? "Hide password" : "Show password"}
+              aria-pressed={visible}
+              aria-controls={fieldId}
+              disabled={disabled}
+              className="absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md text-muted-foreground/80 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            >
+              {visible ? (
+                <EyeOff className="size-3.5" aria-hidden="true" />
+              ) : (
+                <Eye className="size-3.5" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+        </PopoverAnchor>
+        <PopoverContent
+          side="bottom"
+          align="start"
+          sideOffset={8}
+          // Neither edge may move focus: the caret has to stay where the person
+          // is typing, and closing must not drag it back out of the next field.
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          className="w-[var(--radix-popover-trigger-width)] min-w-64 space-y-2 p-3"
         >
-          {visible ? (
-            <EyeOff className="size-3.5" aria-hidden="true" />
-          ) : (
-            <Eye className="size-3.5" aria-hidden="true" />
-          )}
-        </button>
-      </div>
-
-      {value !== "" && (
-        <div className="space-y-2 pt-1">
           <div
             role="progressbar"
             aria-label="Password strength"
@@ -111,7 +141,12 @@ export function PasswordField({
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <p id={`${fieldId}-strength`} className="text-sm font-medium">
+            <p
+              id={`${fieldId}-strength`}
+              role="status"
+              aria-live="polite"
+              className="text-sm font-medium"
+            >
               {strengthLabel(score)}
             </p>
             <span className="text-xs text-muted-foreground">
@@ -125,21 +160,19 @@ export function PasswordField({
                 <li key={rule.text} className="flex items-center gap-1.5">
                   {rule.met ? (
                     <Check
-                      className="size-3.5 text-emerald-500"
+                      className="size-3.5 text-success"
                       aria-hidden="true"
                     />
                   ) : (
                     <X
-                      className="size-3.5 text-muted-foreground/60"
+                      className="size-3.5 text-muted-foreground"
                       aria-hidden="true"
                     />
                   )}
                   <span
                     className={cn(
                       "text-xs transition-colors",
-                      rule.met
-                        ? "text-emerald-600 dark:text-emerald-500"
-                        : "text-muted-foreground",
+                      rule.met ? "text-success" : "text-muted-foreground",
                     )}
                   >
                     {rule.text}
@@ -151,18 +184,17 @@ export function PasswordField({
               ))}
             </ul>
           )}
-        </div>
-      )}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
 
+/** Three bands, matching the three labels: a colour that disagrees is noise. */
 function strengthColor(score: number): string {
-  if (score <= 1) return "bg-red-500";
-  if (score <= 2) return "bg-orange-500";
-  if (score <= 3) return "bg-amber-500";
-  if (score <= 4) return "bg-green-500";
-  return "bg-emerald-500";
+  if (score <= 2) return "bg-destructive";
+  if (score <= 4) return "bg-warning";
+  return "bg-success";
 }
 
 function strengthLabel(score: number): string {

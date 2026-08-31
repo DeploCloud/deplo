@@ -87,6 +87,7 @@ export function PasswordCard({
               name="currentPassword"
               type="password"
               autoComplete="current-password"
+              placeholder="The one you sign in with"
               value={current}
               onChange={(e) => setCurrent(e.target.value)}
             />
@@ -106,6 +107,7 @@ export function PasswordCard({
                 name="confirmPassword"
                 type="password"
                 autoComplete="new-password"
+                placeholder="Type it again"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
               />
