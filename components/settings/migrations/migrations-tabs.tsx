@@ -4,6 +4,8 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { Cable, History } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 import {
   Tabs,
   TabsContent,
@@ -21,6 +23,10 @@ import type { ImportRun, ServerChoice } from "./types";
 
 const TABS = ["migrate", "history"] as const;
 type TabId = (typeof TABS)[number];
+
+/** What is left of the window: the topbar, the page's own padding, the header
+ *  and the tab bar come to 233px, rounded DOWN so the measure never scrolls. */
+const PANE = "flex min-h-[calc(100dvh-14rem)] flex-col";
 
 export function MigrationsTabs({
   teamId,
@@ -86,25 +92,33 @@ export function MigrationsTabs({
         </UnderlineTabsList>
       </div>
 
+      {/* A wizard is one screen at a time, so it sits in the middle of what is
+          left of the window rather than at the top of it. `my-auto` and not
+          `justify-center`: a step taller than the viewport must not have its
+          head cut off. */}
       <TabsContent
         value="migrate"
         forceMount
-        className="data-[state=inactive]:hidden"
+        className={cn(PANE, "data-[state=inactive]:hidden")}
       >
-        <MigrationWizard
-          teamId={teamId}
-          teamName={teamName}
-          teamAvatarUrl={teamAvatarUrl}
-          servers={servers}
-          buildServers={buildServers}
-          isInstanceAdmin={isInstanceAdmin}
-          canExposePorts={canExposePorts}
-          resumable={resumable}
-        />
+        <div className="my-auto w-full">
+          <MigrationWizard
+            teamId={teamId}
+            teamName={teamName}
+            teamAvatarUrl={teamAvatarUrl}
+            servers={servers}
+            buildServers={buildServers}
+            isInstanceAdmin={isInstanceAdmin}
+            canExposePorts={canExposePorts}
+            resumable={resumable}
+          />
+        </div>
       </TabsContent>
 
-      <TabsContent value="history">
-        <MigrationsHistory runs={runs} />
+      <TabsContent value="history" className={PANE}>
+        <div className="my-auto w-full">
+          <MigrationsHistory runs={runs} />
+        </div>
       </TabsContent>
     </Tabs>
   );

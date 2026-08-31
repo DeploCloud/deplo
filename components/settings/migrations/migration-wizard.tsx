@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   CircleStop,
   Loader2,
+  Repeat,
   ScrollText,
   Server as ServerIcon,
   TriangleAlert,
@@ -818,6 +819,9 @@ export function MigrationWizard({
         <DoneStep
           kind={kind}
           onShowLog={() => setLogOpen(true)}
+          onAgain={() => {
+            void closeReport().then(resetToStart);
+          }}
           onFinish={() => {
             void closeReport();
             router.push("/");
@@ -1370,6 +1374,7 @@ function ElapsedLine({
 function DoneStep({
   kind,
   onShowLog,
+  onAgain,
   onFinish,
   isInstanceAdmin,
 }: {
@@ -1377,6 +1382,8 @@ function DoneStep({
   kind: SourceKind | null;
   /** The wizard's own console - the same one the panel opened while it ran. */
   onShowLog: () => void;
+  /** Close the report and hand back an empty wizard, without leaving the page. */
+  onAgain: () => void;
   onFinish: () => void;
   /** Uninstalling an agent is instance-admin, like every server action. */
   isInstanceAdmin: boolean;
@@ -1400,14 +1407,15 @@ function DoneStep({
         </p>
       </div>
 
-      {/**
-       * The two ends of the row, the way every footer in the app reads: what you might
-       * want to look at first on the left, the way out on the right.
-       */}
-      <div className="flex w-full flex-wrap items-center justify-between gap-2">
+      {/* Centred like everything else on this screen, the way out last. */}
+      <div className="flex w-full flex-wrap items-center justify-center gap-2">
         <Button variant="outline" onClick={onShowLog}>
           <ScrollText className="size-4" />
           Show log
+        </Button>
+        <Button variant="outline" onClick={onAgain}>
+          <Repeat className="size-4" />
+          Migrate another
         </Button>
         <Button onClick={onFinish}>Finish</Button>
       </div>
