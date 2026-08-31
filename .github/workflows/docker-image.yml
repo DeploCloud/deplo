@@ -11,15 +11,19 @@ jobs:
     permissions:
       contents: write
       packages: write
+      # Sigstore keyless signing: the OIDC token is the identity, so there is no key
+      # to store or rotate. https://deplo.build/docs
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -30,10 +34,11 @@ jobs:
         run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Build and push Docker images
-        uses: docker/build-push-action@v7.3.0
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: true
@@ -43,11 +48,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Proves this workflow built this exact digest. `push-to-registry` stores it on
+      # ghcr, so `gh attestation verify` works without cloning anything.
+      - name: Attest the image provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-name: ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
       # LAST, not first. Publishing the release before the build meant a failed
       # build still announced a version: v1.1.0 has a release page and no image
       # behind it, so `install.sh` on that version pulls a tag that was never
       # pushed. A release now means an image exists.
       - name: Create Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           generate_release_notes: true

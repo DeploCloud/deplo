@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # Actions only. The npm tree is bumped by hand in batches and the lockfile is
+  # bun.lock, which dependabot does not update.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"
