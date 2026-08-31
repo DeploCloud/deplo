@@ -277,6 +277,12 @@ Run it, modify it, redistribute it. If you offer a modified version to other peo
 network, publish your changes. Commercial licensing is available for anyone who needs
 different terms.
 
+**The core stays AGPL and keeps getting the main features.** The only proprietary parts will
+be the ones that only make sense on DeploCloud's own infrastructure, and nothing that works
+on a machine you own will move behind a paywall. Contributions arrive under a
+[CLA](CLA.md), and what we promise in return is in
+[CONTRIBUTING.md](CONTRIBUTING.md#what-we-will-not-do).
+
 The **code** is AGPL. The **name "deplo" and the logo are not** - the license covers
 copyright, not trademarks. Fork it freely and please rename your fork. Details in
 [CONTRIBUTING.md](CONTRIBUTING.md#the-name-is-not-part-of-the-license).

@@ -118,6 +118,16 @@ without having to track down every contributor.
 
 If your employer owns your work, get their sign-off before signing.
 
+## What we will not do
+
+The CLA says what we may do with your contribution. This says what we will not.
+
+**The core of deplo stays AGPL-3.0-only, and it keeps getting the main features.** Not a
+hollowed-out edition with the good parts held back for a paid one.
+
+**The only proprietary parts will be the ones that only make sense on DeploCloud's own
+infrastructure.** Nothing that works on a machine you own will move behind a paywall.
+
 ## The name is not part of the license
 
 The **code** is AGPL-3.0-only. The **name "deplo" and the logo are not**: the license
