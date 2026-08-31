@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Deplo installer / updater
-# Usage:  curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
+#
+#   curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
 #
 # The dashboard ALWAYS answers on the server's IP at port 3000
 # (http://<ip>:3000) - that address is the way back in when a domain, a
@@ -9,21 +10,338 @@
 # Traefik with automatic Let's Encrypt HTTPS as well:
 #   curl -fsSL .../install.sh | DEPLO_DOMAIN=deplo.example.com ACME_EMAIL=you@example.com bash
 #
-# Re-running on a machine that already has Deplo updates it in place (pulls the
-# latest image and recreates the containers) without rotating secrets.
+# Flags (after `bash -s --`, or on a downloaded copy):
+#   --check          run the preflight and exit, changing nothing
+#   --domain <d>     serve the dashboard on this domain over HTTPS
+#   --email <e>      Let's Encrypt contact address (default admin@<domain>)
+#   --version <v>    install this Deplo version instead of `latest`
+#   --yes            never ask anything, take every default
+#   --force          continue even if the preflight failed
+#   --plain          ASCII output, no colour, no spinners
+#   --no-color       colour off, keep the rest
+#   --quiet          only warnings, errors and the summary
+#   --log-file <p>   transcript location (default /var/log/deplo-install.log)
+#   --help
 #
-set -euo pipefail
+# Re-running on a machine that already has Deplo updates it in place: it takes a
+# pre-update dump of the panel's database first, and rolls the image back if the
+# new version does not answer. Secrets are never rotated.
+set -Eeuo pipefail
 
-DEPLO_VERSION="${DEPLO_VERSION:-latest}"
 DEPLO_DIR="/opt/deplo"
 ENV_FILE="$DEPLO_DIR/.env"
+STATE_FILE="$DEPLO_DIR/.install-state"
+BACKUP_DIR="$DEPLO_DIR/backups"
 DEFAULT_ACME_EMAIL="admin@example.com"
-DEPLO_IMAGE="ghcr.io/deplocloud/deplo:${DEPLO_VERSION}"
 
-bold() { printf "\n\033[1m%s\033[0m\n" "$1"; }
-step() { printf "  \033[36m[..]\033[0m %s\n" "$1"; }
-ok()   { printf "  \033[32m[ok]\033[0m %s\n" "$1"; }
-err()  { printf "  \033[31m[!!]\033[0m %s\n" "$1" >&2; }
+# ==== deplo terminal UI ===================================== KEEP IN SYNC ====
+# One renderer for install.sh, install-agent.sh and uninstall.sh. It degrades on
+# purpose: no TTY, NO_COLOR, TERM=dumb or a non-UTF-8 locale drops to plain ASCII
+# carrying the same words, because installer output is what people paste into a
+# bug report. Everything printed also lands in $UI_LOG, stripped of escapes.
+
+UI_COLOR=0; UI_UNICODE=0; UI_TTY=0; UI_QUIET=0; UI_DEPTH=256
+UI_LOG="${DEPLO_LOG_FILE:-/var/log/deplo-install.log}"
+UI_PHASE=""; UI_T0=0; UI_ACTION="install"
+# The transcript gets EVERYTHING: every command bash runs, and the output of each
+# one - apt, docker, systemd, curl. DEPLO_TRACE=0 keeps only the output.
+UI_TRACE="${DEPLO_TRACE:-1}"
+
+ui_init() {
+  [ -t 1 ] && UI_TTY=1
+  UI_COLOR=$UI_TTY
+  [ -n "${NO_COLOR:-}" ] && UI_COLOR=0
+  case "${TERM:-}" in dumb) UI_COLOR=0 ;; esac
+  case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in *[Uu][Tt][Ff]*8*) UI_UNICODE=1 ;; esac
+  if [ "${UI_FORCE_PLAIN:-0}" = 1 ]; then UI_COLOR=0; UI_UNICODE=0; fi
+  [ "${UI_FORCE_NOCOLOR:-0}" = 1 ] && UI_COLOR=0
+
+  C_OFF=""; C_B=""; C_DIM=""; C_OK=""; C_WARN=""; C_ERR=""; C_ACC=""
+  if [ "$UI_COLOR" = 1 ]; then
+    case "${COLORTERM:-}" in
+      truecolor|24bit) UI_DEPTH=16777216 ;;
+      *) UI_DEPTH="$(tput colors 2>/dev/null || echo 8)" ;;
+    esac
+    case "$UI_DEPTH" in *[!0-9]*|"") UI_DEPTH=8 ;; esac
+    C_OFF=$'\033[0m'; C_B=$'\033[1m'; C_DIM=$'\033[2m'
+    C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_ACC=$'\033[36m'
+    if [ "$UI_DEPTH" -ge 256 ]; then
+      C_ACC=$'\033[38;5;75m'; C_DIM=$'\033[38;5;244m'
+    fi
+  fi
+
+  if [ "$UI_UNICODE" = 1 ]; then
+    G_OK="✔"; G_WARN="!"; G_ERR="✖"; G_SKIP="·"; G_STEP="›"; G_ARROW="→"; G_BAR="▌"
+    G_TL="╭"; G_TR="╮"; G_BL="╰"; G_BR="╯"; G_H="─"; G_V="│"
+    UI_SPIN="⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏"
+  else
+    G_OK="ok"; G_WARN=" !"; G_ERR="!!"; G_SKIP="--"; G_STEP=".."; G_ARROW="->"; G_BAR="=="
+    G_TL="+"; G_TR="+"; G_BL="+"; G_BR="+"; G_H="-"; G_V="|"
+    UI_SPIN="| / - \\"
+  fi
+  UI_SPIN_DELAY=0.08
+  sleep 0.08 2>/dev/null || UI_SPIN_DELAY=1
+
+  UI_W="$( { [ "$UI_TTY" = 1 ] && tput cols; } 2>/dev/null || echo 80)"
+  [ "${UI_W:-0}" -lt 40 ] 2>/dev/null && UI_W=80
+  [ "$UI_W" -gt 84 ] && UI_W=84
+
+  UI_T0=$SECONDS
+  # fd 9 IS the transcript, for the trace and for every command redirected to it.
+  # 0600 before a single byte is written: it carries whatever the commands print.
+  if : >>"$UI_LOG" 2>/dev/null; then
+    chmod 600 "$UI_LOG" 2>/dev/null || true
+    exec 9>>"$UI_LOG"
+  else
+    UI_LOG=/dev/null
+    exec 9>/dev/null
+  fi
+  ui_log "=== deplo $UI_ACTION $(date -u '+%Y-%m-%dT%H:%M:%SZ') - args: $* ==="
+  ui_log "=== $(uname -srm) - $(id -un)@$(hostname 2>/dev/null || echo '?') ==="
+  [ "${UI_TRACE:-1}" = 1 ] && ui_log "=== every command is traced; grep -v '^+' for command output only ==="
+  # No `date` in PS4: it would fork once per traced command. Elapsed seconds is
+  # the number you actually want when reading back a slow install.
+  PS4='+ ${SECONDS}s ${BASH_SOURCE##*/}:${LINENO}: '
+  # Without this the trace goes to stderr, i.e. over the top of the interface.
+  BASH_XTRACEFD=9
+  trace_on
+}
+
+# Tracing goes quiet around anything holding a secret. The file is 0600 root-only,
+# but a transcript gets tarred up and pasted into an issue, and DEPLO_SECRET
+# decrypts every backup this instance ever wrote.
+trace_off() { set +x; }
+trace_on() { [ "${UI_TRACE:-1}" = 1 ] && set -x; return 0; }
+
+ui_log() { printf '%s\n' "$*" >&9 2>/dev/null || true; }
+
+# Marker + message, the one line shape every status in this script uses.
+ui_line() { # $1 colour  $2 glyph  $3 text  $4 suffix  $5 non-empty = print even when quiet
+  local suffix=""
+  [ -n "${4:-}" ] && suffix=" ${C_DIM}${4}${C_OFF}"
+  ui_log "  [${2}] ${3}${4:+  ${4}}"
+  { [ "$UI_QUIET" = 1 ] && [ -z "${5:-}" ]; } && return 0
+  if [ "$UI_UNICODE" = 1 ]; then printf '  %b%s%b %s%b\n' "$1" "$2" "$C_OFF" "$3" "$suffix"
+  else printf '  %b[%s]%b %s%b\n' "$1" "$2" "$C_OFF" "$3" "$suffix"; fi
+}
+
+ok()   { ui_line "$C_OK"   "$G_OK"   "$1" "${2:-}"; }
+warn() { ui_line "$C_WARN" "$G_WARN" "$1" "${2:-}" force; }
+step() { ui_line "$C_ACC"  "$G_STEP" "$1" "${2:-}"; }
+skip() { ui_line "$C_DIM"  "$G_SKIP" "$1" "${2:-}"; }
+err()  {
+  ui_log "  [!!] $1"
+  if [ "$UI_UNICODE" = 1 ]; then printf '  %b%s%b %s\n' "$C_ERR" "$G_ERR" "$C_OFF" "$1" >&2
+  else printf '  %b[!!]%b %s\n' "$C_ERR" "$C_OFF" "$1" >&2; fi
+}
+# Indented to land exactly under the message it explains, in both glyph sets.
+note() {
+  ui_log "      $1"
+  [ "$UI_QUIET" = 1 ] && return 0
+  local ind="    "
+  [ "$UI_UNICODE" = 1 ] || ind="       "
+  printf '%s%b%s%b\n' "$ind" "$C_DIM" "$1" "$C_OFF"
+}
+blank() { [ "$UI_QUIET" = 1 ] || printf '\n'; ui_log ""; }
+
+phase() {
+  UI_PHASE="$1"
+  ui_log ""; ui_log "-- $1 --"
+  [ "$UI_QUIET" = 1 ] && return 0
+  printf '\n %b%s%b %b%s%b\n' "$C_ACC" "$G_BAR" "$C_OFF" "$C_B" "$1" "$C_OFF"
+}
+
+# --- the header ---------------------------------------------------------------
+# What is running, which version of it, and one line telling a first-time reader
+# what is about to happen to their machine.
+ui_title() {
+  [ "$UI_QUIET" = 1 ] && return 0
+  ui_log "== $1 =="
+  printf '\n %b%s%b\n' "$C_B" "$1" "$C_OFF"
+  if [ -n "${2:-}" ]; then
+    ui_log "   $2"
+    printf ' %b%s%b\n' "$C_DIM" "$2" "$C_OFF"
+  fi
+  return 0
+}
+
+# --- spinner ------------------------------------------------------------------
+UI_SPIN_PID=""; UI_SPIN_MSG=""; UI_SPIN_T0=0
+
+spin_start() {
+  UI_SPIN_MSG="$1"; UI_SPIN_T0=$SECONDS
+  ui_log "  [..] $1"
+  if [ "$UI_TTY" != 1 ] || [ "$UI_QUIET" = 1 ]; then
+    [ "$UI_QUIET" = 1 ] || step "$1"
+    return 0
+  fi
+  printf '\033[?25l'
+  (
+    set +x                     # 12 traced lines a second, otherwise
+    trap 'exit 0' TERM INT
+    frames=($UI_SPIN); n=${#frames[@]}; i=0
+    while :; do
+      printf '\r\033[2K  %b%s%b %s' "$C_ACC" "${frames[$((i % n))]}" "$C_OFF" "$UI_SPIN_MSG"
+      i=$((i + 1)); sleep "$UI_SPIN_DELAY"
+    done
+  ) & UI_SPIN_PID=$!
+}
+
+spin_kill() {
+  [ -n "$UI_SPIN_PID" ] || return 0
+  kill "$UI_SPIN_PID" 2>/dev/null || true
+  wait "$UI_SPIN_PID" 2>/dev/null || true
+  UI_SPIN_PID=""
+  [ "$UI_TTY" = 1 ] && printf '\r\033[2K\033[?25h'
+  return 0
+}
+
+# Elapsed time, shown only once it is worth reading.
+spin_elapsed() {
+  local d=$(( SECONDS - UI_SPIN_T0 ))
+  [ "$d" -ge 2 ] && printf '%ds' "$d"
+  return 0
+}
+
+spin_ok()   { local e; e="$(spin_elapsed)"; spin_kill; ok   "${1:-$UI_SPIN_MSG}" "$e"; }
+spin_warn() { local e; e="$(spin_elapsed)"; spin_kill; warn "${1:-$UI_SPIN_MSG}" "$e"; }
+spin_err()  { spin_kill; err "${1:-$UI_SPIN_MSG}"; }
+
+# Run a command under the spinner, its output going to the transcript only.
+# `</dev/null` on purpose: this script may itself be arriving on stdin.
+spin_run() {
+  local msg="$1"; shift
+  spin_start "$msg"
+  if "$@" >&9 2>&9 </dev/null; then spin_ok; return 0; fi
+  spin_err "$msg"
+  return 1
+}
+
+# --- summary card -------------------------------------------------------------
+ui_pad() { local s="$1" n="$2"; printf '%s' "$s"; local i=${#s}; while [ "$i" -lt "$n" ]; do printf ' '; i=$((i + 1)); done; }
+ui_rule() { local n="$1" i=0; while [ "$i" -lt "$n" ]; do printf '%s' "$G_H"; i=$((i + 1)); done; }
+
+card_open() {
+  CARD_W=$(( UI_W - 4 ))
+  ui_log ""; ui_log "== $1 =="
+  [ "$UI_QUIET" = 1 ] && return 0
+  local title=" $1 "
+  printf '\n %b%s%s%b' "$C_ACC" "$G_TL" "$G_H" "$C_OFF"
+  printf '%b%s%b' "$C_B" "$title" "$C_OFF"
+  printf '%b%s%s%b\n' "$C_ACC" "$(ui_rule $(( CARD_W - ${#title} - 1 )))" "$G_TR" "$C_OFF"
+}
+
+card_kv() {
+  ui_log "   $1  $2"
+  [ "$UI_QUIET" = 1 ] && return 0
+  local key val body pad max
+  key="$(ui_pad "$1" 11)"
+  val="$2"
+  # Truncate rather than let a long value push the right border off the row: a
+  # box that only sometimes closes reads as a rendering bug, not as information.
+  max=$(( CARD_W - 13 ))
+  if [ "${#val}" -gt "$max" ] && [ "$max" -gt 1 ]; then
+    if [ "$UI_UNICODE" = 1 ]; then val="${val:0:$((max - 1))}…"; else val="${val:0:$((max - 3))}..."; fi
+  fi
+  body="  ${key}${val}"
+  pad=$(( CARD_W - ${#body} ))
+  [ "$pad" -lt 0 ] && pad=0
+  printf ' %b%s%b  %b%s%b%s%s%b%s%b\n' \
+    "$C_ACC" "$G_V" "$C_OFF" \
+    "$C_DIM" "$key" "$C_OFF" "$val" \
+    "$(ui_pad "" "$pad")" "$C_ACC" "$G_V" "$C_OFF"
+}
+
+card_close() {
+  [ "$UI_QUIET" = 1 ] && return 0
+  printf ' %b%s%s%s%b\n\n' "$C_ACC" "$G_BL" "$(ui_rule "$CARD_W")" "$G_BR" "$C_OFF"
+}
+
+ui_cleanup() { spin_kill; [ "$UI_TTY" = 1 ] && printf '\033[?25h'; return 0; }
+
+# "1 warning" / "2 warnings" - a count the reader has to decode is a count that
+# looks machine-generated.
+plural() {
+  if [ "$1" = 1 ]; then printf '%s' "$2"; else printf '%s%s' "$2" "${3:-s}"; fi
+}
+
+UI_ERR_SEEN=0
+on_err() {
+  local code=$? line="${1:-?}"
+  [ "$UI_ERR_SEEN" = 1 ] && exit "$code"
+  UI_ERR_SEEN=1
+  spin_kill
+  blank
+  err "The ${UI_ACTION:-install} failed${UI_PHASE:+ during: $UI_PHASE} (line $line, exit $code)."
+  [ "$UI_LOG" = /dev/null ] || note "Full transcript: $UI_LOG"
+  note "Re-running this script picks up where it stopped."
+  exit "$code"
+}
+# ==== end deplo terminal UI ==================================================
+
+usage() {
+  ui_title "Deplo Installer"
+  printf ' %bUsage%b\n' "$C_B" "$C_OFF"
+  printf '   curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash\n\n'
+  printf ' %bFlags%b\n' "$C_B" "$C_OFF"
+  printf '   --check          run the preflight and exit, changing nothing\n'
+  printf '   --domain <d>     serve the dashboard on this domain over HTTPS\n'
+  printf '   --email <e>      Let'"'"'s Encrypt contact address\n'
+  printf '   --version <v>    install this Deplo version instead of latest\n'
+  printf '   --yes            never ask anything, take every default\n'
+  printf '   --force          continue even if the preflight failed\n'
+  printf '   --plain          ASCII output, no colour, no spinners\n'
+  printf '   --no-color       colour off, keep the rest\n'
+  printf '   --quiet          only warnings, errors and the summary\n'
+  printf '   --log-file <p>   transcript location\n'
+  printf '   --help\n\n'
+  printf ' %bEnvironment%b  DEPLO_DOMAIN, ACME_EMAIL, DEPLO_VERSION,\n' "$C_B" "$C_OFF"
+  printf '               DEPLO_SKIP_NET_CHECKS=1 (no outbound probes, no public-IP lookup),\n'
+  printf '               DEPLO_TRACE=0 (transcript without the command trace)\n\n'
+}
+
+# --- flags --------------------------------------------------------------------
+CHECK_ONLY=false
+ASSUME_YES=false
+FORCE=false
+WANT_HELP=false
+# Kept verbatim for the sudo re-exec below, which happens after they are consumed.
+ORIG_ARGS=("$@")
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check)     CHECK_ONLY=true ;;
+    --yes|-y)    ASSUME_YES=true ;;
+    --force)     FORCE=true ;;
+    --plain)     UI_FORCE_PLAIN=1 ;;
+    --no-color)  UI_FORCE_NOCOLOR=1 ;;
+    --quiet|-q)  UI_QUIET=1 ;;
+    --domain)    DEPLO_DOMAIN="${2:-}"; shift ;;
+    --email)     ACME_EMAIL="${2:-}"; shift ;;
+    --version)   DEPLO_VERSION="${2:-}"; shift ;;
+    --log-file)  UI_LOG="${2:-}"; shift ;;
+    --help|-h)   WANT_HELP=true ;;
+    *)
+      ui_init
+      err "Unknown flag '$1'. Run with --help."
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+ui_init ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
+trap 'ui_cleanup' EXIT
+trap 'spin_kill; printf "\n"; exit 130' INT
+trap 'on_err $LINENO' ERR
+
+# `--version v0.9.3` and `--version 0.9.3` are the same request; the image tag is
+# the one without the prefix.
+DEPLO_VERSION="${DEPLO_VERSION:-latest}"
+DEPLO_VERSION="${DEPLO_VERSION#v}"
+
+$WANT_HELP && { usage; exit 0; }
+
+# --- small helpers ------------------------------------------------------------
 
 # A routable domain needs a dot and must not be a local/mDNS name.
 is_real_domain() {
@@ -34,56 +352,354 @@ is_real_domain() {
   esac
 }
 
+is_private_ip() {
+  case "$1" in
+    10.*|127.*|169.254.*|192.168.*|100.6[4-9].*|100.[7-9][0-9].*|100.1[0-1][0-9].*|100.12[0-7].*) return 0 ;;
+    172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 detect_ip() {
   local ip=""
-  ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -n1)"
-  [ -z "$ip" ] && ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -n1 || true)"
+  [ -z "$ip" ] && ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
   [ -z "$ip" ] && ip="127.0.0.1"
   printf '%s' "$ip"
 }
 
-# Install vs. update is decided by whether a previous install exists.
+# The address the WORLD sees, which behind NAT (a home lab, an LXC container, a
+# hypervisor bridge) is not the one above - and printing only the private one
+# hands people a dashboard URL that answers from nowhere but the box itself.
+detect_public_ip() {
+  [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ] && return 1
+  local u ip
+  for u in https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
+    ip="$(curl -fsS --max-time 4 "$u" 2>/dev/null </dev/null | tr -d '[:space:]')" || true
+    case "$ip" in ""|*[!0-9.]*) continue ;; esac
+    printf '%s' "$ip"; return 0
+  done
+  return 1
+}
+
+# ss, then netstat, then "cannot tell" - never a false accusation.
+port_in_use() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$" && return 0
+    return 1
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$" && return 0
+    return 1
+  fi
+  return 2
+}
+
+port_holder() {
+  local who=""
+  if command -v ss >/dev/null 2>&1; then
+    who="$(ss -ltnpH 2>/dev/null | awk -v p="$1" '$4 ~ "[:.]"p"$" {print $NF}' \
+      | sed -n 's/.*users:((\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
+  fi
+  printf '%s' "$who"
+}
+
+resolve_a() {
+  local out=""
+  if command -v getent >/dev/null 2>&1; then
+    out="$(getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+  elif command -v dig >/dev/null 2>&1; then
+    out="$(dig +short A "$1" 2>/dev/null | grep -E '^[0-9.]+$' || true)"
+  elif command -v host >/dev/null 2>&1; then
+    out="$(host -t A "$1" 2>/dev/null | awk '/has address/ {print $NF}' || true)"
+  fi
+  printf '%s' "$out"
+}
+
+# Reachable means "an HTTP response came back", NOT "the status was a success".
+# `curl -f` fails on any status >= 400, and https://ghcr.io/v2/ answers 401 to an
+# anonymous caller by design (it is the registry ping), so -f reported every host
+# on earth as having no egress. %{http_code} is 000 only when nothing answered at
+# all - no DNS, no TCP, no TLS, or a timeout - which is the actual question.
+# `latest` is a Docker tag, not a version, and a header that reads "latest" tells
+# nobody anything. Ask GitHub which release that currently is. The release is
+# published AFTER the image is pushed (see docker-image.yml), so a tag that
+# answers here has an image behind it - which also makes it safe to PIN, and a
+# pinned tag is what gives an update something to roll back TO.
+resolve_version() {
+  local tag
+  [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ] && return 0
+  tag="$(curl -fsS --max-time 3 https://api.github.com/repos/DeploCloud/deplo/releases/latest \
+    </dev/null 2>&9 \
+    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1 || true)"
+  # The git tag carries a `v`, the image tag does not.
+  case "$tag" in v[0-9]* | [0-9]*) DEPLO_VERSION="${tag#v}" ;; esac
+  return 0
+}
+
+can_reach() {
+  local code
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 6 "$1" </dev/null 2>&9 || true)"
+  ui_log "  reach $1 -> ${code:-none}"
+  case "${code:-000}" in "" | 000) return 1 ;; *) return 0 ;; esac
+}
+
+state_set() {
+  [ -d "$DEPLO_DIR" ] || return 0
+  umask 077
+  local tmp; tmp="$(mktemp)"
+  { [ -f "$STATE_FILE" ] && grep -v "^$1=" "$STATE_FILE"; printf '%s=%s\n' "$1" "$2"; } >"$tmp" 2>/dev/null || true
+  install -m 0600 "$tmp" "$STATE_FILE" 2>/dev/null || true
+  rm -f "$tmp"
+}
+state_get() { [ -f "$STATE_FILE" ] || return 0; sed -n "s/^$1=//p" "$STATE_FILE" | tail -n1; }
+
+# One question, on the terminal, never on the script's own stdin: this file may
+# be arriving there over a pipe, and taking it away would truncate the install.
+ask() {
+  local prompt="$1" reply=""
+  { [ "$ASSUME_YES" = true ] || [ "$CHECK_ONLY" = true ] || [ "$UI_QUIET" = 1 ] \
+    || [ "$UI_TTY" != 1 ] || [ ! -r /dev/tty ]; } && return 1
+  printf '  %b%s%b %s ' "$C_ACC" "$G_ARROW" "$C_OFF" "$prompt" >&2
+  read -r reply </dev/tty || true
+  printf '\n' >&2
+  [ -n "$reply" ] || return 1
+  printf '%s' "$reply"
+}
+
+# --- privileges ---------------------------------------------------------------
+if [ "$(id -u)" -ne 0 ]; then
+  # Only a script that exists as a FILE can be re-executed. Piped from curl there
+  # is nothing to hand sudo, so that case falls through to the message below.
+  if command -v sudo >/dev/null 2>&1 && [ -f "${BASH_SOURCE[0]}" ]; then
+    step "Not running as root - re-running through sudo"
+    exec sudo -E bash "${BASH_SOURCE[0]}" ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
+  fi
+  ui_title "Deplo Installer"
+  err "Deplo installs system services, so this has to run as root."
+  note "Re-run it with sudo:"
+  note "  curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | sudo bash"
+  exit 1
+fi
+
 MODE="install"
 [ -f "$ENV_FILE" ] && MODE="update"
 
-bold "Deplo ${MODE}er"
+[ "$DEPLO_VERSION" = latest ] && resolve_version
+DEPLO_IMAGE="ghcr.io/deplocloud/deplo:${DEPLO_VERSION}"
+case "$DEPLO_VERSION" in latest) VERSION_LABEL="latest" ;; *) VERSION_LABEL="v$DEPLO_VERSION" ;; esac
 
-if [ "$(id -u)" -ne 0 ]; then
-  err "Please run as root (or with sudo)."
-  exit 1
+if [ "$CHECK_ONLY" = true ]; then
+  ui_title "Deplo Preflight - $VERSION_LABEL" \
+    "Checks whether this machine can run Deplo. Nothing here is changed."
+elif [ "$MODE" = update ]; then
+  ui_title "Deplo Updater - $VERSION_LABEL" \
+    "Updates Deplo in place, in about a minute. Your apps keep running."
+else
+  ui_title "Deplo Installer - $VERSION_LABEL" \
+    "Installs Deplo on this machine - Docker, HTTPS and the dashboard. Nothing to configure."
 fi
 
+# ==============================================================================
+# 0. Preflight
+# ==============================================================================
+# Everything that can be known BEFORE the machine is touched is checked here, so
+# a host that cannot finish says so in ten seconds instead of after installing
+# Docker. Failures stop the run (--force overrides); warnings never do.
+phase "Preflight"
+
+PF_FAIL=0
+PF_WARN=0
+pf_fail() { PF_FAIL=$((PF_FAIL + 1)); err "$1"; [ -n "${2:-}" ] && note "$2"; return 0; }
+pf_warn() { PF_WARN=$((PF_WARN + 1)); warn "$1"; [ -n "${2:-}" ] && note "$2"; return 0; }
+
+# System -----------------------------------------------------------------------
+OS_NAME="$( . /etc/os-release 2>/dev/null && printf '%s %s' "${NAME:-Linux}" "${VERSION_ID:-}" || true )"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64|aarch64|arm64) ok "${OS_NAME:-Linux} on $ARCH" ;;
+  *) pf_fail "Unsupported architecture '$ARCH'." "Deplo ships linux/amd64 and linux/arm64 images only." ;;
+esac
+
+if [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  pf_fail "Bash 4 or newer is required (found ${BASH_VERSION:-unknown})."
+fi
+
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  ok "systemd present"
+else
+  pf_warn "No systemd on this host." "The control plane still runs, but this machine cannot become a Deplo server."
+fi
+
+MISSING=""
 for bin in curl openssl; do
-  if ! command -v "$bin" >/dev/null 2>&1; then
-    err "$bin is required but was not found. Install it and re-run."
-    exit 1
+  command -v "$bin" >/dev/null 2>&1 || MISSING="$MISSING $bin"
+done
+if [ -n "$MISSING" ]; then
+  pf_fail "Missing required tool(s):$MISSING." "Install them with this system's package manager and re-run."
+else
+  ok "curl and openssl present"
+fi
+
+# Resources --------------------------------------------------------------------
+MEM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
+if [ "${MEM_MB:-0}" -ge 1800 ]; then ok "Memory: ${MEM_MB} MB"
+elif [ "${MEM_MB:-0}" -ge 900 ]; then pf_warn "Only ${MEM_MB} MB of RAM." "Deplo and Postgres fit, but builds will be tight. 2 GB is the comfortable floor."
+else pf_warn "Only ${MEM_MB} MB of RAM detected." "2 GB is the recommended minimum."; fi
+
+DISK_GB="$(df -PBG / 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}' || true)"
+if [ "${DISK_GB:-0}" -ge 20 ]; then ok "Disk: ${DISK_GB} GB free on /"
+elif [ "${DISK_GB:-0}" -ge 8 ]; then pf_warn "${DISK_GB} GB free on /." "Images and build caches grow fast; 20 GB is the comfortable floor."
+else pf_fail "Only ${DISK_GB:-0} GB free on /." "Docker images alone need more than this. Free some space and re-run."; fi
+
+# Docker -----------------------------------------------------------------------
+if command -v docker >/dev/null 2>&1; then
+  DOCKER_V="$(docker --version 2>/dev/null | awk '{print $3}' | tr -d , || true)"
+  if docker info >/dev/null 2>&1; then ok "Docker $DOCKER_V, daemon responding"
+  else pf_fail "Docker $DOCKER_V is installed but its daemon is not answering." "Start it: systemctl start docker"; fi
+  if docker compose version >/dev/null 2>&1; then
+    ok "Docker Compose $(docker compose version --short 2>/dev/null)"
+  else
+    pf_fail "Docker Compose v2 (\`docker compose\`) is missing." "Update Docker - it bundles the compose plugin."
   fi
+else
+  step "Docker is not installed - the installer will add it"
+fi
+
+# Ports ------------------------------------------------------------------------
+# 80/443 belong to Traefik and 3000 to the panel. Somebody else's nginx on :80 is
+# the single most common way an install ends up half-working.
+ours_holds_port() {
+  docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null \
+    | grep -E '^(deplo-traefik|deplo-deplo-1) ' | grep -q ":$1->"
+}
+for p in 80 443 3000; do
+  PORT_STATE=0
+  port_in_use "$p" || PORT_STATE=$?
+  case "$PORT_STATE" in
+    2) pf_warn "Cannot tell whether the ports are free (no ss or netstat on this host)."; break ;;
+    1) ok "Port $p free" ;;
+    0)
+      if ours_holds_port "$p"; then
+        ok "Port $p held by Deplo itself"
+      else
+        HOLDER="$(port_holder "$p")"
+        pf_fail "Port $p is already in use${HOLDER:+ by $HOLDER}." \
+          "Deplo needs 80 and 443 for Traefik and 3000 for the dashboard. Free it and re-run."
+      fi
+      ;;
+  esac
 done
 
-# 1. Docker ------------------------------------------------------------------
-if ! command -v docker >/dev/null 2>&1; then
-  step "Installing Docker..."
-  curl -fsSL https://get.docker.com | sh
-  systemctl enable --now docker
-  ok "Docker installed"
+# Reachability -----------------------------------------------------------------
+if [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ]; then
+  skip "Network checks skipped (DEPLO_SKIP_NET_CHECKS=1)"
 else
-  ok "Docker already installed ($(docker --version | awk '{print $3}' | tr -d ,))"
+  spin_start "Checking outbound connectivity"
+  NET_BAD=""
+  can_reach "https://ghcr.io/v2/" || NET_BAD="$NET_BAD ghcr.io"
+  command -v docker >/dev/null 2>&1 || can_reach "https://get.docker.com" || NET_BAD="$NET_BAD get.docker.com"
+  spin_kill
+  if [ -n "$NET_BAD" ]; then
+    pf_fail "Cannot reach:$NET_BAD." "Deplo pulls its image from ghcr.io. Check egress, a proxy, or a firewall."
+  else
+    ok "Outbound HTTPS reaches ghcr.io"
+  fi
 fi
 
-# Compose v2 plugin is required (the script uses `docker compose`).
+SERVER_IP="$(detect_ip)"
+PUBLIC_IP=""
+if [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ]; then
+  PUBLIC_IP="$(detect_public_ip || true)"
+fi
+if [ -n "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "$SERVER_IP" ]; then
+  ok "Address: $SERVER_IP on this network, $PUBLIC_IP from the internet"
+  is_private_ip "$SERVER_IP" && note "This host is behind NAT - forward 80, 443 and 3000 to $SERVER_IP."
+else
+  ok "Address: $SERVER_IP"
+fi
+
+# The domain, before Let's Encrypt is asked for anything -------------------------
+# A certificate ordered for a name that does not point here fails the HTTP-01
+# challenge and eats a rate limit that lasts an hour. Resolve it first.
+if [ "$MODE" = update ] && [ -z "${DEPLO_DOMAIN:-}" ] && [ -f "$ENV_FILE" ]; then
+  DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
+fi
+
+if [ "$MODE" = install ] && [ -z "${DEPLO_DOMAIN:-}" ]; then
+  ANSWER="$(ask "Domain for the dashboard (Enter to use http://$SERVER_IP:3000):" || true)"
+  [ -n "$ANSWER" ] && DEPLO_DOMAIN="$ANSWER"
+fi
+
+if is_real_domain "${DEPLO_DOMAIN:-}"; then
+  DOMAIN_IPS="$(resolve_a "$DEPLO_DOMAIN" | tr '\n' ' ' | sed 's/ *$//' || true)"
+  TARGET_IP="${PUBLIC_IP:-$SERVER_IP}"
+  if [ -z "$DOMAIN_IPS" ]; then
+    pf_warn "$DEPLO_DOMAIN does not resolve yet." \
+      "Point its A record at $TARGET_IP. The panel still answers on http://$SERVER_IP:3000 meanwhile."
+  elif printf '%s' " $DOMAIN_IPS " | grep -q " $TARGET_IP "; then
+    ok "$DEPLO_DOMAIN $G_ARROW $TARGET_IP"
+  else
+    pf_warn "$DEPLO_DOMAIN resolves to $DOMAIN_IPS, not $TARGET_IP." \
+      "Let's Encrypt will fail the HTTP-01 challenge until the A record points here."
+  fi
+  [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ] || can_reach "https://acme-v02.api.letsencrypt.org/directory" \
+    || pf_warn "Cannot reach Let's Encrypt." "Certificates will not issue until this host has outbound HTTPS to acme-v02.api.letsencrypt.org."
+elif [ -n "${DEPLO_DOMAIN:-}" ]; then
+  pf_warn "'$DEPLO_DOMAIN' is not a routable domain - the dashboard will stay on http://$SERVER_IP:3000."
+  DEPLO_DOMAIN=""
+fi
+
+blank
+if [ "$PF_FAIL" -gt 0 ]; then
+  err "Preflight found $PF_FAIL blocking $(plural "$PF_FAIL" problem) and $PF_WARN $(plural "$PF_WARN" warning)."
+  if [ "$CHECK_ONLY" != true ] && [ "$FORCE" != true ]; then
+    note "Fix them and re-run, or pass --force to install anyway."
+    exit 1
+  fi
+elif [ "$PF_WARN" -gt 0 ]; then
+  warn "Preflight passed with $PF_WARN $(plural "$PF_WARN" warning)."
+else
+  ok "Preflight passed."
+fi
+
+if [ "$CHECK_ONLY" = true ]; then
+  blank
+  note "Nothing was changed. Re-run without --check to install."
+  [ "$PF_FAIL" -gt 0 ] && exit 1
+  exit 0
+fi
+
+# ==============================================================================
+# 1. Docker
+# ==============================================================================
+phase "Docker"
+
+if ! command -v docker >/dev/null 2>&1; then
+  spin_start "Installing Docker"
+  if curl -fsSL https://get.docker.com </dev/null 2>&9 | sh >&9 2>&9; then
+    systemctl enable --now docker >&9 2>&9 || true
+    spin_ok "Docker installed ($(docker --version 2>/dev/null | awk '{print $3}' | tr -d , || true))"
+  else
+    spin_err "Docker installation failed"
+    note "Transcript: $UI_LOG"
+    exit 1
+  fi
+else
+  ok "Docker already installed ($(docker --version 2>/dev/null | awk '{print $3}' | tr -d , || true))"
+fi
+
 if ! docker compose version >/dev/null 2>&1; then
   err "Docker Compose v2 (\`docker compose\`) is required but was not found."
-  err "Update Docker (it bundles the compose plugin) and re-run."
+  note "Update Docker (it bundles the compose plugin) and re-run."
   exit 1
 fi
 
-# 1a. git --------------------------------------------------------------------
 # The agent clones repositories with the HOST's git. Without it every app that
 # deploys from a repo fails with `exec: "git": executable file not found`, and the
 # only way out would be an SSH session - which is the thing Deplo exists to avoid.
 ensure_git() {
   command -v git >/dev/null 2>&1 && { ok "git already installed"; return; }
-  step "Installing git..."
+  spin_start "Installing git"
   # `|| true`: a package manager that refuses is a warning below, never the end of
   # an install that has already put Docker on this machine.
   {
@@ -96,12 +712,12 @@ ensure_git() {
     elif command -v pacman >/dev/null 2>&1; then pacman -Sy --noconfirm git
     elif command -v apk >/dev/null 2>&1; then apk add --no-cache git
     fi
-  } || true
+  } >&9 2>&9 </dev/null || true
   if command -v git >/dev/null 2>&1; then
-    ok "git installed"
+    spin_ok "git installed"
   else
-    err "Could not install git. Apps that deploy from a repository will not build"
-    err "until it is there: install it with this system's package manager."
+    spin_warn "Could not install git"
+    note "Apps that deploy from a repository will not build until it is there."
   fi
 }
 
@@ -111,8 +727,8 @@ ensure_git
 # Docker's default pools allow ~31 networks and Deplo burns one PER APP, so an
 # untouched host dies on its 32nd deploy. Must run before any network exists:
 # only a full daemon restart loads new pools. KEEP IN SYNC with install-agent.sh.
-#   1. NEVER hardcode 10.0.0.0/8 - it swallows the host's own LAN/VPN and dockerd
-#      then refuses to start. Pick a /13 overlapping NO route already on the box.
+#   1. NEVER hardcode the whole of the 10 range - it swallows the host's own
+#      LAN/VPN and dockerd then refuses to start. Pick a /13 overlapping NO route.
 #   2. NEVER clobber the operator's daemon.json: an existing pool setting wins.
 
 # Is the /13 at 10.<$1>.0.0 (second octets $1..$1+7) clear of every 10.x route on
@@ -191,7 +807,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
 
   # Never hand dockerd a config it will reject: it would fail to come back up.
   if command -v dockerd >/dev/null 2>&1 \
-     && ! dockerd --validate --config-file="$TMP" >/dev/null 2>&1; then
+     && ! dockerd --validate --config-file="$TMP" >&9 2>&9; then
     err "The generated Docker config failed validation, leaving $CFG untouched."
     rm -f "$TMP"; return 0
   fi
@@ -202,9 +818,8 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   install -m 0644 "$TMP" "$CFG"
   rm -f "$TMP"
 
-  # An UPDATE run lands here on a live host: never bounce someone's running apps.
-  # Pools apply at the next daemon restart; until the operator picks a window,
-  # this host keeps its ceiling.
+  # An installer must NEVER bounce someone's running apps. Pools apply at the next
+  # daemon restart; until the operator picks a window, this host keeps its ceiling.
   if [ "${RUNNING:-0}" -gt 0 ]; then
     ok "Address pool $BASE written to $CFG"
     err "Docker is running $RUNNING container(s), so it was NOT restarted."
@@ -213,7 +828,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   fi
 
   step "Applying Docker address pool $BASE (a /$SIZE per network)..."
-  systemctl restart docker >/dev/null 2>&1 || true
+  systemctl restart docker >&9 2>&9 || true
   i=0
   until docker info >/dev/null 2>&1; do
     i=$((i + 1)); [ "$i" -ge 15 ] && break
@@ -224,7 +839,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   else
     err "Docker did not come back after the address-pool change - rolling back."
     if [ -f "$CFG.deplo-bak" ]; then mv "$CFG.deplo-bak" "$CFG"; else rm -f "$CFG"; fi
-    systemctl restart docker >/dev/null 2>&1 || true
+    systemctl restart docker >&9 2>&9 || true
     if docker info >/dev/null 2>&1; then
       err "Rolled back - Docker is up again, with the default ~31-network ceiling."
     else
@@ -235,14 +850,25 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
 
 configure_docker_address_pools
 
-# 2. Workspace, secrets + network -------------------------------------------
-step "Preparing $DEPLO_DIR and the 'deplo' network..."
+# ==============================================================================
+# 2. Workspace, secrets and the platform network
+# ==============================================================================
+phase "Workspace"
+
+step "Preparing $DEPLO_DIR and the 'deplo' network"
 mkdir -p "$DEPLO_DIR/traefik" "$DEPLO_DIR/data" "$DEPLO_DIR/acme"
-docker network inspect deplo >/dev/null 2>&1 || docker network create deplo
+docker network inspect deplo >/dev/null 2>&1 || docker network create deplo >&9 2>&9
 touch "$DEPLO_DIR/acme/acme.json"
 chmod 600 "$DEPLO_DIR/acme/acme.json"
 
+# Let's Encrypt sends expiry notices here, so admin@<domain> beats a placeholder
+# nobody reads. Changeable from the panel afterwards, and never asked for.
+if [ -z "${ACME_EMAIL:-}" ] && is_real_domain "${DEPLO_DOMAIN:-}"; then
+  ACME_EMAIL="admin@$DEPLO_DOMAIN"
+fi
+
 # Generate secrets once; reuse them on subsequent runs (so updates never rotate).
+trace_off                        # DEPLO_SECRET and the database password below
 if [ ! -f "$ENV_FILE" ]; then
   umask 077
   {
@@ -254,6 +880,22 @@ if [ ! -f "$ENV_FILE" ]; then
   } > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
 fi
+trace_on
+
+# A domain (or an ACME address) supplied on a re-run is an EDIT, not a no-op: it
+# is the documented way to move a panel from :3000 onto HTTPS, and silently
+# keeping the old value would make the flag a lie.
+env_put() {
+  local key="$1" val="$2" tmp
+  [ -n "$val" ] || return 0
+  grep -q "^$key=$val\$" "$ENV_FILE" 2>/dev/null && return 0
+  umask 077; tmp="$(mktemp)"
+  { grep -v "^$key=" "$ENV_FILE" || true; printf '%s=%s\n' "$key" "$val"; } >"$tmp"
+  install -m 0600 "$tmp" "$ENV_FILE"; rm -f "$tmp"
+  ok "$key set to $val"
+}
+env_put DEPLO_DOMAIN "${DEPLO_DOMAIN:-}"
+env_put ACME_EMAIL "${ACME_EMAIL:-}"
 
 # The token that lets THIS machine enroll itself as a server (agent 0). Appended
 # rather than written in the block above so an instance installed before host
@@ -261,20 +903,21 @@ fi
 # documented repair when the enrollment at the end of this script fails.
 # Deplo reads it from its environment and arms a one-time bootstrap on the server
 # row; the agent installer below presents the same token to claim it.
+trace_off                        # the enrollment token, here and at its one use
 if ! grep -q '^DEPLO_HOST_BOOTSTRAP_TOKEN=' "$ENV_FILE"; then
   umask 077
   echo "DEPLO_HOST_BOOTSTRAP_TOKEN=$(openssl rand -base64 32 | tr -d '/+=\n')" >> "$ENV_FILE"
 fi
-HOST_TOKEN="$(grep '^DEPLO_HOST_BOOTSTRAP_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
+HOST_TOKEN="$(grep '^DEPLO_HOST_BOOTSTRAP_TOKEN=' "$ENV_FILE" | cut -d= -f2- || true)"
+trace_on
 # This box's own name, for the server card. Read here because Deplo runs in a
 # container, where `hostname` answers with a random container id.
 HOST_NAME="$(hostname 2>/dev/null || cat /proc/sys/kernel/hostname 2>/dev/null || echo "")"
-ok "Workspace ready (secrets in $ENV_FILE)"
+ok "Workspace ready" "secrets in $ENV_FILE"
 
 # Resolve how the dashboard is exposed.
-DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2-)"
-ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2-)"
-SERVER_IP="$(detect_ip)"
+DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
+ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
 
 # The panel ALWAYS publishes :3000 on the host, domain or no domain, and this is
 # not an oversight to tidy up later: http://$SERVER_IP:3000 is the way back into
@@ -319,8 +962,11 @@ else
   TRAEFIK_FILE_PROVIDER=""
 fi
 
+# ==============================================================================
 # 3. Traefik (always up; routes deployed apps, and the panel in domain mode)
-step "Configuring Traefik reverse proxy + Let's Encrypt..."
+# ==============================================================================
+phase "Reverse proxy"
+
 # traefik:v3.7 (NOT v3.3): Docker Engine 29 raised the min API to 1.40, which
 # Traefik <=3.3 cannot negotiate, breaking the docker provider on every poll.
 # container_name is what the agent identifies OUR proxy by - without it Deplo
@@ -398,8 +1044,11 @@ YAML
 # Blank lines from an empty block above are harmless YAML, but strip them so the
 # file an operator opens on the host reads like one somebody wrote.
 sed -i '/^$/d' "$DEPLO_DIR/traefik/docker-compose.yml"
-docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d
-ok "Traefik running"
+TRAEFIK_NOTE="80/443, for deployed apps"
+[ "$USE_DOMAIN" = true ] && TRAEFIK_NOTE="80/443, Let's Encrypt for $DEPLO_DOMAIN"
+spin_start "Starting Traefik and its socket proxy"
+docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null
+spin_ok "Traefik running" "$TRAEFIK_NOTE"
 
 # The server agent manages the proxy at $AGENT_DATA/traefik - that is the one
 # path TraefikConfig reads and writes. Point it at the stack we just wrote so
@@ -417,9 +1066,38 @@ if [ ! -e /var/lib/deplo-agent/traefik ]; then
   ln -s "$DEPLO_DIR/traefik" /var/lib/deplo-agent/traefik
 fi
 
-# 4. Postgres + Deplo control plane -----------------------------------------
+# ==============================================================================
+# 4. Postgres + the Deplo control plane
+# ==============================================================================
+phase "Control plane"
+
+# On an update, the way back. The image tag is what gets rolled back if the new
+# version never answers; the dump is what an operator restores by hand if a
+# migration is what went wrong - never automatically, because guessing which of
+# the two failed is how you lose a database twice.
+PREV_IMAGE=""
+DUMP_PATH=""
+if [ "$MODE" = update ]; then
+  PREV_IMAGE="$(state_get image || true)"
+  [ -n "$PREV_IMAGE" ] || PREV_IMAGE="$(awk '/^    image: ghcr.io\/deplocloud\/deplo/ {print $2}' "$DEPLO_DIR/docker-compose.yml" 2>/dev/null | head -n1 || true)"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^deplo-postgres-1$'; then
+    mkdir -p "$BACKUP_DIR"; chmod 700 "$BACKUP_DIR"
+    DUMP_PATH="$BACKUP_DIR/pre-update-$(date -u '+%Y%m%d-%H%M%S').sql.gz"
+    spin_start "Dumping the panel's database before updating"
+    if docker exec deplo-postgres-1 pg_dump -U deplo -d deplo 2>&9 | gzip > "$DUMP_PATH"; then
+      chmod 600 "$DUMP_PATH"
+      spin_ok "Pre-update dump saved" "$(du -h "$DUMP_PATH" 2>/dev/null | awk '{print $1}' || true)"
+      # Three is enough to cover "the last update broke it" without turning the
+      # panel's own disk into a backup destination.
+      ls -1t "$BACKUP_DIR"/pre-update-*.sql.gz 2>/dev/null | tail -n +4 | xargs -r rm -f || true
+    else
+      rm -f "$DUMP_PATH"; DUMP_PATH=""
+      spin_warn "Could not dump the database - continuing without a pre-update copy"
+    fi
+  fi
+fi
+
 # Compose-substituted vars are escaped (\${...}); shell-computed values inline.
-step "Writing the Deplo stack ($([ "$USE_DOMAIN" = true ] && echo "domain + HTTPS" || echo "http://$SERVER_IP:3000"))..."
 cat > "$DEPLO_DIR/docker-compose.yml" <<EOF
 services:
   postgres:
@@ -487,18 +1165,62 @@ EOF
 # Pull the control-plane image first so a bad version tag (or, on an update, the
 # newest image) fails clearly instead of a cryptic compose error. The image is
 # public, so let Docker's own message through rather than guessing the cause.
-step "Pulling $DEPLO_IMAGE..."
-if ! docker pull "$DEPLO_IMAGE" >/dev/null; then
+if ! spin_run "Pulling $DEPLO_IMAGE" docker pull "$DEPLO_IMAGE"; then
   err "Could not pull $DEPLO_IMAGE."
-  err "Check the internet connection, and that DEPLO_VERSION=$DEPLO_VERSION is a released version."
+  note "Check the internet connection, and that $VERSION_LABEL is a released version."
+  note "Transcript: $UI_LOG"
   exit 1
 fi
 
-step "Starting Postgres and the Deplo control plane..."
-docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
-ok "Deplo control plane running"
+spin_run "Starting Postgres and the Deplo control plane" \
+  docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
 
-# 5. This host is a server too (agent 0) --------------------------------------
+# Always over the IP address, never the domain: in domain mode DNS may not point
+# here yet and the certificate may not have issued, while :3000 answers from the
+# moment the panel is up. The URL is used only to bootstrap; afterwards the panel
+# dials the agent, not the other way round.
+AGENT_BOOTSTRAP_URL="http://$SERVER_IP:3000"
+
+wait_for_panel() {
+  local tries="$1" i=0
+  while [ "$i" -lt "$tries" ]; do
+    curl -fsS -o /dev/null --max-time 4 "$AGENT_BOOTSTRAP_URL/api/health" </dev/null 2>/dev/null && return 0
+    i=$((i + 1)); sleep 2
+  done
+  return 1
+}
+
+spin_start "Waiting for the control plane to answer"
+if wait_for_panel 60; then
+  spin_ok "Control plane running" "$DEPLO_IMAGE"
+  state_set image "$DEPLO_IMAGE"
+  state_set version "$DEPLO_VERSION"
+  state_set installed_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+else
+  spin_err "The control plane did not answer on $AGENT_BOOTSTRAP_URL after 2 minutes"
+  # An UPDATE has somewhere to go back to. A first install does not, and pretending
+  # otherwise would just hide the logs the operator needs.
+  if [ "$MODE" = update ] && [ -n "$PREV_IMAGE" ] && [ "$PREV_IMAGE" != "$DEPLO_IMAGE" ]; then
+    warn "Rolling back to $PREV_IMAGE"
+    sed -i "s|^    image: $DEPLO_IMAGE\$|    image: $PREV_IMAGE|" "$DEPLO_DIR/docker-compose.yml"
+    docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 || true
+    if wait_for_panel 30; then
+      ok "Rolled back - the panel is answering on $PREV_IMAGE again"
+      note "The failed version's logs: docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
+      [ -n "$DUMP_PATH" ] && note "Pre-update database dump: $DUMP_PATH"
+      exit 1
+    fi
+    err "The rollback did not come up either."
+  fi
+  note "Logs: docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
+  [ -n "$DUMP_PATH" ] && note "Pre-update database dump: $DUMP_PATH"
+  note "Transcript: $UI_LOG"
+  exit 1
+fi
+
+# ==============================================================================
+# 5. This host is a server too (agent 0)
+# ==============================================================================
 #
 # Without this, a brand-new install comes up with an EMPTY server list and the
 # first deploy is impossible: every deploy goes through a server agent, and the
@@ -511,33 +1233,27 @@ ok "Deplo control plane running"
 # bootstrap on its own server row from $HOST_TOKEN, which is exactly the token
 # handed to the agent installer below. From there the agent calls home and gets
 # its certificate signed like any other server - no second trust path.
-#
-# Always over the IP address, never the domain: in domain mode DNS may not point
-# here yet and the certificate may not have issued, while :3000 answers from the
-# moment the panel is up. The URL is used only to bootstrap; afterwards the panel
-# dials the agent, not the other way round.
-AGENT_BOOTSTRAP_URL="http://$SERVER_IP:3000"
+phase "This host as a server"
 
 enroll_this_host() {
   if [ -x /usr/local/bin/deplo-agent ]; then
     ok "Server agent already installed on this host"
     return 0
   fi
-  step "Waiting for the control plane to answer..."
-  i=0
-  while true; do
-    if curl -fsS -o /dev/null "$AGENT_BOOTSTRAP_URL/api/health"; then break; fi
-    i=$((i + 1))
-    if [ "$i" -ge 60 ]; then
-      err "The control plane did not answer on $AGENT_BOOTSTRAP_URL after 2 minutes."
-      return 1
-    fi
-    sleep 2
-  done
-  step "Installing the server agent on this host..."
-  # No `sudo`: this script already runs as root (checked at the top).
-  curl -fsSL "$AGENT_BOOTSTRAP_URL/install-agent.sh" \
-    | bash -s -- "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" || return 1
+  # No `sudo`: this script already runs as root (checked at the top). `--quiet`
+  # because the agent installer renders the same interface, and two of them
+  # stacked reads as the script having started over.
+  spin_start "Installing the server agent on this host"
+  trace_off                      # $HOST_TOKEN is on this command line
+  if curl -fsSL "$AGENT_BOOTSTRAP_URL/install-agent.sh" </dev/null \
+     | bash -s -- "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet >&9 2>&9; then
+    trace_on
+    spin_ok "Server agent installed" "this host is now a Deplo server"
+    return 0
+  fi
+  trace_on
+  spin_err "The server agent did not install"
+  return 1
 }
 
 # Warn and carry on. A panel that is up with one server left to finish is a far
@@ -547,34 +1263,46 @@ HOST_ENROLLED=true
 if ! enroll_this_host; then
   HOST_ENROLLED=false
   err "This host was not added as a server. Deplo itself is installed and running."
-  err "Re-run this script to try again, or add the server from Settings > Servers."
+  note "Transcript: $UI_LOG"
+  note "Re-run this script to try again, or add the server from Settings > Servers."
 fi
 
+# ==============================================================================
+# 6. Summary
+# ==============================================================================
+TOTAL=$(( SECONDS - UI_T0 ))
 if [ "$MODE" = update ]; then
-  bold "Deplo updated"
+  card_open "Deplo updated in ${TOTAL}s"
 else
-  bold "Deplo installed"
+  card_open "Deplo installed in ${TOTAL}s"
 fi
-echo ""
-echo "  Dashboard:  $PUBLIC_URL"
-echo "  Data dir:   $DEPLO_DIR"
-echo "  Database:   Postgres (private, internal network only)"
-if [ "$HOST_ENROLLED" = true ]; then
-  echo "  Server:     ${HOST_NAME:-$SERVER_IP} (this machine, added as a server)"
-fi
+card_kv "Dashboard" "$PUBLIC_URL"
+[ "$USE_DOMAIN" = true ] && card_kv "Fallback" "http://$SERVER_IP:3000"
+card_kv "Version" "$VERSION_LABEL"
+card_kv "Data dir" "$DEPLO_DIR"
+card_kv "Database" "Postgres, private network only"
 if [ "$USE_DOMAIN" = true ]; then
-  echo "  Proxy:      Traefik (ports 80/443, automatic HTTPS)"
-  echo ""
-  echo "  Point $DEPLO_DOMAIN at this server's IP, then open the dashboard."
+  card_kv "Proxy" "Traefik, ports 80/443, automatic HTTPS"
 else
-  echo "  Proxy:      Traefik (ports 80/443) for deployed apps"
-  echo ""
-  echo "  Open $PUBLIC_URL in your browser to finish setup."
-  echo "  To serve the dashboard over HTTPS on a domain, set DEPLO_DOMAIN in"
-  echo "  $ENV_FILE (and ACME_EMAIL) and re-run this script."
+  card_kv "Proxy" "Traefik, ports 80/443, for deployed apps"
 fi
-echo ""
-echo "  GitHub: connect a repo from Settings > Git. GitHub must be able to"
-echo "  reach $PUBLIC_URL for the App callback and webhooks (open the port or"
-echo "  use a domain). A real domain is recommended for private-repo deploys."
-echo ""
+[ "$HOST_ENROLLED" = true ] && card_kv "Server" "${HOST_NAME:-$SERVER_IP}, this machine"
+card_close
+
+printf ' %bNext%b\n' "$C_B" "$C_OFF"
+if [ "$MODE" != update ]; then
+  printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
+  printf '   2  Connect a repository from Settings > Git.\n'
+  printf '   3  Deploy your first app.\n\n'
+else
+  printf '   Open %b%s%b - your apps kept running throughout.\n\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
+fi
+
+if [ "$USE_DOMAIN" = true ]; then
+  note "Point $DEPLO_DOMAIN at ${PUBLIC_IP:-$SERVER_IP}; the certificate issues on the first request."
+else
+  note "To serve the dashboard over HTTPS on a domain, re-run with --domain <your domain>."
+fi
+note "GitHub must be able to reach $PUBLIC_URL for callbacks and webhooks."
+[ "$UI_LOG" = /dev/null ] || note "Transcript: $UI_LOG"
+printf '\n'
