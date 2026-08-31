@@ -7,7 +7,9 @@ import {
   buildComposeStack,
   composeDeclaredEnvKeys,
   detectDefaultApp,
+  composeEnvValues,
   escapeComposeDollars,
+  retargetStackNetwork,
   stackNamesOnNetwork,
   type ComposeStackInput,
   type ComposeDomainRoute,
@@ -1300,7 +1302,7 @@ services:
   assert.deepEqual(doc.services.a.networks, ["deplo"]);
 });
 
-test("a private network of the author's own is left alone", () => {
+test("a private network of the author's own is kept, alongside the stack's", () => {
   const doc = networksOf(`
 networks:
   internal:
@@ -1310,11 +1312,43 @@ services:
     image: alpine
     networks: [internal]
 `);
+  // Theirs survives untouched; the Environment's is ADDED, because a service with
+  // no domain is still part of the app and has to reach its own database.
   assert.ok("internal" in doc.networks);
-  assert.deepEqual(doc.services.a.networks, ["internal"]);
+  assert.deepEqual(doc.services.a.networks, ["internal", "deplo"]);
+});
+
+test("every service joins the Environment's network, routed or not", () => {
+  const doc = networksOf(`
+services:
+  web:
+    image: nginx
+  worker:
+    image: alpine
+`);
+  assert.deepEqual(doc.services.web.networks, ["deplo"]);
+  assert.deepEqual(doc.services.worker.networks, ["deplo"]);
+  // No `default` asked for, so compose creates no `<project>_default` - one network
+  // per stack the host does not have to find address space for.
+  assert.deepEqual(Object.keys(doc.networks), ["deplo"]);
+});
+
+test("a service holding a reserved name is left off, not refused", () => {
+  // `postgres` is an ordinary name for a stack's own database. Auto-joining it and
+  // then throwing would stop the whole stack from rendering.
+  const doc = networksOf(`
+services:
+  postgres:
+    image: postgres:16
+  web:
+    image: nginx
+`);
+  assert.equal(doc.services.postgres.networks, undefined);
+  assert.deepEqual(doc.services.web.networks, ["deplo"]);
 });
 
 test("stackNamesOnNetwork reads only what joined the stack's network", () => {
+  // A `network_mode` service joins nothing, so it answers to nobody.
   const rendered = buildComposeStack({
     network: "deplo-env-environ_mine",
     name: "deplo-demo",
@@ -1333,5 +1367,75 @@ networks:
 `,
     domainRoutes: [route("shop.example.com", "web", 80)],
   });
-  assert.deepEqual(stackNamesOnNetwork(rendered).sort(), ["api", "web"]);
+  assert.deepEqual(stackNamesOnNetwork(rendered).sort(), [
+    "api",
+    "sidecar",
+    "web",
+  ]);
+});
+
+test("network_mode may not name a network Deplo manages", () => {
+  const render = (mode: string) =>
+    networksOf(
+      `services:\n  s:\n    image: alpine\n    network_mode: ${mode}\n`,
+    );
+  for (const mode of [
+    "deplo",
+    "deplo-internal",
+    "traefik_deplo-socket", // the socket proxy, under its compose project prefix
+    "deplo-env-environ_victim",
+    "deplo-team-team_victim",
+  ])
+    assert.throws(() => render(mode), /names a network Deplo manages/, mode);
+  // Filled in at `compose up` from the env-file, so the authored text never shows
+  // which network it is - the one shape no static check can catch.
+  assert.throws(() => render("${DEPLO_NET}"), /filled in from a variable/);
+  // What is left is either harmless or already behind the host grant.
+  for (const mode of ["none", "host", "service:sibling"])
+    assert.doesNotThrow(() => render(mode), mode);
+});
+
+test("a routed service that joins no network is reported, not dropped silently", () => {
+  const warnings: string[] = [];
+  buildComposeStack({
+    network: "deplo-env-environ_mine",
+    compose: "services:\n  web:\n    image: nginx\n    network_mode: host\n",
+    name: "deplo-demo",
+    deployKey: "demo",
+    appId: "p1",
+    domainRoutes: [route("shop.example.com", "web", 80)],
+    onWarn: (m) => warnings.push(m),
+  });
+  assert.match(warnings[0] ?? "", /will not answer/);
+});
+
+test("a top-level `networks:` that is not a map is replaced, not written onto", () => {
+  // A list or a scalar made `yaml.dump` drop the key the renderer had just written,
+  // so the stack shipped without its own network declared at all.
+  for (const authored of ["networks: [x]", "networks: deplo"]) {
+    const doc = networksOf(`${authored}\nservices:\n  a:\n    image: alpine\n`);
+    assert.equal(doc.networks.deplo.name, "deplo-env-environ_mine");
+  }
+});
+
+test("retargetStackNetwork points a stale stack file at today's network", () => {
+  const stale =
+    "services:\n  web:\n    image: nginx\n    networks: [deplo]\n" +
+    "networks:\n  deplo:\n    name: deplo-env-environ_gone\n    external: true\n";
+  const fixed = retargetStackNetwork(stale, "deplo-env-environ_now");
+  assert.match(fixed, /name: deplo-env-environ_now/);
+  assert.ok(!fixed.includes("environ_gone"));
+  // Already right ⇒ byte-identical, so a restore recreates nothing for nothing.
+  assert.equal(retargetStackNetwork(stale, "deplo-env-environ_gone"), stale);
+});
+
+test("composeEnvValues reads what the compose sets itself, both shapes", () => {
+  const list = composeEnvValues(
+    "services:\n  a:\n    environment:\n      - DATABASE_URL=postgres://db-shop:5432/x\n",
+  );
+  assert.equal(list.DATABASE_URL, "postgres://db-shop:5432/x");
+  const map = composeEnvValues(
+    "services:\n  a:\n    environment:\n      DB_HOST: db-shop\n",
+  );
+  assert.equal(map.DB_HOST, "db-shop");
 });

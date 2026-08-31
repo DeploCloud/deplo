@@ -13,6 +13,7 @@ import { mergeResourceLimits } from "./resources";
 import {
   declaredPort,
   keepAuthoredEnvText,
+  isDeploNetwork,
   isReservedSharedName,
   reservedNameMessage,
   serviceClaimedNames,
@@ -121,6 +122,8 @@ export interface ComposeStackInput {
    * its team, or a preview's own. See `lib/deploy/network.ts`.
    */
   network: string;
+  /** Where to say what the render silently dropped. Absent ⇒ nobody is told. */
+  onWarn?: (message: string) => void;
 }
 
 type App = Record<string, unknown>;
@@ -589,6 +592,34 @@ function readComposeKeepingEnvText(compose: string): string {
   }
 }
 
+/**
+ * `network_mode:` takes a free-form string, and any value that is not a keyword is
+ * a docker NETWORK NAME - so it joins a network with DNS while `networks:` stays
+ * empty and every rule that reads that key sees nothing.
+ *
+ * Refused HERE and not only at the gate, because the value can be
+ * `${VAR}` filled from the env-file at `compose up`: no check on the authored text
+ * can see the name, and a secret-typed variable does not even display it.
+ */
+function assertNetworkModeIsNotANetwork(service: string, mode: unknown): void {
+  if (typeof mode !== "string") return;
+  const value = mode.trim();
+  if (value.includes("${") || value.includes("$(")) {
+    throw new Error(
+      `\`network_mode\` on service \`${service}\` is filled in from a variable. ` +
+        `Deplo cannot tell which network that names, so it is refused - write the ` +
+        `value in the compose file.`,
+    );
+  }
+  if (isDeploNetwork(value)) {
+    throw new Error(
+      `\`network_mode: ${value}\` on service \`${service}\` names a network Deplo ` +
+        `manages. Join your own Environment's network instead - remove ` +
+        `\`network_mode\` and the service is on it already.`,
+    );
+  }
+}
+
 export function buildComposeStack(input: ComposeStackInput): string {
   const { compose, name, deployKey, appId, domainRoutes } = input;
   const trackingId = input.trackingId ?? appId;
@@ -631,6 +662,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   ];
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
+      assertNetworkModeIsNotANetwork(serviceName, (svc as App).network_mode);
       delete (svc as App).container_name;
       // A pull request preview publishes NOTHING on the host.
       if (input.stripPublishedPorts) delete (svc as App).ports;
@@ -678,8 +710,11 @@ export function buildComposeStack(input: ComposeStackInput): string {
       if (!(INFRA_NETWORK in map)) map[INFRA_NETWORK] = null;
     } else {
       const existing = appNetworks(target);
-      const base = existing.length ? existing : ["default"];
-      target.networks = Array.from(new Set([...base, INFRA_NETWORK]));
+      // A service that declared nothing goes on the Environment's network ALONE,
+      // not `default` as well: compose only creates `<project>_default` when
+      // something asks for it, and that network is one more per stack against the
+      // host's address-pool ceiling for no reach the stack does not already have.
+      target.networks = Array.from(new Set([...existing, INFRA_NETWORK]));
     }
     wired.add(service);
     return true;
@@ -695,7 +730,17 @@ export function buildComposeStack(input: ComposeStackInput): string {
     // put the platform's own name on the shared network, and the throw below would
     // take the WHOLE stack down with it - deploy included. Skip the route instead.
     if (serviceReservedClaim(service, services[service])) continue;
-    if (!wireApp(service)) continue;
+    if (!wireApp(service)) {
+      // `network_mode` takes a service off every network of its own, so Traefik has
+      // nothing to forward to and the domain answers nothing. Said out loud: the
+      // deploy used to go green with a dead hostname and no line anywhere.
+      input.onWarn?.(
+        `\`${route.name}\` points at service \`${service}\`, which sets ` +
+          `\`network_mode\` and therefore joins no network Traefik can reach. The ` +
+          `domain will not answer until that key is removed.`,
+      );
+      continue;
+    }
     const port = route.port ?? portOf(service);
     const keySeed = `${name}-${service}-${route.name}${route.pathPrefix}`;
     mergeLabels(
@@ -722,6 +767,21 @@ export function buildComposeStack(input: ComposeStackInput): string {
         ...(basicAuth ? { basicAuth } : {}),
       }),
     );
+  }
+
+  // EVERY service joins, not only the routed ones. A worker with no domain is still
+  // the app: leaving it on the compose project's private `default` is what put it
+  // out of reach of the very database its Environment owns, while the docs promised
+  // the opposite. `wireApp` skips a `network_mode` service, which cannot have one.
+  //
+  // A service holding a RESERVED name is left off instead of refused: `postgres` is
+  // an ordinary name for a stack's own database, and it was harmless as long as
+  // nothing put it on the shared network. Joining it automatically and then throwing
+  // would stop such a stack from rendering at all. An author who joins it BY HAND
+  // still gets the refusal below.
+  for (const name of Object.keys(services)) {
+    if (serviceReservedClaim(name, services[name])) continue;
+    wireApp(name);
   }
 
   // THE choke point for this stack's own network: every service that ends up on it,
@@ -771,8 +831,15 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // owns is gone: its services already moved onto this one, and two keys naming one
   // network is a container attached to it twice. Rewriting beats refusing - the same
   // YAML arrives from an import, and a copy-pasted `networks: [deplo]` must keep working.
+  // A LIST or a scalar under `networks:` is not a map: writing the `deplo` key onto
+  // an array made `yaml.dump` drop it, so the stack shipped with its own network
+  // never declared. Compose refuses that, so it failed closed - but every rule
+  // above had been skipped on the way there. Anything that is not a map is dropped.
+  const authored = doc.networks;
   const networks = (
-    doc.networks && typeof doc.networks === "object" ? doc.networks : {}
+    authored && typeof authored === "object" && !Array.isArray(authored)
+      ? authored
+      : {}
   ) as Record<string, unknown>;
   for (const key of sharedKeys) if (key !== INFRA_NETWORK) delete networks[key];
   networks[INFRA_NETWORK] = { name: input.network, external: true };
@@ -812,4 +879,71 @@ export function stackNamesOnNetwork(renderedYaml: string): string[] {
       out.add(claimed.toLowerCase());
   }
   return [...out];
+}
+
+/**
+ * Point a rendered stack's network entries at `network`, whatever they named
+ * before. A restore ships the stack file READ OFF THE HOST, which can still name
+ * the network the app had before it moved - or one the cleanup has since
+ * reclaimed, and then `compose up` fails with "declared as external, but could
+ * not be found" AFTER the data is back and the stack is down.
+ */
+export function retargetStackNetwork(
+  renderedYaml: string,
+  network: string,
+): string {
+  let doc: ComposeDoc;
+  try {
+    doc = (yaml.load(renderedYaml) as ComposeDoc) ?? {};
+  } catch {
+    return renderedYaml;
+  }
+  const nets = doc.networks;
+  if (!nets || typeof nets !== "object" || Array.isArray(nets))
+    return renderedYaml;
+  let touched = false;
+  for (const [key, raw] of Object.entries(nets as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const entry = raw as Record<string, unknown>;
+    const named = typeof entry.name === "string" ? entry.name.trim() : "";
+    if (key !== INFRA_NETWORK && !(named && isDeploNetwork(named))) continue;
+    if (named === network) continue;
+    (nets as Record<string, unknown>)[key] = {
+      name: network,
+      external: true,
+    };
+    touched = true;
+  }
+  if (!touched) return renderedYaml;
+  return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+}
+
+/**
+ * The `environment:` values a compose file sets ITSELF, keyed by variable name.
+ * What a cross-network check has to read on top of the resolved env: a stack that
+ * hardcodes a neighbour's hostname in its own block never goes through the env
+ * layer at all.
+ */
+export function composeEnvValues(compose: string): Record<string, string> {
+  let doc: ComposeDoc;
+  try {
+    doc = (yaml.load(compose) as ComposeDoc) ?? {};
+  } catch {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const svc of Object.values(doc.services ?? {})) {
+    const env = (svc as App)?.environment;
+    if (Array.isArray(env)) {
+      for (const e of env) {
+        if (typeof e !== "string" || !e.includes("=")) continue;
+        const at = e.indexOf("=");
+        out[e.slice(0, at).trim()] = e.slice(at + 1).trim();
+      }
+    } else if (env && typeof env === "object") {
+      for (const [k, v] of Object.entries(env as Record<string, unknown>))
+        if (v != null) out[k] = String(v);
+    }
+  }
+  return out;
 }

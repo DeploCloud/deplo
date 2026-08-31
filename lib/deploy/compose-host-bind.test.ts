@@ -187,7 +187,6 @@ test("composeNeedsHostPrivileges: an ordinary stack asks for nothing", () => {
     image: nginx:1.27
     privileged: false
     cap_add: []
-    network_mode: bridge
     volumes:
       - ./conf:/etc/nginx
     ports:
@@ -864,4 +863,27 @@ test("composeJoinsForeignNetwork: a network Deplo mints is rewritten, not gated"
     ),
     true,
   );
+});
+
+test("network_mode names a NETWORK unless it is a keyword, so it is allowlisted", () => {
+  const mode = (v: string) =>
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    network_mode: ${v}`,
+    );
+  // Reaches nothing: no network at all, or this project's own.
+  assert.equal(mode("none"), false);
+  assert.equal(mode("default"), false);
+  // `bridge` is docker's SHARED default network - every container that asks for it
+  // lands on one L3 segment together, which is the isolation this platform sells.
+  assert.equal(mode("bridge"), true);
+  // Any other value IS a network name, and these are the ones that mattered.
+  assert.equal(mode("deplo"), true);
+  assert.equal(mode("traefik_deplo-socket"), true);
+  assert.equal(mode("deplo-env-environ_victim"), true);
+  // Filled in from the env-file at `compose up`, so no reading of the text can see
+  // which network it names.
+  assert.equal(mode("${DEPLO_NET}"), true);
+  // The keywords that were already gated stay gated.
+  assert.equal(mode("host"), true);
+  assert.equal(mode("container:other"), true);
 });

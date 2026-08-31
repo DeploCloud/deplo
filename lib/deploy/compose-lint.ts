@@ -16,7 +16,7 @@
 import yaml, { isMap, isScalar, Scalar, visit, type Document } from "../yaml";
 
 import { isDatastoreImage } from "../databases/images";
-import { PLATFORM_NETWORKS, isTenantNetwork } from "./network";
+import { INFRA_NETWORK, PLATFORM_NETWORKS, isTenantNetwork } from "./network";
 
 /**
  * An `environment:` value is TEXT by the time the container reads it, so the text
@@ -879,11 +879,21 @@ function resolvedNetworkName(key: string, raw: unknown): string | null {
   return ext ? key : null;
 }
 
-/** A network Deplo owns: the platform's own, or one it mints for a tenant. */
+/**
+ * A network Deplo owns: the platform's own, or one it mints for a tenant.
+ *
+ * The platform's names are matched with an optional compose PROJECT PREFIX,
+ * because that is how they exist on a host: `install-agent.sh` brings Traefik up
+ * from `$AGENT_DATA/traefik` with no `-p`, so the socket-proxy network is really
+ * `traefik_deplo-socket`. A bare-name check reads it as somebody's own network.
+ */
 export function isDeploNetwork(name: string): boolean {
+  const n = name.trim();
   return (
-    (PLATFORM_NETWORKS as readonly string[]).includes(name) ||
-    isTenantNetwork(name)
+    isTenantNetwork(n) ||
+    (PLATFORM_NETWORKS as readonly string[]).some(
+      (p) => n === p || n.endsWith(`_${p}`),
+    )
   );
 }
 
@@ -910,7 +920,12 @@ export function isDeploNetwork(name: string): boolean {
  * network. Exported so the renderer and the editor agree on which keys those are.
  */
 export function sharedNetworkKeys(doc: { networks?: unknown }): Set<string> {
-  const keys = new Set<string>(PLATFORM_NETWORKS);
+  // Seeded with `deplo` ALONE, the key the renderer itself writes. The other
+  // platform names are not keys anybody else may claim: `networks: {deplo-internal:
+  // {internal: true}}` is an author's own private network - compose creates it as
+  // `<project>_deplo-internal` - and swallowing it put a deliberately internal
+  // network on the whole Environment, internet egress included.
+  const keys = new Set<string>([INFRA_NETWORK]);
   const declared = doc.networks;
   if (!declared || typeof declared !== "object" || Array.isArray(declared))
     return keys;
@@ -1519,6 +1534,13 @@ const HOST_PRIVILEGE_KEYS = [
 ] as const;
 
 /**
+ * The `network_mode:` values that reach nothing: no network at all, and this
+ * compose project's own default. Everything else - `host`, `container:`,
+ * `service:`, a bare network name, an `${INTERPOLATION}` - is gated.
+ */
+const SAFE_NETWORK_MODE = /^(none|default)$/i;
+
+/**
  * `security_opt` entries that only ever make a container SAFER, and so are not
  * gated. Everything else there (`apparmor:unconfined`, `seccomp:unconfined`,
  * `label:disable`, a hand-written seccomp profile) removes a boundary.
@@ -1596,13 +1618,17 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       if (nonDefaultDriver || risky) out.push(key);
       continue;
     }
-    if (
-      key === "pid" ||
-      key === "ipc" ||
-      key === "uts" ||
-      key === "network_mode" ||
-      key === "cgroup"
-    ) {
+    if (key === "network_mode") {
+      // An ALLOWLIST, because this one takes a free-form string and ANY value that
+      // is not a keyword is a docker NETWORK NAME - `network_mode: deplo-env-<id>`
+      // attaches the container to another Environment's network, with DNS, and no
+      // `networks:` key for the rest of this file to see. A denylist of the three
+      // keywords let every network on the host through.
+      if (typeof v === "string" && !SAFE_NETWORK_MODE.test(v.trim()))
+        out.push(key);
+      continue;
+    }
+    if (key === "pid" || key === "ipc" || key === "uts" || key === "cgroup") {
       if (typeof v === "string") {
         const val = v.trim().toLowerCase();
         // `host` shares the host namespace; `container:`/`service:` joins ANOTHER
