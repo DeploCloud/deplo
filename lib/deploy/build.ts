@@ -14,6 +14,7 @@ import { getDb } from "../db/client";
 import { withKeyedLock } from "../data/keyed-mutex";
 import {
   deployments as deploymentsTable,
+  appMounts as appMountsTable,
   apps as appsTable,
   appBuild as appBuildTable,
   appPreviews as appPreviewsTable,
@@ -74,6 +75,7 @@ import { appNetwork, deployNetwork, explainNetworkError } from "./network";
 import {
   crossNetworkMessage,
   crossNetworkRefs,
+  hostsInMountedFile,
   nameClashMessage,
   nameClashes,
   type ForeignName,
@@ -2881,7 +2883,28 @@ async function warnCrossNetwork(
     // `DATABASE_URL: postgres://db-shop:5432/x` in its own `environment:` block
     // never reached the env layer, so the warning stayed silent on the commonest
     // shape there is. Same reading `placeDatabasesByUsage` already does.
-    const named = { ...composeEnvValues(composeYaml), ...env };
+    // The compose's own `environment:`, the resolved env, AND the config files this
+    // app mounts: an nginx `proxy_pass` or a `config.yml` names a neighbour just as
+    // squarely, and for those stacks the warning was silent altogether.
+    // The compose's own `environment:`, the resolved env, AND the config files this
+    // app mounts: an nginx `proxy_pass` or a `config.yml` names a neighbour just as
+    // squarely, and for those stacks the warning was silent altogether. Keyed by
+    // file path so the message can say where the name was found.
+    const mounted = await getDb()
+      .select({
+        path: appMountsTable.filePath,
+        content: appMountsTable.content,
+      })
+      .from(appMountsTable)
+      .where(eq(appMountsTable.appId, appId));
+    const named: Record<string, string> = {
+      ...Object.assign(
+        {},
+        ...mounted.map((m) => hostsInMountedFile(m.path, m.content)),
+      ),
+      ...composeEnvValues(composeYaml),
+      ...env,
+    };
     for (const ref of crossNetworkRefs(named, foreign))
       log(depId, "warn", crossNetworkMessage(ref));
     // A preview is sealed in a network of its own, so it shares a name with nobody.

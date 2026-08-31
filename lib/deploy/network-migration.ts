@@ -169,7 +169,23 @@ async function placeDatabasesByUsage(): Promise<number> {
       if (named) places.add(app.environmentId ?? "");
     }
     const only = soleEnvironmentUsing(places);
-    if (!only) continue;
+    if (!only) {
+      // Used from two places at once, so there is no placement that keeps every
+      // caller: it stays at the team level and the apps in Environments stop
+      // resolving it. Said out loud - this is a one-time move nobody asked for,
+      // and the banner only counts stacks that failed to REROUTE.
+      if (places.size > 1)
+        await recordActivity(
+          "database",
+          `Network isolation: ${d.host} is used from more than one place, so it stayed at the team's top level - apps inside an environment will no longer reach it by name. Move it, or the database, to put them together.`,
+          "Deplo",
+          null,
+          d.teamId,
+          null,
+          d.id,
+        );
+      continue;
+    }
     await db
       .update(databasesTable)
       .set({ environmentId: only })

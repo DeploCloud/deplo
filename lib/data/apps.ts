@@ -47,6 +47,7 @@ import {
   reservedNameMessage,
 } from "../deploy/compose-lint";
 import { assertNoNameClash } from "./name-clash";
+import { stackName } from "../deploy/deploy-key";
 import {
   composeNamesOnNetwork,
   composeServiceNames,
@@ -1510,26 +1511,36 @@ export async function updateAppSource(
     ),
   );
   // Before the transaction, never inside one: this reads on its own connection.
-  if (input.compose != null) {
+  // Asked when the compose changes OR when the SERVER does: a Docker network lives
+  // on one machine, so moving an untouched stack to another host is exactly as able
+  // to land it beside a name that is already taken there.
+  if (input.compose != null || input.serverId != null) {
     const [row] = await getDb()
       .select({
         serverId: appsTable.serverId,
         environmentId: appsTable.environmentId,
+        compose: appsTable.compose,
+        slug: appsTable.slug,
       })
       .from(appsTable)
       .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
       .limit(1);
-    if (row)
+    if (row) {
+      // The compose being saved, or the one already stored when only the server moves.
+      const compose = input.compose ?? row.compose ?? "";
       await assertNoNameClash({
         to: {
           teamId: membership.teamId,
           environmentId: row.environmentId,
           serverId: input.serverId ?? row.serverId,
         },
-        claims: composeNamesOnNetwork(input.compose),
+        claims: compose.trim()
+          ? composeNamesOnNetwork(compose)
+          : [stackName(row.slug)],
         exceptId: id,
         subject: "this app",
       });
+    }
   }
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;

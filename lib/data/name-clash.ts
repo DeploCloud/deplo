@@ -129,10 +129,19 @@ export async function assertNoNameClash(opts: {
   for (const claim of claims) {
     const owner = taken.get(claim);
     if (!owner) continue;
+    // Say WHICH name is free, not just that this one is taken: the refusal reaches
+    // a non-expert who now has to open a compose file, and "call it db-2" is a five
+    // second edit where "rename it" is a problem to solve. The import rewrites the
+    // name itself instead - it can, because it generated the file; a compose the
+    // user wrote is theirs, and renaming a service under them breaks the references
+    // inside it.
+    let free = `${claim}-2`;
+    for (let n = 2; taken.has(free); n++) free = `${claim}-${n}`;
     throw new Error(
       `\`${claim}\` is already answered by ${owner} on that network, and Docker ` +
         `would split the connections between the two. Rename it on ${opts.subject} ` +
-        `(the service, or its \`hostname:\`), or pick another environment.`,
+        `(the service, or its \`hostname:\`) - \`${free}\` is free - or pick ` +
+        `another environment.`,
     );
   }
 }

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   crossNetworkMessage,
   crossNetworkRefs,
+  hostsInMountedFile,
   nameClashMessage,
   nameClashes,
   usesAsHost,
@@ -138,4 +139,33 @@ test("one line per clashing name, whoever else answers to it", () => {
     nameClashMessage({ name: "db", where: "A / Prod" }),
     /A \/ Prod/,
   );
+});
+
+test("a mounted config file names a neighbour as squarely as an env var does", () => {
+  // `usesAsHost` reads a whole VALUE, and a config file is a document, so passing
+  // its text straight in matched nothing - those stacks got no warning at all.
+  const found = {
+    ...hostsInMountedFile(
+      "nginx.conf",
+      "location / { proxy_pass http://db-shop:5432; }",
+    ),
+    ...hostsInMountedFile(
+      "config.yml",
+      "database:\n  host: orders-db\n  port: 5432\n",
+    ),
+  };
+  const names = (n: string) =>
+    Object.entries(found).some(([k, v]) => usesAsHost(k, v, n));
+  assert.ok(names("db-shop"), "proxy_pass");
+  assert.ok(names("orders-db"), "host: in a yaml");
+  assert.ok(!names("something-else"));
+});
+
+test("usesAsHost knows DB_HOSTNAME, not only DB_HOST", () => {
+  // The anchor wanted the key to END in HOST, and `HOSTNAME` ends in NAME - so the
+  // commonest spelling of all was a silent false negative.
+  assert.ok(usesAsHost("DB_HOSTNAME", "orders-db", "orders-db"));
+  assert.ok(usesAsHost("DB_HOST", "orders-db", "orders-db"));
+  // Still not a bare value under a key that says nothing about hosts.
+  assert.ok(!usesAsHost("S3_REGION", "garage", "garage"));
 });

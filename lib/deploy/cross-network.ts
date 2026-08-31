@@ -45,7 +45,8 @@ export interface CrossNetworkRef {
 }
 
 /** Keys whose whole VALUE is conventionally a hostname. */
-const HOST_KEY = /(HOST|ADDR|ADDRESS|SERVER|ENDPOINT|UPSTREAM|TARGET)S?$/i;
+const HOST_KEY =
+  /(HOSTNAME|HOST|ADDR|ADDRESS|SERVER|ENDPOINT|UPSTREAM|TARGET)S?$/i;
 
 /**
  * Whether `value` uses `name` as a host rather than merely containing the word.
@@ -148,4 +149,33 @@ export function nameClashMessage(clash: NameClash): string {
     `network as this one. Docker splits the lookups between them, so half will reach ` +
     `the wrong container. Rename the service, or its \`hostname:\`.`
   );
+}
+
+/**
+ * The hostnames a mounted CONFIG FILE points at, as `{where: host}` pairs the
+ * cross-network detector can read like env vars.
+ *
+ * `usesAsHost` reads a whole VALUE - an env var is one - and a config file is a
+ * document, so passing its text straight in matched nothing. An nginx
+ * `proxy_pass http://db-shop:5432;` names a neighbour exactly as squarely as
+ * `DATABASE_URL` does, and for those stacks the warning was silent.
+ */
+export function hostsInMountedFile(
+  path: string,
+  content: string,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  let n = 0;
+  // scheme://host[:port] - the shape a proxy_pass, an upstream or a URL takes.
+  for (const m of content.matchAll(
+    /[a-z][a-z0-9+.-]*:\/\/(?:[^/@\s]*@)?([a-z0-9][a-z0-9._-]*)(?::\d+)?/gi,
+  ))
+    out[`${path} (${++n}) host`] = m[1];
+  n++;
+  // bare `host: name` / `host = name`, how a config.yml or an ini names one.
+  for (const m of content.matchAll(
+    /^\s*[a-z_]*host[a-z_]*\s*[:=]\s*["']?([a-z0-9][a-z0-9._-]*)["']?\s*$/gim,
+  ))
+    out[`${path} (${++n}) host`] = m[1];
+  return out;
 }

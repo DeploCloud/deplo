@@ -27,6 +27,7 @@ import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
 import { assertNoNameClash, withNetworkLock } from "./name-clash";
+import { lostNeighbourMessage, neighboursLostByMove } from "./reachability";
 import { composeNamesOnNetwork } from "../deploy/compose-stack";
 import { stackName } from "../deploy/deploy-key";
 import { inFolderScope } from "../auth/request-context";
@@ -526,6 +527,7 @@ export async function moveAppToFolder(
   // The placement IS the network: a folder app is on its team's, an Environment's
   // is on that Environment's, so the stack has to be brought up again to follow.
   await reapplyNetworkAfterMove([appId]);
+  await warnLostNeighbours([appId], teamId, folderId ? null : null);
   if (msg) await recordActivity("app", msg, userName, appId, teamId);
 }
 
@@ -606,6 +608,7 @@ export async function moveAppsToFolder(
       .where(inArray(appsTable.id, toMove));
   });
   await reapplyNetworkAfterMove(toMove);
+  await warnLostNeighbours(toMove, teamId, null);
   const n = `${toMove.length} project${toMove.length === 1 ? "" : "s"}`;
   await recordActivity(
     "app",
@@ -652,6 +655,7 @@ async function assertAppNamesFreeAtTeamLevel(
   const rows = await getDb()
     .select({
       id: appsTable.id,
+      name: appsTable.name,
       slug: appsTable.slug,
       compose: appsTable.compose,
       serverId: appsTable.serverId,
@@ -659,16 +663,59 @@ async function assertAppNamesFreeAtTeamLevel(
     })
     .from(appsTable)
     .where(inArray(appsTable.id, appIds));
+  // The SIBLINGS of this batch land on the same network in the same write, and
+  // they still carry their old placement while this runs - so the stored rows say
+  // nothing about them. Two apps that both answer to `db`, moved together, both
+  // passed; moved one at a time, the second was refused.
+  const takenByBatch = new Map<string, string>();
   for (const row of rows) {
     // Already at the top level: the move changes no network.
     if (!row.environmentId) continue;
+    const claims = row.compose?.trim()
+      ? composeNamesOnNetwork(row.compose)
+      : [stackName(row.slug)];
+    for (const claim of claims) {
+      const other = takenByBatch.get(claim.toLowerCase());
+      if (other)
+        throw new Error(
+          `\`${claim}\` is answered by both ${other} and ${row.name}, which this ` +
+            `move puts on one network. Rename it on one of them first.`,
+        );
+      takenByBatch.set(claim.toLowerCase(), row.name);
+    }
     await assertNoNameClash({
       to: { teamId, environmentId: null, serverId: row.serverId },
-      claims: row.compose?.trim()
-        ? composeNamesOnNetwork(row.compose)
-        : [stackName(row.slug)],
+      claims,
       exceptId: row.id,
       subject: "this app",
     });
+  }
+}
+
+/** Record what filing these apps into a folder took out of reach. See reachability.ts. */
+async function warnLostNeighbours(
+  appIds: string[],
+  teamId: string,
+  environmentId: string | null,
+): Promise<void> {
+  for (const id of appIds) {
+    try {
+      const lost = await neighboursLostByMove(id, { teamId, environmentId });
+      if (lost.length === 0) continue;
+      const [row] = await getDb()
+        .select({ name: appsTable.name })
+        .from(appsTable)
+        .where(eq(appsTable.id, id))
+        .limit(1);
+      await recordActivity(
+        "app",
+        lostNeighbourMessage(row?.name ?? "This app", lost),
+        "Deplo",
+        id,
+        teamId,
+      );
+    } catch {
+      // Never fail a move for a warning it could not produce.
+    }
   }
 }

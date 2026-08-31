@@ -26,6 +26,7 @@ import {
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
 import { reapplyDatabaseNetwork } from "./databases";
+import { lostNeighbourMessage, neighboursLostByMove } from "./reachability";
 import {
   assertNoNameClash,
   nameClashesOnMove,
@@ -647,6 +648,7 @@ export async function moveAppToProject(
   });
   // A different Environment is a different network: bring the stack up again on it.
   await reapplyNetworkAfterMove([appId]);
+  await warnLostNeighbours(appId, s.name, { teamId, environmentId });
   await recordActivity("project", msg, userName, appId, teamId);
 }
 
@@ -720,6 +722,7 @@ export async function moveAppToEnvironment(
       .where(eq(appsTable.id, appId));
   });
   await reapplyNetworkAfterMove([appId]);
+  await warnLostNeighbours(appId, s.name, { teamId, environmentId: env.id });
   await recordActivity(
     "project",
     `Moved ${s.name} to ${env.name} in project ${env.projectName}`,
@@ -757,4 +760,31 @@ async function assertAppNamesFreeAt(
     exceptId: appId,
     subject: "this app",
   });
+}
+
+/**
+ * Record what a placement change took out of reach. A move is one click with a
+ * tooltip that says nothing about networks, and the commonest shape there is -
+ * "I have my apps and my Postgres at the top level, now I organise them into a
+ * Project" - leaves the database behind and drops the app on its next deploy.
+ * Never refuses: the detector is a heuristic, and a move is the user's call.
+ */
+async function warnLostNeighbours(
+  appId: string,
+  appName: string,
+  to: { teamId: string; environmentId: string | null },
+): Promise<void> {
+  try {
+    const lost = await neighboursLostByMove(appId, to);
+    if (lost.length === 0) return;
+    await recordActivity(
+      "app",
+      lostNeighbourMessage(appName, lost),
+      "Deplo",
+      appId,
+      to.teamId,
+    );
+  } catch {
+    // A warning that could not be produced must never fail the move.
+  }
 }
