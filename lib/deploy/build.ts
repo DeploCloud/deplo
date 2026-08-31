@@ -835,6 +835,12 @@ export function renderCompose(opts: {
     /** Host binds only: follow submounts appearing later (`rslave`/`rshared`). */
     propagation?: MountPropagation;
   }[];
+  /**
+   * Host ports to publish, already written as compose entries
+   * (`portMappings`). Empty/absent ⇒ NO `ports:` key, so a stack that publishes
+   * nothing stays byte-identical.
+   */
+  ports?: string[];
   /** The app's health check, or null/absent when it has none. */
   healthCheck?: HealthCheck | null;
   /** The `healthcheck:` map read back off the running stack. Wins over
@@ -930,6 +936,11 @@ export function renderCompose(opts: {
         .join("\n") +
       "\n"
     : "";
+  const portsYaml = (opts.ports ?? []).length
+    ? "    ports:\n" +
+      opts.ports!.map((p) => `      - ${JSON.stringify(p)}`).join("\n") +
+      "\n"
+    : "";
   const topVolsYaml = namedVols.length
     ? "\nvolumes:\n" +
       namedVols
@@ -956,7 +967,7 @@ services:
     restart: unless-stopped
     networks:
       - deplo
-${resourcesYaml}${healthYaml}${envYaml}${appVolsYaml}    labels:
+${resourcesYaml}${healthYaml}${portsYaml}${envYaml}${appVolsYaml}    labels:
 ${labelsYaml}
 
 networks:
@@ -1895,6 +1906,10 @@ async function runDeployment(depId: string): Promise<void> {
         // The deploy path is the only writer of volumes into the stack - sourced
         // from the project. A reroute reads them back from the file instead.
         volumes: project.volumes ?? [],
+        // What does not speak HTTP: the host ports this app publishes, baked in
+        // at deploy time like the volumes. NEVER on a preview - a host port is a
+        // singleton on the machine, and production is already holding it.
+        ports: preview ? [] : portMappings(project.ports),
         // Per-app resource caps, baked into the rendered compose at deploy time
         // (like volumes). Null ⇒ no keys emitted.
         resources: project.resources,
@@ -2619,6 +2634,33 @@ function readStackVolumesFromYaml(
   }
 }
 
+/** An app's published ports as compose `ports:` entries. */
+export function portMappings(ports: App["ports"]): string[] {
+  return (ports ?? []).map(
+    (p) => `${p.published}:${p.target}${p.protocol === "udp" ? "/udp" : ""}`,
+  );
+}
+
+/**
+ * The ports the RUNNING stack publishes, read back like the image, the env and
+ * the volumes so a routing change never applies an edit nobody redeployed.
+ */
+export function parseStackPorts(yamlText: string, service: string): string[] {
+  try {
+    const doc = yaml.load(yamlText) as {
+      services?: Record<string, { ports?: unknown }>;
+    } | null;
+    const list = doc?.services?.[service]?.ports;
+    return Array.isArray(list)
+      ? list
+          .filter((p): p is string | number => typeof p !== "object")
+          .map(String)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * The health check the RUNNING stack carries, so a routing change keeps it rather
  * than quietly recreating the container without one. Read back like the image, the
@@ -2813,6 +2855,9 @@ async function rerouteAppLocked(
         // running stack and force a needless container restart).
         injectPort: project.source !== "docker-image",
         volumes,
+        // Read back like the volumes: a domain-only reroute keeps the ports the
+        // stack is running with, never a port edit nobody has deployed.
+        ports: parseStackPorts(current.yaml, name),
         healthCheckKeys: parseStackHealthCheck(current.yaml, name),
       });
     }

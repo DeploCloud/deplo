@@ -21,7 +21,7 @@ import {
   mapResources,
   mapSource,
   parseEnvBlob,
-  portNotes,
+  mapPorts,
   adaptComposeForDeplo,
   unsupportedNotes,
 } from "../lib/migration/map";
@@ -211,7 +211,7 @@ function describe(
       say("build", JSON.stringify(build.value));
       notes.push(
         ...build.notes,
-        ...portNotes(detail),
+        ...mapPorts(detail).notes,
         ...unsupportedNotes(detail),
       );
     }

@@ -65,6 +65,7 @@ import { assertNoNameClash, withNetworkLock } from "./name-clash";
 import { environmentInTeam } from "./environments";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { MIN_USER_PORT, MAX_PORT, isValidExposePort } from "../databases/ports";
+import { hostPortClaimed } from "./host-ports";
 import { withKeyedLock } from "./keyed-mutex";
 import { enqueueTeardowns } from "./teardown-queue";
 import { assertDataCopyIntact, clearDataCopyError } from "./data-copy";
@@ -208,26 +209,15 @@ async function isHostPortFree(
 }
 
 /**
- * Whether another database ALREADY holds this host port on this server, by row.
- * Servers are shared, and a host port is a singleton on the machine, so the answer
- * cannot depend on who is asking.
+ * Whether another ROW already holds this host port on this server - an app that
+ * publishes it counts, which is why the query does not live here.
  */
 async function portClaimedByAnotherDatabase(
   serverId: string,
   port: number,
   exceptId?: string,
 ): Promise<boolean> {
-  const rows = await getDb()
-    .select({ id: databasesTable.id })
-    .from(databasesTable)
-    .where(
-      and(
-        eq(databasesTable.serverId, serverId),
-        eq(databasesTable.exposedPublicly, true),
-        eq(databasesTable.exposedPort, port),
-      ),
-    );
-  return rows.some((r) => r.id !== exceptId);
+  return hostPortClaimed(serverId, port, { databaseId: exceptId });
 }
 
 /**

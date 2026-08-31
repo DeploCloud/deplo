@@ -15,6 +15,7 @@ import type {
   HealthCheck,
   LogLine,
   MountPropagation,
+  PublishedPort,
   ResourceLimits,
   VolumeMount,
 } from "../types";
@@ -30,6 +31,7 @@ import type {
   appBuild,
   appBuildMethodSettings,
   appMounts,
+  appPorts,
   appVolumes,
 } from "../db/schema/control-plane";
 
@@ -48,6 +50,7 @@ export type AppBuildRow = typeof appBuild.$inferSelect;
 export type AppBuildMethodSettingsRow =
   typeof appBuildMethodSettings.$inferSelect;
 export type AppVolumeRow = typeof appVolumes.$inferSelect;
+export type AppPortRow = typeof appPorts.$inferSelect;
 export type AppMountRow = typeof appMounts.$inferSelect;
 export type DeploymentRow = typeof deployments.$inferSelect;
 export type DeploymentLogRow = typeof deploymentLogs.$inferSelect;
@@ -61,6 +64,7 @@ type AppInsert = typeof apps.$inferInsert;
 type AppBuildInsert = typeof appBuild.$inferInsert;
 type AppBuildMethodSettingsInsert = typeof appBuildMethodSettings.$inferInsert;
 type AppVolumeInsert = typeof appVolumes.$inferInsert;
+type AppPortInsert = typeof appPorts.$inferInsert;
 type AppMountInsert = typeof appMounts.$inferInsert;
 type DomainInsert = typeof domains.$inferInsert;
 type DomainMiddlewareInsert = typeof domainMiddlewares.$inferInsert;
@@ -80,6 +84,7 @@ export interface AppChildRows {
   build: AppBuildRow | null;
   methodSettings: AppBuildMethodSettingsRow | null;
   volumes: AppVolumeRow[];
+  ports: AppPortRow[];
   mounts: AppMountRow[];
 }
 
@@ -147,6 +152,10 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     .sort((a, b) => a.position - b.position)
     .map(volumeRowToMount);
 
+  const ports = [...children.ports]
+    .sort((a, b) => a.position - b.position)
+    .map(portRowToPublished);
+
   const mounts = [...children.mounts]
     .sort((a, b) => a.position - b.position)
     .map((m) => ({ filePath: m.filePath, content: m.content }));
@@ -184,6 +193,7 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     compose: row.compose,
     mounts: mounts.length ? mounts : null,
     volumes: volumes.length ? volumes : null,
+    ports: ports.length ? ports : null,
     build: assembleBuild(children.build, children.methodSettings),
     productionUrl: row.productionUrl,
     status: row.status as App["status"],
@@ -345,6 +355,15 @@ function assembleUpload(row: AppRow): App["upload"] {
   };
 }
 
+function portRowToPublished(p: AppPortRow): PublishedPort {
+  return {
+    id: p.portId,
+    published: p.published,
+    target: p.target,
+    protocol: p.protocol === "udp" ? "udp" : "tcp",
+  };
+}
+
 function volumeRowToMount(v: AppVolumeRow): VolumeMount {
   // A NULL `service` means "the stack's default service" and is the only value a
   // single-container app ever has, so the key is spread in only when set - the
@@ -402,6 +421,7 @@ export interface AppRowSet {
   build: AppBuildInsert;
   methodSettings: AppBuildMethodSettingsInsert | null;
   volumes: AppVolumeInsert[];
+  ports: AppPortInsert[];
   mounts: AppMountInsert[];
 }
 
@@ -549,6 +569,20 @@ export function volumesToRows(
   }));
 }
 
+export function portsToRows(
+  appId: string,
+  ports: App["ports"],
+): AppPortInsert[] {
+  return (ports ?? []).map((p, position) => ({
+    appId,
+    position,
+    portId: p.id,
+    published: p.published,
+    target: p.target,
+    protocol: p.protocol,
+  }));
+}
+
 export function mountsToRows(
   appId: string,
   mounts: App["mounts"],
@@ -569,6 +603,7 @@ export function appToRowSet(p: App): AppRowSet {
     build: buildToRow(p.id, p.build),
     methodSettings: ms,
     volumes: volumesToRows(p.id, p.volumes),
+    ports: portsToRows(p.id, p.ports),
     mounts: mountsToRows(p.id, p.mounts),
   };
 }

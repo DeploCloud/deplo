@@ -61,7 +61,7 @@ import {
 } from "../deploy/compose-lint";
 import { composeNamesOnNetwork } from "../deploy/compose-stack";
 import { MIGRATION_HEARTBEAT_STALE_MS } from "../types";
-import type { BuildConfig, VolumeMount } from "../types";
+import type { BuildConfig, PublishedPort, VolumeMount } from "../types";
 import { reservedMountPath } from "../apps/volume-model";
 
 import { listMembers, serviceDisplayName } from "../migration/dokploy/client";
@@ -102,7 +102,7 @@ import {
   parseEnvBlob,
   renameDatabaseHosts,
   resolveSharedRefs,
-  portNotes,
+  mapPorts,
   retargetPlatformEnvFiles,
   swarmHealthCheck,
   unsupportedNotes,
@@ -114,6 +114,7 @@ import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
 import {
   createApp,
+  setAppPorts,
   setAppVolumes,
   updateAppHealthCheck,
   updateAppResources,
@@ -719,7 +720,18 @@ export async function scanMigrationSource(
             line.buildsFromSource = src.value.kind === "git";
             line.notes.push(...src.notes);
             line.notes.push(...mapBuildSettings(app).notes);
-            line.notes.push(...portNotes(app));
+            const wantedPorts = mapPorts(app);
+            line.notes.push(...wantedPorts.notes);
+            if (wantedPorts.value.length > 0 && !mayExposePorts) {
+              line.status = line.status === "exists" ? "exists" : "needs_grant";
+              line.notes.push(
+                `Publishes ${wantedPorts.value
+                  .map((p) => p.published)
+                  .join(
+                    ", ",
+                  )} on the host, which needs the publish-ports grant - without it the app still comes across, those ports do not.`,
+              );
+            }
             line.notes.push(...unsupportedNotes(app));
             if (
               (app.mounts ?? []).some((m) => m.type === "bind") &&
@@ -2625,6 +2637,8 @@ async function importAppService(
   let repo: Parameters<typeof createApp>[0]["repo"] = null;
   let dockerImage: string | null = null;
   let compose: string | null = null;
+  /** Host ports the source published, carried over after the app exists. */
+  let ports: PublishedPort[] = [];
   const build: Partial<BuildConfig> = {};
 
   if (asRepoApp && repoTarget) {
@@ -2766,7 +2780,9 @@ async function importAppService(
     const mappedBuild = mapBuildSettings(app);
     notes.push(...mappedBuild.notes);
     Object.assign(build, mappedBuild.value);
-    notes.push(...portNotes(app));
+    const mappedPorts = mapPorts(app);
+    ports = mappedPorts.value;
+    notes.push(...mappedPorts.notes);
     notes.push(...unsupportedNotes(app));
   }
 
@@ -2846,6 +2862,29 @@ async function importAppService(
     logo: mapLogo(detail.icon),
     deploy: false,
   });
+
+  // What does not speak HTTP: the ports the source published, on the app itself
+  // rather than as a line telling somebody to rewrite it as a compose stack.
+  if (ports.length > 0) {
+    if (!(await canExposePorts()))
+      notes.push(
+        `It published ${ports
+          .map((p) => p.published)
+          .join(
+            ", ",
+          )} on its host. You don't have permission to publish ports, so it came across without them - ask an instance admin, then add them under Settings -> Advanced.`,
+      );
+    else
+      try {
+        await setAppPorts(created.id, ports);
+      } catch (e) {
+        notes.push(
+          `${ports.map((p) => `${p.published}:${p.target}`).join(", ")} could not be published here (${
+            e instanceof Error ? e.message : "the port was refused"
+          }). Set them under Settings -> Advanced.`,
+        );
+      }
+  }
 
   // One name in two environments is the commonest shape there is, and it is not an
   // accident to be corrected - only the internal name, which is one per team, has

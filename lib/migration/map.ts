@@ -18,11 +18,13 @@ import { isValidLogoValue } from "../apps/logo-shared";
 import { composeRoutePort, keepAuthoredEnvText } from "../deploy/compose-lint";
 import { HEALTH_CHECK_DEFAULTS } from "../deploy/health-check";
 
+import { MAX_PORT, MIN_USER_PORT, isValidExposePort } from "../databases/ports";
 import type {
   BuildConfig,
   BuildMethod,
   CertProvider,
   DatabaseType,
+  PublishedPort,
   DomainEntrypoint,
   GitRepo,
   HealthCheck,
@@ -2343,18 +2345,30 @@ function truncate(s: string, n: number): string {
 }
 
 /** Published host ports on an application, which deplo does not do for apps. */
-export function portNotes(app: SourceApplication): string[] {
-  const ports = app.ports ?? [];
-  if (ports.length === 0) return [];
-  const list = ports
-    .map(
-      (p) =>
-        `${p.publishedPort}->${p.targetPort}${p.protocol ? `/${p.protocol}` : ""}`,
-    )
-    .join(", ");
-  return [
-    `Published host ports on {panel} (${list}). Deplo routes apps through its proxy instead - use a domain, or a compose stack if the port must be published.`,
-  ];
+export function mapPorts(app: SourceApplication): Mapped<PublishedPort[]> {
+  const notes: string[] = [];
+  const value: PublishedPort[] = [];
+  const seen = new Set<string>();
+  for (const p of app.ports ?? []) {
+    const published = Number(p.publishedPort);
+    const target = Number(p.targetPort);
+    const protocol = `${p.protocol ?? "tcp"}`.toLowerCase().startsWith("udp")
+      ? "udp"
+      : "tcp";
+    const spec = `${p.publishedPort}->${p.targetPort}/${protocol}`;
+    if (!isValidExposePort(published) || !Number.isInteger(target)) {
+      // A privileged port belongs to the host, and 80/443 belong to the proxy.
+      notes.push(
+        `${spec} on {panel} is not a port Deplo can publish (${MIN_USER_PORT}-${MAX_PORT}) - add a domain instead, or publish it on a higher port under Settings -> Advanced.`,
+      );
+      continue;
+    }
+    const key = `${published}/${protocol}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    value.push({ id: "", published, target, protocol });
+  }
+  return { value, notes };
 }
 
 /**

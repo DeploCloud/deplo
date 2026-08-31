@@ -15,6 +15,7 @@ import {
   appBuild,
   appBuildMethodSettings,
   appMounts,
+  appPorts,
   appVolumes,
 } from "../db/schema/control-plane";
 import type { Deployment, Domain, EnvVar, App, DeploySource } from "../types";
@@ -56,12 +57,13 @@ async function loadChildrenByAppIds(
       build: null,
       methodSettings: null,
       volumes: [],
+      ports: [],
       mounts: [],
     });
   if (ids.length === 0) return out;
 
   // One query per child table over the whole id set (NOT per project).
-  const [builds, settings, volumes, mounts] = await Promise.all([
+  const [builds, settings, volumes, ports, mounts] = await Promise.all([
     db.select().from(appBuild).where(inArray(appBuild.appId, ids)),
     db
       .select()
@@ -74,6 +76,11 @@ async function loadChildrenByAppIds(
       .orderBy(asc(appVolumes.appId), asc(appVolumes.position)),
     db
       .select()
+      .from(appPorts)
+      .where(inArray(appPorts.appId, ids))
+      .orderBy(asc(appPorts.appId), asc(appPorts.position)),
+    db
+      .select()
       .from(appMounts)
       .where(inArray(appMounts.appId, ids))
       .orderBy(asc(appMounts.appId), asc(appMounts.position)),
@@ -82,6 +89,7 @@ async function loadChildrenByAppIds(
   for (const b of builds) out.get(b.appId)!.build = b;
   for (const s of settings) out.get(s.appId)!.methodSettings = s;
   for (const v of volumes) out.get(v.appId)!.volumes.push(v);
+  for (const p of ports) out.get(p.appId)!.ports.push(p);
   for (const m of mounts) out.get(m.appId)!.mounts.push(m);
   return out;
 }

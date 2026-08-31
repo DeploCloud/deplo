@@ -222,6 +222,11 @@ type App {
   latestDeployment: Deployment
   logo: String
   name: String
+
+  """
+  Host ports this app publishes. Empty for a compose stack, which publishes its own in its compose file.
+  """
+  ports: [PublishedPort!]
   productionUrl: String
 
   """The Project container this app belongs to, if any."""
@@ -3365,6 +3370,11 @@ type Mutation {
   """
   setAppFramework(framework: String, id: String!): App
 
+  """
+  Replace the host ports an app publishes. Needs the publish-ports grant, and is refused for a compose stack, which publishes its own.
+  """
+  setAppPorts(id: String!, ports: [PublishedPortInput!]!): App
+
   """Turn pull request previews on or off, and set their options."""
   setAppPreviewSettings(appId: ID!, input: AppPreviewSettingsInput!): Boolean
 
@@ -3858,6 +3868,28 @@ type Project {
   slug: String
   teamId: ID
   updatedAt: String
+}
+
+"""
+A host port an app publishes, for what the proxy cannot route - a game server, an SMTP relay, a database the app exposes.
+"""
+type PublishedPort {
+  id: ID
+  protocol: String
+
+  """The port on the host."""
+  published: Int
+
+  """The port inside the container."""
+  target: Int
+}
+
+"""A host port an app publishes."""
+input PublishedPortInput {
+  id: String
+  protocol: String
+  published: Int!
+  target: Int!
 }
 
 type Query {

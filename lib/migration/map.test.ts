@@ -33,7 +33,7 @@ import {
   resolveSharedRefs,
   sharedRefsIn,
   parseMemoryMb,
-  portNotes,
+  mapPorts,
   repoNameFromUrl,
   adaptComposeForDeplo,
   volumeLabel,
@@ -1368,17 +1368,43 @@ test("composeVolumeMounts ignores a compose it cannot read", () => {
 
 /* ---- the rest ------------------------------------------------------- */
 
-test("portNotes explains why published ports do not come across", () => {
-  const notes = portNotes(
+test("mapPorts carries a published port across as it is", () => {
+  const { value, notes } = mapPorts(
     app({
       ports: [
-        { portId: "1", publishedPort: 8080, targetPort: 80, protocol: "tcp" },
+        {
+          portId: "1",
+          publishedPort: 16379,
+          targetPort: 6379,
+          protocol: "tcp",
+        },
+        {
+          portId: "2",
+          publishedPort: 25565,
+          targetPort: 25565,
+          protocol: "udp",
+        },
       ],
     }),
   );
+  assert.deepEqual(
+    value.map((p) => `${p.published}:${p.target}/${p.protocol}`),
+    ["16379:6379/tcp", "25565:25565/udp"],
+  );
+  assert.deepEqual(notes, []);
+  assert.deepEqual(mapPorts(app()).value, []);
+});
+
+// 80 and 443 belong to the proxy, and everything under 1024 to the host.
+test("mapPorts refuses a privileged port and says what to do instead", () => {
+  const { value, notes } = mapPorts(
+    app({
+      ports: [{ portId: "1", publishedPort: 80, targetPort: 80 }],
+    }),
+  );
+  assert.deepEqual(value, []);
   assert.equal(notes.length, 1);
-  assert.match(notes[0], /8080->80\/tcp/);
-  assert.deepEqual(portNotes(app()), []);
+  assert.match(notes[0], /80->80\/tcp/);
 });
 
 // A platform someone is leaving is usually STOPPED, and Dokploy stops a service by
@@ -2036,9 +2062,9 @@ test("no mapper note names a product", () => {
       name: "db",
       dockerImage: "postgres",
     } as SourceDatabase).notes,
-    ...portNotes({
-      ports: [{ portId: "p1", publishedPort: 8080, targetPort: 80 }],
-    } as SourceApplication),
+    ...mapPorts({
+      ports: [{ portId: "p1", publishedPort: 80, targetPort: 80 }],
+    } as SourceApplication).notes,
     ...unsupportedNotes({
       replicas: 3,
       placementSwarm: { x: 1 },

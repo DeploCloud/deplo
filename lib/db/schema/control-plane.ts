@@ -1000,6 +1000,28 @@ export const appVolumes = pgTable(
 );
 
 /**
+ * Host ports an app publishes. One row per mapping, ordered like every other
+ * app child list. Single-image apps only - a compose stack publishes its own.
+ */
+export const appPorts = pgTable(
+  "app_ports",
+  {
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    portId: text("port_id").notNull(),
+    /** The port on the HOST. Unique per server, which the writer checks. */
+    published: integer("published").notNull(),
+    /** The port inside the container. */
+    target: integer("target").notNull(),
+    /** "tcp" | "udp". */
+    protocol: text("protocol").notNull().default("tcp"),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.position] })],
+);
+
+/**
  * [App.mounts](../../types.ts) → ordered child of `{filePath, content}`
  * template config files. `content` is byte-preserved (reconciliation asserts
  * byte-equality, PLAN §2 `app_mounts` / Decision 14).

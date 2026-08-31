@@ -19,6 +19,7 @@ import {
   appBuild as appBuildTable,
   appBuildMethodSettings as appBuildMethodSettingsTable,
   appMounts as appMountsTable,
+  appPorts as appPortsTable,
   appVolumes as appVolumesTable,
   environments as environmentsTable,
   folders as foldersTable,
@@ -46,6 +47,7 @@ import {
   externalMergeMessage,
   reservedNameMessage,
 } from "../deploy/compose-lint";
+import { hostPortClaimed } from "./host-ports";
 import { assertNoNameClash } from "./name-clash";
 import { stackName } from "../deploy/deploy-key";
 import {
@@ -65,9 +67,11 @@ import {
 } from "../apps/volume-model";
 import {
   DEFAULT_ROLLBACK_KEEP,
+  MAX_PUBLISHED_PORTS,
   MAX_ROLLBACK_KEEP,
   MOUNT_PROPAGATIONS,
 } from "../types";
+import { MAX_PORT, MIN_USER_PORT, isValidExposePort } from "../databases/ports";
 import { encryptSecret } from "../crypto";
 import type { EnvEntryType } from "../deploy/env-resolve";
 import { recordActivity } from "./activity";
@@ -87,6 +91,7 @@ import type {
   EnvVar,
   GitRepo,
   HealthCheck,
+  PublishedPort,
   ResourceLimits,
   UploadArchive,
   VolumeMount,
@@ -166,6 +171,7 @@ import {
   buildToRow,
   methodSettingsToRow,
   mountsToRows,
+  portsToRows,
   appToRow,
   resourceLimitsToRow,
   healthCheckToRow,
@@ -1901,6 +1907,91 @@ export function validateVolumes(
     });
   }
   return out.length ? out : null;
+}
+
+/**
+ * The published-port rules, applied before anything is written. Pure, so the
+ * settings form and the importer can both lean on the same refusals.
+ */
+export function validatePorts(raw: PublishedPort[]): PublishedPort[] {
+  const seen = new Set<string>();
+  const out: PublishedPort[] = [];
+  for (const p of raw) {
+    const published = Number(p.published);
+    const target = Number(p.target);
+    if (!isValidExposePort(published))
+      throw new Error(
+        `A published port must be between ${MIN_USER_PORT} and ${MAX_PORT}: ${p.published}`,
+      );
+    if (!Number.isInteger(target) || target < 1 || target > MAX_PORT)
+      throw new Error(`That is not a port inside the container: ${p.target}`);
+    const protocol = p.protocol === "udp" ? "udp" : "tcp";
+    const key = `${published}/${protocol}`;
+    if (seen.has(key))
+      throw new Error(`This app publishes ${published} twice.`);
+    seen.add(key);
+    out.push({
+      id: p.id?.trim() || newId("prt"),
+      published,
+      target,
+      protocol,
+    });
+  }
+  if (out.length > MAX_PUBLISHED_PORTS)
+    throw new Error(`An app can publish at most ${MAX_PUBLISHED_PORTS} ports.`);
+  return out;
+}
+
+/**
+ * Replace an app's published host ports (full set). For what does not speak HTTP -
+ * a game server, an SMTP relay, a database an app exposes - which the proxy cannot
+ * route. Persists only; the ports take effect on the next production deploy, like
+ * volumes and resource limits.
+ *
+ * A compose stack is refused: that YAML is its author's, and the `ports:` they
+ * wrote there are the ones that bind.
+ */
+export async function setAppPorts(
+  id: string,
+  ports: PublishedPort[],
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  // A published port leaves the container reachable PAST the proxy, and past
+  // every gate the proxy applies - the same reach a host mount has, behind its
+  // own grant. Clearing them all needs nothing.
+  if (ports.length > 0) await requireExposePorts();
+  const user = (await getCurrentUser())!;
+  const validated = validatePorts(ports);
+
+  const [app] = await getDb()
+    .select({ source: appsTable.source, serverId: appsTable.serverId })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
+  if (!app) throw new Error("App not found");
+  if (app.source === "compose")
+    throw new Error(
+      "A compose stack publishes its ports in its own compose file.",
+    );
+  // A host port is a singleton on the machine, and the machine is shared: the
+  // row that would collide can belong to another team.
+  // ponytail: rows only, no agent probe - a port something OUTSIDE deplo holds
+  // surfaces as docker's own refusal on the deploy, like a compose stack's does.
+  for (const p of validated)
+    if (await hostPortClaimed(app.serverId, p.published, { appId: id }))
+      throw new Error(
+        `Port ${p.published} is already published on this server. Pick a different one.`,
+      );
+
+  await getDb().transaction(async (tx) => {
+    await tx.delete(appPortsTable).where(eq(appPortsTable.appId, id));
+    const rows = portsToRows(id, validated);
+    if (rows.length > 0) await tx.insert(appPortsTable).values(rows);
+    await tx
+      .update(appsTable)
+      .set({ updatedAt: nowIso() })
+      .where(eq(appsTable.id, id));
+  });
+  await recordActivity("app", "Updated published ports", user.name, id);
 }
 
 /**

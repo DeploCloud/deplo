@@ -2,12 +2,14 @@ import { notFound } from "next/navigation";
 import { SlidersHorizontal } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
+import { canExposePorts } from "@/lib/membership";
 import { listAppCronJobs } from "@/lib/data/crons";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
+import { PublishedPortsForm } from "@/components/apps/settings/published-ports-form";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import {
@@ -33,9 +35,10 @@ export default async function AppAdvancedSettingsPage(
   if (!project) notFound();
   // The console page refuses without this, so the row says so up front instead of
   // handing out a link that 404s.
-  const [canConsole, canCron] = await Promise.all([
+  const [canConsole, canCron, mayExposePorts] = await Promise.all([
     hasAppCapability(project.id, "open_app_console"),
     hasAppCapability(project.id, "manage_crons"),
+    canExposePorts(),
   ]);
   const cron = canCron ? await listAppCronJobs(project.id) : null;
 
@@ -70,6 +73,17 @@ export default async function AppAdvancedSettingsPage(
               <HealthCheckForm
                 appId={project.id}
                 healthCheck={project.healthCheck}
+              />
+            </CapabilityFieldset>
+          )}
+
+          {/* A compose stack publishes its own ports in its own YAML. */}
+          {project.source !== "compose" && (
+            <CapabilityFieldset cap="configure_apps">
+              <PublishedPortsForm
+                appId={project.id}
+                ports={project.ports ?? []}
+                canExposePorts={mayExposePorts}
               />
             </CapabilityFieldset>
           )}

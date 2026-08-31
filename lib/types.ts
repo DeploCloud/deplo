@@ -725,6 +725,24 @@ export interface VolumeMount {
   propagation?: MountPropagation;
 }
 
+/** How many host ports one app may publish. Bounded because each one is a real
+ *  listener on a shared machine. */
+export const MAX_PUBLISHED_PORTS = 20;
+
+/**
+ * One host port an app publishes: `published:target/protocol`, the compose
+ * `ports:` entry deplo writes for an app that does not speak HTTP.
+ */
+export interface PublishedPort {
+  /** Stable id (server: newId("prt"); client draft rows: prt_<shortId>). */
+  id: ID;
+  /** The port on the HOST. Unique per server. */
+  published: number;
+  /** The port inside the container. */
+  target: number;
+  protocol: "tcp" | "udp";
+}
+
 /**
  * Per-app resource limits - caps applied to the app's container(s) at deploy time
  * so a runaway app can't starve its neighbours on a shared host.
@@ -879,6 +897,13 @@ export interface App {
    * (no reroute churn).
    */
   volumes?: VolumeMount[] | null;
+  /**
+   * Host ports this app publishes, for what does not speak HTTP. null/absent for
+   * a compose stack (its YAML publishes its own) and for every app that never
+   * added one, so renderCompose emits no `ports:` keys and the stack stays
+   * byte-identical.
+   */
+  ports?: PublishedPort[] | null;
   build: BuildConfig;
   productionUrl: string | null;
   status: AppStatus;

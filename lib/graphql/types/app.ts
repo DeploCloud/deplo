@@ -29,6 +29,7 @@ import {
   startAppsDelete,
   bulkAppAction,
   reorderApps,
+  setAppPorts,
   setAppVolumes,
   updateAppResources,
   updateAppHealthCheck,
@@ -82,6 +83,7 @@ import type {
   Deployment,
   GitRepo,
   LogLine,
+  PublishedPort,
   VolumeMount,
 } from "@/lib/types";
 
@@ -234,6 +236,24 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   }),
 });
 
+const PublishedPortRef = builder
+  .objectRef<PublishedPort>("PublishedPort")
+  .implement({
+    description:
+      "A host port an app publishes, for what the proxy cannot route - a game " +
+      "server, an SMTP relay, a database the app exposes.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      published: t.exposeInt("published", {
+        description: "The port on the host.",
+      }),
+      target: t.exposeInt("target", {
+        description: "The port inside the container.",
+      }),
+      protocol: t.string({ resolve: (p) => p.protocol }),
+    }),
+  });
+
 export const AppRef = builder.objectRef<AppSummary>("App").implement({
   description: "A deployable application owned by a team.",
   fields: (t) => ({
@@ -288,6 +308,13 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
       type: [VolumeRef],
       description: "Persistent volumes mounted into this app.",
       resolve: (p) => p.volumes ?? [],
+    }),
+    ports: t.field({
+      type: [PublishedPortRef],
+      description:
+        "Host ports this app publishes. Empty for a compose stack, which " +
+        "publishes its own in its compose file.",
+      resolve: (p) => p.ports ?? [],
     }),
     resources: t.field({
       type: ResourceLimitsRef,
@@ -495,6 +522,17 @@ const VolumeInput = builder.inputType("VolumeInput", {
     /** Host binds only: follow submounts that appear later. Null ⇒ docker's
      * `rprivate` default (a snapshot taken when the container started). */
     propagation: t.field({ type: MountPropagationEnum, required: false }),
+  }),
+});
+
+const PublishedPortInput = builder.inputType("PublishedPortInput", {
+  description: "A host port an app publishes.",
+  fields: (t) => ({
+    id: t.string({ required: false }),
+    published: t.int({ required: true }),
+    target: t.int({ required: true }),
+    /** "tcp" (default) or "udp". */
+    protocol: t.string({ required: false }),
   }),
 });
 
@@ -1035,6 +1073,28 @@ builder.mutationFields((t) => ({
           mountPath: v.mountPath,
           readOnly: v.readOnly ?? false,
           propagation: v.propagation ?? undefined,
+        })),
+      );
+      return reloadApp(id);
+    },
+  }),
+  setAppPorts: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Replace the host ports an app publishes. Needs the publish-ports grant, and is refused for a compose stack, which publishes its own.",
+    args: {
+      id: t.arg.string({ required: true }),
+      ports: t.arg({ type: [PublishedPortInput], required: true }),
+    },
+    resolve: async (_r, { id, ports }) => {
+      await setAppPorts(
+        id,
+        ports.map((p) => ({
+          id: p.id ?? "",
+          published: p.published,
+          target: p.target,
+          protocol: p.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
         })),
       );
       return reloadApp(id);

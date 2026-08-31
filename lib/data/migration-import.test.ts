@@ -81,7 +81,7 @@ import {
 import { activeMigrationStream } from "../graphql/types/migration";
 import { createEnvironment } from "./environments";
 import { createProject, renameProject } from "./projects";
-import { startApp } from "./apps";
+import { listApps, startApp } from "./apps";
 import { startDeployment } from "../deploy/build";
 import {
   addServer,
@@ -603,7 +603,9 @@ test("scan reports the compose rewrite and the missing git credential up front",
 
   const web = plan.projects[0].environments[0].services[0];
   assert.match(web.notes.join(" "), /no credential/);
-  assert.match(web.notes.join(" "), /8080->3000/);
+  // 8080 is a port Deplo can publish, so the review says nothing about it: it
+  // comes across onto the app itself.
+  assert.equal(web.notes.join(" ").includes("8080"), false);
   // Both addresses the app answers on are listed - the throwaway one included,
   // because it IS an address today and the review has to say what happens to it:
   // it cannot come across, so Deplo re-hosts its route on one of its own.
@@ -2208,6 +2210,41 @@ test("the source holding the port is not a reason to drop it - it is stopped", a
   const row = await dbRowOf("blink-db");
   assert.equal(row?.exposedPublicly, true, "and the port came over anyway");
   assert.equal(row?.exposedPort, 5432);
+});
+
+// Anything that is not a website - a game server, an SMTP relay, a cache - used
+// to arrive with nothing bound, and a line telling the owner to rewrite their app
+// as a compose stack by hand.
+test("an app keeps the host port it published on the source", async () => {
+  await grantExposePorts();
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const web = (await asOwner(() => listApps())).find(
+    (a) => a.name === "blink-web",
+  )!;
+  assert.deepEqual(
+    web.ports?.map((p) => `${p.published}:${p.target}/${p.protocol}`),
+    ["8080:3000/tcp"],
+  );
+});
+
+test("without the grant an app's port is dropped, and the report says why", async () => {
+  await db.execute(
+    `update users set is_instance_admin = false, can_expose_ports = false
+       where id = '${USER_1}'`,
+  );
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const web = (await asOwner(() => listApps())).find(
+    (a) => a.name === "blink-web",
+  )!;
+  assert.equal(web.ports ?? null, null);
+  const said = (await asOwner(() => getMigrationRun(runId)))!.items
+    .map((i) => i.message ?? "")
+    .join(" | ");
+  assert.match(said, /It published 8080 on its host/);
 });
 
 test("without the publish-ports grant the port is dropped, and the report says why", async () => {
