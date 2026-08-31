@@ -4,6 +4,7 @@ lib/agent/gen/
 lib/db/migrations/
 next-env.d.ts
 bun.lock
+signatures/
 
 # Build artifacts and vendored trees.
 .next/
