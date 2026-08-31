@@ -5,6 +5,11 @@ import Link from "next/link";
 import { ShieldCheck, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { veilProps } from "@/components/templates/veil";
+import { cn } from "@/lib/utils";
+
+/** `--chart-1` in oklch. A tip is an invitation, not furniture. */
+const TIP_HUE = 255;
 
 /** One card. */
 export interface SidebarTip {
@@ -88,9 +93,18 @@ export function SidebarTips(ctx: SidebarTipContext) {
   }
 
   const Icon = tip.icon;
+  // The same wash a chosen agent card wears on the MCP page. No `bg-*`: the
+  // veil paints on a `z-index: -1` pseudo-element, so a background hides it.
+  const veil = veilProps({ hue: TIP_HUE }, "on");
 
   return (
-    <div className="relative rounded-lg border border-border bg-card p-3">
+    <div
+      style={veil.style}
+      className={cn(
+        "relative rounded-lg border border-border p-3",
+        veil.className,
+      )}
+    >
       <button
         type="button"
         onClick={() => dismiss(tip.id)}
