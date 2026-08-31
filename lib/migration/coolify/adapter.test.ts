@@ -223,3 +223,26 @@ test("the server level is read for the machine a resource runs on", async (t) =>
   // The panel's OWN host is keyed "" everywhere else in the importer.
   assert.equal(await coolifyClient(cred).serverSharedEnv("nope"), null);
 });
+
+test("a token that cannot read a compose file is refused before anything runs", async (t) => {
+  // A service is DEFINED by its compose, so one that hands over none is the same
+  // missing scope showing up somewhere the env probe cannot see it - and the
+  // failure it made downstream read as a git problem.
+  serve(t, {
+    "/api/v1/services/svc-gitea": { uuid: "svc-gitea", name: "gitea" },
+  });
+  await assert.rejects(
+    () => coolifyClient(cred).assertReadable(),
+    /read:sensitive/,
+  );
+});
+
+test("a compose the panel DOES hand over settles the token", async (t) => {
+  serve(t, {
+    "/api/v1/services/svc-gitea": {
+      ...SERVICES[0],
+      docker_compose_raw: "services:\n  gitea:\n    image: gitea/gitea\n",
+    },
+  });
+  await coolifyClient(cred).assertReadable();
+});

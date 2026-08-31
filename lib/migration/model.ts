@@ -159,6 +159,11 @@ export interface SourceApplication {
   customGitBranch?: string | null;
   customGitBuildPath?: string | null;
   customGitSSHKeyId?: string | null;
+  /**
+   * The source needed a CREDENTIAL to clone this - a connected account or a
+   * deploy key. Absent means it cloned anonymously, which Deplo can do too.
+   */
+  gitNeedsCredential?: boolean | null;
   // preview deployments (deplo has the same feature)
   isPreviewDeploymentsActive?: boolean | null;
   previewPort?: number | null;
@@ -385,11 +390,17 @@ export interface SourceMember {
   user?: {
     id?: string;
     email?: string | null;
+    /** Dokploy puts the ACCOUNT here, which is the address - the person's own
+     *  name is in {@link SourceMember.firstName}. */
     name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
     image?: string | null;
   } | null;
   email?: string | null;
   name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
 }
 
 export interface SourceSchedule {

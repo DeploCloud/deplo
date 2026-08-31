@@ -245,6 +245,9 @@ export interface CoolifyUser {
   id?: number | null;
   name?: string | null;
   email?: string | null;
+  /** The membership row Coolify serialises beside the user (`->withPivot('role')`). */
+  pivot?: { role?: string | null } | null;
+  role?: string | null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -670,6 +670,9 @@ export async function scanMigrationSource(
           const domains = mapDomains((detail as SourceApplication).domains, {
             isCompose,
             fallbackPort: (detail as SourceApplication).routingPort,
+            compose: isCompose
+              ? ((detail as SourceCompose).composeFile ?? null)
+              : null,
           });
           line.domains = domains.value.map((d) => d.host);
           line.notes.push(...domains.notes);
@@ -1035,6 +1038,27 @@ async function planMachines(
   ];
 }
 
+/** What to call an imported person. Dokploy's `name` column is their ACCOUNT - the
+ *  address - and their own name sits in `firstName`, so every imported member was
+ *  listed by email. */
+function personName(m: {
+  user?: {
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}): string {
+  const first = (m.user?.firstName ?? m.firstName ?? "").trim();
+  const last = (m.user?.lastName ?? m.lastName ?? "").trim();
+  const full = [first, last].filter(Boolean).join(" ");
+  if (full) return full;
+  const named = (m.user?.name ?? m.name ?? "").trim();
+  return named.includes("@") ? named.split("@")[0] : named;
+}
+
 /** Dokploy's members, told apart by whether they already exist here. */
 async function planMembers(
   c: SourceCredential,
@@ -1052,9 +1076,8 @@ async function planMembers(
   const people = rows
     .map((m) => ({
       email: (m.user?.email ?? m.email ?? "").trim().toLowerCase(),
-      name: (m.user?.name ?? m.name ?? "").trim(),
-      // Empty when the panel does not say: Coolify hides the pivot on its team
-      // endpoint, and "member on Coolify" would be a guess printed as a fact.
+      name: personName(m),
+      // Empty only when the panel really does not say - both of them do.
       sourceRole: (m.role ?? "").trim(),
     }))
     .filter((p) => p.email.includes("@"));
@@ -2556,8 +2579,13 @@ async function importAppService(
         sourceName: name,
         outcome: "failed",
         targetKind: "app",
+        // Coolify keeps every stack's compose on the resource itself and has no
+        // "resolved file" endpoint at all, so blaming a git repository sent people
+        // to check their Source settings over a token scope.
         message:
-          "The compose file is in a git repository and {panel} would not hand over the resolved file. Create the app and paste the compose in.",
+          sourceClient(c).platform === "coolify"
+            ? "{panel} handed over no compose file for this stack. A token without the read:sensitive scope is what usually does that - mint one with it and import again. Otherwise create the app and paste the compose in."
+            : "The compose file is in a git repository and {panel} would not hand over the resolved file. Create the app and paste the compose in.",
       });
       return null;
     }
@@ -2573,6 +2601,7 @@ async function importAppService(
   const domains = mapDomains(detail.domains, {
     isCompose,
     fallbackPort: (detail as SourceApplication).routingPort,
+    compose: isCompose ? yamlText : null,
   });
   notes.push(...domains.notes);
   // The app's own address wins the primary slot over a temporary one, whatever order

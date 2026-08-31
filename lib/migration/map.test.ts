@@ -2515,3 +2515,94 @@ test("pairHostMounts carries the stack-relative flag off the target", () => {
     },
   ]);
 });
+
+test("a compose route with no port reads it off the service it names", () => {
+  const compose = [
+    "services:",
+    "  vaultwarden:",
+    "    image: vaultwarden/server",
+    "  db:",
+    "    image: postgres:16",
+  ].join("\n");
+  const { value, notes } = mapDomains(
+    [
+      {
+        domainId: "d1",
+        host: "vault.acme.test",
+        serviceName: "vaultwarden",
+        port: null,
+        certificateType: "letsencrypt",
+      },
+    ],
+    { isCompose: true, compose },
+  );
+  // A template that declares SERVICE_FQDN_X without the _<PORT> spelling used to
+  // land with none, and Traefik answered 404 on the address the panel printed.
+  assert.equal(value[0].port, 80);
+  assert.equal(value[0].service, "vaultwarden");
+  assert.ok(
+    notes.some((n) => /routes it to vaultwarden on port 80/.test(n)),
+    notes.join(" | "),
+  );
+});
+
+test("a port the panel DID record is never second-guessed", () => {
+  const { value, notes } = mapDomains(
+    [
+      {
+        domainId: "d1",
+        host: "app.acme.test",
+        serviceName: "web",
+        port: 3000,
+        certificateType: "letsencrypt",
+      },
+    ],
+    {
+      isCompose: true,
+      compose:
+        "services:\n  web:\n    image: nginx\n    expose:\n      - 8080\n",
+    },
+  );
+  assert.equal(value[0].port, 3000);
+  assert.equal(notes.length, 0);
+});
+
+test("a public repository is not reported as needing a credential", () => {
+  const { notes } = mapSource({
+    applicationId: "a1",
+    sourceType: "git",
+    buildType: "nixpacks",
+    customGitUrl: "https://github.com/acme/public.git",
+    customGitBranch: "main",
+  } as Parameters<typeof mapSource>[0]);
+  assert.deepEqual(notes, []);
+});
+
+test("a repository behind a connection still says a credential is needed", () => {
+  const viaProvider = mapSource({
+    applicationId: "a1",
+    sourceType: "github",
+    buildType: "nixpacks",
+    owner: "acme",
+    repository: "private",
+    branch: "main",
+  } as Parameters<typeof mapSource>[0]);
+  assert.ok(
+    viaProvider.notes.some((n) => /Attach a git connection/.test(n)),
+    viaProvider.notes.join(" | "),
+  );
+  // And the panel saying so itself (Coolify keeps a bare `owner/repo` behind a
+  // source) counts the same.
+  const declared = mapSource({
+    applicationId: "a2",
+    sourceType: "git",
+    buildType: "nixpacks",
+    gitNeedsCredential: true,
+    customGitUrl: "https://github.com/acme/private.git",
+    customGitBranch: "main",
+  } as Parameters<typeof mapSource>[0]);
+  assert.ok(
+    declared.notes.some((n) => /Attach a git connection/.test(n)),
+    declared.notes.join(" | "),
+  );
+});

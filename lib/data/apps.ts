@@ -50,6 +50,7 @@ import { assertNoNameClash } from "./name-clash";
 import {
   composeNamesOnNetwork,
   composeServiceNames,
+  composeServicePort,
 } from "../deploy/compose-stack";
 import {
   parseComposeUpArgs,
@@ -1141,9 +1142,20 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // detectDefaultApp picks from the stack, else build.port (single-image,
   // appless). After creation the `domains` table (each row's service) is the
   // sole routing source.
+  // The service the SOURCE named wins even when it named no port: `&&` here threw
+  // the service away over a missing port and re-guessed one, so an imported stack
+  // routed at whatever `detectDefaultApp` liked - its database, on a template that
+  // has one. The port it publishes (or the usual web port) answers instead.
+  const namedPort =
+    input.composeService && input.compose
+      ? composeServicePort(input.compose, input.composeService)
+      : null;
   const detected =
-    input.composeService && input.composePort
-      ? { service: input.composeService, port: input.composePort }
+    input.composeService && (input.composePort ?? namedPort)
+      ? {
+          service: input.composeService,
+          port: (input.composePort ?? namedPort)!,
+        }
       : input.compose
         ? detectDefaultApp(input.compose)
         : null;

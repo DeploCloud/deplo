@@ -15,7 +15,7 @@ import yaml, {
 } from "../yaml";
 
 import { isValidLogoValue } from "../apps/logo-shared";
-import { keepAuthoredEnvText } from "../deploy/compose-lint";
+import { composeRoutePort, keepAuthoredEnvText } from "../deploy/compose-lint";
 import { HEALTH_CHECK_DEFAULTS } from "../deploy/health-check";
 
 import type {
@@ -1182,6 +1182,10 @@ export type MappedSource =
 
 const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/;
 
+/** Source kinds that mean "cloned through an account the panel had connected",
+ *  which is the only shape that may need a credential Deplo does not have. */
+const CONNECTED_PROVIDER = new Set(["github", "gitlab", "gitea", "bitbucket"]);
+
 /**
  * Where the app's code comes from.
  */
@@ -1231,13 +1235,21 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
     return { value: { kind: "none" }, notes };
   }
 
+  // Only when the SOURCE needed one. Said for every git app, this was the most
+  // frequent line in the report and false for most of them: a public repository
+  // clones here exactly as it cloned there, and the count of things needing a
+  // person made the whole migration look like manual work that was not.
   if (app.customGitSSHKeyId)
     notes.push(
       "Clones over SSH with a key stored in {panel}. Deplo clones over https, so add a git connection for this host.",
     );
-  else
+  else if (
+    app.gitNeedsCredential ||
+    CONNECTED_PROVIDER.has(app.sourceType) ||
+    /^(ssh:\/\/|[^/\s]+@[^/\s]+:)/.test(repo.url)
+  )
     notes.push(
-      `${repo.repo} arrives with no credential. Attach a git connection to deploy it - that also turns on auto-deploy.`,
+      `${repo.repo} came from an account connected to {panel}, so no credential came with it. Attach a git connection if the repository is private - that also turns on auto-deploy.`,
     );
 
   return {
@@ -1387,7 +1399,13 @@ export interface MappedDomain {
  */
 export function mapDomains(
   domains: SourceDomain[] | null | undefined,
-  opts: { isCompose: boolean; fallbackPort?: number | null },
+  opts: {
+    isCompose: boolean;
+    fallbackPort?: number | null;
+    /** The stack's own YAML, so a route that names a service but no port can
+     *  read the port off that service instead of arriving with none. */
+    compose?: string | null;
+  },
 ): Mapped<MappedDomain[]> {
   const notes: string[] = [];
   const out: MappedDomain[] = [];
@@ -1419,10 +1437,20 @@ export function mapDomains(
       notes.push(
         `${host} answered on {panel}'s "${custom}" entrypoint. Deplo has only web and websecure, so it comes across on websecure - open that port on this app if it needs one.`,
       );
-    const port = d.port ?? opts.fallbackPort ?? null;
-    if (opts.isCompose && port == null)
+    const service = opts.isCompose ? d.serviceName?.trim() || null : null;
+    // A one-click template that declares `SERVICE_FQDN_<NAME>` without the
+    // `_<PORT>` spelling records no port at all, and a stack route with none used
+    // to arrive empty - which is a 404 on the address the panel printed.
+    const read =
+      opts.isCompose && service
+        ? composeRoutePort(opts.compose, service)
+        : null;
+    const port = d.port ?? opts.fallbackPort ?? read;
+    if (opts.isCompose && d.port == null && opts.fallbackPort == null)
       notes.push(
-        `${host} has no container port set - Deplo needs one for a compose stack.`,
+        port == null
+          ? `${host} has no container port set - Deplo needs one for a compose stack.`
+          : `${host} carried no container port on {panel}, so Deplo routes it to ${service} on port ${port} - what that service publishes, or the usual web port. Change it under Domains if it answers somewhere else.`,
       );
 
     out.push({
@@ -1433,7 +1461,7 @@ export function mapDomains(
       certProvider,
       entrypoint:
         d.https === false && certProvider === "none" ? "web" : "websecure",
-      service: opts.isCompose ? d.serviceName?.trim() || null : null,
+      service,
       generated: isThrowawayHost(host),
     });
   }

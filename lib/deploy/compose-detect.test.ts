@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   composeRouteCandidates,
   declaredPort,
+  composeRoutePort,
   detectDefaultApp,
 } from "./compose-lint";
 
@@ -215,4 +216,35 @@ services:
 `),
     { service: "web", port: 3000 },
   );
+});
+
+test("composeRoutePort reads the port a service really answers on", () => {
+  const compose = `
+services:
+  published:
+    image: a
+    ports:
+      - "8080:3000"
+  exposed:
+    image: b
+    expose:
+      - "9000"
+  checked:
+    image: c
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/health"]
+  silent:
+    image: d
+`;
+  assert.equal(composeRoutePort(compose, "published"), 3000);
+  assert.equal(composeRoutePort(compose, "exposed"), 9000);
+  // The one a one-click template usually leaves: nothing published, a healthcheck
+  // that dials the real port.
+  assert.equal(composeRoutePort(compose, "checked"), 5678);
+  // Nothing said at all - the conventional web port, which is what the renderer
+  // would have fallen back to anyway.
+  assert.equal(composeRoutePort(compose, "silent"), 80);
+  // Not in the stack: there is no port to answer with.
+  assert.equal(composeRoutePort(compose, "absent"), null);
+  assert.equal(composeRoutePort(null, "published"), null);
 });

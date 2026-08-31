@@ -45,6 +45,7 @@ import {
   withPanel,
 } from "../migration/map";
 import type { HostMount, NamedVolume } from "../migration/model";
+import type { PairedHostMount } from "../migration/map";
 
 import { requireAppCapability } from "./node-access";
 import {
@@ -290,6 +291,25 @@ async function sourceServices(c: SourceCredential): Promise<SourceService[]> {
     },
   );
   return out.filter((s): s is SourceService => s != null);
+}
+
+/**
+ * A `./x` bind this app HAS here that nothing on the other side filled. The
+ * stopped-stack case: the panel names no path for it, so it pairs with nothing
+ * and used to be a clean `0/0` over a directory that should have had data in it.
+ */
+function unfilledStackBinds(
+  landed: Landed,
+  binds: PairedHostMount[],
+): string[] {
+  return landed.hostMounts
+    .filter(
+      (m) => m.stackRelative && !binds.some((b) => b.mountPath === m.mountPath),
+    )
+    .map(
+      (m) =>
+        `${m.mountPath} is bound to a directory beside this stack's compose file, and {panel} named no path for it - nothing was copied into it. Start the stack on {panel} and run the copy again if it holds data.`,
+    );
 }
 
 /** The directory a host path sits in. Both sides are already absolute here. */
@@ -554,6 +574,7 @@ export async function planMigrationDataMove(
       notes: [
         ...state.notes,
         ...paired.notes,
+        ...unfilledStackBinds(landed, binds),
         ...(reachable
           ? []
           : [
@@ -800,6 +821,7 @@ async function runMoveMigrationServiceData(
       notes.push(
         `${m.hostPath} is mounted at ${m.mountPath} on {panel}, but nothing of ${landed.targetName} mounts that path here - what is in it was not copied.`,
       );
+  notes.push(...unfilledStackBinds(landed, binds));
   // A `./x` bind is Deplo's own stack directory on both sides, so there is no host
   // path anybody typed to gate - and gating it took the common case (a one-click
   // stack whose data sits beside its compose) away from everyone but an admin.

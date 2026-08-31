@@ -431,3 +431,35 @@ test("another team's database is not a clash - it is on another network", async 
   );
   assert.ok(ok.id);
 });
+
+test("the service the source named keeps the address even with no port", async () => {
+  // A one-click template that declares `SERVICE_FQDN_<NAME>` without the `_<PORT>`
+  // spelling names its service and no port. Dropping the service over the missing
+  // port re-guessed one, and on this stack the guess is a different container.
+  const app = await asUser1(() =>
+    newApp({
+      compose: ANALYTICS_STACK,
+      composeService: "store_backend",
+      composePort: null,
+    }),
+  );
+  const [row] = await db
+    .select({ service: domainsTable.service, port: domainsTable.port })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.equal(row.service, "store_backend");
+  // Nothing published and no healthcheck: the conventional web port, which is
+  // what the render would have reached on its own.
+  assert.equal(row.port, 80);
+});
+
+test("a service the stack does not have is not taken over a real one", async () => {
+  const app = await asUser1(() =>
+    newApp({ compose: ANALYTICS_STACK, composeService: "ghost" }),
+  );
+  const [row] = await db
+    .select({ service: domainsTable.service })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.equal(row.service, "store_client");
+});

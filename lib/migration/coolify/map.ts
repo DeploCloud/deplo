@@ -5,11 +5,13 @@
  * works exactly as it does for the other platform.
  */
 
+import yaml from "../../yaml";
 import { HEALTH_CHECK_DEFAULTS } from "../../deploy/health-check";
 import type { HealthCheck } from "../../types";
 import {
   composeServiceExposingPort,
   composeServices,
+  deploFilesPath,
   parseEnvBlob,
   sharedRefsIn,
 } from "../map";
@@ -454,6 +456,24 @@ function serializeValue(value: string): string {
   return value;
 }
 
+/**
+ * Coolify's own bookkeeping, injected into every resource it runs
+ * (`COOLIFY_SERVER_UUID`, `COOLIFY_URL`, `COOLIFY_RESOURCE_UUID`, ...). It names
+ * the machine and the panel this is LEAVING, so as a shared variable of the team
+ * it is a row nobody can act on that outlives the revert - the revert only removes
+ * what the run created, and the second import then calls it "already present".
+ */
+export function withoutPanelInternals(blob: string): string {
+  const entries = parseEnvBlob(blob);
+  const kept = entries.filter(({ key }) => !/^COOLIFY_/i.test(key.trim()));
+  // Untouched when there is nothing to drop, so the text somebody wrote is never
+  // re-serialised for no reason.
+  if (kept.length === entries.length) return blob;
+  return kept
+    .map(({ key, value }) => `${key}=${serializeValue(value)}`)
+    .join("\n");
+}
+
 export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
   const lines: string[] = [];
   const previewKeys: string[] = [];
@@ -660,6 +680,12 @@ export function coolifyApplication(
     publishDirectory: row.publish_directory ?? null,
     isStaticSpa: row.settings?.is_spa ?? null,
     customGitUrl: git.url,
+    // A bare `owner/repo` is Coolify keeping the host on a connected SOURCE -
+    // which is also the only shape here that may have been a private clone.
+    gitNeedsCredential: Boolean(
+      row.git_repository?.trim() &&
+      !/^\w+:\/\//.test(row.git_repository.trim()),
+    ),
     customGitBranch: row.git_branch ?? null,
     customGitBuildPath: row.base_directory ?? null,
     isPreviewDeploymentsActive:
@@ -723,6 +749,46 @@ export function coolifyFallbackPort(row: CoolifyApplication): number | null {
  * as a compose stack. The RAW file is the one the author wrote; the parsed one is
  * Coolify's copy, with its own labels, network and container names baked in.
  */
+/**
+ * What each config file is CALLED beside the compose that mounts it, by the path
+ * it lands on in the container.
+ *
+ * Coolify's storage row names only the container path, and its basename is a
+ * different string whenever the two differ: `./filebrowser.json:/.filebrowser.json`
+ * was written here as `.filebrowser.json`, so Docker found no `filebrowser.json`
+ * to bind, created a DIRECTORY in its place, and the app mounted an empty one.
+ */
+function fileNamesFromCompose(compose: string | null): Map<string, string> {
+  const out = new Map<string, string>();
+  let doc: { services?: Record<string, { volumes?: unknown }> } | null;
+  try {
+    doc = yaml.load(compose ?? "") as typeof doc;
+  } catch {
+    return out;
+  }
+  for (const svc of Object.values(doc?.services ?? {})) {
+    if (!Array.isArray(svc?.volumes)) continue;
+    for (const v of svc.volumes) {
+      const raw =
+        typeof v === "string"
+          ? { source: v.split(":")[0], target: v.split(":")[1] }
+          : v && typeof v === "object"
+            ? (v as { source?: string; target?: string })
+            : null;
+      const source = raw?.source?.trim();
+      const target = raw?.target?.trim();
+      if (!source || !target?.startsWith("/")) continue;
+      // Either spelling of the same file: the author's `./x`, and the absolute
+      // path under the panel's own data directory that its rendered copy uses.
+      const rel = deploFilesPath(source) ?? source;
+      if (!/^\.\//.test(rel)) continue;
+      const name = rel.replace(/^\.\/+/, "").replace(/\/+$/, "");
+      if (name) out.set(target.replace(/\/+$/, ""), name);
+    }
+  }
+  return out;
+}
+
 export function coolifyCompose(
   row: CoolifyApplication | CoolifyService,
   extras: CoolifyExtras = {},
@@ -779,10 +845,24 @@ export function coolifyCompose(
       serverId: extras.serverId ?? "",
       environmentId: extras.environmentId ?? null,
       domains: domains.value,
-      mounts: extras.mounts ?? [],
+      mounts: withComposeFileNames(extras.mounts ?? [], raw ?? parsed),
     },
     notes,
   };
+}
+
+/** Config files renamed to what their own compose binds. See {@link fileNamesFromCompose}. */
+function withComposeFileNames(
+  mounts: SourceMount[],
+  compose: string | null,
+): SourceMount[] {
+  const names = fileNamesFromCompose(compose);
+  if (names.size === 0) return mounts;
+  return mounts.map((m) => {
+    if (m.type !== "file") return m;
+    const named = names.get((m.mountPath ?? "").trim().replace(/\/+$/, ""));
+    return named && named !== m.filePath ? { ...m, filePath: named } : m;
+  });
 }
 
 export function coolifyDatabase(
@@ -835,9 +915,10 @@ export function coolifyServer(row: CoolifyServer): SourceServer {
 export function coolifyMember(row: CoolifyUser): SourceMember {
   return {
     id: row.id == null ? undefined : String(row.id),
-    // Coolify hides the pivot on `GET /team/members`, so nobody's role comes
-    // across. Everyone arrives as a plain member either way.
-    role: null,
+    // The membership row rides along with the user (Laravel's `withPivot`), so the
+    // role IS there to read - the report used to print every Coolify member as
+    // holding no role at all, beside a Dokploy one that named theirs.
+    role: row.pivot?.role?.trim() || row.role?.trim() || null,
     email: row.email ?? null,
     name: row.name ?? null,
   };

@@ -60,6 +60,7 @@ import {
   coolifyMounts,
   coolifySchedule,
   coolifyServer,
+  withoutPanelInternals,
 } from "./map";
 
 /** How many reads run at once. Well under the 200/min the bucket already caps. */
@@ -197,9 +198,11 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
     try {
       sharedByProject.set(
         p.uuid,
-        coolifyEnvBlob(
-          await listSharedEnvs(c, { level: "project", projectUuid: p.uuid }),
-        ).blob,
+        withoutPanelInternals(
+          coolifyEnvBlob(
+            await listSharedEnvs(c, { level: "project", projectUuid: p.uuid }),
+          ).blob,
+        ),
       );
     } catch (e) {
       notesByProject.set(p.uuid, [sharedLevelNote("project", p.name ?? "", e)]);
@@ -209,13 +212,15 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
       try {
         sharedByEnv.set(
           `${p.uuid}/${e.id}`,
-          coolifyEnvBlob(
-            await listSharedEnvs(c, {
-              level: "environment",
-              projectUuid: p.uuid,
-              environment: name,
-            }),
-          ).blob,
+          withoutPanelInternals(
+            coolifyEnvBlob(
+              await listSharedEnvs(c, {
+                level: "environment",
+                projectUuid: p.uuid,
+                environment: name,
+              }),
+            ).blob,
+          ),
         );
       } catch (err) {
         notesByEnv.set(`${p.uuid}/${e.id}`, [
@@ -366,6 +371,29 @@ const READ_SENSITIVE_REFUSAL =
   "This token cannot read values. Coolify hides every variable value and every database password from a token without the read:sensitive scope, so the apps would arrive with their variables empty. Mint a token with read:sensitive (Coolify grants it to a team admin or owner) and connect again.";
 
 async function assertReadable(c: SourceCredential): Promise<void> {
+  await assertValuesReadable(c);
+  await assertComposeReadable(c);
+}
+
+/**
+ * A one-click SERVICE is DEFINED by a compose file, so one that hands over none
+ * is the same missing scope showing up somewhere else - and the failure it made
+ * downstream read as a git problem, which sent people to the wrong settings page.
+ * One service answering is enough: the token is fine.
+ */
+async function assertComposeReadable(c: SourceCredential): Promise<void> {
+  const services = await listServices(c);
+  if (services.length === 0) return;
+  const row = await getServiceRow(c, services[0].uuid).catch(() => null);
+  if (!row) return;
+  if (row.docker_compose_raw?.trim() || row.docker_compose?.trim()) return;
+  throw new Error(COMPOSE_REFUSAL);
+}
+
+const COMPOSE_REFUSAL =
+  "This token cannot read compose files. Coolify hides a stack's compose from a token without the read:sensitive scope, so every one-click service would arrive with nothing to deploy. Mint a token with read:sensitive (Coolify grants it to a team admin or owner) and connect again.";
+
+async function assertValuesReadable(c: SourceCredential): Promise<void> {
   // A database is the sharpest probe: without the scope its password column is not
   // blank, it is ABSENT from the JSON.
   const databases = (await listDatabases(c)).filter((d) => coolifyDbKindOf(d));
@@ -514,8 +542,13 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
       return (await listScheduledTasks(c, group, id)).map(coolifySchedule);
     },
 
+    // Coolify's own `COOLIFY_*` bookkeeping is dropped at every shared level: it
+    // names the machine and the panel being left, and a team variable nobody can
+    // act on survives the revert.
     teamSharedEnv: async () =>
-      coolifyEnvBlob(await listSharedEnvs(c, { level: "team" })).blob || null,
+      withoutPanelInternals(
+        coolifyEnvBlob(await listSharedEnvs(c, { level: "team" })).blob,
+      ) || null,
 
     // Coolify's fourth level: a variable scoped to a MACHINE, referenced as
     // `{{server.KEY}}`. Deplo has no server scope, so the importer offers it to
@@ -527,9 +560,11 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
       )?.uuid;
       if (!uuid) return null;
       return (
-        coolifyEnvBlob(
-          await listSharedEnvs(c, { level: "server", serverUuid: uuid }),
-        ).blob || null
+        withoutPanelInternals(
+          coolifyEnvBlob(
+            await listSharedEnvs(c, { level: "server", serverUuid: uuid }),
+          ).blob,
+        ) || null
       );
     },
 

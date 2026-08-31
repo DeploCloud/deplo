@@ -18,6 +18,7 @@ import {
   coolifySchedule,
   coolifyServer,
   parseCoolifyFqdns,
+  withoutPanelInternals,
 } from "./map";
 import { mapMounts, parseEnvBlob } from "../map";
 import type { CoolifyApplication, CoolifyDatabase } from "./client";
@@ -878,4 +879,86 @@ test("custom labels Coolify never encoded are read as they came", () => {
     coolifyNotes({ uuid: "a", custom_labels: encoded } as CoolifyApplication),
     notes,
   );
+});
+
+test("a config file is named after the source its own compose binds", () => {
+  const compose = [
+    "services:",
+    "  filebrowser:",
+    "    image: filebrowser/filebrowser",
+    "    volumes:",
+    "      - ./filebrowser.json:/.filebrowser.json",
+  ].join("\n");
+  const { value } = coolifyCompose(
+    {
+      uuid: "svc-fb",
+      name: "filebrowser",
+      docker_compose_raw: compose,
+    } as unknown as CoolifyApplication,
+    {
+      mounts: [
+        {
+          mountId: "f1",
+          type: "file",
+          // What Coolify records: the container path, whose basename is a
+          // DIFFERENT string from the file the compose actually binds.
+          filePath: ".filebrowser.json",
+          content: "{}",
+          mountPath: "/.filebrowser.json",
+        },
+      ],
+    },
+  );
+  assert.equal(value.mounts?.[0].filePath, "filebrowser.json");
+  assert.equal(value.mounts?.[0].mountPath, "/.filebrowser.json");
+});
+
+test("the same file named by the panel's own absolute path lands the same way", () => {
+  const compose = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "    volumes:",
+    "      - /data/coolify/services/svc-x/nginx.conf:/etc/nginx/nginx.conf",
+  ].join("\n");
+  const { value } = coolifyCompose(
+    {
+      uuid: "svc-x",
+      name: "x",
+      docker_compose_raw: compose,
+    } as unknown as CoolifyApplication,
+    {
+      mounts: [
+        {
+          mountId: "f1",
+          type: "file",
+          filePath: "nginx.conf",
+          content: "server {}",
+          mountPath: "/etc/nginx/nginx.conf",
+        },
+      ],
+    },
+  );
+  assert.equal(value.mounts?.[0].filePath, "nginx.conf");
+});
+
+test("Coolify's own bookkeeping never becomes a shared variable", () => {
+  const blob = [
+    "COOLIFY_SERVER_UUID=abc",
+    "COOLIFY_SERVER_NAME=localhost",
+    "SMTP_HOST=mail.acme.test",
+  ].join("\n");
+  assert.equal(withoutPanelInternals(blob), "SMTP_HOST=mail.acme.test");
+  // Nothing of ours is dropped with them.
+  assert.equal(withoutPanelInternals("A=1\nB=2"), "A=1\nB=2");
+});
+
+test("a member's role comes off the membership row Coolify sends with them", () => {
+  assert.equal(
+    coolifyMember({ id: 3, email: "a@acme.test", pivot: { role: "admin" } })
+      .role,
+    "admin",
+  );
+  // Nothing there is still nothing invented.
+  assert.equal(coolifyMember({ id: 4, email: "b@acme.test" }).role, null);
 });

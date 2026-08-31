@@ -1126,6 +1126,38 @@ export function declaredPort(svc: unknown): number | null {
   return portFromList(s.ports) ?? portFromList(s.expose);
 }
 
+/** A port a healthcheck dials (`curl -f http://localhost:3000/`, `wget ...:8080`).
+ *  The last thing a service says about the port it answers on when it publishes
+ *  none - and one-click templates say it far more often than they `expose:`. */
+function healthCheckPort(svc: unknown): number | null {
+  const test = (svc as { healthcheck?: { test?: unknown } })?.healthcheck?.test;
+  const text = Array.isArray(test)
+    ? test.map(String).join(" ")
+    : typeof test === "string"
+      ? test
+      : "";
+  const n = Number(/:(\d{2,5})(?=[/\s"']|$)/.exec(text)?.[1]);
+  return Number.isFinite(n) && n > 0 && n < 65536 ? n : null;
+}
+
+/**
+ * The container port a route to ONE compose service should reach: what it
+ * publishes, what its healthcheck dials, else the conventional web port - the
+ * same answer the renderer reaches on its own (`portOf`), said out loud so an
+ * imported domain carries a real port instead of nothing.
+ *
+ * Null only when the stack has no such service.
+ */
+export function composeRoutePort(
+  compose: string | null | undefined,
+  service: string,
+): number | null {
+  const services = servicesOf(compose ?? null);
+  const svc = services?.[service];
+  if (!svc) return null;
+  return declaredPort(svc) ?? healthCheckPort(svc) ?? 80;
+}
+
 /** Every service another service names in `depends_on` (list form and map form). */
 function dependedUpon(services: Record<string, unknown>): Set<string> {
   const out = new Set<string>();

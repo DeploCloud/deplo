@@ -2686,3 +2686,30 @@ test("a stack whose service name is already answered is renamed, not refused", a
   );
   assert.equal(domains.rows[0]?.service, "other-stack-web");
 });
+
+test("a member is listed by their own name, not by their address", async () => {
+  // Dokploy's `name` column holds the ACCOUNT, which is the email; the person's
+  // own name is in `firstName`. Every imported member used to be listed by the
+  // address, beside a role that read correctly.
+  fixtures["user.all"] = [
+    {
+      role: "admin",
+      user: {
+        email: "ada@acme.test",
+        name: "ada@acme.test",
+        firstName: "Ada",
+        lastName: "Lovelace",
+      },
+    },
+    // Nothing to read: the account is still not printed as a name with an @ in it.
+    {
+      role: "member",
+      user: { email: "grace@acme.test", name: "grace@acme.test" },
+    },
+  ];
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
+  assert.deepEqual(
+    plan.members.map((m) => `${m.name}/${m.sourceRole}`),
+    ["Ada Lovelace/admin", "grace/member"],
+  );
+});
