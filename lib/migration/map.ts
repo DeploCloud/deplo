@@ -1825,7 +1825,7 @@ export interface VolumePair {
 }
 
 /** Trailing slashes and a missing leading slash are not a difference. */
-function normalizePath(p: string): string {
+export function normalizePath(p: string): string {
   const s = p.trim().replace(/\/+$/, "");
   return s.startsWith("/") ? s : `/${s}`;
 }

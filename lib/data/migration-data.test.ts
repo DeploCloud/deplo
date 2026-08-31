@@ -1302,6 +1302,31 @@ test("a bind mount's host directory is copied too, and says it is a directory", 
   );
 });
 
+test("a config file that came across as a project file is not reported lost", async () => {
+  // The panel handed over the file's CONTENT with the configuration, so it lands
+  // as a project file rather than a bind - and nothing of it is missing.
+  await db.execute(
+    "update app_volumes set type = 'app', project_path = 'config.json', host_path = null where volume_id = 'vol_bind'",
+  );
+  await seedMigrationHostServer();
+  const runId = await openRun();
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.equal(
+    res.notes.some((n) => n.includes("was not copied")),
+    false,
+    res.notes.join(" | "),
+  );
+});
+
 test("a host directory already on this machine is not copied over itself", async () => {
   // Same machine on both sides: the directory the app reads IS the one the old
   // platform wrote, so a wipe-then-restore of it is all risk and no movement.

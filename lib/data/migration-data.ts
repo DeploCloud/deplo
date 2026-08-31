@@ -36,6 +36,7 @@ import {
   composeHostMounts,
   composeVolumeMounts,
   isDataHostPath,
+  normalizePath,
   declaredSourceBindMounts,
   declaredSourceVolumes,
   deploDatabaseVolumeName,
@@ -332,6 +333,9 @@ interface Landed {
   volumes: NamedVolume[];
   /** The host directories this app bind-mounts. Only an app has any. */
   hostMounts: HostMount[];
+  /** Container paths a config file already fills - its bytes came across with the
+   *  configuration, so no host directory has to. */
+  fileMounts: Set<string>;
   /** Engine facts, for the post-copy check. Only on a database. */
   engine?: { type: DatabaseType; username: string; dbName: string };
 }
@@ -407,6 +411,7 @@ async function landedFor(
         },
       ],
       hostMounts: [],
+      fileMounts: new Set(),
       engine: {
         type: hit.type as DatabaseType,
         username: hit.username,
@@ -473,6 +478,13 @@ async function landedFor(
       // points it (`rewriteMountSource`).
       ...composeHostMounts(hit.compose ?? "", stackFilesDir(hit.slug)),
     ],
+    // A file mount lands as a project file, not a bind, and the panel handed over
+    // its CONTENT with the configuration - so nothing here is missing it.
+    fileMounts: new Set(
+      managed
+        .filter((v) => v.type === "app")
+        .map((v) => normalizePath(v.mountPath)),
+    ),
   };
 }
 
@@ -816,7 +828,8 @@ async function runMoveMigrationServiceData(
   for (const m of state.hostMounts)
     if (
       isDataHostPath(m.hostPath) &&
-      !binds.some((b) => b.sourcePath === m.hostPath)
+      !binds.some((b) => b.sourcePath === m.hostPath) &&
+      !landed.fileMounts.has(normalizePath(m.mountPath))
     )
       notes.push(
         `${m.hostPath} is mounted at ${m.mountPath} on {panel}, but nothing of ${landed.targetName} mounts that path here - what is in it was not copied.`,
