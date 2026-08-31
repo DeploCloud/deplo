@@ -40,7 +40,7 @@ export default async function FocusLayout({
 
   return (
     <div className="relative min-h-dvh">
-      <div className="deplo-grid-bg pointer-events-none absolute inset-0 opacity-[0.35]" />
+      <div className="deplo-graph-bg pointer-events-none absolute inset-0 opacity-[0.5]" />
       <div className="relative z-10">{children}</div>
     </div>
   );

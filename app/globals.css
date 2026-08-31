@@ -359,6 +359,15 @@ html body[data-scroll-locked] {
   background-size: 28px 28px;
 }
 
+/* The new-app wizard's ground: graph paper masked, so it takes the theme's
+   border colour instead of shipping its own. */
+.deplo-graph-bg {
+  background-color: var(--border);
+  mask-image: url("/graph-paper.svg");
+  mask-size: 100px 100px;
+  mask-repeat: repeat;
+}
+
 /* ------------------------------------------------------------------ */
 /* Template store: the monochrome veil a card wears in its logo's hue. */
 /* ------------------------------------------------------------------ */
