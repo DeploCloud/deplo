@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Deplo SERVER-AGENT installer (PLAN Part B). Run on a remote Linux host to turn
-# it into a Deplo server: installs Docker (if absent) + the `deplo-agent` binary,
-# writes a systemd unit, and starts the agent in BOOTSTRAP mode. The agent then
-# generates its own key, sends a CSR to the control plane, gets a signed cert,
-# and starts serving - at which point the server flips to "online" in the
-# dashboard. The control plane NEVER SSHes into this box; the agent connects out.
+# Deplo SERVER-AGENT installer. Run on a Linux host to turn it into a Deplo
+# server: installs Docker (if absent) + the `deplo-agent` binary, writes a
+# systemd unit, and starts the agent in BOOTSTRAP mode. The agent then generates
+# its own key, sends a CSR to the control plane, gets a signed cert, and starts
+# serving - at which point the server flips to "online" in the dashboard. The
+# control plane NEVER SSHes into this box; the agent connects out.
 #
 # You do not run this by hand from memory - the dashboard's "Add remote server"
 # gives you the exact command, already filled in:
@@ -19,12 +19,15 @@
 #                    present over HTTPS, absent over plain HTTP (the token then
 #                    binds the response via HMAC instead).
 #
+# Flags, anywhere among the args: --check (preflight only), --force (install even
+# if the preflight failed), --plain, --no-color, --quiet, --help.
+#
 # The agent binary ships as a GitHub Release asset (DeploCloud/deplo-agent).
 # The control plane serves this script over its own domain and substitutes the
 # release's per-arch download URL + sha256 below (read from the release's
 # checksums.txt at serve time) - the script REFUSES to run a binary whose
 # checksum does not match (P2), even though the bytes come from github.com.
-set -euo pipefail
+set -Eeuo pipefail
 
 # --- Substituted by the control plane when it serves the script. One URL+sha
 # pair per Linux arch; the script selects by `uname -m` below. An arch the
@@ -66,18 +69,311 @@ BUILD_ONLY="${DEPLO_BUILD_ONLY:-0}"
 # Set by the import wizard, which prefixes the command with DEPLO_IMPORT_ONLY=1.
 IMPORT_ONLY="${DEPLO_IMPORT_ONLY:-0}"
 
-err()  { printf "\033[31m[!!]\033[0m %s\n" "$1" >&2; }
-warn() { printf "\033[33m[!]\033[0m  %s\n" "$1"; }
-step() { printf "\033[36m[..]\033[0m %s\n" "$1"; }
-ok()   { printf "\033[32m[ok]\033[0m %s\n" "$1"; }
+# ==== deplo terminal UI ===================================== KEEP IN SYNC ====
+# One renderer for install.sh, install-agent.sh and uninstall.sh. It degrades on
+# purpose: no TTY, NO_COLOR, TERM=dumb or a non-UTF-8 locale drops to plain ASCII
+# carrying the same words, because installer output is what people paste into a
+# bug report. Everything printed also lands in $UI_LOG, stripped of escapes.
 
-TOKEN="${1:-}"
-URL="${2:-}"
-FINGERPRINT="${3:-}"
+UI_COLOR=0; UI_UNICODE=0; UI_TTY=0; UI_QUIET=0; UI_DEPTH=256
+UI_LOG="${DEPLO_LOG_FILE:-/var/log/deplo-agent-install.log}"
+UI_PHASE=""; UI_T0=0; UI_ACTION="install"
+# The transcript gets EVERYTHING: every command bash runs, and the output of each
+# one - apt, docker, systemd, curl. DEPLO_TRACE=0 keeps only the output.
+UI_TRACE="${DEPLO_TRACE:-1}"
+
+ui_init() {
+  [ -t 1 ] && UI_TTY=1
+  UI_COLOR=$UI_TTY
+  [ -n "${NO_COLOR:-}" ] && UI_COLOR=0
+  case "${TERM:-}" in dumb) UI_COLOR=0 ;; esac
+  case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in *[Uu][Tt][Ff]*8*) UI_UNICODE=1 ;; esac
+  if [ "${UI_FORCE_PLAIN:-0}" = 1 ]; then UI_COLOR=0; UI_UNICODE=0; fi
+  [ "${UI_FORCE_NOCOLOR:-0}" = 1 ] && UI_COLOR=0
+
+  C_OFF=""; C_B=""; C_DIM=""; C_OK=""; C_WARN=""; C_ERR=""; C_ACC=""
+  if [ "$UI_COLOR" = 1 ]; then
+    case "${COLORTERM:-}" in
+      truecolor|24bit) UI_DEPTH=16777216 ;;
+      *) UI_DEPTH="$(tput colors 2>/dev/null || echo 8)" ;;
+    esac
+    case "$UI_DEPTH" in *[!0-9]*|"") UI_DEPTH=8 ;; esac
+    C_OFF=$'\033[0m'; C_B=$'\033[1m'; C_DIM=$'\033[2m'
+    C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_ACC=$'\033[36m'
+    if [ "$UI_DEPTH" -ge 256 ]; then
+      C_ACC=$'\033[38;5;75m'; C_DIM=$'\033[38;5;244m'
+    fi
+  fi
+
+  if [ "$UI_UNICODE" = 1 ]; then
+    G_OK="✔"; G_WARN="!"; G_ERR="✖"; G_SKIP="·"; G_STEP="›"; G_ARROW="→"; G_BAR="▌"
+    G_TL="╭"; G_TR="╮"; G_BL="╰"; G_BR="╯"; G_H="─"; G_V="│"
+    UI_SPIN="⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏"
+  else
+    G_OK="ok"; G_WARN=" !"; G_ERR="!!"; G_SKIP="--"; G_STEP=".."; G_ARROW="->"; G_BAR="=="
+    G_TL="+"; G_TR="+"; G_BL="+"; G_BR="+"; G_H="-"; G_V="|"
+    UI_SPIN="| / - \\"
+  fi
+  UI_SPIN_DELAY=0.08
+  sleep 0.08 2>/dev/null || UI_SPIN_DELAY=1
+
+  UI_W="$( { [ "$UI_TTY" = 1 ] && tput cols; } 2>/dev/null || echo 80)"
+  [ "${UI_W:-0}" -lt 40 ] 2>/dev/null && UI_W=80
+  [ "$UI_W" -gt 84 ] && UI_W=84
+
+  UI_T0=$SECONDS
+  # fd 9 IS the transcript, for the trace and for every command redirected to it.
+  # 0600 before a single byte is written: it carries whatever the commands print.
+  if : >>"$UI_LOG" 2>/dev/null; then
+    chmod 600 "$UI_LOG" 2>/dev/null || true
+    exec 9>>"$UI_LOG"
+  else
+    UI_LOG=/dev/null
+    exec 9>/dev/null
+  fi
+  ui_log "=== deplo $UI_ACTION $(date -u '+%Y-%m-%dT%H:%M:%SZ') - args: $* ==="
+  ui_log "=== $(uname -srm) - $(id -un)@$(hostname 2>/dev/null || echo '?') ==="
+  [ "${UI_TRACE:-1}" = 1 ] && ui_log "=== every command is traced; grep -v '^+' for command output only ==="
+  # No `date` in PS4: it would fork once per traced command. Elapsed seconds is
+  # the number you actually want when reading back a slow install.
+  PS4='+ ${SECONDS}s ${BASH_SOURCE##*/}:${LINENO}: '
+  # Without this the trace goes to stderr, i.e. over the top of the interface.
+  BASH_XTRACEFD=9
+  trace_on
+}
+
+# Tracing goes quiet around anything holding a secret. The file is 0600 root-only,
+# but a transcript gets tarred up and pasted into an issue, and DEPLO_SECRET
+# decrypts every backup this instance ever wrote.
+trace_off() { set +x; }
+trace_on() { [ "${UI_TRACE:-1}" = 1 ] && set -x; return 0; }
+
+ui_log() { printf '%s\n' "$*" >&9 2>/dev/null || true; }
+
+# Marker + message, the one line shape every status in this script uses.
+ui_line() { # $1 colour  $2 glyph  $3 text  $4 suffix  $5 non-empty = print even when quiet
+  local suffix=""
+  [ -n "${4:-}" ] && suffix=" ${C_DIM}${4}${C_OFF}"
+  ui_log "  [${2}] ${3}${4:+  ${4}}"
+  { [ "$UI_QUIET" = 1 ] && [ -z "${5:-}" ]; } && return 0
+  if [ "$UI_UNICODE" = 1 ]; then printf '  %b%s%b %s%b\n' "$1" "$2" "$C_OFF" "$3" "$suffix"
+  else printf '  %b[%s]%b %s%b\n' "$1" "$2" "$C_OFF" "$3" "$suffix"; fi
+}
+
+ok()   { ui_line "$C_OK"   "$G_OK"   "$1" "${2:-}"; }
+warn() { ui_line "$C_WARN" "$G_WARN" "$1" "${2:-}" force; }
+step() { ui_line "$C_ACC"  "$G_STEP" "$1" "${2:-}"; }
+skip() { ui_line "$C_DIM"  "$G_SKIP" "$1" "${2:-}"; }
+err()  {
+  ui_log "  [!!] $1"
+  if [ "$UI_UNICODE" = 1 ]; then printf '  %b%s%b %s\n' "$C_ERR" "$G_ERR" "$C_OFF" "$1" >&2
+  else printf '  %b[!!]%b %s\n' "$C_ERR" "$C_OFF" "$1" >&2; fi
+}
+# Indented to land exactly under the message it explains, in both glyph sets.
+note() {
+  ui_log "      $1"
+  [ "$UI_QUIET" = 1 ] && return 0
+  local ind="    "
+  [ "$UI_UNICODE" = 1 ] || ind="       "
+  printf '%s%b%s%b\n' "$ind" "$C_DIM" "$1" "$C_OFF"
+}
+blank() { [ "$UI_QUIET" = 1 ] || printf '\n'; ui_log ""; }
+
+phase() {
+  UI_PHASE="$1"
+  ui_log ""; ui_log "-- $1 --"
+  [ "$UI_QUIET" = 1 ] && return 0
+  printf '\n %b%s%b %b%s%b\n' "$C_ACC" "$G_BAR" "$C_OFF" "$C_B" "$1" "$C_OFF"
+}
+
+# --- the header ---------------------------------------------------------------
+# What is running, which version of it, and one line telling a first-time reader
+# what is about to happen to their machine.
+ui_title() {
+  [ "$UI_QUIET" = 1 ] && return 0
+  ui_log "== $1 =="
+  printf '\n %b%s%b\n' "$C_B" "$1" "$C_OFF"
+  if [ -n "${2:-}" ]; then
+    ui_log "   $2"
+    printf ' %b%s%b\n' "$C_DIM" "$2" "$C_OFF"
+  fi
+  return 0
+}
+
+# --- spinner ------------------------------------------------------------------
+UI_SPIN_PID=""; UI_SPIN_MSG=""; UI_SPIN_T0=0
+
+spin_start() {
+  UI_SPIN_MSG="$1"; UI_SPIN_T0=$SECONDS
+  ui_log "  [..] $1"
+  if [ "$UI_TTY" != 1 ] || [ "$UI_QUIET" = 1 ]; then
+    [ "$UI_QUIET" = 1 ] || step "$1"
+    return 0
+  fi
+  printf '\033[?25l'
+  (
+    set +x                     # 12 traced lines a second, otherwise
+    trap 'exit 0' TERM INT
+    frames=($UI_SPIN); n=${#frames[@]}; i=0
+    while :; do
+      printf '\r\033[2K  %b%s%b %s' "$C_ACC" "${frames[$((i % n))]}" "$C_OFF" "$UI_SPIN_MSG"
+      i=$((i + 1)); sleep "$UI_SPIN_DELAY"
+    done
+  ) & UI_SPIN_PID=$!
+}
+
+spin_kill() {
+  [ -n "$UI_SPIN_PID" ] || return 0
+  kill "$UI_SPIN_PID" 2>/dev/null || true
+  wait "$UI_SPIN_PID" 2>/dev/null || true
+  UI_SPIN_PID=""
+  [ "$UI_TTY" = 1 ] && printf '\r\033[2K\033[?25h'
+  return 0
+}
+
+# Elapsed time, shown only once it is worth reading.
+spin_elapsed() {
+  local d=$(( SECONDS - UI_SPIN_T0 ))
+  [ "$d" -ge 2 ] && printf '%ds' "$d"
+  return 0
+}
+
+spin_ok()   { local e; e="$(spin_elapsed)"; spin_kill; ok   "${1:-$UI_SPIN_MSG}" "$e"; }
+spin_warn() { local e; e="$(spin_elapsed)"; spin_kill; warn "${1:-$UI_SPIN_MSG}" "$e"; }
+spin_err()  { spin_kill; err "${1:-$UI_SPIN_MSG}"; }
+
+# Run a command under the spinner, its output going to the transcript only.
+# `</dev/null` on purpose: this script may itself be arriving on stdin.
+spin_run() {
+  local msg="$1"; shift
+  spin_start "$msg"
+  if "$@" >&9 2>&9 </dev/null; then spin_ok; return 0; fi
+  spin_err "$msg"
+  return 1
+}
+
+# --- summary card -------------------------------------------------------------
+ui_pad() { local s="$1" n="$2"; printf '%s' "$s"; local i=${#s}; while [ "$i" -lt "$n" ]; do printf ' '; i=$((i + 1)); done; }
+ui_rule() { local n="$1" i=0; while [ "$i" -lt "$n" ]; do printf '%s' "$G_H"; i=$((i + 1)); done; }
+
+card_open() {
+  CARD_W=$(( UI_W - 4 ))
+  ui_log ""; ui_log "== $1 =="
+  [ "$UI_QUIET" = 1 ] && return 0
+  local title=" $1 "
+  printf '\n %b%s%s%b' "$C_ACC" "$G_TL" "$G_H" "$C_OFF"
+  printf '%b%s%b' "$C_B" "$title" "$C_OFF"
+  printf '%b%s%s%b\n' "$C_ACC" "$(ui_rule $(( CARD_W - ${#title} - 1 )))" "$G_TR" "$C_OFF"
+}
+
+card_kv() {
+  ui_log "   $1  $2"
+  [ "$UI_QUIET" = 1 ] && return 0
+  local key val body pad max
+  key="$(ui_pad "$1" 11)"
+  val="$2"
+  # Truncate rather than let a long value push the right border off the row: a
+  # box that only sometimes closes reads as a rendering bug, not as information.
+  max=$(( CARD_W - 13 ))
+  if [ "${#val}" -gt "$max" ] && [ "$max" -gt 1 ]; then
+    if [ "$UI_UNICODE" = 1 ]; then val="${val:0:$((max - 1))}…"; else val="${val:0:$((max - 3))}..."; fi
+  fi
+  body="  ${key}${val}"
+  pad=$(( CARD_W - ${#body} ))
+  [ "$pad" -lt 0 ] && pad=0
+  printf ' %b%s%b  %b%s%b%s%s%b%s%b\n' \
+    "$C_ACC" "$G_V" "$C_OFF" \
+    "$C_DIM" "$key" "$C_OFF" "$val" \
+    "$(ui_pad "" "$pad")" "$C_ACC" "$G_V" "$C_OFF"
+}
+
+card_close() {
+  [ "$UI_QUIET" = 1 ] && return 0
+  printf ' %b%s%s%s%b\n\n' "$C_ACC" "$G_BL" "$(ui_rule "$CARD_W")" "$G_BR" "$C_OFF"
+}
+
+ui_cleanup() { spin_kill; [ "$UI_TTY" = 1 ] && printf '\033[?25h'; return 0; }
+
+# "1 warning" / "2 warnings" - a count the reader has to decode is a count that
+# looks machine-generated.
+plural() {
+  if [ "$1" = 1 ]; then printf '%s' "$2"; else printf '%s%s' "$2" "${3:-s}"; fi
+}
+
+UI_ERR_SEEN=0
+on_err() {
+  local code=$? line="${1:-?}"
+  [ "$UI_ERR_SEEN" = 1 ] && exit "$code"
+  UI_ERR_SEEN=1
+  spin_kill
+  blank
+  err "The ${UI_ACTION:-install} failed${UI_PHASE:+ during: $UI_PHASE} (line $line, exit $code)."
+  [ "$UI_LOG" = /dev/null ] || note "Full transcript: $UI_LOG"
+  note "Re-running this script picks up where it stopped."
+  exit "$code"
+}
+# ==== end deplo terminal UI ==================================================
+
+# --- args ---------------------------------------------------------------------
+# Flags are filtered out so the three positionals keep their places: the panel
+# hands out `bash -s -- <token> <url> [fingerprint]` and that command must never
+# have to change shape.
+CHECK_ONLY=false
+FORCE=false
+ARGS=()
+for a in "$@"; do
+  case "$a" in
+    --check)     CHECK_ONLY=true ;;
+    --force)     FORCE=true ;;
+    --plain)     UI_FORCE_PLAIN=1 ;;
+    --no-color)  UI_FORCE_NOCOLOR=1 ;;
+    --quiet|-q)  UI_QUIET=1 ;;
+    --help|-h)
+      ui_init
+      ui_title "Deplo Agent Installer"
+      printf '   curl -fsSL https://<deplo>/install-agent.sh | sudo bash -s -- <TOKEN> <URL>\n\n'
+      printf '   Copy the exact command from the dashboard: Settings > Servers > Add server.\n\n'
+      exit 0
+      ;;
+    *) ARGS+=("$a") ;;
+  esac
+done
+
+ui_init
+trap 'ui_cleanup' EXIT
+trap 'spin_kill; printf "\n"; exit 130' INT
+trap 'on_err $LINENO' ERR
+
+trace_off                        # the one-time bootstrap token
+TOKEN="${ARGS[0]:-}"
+URL="${ARGS[1]:-}"
+FINGERPRINT="${ARGS[2]:-}"
+trace_on
+
+HOST_ROLE="server"
+[ "$STORAGE_ONLY" = "1" ] && HOST_ROLE="storage-only server"
+[ "$BUILD_ONLY" = "1" ] && HOST_ROLE="build server"
+[ "$IMPORT_ONLY" = "1" ] && HOST_ROLE="migration source"
+
+# The role rides in the title: on a storage-only or build-only box it changes
+# what this script does, so it is not a detail to leave for the summary. And the
+# line under it says, in the reader's terms, what this machine becomes.
+case "$AGENT_VERSION" in
+  [0-9]*) AGENT_TITLE="Deplo Agent Installer - v$AGENT_VERSION" ;;
+  *)      AGENT_TITLE="Deplo Agent Installer" ;;      # the unsubstituted template
+esac
+case "$HOST_ROLE" in
+  "build server")        ROLE_LINE="Turns this machine into a build server: it builds images, it runs nothing." ;;
+  "storage-only server") ROLE_LINE="Turns this machine into a backup store for Deplo. Nothing is deployed here." ;;
+  "migration source")    ROLE_LINE="Installs a read-only agent so Deplo can import this host's volumes." ;;
+  *)                     ROLE_LINE="Turns this machine into a Deplo server, so you can deploy apps to it." ;;
+esac
+[ "$HOST_ROLE" = server ] || AGENT_TITLE="$AGENT_TITLE ($HOST_ROLE)"
+ui_title "$AGENT_TITLE" "$ROLE_LINE"
 
 if [ -z "$TOKEN" ] || [ -z "$URL" ]; then
   err "Usage: install-agent.sh -- <token> <control-plane-url> [fingerprint]"
-  err "Copy the exact command from the dashboard's Add remote server dialog."
+  note "Copy the exact command from the dashboard's Add remote server dialog."
   exit 1
 fi
 # Detect the UNSUBSTITUTED template (someone ran the repo copy directly). The
@@ -89,35 +385,149 @@ fi
 case "$AGENT_URL_AMD64" in
   *__AGENT_URL*AMD64__*)
     err "This script must be fetched from the control plane (/install-agent.sh),"
-    err "which fills in the binary URL + checksum. Don't run the repo copy directly."
+    note "which fills in the binary URL + checksum. Don't run the repo copy directly."
     exit 1
     ;;
 esac
+
+# ==============================================================================
+# 0. Preflight
+# ==============================================================================
+# Everything knowable before the host is touched. The expensive mistake this
+# catches is a control plane that cannot be reached: the agent would install
+# cleanly, call home into the void, and the server would sit at "offline"
+# forever with nothing on this box saying why.
+phase "Preflight"
+
+PF_FAIL=0
+PF_WARN=0
+pf_fail() { PF_FAIL=$((PF_FAIL + 1)); err "$1"; [ -n "${2:-}" ] && note "$2"; return 0; }
+pf_warn() { PF_WARN=$((PF_WARN + 1)); warn "$1"; [ -n "${2:-}" ] && note "$2"; return 0; }
+
 if [ "$(id -u)" -ne 0 ]; then
-  err "Please run as root (or with sudo)."
+  err "The agent is a system service, so this has to run as root."
+  note "Copy the command from the dashboard - it already carries sudo."
   exit 1
 fi
-for bin in curl sha256sum systemctl; do
-  command -v "$bin" >/dev/null 2>&1 || { err "$bin is required."; exit 1; }
-done
 
-# 1. Docker -----------------------------------------------------------------
+OS_NAME="$( . /etc/os-release 2>/dev/null && printf '%s %s' "${NAME:-Linux}" "${VERSION_ID:-}" || true )"
+case "$(uname -m)" in
+  x86_64|amd64|aarch64|arm64) ok "${OS_NAME:-Linux} on $(uname -m)" ;;
+  *) pf_fail "Unsupported architecture '$(uname -m)'." "The Deplo agent ships linux/amd64 and linux/arm64 only." ;;
+esac
+
+MISSING=""
+for bin in curl sha256sum systemctl; do
+  command -v "$bin" >/dev/null 2>&1 || MISSING="$MISSING $bin"
+done
+if [ -n "$MISSING" ]; then
+  pf_fail "Missing required tool(s):$MISSING." "Install them with this system's package manager and re-run."
+else
+  ok "curl, sha256sum and systemd present"
+fi
+
+DISK_GB="$(df -PBG / 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}' || true)"
+if [ "${DISK_GB:-0}" -ge 20 ]; then ok "Disk: ${DISK_GB} GB free on /"
+elif [ "${DISK_GB:-0}" -ge 5 ]; then pf_warn "${DISK_GB} GB free on /." "Images and build caches grow fast; 20 GB is the comfortable floor."
+else pf_fail "Only ${DISK_GB:-0} GB free on /." "Free some space and re-run."; fi
+
+# The control plane, before anything is installed ------------------------------
+case "$URL" in
+  http://*|https://*) : ;;
+  *) pf_fail "'$URL' is not a control-plane URL." "It must start with http:// or https://. Copy the command from the dashboard." ;;
+esac
+# The status code, not `curl -f`: "nothing answered" and "answered, but not with
+# a healthy panel" send the operator to two different places, and collapsing them
+# into one message costs an hour of looking at the wrong thing. %{http_code} is
+# 000 only when no HTTP response came back at all.
+spin_start "Reaching the control plane at $URL"
+CP_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL/api/health" </dev/null 2>&9 || true)"
+ui_log "  reach $URL/api/health -> ${CP_CODE:-none}"
+case "${CP_CODE:-000}" in
+  2*) spin_ok "Control plane reachable at $URL" ;;
+  "" | 000)
+    spin_kill
+    pf_fail "Cannot reach $URL from this host." \
+      "The agent provisions itself by calling out to that address. Check DNS, egress and any firewall."
+    ;;
+  *)
+    spin_kill
+    pf_fail "$URL answered HTTP $CP_CODE, which is not a healthy control plane." \
+      "The address is reachable, so check it is the panel's own URL and that the panel has finished starting."
+    ;;
+esac
+
+# Docker, per role -------------------------------------------------------------
 if [ "$STORAGE_ONLY" = "1" ]; then
-  ok "Storage-only server: skipping Docker"
+  skip "Storage-only server: Docker is not needed here"
+elif command -v docker >/dev/null 2>&1; then
+  if docker info >/dev/null 2>&1; then ok "Docker $(docker --version 2>/dev/null | awk '{print $3}' | tr -d ,), daemon responding"
+  else pf_fail "Docker is installed but its daemon is not answering." "Start it: systemctl start docker"; fi
+elif [ "$IMPORT_ONLY" = "1" ]; then
+  pf_fail "Docker is not installed on this host, so there are no volumes to import."
+else
+  step "Docker is not installed - the installer will add it"
+fi
+
+# The port the panel dials ------------------------------------------------------
+# Outbound provisioning succeeds either way, so a blocked port reads as a server
+# that enrolls and then never comes online. Say it now, not at the end.
+firewall_fix_command() {
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
+    ufw status 2>/dev/null | grep -qE "(^|[^0-9])$AGENT_PORT/tcp" \
+      || printf 'ufw allow %s/tcp' "$AGENT_PORT"
+  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --list-ports 2>/dev/null | grep -qE "(^| )$AGENT_PORT/tcp" \
+      || printf 'firewall-cmd --permanent --add-port=%s/tcp && firewall-cmd --reload' "$AGENT_PORT"
+  fi
+}
+FIREWALL_FIX="$(firewall_fix_command || true)"
+if [ -n "$FIREWALL_FIX" ]; then
+  pf_warn "This host's firewall is blocking TCP $AGENT_PORT, which Deplo dials." "Open it with:  $FIREWALL_FIX"
+else
+  ok "TCP $AGENT_PORT is not blocked by this host's firewall"
+fi
+
+blank
+if [ "$PF_FAIL" -gt 0 ]; then
+  err "Preflight found $PF_FAIL blocking $(plural "$PF_FAIL" problem) and $PF_WARN $(plural "$PF_WARN" warning)."
+  if [ "$CHECK_ONLY" != true ] && [ "$FORCE" != true ]; then
+    note "Fix them and re-run, or pass --force to install the agent anyway."
+    exit 1
+  fi
+elif [ "$PF_WARN" -gt 0 ]; then
+  warn "Preflight passed with $PF_WARN $(plural "$PF_WARN" warning)."
+else
+  ok "Preflight passed."
+fi
+if [ "$CHECK_ONLY" = true ]; then
+  blank
+  note "Nothing was changed. Re-run without --check to install the agent."
+  exit $([ "$PF_FAIL" -gt 0 ] && echo 1 || echo 0)
+fi
+
+# ==============================================================================
+# 1. Docker
+# ==============================================================================
+phase "Docker"
+
+if [ "$STORAGE_ONLY" = "1" ]; then
+  skip "Storage-only server: skipping Docker"
 elif [ "$IMPORT_ONLY" = "1" ]; then
   # Docker has to be here already - this is the other platform's host, and its
   # volumes are what we came to read. Installing it would be changing a machine we
-  # are only borrowing, so a missing Docker is a hard stop instead.
-  if ! command -v docker >/dev/null 2>&1; then
-    err "Docker is not installed on this host, so there are no volumes to import."
-    exit 1
-  fi
+  # are only borrowing.
   ok "Migration source: using the Docker already on this host"
 elif ! command -v docker >/dev/null 2>&1; then
-  step "Installing Docker..."
-  curl -fsSL https://get.docker.com | sh
-  systemctl enable --now docker
-  ok "Docker installed"
+  spin_start "Installing Docker"
+  if curl -fsSL https://get.docker.com </dev/null 2>&9 | sh >&9 2>&9; then
+    systemctl enable --now docker >&9 2>&9 || true
+    spin_ok "Docker installed ($(docker --version 2>/dev/null | awk '{print $3}' | tr -d ,))"
+  else
+    spin_err "Docker installation failed"
+    note "Transcript: $UI_LOG"
+    exit 1
+  fi
 else
   ok "Docker already installed"
 fi
@@ -128,7 +538,7 @@ fi
 # only way out would be an SSH session - which is the thing Deplo exists to avoid.
 ensure_git() {
   command -v git >/dev/null 2>&1 && { ok "git already installed"; return; }
-  step "Installing git..."
+  spin_start "Installing git"
   # `|| true`: a package manager that refuses is a warning below, never the end of
   # an install that has already put Docker on this machine.
   {
@@ -141,12 +551,12 @@ ensure_git() {
     elif command -v pacman >/dev/null 2>&1; then pacman -Sy --noconfirm git
     elif command -v apk >/dev/null 2>&1; then apk add --no-cache git
     fi
-  } || true
+  } >&9 2>&9 </dev/null || true
   if command -v git >/dev/null 2>&1; then
-    ok "git installed"
+    spin_ok "git installed"
   else
-    err "Could not install git. Apps that deploy from a repository will not build"
-    err "until it is there: install it with this system's package manager."
+    spin_warn "Could not install git"
+    note "Apps that deploy from a repository will not build until it is there."
   fi
 }
 
@@ -160,8 +570,8 @@ fi
 # Docker's default pools allow ~31 networks and Deplo burns one PER APP, so an
 # untouched host dies on its 32nd deploy. Must run before any network exists:
 # only a full daemon restart loads new pools. KEEP IN SYNC with install.sh.
-#   1. NEVER hardcode 10.0.0.0/8 - it swallows the host's own LAN/VPN and dockerd
-#      then refuses to start. Pick a /13 overlapping NO route already on the box.
+#   1. NEVER hardcode the whole of the 10 range - it swallows the host's own
+#      LAN/VPN and dockerd then refuses to start. Pick a /13 overlapping NO route.
 #   2. NEVER clobber the operator's daemon.json: an existing pool setting wins.
 
 # Is the /13 at 10.<$1>.0.0 (second octets $1..$1+7) clear of every 10.x route on
@@ -240,7 +650,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
 
   # Never hand dockerd a config it will reject: it would fail to come back up.
   if command -v dockerd >/dev/null 2>&1 \
-     && ! dockerd --validate --config-file="$TMP" >/dev/null 2>&1; then
+     && ! dockerd --validate --config-file="$TMP" >&9 2>&9; then
     err "The generated Docker config failed validation, leaving $CFG untouched."
     rm -f "$TMP"; return 0
   fi
@@ -261,7 +671,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   fi
 
   step "Applying Docker address pool $BASE (a /$SIZE per network)..."
-  systemctl restart docker >/dev/null 2>&1 || true
+  systemctl restart docker >&9 2>&9 || true
   i=0
   until docker info >/dev/null 2>&1; do
     i=$((i + 1)); [ "$i" -ge 15 ] && break
@@ -272,7 +682,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   else
     err "Docker did not come back after the address-pool change - rolling back."
     if [ -f "$CFG.deplo-bak" ]; then mv "$CFG.deplo-bak" "$CFG"; else rm -f "$CFG"; fi
-    systemctl restart docker >/dev/null 2>&1 || true
+    systemctl restart docker >&9 2>&9 || true
     if docker info >/dev/null 2>&1; then
       err "Rolled back - Docker is up again, with the default ~31-network ceiling."
     else
@@ -282,18 +692,22 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
 }
 
 if [ "$STORAGE_ONLY" = "1" ]; then
-  ok "Storage-only server: skipping Docker address pools"
+  skip "Storage-only server: skipping Docker address pools"
 elif [ "$IMPORT_ONLY" = "1" ]; then
   # The one step that would MODIFY the host: it writes /etc/docker/daemon.json and
   # restarts the daemon when nothing is running. Deplo deploys nothing here, so
   # the ceiling this raises is irrelevant - and the change is one the uninstall
   # could never take back.
-  ok "Migration source: leaving this host's Docker configuration alone"
+  skip "Migration source: leaving this host's Docker configuration alone"
 else
   configure_docker_address_pools
 fi
 
-# 2. Agent binary (checksum-verified before it ever runs, P2) ----------------
+# ==============================================================================
+# 2. Agent binary (checksum-verified before it ever runs, P2)
+# ==============================================================================
+phase "Agent"
+
 # Pick the release asset for this host's architecture. The release publishes
 # linux/amd64 and linux/arm64; anything else has no binary and we stop early.
 case "$(uname -m)" in
@@ -306,23 +720,25 @@ case "$(uname -m)" in
 esac
 if [ -z "$AGENT_BIN_URL" ] || [ -z "$AGENT_SHA256" ]; then
   err "The latest agent release has no binary for this architecture ($(uname -m))."
-  err "Pick a host with linux/amd64 or linux/arm64, or wait for a release that includes it."
+  note "Pick a host with linux/amd64 or linux/arm64, or wait for a release that includes it."
   exit 1
 fi
 
-step "Downloading the Deplo agent (v$AGENT_VERSION, $(uname -m))..."
+spin_start "Downloading the Deplo agent v$AGENT_VERSION ($(uname -m))"
 TMP="$(mktemp)"
-curl -fsSL "$AGENT_BIN_URL" -o "$TMP"
+curl -fsSL "$AGENT_BIN_URL" -o "$TMP" </dev/null 2>&9
 GOT="$(sha256sum "$TMP" | awk '{print $1}')"
 if [ "$GOT" != "$AGENT_SHA256" ]; then
   rm -f "$TMP"
-  err "Agent binary checksum mismatch (expected $AGENT_SHA256, got $GOT)."
-  err "Refusing to run an unverified binary."
+  spin_err "Agent binary checksum mismatch"
+  note "Expected $AGENT_SHA256"
+  note "Got      $GOT"
+  note "Refusing to run an unverified binary."
   exit 1
 fi
 install -m 0755 "$TMP" "$AGENT_BIN"
 rm -f "$TMP"
-ok "Agent v$AGENT_VERSION installed at $AGENT_BIN (checksum verified)"
+spin_ok "Agent v$AGENT_VERSION installed" "checksum verified"
 
 # 3. Data dir --------------------------------------------------------------
 mkdir -p "$AGENT_DATA"
@@ -338,10 +754,10 @@ chmod 700 "$AGENT_DATA"
 # (A plain `systemctl restart deplo-agent` carries no token through this script,
 # so it still reuses materials and serves straight away, as intended.)
 if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
-  step "Existing agent materials found - clearing them for a fresh bootstrap..."
-  systemctl stop deplo-agent 2>/dev/null || true
+  step "Existing agent materials found - clearing them for a fresh bootstrap"
+  systemctl stop deplo-agent >&9 2>&9 || true
   rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt"
-  ok "Old materials cleared (the agent will re-provision with the new token)"
+  ok "Old materials cleared" "the agent will re-provision with the new token"
 fi
 
 # 3a-bis. The platform's `deplo` network -------------------------------------
@@ -352,12 +768,14 @@ fi
 # branch, and a host that already runs a reverse proxy (which is every host anyone
 # MIGRATES from) skips that branch and never got one.
 if [ "$IMPORT_ONLY" = "1" ]; then
-  ok "Migration source: skipping the 'deplo' network (no proxy is installed here)"
+  skip "Migration source: skipping the 'deplo' network (no proxy is installed here)"
 else
-  docker network create deplo >/dev/null 2>&1 || true
+  docker network create deplo >&9 2>&9 || true
 fi
 
-# 3b. Traefik reverse proxy (idempotent) ------------------------------------
+# ==============================================================================
+# 3b. Traefik reverse proxy (idempotent)
+# ==============================================================================
 # Deplo's deploys emit `traefik.*` labels and join their Environment's network, but
 # something must READ those labels and route traffic - that is Traefik, which the
 # agent connects to each of those networks as it creates them. The master
@@ -365,13 +783,15 @@ fi
 # box: skip if a Traefik is already running (idempotent re-runs, or the operator's
 # own proxy), and only claim :80/:443 if they are free, otherwise warn and let
 # the operator wire their existing proxy to the `deplo` network.
+phase "Reverse proxy"
+
 TRAEFIK_DIR="$AGENT_DATA/traefik"
 if [ "$STORAGE_ONLY" = "1" ]; then
-  ok "Storage-only server: skipping Traefik (nothing is routed here)"
+  skip "Storage-only server: skipping Traefik (nothing is routed here)"
 elif [ "$BUILD_ONLY" = "1" ]; then
-  ok "Build-only server: skipping Traefik (it builds images, it routes nothing)"
+  skip "Build-only server: skipping Traefik (it builds images, it routes nothing)"
 elif [ "$IMPORT_ONLY" = "1" ]; then
-  ok "Migration source: skipping Traefik (this host has its own, and it is not ours)"
+  skip "Migration source: skipping Traefik (this host has its own, and it is not ours)"
 elif docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null \
      | grep -qi traefik; then
   ok "Traefik already running, leaving it untouched"
@@ -385,12 +805,11 @@ else
     netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|[.:])(80|443)$' && PORTS_FREE=false
   fi
   if [ "$PORTS_FREE" != true ]; then
-    err "Ports 80/443 are already in use on this host, NOT installing Traefik."
-    err "Routing for apps deployed here will not work until a reverse proxy on the"
-    err "shared 'deplo' docker network handles their traefik.* labels. Point your"
-    err "existing proxy at the 'deplo' network, or free 80/443 and re-run."
+    warn "Ports 80/443 are already in use on this host, NOT installing Traefik."
+    note "Apps deployed here are not routed until a reverse proxy on the shared 'deplo'"
+    note "network handles their traefik.* labels. Point your existing proxy at that"
+    note "network, or free 80/443 and re-run."
   else
-    step "Installing Traefik reverse proxy..."
     mkdir -p "$TRAEFIK_DIR/acme"
     touch "$TRAEFIK_DIR/acme/acme.json"
     chmod 600 "$TRAEFIK_DIR/acme/acme.json"
@@ -462,18 +881,21 @@ networks:
   deplo-socket:
     internal: true
 YAML
-    if docker compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d 2>/dev/null \
-       || docker-compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d 2>/dev/null; then
-      ok "Traefik running (deplo-traefik)"
+    spin_start "Installing Traefik reverse proxy"
+    if docker compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d >&9 2>&9 </dev/null \
+       || docker-compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d >&9 2>&9 </dev/null; then
+      spin_ok "Traefik running" "deplo-traefik, ports 80/443"
     else
-      err "Traefik failed to start - apps deployed here won't be routed until it is."
-      err "Inspect: docker compose -f $TRAEFIK_DIR/docker-compose.yml logs"
+      spin_warn "Traefik failed to start"
+      note "Apps deployed here will not be routed until it is. Inspect:"
+      note "docker compose -f $TRAEFIK_DIR/docker-compose.yml logs"
     fi
   fi
 fi
 
-# 4. systemd unit -----------------------------------------------------------
-
+# ==============================================================================
+# 4. systemd unit
+# ==============================================================================
 # The agent runs in bootstrap mode: it calls home with the token, gets its cert
 # signed, persists the materials under $AGENT_DATA, and then serves gRPC. On a
 # restart it finds its materials and skips bootstrap. The token + fingerprint are
@@ -487,7 +909,8 @@ fi
 # SAME argv, so it would outlive every upgrade. `Environment=` in the unit is no
 # better: `systemctl show` prints it to unprivileged callers. A 0600 file read by
 # systemd leaks through neither, and `/proc/<pid>/environ` is owner-only.
-step "Writing the systemd unit..."
+phase "Service"
+
 # mkdir here and not only in the Traefik block above: that one is skipped on a
 # storage-only host, and the agent itself does not create --agent-dir until it
 # runs. Restrict the file BEFORE the token is written into it, so there is no
@@ -495,6 +918,7 @@ step "Writing the systemd unit..."
 BOOTSTRAP_ENV="$AGENT_DATA/bootstrap.env"
 mkdir -p "$AGENT_DATA"
 chmod 700 "$AGENT_DATA"
+trace_off                        # the token again, on its way to disk
 : > "$BOOTSTRAP_ENV"
 chmod 600 "$BOOTSTRAP_ENV"
 cat > "$BOOTSTRAP_ENV" <<EOF
@@ -502,6 +926,7 @@ DEPLO_BOOTSTRAP_URL=$URL
 DEPLO_BOOTSTRAP_TOKEN=$TOKEN
 DEPLO_BOOTSTRAP_FINGERPRINT=$FINGERPRINT
 EOF
+trace_on
 # On a STORAGE-ONLY host neither Docker line may appear. `SupplementaryGroups`
 # names a group that does not exist there, and systemd refuses to spawn the
 # process at all (status=216/GROUP) rather than warning, which, under `set -e`,
@@ -539,48 +964,63 @@ $DOCKER_UNIT_LINES
 WantedBy=multi-user.target
 EOF
 chmod 600 "$UNIT"
+ok "systemd unit written" "$UNIT"
 
 # The backup store the agent owns. Created here rather than lazily so a
 # storage-only box shows the right permissions from the first minute, and so a
 # full disk is visible before the first backup rather than during it.
 if [ "$IMPORT_ONLY" = "1" ]; then
-  ok "Migration source: skipping the backup store (nothing is stored here)"
+  skip "Migration source: skipping the backup store (nothing is stored here)"
 else
   mkdir -p /data/backups
   chmod 700 /data/backups
+  ok "Backup store ready" "/data/backups"
 fi
 
-step "Starting the agent..."
-systemctl daemon-reload
-systemctl enable --now deplo-agent
+spin_run "Starting the agent" systemctl daemon-reload
+systemctl enable --now deplo-agent >&9 2>&9
 
-# The panel DIALS the agent on $AGENT_PORT, while the call-home that provisions it
-# is outbound and succeeds either way - so a blocked port reads as a server that
-# provisions and then never comes online. Report it; never edit someone's firewall.
-firewall_fix_command() {
-  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
-    ufw status 2>/dev/null | grep -qE "(^|[^0-9])$AGENT_PORT/tcp" \
-      || printf 'ufw allow %s/tcp' "$AGENT_PORT"
-  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --list-ports 2>/dev/null | grep -qE "(^| )$AGENT_PORT/tcp" \
-      || printf 'firewall-cmd --permanent --add-port=%s/tcp && firewall-cmd --reload' "$AGENT_PORT"
-  fi
-}
-FIREWALL_FIX="$(firewall_fix_command || true)"
-
-ok "Deplo agent running on port $AGENT_PORT"
-echo ""
-if [ -n "$FIREWALL_FIX" ]; then
-  warn "This host's firewall is blocking TCP $AGENT_PORT - Deplo cannot reach the agent."
-  echo ""
-  echo "  Provisioning still finishes (the agent calls out to $URL), but the server"
-  echo "  stays offline until the port is open. Run:"
-  echo ""
-  echo "      $FIREWALL_FIX"
-  echo ""
+# Provisioning is the agent's own round trip to the control plane, and its result
+# is a signed certificate on disk. Waiting for that file turns "watch the
+# dashboard and hope" into an answer this script can give before it exits.
+PROVISIONED=false
+spin_start "Waiting for the agent to provision itself against $URL"
+i=0
+while [ "$i" -lt 45 ]; do
+  if [ -s "$AGENT_DATA/agent.crt" ]; then PROVISIONED=true; break; fi
+  systemctl is-active --quiet deplo-agent || break
+  i=$((i + 1)); sleep 2
+done
+if [ "$PROVISIONED" = true ]; then
+  spin_ok "Agent provisioned" "certificate signed by $URL"
 else
-  echo "  The agent is calling home to $URL to finish provisioning."
-  echo "  Watch the dashboard - this server will switch to 'online' shortly."
+  spin_warn "The agent has not provisioned yet"
 fi
-echo "  Logs: journalctl -u deplo-agent -f"
-echo ""
+
+# ==============================================================================
+# 5. Summary
+# ==============================================================================
+AGENT_STATE="starting"
+systemctl is-active --quiet deplo-agent && AGENT_STATE="running"
+
+card_open "This host is a Deplo $HOST_ROLE"
+card_kv "Agent" "v$AGENT_VERSION, $AGENT_STATE on port $AGENT_PORT"
+card_kv "Panel" "$URL"
+card_kv "State" "$AGENT_DATA"
+card_kv "Logs" "journalctl -u deplo-agent -f"
+card_close
+
+if [ "$AGENT_STATE" != running ]; then
+  err "The agent service is not running."
+  note "Inspect: journalctl -u deplo-agent -n 50"
+elif [ -n "$FIREWALL_FIX" ]; then
+  warn "TCP $AGENT_PORT is closed, so Deplo cannot dial this agent."
+  note "Provisioning finishes either way, but the server stays offline until you run:"
+  note "$FIREWALL_FIX"
+elif [ "$PROVISIONED" = true ]; then
+  ok "This server is online in the dashboard."
+else
+  note "The agent is still calling home to $URL. Watch the dashboard - it will"
+  note "switch to 'online' shortly, or say why in journalctl -u deplo-agent."
+fi
+printf '\n'
