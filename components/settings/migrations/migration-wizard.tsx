@@ -664,9 +664,8 @@ export function MigrationWizard({
             }
           : prev,
       );
-      // A machine that just became one of ours is also the obvious place for
-      // its own services to land, so it becomes their default placement.
-      setServerMap((prev) => ({ ...prev, [sourceId]: serverId }));
+      // Its LANDING is left alone on purpose: this row is the source machine,
+      // enrolled `import_only`, and nothing deploys onto one of those.
     },
     [],
   );
