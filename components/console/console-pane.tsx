@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   Boxes,
   Eraser,
@@ -8,9 +9,16 @@ import {
   SquareTerminal,
   TerminalSquare,
   TriangleAlert,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -339,7 +347,7 @@ export function ConsolePane({
         </div>
       </div>
 
-      <ConsoleWarningStrip />
+      <ConsoleWarningGate href={title.href} />
 
       <TabsContent
         value="exec"
@@ -441,32 +449,42 @@ function ConsoleStatus({
 }
 
 /**
- * The first-visit warning, as a strip instead of a modal.
+ * The first-visit warning, once per person and not per App: a modal that holds
+ * the terminal until it is answered, because the keystrokes past it are real.
  */
-function ConsoleWarningStrip() {
+function ConsoleWarningGate({ href }: { href: string }) {
   const acknowledged = useConsoleAck();
-  // null = undecided (server render / hydration) - say nothing rather than
+  const router = useRouter();
+  // null = undecided (server render / hydration) - stay shut rather than
   // flashing a warning at someone who dismissed it months ago.
   if (acknowledged !== false) return null;
 
   return (
-    <div className="flex items-center gap-2 border-b border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2">
-      <TriangleAlert className="size-4 shrink-0 text-[var(--warning)]" />
-      <p className="text-xs">
-        This is a live terminal inside the running container - commands take
-        effect for real.
-      </p>
-      <SimpleTooltip content="Dismiss - you won't see this again">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={acknowledgeConsole}
-          aria-label="Dismiss"
-          className="-my-1 ml-auto"
-        >
-          <X />
-        </Button>
-      </SimpleTooltip>
-    </div>
+    <Dialog open>
+      <DialogContent
+        hideClose
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        className="max-w-md"
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <TriangleAlert className="size-5 text-[var(--warning)]" />
+            Open the container console?
+          </DialogTitle>
+          <DialogDescription>
+            This is a live terminal inside the running container - commands and
+            keystrokes take effect for real, and a wrong one can break the app
+            or lose data.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => router.push(href)}>
+            Leave page
+          </Button>
+          <Button onClick={acknowledgeConsole}>I understand</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
