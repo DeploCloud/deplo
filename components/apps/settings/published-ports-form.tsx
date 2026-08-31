@@ -19,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import {
   MAX_PORT,
@@ -135,6 +136,10 @@ export function PublishedPortsForm({
           <p className="flex items-center gap-2 text-sm font-medium">
             <Cable className="size-4 text-muted-foreground" />
             Published ports
+            <InfoTip
+              content="A port of the server bound straight to a port of the container. No certificate and no proxy: use a domain whenever the app speaks HTTP."
+              docs="ports.published"
+            />
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             Reach this app on a port of the server, for anything that is not a

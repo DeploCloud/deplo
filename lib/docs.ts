@@ -95,6 +95,9 @@ export const DOCS = {
   "backups.retention": "guides/data/backups-and-restore#set-retention",
   "backups.restore": "guides/data/backups-and-restore#restore",
 
+  "ports.published": "advanced/published-ports",
+  "ports.publishedRules": "advanced/published-ports#the-rules",
+
   "storage.overview": "guides/data/persistent-storage",
   "storage.source": "guides/data/persistent-storage#fill-the-source",
   "storage.mountPath": "guides/data/persistent-storage#set-the-mount-path",
