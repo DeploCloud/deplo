@@ -60,6 +60,27 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+      # The ingredient list of what actually shipped - image layers included, not
+      # only what package.json names - so "are we affected by this CVE?" is a
+      # query. Required of a commercial release by the EU Cyber Resilience Act.
+      - name: Generate the SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}:${{ steps.version.outputs.VERSION }}
+          format: spdx-json
+          output-file: deplo-${{ steps.version.outputs.VERSION }}.spdx.json
+          upload-artifact: false
+
+      # Same story as the provenance above: signed against the digest and stored
+      # on ghcr, so the list can be trusted without trusting the release page.
+      - name: Attest the SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: deplo-${{ steps.version.outputs.VERSION }}.spdx.json
+          push-to-registry: true
+
       # LAST, not first. Publishing the release before the build meant a failed
       # build still announced a version: v1.1.0 has a release page and no image
       # behind it, so `install.sh` on that version pulls a tag that was never
@@ -68,3 +89,4 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           generate_release_notes: true
+          files: deplo-${{ steps.version.outputs.VERSION }}.spdx.json
