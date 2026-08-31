@@ -65,3 +65,13 @@ test("an exhausted address pool is explained, everything else is passed through"
   assert.match(out, /daemon\.json/);
   assert.equal(explainNetworkError("no such image"), "no such image");
 });
+
+test("an exhausted pool is explained on the OLD docker wording too", () => {
+  // The hosts that hit the ~31 ceiling are precisely the ones running an older
+  // docker, so matching only the current phrasing would miss all of them.
+  for (const raw of [
+    "all predefined address pools have been fully subnetted",
+    "could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network",
+  ])
+    assert.match(explainNetworkError(raw), /daemon\.json/);
+});

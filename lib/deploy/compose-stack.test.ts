@@ -1302,7 +1302,7 @@ services:
   assert.deepEqual(doc.services.a.networks, ["deplo"]);
 });
 
-test("a private network of the author's own is kept, alongside the stack's", () => {
+test("a private network of the author's own is left exactly as written", () => {
   const doc = networksOf(`
 networks:
   internal:
@@ -1312,10 +1312,10 @@ services:
     image: alpine
     networks: [internal]
 `);
-  // Theirs survives untouched; the Environment's is ADDED, because a service with
-  // no domain is still part of the app and has to reach its own database.
+  // The author named their own networks, so that IS the choice - a service with a
+  // domain still gets wired for Traefik, but nothing else is added behind their back.
   assert.ok("internal" in doc.networks);
-  assert.deepEqual(doc.services.a.networks, ["internal", "deplo"]);
+  assert.deepEqual(doc.services.a.networks, ["internal"]);
 });
 
 test("every service joins the Environment's network, routed or not", () => {
@@ -1333,9 +1333,10 @@ services:
   assert.deepEqual(Object.keys(doc.networks), ["deplo"]);
 });
 
-test("a service holding a reserved name is left off, not refused", () => {
-  // `postgres` is an ordinary name for a stack's own database. Auto-joining it and
-  // then throwing would stop the whole stack from rendering.
+test("a reserved name is left off the shared network, but not off the stack", () => {
+  // `postgres` is an ordinary name for a stack's own database. It cannot go on the
+  // Environment's network, but the rest of the stack still has to REACH it: leaving
+  // it off both split the stack in two and `web -> postgres` stopped resolving.
   const doc = networksOf(`
 services:
   postgres:
@@ -1343,8 +1344,63 @@ services:
   web:
     image: nginx
 `);
-  assert.equal(doc.services.postgres.networks, undefined);
-  assert.deepEqual(doc.services.web.networks, ["deplo"]);
+  assert.deepEqual(doc.services.postgres.networks, ["default"]);
+  assert.deepEqual(doc.services.web.networks, ["default", "deplo"]);
+});
+
+test("a hostname claiming a reserved name is caught like the service name", () => {
+  const doc = networksOf(`
+services:
+  store:
+    image: postgres:16
+    hostname: postgres
+  web:
+    image: nginx
+`);
+  assert.deepEqual(doc.services.store.networks, ["default"]);
+  assert.deepEqual(doc.services.web.networks, ["default", "deplo"]);
+});
+
+test("network_mode is refused for `$VAR` without braces too", () => {
+  // Compose interpolates `$NET` exactly like `${NET}` - the same thing
+  // `escapeComposeDollars` in this file has always said.
+  for (const mode of ["${NET}", "$NET", "$NET-suffix", "$(NET)"])
+    assert.throws(
+      () =>
+        networksOf(
+          `services:\n  s:\n    image: a\n    network_mode: "${mode}"\n`,
+        ),
+      /filled in from a variable/,
+      mode,
+    );
+  // `$$` is compose's escape for a literal dollar and interpolates nothing.
+  assert.doesNotThrow(() =>
+    networksOf(`services:\n  s:\n    image: a\n    network_mode: "a$$b"\n`),
+  );
+});
+
+test("another tenant's private default is a network Deplo manages", () => {
+  assert.throws(
+    () =>
+      networksOf(
+        "services:\n  s:\n    image: a\n    network_mode: deplo-victim_default\n",
+      ),
+    /names a network Deplo manages/,
+  );
+});
+
+test("the author's own `default` is honoured, not overridden", () => {
+  // Declaring it is a choice about where the services that name nothing belong -
+  // `internal: true` is somebody deliberately cutting off egress.
+  const doc = networksOf(`
+networks:
+  default:
+    internal: true
+services:
+  w:
+    image: alpine
+`);
+  assert.equal(doc.services.w.networks, undefined);
 });
 
 test("stackNamesOnNetwork reads only what joined the stack's network", () => {
@@ -1367,11 +1423,9 @@ networks:
 `,
     domainRoutes: [route("shop.example.com", "web", 80)],
   });
-  assert.deepEqual(stackNamesOnNetwork(rendered).sort(), [
-    "api",
-    "sidecar",
-    "web",
-  ]);
+  // `sidecar` named its own network, so Deplo left it there and it answers to
+  // nobody on the Environment's.
+  assert.deepEqual(stackNamesOnNetwork(rendered).sort(), ["api", "web"]);
 });
 
 test("network_mode may not name a network Deplo manages", () => {

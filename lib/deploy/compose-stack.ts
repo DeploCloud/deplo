@@ -604,7 +604,10 @@ function readComposeKeepingEnvText(compose: string): string {
 function assertNetworkModeIsNotANetwork(service: string, mode: unknown): void {
   if (typeof mode !== "string") return;
   const value = mode.trim();
-  if (value.includes("${") || value.includes("$(")) {
+  // `$$` is compose's ESCAPE for a literal dollar, so it interpolates nothing.
+  // Every other `$` does - `$NET` without braces just as much as `${NET}`, which
+  // is exactly what `escapeComposeDollars` in this file already says.
+  if (/(^|[^$])\$(\$\$)*[^$]/.test(`${value} `)) {
     throw new Error(
       `\`network_mode\` on service \`${service}\` is filled in from a variable. ` +
         `Deplo cannot tell which network that names, so it is refused - write the ` +
@@ -779,8 +782,52 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // nothing put it on the shared network. Joining it automatically and then throwing
   // would stop such a stack from rendering at all. An author who joins it BY HAND
   // still gets the refusal below.
+  // A service holding a reserved name cannot go on the shared network, but it is
+  // still part of THIS stack and the rest of it has to reach it. Since nothing asks
+  // for `default` any more, leaving it off both networks split the stack in two:
+  // `web` on the Environment's, `postgres` alone on the project's default, and the
+  // lookup between them failing. So when one is present, every service also keeps a
+  // private `default` - the one network compose creates for exactly this.
+  const reserved = Object.keys(services).filter((name) =>
+    serviceReservedClaim(name, services[name]),
+  );
+  // An author who declares `default` themselves has said where the services that
+  // name nothing belong, so Deplo does not move them.
+  const authoredDefault = Boolean(
+    doc.networks &&
+    typeof doc.networks === "object" &&
+    !Array.isArray(doc.networks) &&
+    "default" in (doc.networks as Record<string, unknown>),
+  );
+  // What the AUTHOR wrote, captured before the `default` below is added - otherwise
+  // the "did they choose their own networks?" test reads Deplo's own edit.
+  const authoredNetworks = new Map(
+    Object.entries(services).map(([name, svc]) => [
+      name,
+      (svc as App | undefined)?.networks != null,
+    ]),
+  );
   for (const name of Object.keys(services)) {
-    if (serviceReservedClaim(name, services[name])) continue;
+    const svc = services[name] as App | undefined;
+    if (reserved.length > 0 && svc && svc.network_mode == null) {
+      const nets = svc.networks;
+      if (Array.isArray(nets) || nets == null)
+        svc.networks = Array.from(
+          new Set([
+            ...(Array.isArray(nets) ? nets.map(String) : []),
+            "default",
+          ]),
+        );
+      else if (typeof nets === "object" && !("default" in nets))
+        (nets as Record<string, unknown>).default = null;
+    }
+    if (reserved.includes(name)) continue;
+    // Only where the author said NOTHING. A service that names its own networks
+    // has made a choice - `networks: {default: {internal: true}}` is somebody
+    // deliberately cutting a worker off, and adding the Environment's network to it
+    // would hand back the very egress they removed. A ROUTED service still gets
+    // wired above, because Traefik has to reach it or the domain answers nothing.
+    if (authoredDefault || authoredNetworks.get(name)) continue;
     wireApp(name);
   }
 

@@ -889,12 +889,16 @@ function resolvedNetworkName(key: string, raw: unknown): string | null {
  */
 export function isDeploNetwork(name: string): boolean {
   const n = name.trim();
-  return (
-    isTenantNetwork(n) ||
-    (PLATFORM_NETWORKS as readonly string[]).some(
-      (p) => n === p || n.endsWith(`_${p}`),
-    )
-  );
+  if (isTenantNetwork(n)) return true;
+  if ((PLATFORM_NETWORKS as readonly string[]).includes(n)) return true;
+  // Only the two the Traefik stack DECLARES take a compose project prefix on a
+  // host. `deplo` itself is `external:` there, so it never gets one - and matching
+  // `_deplo` would read somebody's own `myapp_deplo` as the platform's.
+  if (n.endsWith("_deplo-socket") || n.endsWith("_deplo-internal")) return true;
+  // The private `default` compose creates for another Deplo stack: `deplo-<slug>`
+  // is the project name this platform sets, so `deplo-shop_default` is a tenant's
+  // own network under a name anybody can guess from the app's slug.
+  return /^deplo-[a-z0-9][a-z0-9_.-]*_default$/i.test(n);
 }
 
 /**

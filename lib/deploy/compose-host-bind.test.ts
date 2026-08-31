@@ -497,15 +497,13 @@ test("composeJoinsForeignNetwork: an external/pinned/host-bridged network join n
       `services:\n  a:\n    image: x\n    networks: [v]\n${nets}`,
     );
   assert.equal(
-    joins(
-      `networks:\n  v:\n    external: true\n    name: deplo-victim_default`,
-    ),
+    joins(`networks:\n  v:\n    external: true\n    name: someone-elses-net`),
     true,
   );
-  assert.equal(joins(`networks:\n  v:\n    name: deplo-victim_default`), true);
+  assert.equal(joins(`networks:\n  v:\n    name: someone-elses-net`), true);
   assert.equal(joins(`networks:\n  v:\n    external: true`), true);
   assert.equal(
-    joins(`networks:\n  v:\n    external:\n      name: deplo-victim_default`),
+    joins(`networks:\n  v:\n    external:\n      name: someone-elses-net`),
     true,
   );
   // A driver that bridges onto the host's own segment reaches past the app too.
@@ -518,7 +516,7 @@ test("composeJoinsForeignNetwork: an external/pinned/host-bridged network join n
   // Map form of the service join is read the same way.
   assert.equal(
     composeJoinsForeignNetwork(
-      `services:\n  a:\n    image: x\n    networks:\n      v: null\nnetworks:\n  v:\n    external: true\n    name: deplo-victim_default`,
+      `services:\n  a:\n    image: x\n    networks:\n      v: null\nnetworks:\n  v:\n    external: true\n    name: someone-elses-net`,
     ),
     true,
   );
@@ -549,7 +547,7 @@ test("composeJoinsForeignNetwork: an app's own network, and the shared one, stay
   // Declared but never attached deploys nothing.
   assert.equal(
     composeJoinsForeignNetwork(
-      `services:\n  a:\n    image: x\nnetworks:\n  v:\n    external: true\n    name: deplo-victim_default`,
+      `services:\n  a:\n    image: x\nnetworks:\n  v:\n    external: true\n    name: someone-elses-net`,
     ),
     false,
   );
@@ -856,12 +854,20 @@ test("composeJoinsForeignNetwork: a network Deplo mints is rewritten, not gated"
       false,
     );
   }
-  // Another compose PROJECT's network is still foreign: nothing rewrites that one.
+  // A network outside Deplo entirely is still foreign: nothing rewrites that one.
   assert.equal(
     composeJoinsForeignNetwork(
-      `services:\n  a:\n    image: x\nnetworks:\n  default:\n    external: true\n    name: deplo-victim_default`,
+      `services:\n  a:\n    image: x\nnetworks:\n  default:\n    external: true\n    name: someone-elses-net`,
     ),
     true,
+  );
+  // Another Deplo stack's private default IS ours, so it is rewritten, not gated -
+  // the container ends up on its own Environment's network and reaches nothing.
+  assert.equal(
+    composeJoinsForeignNetwork(
+      `services:\n  a:\n    image: x\n    networks: [v]\nnetworks:\n  v:\n    external: true\n    name: deplo-victim_default`,
+    ),
+    false,
   );
 });
 

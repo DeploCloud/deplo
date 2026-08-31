@@ -68,7 +68,15 @@ export function deployNetwork(
  * installer began widening them.
  */
 export function explainNetworkError(message: string): string {
-  if (!/predefined address pools/i.test(message)) return message;
+  // Docker has worded this differently across versions, and the hosts that hit the
+  // ceiling are precisely the OLD ones - matching only the current wording would
+  // miss the whole population this message exists for.
+  if (
+    !/predefined address pools|non-overlapping ipv4 address pool|could not find an available/i.test(
+      message,
+    )
+  )
+    return message;
   return (
     `${message}\n\nThis server has run out of Docker networks (the default is about ` +
     `31). Set "default-address-pools" in /etc/docker/daemon.json and restart Docker, ` +
