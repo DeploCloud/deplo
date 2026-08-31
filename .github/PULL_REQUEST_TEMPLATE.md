@@ -11,6 +11,7 @@
 - [ ] `bun run lint` passes
 - [ ] `bun run test` passes (with `DEPLO_DATABASE_URL` unset)
 - [ ] `bunx next typegen && bunx tsc --noEmit` passes
+- [ ] I added tests for the new behaviour, or said in the pull request why it cannot be tested
 - [ ] I regenerated `schema.graphql` if I touched `lib/graphql/types/*`
 - [ ] I read [CONTRIBUTING.md](../CONTRIBUTING.md) and signed the [CLA](../CLA.md) (the bot asks below on your first pull request)
 - [ ] This does not make the control plane touch Docker or a host directly (see [AGENTS.md](../AGENTS.md))

@@ -621,6 +621,9 @@ language - reconsider, or note the gap.
 - **Issues & PRDs = GitHub Issues in `DeploCloud/deplo` via the `gh` CLI** (`docs/agents/issue-tracker.md`);
   triage with the five canonical labels (`docs/agents/triage-labels.md`).
 - Check `docs/adr/` before working an area; flag contradictions explicitly rather than overriding.
+- **New behaviour ships with its tests, in the same commit.** A feature or a fix that changes
+  behaviour and adds no test is unfinished; if it genuinely cannot be tested, say so in the
+  commit body.
 - **Docs live in another repo, and they ship with the feature.** The user manual is
   `DeploCloud/docs` (Fumadocs, `content/docs/**/*.mdx`), served at <https://deplo.build/docs>.
   Never add a user-facing page here. Every feature, changed behaviour or renamed control ends

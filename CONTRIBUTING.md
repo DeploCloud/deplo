@@ -61,6 +61,10 @@ NODE_TEST_CONTEXT=1 node --require ./lib/test/server-only-shim.cjs --import tsx 
 
 `schema.graphql` is generated output. Never hand-edit it.
 
+**New behaviour arrives with tests.** A feature or a bug fix comes with the tests that cover
+it, in the same pull request - a data layer change gets its `lib/data/*.test.ts` next to it.
+If something genuinely cannot be tested, say so in the pull request and why.
+
 ## Read these first
 
 deplo has strong opinions and they are written down. Before changing anything structural:
