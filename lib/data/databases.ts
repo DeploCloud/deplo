@@ -60,7 +60,8 @@ import {
 } from "../deploy/database-compose";
 import { isDockerLevelStderr } from "../infra/docker";
 import { stackFilesDir } from "../deploy/deploy-key";
-import { appNetwork } from "../deploy/network";
+import { appNetwork, explainNetworkError } from "../deploy/network";
+import { assertNoNameClash } from "./name-clash";
 import { environmentInTeam } from "./environments";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { MIN_USER_PORT, MAX_PORT, isValidExposePort } from "../databases/ports";
@@ -752,6 +753,15 @@ export async function createDatabase(input: {
     dbName,
   });
 
+  // `db-<slug>` is this container's DNS name on the network, so it has to be free
+  // there - the app side of this was checked, the database side never was.
+  await assertNoNameClash({
+    to: { teamId, environmentId, serverId: server.id },
+    claims: [service],
+    exceptId: "",
+    subject: "the database",
+  });
+
   const db: Database = {
     id: newId("db"),
     teamId,
@@ -938,6 +948,19 @@ export async function setDatabaseRunning(
       );
     // Lifecycle routes through the owning server's agent. Let a real failure
     // surface to the caller; only update state on success.
+    // A start has to land on the network the placement owns TODAY. `compose start`
+    // returns the container to the network it was CREATED on, so starting first and
+    // rerouting after brought it up on the old one - and fails outright once that
+    // network has been reclaimed. Reroute first; only start when there was nothing
+    // to change. Same order `startApp` uses, and for the same reason.
+    if (running && (await rerouteDatabase(id)) === "rerouted") {
+      await getDb()
+        .update(databasesTable)
+        .set({ status: "running" })
+        .where(eq(databasesTable.id, id));
+      publishDatabaseChanged(id);
+      return;
+    }
     const conn = await connectAgent(serverId);
     try {
       const res = running
@@ -957,10 +980,6 @@ export async function setDatabaseRunning(
       .where(eq(databasesTable.id, id));
     publishDatabaseChanged(id);
   });
-  // `compose start` returns the container to the network it was CREATED on, so a
-  // database stopped before a move would come back on the old one. Best-effort:
-  // it has already started, and an unreachable host must not report a failed start.
-  if (running) await reapplyDatabaseNetwork([id]);
 }
 
 /**
@@ -1740,6 +1759,12 @@ export async function moveDatabaseToEnvironment(
   if (environmentId && !env) throw new Error("Environment not found");
   if ((cur.environmentId ?? null) === (env?.id ?? null)) return;
 
+  await assertNoNameClash({
+    to: { teamId, environmentId: env?.id ?? null, serverId: cur.serverId },
+    claims: [cur.host],
+    exceptId: id,
+    subject: "the database",
+  });
   await getDb()
     .update(databasesTable)
     .set({ environmentId: env?.id ?? null })
@@ -1754,6 +1779,49 @@ export async function moveDatabaseToEnvironment(
     null,
     teamId,
   );
+}
+
+/**
+ * Re-render a database's stack on its owning agent and bring it up on the network
+ * its placement owns. `unchanged` when the file on the host already matches - the
+ * same no-op `rerouteApp` makes, and what stops every start from recreating the
+ * container for nothing.
+ */
+async function rerouteDatabase(
+  id: string,
+): Promise<"rerouted" | "unchanged" | "deferred"> {
+  const rows = await getDb()
+    .select()
+    .from(databasesTable)
+    .where(eq(databasesTable.id, id))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return "deferred";
+  const cur = assembleDatabase(row, await mountsFor(row.id));
+  if (!cur || cur.status === "provisioning") return "deferred";
+  const password = parseConnectionPassword(
+    decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
+  );
+  const rendered = renderDatabaseStackYaml(cur, password);
+  const conn = await connectAgent(cur.serverId);
+  try {
+    const current = await conn.readStack(cur.host);
+    if (current.exists && current.yaml === rendered) return "unchanged";
+    const r = await conn.reroute({
+      slug: cur.host,
+      composeYaml: rendered,
+      env: {},
+      mounts: mountFilesFor(cur),
+      network: appNetwork(cur),
+    });
+    if (!r.ok)
+      throw new Error(
+        explainNetworkError(r.error || "agent failed to reroute the database"),
+      );
+    return "rerouted";
+  } finally {
+    conn.close();
+  }
 }
 
 /**
@@ -1778,23 +1846,15 @@ export async function reapplyDatabaseNetwork(ids: string[]): Promise<number> {
       const cur = assembleDatabase(row, await mountsFor(row.id));
       // A reroute is a `compose up`, so it STARTS what it re-renders: a database
       // someone stopped must stay stopped, and one still provisioning has no
-      // compose project yet. Both follow the move when they next start.
-      if (!cur || cur.status !== "running") continue;
-      const password = parseConnectionPassword(
-        decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
-      );
-      const conn = await connectAgent(cur.serverId);
-      try {
-        await conn.reroute({
-          slug: cur.host,
-          composeYaml: renderDatabaseStackYaml(cur, password),
-          env: {},
-          mounts: mountFilesFor(cur),
-          network: appNetwork(cur),
-        });
-      } finally {
-        conn.close();
+      // compose project yet. Both follow the move when they next start - and both
+      // COUNT as not moved, because the sweep's banner reads this number and a
+      // silent skip is what let it claim a success it had not got.
+      if (!cur) continue;
+      if (cur.status !== "running") {
+        failed++;
+        continue;
       }
+      await rerouteDatabase(id);
     } catch (e) {
       failed++;
       console.warn(

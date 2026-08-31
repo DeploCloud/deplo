@@ -26,6 +26,9 @@ import {
 import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
+import { assertNoNameClash } from "./name-clash";
+import { composeClaimedNames } from "../deploy/compose-lint";
+import { stackName } from "../deploy/deploy-key";
 import { inFolderScope } from "../auth/request-context";
 import { normalizeHexColor } from "../utils";
 import { assembleFolder, folderToRow } from "./app-graph-rows";
@@ -503,6 +506,9 @@ export async function moveAppToFolder(
     if (p.folderId == null) return;
     msg = `Moved ${p.name} out of its folder`;
   }
+  // Filing into a folder pulls the app OUT of its Environment, so it lands on the
+  // team's network - a different network, with different names already on it.
+  if (folderId) await assertAppNamesFreeAtTeamLevel([appId], teamId);
   await getDb()
     .update(appsTable)
     // An app lives in ONE place: filing it into a folder also pulls it out of
@@ -580,6 +586,9 @@ export async function moveAppsToFolder(
     if (!(reach.get(id) ?? []).includes("move_apps"))
       throw new Error("App not found");
   }
+  // Checked for the whole selection before the single write, so a clash refuses the
+  // move instead of leaving half of it applied.
+  if (folderId) await assertAppNamesFreeAtTeamLevel(toMove, teamId);
   await getDb()
     .update(appsTable)
     // Same one-home rule as the single move: filing into a folder leaves the
@@ -627,4 +636,33 @@ export async function reorderFolders(orderedIds: string[]): Promise<void> {
           next.map((folderId, position) => ({ teamId, folderId, position })),
         );
   });
+}
+
+/** The team's top level is a network too: the names have to be free there. */
+async function assertAppNamesFreeAtTeamLevel(
+  appIds: string[],
+  teamId: string,
+): Promise<void> {
+  const rows = await getDb()
+    .select({
+      id: appsTable.id,
+      slug: appsTable.slug,
+      compose: appsTable.compose,
+      serverId: appsTable.serverId,
+      environmentId: appsTable.environmentId,
+    })
+    .from(appsTable)
+    .where(inArray(appsTable.id, appIds));
+  for (const row of rows) {
+    // Already at the top level: the move changes no network.
+    if (!row.environmentId) continue;
+    await assertNoNameClash({
+      to: { teamId, environmentId: null, serverId: row.serverId },
+      claims: row.compose?.trim()
+        ? composeClaimedNames(row.compose)
+        : [stackName(row.slug)],
+      exceptId: row.id,
+      subject: "this app",
+    });
+  }
 }

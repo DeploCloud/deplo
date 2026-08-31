@@ -56,6 +56,7 @@ import {
 } from "../schedule";
 import { parseConnectionPassword } from "../deploy/database-compose";
 import { deployNetwork } from "../deploy/network";
+import { retargetStackNetwork } from "../deploy/compose-stack";
 import { canonicalTimeZone } from "../crons/cron-tz";
 import { BACKUP_RUN_MAX_MS, mapBackupUnsupported } from "../infra/agent-client";
 import {
@@ -457,7 +458,10 @@ function toWireProjectDescriptor(
     slug: d.slug,
     volumeNames: d.volumeNames,
     includeFiles: d.includeFiles,
-    composeYaml: d.composeYaml,
+    // The stack file was read off the HOST, so it can still name the network the
+    // app had before it moved - or one the cleanup has reclaimed since. The agent
+    // writes this YAML verbatim, so the retarget has to happen here.
+    composeYaml: retargetStackNetwork(d.composeYaml, network),
     envSnapshot: d.envSnapshot,
     mounts: d.mounts,
     // The app's network TODAY, not the snapshot's: a restore ends in a Reroute, and

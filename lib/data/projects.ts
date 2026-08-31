@@ -8,6 +8,7 @@ import {
   projects as projectsTable,
   folders as foldersTable,
   apps as appsTable,
+  databases as databasesTable,
   environments as environmentsTable,
   teamProjectOrder,
 } from "../db/schema/control-plane";
@@ -24,6 +25,10 @@ import {
 } from "../membership";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
+import { reapplyDatabaseNetwork } from "./databases";
+import { assertNoNameClash } from "./name-clash";
+import { composeClaimedNames } from "../deploy/compose-lint";
+import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
@@ -444,6 +449,20 @@ export async function deleteProject(
     const { deleteAppsIn } = await import("./apps");
     await deleteAppsIn({ projectId: id });
   }
+  // Read the movers BEFORE the delete: afterwards the rows point nowhere and there
+  // is no way left to tell which stacks changed network.
+  const moved = await getDb()
+    .select({ id: appsTable.id })
+    .from(appsTable)
+    .where(and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, id)));
+  const movedDbs = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .innerJoin(
+      environmentsTable,
+      eq(databasesTable.environmentId, environmentsTable.id),
+    )
+    .where(eq(environmentsTable.projectId, id));
   const name = await getDb().transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -465,6 +484,12 @@ export async function deleteProject(
     await tx.delete(projectsTable).where(eq(projectsTable.id, id));
     return p.name;
   });
+  // The placement IS the network: everything that lived in this project just landed
+  // on the team's, and `databases.environment_id` follows by `on delete set null`.
+  // Without the bring-up their containers stay on a network the control plane no
+  // longer believes in - and which the cleanup now reads as litter.
+  await reapplyNetworkAfterMove(moved.map((a) => a.id));
+  await reapplyDatabaseNetwork(movedDbs.map((d) => d.id));
   // Record OUTSIDE the transaction: recordActivity opens its own connection, which
   // would deadlock against the open tx on pglite's single connection.
   await recordActivity(
@@ -591,6 +616,7 @@ export async function moveAppToProject(
   } else {
     msg = `Moved ${s.name} out of its project`;
   }
+  await assertAppNamesFreeAt(appId, teamId, environmentId);
   await getDb()
     .update(appsTable)
     .set({
@@ -660,6 +686,7 @@ export async function moveAppToEnvironment(
     })
   )
     throw new Error("Environment not found");
+  await assertAppNamesFreeAt(appId, teamId, env.id);
   await getDb()
     .update(appsTable)
     .set({
@@ -677,4 +704,34 @@ export async function moveAppToEnvironment(
     appId,
     teamId,
   );
+}
+
+/**
+ * The names this app answers to must be free on the network it is moving ONTO -
+ * moving is the other way to create the overlap that creating either side is
+ * already checked for.
+ */
+async function assertAppNamesFreeAt(
+  appId: string,
+  teamId: string,
+  environmentId: string | null,
+): Promise<void> {
+  const [row] = await getDb()
+    .select({
+      slug: appsTable.slug,
+      compose: appsTable.compose,
+      serverId: appsTable.serverId,
+    })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  if (!row) return;
+  await assertNoNameClash({
+    to: { teamId, environmentId, serverId: row.serverId },
+    claims: row.compose?.trim()
+      ? composeClaimedNames(row.compose)
+      : [stackName(row.slug)],
+    exceptId: appId,
+    subject: "this app",
+  });
 }
