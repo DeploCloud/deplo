@@ -38,7 +38,6 @@ import {
   requireTeamWide,
 } from "../membership";
 import {
-  composeClaimedNames,
   composeClaimsReservedName,
   composeHostReach,
   composeOwnVolumeKeys,
@@ -48,7 +47,10 @@ import {
   reservedNameMessage,
 } from "../deploy/compose-lint";
 import { assertNoNameClash } from "./name-clash";
-import { composeServiceNames } from "../deploy/compose-stack";
+import {
+  composeNamesOnNetwork,
+  composeServiceNames,
+} from "../deploy/compose-stack";
 import {
   parseComposeUpArgs,
   validateComposeUpArgs,
@@ -914,7 +916,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
         environmentId: placement.environmentId,
         serverId: server.id,
       },
-      claims: composeClaimedNames(input.compose),
+      claims: composeNamesOnNetwork(input.compose),
       exceptId: "",
       subject: "this app",
     });
@@ -1512,7 +1514,7 @@ export async function updateAppSource(
           environmentId: row.environmentId,
           serverId: input.serverId ?? row.serverId,
         },
-        claims: composeClaimedNames(input.compose),
+        claims: composeNamesOnNetwork(input.compose),
         exceptId: id,
         subject: "this app",
       });

@@ -36,7 +36,7 @@ import { currentIdentity } from "../auth/request-context";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
 import { assertNoNameClash } from "./name-clash";
-import { composeClaimedNames } from "../deploy/compose-lint";
+import { composeNamesOnNetwork } from "../deploy/compose-stack";
 import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
 import { assertServerAccessibleTx } from "./servers";
@@ -328,10 +328,11 @@ export async function transferAppToTeam(
     .from(appsTable)
     .where(eq(appsTable.id, appId))
     .limit(1);
+  // The destination team's network, held for the check AND the write below.
   await assertNoNameClash({
     to: { teamId: destTeamId, environmentId: null, serverId: app.serverId },
     claims: claimSource?.compose?.trim()
-      ? composeClaimedNames(claimSource.compose)
+      ? composeNamesOnNetwork(claimSource.compose)
       : [stackName(claimSource?.slug ?? "")],
     exceptId: appId,
     subject: "this app",

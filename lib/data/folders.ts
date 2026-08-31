@@ -26,8 +26,8 @@ import {
 import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
-import { assertNoNameClash } from "./name-clash";
-import { composeClaimedNames } from "../deploy/compose-lint";
+import { assertNoNameClash, withNetworkLock } from "./name-clash";
+import { composeNamesOnNetwork } from "../deploy/compose-stack";
 import { stackName } from "../deploy/deploy-key";
 import { inFolderScope } from "../auth/request-context";
 import { normalizeHexColor } from "../utils";
@@ -508,17 +508,21 @@ export async function moveAppToFolder(
   }
   // Filing into a folder pulls the app OUT of its Environment, so it lands on the
   // team's network - a different network, with different names already on it.
-  if (folderId) await assertAppNamesFreeAtTeamLevel([appId], teamId);
-  await getDb()
-    .update(appsTable)
-    // An app lives in ONE place: filing it into a folder also pulls it out of
-    // any project/environment (ADR-0009 - folders and projects don't nest).
-    .set({
-      folderId,
-      ...(folderId ? { projectId: null, environmentId: null } : {}),
-      updatedAt: nowIso(),
-    })
-    .where(eq(appsTable.id, appId));
+  // Check and write under one lock, or two concurrent moves both read the name as
+  // free on the team's network and both take it.
+  await withNetworkLock({ teamId, environmentId: null }, async () => {
+    if (folderId) await assertAppNamesFreeAtTeamLevel([appId], teamId);
+    await getDb()
+      .update(appsTable)
+      // An app lives in ONE place: filing it into a folder also pulls it out of
+      // any project/environment (ADR-0009 - folders and projects don't nest).
+      .set({
+        folderId,
+        ...(folderId ? { projectId: null, environmentId: null } : {}),
+        updatedAt: nowIso(),
+      })
+      .where(eq(appsTable.id, appId));
+  });
   // The placement IS the network: a folder app is on its team's, an Environment's
   // is on that Environment's, so the stack has to be brought up again to follow.
   await reapplyNetworkAfterMove([appId]);
@@ -588,17 +592,19 @@ export async function moveAppsToFolder(
   }
   // Checked for the whole selection before the single write, so a clash refuses the
   // move instead of leaving half of it applied.
-  if (folderId) await assertAppNamesFreeAtTeamLevel(toMove, teamId);
-  await getDb()
-    .update(appsTable)
-    // Same one-home rule as the single move: filing into a folder leaves the
-    // project/environment (ADR-0009).
-    .set({
-      folderId,
-      ...(folderId ? { projectId: null, environmentId: null } : {}),
-      updatedAt: nowIso(),
-    })
-    .where(inArray(appsTable.id, toMove));
+  await withNetworkLock({ teamId, environmentId: null }, async () => {
+    if (folderId) await assertAppNamesFreeAtTeamLevel(toMove, teamId);
+    await getDb()
+      .update(appsTable)
+      // Same one-home rule as the single move: filing into a folder leaves the
+      // project/environment (ADR-0009).
+      .set({
+        folderId,
+        ...(folderId ? { projectId: null, environmentId: null } : {}),
+        updatedAt: nowIso(),
+      })
+      .where(inArray(appsTable.id, toMove));
+  });
   await reapplyNetworkAfterMove(toMove);
   const n = `${toMove.length} project${toMove.length === 1 ? "" : "s"}`;
   await recordActivity(
@@ -659,7 +665,7 @@ async function assertAppNamesFreeAtTeamLevel(
     await assertNoNameClash({
       to: { teamId, environmentId: null, serverId: row.serverId },
       claims: row.compose?.trim()
-        ? composeClaimedNames(row.compose)
+        ? composeNamesOnNetwork(row.compose)
         : [stackName(row.slug)],
       exceptId: row.id,
       subject: "this app",

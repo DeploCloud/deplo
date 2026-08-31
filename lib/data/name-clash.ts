@@ -2,16 +2,17 @@ import "server-only";
 
 // https://deplo.build/docs/advanced/network-isolation
 
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
   apps as appsTable,
   databases as databasesTable,
 } from "../db/schema/control-plane";
-import { composeClaimedNames } from "../deploy/compose-lint";
+import { composeNamesOnNetwork } from "../deploy/compose-stack";
 import { appNetwork } from "../deploy/network";
 import { stackName } from "../deploy/deploy-key";
+import { withKeyedLock } from "./keyed-mutex";
 
 /** Where a workload would sit: the two fields that decide its network. */
 export interface Placement {
@@ -45,7 +46,19 @@ async function namesOnNetwork(
         serverId: appsTable.serverId,
       })
       .from(appsTable)
-      .where(and(eq(appsTable.teamId, to.teamId), ne(appsTable.id, exceptId))),
+      // Narrowed to what can contest the name at all: a neighbour on another host
+      // shares no network, whatever its placement. Without this every create and
+      // every move read the full compose text of every app the team owns.
+      .where(
+        and(
+          eq(appsTable.teamId, to.teamId),
+          ne(appsTable.id, exceptId),
+          eq(appsTable.serverId, to.serverId),
+          to.environmentId
+            ? eq(appsTable.environmentId, to.environmentId)
+            : isNull(appsTable.environmentId),
+        ),
+      ),
     db
       .select({
         host: databasesTable.host,
@@ -59,13 +72,17 @@ async function namesOnNetwork(
         and(
           eq(databasesTable.teamId, to.teamId),
           ne(databasesTable.id, exceptId),
+          eq(databasesTable.serverId, to.serverId),
+          to.environmentId
+            ? eq(databasesTable.environmentId, to.environmentId)
+            : isNull(databasesTable.environmentId),
         ),
       ),
   ]);
   for (const n of neighbours) {
     if (appNetwork(n) !== network || n.serverId !== to.serverId) continue;
     const names = n.compose?.trim()
-      ? composeClaimedNames(n.compose)
+      ? composeNamesOnNetwork(n.compose)
       : [stackName(n.slug)];
     for (const name of names) taken.set(name.toLowerCase(), n.name);
   }
@@ -132,7 +149,7 @@ export async function nameClashesOnMove(
   const out: string[] = [];
   for (const row of rows) {
     const claims = row.compose?.trim()
-      ? composeClaimedNames(row.compose)
+      ? composeNamesOnNetwork(row.compose)
       : [stackName(row.slug)];
     try {
       // Each app keeps its OWN host: a network lives on one machine, so two apps
@@ -148,4 +165,25 @@ export async function nameClashesOnMove(
     }
   }
   return out;
+}
+
+/**
+ * Serialise everything that checks a name against a network and then writes to it.
+ * The check and the write are two statements, so two concurrent moves both read a
+ * free name and both take it - and there is no unique constraint underneath to
+ * catch them, because the names live inside a compose file.
+ *
+ * ponytail: per-process lock (`withKeyedLock` chains on a module Map), so it
+ * serialises one control plane, not two against one database. A real fix is an
+ * advisory lock in Postgres keyed the same way; do that if a second control plane
+ * ever becomes a supported shape.
+ */
+export function withNetworkLock<T>(
+  to: Omit<Placement, "serverId">,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return withKeyedLock(
+    `network-names:${to.teamId}:${to.environmentId ?? ""}`,
+    fn,
+  );
 }

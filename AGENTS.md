@@ -348,13 +348,17 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   Deplo manages includes another tenant's `deplo-<slug>_default` and the proxy's
   `<project>_deplo-socket`, but NOT somebody's own `myapp_deplo`.
   **EVERY service joins the stack's network, not only the routed ones** - a worker with no
-  domain is still the app and still has to reach its Environment's database. Two stay off,
-  and both keep a private `default` so the stack is not split in two: one holding a
-  RESERVED name (left off rather than refusing a render, since `postgres` is an ordinary
-  name for a stack's own database) and any service in a compose where the AUTHOR named the
-  networks - `networks: {default: {internal: true}}` is somebody cutting off egress on
-  purpose, and adding to it would hand it back. A ROUTED service is wired either way, or
-  its domain answers nothing.
+  domain is still the app and still has to reach its Environment's database. Declaring
+  your OWN networks does not opt out (`frontend`/`backend` is organisation, and reading it
+  as "leave me alone" cut most stacks off from their own database); they are kept AND the
+  Environment's is added. Exactly three stay off: a network marked `internal: true` (the
+  one real request to be sealed), a `network_mode:` service (nothing to join), and one
+  holding a RESERVED name - left off rather than refusing a render, since `postgres` is an
+  ordinary name for a stack's own database, and the stack then keeps a private `default`
+  so it is not split in two. A ROUTED service is wired regardless, or its domain answers
+  nothing. **`composeNamesOnNetwork` is what a clash guard must ask** - not
+  `composeClaimedNames`, which counts services the renderer never puts on the network and
+  refused moves naming a container that is not there.
   **The reserved-name list is what Traefik still resolves by DNS.** It sits on every tenant
   network and dials `tcp://docker-socket-proxy:2375` and `http://deplo:3000`, so those names
   stay claimable and stay refused (`composeClaimsReservedName` early at save,

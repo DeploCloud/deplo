@@ -26,8 +26,12 @@ import {
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
 import { reapplyDatabaseNetwork } from "./databases";
-import { assertNoNameClash, nameClashesOnMove } from "./name-clash";
-import { composeClaimedNames } from "../deploy/compose-lint";
+import {
+  assertNoNameClash,
+  nameClashesOnMove,
+  withNetworkLock,
+} from "./name-clash";
+import { composeNamesOnNetwork } from "../deploy/compose-stack";
 import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
 import { mergeOrder } from "./folders";
@@ -629,16 +633,18 @@ export async function moveAppToProject(
   } else {
     msg = `Moved ${s.name} out of its project`;
   }
-  await assertAppNamesFreeAt(appId, teamId, environmentId);
-  await getDb()
-    .update(appsTable)
-    .set({
-      projectId,
-      environmentId,
-      ...(projectId ? { folderId: null } : {}),
-      updatedAt: nowIso(),
-    })
-    .where(eq(appsTable.id, appId));
+  await withNetworkLock({ teamId, environmentId }, async () => {
+    await assertAppNamesFreeAt(appId, teamId, environmentId);
+    await getDb()
+      .update(appsTable)
+      .set({
+        projectId,
+        environmentId,
+        ...(projectId ? { folderId: null } : {}),
+        updatedAt: nowIso(),
+      })
+      .where(eq(appsTable.id, appId));
+  });
   // A different Environment is a different network: bring the stack up again on it.
   await reapplyNetworkAfterMove([appId]);
   await recordActivity("project", msg, userName, appId, teamId);
@@ -699,16 +705,20 @@ export async function moveAppToEnvironment(
     })
   )
     throw new Error("Environment not found");
-  await assertAppNamesFreeAt(appId, teamId, env.id);
-  await getDb()
-    .update(appsTable)
-    .set({
-      projectId: env.projectId,
-      environmentId: env.id,
-      folderId: null,
-      updatedAt: nowIso(),
-    })
-    .where(eq(appsTable.id, appId));
+  // Check and write under one lock: apart, two concurrent moves both read the name
+  // as free and both take it.
+  await withNetworkLock({ teamId, environmentId: env.id }, async () => {
+    await assertAppNamesFreeAt(appId, teamId, env.id);
+    await getDb()
+      .update(appsTable)
+      .set({
+        projectId: env.projectId,
+        environmentId: env.id,
+        folderId: null,
+        updatedAt: nowIso(),
+      })
+      .where(eq(appsTable.id, appId));
+  });
   await reapplyNetworkAfterMove([appId]);
   await recordActivity(
     "project",
@@ -742,7 +752,7 @@ async function assertAppNamesFreeAt(
   await assertNoNameClash({
     to: { teamId, environmentId, serverId: row.serverId },
     claims: row.compose?.trim()
-      ? composeClaimedNames(row.compose)
+      ? composeNamesOnNetwork(row.compose)
       : [stackName(row.slug)],
     exceptId: appId,
     subject: "this app",

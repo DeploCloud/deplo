@@ -61,7 +61,7 @@ import {
 import { isDockerLevelStderr } from "../infra/docker";
 import { stackFilesDir } from "../deploy/deploy-key";
 import { appNetwork, explainNetworkError } from "../deploy/network";
-import { assertNoNameClash } from "./name-clash";
+import { assertNoNameClash, withNetworkLock } from "./name-clash";
 import { environmentInTeam } from "./environments";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { MIN_USER_PORT, MAX_PORT, isValidExposePort } from "../databases/ports";
@@ -1759,16 +1759,23 @@ export async function moveDatabaseToEnvironment(
   if (environmentId && !env) throw new Error("Environment not found");
   if ((cur.environmentId ?? null) === (env?.id ?? null)) return;
 
-  await assertNoNameClash({
-    to: { teamId, environmentId: env?.id ?? null, serverId: cur.serverId },
-    claims: [cur.host],
-    exceptId: id,
-    subject: "the database",
-  });
-  await getDb()
-    .update(databasesTable)
-    .set({ environmentId: env?.id ?? null })
-    .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)));
+  await withNetworkLock(
+    { teamId, environmentId: env?.id ?? null },
+    async () => {
+      await assertNoNameClash({
+        to: { teamId, environmentId: env?.id ?? null, serverId: cur.serverId },
+        claims: [cur.host],
+        exceptId: id,
+        subject: "the database",
+      });
+      await getDb()
+        .update(databasesTable)
+        .set({ environmentId: env?.id ?? null })
+        .where(
+          and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)),
+        );
+    },
+  );
   await reapplyDatabaseNetwork([id]);
   await recordActivity(
     "database",

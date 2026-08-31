@@ -2682,6 +2682,17 @@ export function parseStackVolumes(
 export async function rerouteApp(
   appId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
+  // One at a time per app: a move and a Start racing each other both re-render the
+  // same stack file and both run `compose up -d` on the same compose project.
+  //
+  // ponytail: per-process, like every other lock here. Two control planes on one
+  // database still race; a Postgres advisory lock is the fix if that ever ships.
+  return withKeyedLock(`app-lifecycle:${appId}`, () => rerouteAppLocked(appId));
+}
+
+async function rerouteAppLocked(
+  appId: string,
+): Promise<"rerouted" | "unchanged" | "deferred"> {
   const project = await loadAppGraph(appId);
   if (!project) return "deferred";
   // Reroute is PRODUCTION-only: it re-labels the App's own stack.
