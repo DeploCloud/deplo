@@ -1768,19 +1768,33 @@ export function mapDatabase(
 
   // mysql and mariadb keep TWO credentials on Dokploy - an application user and root
   // - while deplo models ONE and uses it for both.
-  const envKeys = parseEnvBlob(row.env).map((e) => e.key);
-  if (envKeys.length > 0)
-    notes.push(
-      `Carried ${envKeys.length} environment variable(s) on {panel} (${envKeys.join(", ")}). A Deplo database has none - fold what matters into the image, the start command or a config file under Settings -> Advanced.`,
-    );
-
   const rootPassword =
     (type === "mysql" || type === "mariadb") && row.databaseRootPassword?.trim()
       ? row.databaseRootPassword.trim()
       : null;
-  if (rootPassword && rootPassword !== row.databasePassword?.trim())
+  // Said whenever root IS the login deplo carries, not only when the two passwords
+  // differ: the login changed either way, and half the panels answer with one password.
+  if (rootPassword && row.databaseUser?.trim() !== "root")
     notes.push(
       `Connects as root, because that is the login Deplo's own backups and console use and the copied data keeps {panel}'s users. "${row.databaseUser?.trim() || "the application user"}" still works from inside the database.`,
+    );
+
+  // A variable that IS a credential deplo carried came across - counting it read
+  // as "your password did not make it", which is the opposite of what happened.
+  const carried = new Set(
+    [
+      rootPassword,
+      row.databasePassword?.trim(),
+      row.databaseUser?.trim(),
+      row.databaseName?.trim(),
+    ].filter((v): v is string => Boolean(v)),
+  );
+  const envKeys = parseEnvBlob(row.env)
+    .filter((e) => !carried.has(e.value.trim()))
+    .map((e) => e.key);
+  if (envKeys.length > 0)
+    notes.push(
+      `Carried ${envKeys.length} environment variable(s) on {panel} (${envKeys.join(", ")}). A Deplo database has none - fold what matters into the image, the start command or a config file under Settings -> Advanced.`,
     );
 
   return {

@@ -1497,7 +1497,9 @@ test("mapDatabase imports mysql as root, because that is who Deplo acts as", () 
   assert.match(notes.join(" "), /Connects as root/);
 });
 
-test("mapDatabase leaves the application user alone when it IS root's password", () => {
+// The login changed either way, and a panel that answers with ONE password for both
+// used to get the change without the sentence that explains it.
+test("mapDatabase says it connects as root even when both passwords match", () => {
   const { value, notes } = mapDatabase(
     "mysql",
     db({
@@ -1507,7 +1509,36 @@ test("mapDatabase leaves the application user alone when it IS root's password",
     }),
   );
   assert.equal(value?.username, "root");
+  assert.match(notes.join(" "), /Connects as root/);
+});
+
+test("mapDatabase says nothing about root when root is already the user", () => {
+  const { notes } = mapDatabase(
+    "mysql",
+    db({
+      databaseUser: "root",
+      databasePassword: "root-pw",
+      databaseRootPassword: "root-pw",
+    }),
+  );
   assert.equal(notes.join(" ").includes("Connects as root"), false);
+});
+
+// Coolify keeps redis's password ONLY in the resource's variables, so counting it
+// as a variable left behind said the opposite of what happened.
+test("mapDatabase does not count a carried credential as a lost variable", () => {
+  const { notes } = mapDatabase(
+    "redis",
+    db({
+      dockerImage: "redis:7",
+      databaseUser: "default",
+      databasePassword: "r3dis-pw",
+      env: "REDIS_PASSWORD=r3dis-pw\nREDIS_USERNAME=default\nTZ=Europe/Rome",
+    }),
+  );
+  assert.match(notes.join(" "), /TZ/);
+  assert.equal(notes.join(" ").includes("REDIS_PASSWORD"), false);
+  assert.match(notes.join(" "), /1 environment variable/);
 });
 
 test("mapDatabase keeps the application user for engines with a single credential", () => {
