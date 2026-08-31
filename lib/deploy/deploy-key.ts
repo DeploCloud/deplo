@@ -11,26 +11,6 @@ export interface DeployKeyEnvironment {
   isDefault: boolean;
 }
 
-/**
- * The deploy key for an app in an environment: the bare app slug for the
- * default environment (or no environment), else `<slug>__<envSlug>`.
- */
-export function environmentDeployKey(
-  appSlug: string,
-  env: DeployKeyEnvironment | null | undefined,
-): string {
-  if (!env || env.isDefault) return appSlug;
-  return `${appSlug}__${env.slug}`;
-}
-
-/** The Docker stack / container name (`deplo-<deployKey>`) for an (app, environment). */
-export function environmentStackName(
-  appSlug: string,
-  env: DeployKeyEnvironment | null | undefined,
-): string {
-  return `deplo-${environmentDeployKey(appSlug, env)}`;
-}
-
 /** The separator between an app slug and a deploy target's suffix. A slug can
  *  never contain it, which is the whole collision proof. */
 const SEP = "__";

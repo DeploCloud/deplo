@@ -338,6 +338,15 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   **A service that declares no `networks:` joins `default`**, so a `default` aimed at another
   Environment's network is a join like any other - it read as no join at all, and that put a
   whole stack on a stranger's network past every gate. Every rule here reads that shape.
+  **`network_mode:` is an ALLOWLIST (`none`, `default`), because every other value is a
+  network NAME** - `network_mode: deplo-env-<id>` joins with DNS while `networks:` stays
+  empty, and a denylist of the three keywords let every network on the host through. It is
+  refused AT THE RENDER when it names a network Deplo manages (the platform's own with a
+  compose project prefix included, so `traefik_deplo-socket` counts) or when it interpolates
+  `${VAR}`: the value can come from the env-file, so no reading of the authored text sees it.
+  **EVERY service joins the stack's network, not only the routed ones** - a worker with no
+  domain is still the app and still has to reach its Environment's database - except one
+  holding a reserved name, which is left OFF rather than refusing the whole render.
   **The reserved-name list is what Traefik still resolves by DNS.** It sits on every tenant
   network and dials `tcp://docker-socket-proxy:2375` and `http://deplo:3000`, so those names
   stay claimable and stay refused (`composeClaimsReservedName` early at save,

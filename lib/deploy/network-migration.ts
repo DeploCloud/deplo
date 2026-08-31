@@ -68,7 +68,19 @@ export async function runNetworkIsolationSweep(): Promise<void> {
   for (const [, work] of byServer) {
     for (const id of work.apps) {
       try {
-        await rerouteApp(id);
+        // `deferred` is NOT success: a stopped or mid-deploy stack keeps running on
+        // the network it was created with, and the sweep only ever runs once. Left
+        // uncounted, the banner said every app had moved while some never did.
+        if ((await rerouteApp(id)) === "deferred") {
+          failed++;
+          await recordActivity(
+            "app",
+            `Network isolation: this app was not running, so it stays on the old network until it is started or deployed`,
+            "Deplo",
+            id,
+            null,
+          );
+        }
       } catch (e) {
         failed++;
         await recordActivity(
@@ -91,7 +103,7 @@ export async function runNetworkIsolationSweep(): Promise<void> {
     "app",
     failed === 0
       ? `Network isolation applied: every app and database is on its own environment's network`
-      : `Network isolation applied, ${failed} stack${failed === 1 ? "" : "s"} could not be moved and stayed where they were`,
+      : `Network isolation applied, ${failed} stack${failed === 1 ? "" : "s"} stayed on the old network - a stopped one moves when it next starts`,
     "Deplo",
     null,
     null,

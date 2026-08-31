@@ -54,7 +54,15 @@ name (`api`, `db`, `gamewatcher-db`), and those are not enumerable.
 
    A service claims a name by JOINING a network, and a service that declares no
    `networks:` joins `default` - so a `default` aimed at a network Deplo owns is a join
-   like any other, and every rule here reads that shape too.
+   like any other, and every rule here reads that shape too. `network_mode:` is the
+   other way in and takes a free-form string, so it is an allowlist (`none`, `default`)
+   and is refused at the render when it names one of ours or interpolates a variable -
+   that value comes from the env-file, where no static check can follow it.
+
+   Every service of a stack joins, not only the routed ones: a worker with no domain is
+   still the app, and leaving it on the compose project's private `default` put it out of
+   reach of the very database its Environment owns. A service holding a reserved name is
+   left off instead, because `postgres` is an ordinary name for a stack's own database.
 
 6. **No compatibility with older agents.** The agent creates the network named in the
    Deploy/Reroute request and connects Traefik to it; one that does not is a hard failure

@@ -153,3 +153,18 @@ export async function neighboursForApp(a: {
 function placeLabel(project: string | null, env: string | null): string {
   return project && env ? `${project} / ${env}` : "the team's top level";
 }
+
+/**
+ * Strip a neighbour down to what a caller may be told. A deploy log is readable by
+ * whoever can deploy the app, and a member scoped to one folder should not learn
+ * the service names and project layout of the parts of the team they cannot reach.
+ * The NAME still has to appear - it is the one the app itself wrote - but where it
+ * lives does not.
+ */
+export function redactNeighbours(
+  list: Neighbour[],
+  maySeeWhere: boolean,
+): Neighbour[] {
+  if (maySeeWhere) return list;
+  return list.map((n) => ({ ...n, where: "another part of this team" }));
+}

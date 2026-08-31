@@ -78,7 +78,8 @@ import {
   nameClashes,
   type ForeignName,
 } from "./cross-network";
-import { neighboursForApp } from "../data/cross-network";
+import { neighboursForApp, redactNeighbours } from "../data/cross-network";
+import { currentMemberScope } from "../membership";
 import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -97,6 +98,7 @@ import { renderResourceLimitsYaml } from "./resources";
 import { renderHealthCheckYaml, renderYamlKeys } from "./health-check";
 import {
   buildComposeStack,
+  composeEnvValues,
   escapeComposeDollars,
   stackNamesOnNetwork,
 } from "./compose-stack";
@@ -2853,11 +2855,21 @@ async function warnCrossNetwork(
         .limit(1)
     )[0];
     if (!app) return;
-    const neighbours = await neighboursForApp(app);
+    // A member scoped to one folder deploys this app but has no business reading the
+    // project layout of the rest of the team out of its log.
+    const neighbours = redactNeighbours(
+      await neighboursForApp(app),
+      (await currentMemberScope()) === null,
+    );
     const foreign = neighbours.filter(
       (n): n is ForeignName => n.why !== "reachable" && n.network !== network,
     );
-    for (const ref of crossNetworkRefs(env, foreign))
+    // The resolved env AND what the compose sets itself: a stack that writes
+    // `DATABASE_URL: postgres://db-shop:5432/x` in its own `environment:` block
+    // never reached the env layer, so the warning stayed silent on the commonest
+    // shape there is. Same reading `placeDatabasesByUsage` already does.
+    const named = { ...composeEnvValues(composeYaml), ...env };
+    for (const ref of crossNetworkRefs(named, foreign))
       log(depId, "warn", crossNetworkMessage(ref));
     // A preview is sealed in a network of its own, so it shares a name with nobody.
     if (network === appNetwork(app))

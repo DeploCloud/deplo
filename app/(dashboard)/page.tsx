@@ -317,8 +317,12 @@ export default async function OverviewPage(props: PageProps<"/">) {
           }
         />
 
-        {/* The stacks the network-isolation move could not reach, if any. */}
-        <NetworkSweepNotice failed={networkSweepFailed} canRetry={isAdmin} />
+        {/* The stacks the network-isolation move could not reach, if any. An
+            instance-wide count and an instance-wide remedy, so only an instance
+            admin is shown it. */}
+        {isAdmin && (
+          <NetworkSweepNotice failed={networkSweepFailed} canRetry={isAdmin} />
+        )}
 
         {/**
          * The project drill-in's environment dropdown (ADR-0009) sits inline in the

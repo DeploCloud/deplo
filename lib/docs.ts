@@ -159,6 +159,8 @@ export const DOCS = {
   "registries.add": "guides/server/container-registries#add-one",
 
   "compose.overview": "advanced/compose-apps",
+  "network.isolation": "advanced/network-isolation",
+  "network.isolationClash": "advanced/network-isolation#two-stacks-one-name",
   "compose.differences":
     "advanced/compose-apps#what-is-different-about-a-compose-app",
   "compose.flags": "advanced/compose-apps#extra-flags",
