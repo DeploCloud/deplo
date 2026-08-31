@@ -31,6 +31,10 @@ and the platform does the operator's job: builds, routing, TLS, databases, backu
 monitoring, rollbacks. No per-seat pricing, no build minutes, no black box, no vendor
 lock-in. **The shell stays available for experts and is never required to get full value.**
 
+It is for anyone who wants that experience on their own machines: people leaving a cloud
+over the bill, teams that have never self-hosted anything, and people already running a
+self-hosted platform who are tired of living in a shell.
+
 ## ✨ Features
 
 |     | Feature                   | What you get                                                                                                                                                                                            |
@@ -232,6 +236,12 @@ Full tables, including the agent installer, in
 - **Hardened by default**: per-request CSP nonce, HSTS, `X-Frame-Options: DENY`, `nosniff`,
   a referrer policy, a Postgres-backed rate limiter that survives restarts, and API tokens
   that carry a scope and an expiry.
+- **Every published image is signed.** The release workflow attests the build with Sigstore,
+  so you can prove an image came from this repository before you run it:
+
+  ```bash
+  gh attestation verify oci://ghcr.io/deplocloud/deplo:<version> --repo DeploCloud/deplo
+  ```
 
 Found a hole? **[SECURITY.md](SECURITY.md)** - report it privately, never in an issue.
 
