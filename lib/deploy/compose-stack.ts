@@ -604,10 +604,22 @@ function readComposeKeepingEnvText(compose: string): string {
 function assertNetworkModeIsNotANetwork(service: string, mode: unknown): void {
   if (typeof mode !== "string") return;
   const value = mode.trim();
+  // `container:<name>` puts this container in ANOTHER container's namespace, on
+  // this daemon, by a name it picks - `container:deplo-traefik` lands it inside the
+  // proxy, which sits on every tenant network of the host. Same reach as naming a
+  // network, so the same refusal; `service:<x>` is compose's own same-file form and
+  // is left to the host grant.
+  if (/^container:/i.test(value)) {
+    throw new Error(
+      `\`network_mode: ${value}\` on service \`${service}\` joins another ` +
+        `container's network namespace, which reaches every network that container ` +
+        `is on. Use your own Environment's network instead.`,
+    );
+  }
   // `$$` is compose's ESCAPE for a literal dollar, so it interpolates nothing.
   // Every other `$` does - `$NET` without braces just as much as `${NET}`, which
   // is exactly what `escapeComposeDollars` in this file already says.
-  if (/(^|[^$])\$(\$\$)*[^$]/.test(`${value} `)) {
+  if (interpolates(value)) {
     throw new Error(
       `\`network_mode\` on service \`${service}\` is filled in from a variable. ` +
         `Deplo cannot tell which network that names, so it is refused - write the ` +
@@ -621,6 +633,42 @@ function assertNetworkModeIsNotANetwork(service: string, mode: unknown): void {
         `\`network_mode\` and the service is on it already.`,
     );
   }
+}
+
+/**
+ * A top-level network whose `name:` is filled in at `compose up` names a network
+ * nothing here can read - the same hole `network_mode` had, on the other key.
+ * `sharedNetworkKeys` resolves by NAME, so an interpolated one is invisible to the
+ * collapse, to the clash guard and to the cross-network warning alike.
+ */
+function assertNoInterpolatedNetworkName(doc: ComposeDoc): void {
+  const declared = doc.networks;
+  if (!declared || typeof declared !== "object" || Array.isArray(declared))
+    return;
+  for (const [key, raw] of Object.entries(
+    declared as Record<string, unknown>,
+  )) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const n = raw as Record<string, unknown>;
+    const ext =
+      n.external && typeof n.external === "object" && !Array.isArray(n.external)
+        ? (n.external as Record<string, unknown>).name
+        : undefined;
+    for (const candidate of [n.name, ext]) {
+      if (typeof candidate !== "string") continue;
+      if (!interpolates(candidate)) continue;
+      throw new Error(
+        `The network \`${key}\` takes its name from a variable, so Deplo cannot ` +
+          `tell which network it is before it runs. Write the name in the compose ` +
+          `file, or drop \`name:\` and let Deplo place the stack.`,
+      );
+    }
+  }
+}
+
+/** Whether compose would substitute something into this value. `$$` is its escape. */
+function interpolates(value: string): boolean {
+  return /(^|[^$])\$(\$\$)*[^$]/.test(`${value.trim()} `);
 }
 
 export function buildComposeStack(input: ComposeStackInput): string {
@@ -732,7 +780,18 @@ export function buildComposeStack(input: ComposeStackInput): string {
     // A row written before the domain layer refused these names: wiring it would
     // put the platform's own name on the shared network, and the throw below would
     // take the WHOLE stack down with it - deploy included. Skip the route instead.
-    if (serviceReservedClaim(service, services[service])) continue;
+    const reservedClaim = serviceReservedClaim(service, services[service]);
+    if (reservedClaim) {
+      // Skipped rather than fatal (an old domain row may still point here), but
+      // never in silence: the deploy went green with a hostname answering nothing.
+      input.onWarn?.(
+        `\`${route.name}\` points at service \`${service}\`, which answers to ` +
+          `\`${reservedClaim}\` - a name Deplo's own infrastructure uses - so it is ` +
+          `kept off the network and the domain will not answer. Rename the service, ` +
+          `or its \`hostname:\`.`,
+      );
+      continue;
+    }
     if (!wireApp(service)) {
       // `network_mode` takes a service off every network of its own, so Traefik has
       // nothing to forward to and the domain answers nothing. Said out loud: the
@@ -829,7 +888,16 @@ export function buildComposeStack(input: ComposeStackInput): string {
   );
   for (const name of Object.keys(services)) {
     const svc = services[name] as App | undefined;
-    if (reserved.length > 0 && svc && svc.network_mode == null) {
+    // NOT into a sealed service: `internal: true` is a network with no route off
+    // the host, and `default` is a NAT bridge - injecting it to reunite the stack
+    // handed a deliberately sealed worker its internet egress back, for no reason
+    // other than a `postgres` happening to sit in the same file.
+    if (
+      reserved.length > 0 &&
+      svc &&
+      svc.network_mode == null &&
+      !sealedOff.get(name)
+    ) {
       const nets = svc.networks;
       if (Array.isArray(nets) || nets == null)
         svc.networks = Array.from(
@@ -841,7 +909,15 @@ export function buildComposeStack(input: ComposeStackInput): string {
       else if (typeof nets === "object" && !("default" in nets))
         (nets as Record<string, unknown>).default = null;
     }
-    if (reserved.includes(name)) continue;
+    if (reserved.includes(name)) {
+      input.onWarn?.(
+        `Service \`${name}\` answers to \`${serviceReservedClaim(name, services[name])}\`, ` +
+          `a name Deplo's own infrastructure uses, so it is kept off this ` +
+          `environment's network: the rest of your stack reaches it, nothing else ` +
+          `does. Rename it to put it on the network.`,
+      );
+      continue;
+    }
     // Sealed off on purpose (`internal: true` on every network it joins) ⇒ left
     // alone, since adding the Environment's network hands back the egress the
     // author removed. Everything else joins, own networks and all: they keep theirs
@@ -855,6 +931,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // whether Deplo wired it for routing, the author attached it by hand, or the author
   // pointed a key at a network that is not theirs. Every such key COLLAPSES onto
   // `deplo`, so exactly one entry names this network and nothing joins it twice.
+  assertNoInterpolatedNetworkName(doc);
   const sharedKeys = sharedNetworkKeys(doc as { networks?: unknown });
   // A service that declares no `networks:` joins `default`, so a `default` aimed at a
   // network Deplo owns put the whole stack there with no key of its own to notice.

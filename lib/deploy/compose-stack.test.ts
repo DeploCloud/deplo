@@ -1580,3 +1580,90 @@ test("composeNamesOnNetwork agrees with what the render puts on the network", ()
     );
   }
 });
+
+test("a reserved name never breaks an `internal: true` seal", () => {
+  // The regression: the `default` injected to reunite a stack around a reserved
+  // name reached the sealed service too, and `default` is a NAT bridge - so a
+  // worker the author had deliberately cut off got its internet egress back
+  // because a `postgres` happened to sit in the same file.
+  const sealed = `
+networks:
+  sealed:
+    internal: true
+services:
+  worker:
+    image: alpine
+    networks: [sealed]
+`;
+  assert.deepEqual(networksOf(sealed).services.worker.networks, ["sealed"]);
+  const withReserved = networksOf(
+    `${sealed}  postgres:\n    image: postgres:16\n`,
+  );
+  assert.deepEqual(withReserved.services.worker.networks, ["sealed"]);
+  assert.deepEqual(withReserved.services.postgres.networks, ["default"]);
+});
+
+test("a network name filled in from a variable is refused", () => {
+  // The same hole `network_mode` had, on the other key: `sharedNetworkKeys`
+  // resolves by NAME, so an interpolated one is invisible to the collapse, to the
+  // clash guard and to the cross-network warning alike.
+  for (const value of ["${TARGET}", "$TARGET"])
+    assert.throws(
+      () =>
+        networksOf(
+          `networks:\n  x:\n    external: true\n    name: "${value}"\nservices:\n  a:\n    image: n\n    networks: [x]\n`,
+        ),
+      /takes its name from a variable/,
+      value,
+    );
+  // `external: {name: …}` is the same thing spelled differently.
+  assert.throws(
+    () =>
+      networksOf(
+        'networks:\n  x:\n    external:\n      name: "${T}"\nservices:\n  a:\n    image: n\n',
+      ),
+    /takes its name from a variable/,
+  );
+  assert.doesNotThrow(() =>
+    networksOf(
+      "networks:\n  x:\n    external: true\n    name: my-own-net\nservices:\n  a:\n    image: n\n    networks: [x]\n",
+    ),
+  );
+});
+
+test("network_mode may not join another container's namespace", () => {
+  // `container:deplo-traefik` lands inside the proxy, which sits on every tenant
+  // network of the host - the same reach as naming one of those networks.
+  assert.throws(
+    () =>
+      networksOf(
+        'services:\n  a:\n    image: n\n    network_mode: "container:deplo-traefik"\n',
+      ),
+    /another container's network namespace/,
+  );
+  // `service:` is compose's own same-file form and stays behind the host grant.
+  assert.doesNotThrow(() =>
+    networksOf(
+      'services:\n  a:\n    image: n\n    network_mode: "service:b"\n  b:\n    image: n\n',
+    ),
+  );
+});
+
+test("a service kept off the network says so, route and all", () => {
+  const warnings: string[] = [];
+  buildComposeStack({
+    network: "deplo-env-environ_mine",
+    compose:
+      "services:\n  postgres:\n    image: postgres:16\n  web:\n    image: nginx\n",
+    name: "deplo-demo",
+    deployKey: "demo",
+    appId: "p1",
+    domainRoutes: [route("db.example.com", "postgres", 5432)],
+    onWarn: (m) => warnings.push(m),
+  });
+  // One for the dead route, one for the service being kept off.
+  assert.ok(warnings.some((w) => w.includes("will not answer")));
+  assert.ok(
+    warnings.some((w) => w.includes("kept off this environment's network")),
+  );
+});
