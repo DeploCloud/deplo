@@ -19,7 +19,7 @@ import {
   type GraphQLOutputType,
 } from "graphql";
 
-import { makeTestDb, type TestDb } from "../db/test-harness";
+import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   membershipCapabilities as membershipCapabilitiesTable,
@@ -53,12 +53,6 @@ const USER_M = "user_matrix";
 const MEMBERSHIP_M = `mem_${USER_M}`;
 const T0 = "2026-01-01T00:00:00.000Z";
 
-/** Truncate every table, not a hand-kept list: a matrix touches all of them. */
-const TRUNCATE_ALL = `DO $$ DECLARE r record; BEGIN
-  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-    EXECUTE format('truncate table public.%I restart identity cascade', r.tablename);
-  END LOOP; END $$;`;
-
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
@@ -76,7 +70,7 @@ after(async () => {
  * { instanceAdmin, capability }` field is decided by the capability.
  */
 async function reset(caps: Capability[]): Promise<void> {
-  await pg.exec(TRUNCATE_ALL);
+  await truncateAll(pg);
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },

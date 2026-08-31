@@ -19,7 +19,7 @@ import {
 
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
-import { makeTestDb, type TestDb } from "../db/test-harness";
+import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   domains as domainsTable,
@@ -71,11 +71,6 @@ let db: TestDb;
 let pg: PGlite;
 const T0 = "2026-01-01T00:00:00.000Z";
 
-const TRUNCATE_ALL = `DO $$ DECLARE r record; BEGIN
-  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-    EXECUTE format('truncate table public.%I restart identity cascade', r.tablename);
-  END LOOP; END $$;`;
-
 /**
  * Team B's resources - everything an argument could name.
  */
@@ -104,7 +99,7 @@ before(async () => {
 });
 
 async function seedAll(): Promise<void> {
-  await pg.exec(TRUNCATE_ALL);
+  await truncateAll(pg);
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },

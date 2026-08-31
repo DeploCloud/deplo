@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
-import { makeTestDb, type TestDb } from "../db/test-harness";
+import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -55,12 +55,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await pg.exec(
-    `DO $$ DECLARE r record; BEGIN
-       FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-         EXECUTE format('truncate table public.%I restart identity cascade', r.tablename);
-       END LOOP; END $$;`,
-  );
+  await truncateAll(pg);
   await seedIdentity(db, {
     teams: [
       { id: TEAM_A, slug: "alpha" },

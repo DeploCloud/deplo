@@ -11,7 +11,7 @@
     "lint": "eslint",
     "recover": "node --require ./lib/test/server-only-shim.cjs --import tsx scripts/recover.ts",
     "gen:schema": "NODE_TEST_CONTEXT=1 node --require ./lib/test/server-only-shim.cjs --import tsx scripts/gen-schema.ts",
-    "test": "node --require ./lib/test/server-only-shim.cjs --import tsx --test --test-concurrency=2 \"lib/**/*.test.ts\" \"components/**/*.test.ts\" \"*.test.ts\"",
+    "test": "node --require ./lib/test/server-only-shim.cjs --import tsx --test \"lib/**/*.test.ts\" \"components/**/*.test.ts\" \"*.test.ts\"",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

@@ -18,7 +18,7 @@ import {
 
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
-import { makeTestDb, type TestDb } from "../db/test-harness";
+import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   appBasicAuthUsers as basicAuthTable,
@@ -74,11 +74,6 @@ const B = {
   basicAuth: "bau_beta",
 };
 
-const TRUNCATE_ALL = `DO $$ DECLARE r record; BEGIN
-  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-    EXECUTE format('truncate table public.%I restart identity cascade', r.tablename);
-  END LOOP; END $$;`;
-
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
@@ -92,7 +87,7 @@ after(async () => {
 });
 
 async function seedAll(): Promise<void> {
-  await pg.exec(TRUNCATE_ALL);
+  await truncateAll(pg);
   await seedIdentity(db, {
     users: [
       { id: BOTH, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
