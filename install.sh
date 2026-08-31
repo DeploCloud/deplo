@@ -101,7 +101,11 @@ ui_init() {
   [ "${UI_TRACE:-1}" = 1 ] && ui_log "=== every command is traced; grep -v '^+' for command output only ==="
   # No `date` in PS4: it would fork once per traced command. Elapsed seconds is
   # the number you actually want when reading back a slow install.
-  PS4='+ ${SECONDS}s ${BASH_SOURCE##*/}:${LINENO}: '
+  # `curl | bash` has no source FILE, so `$BASH_SOURCE` is unset - and under
+  # `set -u` expanding it in PS4 kills the script at the first traced command,
+  # which is the way this installer is normally run.
+  UI_SRC="${BASH_SOURCE[0]:-stdin}"
+  PS4="+ \${SECONDS}s ${UI_SRC##*/}:\${LINENO}: "
   # Without this the trace goes to stderr, i.e. over the top of the interface.
   BASH_XTRACEFD=9
   trace_on
@@ -470,7 +474,7 @@ ask() {
 if [ "$(id -u)" -ne 0 ]; then
   # Only a script that exists as a FILE can be re-executed. Piped from curl there
   # is nothing to hand sudo, so that case falls through to the message below.
-  if command -v sudo >/dev/null 2>&1 && [ -f "${BASH_SOURCE[0]}" ]; then
+  if command -v sudo >/dev/null 2>&1 && [ -f "${BASH_SOURCE[0]:-}" ]; then
     step "Not running as root - re-running through sudo"
     exec sudo -E bash "${BASH_SOURCE[0]}" ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
   fi
