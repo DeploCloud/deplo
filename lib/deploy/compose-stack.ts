@@ -124,6 +124,14 @@ export interface ComposeStackInput {
   network: string;
   /** Where to say what the render silently dropped. Absent ⇒ nobody is told. */
   onWarn?: (message: string) => void;
+  /**
+   * DNS names already answered on this network by OTHER stacks. A service whose
+   * name is in here is kept off it and stays on the stack's private network:
+   * `db` is the commonest service name there is, and joining a second one to the
+   * shared network makes Docker round-robin the two, so half of an app's queries
+   * reach a neighbour's database. Absent ⇒ nothing is known and nothing is held back.
+   */
+  takenNames?: readonly string[];
 }
 
 type App = Record<string, unknown>;
@@ -847,9 +855,20 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // `web` on the Environment's, `postgres` alone on the project's default, and the
   // lookup between them failing. So when one is present, every service also keeps a
   // private `default` - the one network compose creates for exactly this.
-  const reserved = Object.keys(services).filter((name) =>
-    serviceReservedClaim(name, services[name]),
-  );
+  const taken = new Set((input.takenNames ?? []).map((n) => n.toLowerCase()));
+  /** Why this service must stay off the shared network, or "". */
+  const keepOff = (name: string): string => {
+    const claim = serviceReservedClaim(name, services[name]);
+    if (claim)
+      return `it answers to \`${claim}\`, a name Deplo's own infrastructure uses`;
+    const stolen = serviceClaimedNames(name, services[name]).find((n) =>
+      taken.has(n.toLowerCase()),
+    );
+    return stolen
+      ? `\`${stolen}\` is already answered by another stack in this environment`
+      : "";
+  };
+  const reserved = Object.keys(services).filter((name) => keepOff(name) !== "");
   // Networks the author marked `internal: true` - no route off the host. THAT is a
   // deliberate isolation, and the only thing that keeps a service off the
   // Environment's network. Naming your own networks is NOT: organising services
@@ -909,12 +928,12 @@ export function buildComposeStack(input: ComposeStackInput): string {
       else if (typeof nets === "object" && !("default" in nets))
         (nets as Record<string, unknown>).default = null;
     }
-    if (reserved.includes(name)) {
+    const why = keepOff(name);
+    if (why) {
       input.onWarn?.(
-        `Service \`${name}\` answers to \`${serviceReservedClaim(name, services[name])}\`, ` +
-          `a name Deplo's own infrastructure uses, so it is kept off this ` +
-          `environment's network: the rest of your stack reaches it, nothing else ` +
-          `does. Rename it to put it on the network.`,
+        `Service \`${name}\` is kept off this environment's network because ${why}. ` +
+          `The rest of your stack still reaches it by name; nothing outside does. ` +
+          `Rename it to put it on the network.`,
       );
       continue;
     }

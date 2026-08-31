@@ -2606,3 +2606,38 @@ test("a repository behind a connection still says a credential is needed", () =>
     declared.notes.join(" | "),
   );
 });
+
+test("a rename carries a DBHOST-style reference with it", () => {
+  // Measured in production: the import renamed `db` to `b4-paperless-db` but left
+  // `PAPERLESS_DBHOST: db` pointing at it, so paperless spent 106 restarts
+  // connecting to a NEIGHBOUR's database - the only other `db` on that network.
+  const out = renameClashingServices(
+    [
+      "services:",
+      "  db:",
+      "    image: postgres:16",
+      "  webserver:",
+      "    image: paperless",
+      "    environment:",
+      "      PAPERLESS_DBHOST: db",
+      "      PAPERLESS_REDIS: 'redis://broker:6379'",
+    ].join("\n"),
+    new Set(["db"]),
+    "b4-paperless",
+  );
+  assert.equal(out.renames.get("db"), "b4-paperless-db");
+  assert.match(out.compose, /PAPERLESS_DBHOST: b4-paperless-db/);
+  // Untouched: it names a service that was not renamed.
+  assert.match(out.compose, /redis:\/\/broker:6379/);
+});
+
+test("a key that merely ENDS in host is not a hostname", () => {
+  // `GHOST` is an application, not a host, and renaming its value would be a
+  // silent edit to somebody's config.
+  const out = renameClashingServices(
+    "services:\n  db:\n    image: p\n  app:\n    image: a\n    environment:\n      GHOST: db\n",
+    new Set(["db"]),
+    "blog",
+  );
+  assert.match(out.compose, /GHOST: db/);
+});

@@ -1667,3 +1667,30 @@ test("a service kept off the network says so, route and all", () => {
     warnings.some((w) => w.includes("kept off this environment's network")),
   );
 });
+
+test("a service whose name a neighbour already answers to stays off the network", () => {
+  // Measured in production: two stacks in one environment both had a `db`, both
+  // registered it on the shared network, and Docker round-robined them - so
+  // paperless spent 106 restarts querying wordpress's database.
+  const warnings: string[] = [];
+  const doc = networksOf(
+    "services:\n  webserver:\n    image: p\n  db:\n    image: postgres:16\n  broker:\n    image: redis\n",
+    { takenNames: ["db"], onWarn: (m: string) => warnings.push(m) },
+  );
+  // Kept off the shared network, still reachable from its own stack.
+  assert.deepEqual(doc.services.db.networks, ["default"]);
+  assert.deepEqual(doc.services.webserver.networks, ["default", "deplo"]);
+  assert.deepEqual(doc.services.broker.networks, ["default", "deplo"]);
+  assert.ok(
+    warnings.some((w) => w.includes("already answered by another stack")),
+  );
+});
+
+test("an unclaimed name still joins, so nothing is held back for nothing", () => {
+  const doc = networksOf(
+    "services:\n  web:\n    image: n\n  cache:\n    image: r\n",
+    { takenNames: ["db", "postgres"] },
+  );
+  assert.deepEqual(doc.services.web.networks, ["deplo"]);
+  assert.deepEqual(doc.services.cache.networks, ["deplo"]);
+});

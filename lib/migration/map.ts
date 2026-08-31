@@ -577,7 +577,21 @@ function hostTokenRe(name: string): RegExp {
 }
 
 /** A key whose whole value is a hostname and nothing else. */
-const HOSTISH_KEY = /(^|_)(HOST|HOSTNAME|SERVER|ADDR|ADDRESS|ENDPOINT)$/i;
+const HOSTISH_TAIL = /(HOST|HOSTNAME|SERVER|ADDR|ADDRESS|ENDPOINT)$/i;
+
+/**
+ * Whether this env key holds a HOSTNAME as its whole value.
+ *
+ * The tail alone is not enough - `GHOST` ends in HOST and is an app, not a host -
+ * and anchoring the tail to a `_` was not either: `PAPERLESS_DBHOST` glues the
+ * word onto `DB`, so a rename left it pointing at a service that no longer
+ * existed, and the app spent its life restarting against a NEIGHBOUR's database.
+ * A separator anywhere in the key is what tells the two apart.
+ */
+function isHostishKey(key: string): boolean {
+  if (/^(HOST|HOSTNAME|SERVER|ADDR|ADDRESS|ENDPOINT)$/i.test(key)) return true;
+  return key.includes("_") && HOSTISH_TAIL.test(key);
+}
 
 /**
  * Rewrite, IN PLACE, every value that names one of these services by its old
@@ -592,8 +606,7 @@ export function renameHostTokens(
   for (const e of entries) {
     let next = e.value;
     for (const [from, to] of renames) {
-      if (HOSTISH_KEY.test(e.key) && next.trim().toLowerCase() === from)
-        next = to;
+      if (isHostishKey(e.key) && next.trim().toLowerCase() === from) next = to;
       else next = next.replace(hostTokenRe(from), to);
     }
     if (next === e.value) continue;

@@ -81,6 +81,7 @@ import {
   type ForeignName,
 } from "./cross-network";
 import { neighboursForApp, redactNeighbours } from "../data/cross-network";
+import { namesTakenOnNetwork } from "../data/name-clash";
 import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -2227,6 +2228,9 @@ interface ComposeStackApp {
   teamId: string;
   /** The app's placement, which is also the network it deploys onto. */
   environmentId?: string | null;
+  /** The host it runs on: a network lives on one machine, so a name is only
+   *  contested by a neighbour that is on the same one. */
+  serverId: string;
   name: string;
   slug: string;
   compose: string | null;
@@ -2299,10 +2303,24 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   const envKeys = await appEnvKeys(project.id, opts.environment, {
     preview: opts.preview,
   });
+  // What the neighbours on this network already answer to. A service of ours whose
+  // name is taken stays on the stack's private network instead of round-robining
+  // with theirs - which is how an app ended up querying another app's database.
+  const takenNames = [
+    ...(await namesTakenOnNetwork(
+      {
+        teamId: project.teamId,
+        environmentId: project.environmentId ?? null,
+        serverId: project.serverId,
+      },
+      project.id,
+    )),
+  ];
   const stackYaml = buildComposeStack({
     compose: project.compose ?? "",
     name,
     deployKey,
+    takenNames,
     // A route the render could not wire is said out loud here, or the deploy goes
     // green with a hostname that answers nothing and no line anywhere.
     onWarn: (message) => log(opts.depId, "warn", message),
@@ -2730,6 +2748,19 @@ async function rerouteAppLocked(
         compose: project.compose ?? "",
         name,
         onWarn: (message) => console.warn(`[deplo] ${appId}: ${message}`),
+        // Same question the deploy asks: a service whose name a neighbour already
+        // answers to stays on the stack's private network. Without it here, a
+        // reroute would put it back and reopen the round-robin.
+        takenNames: [
+          ...(await namesTakenOnNetwork(
+            {
+              teamId: project.teamId,
+              environmentId: project.environmentId ?? null,
+              serverId: project.serverId,
+            },
+            appId,
+          )),
+        ],
         // Reroute is production-only, so never a preview network.
         network: deployNetwork(project),
         deployKey,
@@ -2975,6 +3006,17 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       appId,
       network: deployNetwork(project),
       domainRoutes,
+      // So "View full compose" shows the stack the next deploy would write.
+      takenNames: [
+        ...(await namesTakenOnNetwork(
+          {
+            teamId: project.teamId,
+            environmentId: project.environmentId ?? null,
+            serverId: project.serverId,
+          },
+          appId,
+        )),
+      ],
       filesDir: composeFilesDir(deployKey),
       basicAuthUsers: await basicAuthUsersValue(appId),
       // Show the injected pass-throughs in the preview so "View full compose"
