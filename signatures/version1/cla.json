@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "PixelFederico",
+      "id": 66420000,
+      "comment_id": 5477959710,
+      "created_at": "2026-08-31T11:56:16Z",
+      "repoId": 1270416284,
+      "pullRequestNo": 41
+    }
+  ]
 }
