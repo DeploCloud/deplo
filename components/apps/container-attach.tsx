@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 import type { ConsoleControls } from "@/components/console/console-controls";
@@ -165,6 +165,17 @@ export function ContainerAttach({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {status === "live" && !openStdin ? (
+        <div className="flex items-center gap-2 border-b border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2">
+          <TriangleAlert className="size-4 shrink-0 text-[var(--warning)]" />
+          <p className="text-xs">
+            This container was started without stdin open, so it won&apos;t read
+            input - attach is streaming its live output only. Use the shell to
+            run commands.
+          </p>
+        </div>
+      ) : null}
+
       <div className="min-h-0 flex-1 bg-terminal p-2">
         <XtermView
           readOnly={!openStdin}
@@ -174,14 +185,6 @@ export function ContainerAttach({
           className="h-full w-full"
         />
       </div>
-
-      {status === "live" && !openStdin ? (
-        <div className="border-t border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
-          This container was started without stdin open, so it won&apos;t read
-          input - attach is streaming its live output only. Use the shell to run
-          commands.
-        </div>
-      ) : null}
 
       {status === "ended" || status === "error" ? (
         <div className="flex items-center gap-2 border-t border-border bg-secondary/20 px-3 py-2">
