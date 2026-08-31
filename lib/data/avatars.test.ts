@@ -65,6 +65,9 @@ beforeEach(async () => {
       { id: OUTSIDER, teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
     ],
   });
+  // The switch is off on a fresh instance, so the tests below turn it on to have
+  // anything to assert. That default has its own test in instance-settings.
+  await as(OWNER, () => setGravatarEnabled(true));
 });
 
 const as = <T>(

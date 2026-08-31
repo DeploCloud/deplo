@@ -379,18 +379,24 @@ test("no route of ours: only a panel with no domain at all is a refusal", () => 
 /* Gravatar                                                            */
 /* ------------------------------------------------------------------ */
 
-test("Gravatar defaults ON, and only an instance admin can turn it off", async () => {
-  // No settings row at all is a fresh instance: it must read the column's own
-  // default, not a `false` that would silently turn the feature off before
-  // anybody chose to.
-  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), true);
+test("Gravatar defaults OFF, and only an instance admin can turn it on", async () => {
+  // No settings row at all is a fresh instance, and it must not have opted every
+  // member's browser into telling gravatar.com who they are.
+  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
 
   await assert.rejects(
-    asUser(MEMBER, () => setGravatarEnabled(false)),
+    asUser(MEMBER, () => setGravatarEnabled(true)),
     /admin/i,
     "a plain member must not decide this for the instance",
   );
-  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), true);
+  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
+
+  // And a row born of an UNRELATED setting takes the column's own default, which
+  // is the half a schema change alone would leave behind (migration 0142).
+  await db
+    .insert(instanceSettings)
+    .values({ id: "default", updatedAt: "2024-01-01T00:00:00.000Z" });
+  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
 });
 
 test("setGravatarEnabled round-trips, and the read is ungated", async () => {

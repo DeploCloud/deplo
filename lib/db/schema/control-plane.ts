@@ -2609,11 +2609,11 @@ export const instanceSettings = pgTable("instance_settings", {
    */
   logMaxDays: integer("log_max_days").notNull().default(7),
   /**
-   * Whether a person with no uploaded picture falls back to their Gravatar.
-   * Instance-wide rather than per team, because it is a property of this
-   * deployment's egress and policy, not of one team's taste.
+   * Whether a person with no uploaded picture falls back to their Gravatar. Off
+   * by default: on, every member's browser hands gravatar.com their IP and a
+   * hash of their address, which is not a thing to opt anyone into for them.
    */
-  gravatarEnabled: boolean("gravatar_enabled").notNull().default(true),
+  gravatarEnabled: boolean("gravatar_enabled").notNull().default(false),
   /**
    * When the one-time network-isolation sweep finished, and how many stacks it
    * could not move. NULL ⇒ it has not run on this instance yet.

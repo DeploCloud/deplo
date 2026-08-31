@@ -17,8 +17,8 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Whether somebody with no uploaded picture falls back to their Gravatar. On by
- * default, because a picture nobody had to upload is the whole point.
+ * Whether somebody with no uploaded picture falls back to their Gravatar. Off by
+ * default: it is every member's browser that dials gravatar.com, not the panel.
  */
 export function GravatarCard({ enabled }: { enabled: boolean }) {
   const router = useRouter();
@@ -63,7 +63,7 @@ export function GravatarCard({ enabled }: { enabled: boolean }) {
         <div className="flex items-center justify-between gap-4">
           <FieldLabel
             htmlFor="gravatar-enabled"
-            info="Each person's browser fetches the picture from gravatar.com using a hash of their address. Turn it off and nothing about anyone leaves this instance - everyone without an uploaded picture wears their initials."
+            info="Turn it on and each person's browser fetches their picture from gravatar.com using a hash of their address. Off, nothing about anyone leaves this instance and everyone without an uploaded picture wears their initials."
           >
             Use Gravatar
           </FieldLabel>

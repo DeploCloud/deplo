@@ -995,6 +995,13 @@
       "when": 1788131972491,
       "tag": "0141_compose_host_reach_author",
       "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1788204347273,
+      "tag": "0142_gravatar_off_by_default",
+      "breakpoints": true
     }
   ]
 }

@@ -17,15 +17,15 @@ const SETTINGS_ID = "default";
 
 /**
  * Whether Gravatar fallback is on for this instance. No row at all is a fresh
- * instance, which gets the column's own default rather than a `false` that would
- * silently turn the feature off before anyone chose to.
+ * instance, and it reads the column's own default - off, because nobody has
+ * chosen to hand gravatar.com an address hash yet.
  */
 export const gravatarEnabled = cache(async (): Promise<boolean> => {
   const [row] = await getDb()
     .select({ gravatarEnabled: instanceSettings.gravatarEnabled })
     .from(instanceSettings)
     .where(eq(instanceSettings.id, SETTINGS_ID));
-  return row?.gravatarEnabled ?? true;
+  return row?.gravatarEnabled ?? false;
 });
 
 /**
