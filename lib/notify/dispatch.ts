@@ -96,17 +96,22 @@ export function dispatchServerAlert(
 }
 
 /** Raise the same alert for several teams at once (a fleet-wide condition). */
-export function dispatchToTeams(
+export async function dispatchToTeams(
   teamIds: string[],
   alert: Omit<Alert, "teamId">,
-): void {
+): Promise<void> {
   if (
     alert.dedupe &&
     !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state)
   )
     return;
-  void (async () => {
+  // Awaitable, and detached by the CALLER: a fan-out that ends inside its own
+  // `void` is one no test can wait for, only sleep at. It still never rejects,
+  // so `void dispatchToTeams(...)` stays safe.
+  try {
     for (const teamId of teamIds)
       await dispatchAlertNow({ ...alert, teamId, dedupe: undefined });
-  })().catch((e) => console.error("[deplo] alert fan-out failed:", e));
+  } catch (e) {
+    console.error("[deplo] alert fan-out failed:", e);
+  }
 }

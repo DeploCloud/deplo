@@ -30,17 +30,19 @@ export async function noteFailedLogin(subject: string): Promise<void> {
   });
   if (burst.ok) return;
 
-  void (async () => {
+  try {
     const teams = await teamsForSubject(subject);
     if (teams.length === 0) return;
-    dispatchToTeams(teams, {
+    await dispatchToTeams(teams, {
       key: "failed_logins",
       dedupe: { id: `login:${subject}`, state: "burst" },
       title: "Repeated failed sign-in attempts",
       body: `Several sign-ins for ${subject} were rejected in the last ten minutes.`,
       path: "/activity",
     });
-  })().catch((e) => console.error("[deplo] failed-login alert failed:", e));
+  } catch (e) {
+    console.error("[deplo] failed-login alert failed:", e);
+  }
 }
 
 async function teamsForSubject(subject: string): Promise<string[]> {

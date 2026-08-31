@@ -34,8 +34,6 @@ const USER_2 = "user_2";
  * assertion depend on the first having run.
  */
 const USER_3 = "user_3";
-/** `noteFailedLogin` is fire-and-forget, so the assertions wait a tick. */
-const settle = () => new Promise((r) => setTimeout(r, 30));
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -83,14 +81,17 @@ afterEach(() => {
   capture = null;
 });
 
-/** One burst: the limit plus the attempt that refuses. */
-function burst(subject: string) {
-  for (let i = 0; i < 6; i++) noteFailedLogin(subject);
+/**
+ * One burst: the limit plus the attempt that refuses. Awaited one at a time -
+ * six concurrent increments against one bucket is a race, and the whole chain
+ * down to the webhook is awaitable, so nothing here has to sleep and guess.
+ */
+async function burst(subject: string) {
+  for (let i = 0; i < 6; i++) await noteFailedLogin(subject);
 }
 
 test("an address that matches no account alerts nobody", async () => {
-  burst("nobody@example.com");
-  await settle();
+  await burst("nobody@example.com");
   assert.deepEqual(
     capture!.calls,
     [],
@@ -99,8 +100,7 @@ test("an address that matches no account alerts nobody", async () => {
 });
 
 test("a burst against a real account reaches that account's team", async () => {
-  burst("user_1@example.io");
-  await settle();
+  await burst("user_1@example.io");
   assert.equal(capture!.calls.length, 1);
   assert.match(
     JSON.stringify(capture!.calls[0].body),
@@ -109,15 +109,13 @@ test("a burst against a real account reaches that account's team", async () => {
 });
 
 test("a burst under the limit says nothing at all", async () => {
-  for (let i = 0; i < 5; i++) noteFailedLogin("user_3@example.io");
-  await settle();
+  for (let i = 0; i < 5; i++) await noteFailedLogin("user_3@example.io");
   assert.deepEqual(capture!.calls, []);
 });
 
 test("the burst reaches the account's own team, not the oldest one", async () => {
   // USER_2 is in TEAM_B, which has no channel. TEAM_A has one and is older, so
   // a fallback to "the first team" would show up here as a call.
-  burst("user_2@example.io");
-  await settle();
+  await burst("user_2@example.io");
   assert.deepEqual(capture!.calls, []);
 });

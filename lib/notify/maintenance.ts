@@ -93,7 +93,7 @@ async function checkDeploUpdate(): Promise<void> {
   if (!info.updateAvailable || !info.latest) return;
   const teams = await allTeamIds();
   if (teams.length === 0) return;
-  dispatchToTeams(teams, {
+  await dispatchToTeams(teams, {
     key: "deplo_update_available",
     // The VERSION is the dedupe state, so a fresh release re-fires at once
     // instead of waiting out the weekly nag.
