@@ -1406,16 +1406,21 @@ function DoneStep({
         </p>
       </div>
 
-      {/* Centred like everything else on this screen, the way out last. */}
-      <div className="flex w-full flex-wrap items-center justify-center gap-2">
-        <Button variant="outline" onClick={onShowLog}>
-          <ScrollText className="size-4" />
-          Show log
-        </Button>
-        <Button variant="outline" onClick={onAgain}>
-          <Repeat className="size-4" />
-          Migrate another
-        </Button>
+      {/**
+       * The two ends of the row, the way every footer in the app reads: what you might
+       * want to look at first on the left, the way out on the right.
+       */}
+      <div className="flex w-full flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={onShowLog}>
+            <ScrollText className="size-4" />
+            Show log
+          </Button>
+          <Button variant="outline" onClick={onAgain}>
+            <Repeat className="size-4" />
+            Migrate another
+          </Button>
+        </div>
         <Button onClick={onFinish}>Finish</Button>
       </div>
 
