@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   assertPasswordPolicy,
+  generatePassword,
   passwordMeetsPolicy,
   passwordPolicyError,
   passwordRuleStatus,
@@ -48,4 +49,39 @@ test("assertPasswordPolicy: throws the message the UI shows, verbatim", () => {
     message:
       "Choose a password with at least: 8 characters, 1 uppercase letter, 1 special character",
   });
+});
+
+test("generatePassword: every suggestion passes the gate that follows it", () => {
+  for (let i = 0; i < 2000; i++) {
+    const p = generatePassword();
+    assert.equal(
+      passwordMeetsPolicy(p),
+      true,
+      `${p} -> ${passwordPolicyError(p)}`,
+    );
+  }
+  assert.equal(generatePassword().length, 20);
+  assert.equal(generatePassword(32).length, 32);
+  // A short request still clears the length rule.
+  assert.equal(passwordMeetsPolicy(generatePassword(4)), true);
+});
+
+test("generatePassword: unambiguous characters only, and unbiased", () => {
+  const seen = new Map<string, number>();
+  for (let i = 0; i < 20000; i++)
+    for (const c of generatePassword()) seen.set(c, (seen.get(c) ?? 0) + 1);
+  for (const c of "lIO01") assert.equal(seen.has(c), false, `ambiguous ${c}`);
+
+  // Uniformity holds WITHIN a class; across classes the guaranteed one-of-each
+  // skews on purpose. Modulo bias would show as a ratio near 4/3 inside a class.
+  for (const cls of [
+    "abcdefghijkmnopqrstuvwxyz",
+    "ABCDEFGHJKLMNPQRSTUVWXYZ",
+    "23456789",
+    "!*+-._~",
+  ]) {
+    const counts = [...cls].map((c) => seen.get(c) ?? 0);
+    const ratio = Math.max(...counts) / Math.min(...counts);
+    assert.ok(ratio < 1.1, `biased within "${cls}": ${ratio.toFixed(3)}`);
+  }
 });

@@ -32,7 +32,7 @@ import {
 import { useRouter } from "next/navigation";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
-import { generatePassword } from "@/lib/utils";
+import { generatePassword } from "@/lib/password-policy";
 import { DB_NAMES, DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
 import { DatabaseLogo } from "./database-logo";
 import { DbVersionInput } from "./db-version-input";

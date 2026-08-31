@@ -65,3 +65,48 @@ export function assertPasswordPolicy(password: string): void {
   const error = passwordPolicyError(password);
   if (error) throw new Error(error);
 }
+
+/* ------------------------------------------------------------------ */
+/* Generation                                                          */
+/* ------------------------------------------------------------------ */
+
+// Unambiguous characters only (no l/I/O/0/1): a generated password gets read
+// aloud, pasted into a chat and typed by hand into a browser prompt. The
+// symbols are RFC 3986 unreserved/sub-delims, so no context has to escape them.
+const GEN_LOWER = "abcdefghijkmnopqrstuvwxyz";
+const GEN_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+const GEN_DIGIT = "23456789";
+const GEN_SYMBOL = "!*+-._~";
+const GEN_ALL = GEN_LOWER + GEN_UPPER + GEN_DIGIT + GEN_SYMBOL;
+
+/** Uniform index below `n`, rejecting the byte range's biased tail. */
+function randomBelow(n: number): number {
+  const limit = 256 - (256 % n);
+  const b = new Uint8Array(1);
+  do crypto.getRandomValues(b);
+  while (b[0] >= limit);
+  return b[0] % n;
+}
+
+const pick = (set: string): string => set[randomBelow(set.length)];
+
+/**
+ * A suggestion for every "Generate" affordance. It lives here because it has to
+ * satisfy PASSWORD_RULES by construction - one of each class, then filled and
+ * shuffled - or the button hands the user something the gate rejects.
+ */
+export function generatePassword(length = 20): string {
+  const out = [
+    pick(GEN_LOWER),
+    pick(GEN_UPPER),
+    pick(GEN_DIGIT),
+    pick(GEN_SYMBOL),
+  ];
+  while (out.length < Math.max(length, PASSWORD_MIN_LENGTH))
+    out.push(pick(GEN_ALL));
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = randomBelow(i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out.join("");
+}

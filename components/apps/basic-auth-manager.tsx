@@ -48,6 +48,7 @@ import {
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
+import { generatePassword } from "@/lib/password-policy";
 import type { BasicAuthUserDTO } from "@/lib/data/basic-auth";
 
 /**
@@ -345,22 +346,6 @@ function MetaRow({
 /* ------------------------------------------------------------------ */
 /* Add / change password                                               */
 /* ------------------------------------------------------------------ */
-
-// Unambiguous alphabet, no 0/O/1/l/I, because these passwords get read out
-// loud, pasted into a chat, and typed by hand into a browser prompt.
-const PASSWORD_ALPHABET =
-  "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-/** A 20-character password from the platform CSPRNG, so the obvious path is also
- *  the strong one - nobody has to invent a password to protect an app. */
-function generatePassword(): string {
-  const bytes = new Uint32Array(20);
-  crypto.getRandomValues(bytes);
-  return Array.from(
-    bytes,
-    (b) => PASSWORD_ALPHABET[b % PASSWORD_ALPHABET.length],
-  ).join("");
-}
 
 function BasicAuthDialog({
   open,

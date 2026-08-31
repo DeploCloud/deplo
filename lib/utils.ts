@@ -412,19 +412,6 @@ export function shortId(length = 8): string {
 }
 
 /**
- * A client-side password suggestion for the "Generate" affordance on the create-
- * database form.
- */
-export function generatePassword(length = 20): string {
-  const alphabet =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~";
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  let out = "";
-  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
-  return out;
-}
-
-/**
  * A path this app may send the browser back to after a detour off-site (the GitHub
  * App manifest flow) or off-page (Settings → Git).
  */
