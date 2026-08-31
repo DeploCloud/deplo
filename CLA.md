@@ -1,6 +1,6 @@
 # deplo Contributor License Agreement
 
-**Version 1.0**
+**Version 1.1**
 
 This agreement is between you (the person or entity submitting a Contribution, "You") and
 DeploCloud, the maintainer of deplo.
@@ -9,8 +9,8 @@ It is **not a copyright assignment.** You keep the copyright to everything you w
 you give us is permission: the right to ship your Contribution both in the open source
 project and under other terms, including a commercial license.
 
-You agree to it once. It then covers every Contribution you make to this project, including
-any you made before the date you agreed.
+You agree to it once per repository, on your first pull request there. It then covers every
+Contribution you make to that repository, including any you made before the date you agreed.
 
 What we commit to in return is written down too, in
 [CONTRIBUTING.md](CONTRIBUTING.md#what-we-will-not-do).
@@ -22,6 +22,9 @@ the deplo project under the name DeploCloud, together with any person or legal e
 Kevin Paratore later forms to operate the project, or to which the deplo project and this
 agreement are otherwise transferred, including by succession. The rights you grant below pass
 with the project, and no further agreement from you is needed for that to happen.
+
+**"deplo"** means the project of that name maintained by DeploCloud, in the repositories
+listed in section 7.
 
 **"Contribution"** means any work of authorship you intentionally submit to us for inclusion
 in, or documentation of, deplo: source code, documentation, configuration, designs, or
@@ -44,6 +47,9 @@ your Contribution and such derivative works.
 This license expressly includes the right to distribute your Contribution, and works derived
 from it, **under terms other than AGPL-3.0-only, including a commercial license.**
 
+It covers every Contribution you have submitted to the repository you agreed in, including any
+you submitted before the date you agreed. The same is true of the patent license below.
+
 ## 3. Patent license
 
 You grant us, and to recipients of software distributed by us, a perpetual, worldwide,
@@ -63,8 +69,10 @@ the date such litigation is filed.
 
 By agreeing to this document you confirm that:
 
-1. **The work is yours to give.** Each Contribution is your original creation, or you have
-   the right to submit it under this agreement.
+1. **The work is yours to give.** Each Contribution is your original creation, or you
+   otherwise hold the rights needed to submit it under this agreement. The tools you used to
+   produce it, including AI assistants, change nothing here: what you submit is what you are
+   telling us you may give.
 2. **Your employer is not in the way.** If your employer has rights to intellectual property
    you create, you have either received permission to make the Contribution on their behalf,
    or your employer has waived those rights, or your employer has agreed to this document. If
@@ -96,13 +104,18 @@ I have read the CLA Document and I hereby sign the CLA
 Your GitHub username, user ID, the pull request and the timestamp are recorded in
 `signatures/version1/cla.json` in this repository. That record is the signature.
 
+If you send us a Contribution some other way, an issue, a discussion or an email, we ask you to
+agree to this document before we use it.
+
 ## 7. Scope
 
 This agreement covers Contributions to the repositories of the DeploCloud organization that
 link to it, which are the ones licensed under AGPL-3.0-only:
 [`deplo`](https://github.com/DeploCloud/deplo) and
-[`deplo-agent`](https://github.com/DeploCloud/deplo-agent). One agreement per person covers
-each of them separately, as the bot asks in each repository.
+[`deplo-agent`](https://github.com/DeploCloud/deplo-agent).
+
+You agree to it separately in each of them, because the bot records your signature in the
+repository the Contribution arrives in.
 
 Repositories under a permissive license, such as the documentation and template catalogs, do
 not use this agreement: their license already allows what section 2 grants.

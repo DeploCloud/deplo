@@ -109,8 +109,8 @@ read the document and post one sentence as a comment:
 I have read the CLA Document and I hereby sign the CLA
 ```
 
-Once per person. It covers every pull request you open after it, and everything you
-contributed before it.
+Once per person in each repository. It covers every pull request you open there after it,
+and everything you contributed there before it.
 
 You keep the copyright to what you wrote. This is not an assignment: it is the permission
 that lets the same code ship in the open source project and in a commercial license
