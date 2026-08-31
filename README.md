@@ -30,7 +30,7 @@ Deplo is that experience on hardware you own and a bill you control. A VPS and a
 and the platform does the operator's job: builds, routing, TLS, databases, backups,
 monitoring, rollbacks. No per-seat pricing, no build minutes, no black box, no vendor
 lock-in. **The shell stays available for experts and is never required to get full value.**
- 
+
 ## ✨ Features
 
 |     | Feature                   | What you get                                                                                                                                                                                            |
