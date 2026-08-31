@@ -343,10 +343,18 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   empty, and a denylist of the three keywords let every network on the host through. It is
   refused AT THE RENDER when it names a network Deplo manages (the platform's own with a
   compose project prefix included, so `traefik_deplo-socket` counts) or when it interpolates
-  `${VAR}`: the value can come from the env-file, so no reading of the authored text sees it.
+  `$VAR` (braces optional - `$$` is compose's own escape and interpolates nothing): the
+  value can come from the env-file, so no reading of the authored text sees it. A network
+  Deplo manages includes another tenant's `deplo-<slug>_default` and the proxy's
+  `<project>_deplo-socket`, but NOT somebody's own `myapp_deplo`.
   **EVERY service joins the stack's network, not only the routed ones** - a worker with no
-  domain is still the app and still has to reach its Environment's database - except one
-  holding a reserved name, which is left OFF rather than refusing the whole render.
+  domain is still the app and still has to reach its Environment's database. Two stay off,
+  and both keep a private `default` so the stack is not split in two: one holding a
+  RESERVED name (left off rather than refusing a render, since `postgres` is an ordinary
+  name for a stack's own database) and any service in a compose where the AUTHOR named the
+  networks - `networks: {default: {internal: true}}` is somebody cutting off egress on
+  purpose, and adding to it would hand it back. A ROUTED service is wired either way, or
+  its domain answers nothing.
   **The reserved-name list is what Traefik still resolves by DNS.** It sits on every tenant
   network and dials `tcp://docker-socket-proxy:2375` and `http://deplo:3000`, so those names
   stay claimable and stay refused (`composeClaimsReservedName` early at save,

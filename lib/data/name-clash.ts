@@ -2,7 +2,7 @@ import "server-only";
 
 // https://deplo.build/docs/advanced/network-isolation
 
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -106,4 +106,46 @@ export async function assertNoNameClash(opts: {
         `(the service, or its \`hostname:\`), or pick another environment.`,
     );
   }
+}
+
+/**
+ * The names that WOULD collide if these apps landed on `to`, said rather than
+ * refused. A delete cannot be turned down for a name collision - the environment
+ * is going away either way - so its reparenting reports what it created instead of
+ * failing or, worse, saying nothing.
+ */
+export async function nameClashesOnMove(
+  appIds: string[],
+  to: Omit<Placement, "serverId">,
+): Promise<string[]> {
+  if (appIds.length === 0) return [];
+  const rows = await getDb()
+    .select({
+      id: appsTable.id,
+      slug: appsTable.slug,
+      name: appsTable.name,
+      compose: appsTable.compose,
+      serverId: appsTable.serverId,
+    })
+    .from(appsTable)
+    .where(inArray(appsTable.id, appIds));
+  const out: string[] = [];
+  for (const row of rows) {
+    const claims = row.compose?.trim()
+      ? composeClaimedNames(row.compose)
+      : [stackName(row.slug)];
+    try {
+      // Each app keeps its OWN host: a network lives on one machine, so two apps
+      // landing in the same Environment from different servers do not collide.
+      await assertNoNameClash({
+        to: { ...to, serverId: row.serverId },
+        claims,
+        exceptId: row.id,
+        subject: row.name,
+      });
+    } catch (e) {
+      out.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  return out;
 }

@@ -61,8 +61,11 @@ name (`api`, `db`, `gamewatcher-db`), and those are not enumerable.
 
    Every service of a stack joins, not only the routed ones: a worker with no domain is
    still the app, and leaving it on the compose project's private `default` put it out of
-   reach of the very database its Environment owns. A service holding a reserved name is
-   left off instead, because `postgres` is an ordinary name for a stack's own database.
+   reach of the very database its Environment owns. Two stay off - a service holding a
+   reserved name (`postgres` is an ordinary name for a stack's own database) and every
+   service of a compose whose author named the networks themselves - and in both cases the
+   stack keeps a private `default`, or leaving one service off would split it in two and
+   the lookup between them would stop resolving.
 
 6. **No compatibility with older agents.** The agent creates the network named in the
    Deploy/Reroute request and connects Traefik to it; one that does not is a hard failure

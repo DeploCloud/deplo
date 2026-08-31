@@ -35,6 +35,9 @@ import { membershipFor, requireCapability } from "../membership";
 import { currentIdentity } from "../auth/request-context";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
+import { assertNoNameClash } from "./name-clash";
+import { composeClaimedNames } from "../deploy/compose-lint";
+import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
 import { assertServerAccessibleTx } from "./servers";
 import { withKeyedLock } from "./keyed-mutex";
@@ -318,6 +321,21 @@ export async function transferAppToTeam(
       .limit(1)
   )[0];
   if (!destTeam) throw new Error("Team not found");
+  // It lands on the destination team's own network, where its service names may
+  // already be taken - and Docker would split the lookups rather than complain.
+  const [claimSource] = await db
+    .select({ slug: appsTable.slug, compose: appsTable.compose })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  await assertNoNameClash({
+    to: { teamId: destTeamId, environmentId: null, serverId: app.serverId },
+    claims: claimSource?.compose?.trim()
+      ? composeClaimedNames(claimSource.compose)
+      : [stackName(claimSource?.slug ?? "")],
+    exceptId: appId,
+    subject: "this app",
+  });
   const sourceTeam = (
     await db
       .select({ name: teamsTable.name })

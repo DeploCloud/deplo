@@ -12,6 +12,8 @@ import {
 import { PREVIEW_SUFFIX_RE } from "../deploy/deploy-key";
 import { newId, nowIso } from "../ids";
 import { reapplyNetworkAfterMove } from "../deploy/build";
+import { nameClashesOnMove } from "./name-clash";
+import { recordActivity } from "./activity";
 import { reapplyDatabaseNetwork } from "./databases";
 import {
   currentMemberScope,
@@ -357,7 +359,7 @@ export async function setDefaultEnvironment(id: string): Promise<void> {
  * Delete a non-default environment; never the default or the last one.
  */
 export async function deleteEnvironment(id: string): Promise<void> {
-  await requireCapability("manage_environments");
+  const { teamId } = await requireCapability("manage_environments");
   // Takes the apps in it with it, and a run may still be creating them.
   await assertContainerNotMigrating("environment", id);
   const env = (
@@ -411,6 +413,20 @@ export async function deleteEnvironment(id: string): Promise<void> {
   });
   // Outside the transaction: each one is an agent call, and the fallback is a
   // different network from the one they were on.
+  // The reparenting can put two stacks that both answer to a name on one network.
+  // A delete cannot be refused for that, so it is reported: without this the
+  // collision arrives later as an intermittent fault nobody can trace back here.
+  for (const clash of await nameClashesOnMove(
+    moved.map((a) => a.id),
+    { teamId, environmentId: fallback.id },
+  ))
+    await recordActivity(
+      "app",
+      `After the delete: ${clash}`,
+      "Deplo",
+      null,
+      teamId,
+    );
   await reapplyNetworkAfterMove(moved.map((a) => a.id));
   await reapplyDatabaseNetwork(movedDbs.map((d) => d.id));
 }

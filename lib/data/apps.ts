@@ -14,7 +14,6 @@ import {
 } from "./servers";
 import { getDb } from "../db/client";
 import {
-  databases as databasesTable,
   domains as domainsTable,
   apps as appsTable,
   appBuild as appBuildTable,
@@ -48,7 +47,7 @@ import {
   externalMergeMessage,
   reservedNameMessage,
 } from "../deploy/compose-lint";
-import { appNetwork } from "../deploy/network";
+import { assertNoNameClash } from "./name-clash";
 import { composeServiceNames } from "../deploy/compose-stack";
 import {
   parseComposeUpArgs,
@@ -793,45 +792,6 @@ function cleanAppName(name: string): string {
   return trimmed;
 }
 
-/**
- * A compose service that would take over a managed database's DNS name on the
- * shared network. `databases.host` (`db-<slug>`) IS that container's name there,
- * so a same-named service collects the connections the owner's apps make to it -
- * credentials included. Deliberately instance-wide, like the database path's own
- * slug check: the victim is usually another team.
- */
-async function assertNoDatabaseNameClash(
-  compose: string | null | undefined,
-  serverId: string,
-  placement: { teamId: string; environmentId: string | null },
-): Promise<void> {
-  if (compose == null) return;
-  const claimed = new Set(composeClaimedNames(compose));
-  if (claimed.size === 0) return;
-  const network = appNetwork({
-    teamId: placement.teamId,
-    environmentId: placement.environmentId,
-  });
-  const rows = await getDb()
-    .select({
-      host: databasesTable.host,
-      teamId: databasesTable.teamId,
-      environmentId: databasesTable.environmentId,
-    })
-    .from(databasesTable)
-    .where(eq(databasesTable.serverId, serverId));
-  // Only a database this app would SHARE A NETWORK WITH can lose its name: since
-  // ADR-0028 one in another Environment answers on a network this stack never joins.
-  const clash = rows.find(
-    (r) =>
-      appNetwork(r) === network && claimed.has(r.host.trim().toLowerCase()),
-  );
-  if (clash)
-    throw new Error(
-      `\`${clash.host}\` is a database already running on this server, and a service of that name would take over its address. Rename the service (or its \`hostname:\`).`,
-    );
-}
-
 export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const { membership, userId } = await requireCapability("create_apps");
   input = { ...input, name: cleanAppName(input.name) };
@@ -944,10 +904,20 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     throw new Error(
       "No server available - add a server from Settings, Servers and run its install command first.",
     );
-  await assertNoDatabaseNameClash(input.compose, server.id, {
-    teamId: membership.teamId,
-    environmentId: placement.environmentId,
-  });
+  // Every name this stack would answer to has to be free on the network it lands
+  // on - a neighbouring APP's service names as much as a database's, now that every
+  // service joins. The same check the moves make, asked from the other side.
+  if (input.compose != null)
+    await assertNoNameClash({
+      to: {
+        teamId: membership.teamId,
+        environmentId: placement.environmentId,
+        serverId: server.id,
+      },
+      claims: composeClaimedNames(input.compose),
+      exceptId: "",
+      subject: "this app",
+    });
 
   // Where it COMPILES, on the same terms `setAppBuildServer` applies later: it has
   // to be a host this team can reach, a storage-only box has no Docker to build
@@ -1536,11 +1506,16 @@ export async function updateAppSource(
       .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
       .limit(1);
     if (row)
-      await assertNoDatabaseNameClash(
-        input.compose,
-        input.serverId ?? row.serverId,
-        { teamId: membership.teamId, environmentId: row.environmentId },
-      );
+      await assertNoNameClash({
+        to: {
+          teamId: membership.teamId,
+          environmentId: row.environmentId,
+          serverId: input.serverId ?? row.serverId,
+        },
+        claims: composeClaimedNames(input.compose),
+        exceptId: id,
+        subject: "this app",
+      });
   }
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;

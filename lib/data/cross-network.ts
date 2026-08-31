@@ -155,16 +155,12 @@ function placeLabel(project: string | null, env: string | null): string {
 }
 
 /**
- * Strip a neighbour down to what a caller may be told. A deploy log is readable by
- * whoever can deploy the app, and a member scoped to one folder should not learn
- * the service names and project layout of the parts of the team they cannot reach.
- * The NAME still has to appear - it is the one the app itself wrote - but where it
- * lives does not.
+ * Strip a neighbour down to what a deploy log may carry. The log outlives the
+ * request and is read later by anyone with `view_logs`, so this cannot depend on
+ * who started the deploy: a run by an owner would write the full layout and a
+ * scoped member would read it afterwards. The NAME still appears - the app itself
+ * wrote it - but where it lives does not.
  */
-export function redactNeighbours(
-  list: Neighbour[],
-  maySeeWhere: boolean,
-): Neighbour[] {
-  if (maySeeWhere) return list;
+export function redactNeighbours(list: Neighbour[]): Neighbour[] {
   return list.map((n) => ({ ...n, where: "another part of this team" }));
 }

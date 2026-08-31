@@ -79,7 +79,6 @@ import {
   type ForeignName,
 } from "./cross-network";
 import { neighboursForApp, redactNeighbours } from "../data/cross-network";
-import { currentMemberScope } from "../membership";
 import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -2302,6 +2301,9 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     compose: project.compose ?? "",
     name,
     deployKey,
+    // A route the render could not wire is said out loud here, or the deploy goes
+    // green with a hostname that answers nothing and no line anywhere.
+    onWarn: (message) => log(opts.depId, "warn", message),
     // A preview publishes no host ports - see ComposeStackInput. Production is
     // untouched, so its render stays byte-identical.
     stripPublishedPorts: Boolean(opts.preview),
@@ -2714,6 +2716,7 @@ export async function rerouteApp(
       rendered = buildComposeStack({
         compose: project.compose ?? "",
         name,
+        onWarn: (message) => console.warn(`[deplo] ${appId}: ${message}`),
         // Reroute is production-only, so never a preview network.
         network: deployNetwork(project),
         deployKey,
@@ -2855,12 +2858,11 @@ async function warnCrossNetwork(
         .limit(1)
     )[0];
     if (!app) return;
-    // A member scoped to one folder deploys this app but has no business reading the
-    // project layout of the rest of the team out of its log.
-    const neighbours = redactNeighbours(
-      await neighboursForApp(app),
-      (await currentMemberScope()) === null,
-    );
+    // The placement of a neighbour never goes in, whoever started the deploy: this
+    // log outlives the request and is read later by anyone with `view_logs`, so
+    // deciding by the CALLER's scope protected nobody. The NAME still appears - the
+    // app itself wrote it - but where it lives does not.
+    const neighbours = redactNeighbours(await neighboursForApp(app));
     const foreign = neighbours.filter(
       (n): n is ForeignName => n.why !== "reachable" && n.network !== network,
     );

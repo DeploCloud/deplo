@@ -26,7 +26,7 @@ import {
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
 import { reapplyDatabaseNetwork } from "./databases";
-import { assertNoNameClash } from "./name-clash";
+import { assertNoNameClash, nameClashesOnMove } from "./name-clash";
 import { composeClaimedNames } from "../deploy/compose-lint";
 import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
@@ -488,6 +488,19 @@ export async function deleteProject(
   // on the team's, and `databases.environment_id` follows by `on delete set null`.
   // Without the bring-up their containers stay on a network the control plane no
   // longer believes in - and which the cleanup now reads as litter.
+  // Same as deleteEnvironment: the move to the team's network can put two stacks
+  // on one name, and a delete cannot be refused for it - so it is reported.
+  for (const clash of await nameClashesOnMove(
+    moved.map((a) => a.id),
+    { teamId, environmentId: null },
+  ))
+    await recordActivity(
+      "app",
+      `After the delete: ${clash}`,
+      "Deplo",
+      null,
+      teamId,
+    );
   await reapplyNetworkAfterMove(moved.map((a) => a.id));
   await reapplyDatabaseNetwork(movedDbs.map((d) => d.id));
   // Record OUTSIDE the transaction: recordActivity opens its own connection, which

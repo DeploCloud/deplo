@@ -397,7 +397,7 @@ test("a service that would take over a database's address is refused", async () 
         asUser1(() =>
           newApp({ compose: `services:\n  ${svc}:\n    image: nginx:1.27\n` }),
         ),
-      /already running on this server/,
+      /is already answered by/,
       label,
     );
 
@@ -410,7 +410,7 @@ test("a service that would take over a database's address is refused", async () 
             "services:\n  web:\n    image: nginx:1.27\n    hostname: db-analytics\n",
         }),
       ),
-    /already running on this server/,
+    /is already answered by/,
     "via hostname",
   );
 
