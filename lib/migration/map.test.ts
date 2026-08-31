@@ -1479,6 +1479,20 @@ test("pairVolumes stays quiet about an unmatched anonymous volume", () => {
   assert.deepEqual(notes, []);
 });
 
+// The one volume the importer has nowhere to put, on every Mongo that names it.
+test("pairVolumes says why a standalone Mongo's configdb has no twin", () => {
+  const { notes } = pairVolumes(
+    [
+      { name: "mongo-data", mountPath: "/data/db" },
+      { name: "mongo-configdb", mountPath: "/data/configdb" },
+    ],
+    [{ name: "deplo-db-x_db-x-data", mountPath: "/data/db" }],
+    { singleData: true },
+  );
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /sharded cluster/);
+});
+
 // mysql/mariadb carry two credentials on Dokploy and deplo models one, using it for
 // BOTH the connection string and its own root-only operations (the backup dump, the
 // console, rotation).

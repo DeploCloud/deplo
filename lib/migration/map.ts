@@ -2101,6 +2101,13 @@ export function declaredSourceVolumes(input: {
   return out;
 }
 
+/** Paths an image declares that a STANDALONE never writes - the one unpairable
+ *  volume on a plain Mongo, and not a loss to go looking for. */
+const EMPTY_BY_DESIGN: Record<string, string> = {
+  "/data/configdb":
+    "MongoDB only writes it as part of a sharded cluster, so a standalone leaves it empty.",
+};
+
 /**
  * Match every source volume to the deplo volume that should receive it.
  */
@@ -2177,7 +2184,10 @@ export function pairVolumes(
       !isAnonymousVolume(s.name)
     )
       notes.push(
-        `${s.name} is mounted at ${s.mountPath} on {panel}, but no volume of this app mounts that path.`,
+        `${s.name} is mounted at ${s.mountPath} on {panel}, but no volume of this app mounts that path.` +
+          (EMPTY_BY_DESIGN[s.mountPath]
+            ? ` ${EMPTY_BY_DESIGN[s.mountPath]}`
+            : ""),
       );
   for (const t of target)
     if (!pairs.some((p) => p.targetVolume === t.name))
