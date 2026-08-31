@@ -5,15 +5,12 @@ import Link from "next/link";
 import { ShieldCheck, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { veilProps } from "@/components/templates/veil";
-import { cn } from "@/lib/utils";
 
-/** One card. `hue` is the wash's colour, the same grammar the MCP wizard uses. */
+/** One card. */
 export interface SidebarTip {
   /** Also the dismissal key: change it to show a rewritten tip again. */
   id: string;
   icon: React.ComponentType<{ className?: string }>;
-  hue: number;
   title: string;
   description: string;
   /** At most one, always secondary. */
@@ -32,7 +29,6 @@ export const SIDEBAR_TIPS: SidebarTip[] = [
   {
     id: "two-factor",
     icon: ShieldCheck,
-    hue: 265,
     title: "Turn on two-factor",
     description:
       "A code from your phone on top of your password, so a stolen one is not enough.",
@@ -91,17 +87,10 @@ export function SidebarTips(ctx: SidebarTipContext) {
     setDismissed(next);
   }
 
-  const veil = veilProps({ hue: tip.hue }, "on");
   const Icon = tip.icon;
 
   return (
-    <div
-      style={veil.style}
-      className={cn(
-        "relative rounded-lg border border-border bg-card p-3",
-        veil.className,
-      )}
-    >
+    <div className="relative rounded-lg border border-border bg-card p-3">
       <button
         type="button"
         onClick={() => dismiss(tip.id)}
