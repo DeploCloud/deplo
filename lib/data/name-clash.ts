@@ -94,6 +94,18 @@ async function namesOnNetwork(
 }
 
 /**
+ * Every DNS name a neighbour already answers to on `to`'s network. The refusal
+ * below is one answer to it; an import's is to RENAME what would collide, so a
+ * second one-click stack with its own `db` arrives instead of failing.
+ */
+export async function namesTakenOnNetwork(
+  to: Placement,
+  exceptId = "",
+): Promise<Set<string>> {
+  return new Set((await namesOnNetwork(to, exceptId)).keys());
+}
+
+/**
  * Refuse a workload whose DNS names a neighbour on the destination network already
  * answers to. Docker round-robins a name two containers both claim, so half the
  * lookups reach the wrong one - which reads as an intermittent network fault, not

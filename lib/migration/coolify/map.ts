@@ -596,6 +596,8 @@ export interface CoolifyExtras {
   mounts?: SourceMount[];
   serverId?: string;
   environmentId?: string;
+  /** {@link SourceCompose.stackDir} - the resource's own directory on the host. */
+  stackDir?: string;
   basicAuth?: { username: string; password: string } | null;
 }
 
@@ -771,6 +773,7 @@ export function coolifyCompose(
       composeFile: raw || parsed || null,
       icon: null,
       composeType: "docker-compose",
+      stackDir: extras.stackDir ?? null,
       routingPort: onCompose.port,
       sourceType: "raw",
       serverId: extras.serverId ?? "",

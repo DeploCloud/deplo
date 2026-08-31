@@ -24,6 +24,7 @@ import { connectAgent } from "../infra/agent-client";
 import { AGENT_PORT_NOTICE } from "../agent-reachability";
 import { publishDatabaseChanged } from "../graphql/pubsub";
 import { DB_DATA_DIRS } from "../deploy/database-compose";
+import { stackFilesDir } from "../deploy/deploy-key";
 import type { DatabaseType } from "../types";
 
 import { serviceDisplayName } from "../migration/dokploy/client";
@@ -50,9 +51,11 @@ import {
   copyHostPathBetween,
   copyVolumeBetween,
   isCopyAborted,
+  isNotADirectory,
   startStackOn,
   stopStackOn,
   type OnBytes,
+  type VolumeCopyResult,
 } from "./volume-migration";
 import { recordActivity } from "./activity";
 import { clearDataCopyError, markDataCopyFailed } from "./data-copy";
@@ -281,11 +284,18 @@ async function sourceServices(c: SourceCredential): Promise<SourceService[]> {
         declaredBindMounts: declaredSourceBindMounts(
           detail.mounts,
           composeFile,
+          (detail as { stackDir?: string | null }).stackDir ?? null,
         ),
       };
     },
   );
   return out.filter((s): s is SourceService => s != null);
+}
+
+/** The directory a host path sits in. Both sides are already absolute here. */
+function parentDir(path: string): string {
+  const at = path.replace(/\/+$/, "").lastIndexOf("/");
+  return at > 0 ? path.slice(0, at) : "/";
 }
 
 /* ------------------------------------------------------------------ */
@@ -438,8 +448,10 @@ async function landedFor(
         .filter((v) => v.type === "host" && (v.hostPath ?? "").trim())
         .map((v) => ({ hostPath: v.hostPath!.trim(), mountPath: v.mountPath })),
       // The stack's own YAML binds host directories too, and it is the same file
-      // that came across - so the path this app reads is the path over there.
-      ...composeHostMounts(hit.compose ?? ""),
+      // that came across - so the path this app reads is the path over there. A
+      // `./x` bind resolves into the stack's files dir, exactly where the render
+      // points it (`rewriteMountSource`).
+      ...composeHostMounts(hit.compose ?? "", stackFilesDir(hit.slug)),
     ],
   };
 }
@@ -534,7 +546,9 @@ export async function planMigrationDataMove(
           sourceVolume: b.sourcePath,
           targetVolume: b.targetPath,
           mountPath: b.mountPath,
-          note: "A host directory, not a volume. Copying it needs instance admin and the host-volumes permission.",
+          note: b.stackRelative
+            ? "A directory the stack binds beside its own compose file, not a volume."
+            : "A host directory, not a volume. Copying it needs instance admin and the host-volumes permission.",
         })),
       ].map((v) => ({ ...v, note: v.note ? said(v.note) : null })),
       notes: [
@@ -786,8 +800,11 @@ async function runMoveMigrationServiceData(
       notes.push(
         `${m.hostPath} is mounted at ${m.mountPath} on {panel}, but nothing of ${landed.targetName} mounts that path here - what is in it was not copied.`,
       );
+  // A `./x` bind is Deplo's own stack directory on both sides, so there is no host
+  // path anybody typed to gate - and gating it took the common case (a one-click
+  // stack whose data sits beside its compose) away from everyone but an admin.
   const mayCopyHostPaths =
-    binds.length === 0 ||
+    binds.every((b) => b.stackRelative) ||
     ((await isInstanceAdmin()) && (await canMountHostVolumes()));
 
   if (paired.value.length === 0 && binds.length === 0) {
@@ -1052,8 +1069,10 @@ async function runMoveMigrationServiceData(
         });
       }
     }
+    /** Stack directories already copied whole, so two file binds are one copy. */
+    const copiedStackDirs = new Set<string>();
     for (const bind of binds) {
-      if (!mayCopyHostPaths) {
+      if (!mayCopyHostPaths && !bind.stackRelative) {
         await appendRunItem(input.runId, panel, {
           path,
           sourceKind: "volume",
@@ -1084,14 +1103,44 @@ async function runMoveMigrationServiceData(
         continue;
       }
       try {
-        const copied = await copyHostPathBetween(
-          source,
-          dest,
-          bind.sourcePath,
-          bind.targetPath,
-          input.onBytes,
-          aborter.signal,
-        );
+        let copied: VolumeCopyResult;
+        /** Where the bytes actually landed - the file's directory on a fallback. */
+        let landedIn = bind.targetPath;
+        try {
+          copied = await copyHostPathBetween(
+            source,
+            dest,
+            bind.sourcePath,
+            bind.targetPath,
+            input.onBytes,
+            aborter.signal,
+          );
+        } catch (e) {
+          // `./nginx.conf:/etc/nginx/nginx.conf` - a FILE, which the directory
+          // export refuses and Docker then materialises as a DIRECTORY on the
+          // target, so the stack never comes up. Both ends sit in the stack's own
+          // directory, so copying THAT carries the file across, and every sibling
+          // bind with it - which is why it runs once per directory.
+          // ponytail: a whole directory for one file; a per-file export RPC is the
+          // fix if a stack dir ever holds more than the stack's own state.
+          if (!isNotADirectory(e) || !bind.stackRelative) throw e;
+          const into = parentDir(bind.targetPath);
+          if (copiedStackDirs.has(into)) {
+            moved++;
+            continue;
+          }
+          copiedStackDirs.add(into);
+          landedIn = into;
+          copied = await copyHostPathBetween(
+            source,
+            dest,
+            parentDir(bind.sourcePath),
+            into,
+            input.onBytes,
+            aborter.signal,
+            false,
+          );
+        }
         if (copied.empty) {
           empty++;
           if (copied.missing) missing++;
@@ -1122,7 +1171,7 @@ async function runMoveMigrationServiceData(
           outcome: "created",
           targetKind: landed.targetKind,
           targetId: landed.targetId,
-          message: `Copied ${formatBytes(copied.bytes)} (compressed) into ${bind.targetPath} (${bind.mountPath}), a host directory.`,
+          message: `Copied ${formatBytes(copied.bytes)} (compressed) into ${landedIn} (${bind.mountPath}), a host directory.`,
         });
       } catch (e) {
         if (isCopyAborted(e)) throw e;

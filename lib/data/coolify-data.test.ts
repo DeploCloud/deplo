@@ -66,7 +66,22 @@ let stopsAfter = 1;
 let statusReads = 0;
 let running = true;
 
+/** A one-click stack that keeps its data beside its own compose file - the shape
+ *  every Coolify service template has, and the one nothing used to copy. */
+const BIND_COMPOSE = [
+  "services:",
+  "  web:",
+  "    image: nginx:alpine",
+  "    volumes:",
+  "      - ./content:/usr/share/nginx/html",
+  "      - ./nginx.conf:/etc/nginx/nginx.conf",
+  "",
+].join("\n");
+
 const STORAGES: Record<string, unknown> = {
+  // Coolify records NOTHING for a `./x` bind: this is what "mounts nothing" was
+  // read off, over the directory holding every file the stack had.
+  "svc-bind": { persistent_storages: [], file_storages: [] },
   "app-web": {
     persistent_storages: [
       { uuid: "s1", name: "web-uploads-app-web", mount_path: "/app/uploads" },
@@ -110,7 +125,10 @@ function fakeCoolify() {
         },
       ]);
     if (path === "servers/srv-local/resources")
-      return json([{ uuid: "app-web", name: "web", type: "application" }]);
+      return json([
+        { uuid: "app-web", name: "web", type: "application" },
+        { uuid: "svc-bind", name: "bind", type: "service" },
+      ]);
     if (path === "applications")
       return json([
         {
@@ -121,10 +139,28 @@ function fakeCoolify() {
           status: running ? "running:healthy" : "exited",
         },
       ]);
-    if (path === "services" || path === "databases") return json([]);
+    if (path === "services")
+      return json([
+        {
+          uuid: "svc-bind",
+          name: "bind",
+          environment_id: 2,
+          status: running ? "running:healthy" : "exited",
+          docker_compose_raw: BIND_COMPOSE,
+        },
+      ]);
+    if (path === "databases") return json([]);
 
     const single = /^(applications|services|databases)\/([^/]+)$/.exec(path);
     if (single) {
+      if (single[2] === "svc-bind")
+        return json({
+          uuid: "svc-bind",
+          name: "bind",
+          environment_id: 2,
+          status: running ? "running:healthy" : "exited",
+          docker_compose_raw: BIND_COMPOSE,
+        });
       if (single[2] !== "app-web")
         return new Response("not found", { status: 404 });
       statusReads += 1;
@@ -150,6 +186,8 @@ function fakeCoolify() {
 let agentCalls: string[] = [];
 let volumes: Record<string, Record<string, Buffer>> = {};
 let hostPaths: Record<string, Record<string, Buffer>> = {};
+/** Host paths that are a FILE, so the directory export refuses them. */
+let hostFiles = new Set<string>();
 const EMPTY_ARCHIVE = EMPTY_TAR_GZ;
 
 function fakeAgent(serverId: string) {
@@ -184,6 +222,12 @@ function fakeAgent(serverId: string) {
     },
     async *exportHostPath(path: string) {
       say("export-path", path);
+      // The agent tars a DIRECTORY and refuses a file, which is what a
+      // `./nginx.conf` bind names.
+      if (hostFiles.has(path))
+        throw new Error(
+          `3 INVALID_ARGUMENT: ${path} is a file, not a directory`,
+        );
       yield hostPaths[serverId]?.[path] ?? EMPTY_ARCHIVE;
     },
     async importHostPath(
@@ -221,18 +265,32 @@ async function openRun(): Promise<string> {
   const runId = await asOwner(() =>
     beginMigration({ url: CONNECT.url, kind: "coolify" }),
   );
-  await db.insert(itemsTable).values({
-    id: "dimi_seed_0",
-    runId,
-    path: "Blink / production / web",
-    sourceKind: "application",
-    sourceName: "web",
-    sourceId: "app-web",
-    outcome: "created",
-    targetKind: "app",
-    targetId: "prj_web",
-    message: null,
-  });
+  await db.insert(itemsTable).values([
+    {
+      id: "dimi_seed_0",
+      runId,
+      path: "Blink / production / web",
+      sourceKind: "application",
+      sourceName: "web",
+      sourceId: "app-web",
+      outcome: "created",
+      targetKind: "app",
+      targetId: "prj_web",
+      message: null,
+    },
+    {
+      id: "dimi_seed_1",
+      runId,
+      path: "Blink / production / bind",
+      sourceKind: "compose",
+      sourceName: "bind",
+      sourceId: "svc-bind",
+      outcome: "created",
+      targetKind: "app",
+      targetId: "prj_bind",
+      message: null,
+    },
+  ]);
   return runId;
 }
 
@@ -289,6 +347,7 @@ beforeEach(async () => {
       "/data/coolify/applications/app-web/config.json": tarGzOf(2048, 5),
     },
   };
+  hostFiles = new Set();
   volumes = {
     srv_migration_host: { "web-uploads-app-web": tarGzOf(4096, 7) },
     [SERVER_1]: { "deplo-blink-web-uploads": tarGzOf(64, 1) },
@@ -356,6 +415,18 @@ beforeEach(async () => {
     readOnly: false,
     propagation: null,
   });
+  // The stack that binds `./content`: no Storage row on either side, so the whole
+  // pairing has to come off the compose file itself.
+  await seedApp(db, {
+    id: "prj_bind",
+    teamId: TEAM_A,
+    slug: "blink-bind",
+    projectId: "prc_blink",
+    environmentId: "environ_prod",
+    source: "compose",
+    compose: BIND_COMPOSE,
+  });
+  await db.execute("update apps set name = 'bind' where id = 'prj_bind'");
 });
 
 function asOwner<T>(fn: () => Promise<T>): Promise<T> {
@@ -519,5 +590,83 @@ test("a service this run did not create cannot be reached", async () => {
         sourceId: "app-ghost",
       }),
     ),
+  );
+});
+
+test("a `./x` bind beside the compose file crosses, and is not called a host path", async () => {
+  await seedPanelHost();
+  const filesDir = `${process.env.DEPLO_DATA_DIR}/stacks/files/blink-bind`;
+  hostPaths.srv_migration_host["/data/coolify/services/svc-bind/content"] =
+    tarGzOf(1024, 3);
+  hostPaths.srv_migration_host["/data/coolify/services/svc-bind/nginx.conf"] =
+    tarGzOf(512, 1);
+  const runId = await openRun();
+
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
+  const bind = plan.find((s) => s.sourceName === "bind");
+  assert.ok(bind, JSON.stringify(plan.map((s) => s.sourceName)));
+  assert.deepEqual(
+    bind.volumes.map(
+      (v) => `${v.sourceVolume}->${v.targetVolume}@${v.mountPath}`,
+    ),
+    [
+      `/data/coolify/services/svc-bind/content->${filesDir}/content@/usr/share/nginx/html`,
+      `/data/coolify/services/svc-bind/nginx.conf->${filesDir}/nginx.conf@/etc/nginx/nginx.conf`,
+    ],
+  );
+  // Coolify's storage rows say nothing about it, and "mounts nothing" over a
+  // directory holding the whole app is the lie this replaces.
+  assert.equal(
+    bind.notes.some((n) => /nothing to copy/.test(n)),
+    false,
+    bind.notes.join(" | "),
+  );
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "compose",
+      sourceId: "svc-bind",
+    }),
+  );
+  assert.equal(res.moved, 2, JSON.stringify(res));
+  assert.deepEqual(
+    hostPaths[SERVER_1][`${filesDir}/content`],
+    hostPaths.srv_migration_host["/data/coolify/services/svc-bind/content"],
+  );
+});
+
+test("a `./file` bind carries across in the directory it sits in", async () => {
+  await seedPanelHost();
+  const filesDir = `${process.env.DEPLO_DATA_DIR}/stacks/files/blink-bind`;
+  const stackDir = "/data/coolify/services/svc-bind";
+  hostPaths.srv_migration_host[`${stackDir}/content`] = tarGzOf(1024, 3);
+  hostPaths.srv_migration_host[stackDir] = tarGzOf(4096, 9);
+  // Docker materialises a missing `./nginx.conf` as a DIRECTORY, and the stack
+  // then does not start at all - so the file has to come over.
+  hostFiles.add(`${stackDir}/nginx.conf`);
+  const runId = await openRun();
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "compose",
+      sourceId: "svc-bind",
+    }),
+  );
+  assert.equal(res.moved, 2, JSON.stringify(res));
+  assert.deepEqual(
+    hostPaths[SERVER_1][filesDir],
+    hostPaths.srv_migration_host[stackDir],
+  );
+  // The files dir holds Deplo's own config files too, so it is never emptied.
+  assert.equal(
+    agentCalls.includes(`${SERVER_1}:wipe-path:${filesDir}`),
+    false,
+    agentCalls.join(" | "),
   );
 });

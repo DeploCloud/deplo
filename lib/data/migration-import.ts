@@ -59,6 +59,7 @@ import {
   lintCompose,
   composeHostPorts,
 } from "../deploy/compose-lint";
+import { composeNamesOnNetwork } from "../deploy/compose-stack";
 import { MIGRATION_HEARTBEAT_STALE_MS } from "../types";
 import type { BuildConfig, VolumeMount } from "../types";
 import { reservedMountPath } from "../apps/volume-model";
@@ -96,6 +97,8 @@ import {
   mapMounts,
   mapResources,
   mapSource,
+  renameClashingServices,
+  renameHostTokens,
   parseEnvBlob,
   renameDatabaseHosts,
   resolveSharedRefs,
@@ -129,6 +132,7 @@ import {
 } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { setAppEnv } from "./env";
+import { namesTakenOnNetwork } from "./name-clash";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
 import {
   canHostWorkloads,
@@ -2039,6 +2043,7 @@ async function runImportMigrationProject(
             name,
             {
               serverId,
+              environmentId,
               // The port the review settled on, or the source's own when it said
               // nothing. `null` is a decision ("publish nothing"), not a silence.
               exposedPort: placement?.exposedPort,
@@ -2362,6 +2367,15 @@ async function composeGrantRefusal(
   return null;
 }
 
+/** The host an app lands on when nobody named one - the same pick `createApp`
+ *  makes, needed here because the network a name is checked against is per host. */
+async function landingServerId(given: string | undefined): Promise<string> {
+  if (given) return given;
+  const teamId = await requireActiveTeamId();
+  const usable = (await listServersForTeam(teamId)).filter(canHostWorkloads);
+  return usable[0]?.id ?? "";
+}
+
 async function importAppService(
   c: SourceCredential,
   svc: SourceService,
@@ -2571,6 +2585,8 @@ async function importAppService(
   notes.push(...mounts.notes);
 
   // What createApp needs to know about the source.
+  /** Services this import renamed to keep them off a name the network answers to. */
+  let serviceRenames = new Map<string, string>();
   let source: Parameters<typeof createApp>[0]["source"] = "upload";
   let repo: Parameters<typeof createApp>[0]["repo"] = null;
   let dockerImage: string | null = null;
@@ -2611,6 +2627,38 @@ async function importAppService(
     );
     compose = retargeted.compose;
     notes.push(...adapted.changes, ...retargeted.changes);
+    // Every stack in an Environment shares ONE network (ADR-0028), so two one-click
+    // apps that both call their database `db` collide - and `createApp` refuses the
+    // second one, which lost the whole app. The names are rewritten instead, here,
+    // because only the import knows what is already answering on that network.
+    const takenNames = await namesTakenOnNetwork({
+      teamId: await requireActiveTeamId(),
+      environmentId: home.environmentId,
+      serverId: await landingServerId(home.serverId),
+    });
+    // Only the names this stack actually PUTS on that network: one it keeps to
+    // itself (sealed `internal:`, `network_mode:`, a reserved name) contests
+    // nothing, and renaming it would be an edit to the author's file for nothing.
+    const mine = new Set(composeNamesOnNetwork(compose));
+    const renamed = renameClashingServices(
+      compose,
+      new Set([...takenNames].filter((n) => mine.has(n))),
+      name,
+    );
+    if (renamed.renames.size > 0) {
+      compose = renamed.compose;
+      notes.push(...renamed.changes);
+      // A domain routes to a service BY NAME, and the panel answered with the old
+      // one: left alone, every renamed stack's address answered nothing.
+      for (const d of domains.value) {
+        const to = d.service && renamed.renames.get(d.service.toLowerCase());
+        if (to) d.service = to;
+      }
+      serviceRenames = renamed.renames;
+      // The stack reads its own hostnames out of the env file too, not only out of
+      // the YAML - a compose one-click puts `DATABASE_URL` there and nowhere else.
+      renameHostTokens(env, renamed.renames);
+    }
     notes.push(...composeAdvice(compose));
     // A compose file that parses to nothing deployable still comes across (its
     // variables, domains and mounts are the part that takes an afternoon to retype),
@@ -3147,6 +3195,7 @@ async function importAppService(
     svc.id,
     created.id,
     notes,
+    serviceRenames,
   );
 
   await report.notes(svc.kind, name, notes, target, svc.id);
@@ -3211,6 +3260,17 @@ async function addExtraDomain(
   }
 }
 
+/** A service name as it landed here: renamed when the import had to move it off a
+ *  name the network already answers to. */
+function renamedService(
+  name: string | null | undefined,
+  renames: Map<string, string>,
+): string | null {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  return renames.get(trimmed.toLowerCase()) ?? trimmed;
+}
+
 /** Dokploy's schedules for one service → deplo cron jobs. */
 async function importCrons(
   c: SourceCredential,
@@ -3218,6 +3278,8 @@ async function importCrons(
   sourceId: string,
   appId: string,
   notes: string[],
+  /** Services the import renamed, so a job still runs in its own container. */
+  serviceRenames: Map<string, string> = new Map(),
 ): Promise<void> {
   for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
     const command = (s.command ?? s.script ?? "").trim();
@@ -3230,7 +3292,7 @@ async function importCrons(
         name: s.name,
         schedule: s.cronExpression,
         command,
-        service: s.serviceName?.trim() || null,
+        service: renamedService(s.serviceName, serviceRenames),
         enabled: s.enabled !== false,
       });
     } catch (e) {
@@ -3253,6 +3315,9 @@ async function importDatabaseService(
   name: string,
   opts: {
     serverId: string | undefined;
+    /** The Environment its apps landed in - and therefore the network it has to
+     *  answer on, or `db-<slug>` does not resolve from them (ADR-0028). */
+    environmentId: string | null;
     /** Undefined keeps the source's port, null publishes none, a number overrides. */
     exposedPort?: number | null;
     mayExposePorts: boolean;
@@ -3308,6 +3373,7 @@ async function importDatabaseService(
     type: spec.type,
     version: spec.version,
     serverId,
+    environmentId: opts.environmentId,
     username: spec.username ?? undefined,
     dbName: spec.dbName ?? undefined,
     // The source's image, pinned at CREATE so the first provision already runs it.

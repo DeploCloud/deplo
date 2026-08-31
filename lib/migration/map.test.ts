@@ -6,6 +6,7 @@ import yaml from "../yaml";
 import {
   cloneTarget,
   composeAsRepoApp,
+  renameClashingServices,
   composeBuildServices,
   retargetPlatformEnvFiles,
   composeServiceExposingPort,
@@ -831,6 +832,7 @@ test("the docker socket is never paired as data to copy", () => {
         sourcePath: "/etc/dokploy/x",
         targetPath: "/data/x",
         mountPath: "/app/config.json",
+        stackRelative: false,
       },
     ],
   );
@@ -2351,4 +2353,165 @@ test("composeServiceExposingPort answers only when it is not a guess", () => {
   );
   assert.equal(composeServiceExposingPort("  not: yaml: at all"), null);
   assert.equal(composeServiceExposingPort(null), null);
+});
+
+test("renameClashingServices moves a taken service name and its references", () => {
+  const source = [
+    "services:",
+    "  docmost:",
+    "    image: docmost/docmost",
+    "    depends_on:",
+    "      - db",
+    "      - redis",
+    "    environment:",
+    "      DATABASE_URL: postgresql://u:p@db:5432/docmost",
+    "      REDIS_URL: redis://redis:6379",
+    "      DB_HOST: db",
+    "  db:",
+    "    image: postgres:16-alpine",
+    "    environment:",
+    "      POSTGRES_DB: postgres",
+    "  redis:",
+    "    image: redis:7-alpine",
+  ].join("\n");
+
+  const { compose, renames, changes } = renameClashingServices(
+    source,
+    new Set(["db", "redis"]),
+    "b5-docmost",
+  );
+  const doc = yaml.load(compose) as {
+    services: Record<
+      string,
+      { depends_on?: string[]; environment?: Record<string, string> }
+    >;
+  };
+  assert.deepEqual(Object.keys(doc.services), [
+    "docmost",
+    "b5-docmost-db",
+    "b5-docmost-redis",
+  ]);
+  assert.deepEqual(doc.services.docmost.depends_on, [
+    "b5-docmost-db",
+    "b5-docmost-redis",
+  ]);
+  assert.equal(
+    doc.services.docmost.environment!.DATABASE_URL,
+    "postgresql://u:p@b5-docmost-db:5432/docmost",
+  );
+  assert.equal(
+    doc.services.docmost.environment!.REDIS_URL,
+    "redis://b5-docmost-redis:6379",
+  );
+  assert.equal(doc.services.docmost.environment!.DB_HOST, "b5-docmost-db");
+  // A database NAME that happens to spell a service is not a hostname.
+  assert.equal(
+    doc.services["b5-docmost-db"].environment!.POSTGRES_DB,
+    "postgres",
+  );
+  assert.equal(renames.get("db"), "b5-docmost-db");
+  assert.equal(changes.length, 2);
+});
+
+test("renameClashingServices leaves a stack nothing contests alone", () => {
+  const source = ["services:", "  db:", "    image: postgres:16"].join("\n");
+  const { compose, renames } = renameClashingServices(
+    source,
+    new Set(["other"]),
+    "mine",
+  );
+  assert.equal(compose, source);
+  assert.equal(renames.size, 0);
+});
+
+test("renameClashingServices moves a taken `hostname:` too", () => {
+  const source = [
+    "services:",
+    "  api:",
+    "    image: nginx",
+    "    hostname: cache",
+    "  worker:",
+    "    image: nginx",
+    "    environment:",
+    "      CACHE_HOST: cache",
+  ].join("\n");
+  const { compose } = renameClashingServices(
+    source,
+    new Set(["cache"]),
+    "myapp",
+  );
+  const doc = yaml.load(compose) as {
+    services: Record<
+      string,
+      { hostname?: string; environment?: Record<string, string> }
+    >;
+  };
+  assert.equal(doc.services.api.hostname, "myapp-cache");
+  assert.equal(doc.services.worker.environment!.CACHE_HOST, "myapp-cache");
+});
+
+test("composeHostMounts resolves a `./x` bind against the stack's directory", () => {
+  const source = [
+    "services:",
+    "  web:",
+    "    image: nginx",
+    "    volumes:",
+    "      - ./content:/usr/share/nginx/html",
+    "      - ./nginx.conf:/etc/nginx/nginx.conf",
+    "      - /etc/app:/cfg",
+    "      - appdata:/var/lib/app",
+  ].join("\n");
+
+  // No base directory: only the absolute bind, exactly as before.
+  assert.deepEqual(composeHostMounts(source), [
+    { hostPath: "/etc/app", mountPath: "/cfg" },
+  ]);
+
+  assert.deepEqual(composeHostMounts(source, "/data/coolify/services/abc"), [
+    {
+      hostPath: "/data/coolify/services/abc/content",
+      mountPath: "/usr/share/nginx/html",
+      stackRelative: true,
+    },
+    {
+      hostPath: "/data/coolify/services/abc/nginx.conf",
+      mountPath: "/etc/nginx/nginx.conf",
+      stackRelative: true,
+    },
+    { hostPath: "/etc/app", mountPath: "/cfg" },
+  ]);
+});
+
+test("pairHostMounts carries the stack-relative flag off the target", () => {
+  const paired = pairHostMounts(
+    [
+      {
+        hostPath: "/data/coolify/services/abc/content",
+        mountPath: "/usr/share/nginx/html",
+      },
+      { hostPath: "/etc/app", mountPath: "/cfg" },
+    ],
+    [
+      {
+        hostPath: "/data/stacks/files/web/content",
+        mountPath: "/usr/share/nginx/html",
+        stackRelative: true,
+      },
+      { hostPath: "/etc/app", mountPath: "/cfg" },
+    ],
+  );
+  assert.deepEqual(paired, [
+    {
+      sourcePath: "/data/coolify/services/abc/content",
+      targetPath: "/data/stacks/files/web/content",
+      mountPath: "/usr/share/nginx/html",
+      stackRelative: true,
+    },
+    {
+      sourcePath: "/etc/app",
+      targetPath: "/etc/app",
+      mountPath: "/cfg",
+      stackRelative: false,
+    },
+  ]);
 });
