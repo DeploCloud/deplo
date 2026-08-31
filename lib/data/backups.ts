@@ -1245,6 +1245,20 @@ export async function restoreBackup(runId: string): Promise<void> {
     }
   });
 
+  // The agent's restore ends on the network the ARCHIVE names: it prefers the
+  // archived compose once the digest proves it, and writes that YAML verbatim. So
+  // re-render, and OUTSIDE the lifecycle lock - `rerouteApp` takes the same one.
+  if (!failure && run.targetKind === "app" && target.appId) {
+    const { rerouteApp } = await import("../deploy/build");
+    await rerouteApp(target.appId).catch((e) => {
+      console.warn(
+        `[deplo] ${target.appId} was restored but could not be put back on its network: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    });
+  }
+
   await recordActivity(
     "backup",
     failure
