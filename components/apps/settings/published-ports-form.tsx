@@ -171,7 +171,7 @@ export function PublishedPortsForm({
                     className="text-sm font-medium"
                     htmlFor={`port-published-${row.id}`}
                   >
-                    Server port
+                    Host port
                   </label>
                 )}
                 <Input
@@ -200,7 +200,7 @@ export function PublishedPortsForm({
                     className="text-sm font-medium"
                     htmlFor={`port-target-${row.id}`}
                   >
-                    App port
+                    Container port
                   </label>
                 )}
                 <Input

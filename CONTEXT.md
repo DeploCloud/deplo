@@ -894,6 +894,13 @@ read through the single `portFor(app)` accessor in `lib/deploy/ports.ts` (ADR-00
 choke point, kept through the collapse of the old per-target axis). A hostname's
 _effective port_ - its per-domain override (single-image apps only) folded onto the
 default - comes from `effectivePortFor` in the same module.
+A **published port** is a different thing and additive to it: a `<host>:<container>`
+pair deplo writes into the stack's `ports:` so the app answers on a port of the SERVER,
+for what Traefik cannot route (a game server, an SMTP relay, a cache). One per row in
+`app_ports`, set in **Settings → Advanced → Published ports**, behind the
+`canExposePorts` grant, refused on a compose stack (its YAML publishes its own) and
+never rendered onto a preview (a host port is a singleton on the machine). The host
+half is called the **Host port**, the same spelling a database's uses.
 _Avoid_: port target (the old per-target axis died with dev mode), exposed port.
 
 **Volume**:
