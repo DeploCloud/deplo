@@ -41,14 +41,17 @@ import {
 import {
   composeClaimsReservedName,
   composeHostReach,
+  composeInterpolatedHostname,
   composeOwnVolumeKeys,
   composePublishesPorts,
   composeUsesExternalMerge,
   externalMergeMessage,
+  interpolatedHostnameMessage,
+  isReservedSharedName,
   reservedNameMessage,
 } from "../deploy/compose-lint";
 import { hostPortClaimed } from "./host-ports";
-import { assertNoNameClash } from "./name-clash";
+import { assertNoNameClash, withNetworkLock } from "./name-clash";
 import { stackName } from "../deploy/deploy-key";
 import {
   composeNamesOnNetwork,
@@ -843,6 +846,8 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     if (merge) throw new Error(externalMergeMessage(merge));
     const claimed = composeClaimsReservedName(input.compose);
     if (claimed) throw new Error(reservedNameMessage(claimed));
+    const filled = composeInterpolatedHostname(input.compose);
+    if (filled) throw new Error(interpolatedHostnameMessage(filled));
   }
   // A REAL hostname the caller chose is a domain claim, not a by-product of
   // creating an app. `domains.name` is unique across the whole instance, so
@@ -879,12 +884,18 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     ),
   );
   const slugRoot = slugBase || `project-${newId("").slice(1, 6)}`;
+  // `deplo-<slug>` is the container name and the name it answers to on the network
+  // (ADR-0029), so a slug minting one of the platform's own is taken like any other:
+  // an app called "Traefik" keeps its name and takes `traefik-1`, instead of failing
+  // the deploy with a container-name conflict nobody outside Docker can read.
+  const taken = (s: string): boolean =>
+    existing.has(s) || isReservedSharedName(stackName(s));
   let i = 1;
   let slug = slugRoot;
-  while (existing.has(slug)) slug = `${slugRoot}-${i++}`;
+  while (taken(slug)) slug = `${slugRoot}-${i++}`;
   const nextSlug = (): string => {
     let s = `${slugRoot}-${i++}`;
-    while (existing.has(s)) s = `${slugRoot}-${i++}`;
+    while (taken(s)) s = `${slugRoot}-${i++}`;
     return s;
   };
 
@@ -914,21 +925,6 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     throw new Error(
       "No server available - add a server from Settings, Servers and run its install command first.",
     );
-  // Every name this stack would answer to has to be free on the network it lands
-  // on - a neighbouring APP's service names as much as a database's, now that every
-  // service joins. The same check the moves make, asked from the other side.
-  if (input.compose != null)
-    await assertNoNameClash({
-      to: {
-        teamId: membership.teamId,
-        environmentId: placement.environmentId,
-        serverId: server.id,
-      },
-      claims: composeNamesOnNetwork(input.compose),
-      exceptId: "",
-      subject: "this app",
-    });
-
   // Where it COMPILES, on the same terms `setAppBuildServer` applies later: it has
   // to be a host this team can reach, a storage-only box has no Docker to build
   // with, and a migration source HAS Docker but is another platform's machine.
@@ -1087,46 +1083,67 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // is retried (bounded) on a `apps_slug_uq` violation, advancing to the next
   // free suffix - the `UNIQUE(slug)` constraint is the real arbiter, the in-app
   // pick is just a friendly first guess.
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await getDb().transaction(async (tx) => {
-        // Re-assert server access inside the tx (SHARE-locks the server row) so a
-        // concurrent setServerTeams restrict can't land this project on a server
-        // the team just lost access to. One side of the race loses cleanly.
-        await assertServerAccessibleTx(tx, server.id, membership.teamId);
-        // `created_by_user_id` is deliberately NOT on the App domain type: it is
-        // authorship metadata read only by the delete-a-user flow, never by the
-        // renderer or any capability check, so it rides along with the insert
-        // instead of widening every App the app graph assembles.
-        await tx.insert(appsTable).values({
-          ...appToRow(project),
-          createdByUserId: userId,
-          // Same reasoning as `created_by_user_id`: read only by the deploy's
-          // grant check, so it rides with the insert rather than widening App.
-          hostReachBy: reach.length > 0 ? userId : null,
+  // Every name this stack would answer to has to be free on the network it lands
+  // on - a neighbouring APP's service names as much as a database's, now that every
+  // service joins. Checked and inserted under ONE lock: two concurrent creates both
+  // read the same name as free otherwise, and the compose file the names live in has
+  // no unique constraint to catch them.
+  await withNetworkLock(
+    { teamId: membership.teamId, environmentId: placement.environmentId },
+    async () => {
+      if (input.compose != null)
+        await assertNoNameClash({
+          to: {
+            teamId: membership.teamId,
+            environmentId: placement.environmentId,
+            serverId: server.id,
+          },
+          claims: composeNamesOnNetwork(input.compose),
+          exceptId: "",
+          subject: "this app",
         });
-        await tx
-          .insert(appBuildTable)
-          .values(buildToRow(project.id, project.build));
-        await tx
-          .insert(appBuildMethodSettingsTable)
-          .values(
-            methodSettingsToRow(project.id, project.build.methodSettings),
-          );
-        const mountRows = mountsToRows(project.id, project.mounts);
-        if (mountRows.length > 0)
-          await tx.insert(appMountsTable).values(mountRows);
-        if (appEnvVars.length > 0) await insertEnvVars(tx, appEnvVars);
-      });
-      break;
-    } catch (e) {
-      if (attempt < 5 && isUniqueViolation(e, "apps_slug_uq")) {
-        project.slug = slug = nextSlug();
-        continue;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await getDb().transaction(async (tx) => {
+            // Re-assert server access inside the tx (SHARE-locks the server row) so a
+            // concurrent setServerTeams restrict can't land this project on a server
+            // the team just lost access to. One side of the race loses cleanly.
+            await assertServerAccessibleTx(tx, server.id, membership.teamId);
+            // `created_by_user_id` is deliberately NOT on the App domain type: it is
+            // authorship metadata read only by the delete-a-user flow, never by the
+            // renderer or any capability check, so it rides along with the insert
+            // instead of widening every App the app graph assembles.
+            await tx.insert(appsTable).values({
+              ...appToRow(project),
+              createdByUserId: userId,
+              // Same reasoning as `created_by_user_id`: read only by the deploy's
+              // grant check, so it rides with the insert rather than widening App.
+              hostReachBy: reach.length > 0 ? userId : null,
+            });
+            await tx
+              .insert(appBuildTable)
+              .values(buildToRow(project.id, project.build));
+            await tx
+              .insert(appBuildMethodSettingsTable)
+              .values(
+                methodSettingsToRow(project.id, project.build.methodSettings),
+              );
+            const mountRows = mountsToRows(project.id, project.mounts);
+            if (mountRows.length > 0)
+              await tx.insert(appMountsTable).values(mountRows);
+            if (appEnvVars.length > 0) await insertEnvVars(tx, appEnvVars);
+          });
+          break;
+        } catch (e) {
+          if (attempt < 5 && isUniqueViolation(e, "apps_slug_uq")) {
+            project.slug = slug = nextSlug();
+            continue;
+          }
+          throw e;
+        }
       }
-      throw e;
-    }
-  }
+    },
+  );
   await recordActivity(
     "app",
     `Created app ${project.name}`,
@@ -1505,6 +1522,8 @@ export async function updateAppSource(
     if (merge) throw new Error(externalMergeMessage(merge));
     const claimed = composeClaimsReservedName(input.compose);
     if (claimed) throw new Error(reservedNameMessage(claimed));
+    const filled = composeInterpolatedHostname(input.compose);
+    if (filled) throw new Error(interpolatedHostnameMessage(filled));
   }
   const user = (await getCurrentUser())!;
   const repo = await scopeRepoCredentials(input.repo, membership.teamId);
@@ -1516,146 +1535,159 @@ export async function updateAppSource(
       (s) => [s.id, s] as const,
     ),
   );
-  // Before the transaction, never inside one: this reads on its own connection.
-  // Asked when the compose changes OR when the SERVER does: a Docker network lives
-  // on one machine, so moving an untouched stack to another host is exactly as able
-  // to land it beside a name that is already taken there.
-  if (input.compose != null || input.serverId != null) {
-    const [row] = await getDb()
-      .select({
-        serverId: appsTable.serverId,
-        environmentId: appsTable.environmentId,
-        compose: appsTable.compose,
-        slug: appsTable.slug,
-      })
-      .from(appsTable)
-      .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
-      .limit(1);
-    if (row) {
-      // The compose being saved, or the one already stored when only the server moves.
-      const compose = input.compose ?? row.compose ?? "";
-      await assertNoNameClash({
-        to: {
-          teamId: membership.teamId,
-          environmentId: row.environmentId,
-          serverId: input.serverId ?? row.serverId,
-        },
-        claims: compose.trim()
-          ? composeNamesOnNetwork(compose)
-          : [stackName(row.slug)],
-        exceptId: id,
-        subject: "this app",
-      });
-    }
-  }
+  // The app's own placement: it decides which network its names live on, and so
+  // the lock key below. Read before the transaction, never inside one - this runs
+  // on its own connection.
+  const [current] = await getDb()
+    .select({
+      serverId: appsTable.serverId,
+      environmentId: appsTable.environmentId,
+      compose: appsTable.compose,
+      slug: appsTable.slug,
+    })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .limit(1);
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;
   // The repo this app deployed from BEFORE this save, so its push webhook can be
   // withdrawn after the commit when the app stops pointing at it. Held in an
   // object because a bare `let` assigned inside the callback narrows to `null`.
   const before: { repo: GitRepo | null } = { repo: null };
-  await getDb().transaction(async (tx) => {
-    const p = await loadAppGraph(id, tx);
-    if (!p || p.teamId !== membership.teamId) throw new Error("App not found");
-    before.repo = p.repo;
-    // Capture the OLD server IP before serverId is reassigned, so a move can
-    // re-host the project's auto nip.io domains onto the new server's IP below.
-    const oldIp = resolveServerIp(serversById.get(p.serverId));
-    const oldServerId = p.serverId;
-    let serverId = p.serverId;
-    if (input.serverId) {
-      const picked = serversById.get(input.serverId);
-      if (!picked) throw new Error("Server not found");
-      // A move has to answer the same question a creation does. It never did:
-      // membership was the only check here, so any specialised host - including a
-      // migration source, which is another platform's machine - could be named as
-      // a destination through the API and the app would land somewhere that runs
-      // nothing.
-      if (!canHostWorkloads(picked))
-        throw new Error(
-          picked.importOnly
-            ? ON_IMPORT_SOURCE
-            : picked.storageOnly
-              ? "That server holds backups only - nothing is deployed there."
-              : "That server only builds images - nothing is deployed there.",
-        );
-      serverId = input.serverId;
-    }
-    const isMove = serverId !== oldServerId;
-    // On a MOVE, if the app was ever deployed (it may hold data on the old
-    // host), mark the OLD server as the migration source: the deploy we trigger on
-    // the new host below will copy the data volumes + files dir across once its
-    // fresh stack is up (completePendingAppMigration). A never-deployed app
-    // has no data, so it just moves cheaply with no marker. `latestDeploymentId`
-    // being set is the "was deployed" signal.
-    migrateFromServerId = isMove && p.latestDeploymentId ? oldServerId : null;
-
-    // MOVING the project to a different server: its auto nip.io domains encode
-    // the OLD server's IP (as the trailing hex label), so re-host them onto the
-    // new server's IP, otherwise the Domains section (and Traefik's routing
-    // target) keeps pointing at the old host. Only the hex IP is swapped; the
-    // random words are preserved, so the host stays recognisably the same
-    // project's. The `domains` table is the sole routing source, so rehosting its
-    // rows is all that's needed. A no-op when the IP is unchanged or the host
-    // isn't nip.io.
-    const newIp = resolveServerIp(serversById.get(serverId));
-    if (newIp !== oldIp) {
-      const appDomains = await loadDomainsForApp(p.id, tx);
-      for (const dom of appDomains) {
-        if (dom.source === "auto" && nipEmbeddedIp(dom.name) === oldIp) {
-          await tx
-            .update(domainsTable)
-            .set({ name: rehostNip(dom.name, newIp) })
-            .where(eq(domainsTable.id, dom.id));
-        }
+  // Check the names and write under ONE lock, or two concurrent saves both read
+  // the same name as free on that network and both take it - there is no unique
+  // constraint underneath, the names live inside a compose file.
+  await withNetworkLock(
+    {
+      teamId: membership.teamId,
+      environmentId: current?.environmentId ?? null,
+    },
+    async () => {
+      // Asked when the compose changes OR when the SERVER does: a Docker network
+      // lives on one machine, so moving an untouched stack to another host is
+      // exactly as able to land it beside a name that is already taken there.
+      if (current && (input.compose != null || input.serverId != null)) {
+        // The compose being saved, or the one already stored when only the server moves.
+        const compose = input.compose ?? current.compose ?? "";
+        await assertNoNameClash({
+          to: {
+            teamId: membership.teamId,
+            environmentId: current.environmentId,
+            serverId: input.serverId ?? current.serverId,
+          },
+          claims: compose.trim()
+            ? composeNamesOnNetwork(compose)
+            : [stackName(current.slug)],
+          exceptId: id,
+          subject: "this app",
+        });
       }
-    }
+      await getDb().transaction(async (tx) => {
+        const p = await loadAppGraph(id, tx);
+        if (!p || p.teamId !== membership.teamId)
+          throw new Error("App not found");
+        before.repo = p.repo;
+        // Capture the OLD server IP before serverId is reassigned, so a move can
+        // re-host the project's auto nip.io domains onto the new server's IP below.
+        const oldIp = resolveServerIp(serversById.get(p.serverId));
+        const oldServerId = p.serverId;
+        let serverId = p.serverId;
+        if (input.serverId) {
+          const picked = serversById.get(input.serverId);
+          if (!picked) throw new Error("Server not found");
+          // A move has to answer the same question a creation does. It never did:
+          // membership was the only check here, so any specialised host - including a
+          // migration source, which is another platform's machine - could be named as
+          // a destination through the API and the app would land somewhere that runs
+          // nothing.
+          if (!canHostWorkloads(picked))
+            throw new Error(
+              picked.importOnly
+                ? ON_IMPORT_SOURCE
+                : picked.storageOnly
+                  ? "That server holds backups only - nothing is deployed there."
+                  : "That server only builds images - nothing is deployed there.",
+            );
+          serverId = input.serverId;
+        }
+        const isMove = serverId !== oldServerId;
+        // On a MOVE, if the app was ever deployed (it may hold data on the old
+        // host), mark the OLD server as the migration source: the deploy we trigger on
+        // the new host below will copy the data volumes + files dir across once its
+        // fresh stack is up (completePendingAppMigration). A never-deployed app
+        // has no data, so it just moves cheaply with no marker. `latestDeploymentId`
+        // being set is the "was deployed" signal.
+        migrateFromServerId =
+          isMove && p.latestDeploymentId ? oldServerId : null;
 
-    // "Build on this app's own server" is stored as that server's id, so a MOVE has
-    // to carry it or the setting silently becomes "build on the machine I just left"
-    // - which is a real build server relationship, just not the one anyone asked
-    // for. A pin to some OTHER host is a deliberate choice about that host and
-    // stays put.
-    const buildServerId =
-      isMove && p.buildServerId === oldServerId
-        ? serverId
-        : (p.buildServerId ?? null);
-
-    await tx
-      .update(appsTable)
-      .set({
-        serverId,
-        buildServerId,
-        // Record the migration source on a move (null clears any stale marker on a
-        // non-move edit). The post-commit deploy consumes it.
-        migrateFromServerId,
-        source: input.source,
-        repoProvider: repo?.provider ?? null,
-        repoUrl: repo?.url ?? null,
-        repoRepo: repo?.repo ?? null,
-        repoBranch: repo?.branch ?? null,
-        repoInstallationId: repo?.installationId ?? null,
-        repoConnectionId: repo?.connectionId ?? null,
-        repoTriggerType: repo?.triggerType ?? null,
-        repoWatchPaths: repo?.watchPaths?.length
-          ? repo.watchPaths.join("\n")
-          : null,
-        repoSubmodules: repo?.submodules ?? false,
-        dockerImage: input.dockerImage,
-        // Persist compose edits when provided; never clear a stored stack on
-        // switch so the user can flip back to Compose and recover it.
-        ...(input.compose != null
-          ? {
-              compose: input.compose,
-              // Re-authored, so the reach is this saver's from here on (and null
-              // again when the compose stops reaching anything).
-              hostReachBy: editReach.length > 0 ? user.id : null,
+        // MOVING the project to a different server: its auto nip.io domains encode
+        // the OLD server's IP (as the trailing hex label), so re-host them onto the
+        // new server's IP, otherwise the Domains section (and Traefik's routing
+        // target) keeps pointing at the old host. Only the hex IP is swapped; the
+        // random words are preserved, so the host stays recognisably the same
+        // project's. The `domains` table is the sole routing source, so rehosting its
+        // rows is all that's needed. A no-op when the IP is unchanged or the host
+        // isn't nip.io.
+        const newIp = resolveServerIp(serversById.get(serverId));
+        if (newIp !== oldIp) {
+          const appDomains = await loadDomainsForApp(p.id, tx);
+          for (const dom of appDomains) {
+            if (dom.source === "auto" && nipEmbeddedIp(dom.name) === oldIp) {
+              await tx
+                .update(domainsTable)
+                .set({ name: rehostNip(dom.name, newIp) })
+                .where(eq(domainsTable.id, dom.id));
             }
-          : {}),
-        updatedAt: nowIso(),
-      })
-      .where(eq(appsTable.id, id));
-  });
+          }
+        }
+
+        // "Build on this app's own server" is stored as that server's id, so a MOVE has
+        // to carry it or the setting silently becomes "build on the machine I just left"
+        // - which is a real build server relationship, just not the one anyone asked
+        // for. A pin to some OTHER host is a deliberate choice about that host and
+        // stays put.
+        const buildServerId =
+          isMove && p.buildServerId === oldServerId
+            ? serverId
+            : (p.buildServerId ?? null);
+
+        await tx
+          .update(appsTable)
+          .set({
+            serverId,
+            buildServerId,
+            // Record the migration source on a move (null clears any stale marker on a
+            // non-move edit). The post-commit deploy consumes it.
+            migrateFromServerId,
+            source: input.source,
+            repoProvider: repo?.provider ?? null,
+            repoUrl: repo?.url ?? null,
+            repoRepo: repo?.repo ?? null,
+            repoBranch: repo?.branch ?? null,
+            repoInstallationId: repo?.installationId ?? null,
+            repoConnectionId: repo?.connectionId ?? null,
+            repoTriggerType: repo?.triggerType ?? null,
+            repoWatchPaths: repo?.watchPaths?.length
+              ? repo.watchPaths.join("\n")
+              : null,
+            repoSubmodules: repo?.submodules ?? false,
+            dockerImage: input.dockerImage,
+            // Persist compose edits when provided; never clear a stored stack on
+            // switch so the user can flip back to Compose and recover it.
+            ...(input.compose != null
+              ? {
+                  compose: input.compose,
+                  // Re-authored, so the reach is this saver's from here on (and null
+                  // again when the compose stops reaching anything).
+                  hostReachBy: editReach.length > 0 ? user.id : null,
+                }
+              : {}),
+            updatedAt: nowIso(),
+          })
+          .where(eq(appsTable.id, id));
+      });
+    },
+  );
   await recordActivity("app", `Updated deploy source`, user.name, id);
   // Push webhooks, AFTER the commit: both calls talk to a third party over HTTP,
   // and holding the app's row lock across someone else's network is how a save
@@ -1708,7 +1740,8 @@ export async function updateAppSource(
 /**
  * Validate + canonicalize the full volume set for an app.
  * The renderer trusts its input, so EVERY safety rule lives here:
- *  - mountPath absolute, no spaces, no ":" (would smuggle a `:ro`/extra field
+ *  - mountPath absolute, no spaces, no ":" and no "$" (would smuggle a `:ro`/extra
+ *    field, or interpolate into another path entirely at `compose up`
  *    into the compose `- name:path` string), no "..", not a reserved path.
  *  - no mountPath collision with a template `mounts[].filePath` (those are
  *    bind-mounted config files written next to the stack).
@@ -1765,9 +1798,13 @@ export function validateVolumes(
       service = wanted || null;
     }
     const mountPath = (v.mountPath ?? "").trim().replace(/\/+$/, "") || "/";
-    if (!/^\/[^\s:]*$/.test(mountPath) || mountPath.length < 2) {
+    // `$` too: every one of these paths is written into the stack file verbatim,
+    // and compose substitutes `$VAR` from the env-file at `up` - so a path with one
+    // in it never means what it says, and `.../${X}` climbs wherever the variable
+    // points.
+    if (!/^\/[^\s:$]*$/.test(mountPath) || mountPath.length < 2) {
       throw new Error(
-        `Mount path must be an absolute path with no spaces or ":": "${v.mountPath}"`,
+        `Mount path must be an absolute path with no spaces, ":" or "$": "${v.mountPath}"`,
       );
     }
     if (mountPath.split("/").includes("..")) {
@@ -1828,9 +1865,9 @@ export function validateVolumes(
           `The path in this app's Files must be relative, for example "config.toml": "${v.projectPath}"`,
         );
       }
-      if (/[\s:]/.test(projectPath)) {
+      if (/[\s:$]/.test(projectPath)) {
         throw new Error(
-          `The path in this app's Files cannot contain spaces or ":": "${v.projectPath}"`,
+          `The path in this app's Files cannot contain spaces, ":" or "$": "${v.projectPath}"`,
         );
       }
       if (projectPath.split("/").includes("..")) {
@@ -1856,9 +1893,9 @@ export function validateVolumes(
       // checked - the source is a deliberate host path. No top-level volumes
       // entry is emitted, so docker-name rules don't apply.
       const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
-      if (!/^\/[^\s:]*$/.test(hostPath) || hostPath.length < 2) {
+      if (!/^\/[^\s:$]*$/.test(hostPath) || hostPath.length < 2) {
         throw new Error(
-          `The path on the server must be absolute, with no spaces or ":": "${v.hostPath}"`,
+          `The path on the server must be absolute, with no spaces, ":" or "$": "${v.hostPath}"`,
         );
       }
       if (hostPath.split("/").includes("..")) {

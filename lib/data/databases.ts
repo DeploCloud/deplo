@@ -743,15 +743,6 @@ export async function createDatabase(input: {
     dbName,
   });
 
-  // `db-<slug>` is this container's DNS name on the network, so it has to be free
-  // there - the app side of this was checked, the database side never was.
-  await assertNoNameClash({
-    to: { teamId, environmentId, serverId: server.id },
-    claims: [service],
-    exceptId: "",
-    subject: "the database",
-  });
-
   const db: Database = {
     id: newId("db"),
     teamId,
@@ -786,12 +777,24 @@ export async function createDatabase(input: {
     sizeMb: 0,
     createdAt: nowIso(),
   };
-  // Re-assert server access inside a tx (SHARE-locks the server row) so a
-  // concurrent setServerTeams restrict can't land this database on a server the
-  // team just lost access to - pairs with setServerTeams' FOR UPDATE lock.
-  await getDb().transaction(async (tx) => {
-    await assertServerAccessibleTx(tx, server.id, teamId);
-    await tx.insert(databasesTable).values(databaseToRow(db));
+  // `db-<slug>` is this container's DNS name on the network, so it has to be free
+  // there - the app side of this was checked, the database side never was. Under
+  // the same lock the moves take: the check and the insert are two statements, and
+  // two concurrent creates otherwise both read the name as free.
+  await withNetworkLock({ teamId, environmentId }, async () => {
+    await assertNoNameClash({
+      to: { teamId, environmentId, serverId: server.id },
+      claims: [service],
+      exceptId: "",
+      subject: "the database",
+    });
+    // Re-assert server access inside a tx (SHARE-locks the server row) so a
+    // concurrent setServerTeams restrict can't land this database on a server the
+    // team just lost access to - pairs with setServerTeams' FOR UPDATE lock.
+    await getDb().transaction(async (tx) => {
+      await assertServerAccessibleTx(tx, server.id, teamId);
+      await tx.insert(databasesTable).values(databaseToRow(db));
+    });
   });
   await recordActivity(
     "database",

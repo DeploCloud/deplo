@@ -414,6 +414,18 @@ test("project bind: rejects an absolute or empty projectPath", () => {
   );
 });
 
+test("every mount path refuses `$`, which compose fills in at `up`", () => {
+  // `.../${X}` is written into the stack file verbatim and substituted from the
+  // env-file, so a Files bind climbs wherever the variable points - out of the app's
+  // own directory, with no permission asked for anywhere.
+  for (const v of [
+    vol({ type: "app", projectPath: "${X}", mountPath: "/data" }),
+    vol({ type: "named", name: "data", mountPath: "/data/${X}" }),
+    vol({ type: "host", hostPath: "/srv/${X}", mountPath: "/data" }),
+  ])
+    assert.throws(() => validateVolumes([v], null), /\$/);
+});
+
 test("project bind: rejects spaces or a colon in the projectPath", () => {
   assert.throws(
     () =>
@@ -421,7 +433,7 @@ test("project bind: rejects spaces or a colon in the projectPath", () => {
         [vol({ type: "app", projectPath: "my file", mountPath: "/data" })],
         null,
       ),
-    /spaces or ":"/,
+    /spaces, ":" or "\$"/,
   );
   assert.throws(
     () =>
@@ -429,7 +441,7 @@ test("project bind: rejects spaces or a colon in the projectPath", () => {
         [vol({ type: "app", projectPath: "a:b", mountPath: "/data" })],
         null,
       ),
-    /spaces or ":"/,
+    /spaces, ":" or "\$"/,
   );
 });
 

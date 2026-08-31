@@ -35,7 +35,7 @@ import { membershipFor, requireCapability } from "../membership";
 import { currentIdentity } from "../auth/request-context";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
-import { assertNoNameClash } from "./name-clash";
+import { assertNoNameClash, withNetworkLock } from "./name-clash";
 import { composeNamesOnNetwork } from "../deploy/compose-stack";
 import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
@@ -321,22 +321,13 @@ export async function transferAppToTeam(
       .limit(1)
   )[0];
   if (!destTeam) throw new Error("Team not found");
-  // It lands on the destination team's own network, where its service names may
-  // already be taken - and Docker would split the lookups rather than complain.
+  // What it would answer to on the destination team's network - checked under the
+  // lock below, where the write happens.
   const [claimSource] = await db
     .select({ slug: appsTable.slug, compose: appsTable.compose })
     .from(appsTable)
     .where(eq(appsTable.id, appId))
     .limit(1);
-  // The destination team's network, held for the check AND the write below.
-  await assertNoNameClash({
-    to: { teamId: destTeamId, environmentId: null, serverId: app.serverId },
-    claims: claimSource?.compose?.trim()
-      ? composeNamesOnNetwork(claimSource.compose)
-      : [stackName(claimSource?.slug ?? "")],
-    exceptId: appId,
-    subject: "this app",
-  });
   const sourceTeam = (
     await db
       .select({ name: teamsTable.name })
@@ -409,83 +400,110 @@ export async function transferAppToTeam(
 
   // The app's lifecycle lock, the same one a deploy and a delete take, so the
   // hand-over can't interleave with a bring-up of the very stack it re-homes.
-  await withKeyedLock(`app-lifecycle:${appId}`, async () => {
-    await db.transaction(async (tx) => {
-      await assertServerAccessibleTx(tx, app.serverId, destTeamId);
-      await tx
-        .update(appsTable)
-        .set({
-          teamId: destTeamId,
-          // Folders, projects and environments belong to the SOURCE team: the app
-          // lands at the destination's top level, exactly like a fresh app.
-          folderId: null,
-          projectId: null,
-          environmentId: null,
-          repoInstallationId: installationId,
-          repoConnectionId: null,
-          ...(githubDropped || connectionDropped ? { autoDeploy: false } : {}),
-          updatedAt: nowIso(),
-        })
-        .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)));
-      // Per-environment runtime state of environments it no longer lives in.
-      await tx
-        .delete(appEnvironmentsTable)
-        .where(eq(appEnvironmentsTable.appId, appId));
-      // Manual display order is per team; the app joins the destination's tail.
-      await tx.delete(teamAppOrder).where(eq(teamAppOrder.appId, appId));
-      // Per-node access is a fact about the SOURCE team, exactly like the folder and
-      // project links cleared above.
-      await tx.delete(appGrantsTable).where(eq(appGrantsTable.appId, appId));
-      await tx
-        .delete(teamRoleScopeApps)
-        .where(eq(teamRoleScopeApps.appId, appId));
-      // Shared variables stay with the team that owns them (ADR-0012: injection
-      // is the per-app link and nothing else) - the links go, the values never
-      // travel.
-      await tx
-        .delete(sharedEnvVarAppsTable)
-        .where(eq(sharedEnvVarAppsTable.appId, appId));
-      // Backup schedules point at the SOURCE team's backup destination, which the
-      // destination team cannot see, read or rotate. The runs already taken stay
-      // as that team's history (its destination, its audit trail).
-      await tx
-        .delete(backupsTable)
-        .where(
-          and(eq(backupsTable.appId, appId), eq(backupsTable.teamId, teamId)),
-        );
-      // Cron jobs carry BOTH team_id and app_id, like backups, and, like them, point at
-      // the SOURCE team and run the SOURCE team's command in the container.
-      await tx
-        .delete(cronJobsTable)
-        .where(
-          and(eq(cronJobsTable.appId, appId), eq(cronJobsTable.teamId, teamId)),
-        );
-      // An API token SCOPED to this app is the source team's credential, and its reach is
-      // derived live from `apps.teamId`, so a surviving row would follow the app into
-      // the destination team and show up in ITS "tokens reaching this team" list without
-      await tx
-        .delete(apiTokenAppsTable)
-        .where(eq(apiTokenAppsTable.appId, appId));
-      // Their POINTER to the app goes, though, and that is not bookkeeping. They would
-      // sit on the destination forever. Nulling it makes them ordinary orphans, which is
-      // what they are, and the sweep reclaims them after the usual keep window.
-      await tx
-        .update(backupRunsTable)
-        .set({ appId: null })
-        .where(
-          and(
-            eq(backupRunsTable.appId, appId),
-            eq(backupRunsTable.teamId, teamId),
-          ),
-        );
-      // Keep the source team's log entries, drop the pointer: those rows must not
-      // deep-link members into an app their team no longer owns.
-      await tx
-        .update(activitiesTable)
-        .set({ appId: null })
-        .where(eq(activitiesTable.appId, appId));
-    });
-  });
+  // The destination team's network, held for the check AND the write: two moves
+  // landing there at once otherwise both read the same name as free.
+  await withNetworkLock(
+    { teamId: destTeamId, environmentId: null },
+    async () => {
+      // It lands on the destination team's own network, where its service names may
+      // already be taken - and Docker would split the lookups rather than complain.
+      await assertNoNameClash({
+        to: { teamId: destTeamId, environmentId: null, serverId: app.serverId },
+        claims: claimSource?.compose?.trim()
+          ? composeNamesOnNetwork(claimSource.compose)
+          : [stackName(claimSource?.slug ?? "")],
+        exceptId: appId,
+        subject: "this app",
+      });
+      await withKeyedLock(`app-lifecycle:${appId}`, async () => {
+        await db.transaction(async (tx) => {
+          await assertServerAccessibleTx(tx, app.serverId, destTeamId);
+          await tx
+            .update(appsTable)
+            .set({
+              teamId: destTeamId,
+              // Folders, projects and environments belong to the SOURCE team: the app
+              // lands at the destination's top level, exactly like a fresh app.
+              folderId: null,
+              projectId: null,
+              environmentId: null,
+              repoInstallationId: installationId,
+              repoConnectionId: null,
+              ...(githubDropped || connectionDropped
+                ? { autoDeploy: false }
+                : {}),
+              updatedAt: nowIso(),
+            })
+            .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)));
+          // Per-environment runtime state of environments it no longer lives in.
+          await tx
+            .delete(appEnvironmentsTable)
+            .where(eq(appEnvironmentsTable.appId, appId));
+          // Manual display order is per team; the app joins the destination's tail.
+          await tx.delete(teamAppOrder).where(eq(teamAppOrder.appId, appId));
+          // Per-node access is a fact about the SOURCE team, exactly like the folder and
+          // project links cleared above.
+          await tx
+            .delete(appGrantsTable)
+            .where(eq(appGrantsTable.appId, appId));
+          await tx
+            .delete(teamRoleScopeApps)
+            .where(eq(teamRoleScopeApps.appId, appId));
+          // Shared variables stay with the team that owns them (ADR-0012: injection
+          // is the per-app link and nothing else) - the links go, the values never
+          // travel.
+          await tx
+            .delete(sharedEnvVarAppsTable)
+            .where(eq(sharedEnvVarAppsTable.appId, appId));
+          // Backup schedules point at the SOURCE team's backup destination, which the
+          // destination team cannot see, read or rotate. The runs already taken stay
+          // as that team's history (its destination, its audit trail).
+          await tx
+            .delete(backupsTable)
+            .where(
+              and(
+                eq(backupsTable.appId, appId),
+                eq(backupsTable.teamId, teamId),
+              ),
+            );
+          // Cron jobs carry BOTH team_id and app_id, like backups, and, like them, point at
+          // the SOURCE team and run the SOURCE team's command in the container.
+          await tx
+            .delete(cronJobsTable)
+            .where(
+              and(
+                eq(cronJobsTable.appId, appId),
+                eq(cronJobsTable.teamId, teamId),
+              ),
+            );
+          // An API token SCOPED to this app is the source team's credential, and its reach is
+          // derived live from `apps.teamId`, so a surviving row would follow the app into
+          // the destination team and show up in ITS "tokens reaching this team" list without
+          await tx
+            .delete(apiTokenAppsTable)
+            .where(eq(apiTokenAppsTable.appId, appId));
+          // Their POINTER to the app goes, though, and that is not bookkeeping. They would
+          // sit on the destination forever. Nulling it makes them ordinary orphans, which is
+          // what they are, and the sweep reclaims them after the usual keep window.
+          await tx
+            .update(backupRunsTable)
+            .set({ appId: null })
+            .where(
+              and(
+                eq(backupRunsTable.appId, appId),
+                eq(backupRunsTable.teamId, teamId),
+              ),
+            );
+          // Keep the source team's log entries, drop the pointer: those rows must not
+          // deep-link members into an app their team no longer owns.
+          await tx
+            .update(activitiesTable)
+            .set({ appId: null })
+            .where(eq(activitiesTable.appId, appId));
+        });
+      });
+    },
+  );
 
   // The app changed TEAM, so it changed network too - the destination's top level
   // is the destination team's own. Outside the transaction: it is an agent call.
