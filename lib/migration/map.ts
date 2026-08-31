@@ -562,6 +562,180 @@ export function adaptComposeForDeplo(
   return { compose: String(doc), changes };
 }
 
+/* ------------------------------------------------------------------ */
+/* Compose: a service name the network already answers to              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Where a variable's VALUE names a host: after a scheme or credentials, or as
+ * `<name>:<port>` on its own. Deliberately not "anywhere the word appears" -
+ * `POSTGRES_DB=postgres` is a database, not a hostname.
+ */
+function hostTokenRe(name: string): RegExp {
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<=://|@)${n}(?=[:/?#]|$)|^${n}(?=:\\d)`, "gi");
+}
+
+/** A key whose whole value is a hostname and nothing else. */
+const HOSTISH_KEY = /(^|_)(HOST|HOSTNAME|SERVER|ADDR|ADDRESS|ENDPOINT)$/i;
+
+/**
+ * Rewrite, IN PLACE, every value that names one of these services by its old
+ * name. Returns the keys that changed.
+ */
+export function renameHostTokens(
+  entries: { key: string; value: string }[],
+  renames: Map<string, string>,
+): string[] {
+  if (renames.size === 0) return [];
+  const touched: string[] = [];
+  for (const e of entries) {
+    let next = e.value;
+    for (const [from, to] of renames) {
+      if (HOSTISH_KEY.test(e.key) && next.trim().toLowerCase() === from)
+        next = to;
+      else next = next.replace(hostTokenRe(from), to);
+    }
+    if (next === e.value) continue;
+    e.value = next;
+    touched.push(e.key);
+  }
+  return touched;
+}
+
+/** The `environment:` block in either of its two shapes. */
+function rewriteEnvNode(node: unknown, renames: Map<string, string>): void {
+  if (isMap(node)) {
+    for (const item of node.items) {
+      const value = item.value;
+      if (!isScalar(value) || typeof value.value !== "string") continue;
+      const e = {
+        key: String((item.key as Scalar).value),
+        value: value.value,
+      };
+      if (renameHostTokens([e], renames).length > 0) value.value = e.value;
+    }
+  } else if (isSeq(node)) {
+    for (const item of node.items) {
+      if (!isScalar(item) || typeof item.value !== "string") continue;
+      const raw: string = item.value;
+      const eq = raw.indexOf("=");
+      if (eq < 0) continue;
+      const e = { key: raw.slice(0, eq), value: raw.slice(eq + 1) };
+      if (renameHostTokens([e], renames).length > 0)
+        item.value = `${e.key}=${e.value}`;
+    }
+  }
+}
+
+/**
+ * Rename every service whose DNS name a neighbour on the destination network
+ * already answers to, and carry the references with it.
+ *
+ * An Environment is one network (ADR-0028), and two one-click stacks both calling
+ * their database `db` is the ordinary case, not the exotic one - refusing the
+ * second one lost the whole app. Rewriting beats refusing: the same YAML arrives
+ * from an import, and only the import knows what is already there.
+ */
+export function renameClashingServices(
+  source: string,
+  /** Lowercase names a neighbour answers to on the destination network. */
+  taken: Set<string>,
+  /** What to qualify a renamed service with - the app's own name. */
+  prefix: string,
+): { compose: string; renames: Map<string, string>; changes: string[] } {
+  const renames = new Map<string, string>();
+  const unchanged = { compose: source, renames, changes: [] as string[] };
+  if (taken.size === 0) return unchanged;
+  const doc = readComposeDoc(source);
+  if (!doc) return unchanged;
+  const root = doc.contents as YAMLMap;
+  const services = root.get("services", true);
+  if (!isMap(services)) return unchanged;
+
+  const base =
+    prefix
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "app";
+  const used = new Set(
+    services.items.map((i) => String((i.key as Scalar).value).toLowerCase()),
+  );
+  const changes: string[] = [];
+  /** A free name for `name`, qualified by this app and unique on the network. */
+  const freeName = (name: string): string => {
+    let next = `${base}-${name}`;
+    for (
+      let i = 2;
+      taken.has(next.toLowerCase()) || used.has(next.toLowerCase());
+      i++
+    )
+      next = `${base}-${name}-${i}`;
+    used.add(next.toLowerCase());
+    return next;
+  };
+
+  for (const item of services.items) {
+    const key = item.key as Scalar;
+    const name = String(key.value);
+    if (!taken.has(name.toLowerCase())) continue;
+    const next = freeName(name);
+    key.value = next;
+    renames.set(name.toLowerCase(), next);
+    changes.push(
+      `\`${name}\` is already answered by something else on this environment's network, so this stack's service is \`${next}\` here - everything that named it came with it.`,
+    );
+  }
+
+  // `hostname:` is registered in Docker's DNS exactly like a service name, so a
+  // stack that renamed no service can still be claiming a taken one.
+  for (const { map: holder } of serviceLikeMaps(root)) {
+    const host = stringScalar(holder, "hostname");
+    if (!host) continue;
+    const name = (host.value as string).trim();
+    if (!taken.has(name.toLowerCase())) continue;
+    const next = renames.get(name.toLowerCase()) ?? freeName(name);
+    host.value = next;
+    if (!renames.has(name.toLowerCase())) {
+      renames.set(name.toLowerCase(), next);
+      changes.push(
+        `Its \`hostname: ${name}\` is already answered on this environment's network, so it is \`${next}\` here.`,
+      );
+    }
+  }
+
+  if (renames.size === 0) return unchanged;
+
+  for (const { map: holder } of serviceLikeMaps(root)) {
+    const dep = holder.get("depends_on", true);
+    if (isSeq(dep))
+      for (const item of dep.items) {
+        if (!isScalar(item) || typeof item.value !== "string") continue;
+        const to = renames.get(item.value.trim().toLowerCase());
+        if (to) item.value = to;
+      }
+    else if (isMap(dep))
+      for (const item of dep.items) {
+        const key = item.key as Scalar;
+        const to = renames.get(String(key.value).trim().toLowerCase());
+        if (to) key.value = to;
+      }
+
+    const links = holder.get("links", true);
+    if (isSeq(links))
+      for (const item of links.items) {
+        if (!isScalar(item) || typeof item.value !== "string") continue;
+        const [named, alias] = item.value.split(":");
+        const to = renames.get(named.trim().toLowerCase());
+        if (to) item.value = alias ? `${to}:${alias}` : to;
+      }
+
+    rewriteEnvNode(holder.get("environment", true), renames);
+  }
+
+  return { compose: String(doc), renames, changes };
+}
+
 /**
  * Docker's own rule for telling a NAMED volume from a path: no separator, and no
  * leading `.`, `~` or `$`.
@@ -1677,10 +1851,12 @@ export function declaredSourceBindMounts(
     | null,
   /** A stack binds host directories in its own YAML, where no mount row exists. */
   composeFile?: string | null,
+  /** Where that YAML lives on the source machine, so its `./x` binds resolve. */
+  stackDir?: string | null,
 ): HostMount[] {
   const out: HostMount[] = [];
   const seen = new Set<string>();
-  for (const m of composeHostMounts(composeFile ?? "")) {
+  for (const m of composeHostMounts(composeFile ?? "", stackDir)) {
     seen.add(m.mountPath);
     out.push(m);
   }
@@ -1699,14 +1875,39 @@ export function declaredSourceBindMounts(
 }
 
 /**
+ * A `./x` bind source resolved against the directory the stack itself lives in,
+ * or null when the source is not one. The SAME rule the renderer applies
+ * (`rewriteMountSource`), so the two sides of a copy name the same path.
+ */
+export function stackRelativePath(
+  source: string,
+  baseDir: string,
+): string | null {
+  const s = source.trim();
+  if (s.includes("..")) return null; // an escape - the grant gates it, not this
+  // `./x` or a bare `.`, never `.env`: a leading dot is not a separator, and
+  // inventing `<dir>/env` for it would report a path that is not there.
+  const m = /^\.(?:\/(.*))?$/.exec(s);
+  if (!m) return null;
+  const base = baseDir.replace(/\/+$/, "");
+  const rel = (m[1] ?? "").replace(/^\/+/, "").replace(/\/+$/, "");
+  return rel ? `${base}/${rel}` : base;
+}
+
+/**
  * The host directories a compose file binds ITSELF. Neither side saw one: not the
  * panel's mount rows, not deplo's `app_volumes` - so `- /etc/app:/cfg` arrived in
  * the YAML byte for byte and the directory it names arrived empty.
  *
- * Absolute paths only: a relative one lives in the stack's own directory, which
- * the compose import already brings across.
+ * A `./x` source is one too, and pretending otherwise ("the compose import brings
+ * it across") lost every relative bind on both panels: only the FILE came over,
+ * never the directory it names. It resolves against `baseDir` - the stack's own
+ * directory on that machine - and is left out when there is none to resolve with.
  */
-export function composeHostMounts(compose: string): HostMount[] {
+export function composeHostMounts(
+  compose: string,
+  baseDir?: string | null,
+): HostMount[] {
   let doc: { services?: Record<string, { volumes?: unknown }> } | null;
   try {
     doc = yaml.load(compose) as typeof doc;
@@ -1730,11 +1931,17 @@ export function composeHostMounts(compose: string): HostMount[] {
         src = m.source?.trim();
         dest = m.target?.trim();
       }
-      if (!src?.startsWith("/") || !dest?.startsWith("/")) continue;
+      if (!src || !dest?.startsWith("/")) continue;
+      const relative = baseDir ? stackRelativePath(src, baseDir) : null;
+      if (!relative && !src.startsWith("/")) continue;
       const mountPath = normalizePath(dest);
       if (seen.has(mountPath)) continue;
       seen.add(mountPath);
-      out.push({ hostPath: normalizePath(src), mountPath });
+      out.push(
+        relative
+          ? { hostPath: relative, mountPath, stackRelative: true }
+          : { hostPath: normalizePath(src), mountPath },
+      );
     }
   }
   return out;
@@ -1755,12 +1962,20 @@ export function isDataHostPath(hostPath: string): boolean {
 /**
  * Match every source bind mount to the deplo host mount that should receive it.
  */
+export interface PairedHostMount {
+  sourcePath: string;
+  targetPath: string;
+  mountPath: string;
+  /** Deplo's own stack directory receives it, so no host path anyone typed is
+   *  read or written and the host-volumes grant has nothing to gate. */
+  stackRelative: boolean;
+}
+
 export function pairHostMounts(
   source: HostMount[],
   target: HostMount[],
-): { sourcePath: string; targetPath: string; mountPath: string }[] {
-  const out: { sourcePath: string; targetPath: string; mountPath: string }[] =
-    [];
+): PairedHostMount[] {
+  const out: PairedHostMount[] = [];
   for (const s of source) {
     if (NOT_DATA_HOST_PATH.test(s.hostPath)) continue;
     const hit = target.find((t) => t.mountPath === s.mountPath);
@@ -1769,6 +1984,7 @@ export function pairHostMounts(
       sourcePath: s.hostPath,
       targetPath: hit.hostPath,
       mountPath: s.mountPath,
+      stackRelative: hit.stackRelative === true,
     });
   }
   return out;

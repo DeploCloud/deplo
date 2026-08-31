@@ -227,6 +227,12 @@ export interface SourceCompose {
    */
   icon?: string | null;
   composeType?: "docker-compose" | "stack" | null;
+  /**
+   * Where this stack's own directory sits on the SOURCE machine - what a `./x`
+   * bind in its compose resolves against. Coolify keeps it under its data dir;
+   * Dokploy answers with nothing, and a running container names it instead.
+   */
+  stackDir?: string | null;
   /** Same as {@link SourceApplication.routingPort}: what a route with no port of
    *  its own reaches. A stack route with none renders no Traefik router at all. */
   routingPort?: number | null;
@@ -414,6 +420,11 @@ export interface NamedVolume {
 export interface HostMount {
   hostPath: string;
   mountPath: string;
+  /**
+   * The compose file wrote this as `./x`, so the path is the stack's OWN
+   * directory on whichever machine holds it - never one somebody typed.
+   */
+  stackRelative?: boolean;
 }
 
 /** One S3 store the source platform backs up to. */

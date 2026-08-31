@@ -79,6 +79,7 @@ import {
   stopMigration,
 } from "./migration-import";
 import { activeMigrationStream } from "../graphql/types/migration";
+import { createEnvironment } from "./environments";
 import { createProject, renameProject } from "./projects";
 import { startApp } from "./apps";
 import { startDeployment } from "../deploy/build";
@@ -2628,4 +2629,60 @@ test("the platform is on the row, not derived from the address", async () => {
     )
   ).rows as { platform: string }[];
   assert.equal(row.platform, "coolify");
+});
+
+test("an imported database lands in the Environment its apps did", async () => {
+  await provisionServer1();
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await settleProvisioning(db);
+
+  const row = await dbRowOf("blink-db");
+  const app = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  );
+  assert.ok(app?.environmentId);
+  // Same Environment means the same network (ADR-0028) - `db-blink-db` resolves
+  // from the app, which is the whole point of importing the two together.
+  assert.equal(row?.environmentId, app!.environmentId);
+});
+
+test("a stack whose service name is already answered is renamed, not refused", async () => {
+  await provisionServer1();
+  // The Environment the import will reuse, with a neighbour already answering to
+  // `web` on its network - two one-click stacks in one project is the ordinary
+  // case, and refusing the second one lost the whole app.
+  const project = await asOwner(() => createProject("Other"));
+  const staging = await asOwner(() => createEnvironment(project.id, "staging"));
+  await seedApp(db, {
+    id: "prj_neighbour",
+    teamId: TEAM_A,
+    slug: "neighbour",
+    projectId: project.id,
+    environmentId: staging.id,
+    source: "compose",
+    compose: "services:\n  web:\n    image: nginx\n",
+  });
+
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const result = await importProject(runId, "dok-prj-other");
+  assert.equal(
+    result.items.some((i) => i.outcome === "failed"),
+    false,
+    JSON.stringify(result.items.filter((i) => i.outcome === "failed")),
+  );
+
+  const stack = (await db.select().from(appsTable)).find(
+    (a) => a.name === "other-stack",
+  );
+  assert.ok(stack, "the stack has to exist at all");
+  const doc = yaml.load(stack.compose ?? "") as {
+    services: Record<string, unknown>;
+  };
+  assert.deepEqual(Object.keys(doc.services), ["other-stack-web"]);
+  // The domain routed to `web` by name: left behind, the address answers nothing.
+  const domains = await db.execute(
+    `select service from domains where app_id = '${stack.id}'`,
+  );
+  assert.equal(domains.rows[0]?.service, "other-stack-web");
 });

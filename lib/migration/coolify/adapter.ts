@@ -322,6 +322,10 @@ async function detail(
     sharedRefs: env.sharedRefs,
     mounts,
     serverId: index.serverOf.get(id) ?? "",
+    // Where Coolify puts a resource's own files - and therefore what every `./x`
+    // bind in its compose resolves to. It is the app's real state directory:
+    // nothing in the storage rows names it, so the copy never saw it.
+    stackDir: `/data/coolify/${group}/${id}`,
   };
 
   if (group === "databases") {
@@ -411,6 +415,12 @@ async function serviceRuntime(
   const hostMounts = mounts
     .filter((m) => m.type === "bind" && m.hostPath)
     .map((m) => ({ hostPath: m.hostPath!, mountPath: m.mountPath }));
+  // A `./x` bind is nowhere in the storage rows, and it is the stack's real state
+  // directory: without this the report said the service "mounts nothing" over a
+  // directory holding every file it had.
+  for (const m of svc.declaredBindMounts)
+    if (m.stackRelative && !hostMounts.some((h) => h.mountPath === m.mountPath))
+      hostMounts.push(m);
 
   const status = await resourceStatus(c, group, svc.id);
   const running = status.startsWith("running");

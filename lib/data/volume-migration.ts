@@ -78,6 +78,15 @@ function attributeCopyError(e: unknown): Error {
   return mapVolumeCopyUnsupported(e, "destination");
 }
 
+/**
+ * The agent's refusal to hand over a FILE through the directory export. A `./x`
+ * bind that names one is ordinary compose (`./nginx.conf:/etc/nginx/nginx.conf`),
+ * and the caller answers it by copying the directory the file sits in.
+ */
+export function isNotADirectory(e: unknown): boolean {
+  return e instanceof Error && /is a file, not a directory/.test(e.message);
+}
+
 /** gRPC NOT_FOUND (5), however the error object reaches us. */
 function isNotFound(e: unknown): boolean {
   const code = (e as { code?: unknown } | null)?.code;
@@ -345,6 +354,9 @@ export async function copyHostPathBetween(
   targetPath: string,
   onBytes?: OnBytes,
   signal?: AbortSignal,
+  /** Empty the target first. Off when the target holds more than this copy - a
+   *  stack's files dir, where a second bind and Deplo's own File mounts live. */
+  wipe = true,
 ): Promise<VolumeCopyResult> {
   try {
     if (!(await archiveHasEntries(source.exportHostPath(sourcePath))))
@@ -380,7 +392,7 @@ export async function copyHostPathBetween(
     sha256?: string;
   };
   try {
-    res = await dest.importHostPath(targetPath, true, counted);
+    res = await dest.importHostPath(targetPath, wipe, counted);
   } catch (e) {
     stopIfAborted(signal);
     throw attributeCopyError(e);
