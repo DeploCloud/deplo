@@ -688,9 +688,11 @@ test("a name the team already uses elsewhere is said out loud", async () => {
     .filter((i) => i.sourceId === "dok-app-web")
     .map((i) => i.message ?? "")
     .join(" | ");
+  // Named as the deliberate structure it is - and it names the one thing that
+  // really did change, the internal name the container and the URL take.
   assert.match(
     said,
-    /already has an app called blink-web \(\/apps\/blink-web\)/,
+    /already has an app called blink-web\. Both are kept; this one is \/apps\/blink-web-1\./,
   );
   // And it still came across - two environments may hold the same name.
   const apps = await db.select().from(appsTable);

@@ -2453,8 +2453,15 @@ async function importAppService(
   // two apps called the same thing is a thing to walk into knowingly.
   const namesake = (
     await getDb()
-      .select({ slug: appsTable.slug })
+      .select({
+        slug: appsTable.slug,
+        environmentName: environmentsTable.name,
+      })
       .from(appsTable)
+      .leftJoin(
+        environmentsTable,
+        eq(environmentsTable.id, appsTable.environmentId),
+      )
       .where(
         and(
           eq(appsTable.teamId, await requireActiveTeamId()),
@@ -2469,10 +2476,6 @@ async function importAppService(
       )
       .limit(1)
   )[0];
-  if (namesake)
-    notes.push(
-      `This team already has an app called ${name} (/apps/${namesake.slug}). This one is a second app beside it - rename either under Settings if that is not what you wanted.`,
-    );
 
   // Env: the service's own blob, plus its build args, which deplo passes to the
   // build as ordinary variables (agent >= 1.9.0) rather than as a second channel.
@@ -2841,6 +2844,18 @@ async function importAppService(
     logo: mapLogo(detail.icon),
     deploy: false,
   });
+
+  // One name in two environments is the commonest shape there is, and it is not an
+  // accident to be corrected - only the internal name, which is one per team, has
+  // to give way.
+  if (namesake)
+    notes.push(
+      `This team already has an app called ${name}${
+        namesake.environmentName
+          ? ` in the ${namesake.environmentName} environment`
+          : ""
+      }. Both are kept; this one is /apps/${created.slug}.`,
+    );
 
   // The links the references asked for. A value must never vanish because a link
   // could not be made, so a refusal writes the entry back instead.
