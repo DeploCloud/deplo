@@ -1207,7 +1207,7 @@ async function planMembers(
       ...p,
       name: p.name || p.email,
       hasAccount: account != null,
-      avatarUrl: account ? url(account) : null,
+      avatarUrl: account ? url({ ...account, userId: account.id }) : null,
       avatarColor: account?.avatarColor ?? null,
       inTeam: account != null && memberIds.has(account.id),
     };
@@ -4417,7 +4417,11 @@ async function actorFaces(
   return new Map(
     people.map((p) => [
       p.id,
-      { username: p.username, avatarColor: p.avatarColor, avatarUrl: url(p) },
+      {
+        username: p.username,
+        avatarColor: p.avatarColor,
+        avatarUrl: url({ ...p, userId: p.id }),
+      },
     ]),
   );
 }

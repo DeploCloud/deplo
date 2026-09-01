@@ -17,7 +17,7 @@ import { requirePersonalSession } from "../auth/request-context";
 import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { rateLimit } from "../security";
-import { isValidAvatarValue } from "../apps/avatar-shared";
+import { isValidUserAvatarValue } from "../apps/avatar-shared";
 import { normalizeUsername, validateUsername } from "../username";
 
 /**
@@ -69,7 +69,7 @@ export async function updateMyAvatar(image: string | null): Promise<void> {
   requirePersonalSession("your account settings");
   const user = await assertUser();
   const next = image?.trim() || null;
-  if (next && !isValidAvatarValue(next))
+  if (next && !isValidUserAvatarValue(next))
     throw new Error("Unsupported profile picture");
   const updated = await getDb()
     .update(usersTable)

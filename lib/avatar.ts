@@ -6,7 +6,14 @@ import { eq } from "drizzle-orm";
 import { getDb } from "./db/client";
 import { instanceSettings } from "./db/schema/control-plane";
 import { sha256Hex } from "./crypto";
-import { GRAVATAR_ORIGINS, isValidAvatarValue } from "./apps/avatar-shared";
+import {
+  GRAVATAR_ORIGINS,
+  GRAVATAR_VALUE,
+  INITIALS_VALUE,
+  isValidAvatarValue,
+  pixelbotPath,
+  pixelbotSeed,
+} from "./apps/avatar-shared";
 
 /**
  * Where a person's or a team's picture comes from, resolved once on the server.
@@ -40,6 +47,10 @@ function gravatarUrl(email: string): string {
 
 /** A row far enough along to answer "what picture does this person have?". */
 export type AvatarSource = {
+  /** Seeds the generated face. Required so a new caller cannot forget it and
+   *  silently drop a whole list back to monograms; null for somebody with no
+   *  account here (an imported author). */
+  userId: string | null;
   image?: string | null;
   email?: string | null;
 };
@@ -48,17 +59,25 @@ export type AvatarSource = {
  * Resolve many people in one go: reads the instance flag once and hands back a
  * SYNC mapper, so a batch builder (`listMembers`, `loadUserIdentities`) maps N
  * rows without N awaits.
+ *
+ * A person chooses their source (see `avatar-shared.ts`); nothing chosen falls to
+ * their Gravatar when the instance allows it, and then to a generated face.
  */
 export async function avatarResolver(): Promise<
   (row: AvatarSource) => string | null
 > {
   const gravatar = await gravatarEnabled();
   return (row) => {
-    const image = row.image?.trim();
-    if (image && isValidAvatarValue(image)) return image;
+    const value = row.image?.trim();
+    const generated = row.userId ? pixelbotPath(row.userId) : null;
+    const seed = pixelbotSeed(value);
+    if (seed) return pixelbotPath(seed);
+    if (value === INITIALS_VALUE) return null;
+    if (value && value !== GRAVATAR_VALUE && isValidAvatarValue(value))
+      return value;
     const email = row.email?.trim();
     if (gravatar && email) return gravatarUrl(email);
-    return null;
+    return generated;
   };
 }
 

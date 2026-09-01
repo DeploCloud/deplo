@@ -319,7 +319,7 @@ async function userIdentity(userId: string): Promise<{
     username: r.username,
     name: r.name,
     avatarColor: r.avatarColor,
-    avatarUrl: await avatarUrlFor(r),
+    avatarUrl: await avatarUrlFor({ ...r, userId }),
   };
 }
 

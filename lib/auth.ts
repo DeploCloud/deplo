@@ -27,7 +27,10 @@ import {
   uniqueUsername,
   validateUsername,
 } from "./username";
-import { isValidAvatarValue } from "./apps/avatar-shared";
+import {
+  isValidAvatarValue,
+  isValidUserAvatarValue,
+} from "./apps/avatar-shared";
 import { newId } from "./ids";
 import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
@@ -112,7 +115,7 @@ async function toPublic(u: {
     role: u.role as PublicUser["role"],
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     avatarColor: u.avatarColor,
-    avatarUrl: await avatarUrlFor(u),
+    avatarUrl: await avatarUrlFor({ ...u, userId: u.id }),
     twoFactorEnabled: u.twoFactorEnabled ?? false,
   };
 }
@@ -241,9 +244,9 @@ export async function createAccountWithTeam(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "team";
 
-  // Data-URIs straight off a form: the same gate `updateMyAvatar` applies.
+  // Straight off a form: the same gate `updateMyAvatar` applies.
   const image = input.image?.trim() || null;
-  if (image && !isValidAvatarValue(image))
+  if (image && !isValidUserAvatarValue(image))
     throw new Error("Unsupported profile picture");
   const teamImage = input.teamImage?.trim() || null;
   if (teamImage && !isValidAvatarValue(teamImage))
@@ -365,7 +368,7 @@ export async function createAccountWithTeams(
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@")) throw new Error("Enter a valid email address");
   const image = input.image?.trim() || null;
-  if (image && !isValidAvatarValue(image))
+  if (image && !isValidUserAvatarValue(image))
     throw new Error("Unsupported profile picture");
   assertPasswordPolicy(input.password);
   await assertPasswordNotPwned(input.password);

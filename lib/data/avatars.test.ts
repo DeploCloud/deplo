@@ -149,12 +149,68 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
 
 test("with the instance switch off, no Gravatar address is emitted anywhere", async () => {
   await as(OWNER, () => setGravatarEnabled(false));
-  assert.equal((await memberRow(MEMBER)).avatarUrl, null);
+  const url = (await memberRow(MEMBER)).avatarUrl;
+  assert.equal(url, `/api/avatar/${MEMBER}.svg`);
+  assert.ok(!url!.includes("gravatar"), "no address may be emitted");
 
   // An UPLOADED picture is unaffected - the switch is about talking to
   // gravatar.com, not about whether people may have a face.
   await as(MEMBER, () => updateMyAvatar(PICTURE));
   assert.equal((await memberRow(MEMBER)).avatarUrl, PICTURE);
+});
+
+test("nothing chosen and no Gravatar leaves a generated face, seeded per person", async () => {
+  await as(OWNER, () => setGravatarEnabled(false));
+  assert.equal(
+    (await memberRow(MEMBER)).avatarUrl,
+    `/api/avatar/${MEMBER}.svg`,
+  );
+  assert.notEqual(
+    (await memberRow(OWNER)).avatarUrl,
+    (await memberRow(MEMBER)).avatarUrl,
+  );
+});
+
+test("a preset face is stored as a marker and served from this instance", async () => {
+  await as(MEMBER, () => updateMyAvatar("pixelbot:bolt"));
+  // Beats Gravatar, which is still on: an explicit pick outranks a fallback.
+  assert.equal((await memberRow(MEMBER)).avatarUrl, "/api/avatar/bolt.svg");
+});
+
+test("initials is a choice, so the monogram survives an enabled Gravatar", async () => {
+  await as(MEMBER, () => updateMyAvatar("initials"));
+  assert.equal((await memberRow(MEMBER)).avatarUrl, null);
+});
+
+test("choosing Gravatar falls back to a face when the instance turns it off", async () => {
+  await as(MEMBER, () => updateMyAvatar("gravatar"));
+  assert.match(
+    (await memberRow(MEMBER)).avatarUrl!,
+    /^https:\/\/gravatar\.com\//,
+  );
+
+  await as(OWNER, () => setGravatarEnabled(false));
+  assert.equal(
+    (await memberRow(MEMBER)).avatarUrl,
+    `/api/avatar/${MEMBER}.svg`,
+    "their pick is off instance-wide, so nothing about them leaves the box",
+  );
+});
+
+test("a seed that is not a plain word is refused, in and out of the URL", async () => {
+  for (const bad of [
+    "pixelbot:../../etc/passwd",
+    "pixelbot:a b",
+    "pixelbot:",
+    `pixelbot:${"a".repeat(65)}`,
+    "pixelbot:evil.com/x",
+  ]) {
+    await assert.rejects(
+      as(MEMBER, () => updateMyAvatar(bad)),
+      /Unsupported/i,
+      `must refuse ${bad}`,
+    );
+  }
 });
 
 /* ------------------------------------------------------------------ */

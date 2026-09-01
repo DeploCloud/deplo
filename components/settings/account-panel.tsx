@@ -48,10 +48,13 @@ function PendingLabel({
 
 export function AccountPanel({
   user,
+  gravatar,
   passkeys,
   sessions,
 }: {
   user: PublicUser;
+  /** Whether the instance offers Gravatar as a picture source. */
+  gravatar: boolean;
   passkeys: number;
   sessions: number;
 }) {
@@ -60,7 +63,7 @@ export function AccountPanel({
       {/* Direct grid children, so Profile and Email share one row's height
           instead of each ending wherever its own content stops. */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <ProfileCard user={user} />
+        <ProfileCard user={user} gravatar={gravatar} />
         <EmailCard user={user} />
       </div>
       <SecurityCard
@@ -72,7 +75,13 @@ export function AccountPanel({
   );
 }
 
-function ProfileCard({ user }: { user: PublicUser }) {
+function ProfileCard({
+  user,
+  gravatar,
+}: {
+  user: PublicUser;
+  gravatar: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState(user.name);
@@ -116,6 +125,11 @@ function ProfileCard({ user }: { user: PublicUser }) {
         <AvatarPicker
           label="Change your picture"
           hasImage={Boolean(user.avatarUrl?.startsWith("data:"))}
+          sources={{
+            avatarUrl: user.avatarUrl,
+            defaultSeed: user.id,
+            gravatar,
+          }}
           onSave={(image) =>
             gqlAction(
               `mutation($image: String) { updateMyAvatar(image: $image) }`,

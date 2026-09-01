@@ -4,6 +4,7 @@ import * as React from "react";
 import { ArrowLeft, Loader2, Pencil, Rocket } from "lucide-react";
 
 import { AvatarPicker } from "@/components/shared/avatar-picker";
+import { avatarPreviewUrl } from "@/lib/apps/avatar-shared";
 import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -174,6 +175,7 @@ export function AccountStep({
           quiet
           label="Add a profile picture"
           hasImage={Boolean(draft.image)}
+          sources={{ avatarUrl: avatarPreviewUrl(draft.image) }}
           onSave={async (next) => {
             set("image", next);
             return { ok: true };
@@ -182,7 +184,7 @@ export function AccountStep({
             <UserAvatar
               name={draft.name}
               username={handle}
-              avatarUrl={draft.image}
+              avatarUrl={avatarPreviewUrl(draft.image)}
               size="3xl"
             />
           }

@@ -39,7 +39,7 @@ export async function loadUserIdentities(
             name: r.name,
             username: r.username,
             avatarColor: r.avatarColor,
-            avatarUrl: avatarUrl(r),
+            avatarUrl: avatarUrl({ ...r, userId: r.id }),
           },
         ] as const,
     ),
