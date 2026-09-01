@@ -3,7 +3,7 @@
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, GripVertical, Pencil, Plus } from "lucide-react";
+import { ChevronDown, GripVertical, Plus, Settings } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -261,13 +261,13 @@ function TeamRow({
               aria-label={`Settings for ${team.name}`}
               className={cn(
                 "cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-opacity hover:text-foreground",
-                // The team you are IN keeps its pencil out: it is the one whose
+                // The team you are IN keeps its gear out: it is the one whose
                 // settings you reach from here most. The rest ask first.
                 !active &&
                   "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
               )}
             >
-              <Pencil className="size-3" />
+              <Settings className="size-3" />
             </button>
           )}
         </span>
