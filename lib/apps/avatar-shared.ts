@@ -83,6 +83,7 @@ export const AVATAR_PACKS = [
   { style: "planets", preset: "electric", label: "Planets Electric" },
   { style: "glass", preset: "default", label: "Glass Default" },
   { style: "pixelbot", preset: "terminal", label: "Pixelbot Terminal" },
+  { style: "initials", preset: "electric", label: "Initials Electric" },
 ] as const satisfies readonly {
   style: AvatarStyle;
   preset: string;

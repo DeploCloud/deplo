@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AtSign, Camera, Upload, UserRound } from "lucide-react";
+import { AtSign, Camera, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,6 @@ import {
   AVATAR_IMAGE_TYPES,
   AVATAR_PACKS,
   type AvatarChoice,
-  DEFAULT_INITIALS_PRESET,
   DEFAULT_PACK,
   facePath,
   GRAVATAR_VALUE,
@@ -471,18 +470,19 @@ function AvatarSourceDialog({
             <FaceTile
               key={p.style}
               small
-              src={facePath(p.style, p.preset, chipSeeds[i]!)}
+              src={facePath(
+                p.style,
+                p.preset,
+                p.style === "initials" ? letters : chipSeeds[i]!,
+              )}
               label={p.label}
               disabled={busy}
-              selected={!onInitials && p.style === pack.style}
-              onClick={() => {
-                setOnInitials(false);
-                setPack(p);
-              }}
+              selected={p.style === pack.style}
+              onClick={() => setPack(p)}
             />
           ))}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2">
           {gravatar ? (
             <SourceCard
               visual={
@@ -505,30 +505,11 @@ function AvatarSourceDialog({
             />
           ) : null}
           <SourceCard
-            visual={
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={facePath("initials", DEFAULT_INITIALS_PRESET, letters)}
-                alt=""
-                draggable={false}
-                className="size-full"
-              />
-            }
-            label="Use my initials"
-            // What they WEAR, never what the row above happens to be showing:
-            // browsing to the letters is not choosing them.
-            selected={worn?.style === "initials"}
-            disabled={busy}
-            className={gravatar ? undefined : "sm:col-span-2"}
-            onClick={() => setOnInitials(true)}
-          />
-          <SourceCard
             quiet
             visual={<Upload className="size-3.5" />}
             label="Upload a picture"
             selected={choice.kind === "uploaded"}
             disabled={busy}
-            className="sm:col-span-2"
             onClick={onUpload}
           />
         </div>
