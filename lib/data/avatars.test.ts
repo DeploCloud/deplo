@@ -12,6 +12,9 @@ import {
   avatarChoiceFromValue,
   avatarPreviewUrl,
   PIXELBOT_PRESETS,
+  PIXELBOT_ROW,
+  PIXELBOT_SEEDS,
+  pixelbotRowSeeds,
 } from "../apps/avatar-shared";
 import {
   seedIdentity,
@@ -250,6 +253,18 @@ test("the picker reads back the source it just wrote", () => {
   assert.deepEqual(avatarChoiceFromValue("gravatar"), { kind: "gravatar" });
   assert.deepEqual(avatarChoiceFromValue(PICTURE), { kind: "uploaded" });
   assert.deepEqual(avatarChoiceFromValue(null), { kind: "initials" });
+});
+
+test("every look offers the same six faces, and never one twice", () => {
+  // Their own face leads the row; picking a fixed one must not double it up.
+  const mine = pixelbotRowSeeds(MEMBER);
+  assert.equal(mine.length, PIXELBOT_ROW);
+  assert.equal(mine[0], MEMBER);
+  assert.equal(new Set(mine).size, PIXELBOT_ROW);
+
+  const onAFixedSeed = pixelbotRowSeeds(PIXELBOT_SEEDS[0]);
+  assert.equal(new Set(onAFixedSeed).size, PIXELBOT_ROW, "no duplicate tile");
+  assert.equal(onAFixedSeed[0], PIXELBOT_SEEDS[0], "what they wear leads");
 });
 
 /* ------------------------------------------------------------------ */

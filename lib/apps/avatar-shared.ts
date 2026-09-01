@@ -90,6 +90,29 @@ export function isValidPixelbotPreset(value: string): value is PixelbotPreset {
   return PIXELBOT_PRESETS.some((p) => p.id === value);
 }
 
+/** The faces every look is offered in. Fixed, not random: the tile you picked is
+ *  still there next time, and the browser has it cached. */
+export const PIXELBOT_SEEDS = [
+  "nova",
+  "orbit",
+  "quasar",
+  "rune",
+  "vega",
+  "zinc",
+] as const;
+
+/** How many faces a preset's row shows. */
+export const PIXELBOT_ROW = 6;
+
+/** The row for one look: their own face first, then the fixed ones. Deduped, so
+ *  somebody wearing a fixed seed does not see it twice. */
+export function pixelbotRowSeeds(ownSeed: string): string[] {
+  return [ownSeed, ...PIXELBOT_SEEDS.filter((s) => s !== ownSeed)].slice(
+    0,
+    PIXELBOT_ROW,
+  );
+}
+
 /** What a seed may look like: it lands in a URL path and in a render. */
 const PIXELBOT_SEED_RE = /^[A-Za-z0-9_-]{1,64}$/;
 

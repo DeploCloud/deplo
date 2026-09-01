@@ -25,6 +25,7 @@ import {
   PIXELBOT_PRESETS,
   type PixelbotPreset,
   pixelbotPath,
+  pixelbotRowSeeds,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 
@@ -250,7 +251,7 @@ function FaceTile({
       <img
         src={pixelbotPath(preset, seed)}
         alt=""
-        className="size-12 rounded-full"
+        className="size-11 rounded-full"
       />
     </button>
   );
@@ -308,7 +309,8 @@ function AvatarSourceDialog({
   onPick: (value: string) => void;
   onUpload: () => void;
 }) {
-  const { choice, seed } = sources;
+  const { choice } = sources;
+  const rowSeeds = pixelbotRowSeeds(sources.seed);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -319,19 +321,32 @@ function AvatarSourceDialog({
             Pick a face, upload your own, or keep your initials.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap justify-center gap-3">
+        <div className="-mr-2 max-h-[50vh] space-y-3 overflow-y-auto pr-2">
           {PIXELBOT_PRESETS.map((preset) => (
-            <FaceTile
-              key={preset.id}
-              preset={preset.id}
-              label={preset.label}
-              seed={seed}
-              disabled={busy}
-              selected={
-                choice.kind === "generated" && choice.preset === preset.id
-              }
-              onClick={() => onPick(`${PIXELBOT_PREFIX}${preset.id}:${seed}`)}
-            />
+            <div key={preset.id}>
+              <p className="mb-1.5 text-xs text-muted-foreground">
+                {preset.label}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {rowSeeds.map((rowSeed) => (
+                  <FaceTile
+                    key={rowSeed}
+                    preset={preset.id}
+                    label={`${preset.label}, face ${rowSeed}`}
+                    seed={rowSeed}
+                    disabled={busy}
+                    selected={
+                      choice.kind === "generated" &&
+                      choice.preset === preset.id &&
+                      choice.seed === rowSeed
+                    }
+                    onClick={() =>
+                      onPick(`${PIXELBOT_PREFIX}${preset.id}:${rowSeed}`)
+                    }
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
         <div
