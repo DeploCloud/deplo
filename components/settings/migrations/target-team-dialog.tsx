@@ -51,9 +51,11 @@ export function TargetTeamDialog({
             <button
               type="button"
               key={t.id}
+              // The team it already lands in is offered too: picking it is how a
+              // re-check is asked for when one failed.
               onClick={() => {
                 onOpenChange(false);
-                if (t.id !== activeId) onSelect(t.id);
+                onSelect(t.id);
               }}
               className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
             >

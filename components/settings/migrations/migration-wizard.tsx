@@ -307,6 +307,45 @@ function landingDefaults(
   };
 }
 
+/**
+ * Drop a placement the fleet no longer offers. Servers are per-team, so landing in
+ * another team can leave a host this one may not use - and that is not a placement,
+ * it is a deploy that dies halfway through with the services already stopped.
+ */
+export function reconcilePlacements(
+  placements: Record<string, Placement>,
+  machines: Record<string, string>,
+  servers: ServerChoice[],
+  buildServers: ServerChoice[],
+): { placements: Record<string, Placement>; servers: Record<string, string> } {
+  const home = (servers.find((s) => s.isDeploHost) ?? servers[0])?.id;
+  if (!home) return { placements, servers: machines };
+  const runnable = new Set(servers.map((s) => s.id));
+  const buildable = new Set(buildServers.map((s) => s.id));
+  return {
+    placements: Object.fromEntries(
+      Object.entries(placements).map(([id, p]) => [
+        id,
+        {
+          ...p,
+          serverId: runnable.has(p.serverId) ? p.serverId : home,
+          // Null is Automatic, which is the right answer for a host that is gone.
+          buildServerId:
+            p.buildServerId && !buildable.has(p.buildServerId)
+              ? null
+              : p.buildServerId,
+        },
+      ]),
+    ),
+    servers: Object.fromEntries(
+      Object.entries(machines).map(([from, to]) => [
+        from,
+        runnable.has(to) ? to : home,
+      ]),
+    ),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -393,6 +432,10 @@ export function MigrationWizard({
 
   /** A team change is in flight, plan and all - see `retargetTeam`. */
   const [retargeting, setRetargeting] = React.useState(false);
+  /** The last team change whose re-read failed: the plan is another team's. */
+  const [retargetError, setRetargetError] = React.useState<string | null>(null);
+  /** Whether this tab has already decided which run to open on. */
+  const restored = React.useRef(false);
 
   const [invites, setInvites] = React.useState<Invite[] | null>(null);
   const [inviting, setInviting] = React.useState(false);
@@ -416,6 +459,16 @@ export function MigrationWizard({
 
   /** What is known about the panel so far: what answered, or what was pinned. */
   const kind: SourceKind | null = plan?.platform ?? forcedKind;
+
+  /**
+   * The fleet moves under the plan whenever the team does, so what was picked is
+   * READ through the servers this team has rather than stored back - a host that
+   * comes home then gives its services their own machine again.
+   */
+  const landing = React.useMemo(
+    () => reconcilePlacements(placements, serverMap, servers, buildServers),
+    [placements, serverMap, servers, buildServers],
+  );
 
   const STEPS = React.useMemo(
     () => stepsFor(isInstanceAdmin),
@@ -475,6 +528,10 @@ export function MigrationWizard({
     /** Null when the team is already switched - creating one switches into it. */
     async (nextTeamId: string | null) => {
       setRetargeting(true);
+      setRetargetError(null);
+      // This tab has already chosen its screen. Without this, landing in a team
+      // that has a report nobody closed would swap the plan for that old run.
+      restored.current = true;
       if (nextTeamId) {
         const switched = await gqlAction(SWITCH_TEAM, { teamId: nextTeamId });
         if (!switched.ok) {
@@ -491,7 +548,9 @@ export function MigrationWizard({
       );
       setRetargeting(false);
       if (!again.ok) {
-        toast.error(again.error);
+        // Kept on the card, not toasted: the plan on screen now answers about the
+        // team it was read in, and a toast is gone before that matters.
+        setRetargetError(again.error);
         return;
       }
       if (!again.data) return;
@@ -519,13 +578,14 @@ export function MigrationWizard({
           projectId: p.sourceId,
           projectName: p.name,
           serviceId: svc.sourceId,
-          serverId: placements[svc.sourceId]?.serverId ?? null,
-          buildServerId: placements[svc.sourceId]?.buildServerId ?? null,
+          serverId: landing.placements[svc.sourceId]?.serverId ?? null,
+          buildServerId:
+            landing.placements[svc.sourceId]?.buildServerId ?? null,
           // Absent, null and a number are three different instructions - see the
           // input's own description. Spread so an untouched service stays absent.
-          ...(placements[svc.sourceId] &&
-          "exposedPort" in placements[svc.sourceId]!
-            ? { exposedPort: placements[svc.sourceId]!.exposedPort }
+          ...(landing.placements[svc.sourceId] &&
+          "exposedPort" in landing.placements[svc.sourceId]!
+            ? { exposedPort: landing.placements[svc.sourceId]!.exposedPort }
             : {}),
         })),
     );
@@ -543,7 +603,7 @@ export function MigrationWizard({
         input: connectInput,
         orgName: plan.orgName,
         targets,
-        servers: Object.entries(serverMap)
+        servers: Object.entries(landing.servers)
           .filter(([, to]) => to)
           .map(([from, to]) => ({ from, to })),
       },
@@ -762,7 +822,6 @@ export function MigrationWizard({
    * Arriving on a run already in progress - or on one whose report nobody has
    * closed yet - is the SAME screen the person left, not a new kind of screen.
    */
-  const restored = React.useRef(false);
   React.useEffect(() => {
     if (restored.current || !resumable) return;
     restored.current = true;
@@ -1014,12 +1073,13 @@ export function MigrationWizard({
                     teamAvatarUrl={teamAvatarUrl}
                     targetTeams={targetTeams}
                     retargeting={retargeting}
+                    retargetError={retargetError}
                     onRetarget={(id) => void retargetTeam(id)}
                     chosen={chosen}
                     setChosen={setChosen}
                     servers={servers}
                     buildServers={buildServers}
-                    placements={placements}
+                    placements={landing.placements}
                     setPlacements={setPlacements}
                     canExposePorts={canExposePorts}
                     isInstanceAdmin={isInstanceAdmin}

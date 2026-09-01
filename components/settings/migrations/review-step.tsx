@@ -288,6 +288,7 @@ export function ReviewStep({
   teamAvatarUrl,
   targetTeams,
   retargeting,
+  retargetError,
   onRetarget,
   chosen,
   setChosen,
@@ -311,6 +312,8 @@ export function ReviewStep({
   targetTeams: TargetTeam[];
   /** A team change is in flight: the plan is being read again under it. */
   retargeting: boolean;
+  /** Why the last re-read failed - the plan below answers about another team. */
+  retargetError: string | null;
   /** Null when the team is already switched, as creating one does. */
   onRetarget: (teamId: string | null) => void;
   chosen: Set<string>;
@@ -431,6 +434,15 @@ export function ReviewStep({
               <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" />
                 Re-checking what is already there
+              </p>
+            ) : retargetError ? (
+              <p className="mt-1 flex items-start gap-1.5 text-sm text-warning">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                <span className="min-w-0 text-muted-foreground">
+                  {retargetError} What is marked &ldquo;Already here&rdquo;
+                  below is another team&rsquo;s answer - pick this team again to
+                  re-check.
+                </span>
               </p>
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">
