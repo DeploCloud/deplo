@@ -78,7 +78,6 @@ import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
 import type { DestinationOption } from "@/lib/data/destinations";
 import type { BackupRun } from "@/lib/types";
-import { TimeAgo } from "@/components/shared/time-ago";
 
 type Destination = DestinationOption;
 
@@ -1077,7 +1076,7 @@ function ScheduleRow({
         ) : (
           <span className="flex items-center gap-1.5 text-xs">
             <StatusDot status={schedule.lastStatus} />
-            {schedule.lastRunAt ? <TimeAgo at={schedule.lastRunAt} /> : ""}
+            {schedule.lastRunAt ? timeAgo(schedule.lastRunAt) : ""}
           </span>
         )}
       </TableCell>
@@ -1394,7 +1393,7 @@ function RunRow({
             <StatusDot status={run.status} />
           )}
           <span className="text-sm font-medium">
-            {running ? "Running" : <TimeAgo at={run.startedAt} />}
+            {running ? "Running" : timeAgo(run.startedAt)}
           </span>
           {/* The green dot already says "success"; the word is only worth room
               when the answer is anything else. */}

@@ -46,9 +46,8 @@ import { CommitLink } from "@/components/apps/commit-link";
 import { DeploymentActions } from "@/components/apps/deployment-actions";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction, gqlSubscribe } from "@/lib/graphql-client";
-import { cn } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 import type { DeploymentStatus } from "@/lib/types";
-import { TimeAgo } from "@/components/shared/time-ago";
 
 const DELETE_DEPLOYMENTS = `mutation ($ids: [ID!]!) { deleteDeployments(ids: $ids) }`;
 const DELETE_ALL = `mutation ($appId: ID, $serverId: ID, $status: String) { deleteAllDeployments(appId: $appId, serverId: $serverId, status: $status) }`;
@@ -1110,7 +1109,7 @@ export function DeploymentsTable({
 
                     <TableCell>
                       <p className="whitespace-nowrap text-foreground">
-                        <TimeAgo at={d.createdAt} />
+                        {timeAgo(d.createdAt)}
                       </p>
                       <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
                         <span>by</span>

@@ -15,9 +15,8 @@ import {
 import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusDot } from "@/components/shared/status-badge";
-import { formatBuildDuration, formatBytes } from "@/lib/utils";
+import { formatBuildDuration, formatBytes, timeAgo } from "@/lib/utils";
 import type { CleanupRunDTO } from "@/lib/data/docker-cleanup";
-import { TimeAgo } from "@/components/shared/time-ago";
 
 const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
   running: "Running",
@@ -110,7 +109,7 @@ export function CleanupHistory({
                       className="whitespace-nowrap text-muted-foreground"
                       title={run.startedAt}
                     >
-                      <TimeAgo at={run.startedAt} />
+                      {timeAgo(run.startedAt)}
                     </TableCell>
                     {/**
                      * The failure verbatim - it is the agent's own message, and it is what tells an

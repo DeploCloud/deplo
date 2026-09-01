@@ -24,7 +24,6 @@ import {
   passkeysSupported,
 } from "@/lib/passkey-client";
 import type { PasskeyDTO, PasskeyKind } from "@/lib/data/passkeys";
-import { useNow } from "@/components/shared/time-ago";
 
 const START = /* GraphQL */ `
   mutation StartPasskeyRegistration($password: String!) {
@@ -84,7 +83,6 @@ export function PasskeysCard({
   addOpen: boolean;
   onAddOpenChange: (open: boolean) => void;
 }) {
-  useNow();
   const router = useRouter();
   const blocked = passkeyBlockedReason(panelUrl, rpId);
 

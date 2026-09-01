@@ -30,8 +30,7 @@ import {
   useDestinationActions,
   type DestinationCardView,
 } from "@/components/storage/destination-actions";
-import { cn } from "@/lib/utils";
-import { TimeAgo } from "@/components/shared/time-ago";
+import { cn, timeAgo } from "@/lib/utils";
 
 export function DestinationsTable({
   destinations,
@@ -165,7 +164,7 @@ function DestinationRow({
         <DestinationSpaceCell dest={dest} />
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {dest.lastTestAt ? <TimeAgo at={dest.lastTestAt} /> : "Never"}
+        {dest.lastTestAt ? timeAgo(dest.lastTestAt) : "Never"}
       </TableCell>
       <TableCell className="text-right">
         {menu}

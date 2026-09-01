@@ -43,8 +43,7 @@ import { useLiveApp } from "@/components/apps/app-live-status";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppPreviewDTO } from "@/lib/data/previews";
-import { gitProfileUrl } from "@/lib/utils";
-import { TimeAgo } from "@/components/shared/time-ago";
+import { gitProfileUrl, timeAgo } from "@/lib/utils";
 
 /**
  * The pull request previews of one app.
@@ -223,7 +222,7 @@ export function PreviewsTable({
                   </TableCell>
 
                   <TableCell className="text-xs text-muted-foreground">
-                    <TimeAgo at={p.updatedAt} />
+                    {timeAgo(p.updatedAt)}
                   </TableCell>
 
                   <TableCell className="text-right">

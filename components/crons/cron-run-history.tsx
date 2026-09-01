@@ -11,7 +11,6 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { CronRunDTO } from "@/lib/data/crons";
-import { useNow } from "@/components/shared/time-ago";
 
 /**
  * One job's runs, fetched when its row expands. Client-fetched: loading every
@@ -86,7 +85,6 @@ function RunRow({
   canManage: boolean;
   onChanged: () => void;
 }) {
-  useNow();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();

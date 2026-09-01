@@ -5,11 +5,10 @@ import { DatabaseConnectionString } from "@/components/storage/database-connecti
 import { DatabaseNetworkingCard } from "@/components/storage/database-networking-card";
 import { DatabaseHealthStat } from "@/components/storage/database-health-stat";
 import { BackupsStat } from "@/components/storage/database-stats";
-
+import { timeAgoShort } from "@/lib/utils";
 import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
 import type { DatabaseBackupSummary } from "@/lib/data/backups";
 import type { DatabaseDTO } from "@/lib/data/databases";
-import { TimeAgo } from "@/components/shared/time-ago";
 
 /**
  * The database Overview: what it is and how to reach it, side by side, with the
@@ -85,9 +84,7 @@ export function DatabaseOverview({
                   {serverName}
                 </span>
               </Field>
-              <Field label="Created">
-                <TimeAgo at={db.createdAt} short />
-              </Field>
+              <Field label="Created">{timeAgoShort(db.createdAt)}</Field>
             </dl>
           </CardContent>
         </Card>

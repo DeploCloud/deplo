@@ -24,7 +24,6 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import { gql, gqlAction } from "@/lib/graphql-client";
-import { TimeAgo } from "@/components/shared/time-ago";
 
 type BackupRunLite = {
   id: string;
@@ -163,9 +162,7 @@ function RestoreRunRow({
 
   return (
     <TableRow>
-      <TableCell className="text-sm">
-        <TimeAgo at={run.startedAt} />
-      </TableCell>
+      <TableCell className="text-sm">{timeAgo(run.startedAt)}</TableCell>
       <TableCell className="text-muted-foreground">
         {formatBytes(run.sizeBytes)}
       </TableCell>

@@ -38,7 +38,6 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 import type { GlobalUserDTO, RegistrationLinkDTO } from "@/lib/data/members";
-import { useNow } from "@/components/shared/time-ago";
 
 export function UsersPanel({
   users,
@@ -139,7 +138,6 @@ function UserRow({
   /** Arrived here linked straight at this account - open its editor. */
   defaultOpen?: boolean;
 }) {
-  useNow();
   const router = useRouter();
   const [open, setOpen] = React.useState(defaultOpen);
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);

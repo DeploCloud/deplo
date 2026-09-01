@@ -7,7 +7,6 @@ import { Upload, FileArchive, Loader2, CheckCircle2 } from "lucide-react";
 import { cn, formatBytes, timeAgo } from "@/lib/utils";
 import { MAX_UPLOAD_BYTES, ACCEPT_ATTR } from "@/lib/deploy/upload-shared";
 import { validateArchive, uploadArchive } from "@/lib/deploy/upload-client";
-import { useNow } from "@/components/shared/time-ago";
 
 export interface CurrentUpload {
   filename: string;
@@ -36,7 +35,6 @@ export function UploadInput({
    *  another page) so the chip shows it too. */
   file?: File | null;
 }) {
-  useNow();
   const router = useRouter();
   const deferred = typeof onSelect === "function";
   const inputRef = React.useRef<HTMLInputElement>(null);

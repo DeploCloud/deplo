@@ -32,9 +32,9 @@ import {
   gitProfileUrl,
   repoCommitUrl,
   repoCredentialMissing,
+  timeAgoShort,
 } from "@/lib/utils";
 import { titleClass } from "@/components/shared/page-header";
-import { TimeAgo } from "@/components/shared/time-ago";
 
 export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
   const { slug } = await props.params;
@@ -110,7 +110,7 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
                 <div>
                   <p className="text-xs text-muted-foreground">Created</p>
                   <p className="flex items-center gap-1.5 text-sm">
-                    <TimeAgo at={prod.createdAt} short /> by
+                    {timeAgoShort(prod.createdAt)} by
                     <DeploymentCreator
                       creator={prod.creator}
                       creatorUser={prod.creatorUser}
@@ -274,7 +274,7 @@ export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
                   {formatBuildDuration(d.buildDurationMs)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  <TimeAgo at={d.createdAt} short />
+                  {timeAgoShort(d.createdAt)}
                 </span>
               </Link>
             ))}

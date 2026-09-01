@@ -4,11 +4,10 @@ import { Archive, HardDrive } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
-import { formatBytes, cn } from "@/lib/utils";
+import { formatBytes, timeAgoShort, cn } from "@/lib/utils";
 import type { DatabaseBackupSummary } from "@/lib/data/backups";
 import type { ContainerMetrics } from "@/lib/data/container-metrics";
 import type { DatabaseDTO } from "@/lib/data/databases";
-import { TimeAgo } from "@/components/shared/time-ago";
 
 /** One tile of the overview's bottom row. */
 export function StatCard({
@@ -106,7 +105,7 @@ export function BackupsStat({
         lastRunAt ? (
           <span className="flex items-center gap-1.5">
             {lastStatus && <StatusDot status={lastStatus} />}
-            <TimeAgo at={lastRunAt} short />
+            {timeAgoShort(lastRunAt)}
           </span>
         ) : schedules.length ? (
           "Never run"

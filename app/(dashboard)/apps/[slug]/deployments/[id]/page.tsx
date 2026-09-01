@@ -134,7 +134,7 @@ export default async function DeploymentDetailPage(
                 between was not rendered. */}
             <span className="flex items-center gap-1.5 text-sm">
               <span>
-                <TimeAgo at={deployment.createdAt} /> by
+                <TimeAgo at={deployment.createdAt} live /> by
               </span>
               <DeploymentCreator
                 creator={deployment.creator}

@@ -13,8 +13,7 @@ import {
   useBackupActions,
   type BackupActionProps,
 } from "@/components/storage/backup-actions";
-import { cn } from "@/lib/utils";
-import { TimeAgo } from "@/components/shared/time-ago";
+import { cn, timeAgo } from "@/lib/utils";
 
 export function BackupRow({
   backup,
@@ -72,7 +71,7 @@ export function BackupRow({
         ) : (
           <span className="flex items-center gap-1.5 text-xs">
             <StatusDot status={backup.lastStatus} />
-            {backup.lastRunAt ? <TimeAgo at={backup.lastRunAt} /> : ""}
+            {backup.lastRunAt ? timeAgo(backup.lastRunAt) : ""}
           </span>
         )}
       </TableCell>

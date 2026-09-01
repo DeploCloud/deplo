@@ -27,7 +27,6 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { RepoSearchGraphic } from "@/components/apps/repo-search-graphic";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
-import { TimeAgo } from "@/components/shared/time-ago";
 
 /** One repository as every provider's listing returns it. */
 export interface RepoSummary {
@@ -423,7 +422,7 @@ export function RepoBrowser({
                 )}
                 {repo.updatedAt && (
                   <span className="shrink-0 text-[11px] text-muted-foreground">
-                    <TimeAgo at={repo.updatedAt} />
+                    {timeAgo(repo.updatedAt)}
                   </span>
                 )}
                 {isSelected && (

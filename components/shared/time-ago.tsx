@@ -1,39 +1,29 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import * as React from "react";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { subscribeToTick, tickNow } from "@/lib/tick";
-import { timeAgo, timeAgoShort } from "@/lib/utils";
-
-/**
- * The reader's clock, ticking: ONE interval for the page however many timestamps
- * sit on it, and none at all once the last one unmounts.
- */
-export function useNow(): number {
-  return useSyncExternalStore(subscribeToTick, tickNow, () => 0);
-}
+import { timeAgo } from "@/lib/utils";
 
 /**
  * A relative timestamp, with the absolute one in its tooltip. The string is
  * computed twice - server render, then hydration - so a row seconds old renders
  * differently in each; `suppressHydrationWarning` is what tells React that gap is
  * the point, not a mismatch to regenerate the tree over.
+ *
+ * `live` re-counts every second, for a page watched while the thing it dates is
+ * still happening. Everywhere else the stamp is written once and a reload moves it.
  */
-export function TimeAgo({
-  at,
-  short = false,
-  className,
-}: {
-  at: string | number;
-  short?: boolean;
-  className?: string;
-}) {
-  useNow();
+export function TimeAgo({ at, live = false }: { at: string; live?: boolean }) {
+  const [, tick] = React.useState(0);
+  React.useEffect(() => {
+    if (!live) return;
+    const timer = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, [live]);
+
   return (
     <SimpleTooltip content={new Date(at).toLocaleString()}>
-      <span className={className} suppressHydrationWarning>
-        {short ? timeAgoShort(at) : timeAgo(at)}
-      </span>
+      <span suppressHydrationWarning>{timeAgo(at)}</span>
     </SimpleTooltip>
   );
 }
