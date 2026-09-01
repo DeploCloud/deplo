@@ -103,9 +103,7 @@ export function SidebarTips(ctx: SidebarTipContext) {
         <Icon className="size-4 shrink-0" />
         <span className="text-sm font-medium">{tip.title}</span>
       </div>
-      <p className="mt-1 text-xs leading-snug text-muted-foreground">
-        {tip.description}
-      </p>
+      <p className="mt-1 text-xs text-muted-foreground">{tip.description}</p>
       {tip.cta && (
         <Button variant="secondary" size="sm" asChild className="mt-2.5 w-full">
           <Link href={tip.cta.href}>{tip.cta.label}</Link>
