@@ -21,8 +21,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { docsUrl } from "@/lib/docs";
+import { DISCORD_URL } from "@/lib/links";
 
-const DISCORD_URL = "https://ds.deplo.build";
 const SHOW_MS = 4000;
 
 /**

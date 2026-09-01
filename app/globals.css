@@ -695,7 +695,7 @@ label:hover .deplo-gear,
 @keyframes deplo-intro-in {
   from {
     opacity: 0;
-    filter: blur(14px);
+    filter: blur(16px);
     transform: scale(0);
   }
   to {
@@ -706,10 +706,15 @@ label:hover .deplo-gear,
 }
 
 @keyframes deplo-intro-out {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
   to {
     opacity: 0;
-    filter: blur(10px);
-    transform: scale(1.06);
+    filter: blur(18px);
+    transform: scale(1.35);
   }
 }
 
@@ -733,16 +738,18 @@ label:hover .deplo-gear,
   }
 }
 
+/* One curve for the whole intro: it decelerates the whole way, so the mark
+ * grows and then leaves without a pop at either end. */
 .animate-intro-in {
-  animation: deplo-intro-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: deplo-intro-in 1.05s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 .animate-intro-out {
-  animation: deplo-intro-out 0.4s ease-in both;
+  animation: deplo-intro-out 0.7s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 .animate-soft-in {
-  animation: deplo-soft-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: deplo-soft-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* 0.16s is not a taste: it is `OUT_MS` in components/apps/wizard/wizard-card.tsx. */

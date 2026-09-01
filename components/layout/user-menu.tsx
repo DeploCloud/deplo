@@ -21,11 +21,9 @@ import {
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { DiscordIcon, GitHubIcon } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
+import { DISCORD_URL, GITHUB_URL } from "@/lib/links";
 import { docsUrl } from "@/lib/docs";
 import type { PublicUser } from "@/lib/types";
-
-const DISCORD_URL = "https://ds.deplo.build";
-const GITHUB_URL = "https://github.com/DeploCloud/deplo";
 
 /** The account's own settings - the same three the Settings sidebar groups under "Account". */
 const ACCOUNT_LINKS = [
