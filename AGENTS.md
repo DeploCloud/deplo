@@ -266,10 +266,10 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   `databases/[id]/attach` (SSE siblings of the app routes - reuse `lib/logs/session.ts` +
   `lib/attach/session.ts`), `github/webhook|callback|setup`, `auth/[...all]`, `agent/bootstrap`,
   `health`, `node-versions`, `railpack-versions`, `registry/images`.
-  `avatar/[preset]/[seed]` is REST and **unauthenticated**: it renders a deterministic
-  Pixelbot face from the path and reads nothing, and onboarding shows the picker before
-  an account exists. The preset is one of DiceBear's own option sets for that ONE style,
-  never a second style.
+  `avatar/[style]/[preset]/[seed]` is REST and **unauthenticated**: it renders a
+  deterministic picture from the path and reads nothing, and onboarding shows the picker
+  before an account exists. Two styles only (`pixelbot`, `initials`), and a preset is one
+  of DiceBear's own option sets for that style - never a third style, never a free option.
   **Two exceptions to the cookie rule**, both authenticating with an API token
   (`Authorization: Bearer deplo_…`) and both re-entering the normal gates via `runWithIdentity`,
   never bypass them with a hand-rolled capability check:

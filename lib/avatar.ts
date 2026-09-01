@@ -8,12 +8,12 @@ import { instanceSettings } from "./db/schema/control-plane";
 import { sha256Hex } from "./crypto";
 import {
   DEFAULT_PIXELBOT_PRESET,
+  facePath,
+  faceParts,
   GRAVATAR_ORIGINS,
   GRAVATAR_VALUE,
   INITIALS_VALUE,
   isValidAvatarValue,
-  pixelbotParts,
-  pixelbotPath,
 } from "./apps/avatar-shared";
 
 /**
@@ -71,10 +71,10 @@ export async function avatarResolver(): Promise<
   return (row) => {
     const value = row.image?.trim();
     const generated = row.userId
-      ? pixelbotPath(DEFAULT_PIXELBOT_PRESET, row.userId)
+      ? facePath("pixelbot", DEFAULT_PIXELBOT_PRESET, row.userId)
       : null;
-    const parts = pixelbotParts(value);
-    if (parts) return pixelbotPath(parts.preset, parts.seed);
+    const parts = faceParts(value);
+    if (parts) return facePath(parts.style, parts.preset, parts.seed);
     if (value === INITIALS_VALUE) return null;
     if (value && value !== GRAVATAR_VALUE && isValidAvatarValue(value))
       return value;

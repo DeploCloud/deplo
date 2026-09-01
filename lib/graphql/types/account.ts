@@ -34,7 +34,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { loggedIn: true },
     description:
-      "Set the current user's picture SOURCE: a base64 image data-URI (png/jpeg/webp, downscaled to 256x256 by the browser as a convenience - the size and grammar are enforced here), `pixelbot:<preset>:<seed>` for a generated face, `gravatar`, or `initials` for the monogram. Null or empty clears the choice, which falls back to their Gravatar (when the instance allows it) and then to a face seeded with their id. Returns true.",
+      "Set the current user's picture SOURCE: a base64 image data-URI (png/jpeg/webp, downscaled to 256x256 by the browser as a convenience - the size and grammar are enforced here), `<style>:<preset>:<seed>` for a generated picture (`pixelbot` faces, `initials` monograms), `gravatar`, or `initials` for the monogram. Null or empty clears the choice, which falls back to their Gravatar (when the instance allows it) and then to a face seeded with their id. Returns true.",
     args: { image: t.arg.string({ required: false }) },
     resolve: async (_r, { image }) => {
       await updateMyAvatar(image ?? null);

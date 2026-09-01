@@ -60,34 +60,52 @@ export function isValidAvatarValue(value: string): boolean {
  * uploaded data-URI or one of these markers. No value at all is the generated
  * face, in the default look.
  */
-export const PIXELBOT_PREFIX = "pixelbot:";
 export const GRAVATAR_VALUE = "gravatar";
+/** The plain monogram - the one drawn by the app itself, not by DiceBear. */
 export const INITIALS_VALUE = "initials";
 
 /**
- * The looks the picker offers: DiceBear's own Pixelbot presets, which are option
- * sets over the one style - never a second style.
+ * The two DiceBear styles a person can wear, each with the style's own presets -
+ * option sets over that one style, never a third style.
  * https://www.dicebear.com/styles/pixelbot/presets/
  */
-export const PIXELBOT_PRESETS = [
-  { id: "default", label: "Default" },
-  { id: "terminal", label: "Terminal" },
-  { id: "amber", label: "Amber" },
-  { id: "greyscale", label: "Greyscale" },
-  { id: "duotone", label: "Duotone" },
-  { id: "electric", label: "Electric" },
-  { id: "cool", label: "Cool" },
-  { id: "warm", label: "Warm" },
-  { id: "sunrise", label: "Sunrise" },
-] as const;
+export const AVATAR_STYLES = {
+  pixelbot: [
+    { id: "default", label: "Default" },
+    { id: "terminal", label: "Terminal" },
+    { id: "amber", label: "Amber" },
+    { id: "greyscale", label: "Greyscale" },
+    { id: "duotone", label: "Duotone" },
+    { id: "electric", label: "Electric" },
+    { id: "cool", label: "Cool" },
+    { id: "warm", label: "Warm" },
+    { id: "sunrise", label: "Sunrise" },
+  ],
+  initials: [
+    { id: "electric", label: "Electric" },
+    { id: "greyscale", label: "Greyscale" },
+    { id: "sunrise", label: "Sunrise" },
+    { id: "duotone", label: "Duotone" },
+    { id: "bold-pop", label: "Bold" },
+    { id: "sepia", label: "Sepia" },
+  ],
+} as const;
 
-export type PixelbotPreset = (typeof PIXELBOT_PRESETS)[number]["id"];
+export type AvatarStyle = keyof typeof AVATAR_STYLES;
+export const PIXELBOT_PRESETS = AVATAR_STYLES.pixelbot;
+export const INITIALS_PRESETS = AVATAR_STYLES.initials;
 
 /** What everyone wears until they choose. */
-export const DEFAULT_PIXELBOT_PRESET: PixelbotPreset = "default";
+export const DEFAULT_PIXELBOT_PRESET = "default";
+/** What the initials row leads with. */
+export const DEFAULT_INITIALS_PRESET = "electric";
 
-export function isValidPixelbotPreset(value: string): value is PixelbotPreset {
-  return PIXELBOT_PRESETS.some((p) => p.id === value);
+export function isValidAvatarStyle(value: string): value is AvatarStyle {
+  return value === "pixelbot" || value === "initials";
+}
+
+export function isValidPreset(style: AvatarStyle, preset: string): boolean {
+  return AVATAR_STYLES[style].some((p) => p.id === preset);
 }
 
 /** The faces every look is offered in. Fixed, not random: the tile you picked is
@@ -101,7 +119,7 @@ export const PIXELBOT_SEEDS = [
   "zinc",
 ] as const;
 
-/** How many faces a preset's row shows. */
+/** How many faces a look's row shows. */
 export const PIXELBOT_ROW = 6;
 
 /** The row for one look: their own face first, then the fixed ones. Deduped, so
@@ -113,28 +131,37 @@ export function pixelbotRowSeeds(ownSeed: string): string[] {
   );
 }
 
-/** What a seed may look like: it lands in a URL path and in a render. */
-const PIXELBOT_SEED_RE = /^[A-Za-z0-9_-]{1,64}$/;
+/** What a seed may look like: it lands in a URL path and in a render. For the
+ *  initials style the seed IS the letters, which is why it may be two of them. */
+const AVATAR_SEED_RE = /^[A-Za-z0-9_?-]{1,64}$/;
 
-export function isValidPixelbotSeed(seed: string): boolean {
-  return PIXELBOT_SEED_RE.test(seed);
+export function isValidAvatarSeed(seed: string): boolean {
+  return AVATAR_SEED_RE.test(seed);
 }
 
-/** Where a generated face is served from. Same origin, so the CSP already allows
- *  it and the renderer never reaches the browser bundle. */
-export function pixelbotPath(preset: PixelbotPreset, seed: string): string {
-  return `/api/avatar/${preset}/${seed}.svg`;
+/** Where a generated picture is served from. Same origin, so the CSP already
+ *  allows it and the renderer never reaches the browser bundle. */
+export function facePath(
+  style: AvatarStyle,
+  preset: string,
+  seed: string,
+): string {
+  return `/api/avatar/${style}/${preset}/${seed}.svg`;
 }
 
-/** The look and the face inside a stored `pixelbot:<preset>:<seed>` marker. */
-export function pixelbotParts(
+/** The style, the look and the face inside a stored `<style>:<preset>:<seed>`. */
+export function faceParts(
   value: string | null | undefined,
-): { preset: PixelbotPreset; seed: string } | null {
-  if (!value?.startsWith(PIXELBOT_PREFIX)) return null;
-  const [preset, ...rest] = value.slice(PIXELBOT_PREFIX.length).split(":");
+): { style: AvatarStyle; preset: string; seed: string } | null {
+  if (!value) return null;
+  const [style, preset, ...rest] = value.split(":");
   const seed = rest.join(":");
-  return preset && isValidPixelbotPreset(preset) && isValidPixelbotSeed(seed)
-    ? { preset, seed }
+  return style &&
+    preset &&
+    isValidAvatarStyle(style) &&
+    isValidPreset(style, preset) &&
+    isValidAvatarSeed(seed)
+    ? { style, preset, seed }
     : null;
 }
 
@@ -142,7 +169,7 @@ export function pixelbotParts(
  *  flag says - the flag decides whether it is HONOURED, not whether it is legal. */
 export function isValidUserAvatarValue(value: string): boolean {
   if (value === GRAVATAR_VALUE || value === INITIALS_VALUE) return true;
-  if (pixelbotParts(value)) return true;
+  if (faceParts(value)) return true;
   return isValidAvatarValue(value);
 }
 
@@ -155,18 +182,18 @@ export function avatarPreviewUrl(
   value: string | null | undefined,
   defaultSeed?: string | null,
 ): string | null {
-  const parts = pixelbotParts(value);
-  if (parts) return pixelbotPath(parts.preset, parts.seed);
+  const parts = faceParts(value);
+  if (parts) return facePath(parts.style, parts.preset, parts.seed);
   if (value && isValidAvatarValue(value)) return value;
   if (!value && defaultSeed)
-    return pixelbotPath(DEFAULT_PIXELBOT_PRESET, defaultSeed);
+    return facePath("pixelbot", DEFAULT_PIXELBOT_PRESET, defaultSeed);
   return null;
 }
 
 /** Which source a resolved `avatarUrl` came from, so the picker can mark the
  *  one in use without a second field on every DTO. */
 export type AvatarChoice =
-  | { kind: "generated"; preset: PixelbotPreset; seed: string }
+  | { kind: "generated"; style: AvatarStyle; preset: string; seed: string }
   | { kind: "uploaded" }
   | { kind: "gravatar" }
   | { kind: "initials" };
@@ -176,7 +203,7 @@ export type AvatarChoice =
 export function avatarChoiceFromValue(
   value: string | null | undefined,
 ): AvatarChoice {
-  const parts = pixelbotParts(value);
+  const parts = faceParts(value);
   if (parts) return { kind: "generated", ...parts };
   if (value === GRAVATAR_VALUE) return { kind: "gravatar" };
   if (value && isValidAvatarValue(value)) return { kind: "uploaded" };
@@ -190,11 +217,10 @@ export function avatarChoiceFromUrl(
   if (url.startsWith("data:")) return { kind: "uploaded" };
   if (GRAVATAR_ORIGINS.some((o) => url.startsWith(o)))
     return { kind: "gravatar" };
-  const [preset, file] = url.startsWith("/api/avatar/")
-    ? url.slice("/api/avatar/".length).split("/")
-    : [];
-  const seed = file?.replace(/\.svg$/, "") ?? "";
-  return preset && isValidPixelbotPreset(preset) && isValidPixelbotSeed(seed)
-    ? { kind: "generated", preset, seed }
-    : { kind: "initials" };
+  if (!url.startsWith("/api/avatar/")) return { kind: "initials" };
+  const [style, preset, file] = url.slice("/api/avatar/".length).split("/");
+  const parts = faceParts(
+    `${style}:${preset}:${(file ?? "").replace(/\.svg$/, "")}`,
+  );
+  return parts ? { kind: "generated", ...parts } : { kind: "initials" };
 }

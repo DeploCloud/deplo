@@ -13,7 +13,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserAvatar } from "@/components/shared/user-avatar";
+import { avatarInitials, UserAvatar } from "@/components/shared/user-avatar";
 import { AvatarPicker } from "@/components/shared/avatar-picker";
 import { avatarChoiceFromUrl } from "@/lib/apps/avatar-shared";
 import { AccountGraphic } from "@/components/settings/account-graphic";
@@ -133,6 +133,7 @@ function ProfileCard({
             // Always their own id: seeding off what they last picked would
             // reshuffle the row under the click that picked it.
             seed: user.id,
+            letters: avatarInitials(user.name, user.username),
             gravatar,
             monogram: (
               <UserAvatar

@@ -8,7 +8,11 @@ import {
   avatarChoiceFromValue,
   avatarPreviewUrl,
 } from "@/lib/apps/avatar-shared";
-import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
+import {
+  avatarInitials,
+  TeamAvatar,
+  UserAvatar,
+} from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Field, fieldControl, invalidField } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
@@ -195,6 +199,7 @@ export function AccountStep({
           sources={{
             choice: pictureChoice,
             seed: handle || "deplo",
+            letters: avatarInitials(draft.name, handle),
             gravatar,
             monogram: (
               <UserAvatar
