@@ -240,6 +240,20 @@ export async function getDeployment(
 }
 
 /**
+ * Whether this is the app's first build ever - nothing older exists for it.
+ * Takes the row {@link getDeployment} already cleared, like `canRollbackTo`.
+ */
+export async function isFirstDeployment(dep: Deployment): Promise<boolean> {
+  const [oldest] = await getDb()
+    .select({ id: deploymentsTable.id })
+    .from(deploymentsTable)
+    .where(eq(deploymentsTable.appId, dep.appId))
+    .orderBy(asc(deploymentsTable.createdAt), asc(deploymentsTable.seq))
+    .limit(1);
+  return oldest?.id === dep.id;
+}
+
+/**
  * How far back the single-row check reads before it gives up.
  */
 const ROLLBACK_SCAN_LIMIT = 200;

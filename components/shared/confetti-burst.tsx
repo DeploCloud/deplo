@@ -6,7 +6,7 @@ const CONFETTI = 12;
 
 /**
  * The one-shot celebration for something that actually happened - an agent
- * connecting, a migration landing, a first deploy starting.
+ * connecting, a migration landing, a first deploy landing.
  */
 export function ConfettiBurst({
   className,

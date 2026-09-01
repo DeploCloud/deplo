@@ -16,6 +16,7 @@ import {
   getDeployment,
   getLogs,
   getQueuePosition,
+  isFirstDeployment,
 } from "@/lib/data/deployments";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
 import { RollbackButton } from "@/components/apps/rollback-deployment";
+import { FirstDeployCelebration } from "@/components/apps/first-deploy-celebration";
 
 export const metadata = { title: "Deployment" };
 
@@ -54,6 +56,8 @@ export default async function DeploymentDetailPage(
   // so the "in queue" banner paints its position without waiting on the first poll.
   const queuePosition = await getQueuePosition(id);
   const prUrl = githubPullRequestUrl(project.repo, deployment.prNumber);
+  // Confetti is for the app's very first build, and only when it lands.
+  const firstEver = await isFirstDeployment(deployment);
 
   return (
     <div className="space-y-6">
@@ -188,6 +192,8 @@ export default async function DeploymentDetailPage(
           />
         )}
       </div>
+
+      {firstEver && <FirstDeployCelebration status={deployment.status} />}
     </div>
   );
 }
