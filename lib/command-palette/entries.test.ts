@@ -8,22 +8,18 @@ import { NAV, SETTINGS_NAV, canSee } from "@/components/layout/nav-config";
 import { ALL_CAPABILITIES } from "@/lib/types";
 import { SEARCH_QUERY } from "./search-query";
 import {
-  APP_ACTIONS,
   teamPageEntries,
   countOwnedPages,
   matchOwnedPages,
   ownedPageEntries,
-  DB_ACTIONS,
   PALETTE_APP_FLAGS,
   PALETTE_DB_FLAGS,
-  appFrameEntries,
-  dbFrameEntries,
+  appPageEntries,
+  dbPageEntries,
   matchEntries,
   staticEntries,
   type Entry,
 } from "./entries";
-
-const APP = { id: "prj_1", slug: "blog", name: "Blog" };
 
 test("every nav destination is in the catalogue, and no way-out row is", () => {
   const entries = staticEntries();
@@ -33,10 +29,7 @@ test("every nav destination is in the catalogue, and no way-out row is", () => {
       if (item.back || item.disabledReason) {
         assert.ok(
           !entries.some(
-            (e) =>
-              e.run.kind === "href" &&
-              e.id === `nav:${item.href}` &&
-              e.label === item.label,
+            (e) => e.id === `nav:${item.href}` && e.label === item.label,
           ),
           `"${item.label}" is a way out of a menu, not a destination`,
         );
@@ -63,11 +56,8 @@ test("labels and hints come from nav-config, never rewritten", () => {
 test("ids are unique - cmdk selects by value, a duplicate breaks Enter", () => {
   for (const [what, entries] of [
     ["static", staticEntries()],
-    ["app frame", appFrameEntries(APP)],
-    [
-      "database frame",
-      dbFrameEntries({ id: "db_1", name: "Main", type: "postgres" }),
-    ],
+    ["app pages", appPageEntries("blog")],
+    ["database pages", dbPageEntries("db_1")],
   ] as [string, Entry[]][]) {
     const ids = entries.map((e) => e.id);
     assert.equal(new Set(ids).size, ids.length, `${what} has a duplicate id`);
@@ -111,35 +101,26 @@ test("matching prefers a label prefix, then a word, then the hint", () => {
   );
 });
 
-test("an app frame carries its actions and stays inside its own app", () => {
-  const entries = appFrameEntries(APP);
+test("an app's pages stay inside its own app", () => {
+  const entries = appPageEntries("blog");
   const labels = entries.map((e) => e.label);
-  for (const want of [
-    "Redeploy",
-    "Start",
-    "Stop",
-    "Reload",
-    "Overview",
-    "Logs",
-    "Settings",
-  ]) {
+  for (const want of ["Overview", "Logs", "Settings"]) {
     assert.ok(labels.includes(want), `missing "${want}"`);
   }
   for (const entry of entries) {
-    if (entry.run.kind !== "href") continue;
     assert.ok(
-      entry.run.href.startsWith("/apps/blog"),
-      `${entry.label} leaves the app: ${entry.run.href}`,
+      entry.href.startsWith("/apps/blog"),
+      `${entry.label} leaves the app: ${entry.href}`,
     );
   }
 });
 
 test("a feature switched off is not offered; switched on it is", () => {
-  const closed = appFrameEntries(APP).map((e) => e.label);
+  const closed = appPageEntries("blog").map((e) => e.label);
   assert.ok(!closed.includes("Console"), "console is a dead end while off");
   assert.ok(!closed.includes("Cron jobs"));
 
-  const open = appFrameEntries(APP, {
+  const open = appPageEntries("blog", {
     ...PALETTE_APP_FLAGS,
     running: true,
     consoleEnabled: true,
@@ -178,22 +159,6 @@ test("an app's own switches decide which of its pages are reachable", () => {
     [],
   ).map((e) => e.label);
   assert.ok(!unknown.includes("Console"));
-});
-
-test("every action names a real capability and a real mutation", () => {
-  const sdl = readFileSync("schema.graphql", "utf8");
-  for (const action of [...APP_ACTIONS, ...DB_ACTIONS]) {
-    assert.ok(
-      (ALL_CAPABILITIES as readonly string[]).includes(action.requires),
-      `${action.label}: ${action.requires} is not a capability`,
-    );
-    const name = action.query.match(/\{\s*(\w+)\(/)?.[1];
-    assert.ok(name, `${action.label}: no mutation in the document`);
-    assert.ok(
-      new RegExp(`^\\s{2}${name}\\(`, "m").test(sdl),
-      `${action.label}: \`${name}\` is not in schema.graphql`,
-    );
-  }
 });
 
 test("no two rows wear the same label", () => {
@@ -243,7 +208,7 @@ test("two words reach one app's page: 'Deplo variables'", () => {
     matchOwnedPages(OWNED, "Deplo variables").map((e) => [
       e.owner?.name,
       e.label,
-      e.run.kind === "href" ? e.run.href : "",
+      e.href,
     ]),
     [["deplo-web", "Environment", "/apps/deplo-web/environment"]],
   );
@@ -255,10 +220,7 @@ test("two words reach a page nav-config spells exactly", () => {
     hits.map((e) => [e.owner?.name, e.label]),
     [["GameWatcher", "Domains"]],
   );
-  assert.equal(
-    hits[0]?.run.kind === "href" ? hits[0].run.href : "",
-    "/apps/gamewatcher/domains",
-  );
+  assert.equal(hits[0]?.href, "/apps/gamewatcher/domains");
 });
 
 test("one word naming a page reaches every app's copy of it", () => {
@@ -297,7 +259,7 @@ test("the cap counts, and the total behind it is knowable", () => {
 test("a resource's own tab outranks the same name inside its settings", () => {
   const hits = matchOwnedPages(OWNED, "Deplo deployments");
   assert.deepEqual(
-    hits.map((e) => (e.run.kind === "href" ? e.run.href : "")),
+    hits.map((e) => e.href),
     ["/apps/deplo-web/deployments", "/apps/deplo-web/settings/deployments"],
   );
 });
@@ -338,36 +300,17 @@ test("an app is named by its slug too, as it is on the server", () => {
   );
 });
 
-test("only a resource's own verbs are coloured, and never red", () => {
-  const app = appFrameEntries({
-    id: "prj_1",
-    slug: "blog",
-    name: "Blog",
-    productionUrl: "https://blog.example.com",
-  });
-  const toned = new Map(
-    app.filter((e) => e.tone).map((e) => [e.label, e.tone]),
-  );
-  assert.deepEqual(Object.fromEntries(toned), {
-    Redeploy: "info",
-    Start: "success",
-    Stop: "warning",
-    Reload: "violet",
-  });
-
-  // Navigation, and the two verbs that touch nothing, stay muted.
-  for (const label of ["Overview", "Logs", "Copy URL", "Open in a new tab"]) {
-    assert.equal(
-      app.find((e) => e.label === label)?.tone,
-      undefined,
-      `"${label}" is not a control`,
-    );
-  }
-  // And so does every row outside a resource's own menu.
+test("the palette navigates and nothing else", () => {
+  // Every row is a destination: no Redeploy, no Copy URL, no group called
+  // "Actions" - and the wizard, which no nav row of its own points at.
+  const stat = staticEntries();
   assert.deepEqual(
-    staticEntries().filter((e) => e.tone),
+    stat.filter((e) => e.group === "Actions"),
     [],
   );
+  for (const row of [...stat, ...appPageEntries("blog"), ...dbPageEntries("d")])
+    assert.ok(row.href.startsWith("/"), `${row.label}: ${row.href}`);
+  assert.ok(stat.some((e) => e.label === "New app" && e.href === "/new"));
 });
 
 test("a row is findable by what its capability is called", () => {
@@ -402,10 +345,7 @@ test("two apps may share a display name - the same app in two environments", () 
     ],
     [],
   );
-  const which = (q: string) =>
-    matchOwnedPages(owned, q).map((e) =>
-      e.run.kind === "href" ? e.run.href : "",
-    );
+  const which = (q: string) => matchOwnedPages(owned, q).map((e) => e.href);
 
   assert.deepEqual(which("staging logs"), ["/apps/api-staging/logs"]);
   assert.deepEqual(which("prod logs"), ["/apps/api-prod/logs"]);
@@ -463,8 +403,8 @@ test("every gate names a capability that exists", () => {
   // and the capability's own words never join what the row can be found by.
   const rows = [
     ...staticEntries(),
-    ...appFrameEntries(APP),
-    ...dbFrameEntries({ id: "db_1", name: "Main", type: "postgres" }),
+    ...appPageEntries("blog"),
+    ...dbPageEntries("db_1"),
     ...teamPageEntries([{ id: "t2", name: "Acme" }], "t1"),
   ];
   const known = new Set<string>(ALL_CAPABILITIES);
@@ -485,16 +425,10 @@ test("a capability's words reach the row it gates, wherever the row is", () => {
   );
 });
 
-test("a database frame stays inside that database", () => {
-  const db = { id: "db_1", name: "Main", type: "postgres" as const };
-  const entries = dbFrameEntries(db);
+test("a database's pages stay inside that database", () => {
+  const entries = dbPageEntries("db_1");
   const labels = entries.map((e) => e.label);
 
-  assert.deepEqual(
-    entries.filter((e) => e.group === "Actions").map((e) => e.label),
-    ["Redeploy", "Restart"],
-    "the two verbs a database has - there is no Start/Stop for one",
-  );
   for (const want of [
     "Overview",
     "Logs",
@@ -505,36 +439,33 @@ test("a database frame stays inside that database", () => {
     assert.ok(labels.includes(want), `missing "${want}"`);
   }
   for (const entry of entries) {
-    if (entry.run.kind !== "href") continue;
     assert.ok(
-      entry.run.href.startsWith("/storage/databases/db_1"),
-      `${entry.label} leaves the database: ${entry.run.href}`,
+      entry.href.startsWith("/storage/databases/db_1"),
+      `${entry.label} leaves the database: ${entry.href}`,
     );
   }
   // Its Overview and its settings root are one page, listed once.
-  const hrefs = entries.flatMap((e) =>
-    e.run.kind === "href" ? [e.run.href] : [],
-  );
+  const hrefs = entries.map((e) => e.href);
   assert.equal(new Set(hrefs).size, hrefs.length, "no destination twice");
 });
 
 test("a database's switched-off tabs are not offered either", () => {
-  const off = dbFrameEntries({ id: "db_1", name: "Main", type: "postgres" });
+  const off = dbPageEntries("db_1");
   assert.ok(!off.map((e) => e.label).includes("Cron jobs"));
 
-  const on = dbFrameEntries(
-    { id: "db_1", name: "Main", type: "postgres" },
-    { ...PALETTE_DB_FLAGS, cronsEnabled: true },
-  );
+  const on = dbPageEntries("db_1", {
+    ...PALETTE_DB_FLAGS,
+    cronsEnabled: true,
+  });
   assert.ok(on.map((e) => e.label).includes("Cron jobs"));
 });
 
 test("folding never invents a word across two real ones", () => {
   // "access login" folded to one string reads "...accesSSLogin...", so the
   // Access page answered to "ssl". Certificates live on Domains, not there.
-  const frame = appFrameEntries(APP);
+  const pages = appPageEntries("blog");
   assert.deepEqual(
-    matchEntries(frame, "ssl").map((e) => e.label),
+    matchEntries(pages, "ssl").map((e) => e.label),
     ["Domains"],
     "and not Access, which only spelled it across a word boundary",
   );
@@ -545,9 +476,9 @@ test("folding never invents a word across two real ones", () => {
     {
       id: "x",
       label: "better-auth-docs",
-      icon: APP_ACTIONS[0]!.icon,
+      icon: staticEntries()[0]!.icon,
       group: "Apps",
-      run: { kind: "href" as const, href: "/x" },
+      href: "/x",
     },
   ];
   assert.equal(matchEntries(rows, "better auth").length, 1);
@@ -578,7 +509,7 @@ test("the words people type reach the page that answers them", () => {
   }
 
   // And the per-app tabs, which carry the slug in their href.
-  const tabs = appFrameEntries(APP);
+  const tabs = appPageEntries("blog");
   for (const typed of ["ssl", "https", "certificate"]) {
     assert.deepEqual(
       matchEntries(tabs, typed).map((e) => e.label),

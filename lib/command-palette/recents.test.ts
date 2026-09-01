@@ -11,7 +11,6 @@ const row = (id: string, label = id): Recent => ({
   id,
   label,
   href: `/${id}`,
-  kind: "nav",
 });
 
 /** A localStorage that behaves, for the happy path. */

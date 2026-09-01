@@ -1,18 +1,10 @@
 import type { ComponentType } from "react";
 import {
-  Copy,
-  Database,
-  ExternalLink,
   Fingerprint,
   KeyRound,
-  Play,
   Plus,
-  RefreshCw,
-  RotateCw,
   ShieldCheck,
   SlidersHorizontal,
-  Square,
-  Users,
 } from "lucide-react";
 
 import {
@@ -32,23 +24,12 @@ import { newAppHref } from "@/lib/overview-links";
 import type { Capability, DatabaseType } from "@/lib/types";
 
 /**
- * Everything the palette can reach that is NOT a search result: pages, settings
- * and the safe actions. Derived from nav-config wherever nav-config already
- * spells the label, so the two can never disagree.
+ * Every page the palette can reach that is NOT a search result. Derived from
+ * nav-config wherever nav-config already spells the label, so the two can never
+ * disagree. Every row is a destination: the palette navigates, it never acts.
  */
 
-/** What choosing a row does. */
-export type Run =
-  | { kind: "href"; href: string; newTab?: boolean }
-  | {
-      kind: "mutation";
-      query: string;
-      variables: Record<string, unknown>;
-      success: string;
-    }
-  | { kind: "copy"; text: string };
-
-/** The resource a page belongs to, when it is not a page of deplo itself. */
+/** The resource a page belongs to, when it is not a page of Deplo itself. */
 export type EntryOwner =
   | {
       kind: "app";
@@ -69,17 +50,11 @@ export interface Entry {
   keywords?: string;
   icon: ComponentType<{ className?: string }>;
   group: string;
-  run: Run;
-  /**
-   * Colours the glyph. Only the verbs that act on a running container carry
-   * one, and only inside that resource's own menu - so the colour means "this
-   * touches the thing", never decoration.
-   */
-  tone?: "info" | "success" | "warning" | "violet";
+  href: string;
   /**
    * Whose page this is. The row then wears the resource's own logo with
    * {@link Entry.icon} badged onto it, so "deplo-web's Variables" cannot be
-   * mistaken for deplo's own.
+   * mistaken for Deplo's own.
    */
   owner?: EntryOwner;
   /**
@@ -120,9 +95,8 @@ function fromSections(
 function byDestination(entries: Entry[]): Entry[] {
   const seen = new Set<string>();
   return entries.filter((entry) => {
-    if (entry.run.kind !== "href") return true;
-    if (seen.has(entry.run.href)) return false;
-    seen.add(entry.run.href);
+    if (seen.has(entry.href)) return false;
+    seen.add(entry.href);
     return true;
   });
 }
@@ -174,7 +148,7 @@ function toEntry(item: NavItem, group: string, idPrefix: string): Entry {
     keywords: keywordsFor(item.href),
     icon: item.icon,
     group,
-    run: { kind: "href", href: item.href },
+    href: item.href,
     requires: item.requires,
     requiresAny: item.requiresAny,
     requiresAdmin: item.requiresAdmin,
@@ -194,7 +168,7 @@ const SETTINGS_EXTRAS: Entry[] = [
     hint: "Account security",
     icon: KeyRound,
     group: "Settings",
-    run: { kind: "href", href: "/settings/security" },
+    href: "/settings/security",
   },
   {
     id: "setting:2fa",
@@ -203,7 +177,7 @@ const SETTINGS_EXTRAS: Entry[] = [
     hint: "Account security",
     icon: ShieldCheck,
     group: "Settings",
-    run: { kind: "href", href: "/settings/security" },
+    href: "/settings/security",
   },
   {
     id: "setting:passkeys",
@@ -212,7 +186,7 @@ const SETTINGS_EXTRAS: Entry[] = [
     hint: "Account security",
     icon: Fingerprint,
     group: "Settings",
-    run: { kind: "href", href: "/settings/security" },
+    href: "/settings/security",
   },
   {
     id: "setting:picture",
@@ -221,39 +195,22 @@ const SETTINGS_EXTRAS: Entry[] = [
     hint: "Your account",
     icon: SlidersHorizontal,
     group: "Settings",
-    run: { kind: "href", href: "/settings/account" },
+    href: "/settings/account",
   },
 ];
 
-/** The safe, reversible verbs that need no resource picked first. */
-const GLOBAL_ACTIONS: Entry[] = [
-  {
-    id: "action:create-app",
-    label: "New app",
-    icon: Plus,
-    group: "Actions",
-    run: { kind: "href", href: newAppHref() },
-    requires: "create_apps",
-  },
-  {
-    id: "action:create-database",
-    label: "New database",
-    icon: Database,
-    group: "Actions",
-    run: { kind: "href", href: "/storage?new=database" },
-    requires: "create_databases",
-  },
-  {
-    id: "action:add-member",
-    label: "Add member",
-    icon: Users,
-    group: "Actions",
-    run: { kind: "href", href: "/settings/members" },
-    requires: "manage_members",
-  },
-];
+/** The wizard has no nav row of its own, and it is the product's main verb. */
+const NEW_APP: Entry = {
+  id: "page:new-app",
+  label: "New app",
+  keywords: "create add deploy",
+  icon: Plus,
+  group: "Navigation",
+  href: newAppHref(),
+  requires: "create_apps",
+};
 
-/** Every page and command the palette knows without asking the server. */
+/** Every page the palette knows without asking the server. */
 export function staticEntries(): Entry[] {
   return [
     ...fromSections(NAV, (s) => s.title ?? "Navigation"),
@@ -261,7 +218,7 @@ export function staticEntries(): Entry[] {
       s.title ? `Settings · ${s.title}` : "Settings",
     ),
     ...SETTINGS_EXTRAS,
-    ...GLOBAL_ACTIONS,
+    NEW_APP,
   ];
 }
 
@@ -310,136 +267,8 @@ export const PALETTE_DB_FLAGS = {
   cronsEnabled: false,
 };
 
-interface ActionSpec {
-  id: string;
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-  tone: NonNullable<Entry["tone"]>;
-  requires: Capability;
-  query: string;
-  success: string;
-}
-
-/**
- * deplo's app-level verbs. There is no `restartApp` - Reload re-applies routing,
- * and a full restart is Stop then Start.
- */
-export const APP_ACTIONS: ActionSpec[] = [
-  {
-    id: "redeploy",
-    label: "Redeploy",
-    tone: "info",
-    icon: RotateCw,
-    requires: "deploy_apps",
-    query: `mutation($id: String!) { redeploy(appId: $id) { id } }`,
-    success: "Redeploy started",
-  },
-  {
-    id: "start",
-    label: "Start",
-    tone: "success",
-    icon: Play,
-    requires: "control_apps",
-    query: `mutation($id: String!) { startApp(id: $id) { id } }`,
-    success: "App started",
-  },
-  {
-    id: "stop",
-    label: "Stop",
-    tone: "warning",
-    icon: Square,
-    requires: "control_apps",
-    query: `mutation($id: String!) { stopApp(id: $id) { id } }`,
-    success: "App stopped",
-  },
-  {
-    id: "reload",
-    label: "Reload",
-    tone: "violet",
-    icon: RefreshCw,
-    requires: "control_apps",
-    query: `mutation($id: String!) { reloadApp(id: $id) }`,
-    success: "Routing reloaded",
-  },
-];
-
-export const DB_ACTIONS: ActionSpec[] = [
-  {
-    id: "redeploy",
-    label: "Redeploy",
-    tone: "info",
-    icon: RotateCw,
-    requires: "control_databases",
-    query: `mutation($id: String!) { redeployDatabase(id: $id) { id } }`,
-    success: "Redeploy started",
-  },
-  {
-    id: "restart",
-    label: "Restart",
-    tone: "violet",
-    icon: RefreshCw,
-    requires: "control_databases",
-    query: `mutation($id: String!) { restartDatabase(id: $id) { id } }`,
-    success: "Database restarted",
-  },
-];
-
-const actionEntries = (specs: ActionSpec[], targetId: string): Entry[] =>
-  specs.map((a) => ({
-    id: `action:${a.id}:${targetId}`,
-    label: a.label,
-    icon: a.icon,
-    group: "Actions",
-    tone: a.tone,
-    run: {
-      kind: "mutation" as const,
-      query: a.query,
-      variables: { id: targetId },
-      success: a.success,
-    },
-    requires: a.requires,
-  }));
-
-export interface FrameApp {
-  id: string;
-  slug: string;
-  name: string;
-  productionUrl?: string | null;
-}
-
-/** An app's own menu: what you can do to it, then where you can go in it. */
-export function appFrameEntries(
-  app: FrameApp,
-  flags: AppNavFlags = PALETTE_APP_FLAGS,
-): Entry[] {
-  const url = app.productionUrl;
-  return [
-    ...actionEntries(APP_ACTIONS, app.id),
-    ...(url
-      ? [
-          {
-            id: `action:open:${app.id}`,
-            label: "Open in a new tab",
-            hint: url,
-            icon: ExternalLink,
-            group: "Actions",
-            run: { kind: "href" as const, href: url, newTab: true },
-          },
-          {
-            id: `action:copy-url:${app.id}`,
-            label: "Copy URL",
-            icon: Copy,
-            group: "Actions",
-            run: { kind: "copy" as const, text: url },
-          },
-        ]
-      : []),
-    ...appFramePages(app.slug, flags),
-  ];
-}
-
 /** Where you can go inside one app. Shared with {@link ownedPageEntries}. */
-export function appFramePages(
+export function appPageEntries(
   slug: string,
   flags: AppNavFlags = PALETTE_APP_FLAGS,
 ): Entry[] {
@@ -453,21 +282,8 @@ export function appFramePages(
   ]);
 }
 
-export interface FrameDatabase {
-  id: string;
-  name: string;
-  type: DatabaseType;
-}
-
-export function dbFrameEntries(
-  db: FrameDatabase,
-  flags: typeof PALETTE_DB_FLAGS = PALETTE_DB_FLAGS,
-): Entry[] {
-  return [...actionEntries(DB_ACTIONS, db.id), ...dbFramePages(db.id, flags)];
-}
-
 /** Where you can go inside one database. Shared with {@link ownedPageEntries}. */
-export function dbFramePages(
+export function dbPageEntries(
   id: string,
   flags: typeof PALETTE_DB_FLAGS = PALETTE_DB_FLAGS,
 ): Entry[] {
@@ -528,7 +344,7 @@ export function ownedPageEntries(
       consoleEnabled: app.features?.console ?? false,
     };
     const ownerSearch = [app.name, app.slug].map(foldQuery).filter(Boolean);
-    for (const page of appFramePages(app.slug, flags)) {
+    for (const page of appPageEntries(app.slug, flags)) {
       out.push({
         ...page,
         id: `owned:${app.id}:${page.id}`,
@@ -545,7 +361,7 @@ export function ownedPageEntries(
       type: db.type as DatabaseType,
     };
     const ownerSearch = [foldQuery(db.name)].filter(Boolean);
-    for (const page of dbFramePages(db.id)) {
+    for (const page of dbPageEntries(db.id)) {
       out.push({
         ...page,
         id: `owned:${db.id}:${page.id}`,
@@ -558,7 +374,7 @@ export function ownedPageEntries(
 }
 
 /**
- * `deployments` lists every app's Deployments page; `deplo variables` narrows to
+ * `deployments` lists every app's Deployments page; `Deplo variables` narrows to
  * one app's. Pages are matched on their description as well as their name,
  * because nav-config calls that one "Environment" and nobody types that.
  *

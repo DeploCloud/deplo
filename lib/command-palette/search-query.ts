@@ -11,7 +11,6 @@ export const SEARCH_QUERY = /* GraphQL */ `
         name
         slug
         logo
-        productionUrl
         team {
           id
           name

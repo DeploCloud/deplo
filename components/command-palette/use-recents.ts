@@ -2,17 +2,12 @@
 
 import * as React from "react";
 
-/**
- * The last few things chosen in the palette, per person per team. Only what the
- * palette can render on its own: a frame's action rows are never remembered,
- * because "Redeploy" with no app attached is a trap.
- */
+/** The last few pages opened from the palette, per person per team. */
 
 export interface Recent {
   id: string;
   label: string;
   href: string;
-  kind: "nav" | "app" | "database";
 }
 
 const CAP = 5;
