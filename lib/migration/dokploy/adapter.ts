@@ -17,6 +17,7 @@ import {
   inspectContainer,
   listAppContainers,
   listMembers,
+  listNetworks,
   listProjects,
   listSchedules,
   listServers,
@@ -31,6 +32,32 @@ import {
   sourceVolumesFrom,
 } from "../map";
 import type { HostMount, NamedVolume } from "../model";
+
+/**
+ * The networks the PANEL attached, which the compose file never names: a stack's
+ * per-service list, or an application's. Deplo puts every app on its Environment's
+ * network, so this is a report line and not a setting to carry over.
+ */
+async function panelNetworkNotes(
+  c: SourceCredential,
+  row: unknown,
+): Promise<string[]> {
+  const r = row as {
+    networkIds?: string[] | null;
+    serviceNetworks?: { networkIds?: string[] | null }[] | null;
+  };
+  const ids = new Set<string>(r.networkIds ?? []);
+  for (const svc of r.serviceNetworks ?? [])
+    for (const id of svc.networkIds ?? []) ids.add(id);
+  if (ids.size === 0) return [];
+  const known = await listNetworks(c);
+  const names = [...ids].map(
+    (id) => known.find((n) => n.networkId === id)?.name ?? id,
+  );
+  return [
+    `Attached on {panel} to ${names.join(", ")}, ${names.length === 1 ? "a network" : "networks"} on the server rather than part of this app - here every app in the same Environment already shares one network.`,
+  ];
+}
 
 /**
  * Which containers a service runs, and what they mount.
@@ -116,7 +143,11 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     getService: async (kind, id) => {
       const row = await getService(c, kind, id);
       const blob = (row as { env?: string | null }).env;
-      return { ...row, sharedRefs: sharedRefsIn(parseEnvBlob(blob)) };
+      return {
+        ...row,
+        sharedRefs: sharedRefsIn(parseEnvBlob(blob)),
+        platformNotes: await panelNetworkNotes(c, row),
+      };
     },
     getResolvedCompose: (id) => getConvertedCompose(c, id),
     listServers: () => listServers(c),

@@ -879,7 +879,11 @@ function composeAdvice(compose: string): string[] {
         // reachable through Deplo's proxy, so its address - if it had one over
         // there - is now a host port and nothing else.
         d.rule === "network-mode-host" ||
-        d.rule === "network-mode-conflict",
+        d.rule === "network-mode-conflict" ||
+        // A network the stack pins by name still deploys, so it is never a
+        // blocker - but the report is the only place it is ever mentioned to
+        // someone who holds the grant.
+        d.rule === "foreign-network",
     )
     .map((d) => d.message);
 }

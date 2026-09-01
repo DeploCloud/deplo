@@ -323,6 +323,24 @@ export async function listAppContainers(
   return Array.isArray(rows) ? rows : [];
 }
 
+/** A network the PANEL manages, which is how a stack or an app joins one without
+ *  the compose file ever naming it (`compose.serviceNetworks`, `app.networkIds`). */
+export interface DokployNetwork {
+  networkId: string;
+  name: string;
+}
+
+/** The panel's own networks, by id. Empty on a Dokploy too old to have them:
+ *  the endpoint is missing, not the import. */
+export async function listNetworks(
+  c: SourceCredential,
+): Promise<DokployNetwork[]> {
+  const rows = await get<DokployNetwork[] | null>(c, "network.all").catch(
+    () => null,
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
 /** What `docker inspect` says, reduced to the two things a data move reads. */
 export interface DokployInspect {
   Name?: string;

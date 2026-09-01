@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { getConvertedCompose, listProjects } from "./client";
+import { dokployClient } from "./adapter";
 import {
   __resetMigrationFetchForTest,
   __setMigrationFetchForTest,
@@ -59,6 +60,66 @@ test("a real compose comes through, however Dokploy wraps it", async (t) => {
     resolved: "services:\n  web:\n    image: nginx\n",
   });
   assert.match((await getConvertedCompose(cred, "c1")) ?? "", /^services:/);
+});
+
+/** Route by procedure, which is the last path segment of a Dokploy call. */
+function routes(by: Record<string, unknown>): void {
+  __setMigrationFetchForTest(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input instanceof Request ? input.url : input));
+    const proc = url.pathname.split("/").pop() ?? "";
+    const body = proc in by ? by[proc] : null;
+    return new Response(JSON.stringify(body), {
+      status: proc in by ? 200 : 404,
+      headers: { "content-type": "application/json" },
+    });
+  });
+}
+
+test("a network the PANEL attached is reported, not silently dropped", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+
+  // The compose file never names it: Dokploy holds the attachment on its own row
+  // and injects it at deploy time, so nothing in the YAML says it existed.
+  routes({
+    "network.all": [{ networkId: "n1", name: "shared-net" }],
+    "compose.one": {
+      composeId: "c1",
+      composeFile: "services:\n  app:\n    image: nginx\n",
+      serviceNetworks: [{ serviceName: "app", networkIds: ["n1"] }],
+    },
+  });
+  const stack = await dokployClient(cred).getService("compose", "c1");
+  assert.deepEqual(stack.platformNotes, [
+    "Attached on {panel} to shared-net, a network on the server rather than part of this app - here every app in the same Environment already shares one network.",
+  ]);
+
+  // An application carries the same attachment under its own column.
+  routes({
+    "network.all": [{ networkId: "n1", name: "shared-net" }],
+    "application.one": { applicationId: "a1", networkIds: ["n1"] },
+  });
+  const app = await dokployClient(cred).getService("application", "a1");
+  assert.match(String(app.platformNotes?.[0]), /shared-net/);
+
+  // Nothing attached, nothing said.
+  routes({ "compose.one": { composeId: "c2", serviceNetworks: [] } });
+  assert.deepEqual(
+    (await dokployClient(cred).getService("compose", "c2")).platformNotes,
+    [],
+  );
+});
+
+test("a Dokploy with no networks endpoint still imports", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+
+  // `network.all` arrived with Dokploy's own Networks feature. On an older one the
+  // procedure 404s, and an import that died there would be a worse answer than a
+  // note that names the id.
+  routes({
+    "application.one": { applicationId: "a1", networkIds: ["n1"] },
+  });
+  const app = await dokployClient(cred).getService("application", "a1");
+  assert.match(String(app.platformNotes?.[0]), /n1/);
 });
 
 /** The panel every message in these tests is about. */

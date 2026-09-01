@@ -216,6 +216,92 @@ test("adaptComposeForDeplo resolves the network by name, not by key", () => {
   assert.equal("networks" in doc.services.web, false);
 });
 
+test("adaptComposeForDeplo drops a network made on the source host", () => {
+  const source = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "    networks: [shared-net, own]",
+    "networks:",
+    "  shared-net:",
+    "    external: true",
+    "  own: {}",
+  ].join("\n");
+
+  const { compose, changes } = adaptComposeForDeplo(source);
+  const doc = yaml.load(compose) as {
+    services: Record<string, { networks?: unknown }>;
+    networks: Record<string, unknown>;
+  };
+  // It exists only on the machine the stack came from, so left in place compose
+  // refuses the whole stack: "declared as external, but could not be found".
+  assert.deepEqual(Object.keys(doc.networks), ["own"]);
+  assert.deepEqual(doc.services.app.networks, ["own"]);
+  assert.ok(
+    changes.some((c) => c.startsWith("shared-net lives on the server")),
+  );
+});
+
+test("adaptComposeForDeplo keeps a network the stack creates itself", () => {
+  const source = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "    networks: [backend]",
+    "networks:",
+    "  backend:",
+    "    driver: bridge",
+    "    ipam:",
+    "      config:",
+    "        - subnet: 172.30.9.0/24",
+  ].join("\n");
+
+  const { compose, changes } = adaptComposeForDeplo(source);
+  const doc = yaml.load(compose) as {
+    services: Record<string, { networks?: unknown }>;
+    networks: Record<string, unknown>;
+  };
+  assert.deepEqual(Object.keys(doc.networks), ["backend"]);
+  assert.deepEqual(doc.services.app.networks, ["backend"]);
+  assert.deepEqual(changes, []);
+});
+
+test("adaptComposeForDeplo drops a network_mode naming a host network", () => {
+  const source = [
+    "services:",
+    "  app:",
+    "    image: nginx",
+    "    network_mode: shared-net",
+  ].join("\n");
+
+  const { compose, changes } = adaptComposeForDeplo(source);
+  const doc = yaml.load(compose) as {
+    services: Record<string, Record<string, unknown>>;
+  };
+  // `networks:` stays empty while this is set, so the service would join nothing
+  // and resolve nothing - the same failure with no declaration to read.
+  assert.equal("network_mode" in doc.services.app, false);
+  assert.ok(changes.some((c) => c.includes("network_mode: shared-net")));
+});
+
+test("adaptComposeForDeplo leaves the network_mode keywords alone", () => {
+  for (const mode of ["host", "none", "bridge", "default", "service:api"]) {
+    const source = [
+      "services:",
+      "  api:",
+      "    image: nginx",
+      "  app:",
+      "    image: nginx",
+      `    network_mode: "${mode}"`,
+    ].join("\n");
+    const { compose } = adaptComposeForDeplo(source);
+    const doc = yaml.load(compose) as {
+      services: Record<string, { network_mode?: string }>;
+    };
+    assert.equal(doc.services.app.network_mode, mode, mode);
+  }
+});
+
 test("adaptComposeForDeplo also reads the nested external.name form", () => {
   const source = [
     "services:",

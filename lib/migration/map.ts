@@ -15,7 +15,11 @@ import yaml, {
 } from "../yaml";
 
 import { isValidLogoValue } from "../apps/logo-shared";
-import { composeRoutePort, keepAuthoredEnvText } from "../deploy/compose-lint";
+import {
+  composeRoutePort,
+  composeTruthy,
+  keepAuthoredEnvText,
+} from "../deploy/compose-lint";
 import { HEALTH_CHECK_DEFAULTS } from "../deploy/health-check";
 
 import { MAX_PORT, MIN_USER_PORT, isValidExposePort } from "../databases/ports";
@@ -328,6 +332,51 @@ export function platformNetworkKeys(
   return keys;
 }
 
+/**
+ * Top-level network keys this compose does not create itself: `external: true`, or
+ * `external: {name: x}`. The network was made on the SOURCE host - by hand or by
+ * the panel - so the destination has no such network and `compose up` refuses the
+ * whole stack with "declared as external, but could not be found".
+ */
+export function externalNetworkKeys(doc: { networks?: unknown }): Set<string> {
+  const keys = new Set<string>();
+  const declared = doc.networks;
+  if (!declared || typeof declared !== "object" || Array.isArray(declared))
+    return keys;
+  for (const [key, raw] of Object.entries(
+    declared as Record<string, unknown>,
+  )) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const ext = (raw as Record<string, unknown>).external;
+    const pinned =
+      ext != null && typeof ext === "object" && !Array.isArray(ext);
+    if (pinned || composeTruthy(ext)) keys.add(key);
+  }
+  return keys;
+}
+
+/** `network_mode:` values that are NOT a docker network name. Every other value
+ *  names one, and a network made on the source host is not on the destination. */
+const NETWORK_MODE_KEYWORDS = new Set(["none", "host", "bridge", "default"]);
+
+/** Drop a `network_mode:` that names a network off the source host. `networks:` is
+ *  empty while it is set, so the service would join nothing and resolve nothing. */
+function stripHostNetworkMode(
+  service: string,
+  holder: YAMLMap,
+  changes: string[],
+): void {
+  const node = stringScalar(holder, "network_mode");
+  const value = node ? (node.value as string).trim() : "";
+  if (!value) return;
+  if (NETWORK_MODE_KEYWORDS.has(value.toLowerCase())) return;
+  if (/^(service|container):/i.test(value)) return;
+  holder.delete("network_mode");
+  changes.push(
+    `\`network_mode: ${value}\` on ${service} named a network on the server, so it did not come across - the service is on its Environment's network here.`,
+  );
+}
+
 /** Take those networks off one `networks:` value, in either of its two shapes. */
 function stripNetworks(holder: YAMLMap, keys: Set<string>): void {
   const node = holder.get("networks", true);
@@ -364,10 +413,16 @@ export function adaptComposeForDeplo(
   const root = doc.contents as YAMLMap;
 
   const changes: string[] = [];
-  const keys = platformNetworkKeys(
-    { networks: toPlain(root.get("networks")) },
-    platform.networks,
+  const declaredNetworks = { networks: toPlain(root.get("networks")) };
+  const platformKeys = platformNetworkKeys(declaredNetworks, platform.networks);
+  // A network the stack does not create is one the destination host does not have,
+  // and compose refuses the whole stack over it. Dropping it is the right mapping,
+  // not a loss: an Environment is one network (ADR-0028), which is what a shared
+  // network on the source was for.
+  const strays = [...externalNetworkKeys(declaredNetworks)].filter(
+    (k) => !platformKeys.has(k),
   );
+  const keys = new Set([...platformKeys, ...strays]);
 
   if (keys.size > 0) {
     const declared = root.get("networks", true);
@@ -375,17 +430,23 @@ export function adaptComposeForDeplo(
       for (const key of keys) declared.delete(key);
       if (declared.items.length === 0) root.delete("networks");
     }
-    changes.push(
-      `${platform.name}'s shared network was removed - Deplo attaches the services to its own.`,
-    );
+    if (platformKeys.size > 0)
+      changes.push(
+        `${platform.name}'s shared network was removed - Deplo attaches the services to its own.`,
+      );
+    if (strays.length > 0)
+      changes.push(
+        `${strays.join(", ")} ${strays.length === 1 ? "lives" : "live"} on the server rather than in this stack, so Deplo could not bring ${strays.length === 1 ? "it" : "them"} across - apps in the same Environment already share one network.`,
+      );
   }
 
   // Every named volume a service mounts, so an undeclared one can be declared
   // below rather than refused by `docker compose up`.
   const mounted = new Set<string>();
 
-  for (const { map: holder } of serviceLikeMaps(root)) {
+  for (const { name: serviceName, map: holder } of serviceLikeMaps(root)) {
     if (keys.size > 0) stripNetworks(holder, keys);
+    stripHostNetworkMode(serviceName, holder, changes);
 
     // The file-mount paths, off both shapes of a volume entry. A SEQUENCE is what
     // tells a service's mounts from the top-level named-volume block.
