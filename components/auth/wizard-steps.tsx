@@ -153,15 +153,12 @@ export function AccountStep({
   note,
   submitLabel,
   pending = false,
-  gravatar = false,
   onSubmit,
   children,
 }: {
   draft: AccountDraft;
   onChange: (next: AccountDraft) => void;
   description: React.ReactNode;
-  /** Whether the instance offers Gravatar as a picture source. */
-  gravatar?: boolean;
   /** The one-line reassurance under the fields. */
   note: React.ReactNode;
   submitLabel: string;
@@ -200,15 +197,6 @@ export function AccountStep({
             choice: pictureChoice,
             seed: handle || "deplo",
             letters: avatarInitials(draft.name, handle),
-            gravatar,
-            monogram: (
-              <UserAvatar
-                name={draft.name}
-                username={handle}
-                avatarUrl={null}
-                size="md"
-              />
-            ),
           }}
           onSave={async (next) => {
             set("image", next);

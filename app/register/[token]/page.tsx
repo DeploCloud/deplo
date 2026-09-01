@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { getRegistrationLinkInfo } from "@/lib/data/members";
-import { gravatarEnabled } from "@/lib/avatar";
 import { AuthChrome } from "@/components/auth/auth-chrome";
 import { InvalidLinkGraphic } from "@/components/auth/invalid-link-graphic";
 import { Button } from "@/components/ui/button";
@@ -19,12 +18,7 @@ export default async function RegisterPage(props: {
       <div className="deplo-grid-bg pointer-events-none absolute inset-0 opacity-[0.35]" />
       <div className="relative z-10 flex w-full justify-center">
         {info.valid ? (
-          <RegisterWizard
-            token={token}
-            mode={info.mode}
-            teams={info.teams}
-            gravatar={await gravatarEnabled()}
-          />
+          <RegisterWizard token={token} mode={info.mode} teams={info.teams} />
         ) : (
           // No intro in front of this one: a dead link should not cost two
           // seconds of animation before it says so. The chrome stays OUTSIDE the

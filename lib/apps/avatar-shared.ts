@@ -57,77 +57,74 @@ export function isValidAvatarValue(value: string): boolean {
 
 /**
  * A person picks where their picture comes from, so `users.image` holds either an
- * uploaded data-URI or one of these markers. No value at all is the generated
- * face, in the default look.
+ * uploaded data-URI or one of these markers. No value at all is the first pack,
+ * seeded with their own id.
  */
 export const GRAVATAR_VALUE = "gravatar";
 /** The plain monogram - the one drawn by the app itself, not by DiceBear. */
 export const INITIALS_VALUE = "initials";
 
-/**
- * The two DiceBear styles a person can wear, each with the style's own presets -
- * option sets over that one style, never a third style.
- * https://www.dicebear.com/styles/pixelbot/presets/
- */
+/** The presets offered per DiceBear style: option sets over that one style, with
+ *  the values DiceBear publishes. https://www.dicebear.com/styles */
 export const AVATAR_STYLES = {
-  pixelbot: [
-    { id: "default", label: "Default" },
-    { id: "terminal", label: "Terminal" },
-    { id: "amber", label: "Amber" },
-    { id: "greyscale", label: "Greyscale" },
-    { id: "duotone", label: "Duotone" },
-    { id: "electric", label: "Electric" },
-    { id: "cool", label: "Cool" },
-    { id: "warm", label: "Warm" },
-    { id: "sunrise", label: "Sunrise" },
-  ],
-  initials: [
-    { id: "electric", label: "Electric" },
-    { id: "greyscale", label: "Greyscale" },
-    { id: "sunrise", label: "Sunrise" },
-    { id: "duotone", label: "Duotone" },
-    { id: "bold-pop", label: "Bold" },
-    { id: "sepia", label: "Sepia" },
-  ],
+  glyphs: ["default"],
+  planets: ["electric"],
+  glass: ["default"],
+  pixelbot: ["terminal"],
+  initials: ["electric", "greyscale", "sunrise", "bold-pop"],
 } as const;
 
 export type AvatarStyle = keyof typeof AVATAR_STYLES;
-export const PIXELBOT_PRESETS = AVATAR_STYLES.pixelbot;
-export const INITIALS_PRESETS = AVATAR_STYLES.initials;
 
-/** What everyone wears until they choose. */
-export const DEFAULT_PIXELBOT_PRESET = "default";
-/** What the initials row leads with. */
-export const DEFAULT_INITIALS_PRESET = "electric";
+/** The four packs the picker offers, in order. The first is what everyone wears
+ *  until they choose. */
+export const AVATAR_PACKS = [
+  { style: "glyphs", preset: "default", label: "Glyphs Default" },
+  { style: "planets", preset: "electric", label: "Planets Electric" },
+  { style: "glass", preset: "default", label: "Glass Default" },
+  { style: "pixelbot", preset: "terminal", label: "Pixelbot Terminal" },
+] as const satisfies readonly {
+  style: AvatarStyle;
+  preset: string;
+  label: string;
+}[];
+
+export const DEFAULT_PACK = AVATAR_PACKS[0];
+
+/** The initials looks. Electric leads - it is the one to recommend. */
+export const INITIALS_PRESETS = [
+  { id: "electric", label: "Initials Electric" },
+  { id: "greyscale", label: "Initials Greyscale" },
+  { id: "sunrise", label: "Initials Sunrise" },
+  { id: "bold-pop", label: "Initials Bold" },
+] as const;
+
+export const DEFAULT_INITIALS_PRESET = INITIALS_PRESETS[0].id;
+
+/** Styles whose licence asks for a credit where the art is shown. */
+export const AVATAR_CREDITS = "Glyphs by Matt Houser (CC BY 4.0)";
 
 export function isValidAvatarStyle(value: string): value is AvatarStyle {
-  return value === "pixelbot" || value === "initials";
+  return value in AVATAR_STYLES;
 }
 
 export function isValidPreset(style: AvatarStyle, preset: string): boolean {
-  return AVATAR_STYLES[style].some((p) => p.id === preset);
+  return (AVATAR_STYLES[style] as readonly string[]).includes(preset);
 }
 
-/** The faces every look is offered in. Fixed, not random: the tile you picked is
- *  still there next time, and the browser has it cached. */
-export const PIXELBOT_SEEDS = [
-  "nova",
-  "orbit",
-  "quasar",
-  "rune",
-  "vega",
-  "zinc",
-] as const;
+/** The example faces every pack is offered in, beside the person's own. Fixed,
+ *  not random: the tile you picked is still there next time, and cached. */
+export const EXAMPLE_SEEDS = ["nova", "orbit", "quasar", "rune"] as const;
 
-/** How many faces a look's row shows. */
-export const PIXELBOT_ROW = 6;
+/** How many pictures a pack's row shows: the seed-generated one plus three. */
+export const AVATAR_ROW = 4;
 
-/** The row for one look: their own face first, then the fixed ones. Deduped, so
- *  somebody wearing a fixed seed does not see it twice. */
-export function pixelbotRowSeeds(ownSeed: string): string[] {
-  return [ownSeed, ...PIXELBOT_SEEDS.filter((s) => s !== ownSeed)].slice(
+/** The row for one pack: the seed-generated one first, then the examples.
+ *  Deduped, so somebody wearing an example does not see it twice. */
+export function rowSeeds(ownSeed: string): string[] {
+  return [ownSeed, ...EXAMPLE_SEEDS.filter((s) => s !== ownSeed)].slice(
     0,
-    PIXELBOT_ROW,
+    AVATAR_ROW,
   );
 }
 
@@ -186,7 +183,7 @@ export function avatarPreviewUrl(
   if (parts) return facePath(parts.style, parts.preset, parts.seed);
   if (value && isValidAvatarValue(value)) return value;
   if (!value && defaultSeed)
-    return facePath("pixelbot", DEFAULT_PIXELBOT_PRESET, defaultSeed);
+    return facePath(DEFAULT_PACK.style, DEFAULT_PACK.preset, defaultSeed);
   return null;
 }
 

@@ -268,8 +268,9 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   `health`, `node-versions`, `railpack-versions`, `registry/images`.
   `avatar/[style]/[preset]/[seed]` is REST and **unauthenticated**: it renders a
   deterministic picture from the path and reads nothing, and onboarding shows the picker
-  before an account exists. Two styles only (`pixelbot`, `initials`), and a preset is one
-  of DiceBear's own option sets for that style - never a third style, never a free option.
+  before an account exists. The styles and their presets are a FIXED list
+  (`lib/apps/avatar-shared.ts`): four packs plus `initials`, each preset one of DiceBear's
+  own published option sets - never a free-form option, never a style off the list.
   **Two exceptions to the cookie rule**, both authenticating with an API token
   (`Authorization: Bearer deplo_…`) and both re-entering the normal gates via `runWithIdentity`,
   never bypass them with a hand-rolled capability check:

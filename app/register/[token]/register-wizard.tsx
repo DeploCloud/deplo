@@ -61,7 +61,6 @@ export function RegisterWizard({
   token,
   mode,
   teams,
-  gravatar = false,
 }: {
   token: string;
   /** How this link decides the team: own_team asks for a name; existing_teams
@@ -69,8 +68,6 @@ export function RegisterWizard({
   mode: "own_team" | "existing_teams";
   /** For existing_teams: the teams the registrant will join. */
   teams: { name: string; avatarUrl: string | null }[];
-  /** Whether the instance offers Gravatar as a picture source. */
-  gravatar?: boolean;
 }) {
   const router = useRouter();
   const ownTeam = mode === "own_team";
@@ -128,7 +125,6 @@ export function RegisterWizard({
               <AccountStep
                 draft={account}
                 onChange={setAccount}
-                gravatar={gravatar}
                 description="Create your account."
                 note={
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">

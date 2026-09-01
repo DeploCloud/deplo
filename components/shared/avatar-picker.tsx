@@ -16,18 +16,17 @@ import {
 import { cn } from "@/lib/utils";
 import {
   AVATAR_ACCEPT_ATTR,
+  AVATAR_CREDITS,
   AVATAR_IMAGE_TYPES,
+  AVATAR_PACKS,
   type AvatarChoice,
-  type AvatarStyle,
   DEFAULT_INITIALS_PRESET,
-  DEFAULT_PIXELBOT_PRESET,
+  DEFAULT_PACK,
   facePath,
   GRAVATAR_VALUE,
   INITIALS_PRESETS,
-  INITIALS_VALUE,
   MAX_AVATAR_STRING_LEN,
-  PIXELBOT_PRESETS,
-  pixelbotRowSeeds,
+  rowSeeds,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 
@@ -49,11 +48,9 @@ export type AvatarSources = {
   /** Their initials, which ARE the seed of an `initials` picture: DiceBear reads
    *  the letters out of it ("Ada Lovelace" and "AL" both draw AL). */
   letters: string;
-  /** The monogram itself, so the plain option shows what it would look like
-   *  rather than describing it. The caller's own `<UserAvatar>` with no picture. */
-  monogram?: React.ReactNode;
-  /** Whether the instance allows Gravatar at all. */
-  gravatar?: boolean;
+  /** Their Gravatar address when the instance allows it, so the card previews
+   *  the real thing. Absent = the source is not offered. */
+  gravatar?: string | null;
 };
 
 export function AvatarPicker({
@@ -90,10 +87,6 @@ export function AvatarPicker({
   const [previews, setPreviews] = React.useState<string[] | null>(null);
   const seed = sources?.seed;
   const letters = sources?.letters;
-  const look =
-    sources?.choice.kind === "generated" && sources.choice.style === "pixelbot"
-      ? sources.choice.preset
-      : DEFAULT_PIXELBOT_PRESET;
   React.useEffect(() => {
     if (!seed || !letters) return;
     const rolled = rollPreviewSeeds(seed);
@@ -101,16 +94,16 @@ export function AvatarPicker({
     // Fetched now, not on the click: the dialog would otherwise open onto empty
     // circles and fill them in one by one.
     for (const url of [
-      ...PIXELBOT_PRESETS.map(({ id }, i) =>
-        facePath("pixelbot", id, rolled[i]!),
-      ),
-      ...pixelbotRowSeeds(seed).map((s) => facePath("pixelbot", look, s)),
+      ...AVATAR_PACKS.flatMap((pack, i) => [
+        facePath(pack.style, pack.preset, rolled[i]!),
+        ...rowSeeds(seed).map((s) => facePath(pack.style, pack.preset, s)),
+      ]),
       ...INITIALS_PRESETS.map(({ id }) => facePath("initials", id, letters)),
     ]) {
       const img = new window.Image();
       img.src = url;
     }
-  }, [seed, letters, look]);
+  }, [seed, letters]);
   const busy = pending || disabled;
 
   function commit(image: string | null) {
@@ -254,149 +247,85 @@ export function AvatarPicker({
   );
 }
 
-/** One picture in the row. The SVG comes from `/api/avatar`, so the renderer
- *  never reaches the browser. */
+/** One picture in a row: the SVG comes from `/api/avatar`, so the renderer never
+ *  reaches the browser. */
 function FaceTile({
-  style,
-  preset,
+  src,
   label,
-  seed,
   selected,
   disabled,
   onClick,
+  small = false,
 }: {
-  style: AvatarStyle;
-  preset: string;
+  src: string;
   label: string;
-  seed: string;
   selected: boolean;
   disabled?: boolean;
   onClick: () => void;
+  small?: boolean;
 }) {
   return (
-    <TileButton
-      label={label}
-      selected={selected}
+    <button
+      type="button"
       disabled={disabled}
       onClick={onClick}
+      aria-pressed={selected}
+      aria-label={label}
+      title={label}
+      className={cn(
+        // The selector under the row is a selector, not a second row of choices.
+        small ? "w-10" : "w-full",
+        "rounded-full transition outline-none",
+        "focus-visible:ring-2 focus-visible:ring-ring",
+        selected
+          ? cn(
+              "ring-2 ring-primary ring-offset-background",
+              small ? "ring-offset-1" : "ring-offset-2",
+            )
+          : small
+            ? "opacity-70 hover:opacity-100"
+            : "hover:opacity-80",
+        disabled && "cursor-not-allowed opacity-60",
+      )}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={facePath(style, preset, seed)}
+        src={src}
         alt=""
         draggable={false}
         // The picture is opaque, so this only shows while it is still coming.
         className="block w-full rounded-full bg-muted"
       />
-    </TileButton>
-  );
-}
-
-/** The round, ringed control every tile in the two rows is. */
-function TileButton({
-  label,
-  selected,
-  disabled,
-  onClick,
-  className,
-  children,
-}: {
-  label: string;
-  selected: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      aria-pressed={selected}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "w-full rounded-full transition outline-none",
-        "focus-visible:ring-2 focus-visible:ring-ring",
-        selected
-          ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-          : "hover:opacity-80",
-        disabled && "cursor-not-allowed opacity-60",
-        className,
-      )}
-    >
-      {children}
     </button>
   );
 }
 
-/** One face per look, drawn when the picker mounts - never during a render,
+/** One picture per pack, drawn when the picker mounts - never during a render,
  *  which is why it takes an effect and not a `useMemo`. */
 function rollPreviewSeeds(seed: string): string[] {
-  const seeds = pixelbotRowSeeds(seed);
-  return PIXELBOT_PRESETS.map(
+  const seeds = rowSeeds(seed);
+  return AVATAR_PACKS.map(
     () => seeds[Math.floor(Math.random() * seeds.length)]!,
   );
 }
 
-/** One look in the selector: a single face previews the palette, so opening the
- *  dialog costs nine renders and not nine times six. */
-function PresetChip({
-  preset,
-  label,
-  seed,
-  selected,
-  disabled,
-  onClick,
-}: {
-  preset: string;
-  label: string;
-  seed: string;
-  selected: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      aria-pressed={selected}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "w-full rounded-full transition outline-none",
-        "focus-visible:ring-2 focus-visible:ring-ring",
-        selected
-          ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
-          : "opacity-70 hover:opacity-100",
-        disabled && "cursor-not-allowed opacity-60",
-      )}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={facePath("pixelbot", preset, seed)}
-        alt=""
-        draggable={false}
-        className="block w-full rounded-full bg-muted"
-      />
-    </button>
-  );
-}
-
-/** Where a picture comes from when it is not a generated one. */
+/** Where a picture comes from when it is not one of the packs. */
 function SourceCard({
   visual,
   label,
   selected,
   disabled,
+  quiet = false,
+  className,
   onClick,
 }: {
   visual: React.ReactNode;
   label: string;
   selected: boolean;
   disabled?: boolean;
+  /** The lesser of the sources: same card, less weight. */
+  quiet?: boolean;
+  className?: string;
   onClick: () => void;
 }) {
   return (
@@ -406,15 +335,22 @@ function SourceCard({
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        "flex items-center gap-3 rounded-xl border p-3 text-left text-sm font-medium transition-colors outline-none",
+        "flex items-center gap-3 rounded-xl border text-left font-medium transition-colors outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring",
+        quiet ? "p-2 text-xs text-muted-foreground" : "p-3 text-sm",
         selected
           ? "border-primary bg-accent"
           : "border-border bg-card hover:bg-accent",
         disabled && "cursor-not-allowed opacity-60",
+        className,
       )}
     >
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-secondary text-secondary-foreground">
+      <span
+        className={cn(
+          "relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-secondary text-secondary-foreground",
+          quiet ? "size-7" : "size-9",
+        )}
+      >
         {visual}
       </span>
       <span className="min-w-0 truncate">{label}</span>
@@ -439,7 +375,7 @@ function AvatarSourceDialog({
   onOpenChange: (open: boolean) => void;
   sources: AvatarSources;
   busy: boolean;
-  /** One preview face per look, rolled by the caller as it mounts. */
+  /** One preview picture per pack, rolled by the caller as it mounts. */
   previews: string[] | null;
   dragging: boolean;
   onPick: (value: string) => void;
@@ -448,20 +384,21 @@ function AvatarSourceDialog({
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
-  const { choice, seed, letters } = sources;
+  const { choice, seed, letters, gravatar } = sources;
   const worn = choice.kind === "generated" ? choice : null;
-  const rowSeeds = pixelbotRowSeeds(seed);
-  const [style, setStyle] = React.useState<AvatarStyle>(
-    worn?.style ?? "pixelbot",
+  const seeds = rowSeeds(seed);
+  const [pack, setPack] = React.useState(() =>
+    worn && worn.style !== "initials"
+      ? (AVATAR_PACKS.find((p) => p.style === worn.style) ?? DEFAULT_PACK)
+      : DEFAULT_PACK,
   );
-  const [look, setLook] = React.useState(
-    worn?.style === "pixelbot" ? worn.preset : DEFAULT_PIXELBOT_PRESET,
+  const [onInitials, setOnInitials] = React.useState(
+    worn?.style === "initials",
   );
-  // The chips show the palette, not a particular face, so the caller rolls one
-  // face per look on the way in. Before the first roll, a plain rotation.
+  // The chips show the pack, not a particular picture, so the caller rolls one
+  // per pack on the way in. Before the first roll, a plain rotation.
   const chipSeeds =
-    previews ?? PIXELBOT_PRESETS.map((_, i) => rowSeeds[i % rowSeeds.length]!);
-  const lookLabel = PIXELBOT_PRESETS.find((p) => p.id === look)!.label;
+    previews ?? AVATAR_PACKS.map((_, i) => seeds[i % seeds.length]!);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -474,91 +411,72 @@ function AvatarSourceDialog({
         <DialogHeader>
           <DialogTitle>Profile picture</DialogTitle>
           <DialogDescription>
-            {style === "initials"
-              ? "Two letters. Plain, or slightly less plain."
-              : "Pick a look, then a face - or upload your own."}
+            {onInitials
+              ? "Two letters. Yours, with the volume up."
+              : "Pick a pack, then a picture - or upload your own."}
           </DialogDescription>
         </DialogHeader>
-        {style === "pixelbot" ? (
-          <div className="grid grid-cols-6 gap-2">
-            {rowSeeds.map((rowSeed) => (
-              <FaceTile
-                key={rowSeed}
-                style="pixelbot"
-                preset={look}
-                label={`${lookLabel} face`}
-                seed={rowSeed}
-                disabled={busy}
-                selected={
-                  worn?.style === "pixelbot" &&
-                  worn.preset === look &&
-                  worn.seed === rowSeed
-                }
-                onClick={() => onPick(`pixelbot:${look}:${rowSeed}`)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-7 gap-2">
-            <TileButton
-              label="Plain initials"
-              selected={choice.kind === "initials"}
+        <div className="grid grid-cols-4 gap-2">
+          {onInitials
+            ? INITIALS_PRESETS.map(({ id, label }) => (
+                <FaceTile
+                  key={id}
+                  src={facePath("initials", id, letters)}
+                  label={label}
+                  disabled={busy}
+                  selected={worn?.style === "initials" && worn.preset === id}
+                  onClick={() => onPick(`initials:${id}:${letters}`)}
+                />
+              ))
+            : seeds.map((rowSeed) => (
+                <FaceTile
+                  key={rowSeed}
+                  src={facePath(pack.style, pack.preset, rowSeed)}
+                  label={`${pack.label}, ${rowSeed === seed ? "yours" : rowSeed}`}
+                  disabled={busy}
+                  selected={
+                    worn?.style === pack.style &&
+                    worn.preset === pack.preset &&
+                    worn.seed === rowSeed
+                  }
+                  onClick={() =>
+                    onPick(`${pack.style}:${pack.preset}:${rowSeed}`)
+                  }
+                />
+              ))}
+        </div>
+        <div className="flex justify-center gap-2">
+          {AVATAR_PACKS.map((p, i) => (
+            <FaceTile
+              key={p.style}
+              small
+              src={facePath(p.style, p.preset, chipSeeds[i]!)}
+              label={p.label}
               disabled={busy}
-              className="grid place-items-center"
-              onClick={() => onPick(INITIALS_VALUE)}
-            >
-              {sources.monogram ?? (
-                <span className="grid aspect-square w-full place-items-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">
-                  {letters}
-                </span>
-              )}
-            </TileButton>
-            {INITIALS_PRESETS.map(({ id, label }) => (
-              <FaceTile
-                key={id}
-                style="initials"
-                preset={id}
-                label={label}
-                seed={letters}
-                disabled={busy}
-                selected={worn?.style === "initials" && worn.preset === id}
-                onClick={() => onPick(`initials:${id}:${letters}`)}
-              />
-            ))}
-          </div>
-        )}
-        <div className="grid grid-cols-9 gap-1.5">
-          {PIXELBOT_PRESETS.map(({ id, label }, i) => (
-            <PresetChip
-              key={id}
-              preset={id}
-              label={label}
-              seed={chipSeeds[i]!}
-              disabled={busy}
-              selected={style === "pixelbot" && id === look}
+              selected={!onInitials && p.style === pack.style}
               onClick={() => {
-                setStyle("pixelbot");
-                setLook(id);
+                setOnInitials(false);
+                setPack(p);
               }}
             />
           ))}
         </div>
-        <div
-          className={cn(
-            "grid gap-2",
-            sources.gravatar ? "sm:grid-cols-3" : "sm:grid-cols-2",
-          )}
-        >
-          <SourceCard
-            visual={<Upload className="size-4" />}
-            label="Upload a picture"
-            selected={choice.kind === "uploaded"}
-            disabled={busy}
-            onClick={onUpload}
-          />
-          {sources.gravatar ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {gravatar ? (
             <SourceCard
-              visual={<AtSign className="size-4" />}
+              visual={
+                <>
+                  <AtSign className="size-4" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={gravatar}
+                    alt=""
+                    draggable={false}
+                    // Absent from gravatar.com, the icon underneath stands.
+                    className="absolute inset-0 size-full object-cover"
+                  />
+                </>
+              }
               label="Use Gravatar"
               selected={choice.kind === "gravatar"}
               disabled={busy}
@@ -566,20 +484,34 @@ function AvatarSourceDialog({
             />
           ) : null}
           <SourceCard
-            visual={sources.monogram ?? <UserRound className="size-4" />}
-            label="Use my initials"
-            selected={
-              style === "initials" ||
-              choice.kind === "initials" ||
-              worn?.style === "initials"
+            visual={
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={facePath("initials", DEFAULT_INITIALS_PRESET, letters)}
+                alt=""
+                draggable={false}
+                className="size-full"
+              />
             }
+            label="Use my initials"
+            selected={onInitials || worn?.style === "initials"}
             disabled={busy}
-            onClick={() => {
-              setStyle("initials");
-              if (worn?.style !== "initials") setLook(DEFAULT_INITIALS_PRESET);
-            }}
+            className={gravatar ? undefined : "sm:col-span-2"}
+            onClick={() => setOnInitials(true)}
+          />
+          <SourceCard
+            quiet
+            visual={<Upload className="size-3.5" />}
+            label="Upload a picture"
+            selected={choice.kind === "uploaded"}
+            disabled={busy}
+            className="sm:col-span-2"
+            onClick={onUpload}
           />
         </div>
+        <p className="text-center text-[11px] text-muted-foreground">
+          Pictures by DiceBear - {AVATAR_CREDITS}
+        </p>
       </DialogContent>
     </Dialog>
   );

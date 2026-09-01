@@ -7,7 +7,7 @@ import { getDb } from "./db/client";
 import { instanceSettings } from "./db/schema/control-plane";
 import { sha256Hex } from "./crypto";
 import {
-  DEFAULT_PIXELBOT_PRESET,
+  DEFAULT_PACK,
   facePath,
   faceParts,
   GRAVATAR_ORIGINS,
@@ -71,7 +71,7 @@ export async function avatarResolver(): Promise<
   return (row) => {
     const value = row.image?.trim();
     const generated = row.userId
-      ? facePath("pixelbot", DEFAULT_PIXELBOT_PRESET, row.userId)
+      ? facePath(DEFAULT_PACK.style, DEFAULT_PACK.preset, row.userId)
       : null;
     const parts = faceParts(value);
     if (parts) return facePath(parts.style, parts.preset, parts.seed);

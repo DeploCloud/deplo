@@ -55,8 +55,8 @@ export function AccountPanel({
   sessions,
 }: {
   user: PublicUser;
-  /** Whether the instance offers Gravatar as a picture source. */
-  gravatar: boolean;
+  /** Their Gravatar address, or null where the instance keeps it off. */
+  gravatar: string | null;
   passkeys: number;
   sessions: number;
 }) {
@@ -82,7 +82,7 @@ function ProfileCard({
   gravatar,
 }: {
   user: PublicUser;
-  gravatar: boolean;
+  gravatar: string | null;
 }) {
   const router = useRouter();
   const choice = avatarChoiceFromUrl(user.avatarUrl);
@@ -135,14 +135,6 @@ function ProfileCard({
             seed: user.id,
             letters: avatarInitials(user.name, user.username),
             gravatar,
-            monogram: (
-              <UserAvatar
-                name={user.name}
-                username={user.username}
-                avatarUrl={null}
-                size="md"
-              />
-            ),
           }}
           onSave={(image) =>
             gqlAction(

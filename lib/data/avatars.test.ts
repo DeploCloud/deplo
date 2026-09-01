@@ -11,11 +11,11 @@ import {
   avatarChoiceFromUrl,
   avatarChoiceFromValue,
   avatarPreviewUrl,
+  AVATAR_PACKS,
+  AVATAR_ROW,
+  EXAMPLE_SEEDS,
   INITIALS_PRESETS,
-  PIXELBOT_PRESETS,
-  PIXELBOT_ROW,
-  PIXELBOT_SEEDS,
-  pixelbotRowSeeds,
+  rowSeeds,
 } from "../apps/avatar-shared";
 import {
   seedIdentity,
@@ -160,7 +160,7 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
 test("with the instance switch off, no Gravatar address is emitted anywhere", async () => {
   await as(OWNER, () => setGravatarEnabled(false));
   const url = (await memberRow(MEMBER)).avatarUrl;
-  assert.equal(url, `/api/avatar/pixelbot/default/${MEMBER}.svg`);
+  assert.equal(url, `/api/avatar/glyphs/default/${MEMBER}.svg`);
   assert.ok(!url!.includes("gravatar"), "no address may be emitted");
 
   // An UPLOADED picture is unaffected - the switch is about talking to
@@ -173,7 +173,7 @@ test("nothing chosen and no Gravatar leaves a generated face, seeded per person"
   await as(OWNER, () => setGravatarEnabled(false));
   assert.equal(
     (await memberRow(MEMBER)).avatarUrl,
-    `/api/avatar/pixelbot/default/${MEMBER}.svg`,
+    `/api/avatar/glyphs/default/${MEMBER}.svg`,
   );
   assert.notEqual(
     (await memberRow(OWNER)).avatarUrl,
@@ -212,7 +212,7 @@ test("choosing Gravatar falls back to a face when the instance turns it off", as
   await as(OWNER, () => setGravatarEnabled(false));
   assert.equal(
     (await memberRow(MEMBER)).avatarUrl,
-    `/api/avatar/pixelbot/default/${MEMBER}.svg`,
+    `/api/avatar/glyphs/default/${MEMBER}.svg`,
     "their pick is off instance-wide, so nothing about them leaves the box",
   );
 });
@@ -230,6 +230,8 @@ test("a seed that is not a plain word is refused, in and out of the URL", async 
     "initials:default:AL",
     "initials:terminal:AL",
     "nosuchstyle:electric:AL",
+    "glyphs:electric:zoe",
+    "pixelbot:default:zoe",
   ]) {
     await assert.rejects(
       as(MEMBER, () => updateMyAvatar(bad)),
@@ -241,13 +243,13 @@ test("a seed that is not a plain word is refused, in and out of the URL", async 
 
 test("the picker reads back the source it just wrote", () => {
   // What rings the tile in use: the picker only ever sees the resolved URL.
-  for (const { id } of PIXELBOT_PRESETS) {
-    const url = avatarPreviewUrl(`pixelbot:${id}:zoe`);
-    assert.equal(url, `/api/avatar/pixelbot/${id}/zoe.svg`);
+  for (const { style, preset } of AVATAR_PACKS) {
+    const url = avatarPreviewUrl(`${style}:${preset}:zoe`);
+    assert.equal(url, `/api/avatar/${style}/${preset}/zoe.svg`);
     assert.deepEqual(avatarChoiceFromUrl(url), {
       kind: "generated",
-      style: "pixelbot",
-      preset: id,
+      style,
+      preset,
       seed: "zoe",
     });
   }
@@ -268,10 +270,10 @@ test("the picker reads back the source it just wrote", () => {
   });
 
   // The wizard holds the raw value instead: same answer, no account yet.
-  assert.deepEqual(avatarChoiceFromValue("pixelbot:cool:zoe"), {
+  assert.deepEqual(avatarChoiceFromValue("planets:electric:zoe"), {
     kind: "generated",
-    style: "pixelbot",
-    preset: "cool",
+    style: "planets",
+    preset: "electric",
     seed: "zoe",
   });
   assert.deepEqual(avatarChoiceFromValue("gravatar"), { kind: "gravatar" });
@@ -279,16 +281,16 @@ test("the picker reads back the source it just wrote", () => {
   assert.deepEqual(avatarChoiceFromValue(null), { kind: "initials" });
 });
 
-test("every look offers the same six faces, and never one twice", () => {
-  // Their own face leads the row; picking a fixed one must not double it up.
-  const mine = pixelbotRowSeeds(MEMBER);
-  assert.equal(mine.length, PIXELBOT_ROW);
+test("every pack offers the same four pictures, and never one twice", () => {
+  // The seed-generated one leads the row; picking an example must not double it.
+  const mine = rowSeeds(MEMBER);
+  assert.equal(mine.length, AVATAR_ROW);
   assert.equal(mine[0], MEMBER);
-  assert.equal(new Set(mine).size, PIXELBOT_ROW);
+  assert.equal(new Set(mine).size, AVATAR_ROW);
 
-  const onAFixedSeed = pixelbotRowSeeds(PIXELBOT_SEEDS[0]);
-  assert.equal(new Set(onAFixedSeed).size, PIXELBOT_ROW, "no duplicate tile");
-  assert.equal(onAFixedSeed[0], PIXELBOT_SEEDS[0], "what they wear leads");
+  const onAnExample = rowSeeds(EXAMPLE_SEEDS[0]);
+  assert.equal(new Set(onAnExample).size, AVATAR_ROW, "no duplicate tile");
+  assert.equal(onAnExample[0], EXAMPLE_SEEDS[0], "what they wear leads");
 });
 
 /* ------------------------------------------------------------------ */

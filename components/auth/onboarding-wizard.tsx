@@ -55,12 +55,7 @@ const STEPS = [
   { id: "team", label: "Your team" },
 ];
 
-export function OnboardingWizard({
-  gravatar = false,
-}: {
-  /** Whether the instance offers Gravatar as a picture source. */
-  gravatar?: boolean;
-}) {
+export function OnboardingWizard({}: {}) {
   const router = useRouter();
   const { phase, markSeen } = useLogoIntro(INTRO_SEEN);
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
@@ -109,7 +104,6 @@ export function OnboardingWizard({
               <AccountStep
                 draft={account}
                 onChange={setAccount}
-                gravatar={gravatar}
                 description="Create the account that runs this instance."
                 note={
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">
