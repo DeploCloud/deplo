@@ -181,7 +181,7 @@ export function AccountStep({
 
   return (
     <form
-      className="space-y-5"
+      className="deplo-stagger space-y-5"
       onSubmit={(e) => {
         e.preventDefault();
         if (accountReady(draft) && !pending) onSubmit();
@@ -356,7 +356,7 @@ export function TeamStep({
   const ready = draft.name.trim() !== "";
   return (
     <form
-      className="space-y-5"
+      className="deplo-stagger space-y-5"
       onSubmit={(e) => {
         e.preventDefault();
         if (ready && !pending) onSubmit();

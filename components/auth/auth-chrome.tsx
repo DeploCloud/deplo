@@ -106,10 +106,10 @@ export function AuthChrome({ hidden = false }: { hidden?: boolean }) {
   if (hidden) return null;
   return (
     <>
-      <div className="animate-soft-in fixed top-4 right-4 z-30">
+      <div className="animate-blur-in fixed top-4 right-4 z-30">
         <ThemeToggle />
       </div>
-      <div className="animate-soft-in fixed inset-x-0 bottom-4 z-30 flex items-center justify-center gap-3 text-xs text-muted-foreground">
+      <div className="animate-blur-in fixed inset-x-0 bottom-4 z-30 flex items-center justify-center gap-3 text-xs text-muted-foreground">
         {LINKS.map(({ href, Icon, label }) => (
           <a
             key={label}

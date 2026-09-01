@@ -32,7 +32,7 @@ export default async function RegisterPage(props: {
           // strand both fixed corners mid-screen.
           <>
             <AuthChrome />
-            <div className="animate-soft-in w-full max-w-sm text-center">
+            <div className="deplo-stagger w-full max-w-sm text-center">
               <InvalidLinkGraphic className="mx-auto mb-4" />
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
                 Link not valid

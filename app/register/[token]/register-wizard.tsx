@@ -117,11 +117,8 @@ export function RegisterWizard({
       <AuthChrome hidden={phase !== "steps"} />
       {phase === "steps" && (
         <div className="w-full max-w-sm">
-          <div
-            key={step}
-            className={cn(leaving ? "animate-soft-out" : "animate-soft-in")}
-          >
-            <Collapse open={Boolean(error)}>
+          <div key={step} className={cn(leaving && "animate-soft-out")}>
+            <Collapse open={Boolean(error)} className="animate-soft-in">
               <div className="mb-5 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="size-4 shrink-0" />
                 {error}

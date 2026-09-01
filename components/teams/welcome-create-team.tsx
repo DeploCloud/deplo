@@ -38,7 +38,7 @@ export function WelcomeCreateTeam({ userName }: { userName: string }) {
   }
 
   return (
-    <div className="animate-soft-in w-full max-w-sm">
+    <div className="w-full max-w-sm">
       <TeamStep
         draft={team}
         onChange={setTeam}

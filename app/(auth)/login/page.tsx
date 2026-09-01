@@ -191,7 +191,7 @@ export default function LoginPage() {
   return (
     <div
       key={step}
-      className={cn(leaving ? "animate-soft-out" : "animate-soft-in")}
+      className={cn(leaving ? "animate-soft-out" : "deplo-stagger")}
     >
       {step === "code" ? (
         <>

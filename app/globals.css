@@ -701,6 +701,15 @@ html body[data-scroll-locked] {
   }
 }
 
+/* The same arrival WITHOUT the travel: for what is pinned to the viewport (the
+ * theme toggle, the link row), where sliding reads as the corner drifting. */
+@keyframes deplo-blur-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+}
+
 /* One curve for the whole intro: it decelerates the whole way, so the mark
  * grows and then leaves without a pop at either end. */
 .animate-intro-in {
@@ -718,6 +727,53 @@ html body[data-scroll-locked] {
 /* 0.16s is not a taste: it is `OUT_MS` in components/apps/wizard/wizard-card.tsx. */
 .animate-soft-out {
   animation: deplo-soft-out 0.16s ease-in both;
+}
+
+.animate-blur-in {
+  animation: deplo-blur-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* A form's rows arrive one beat after another. 45ms is deliberately under the
+ * threshold where it reads as a list being drawn: it reads as depth. */
+.deplo-stagger > * {
+  animation: deplo-soft-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.deplo-stagger > :nth-child(2) {
+  animation-delay: 45ms;
+}
+
+.deplo-stagger > :nth-child(3) {
+  animation-delay: 90ms;
+}
+
+.deplo-stagger > :nth-child(4) {
+  animation-delay: 135ms;
+}
+
+.deplo-stagger > :nth-child(5) {
+  animation-delay: 180ms;
+}
+
+.deplo-stagger > :nth-child(6) {
+  animation-delay: 225ms;
+}
+
+.deplo-stagger > :nth-child(7) {
+  animation-delay: 270ms;
+}
+
+.deplo-stagger > :nth-child(8) {
+  animation-delay: 315ms;
+}
+
+.deplo-stagger > :nth-child(9) {
+  animation-delay: 360ms;
+}
+/* Past the ninth row the beat stops growing, or the last field of a long form
+ * arrives after the person has started typing in the first. */
+.deplo-stagger > :nth-child(n + 10) {
+  animation-delay: 360ms;
 }
 
 /* The intro's aurora: three blobs drifting under the mark, gone by the time
@@ -862,6 +918,8 @@ html body[data-scroll-locked] {
   .animate-soft-out,
   .animate-aurora-in,
   .animate-aurora-out,
+  .animate-blur-in,
+  .deplo-stagger > *,
   .deplo-blob,
   .deplo-unlink-a,
   .deplo-unlink-b,
