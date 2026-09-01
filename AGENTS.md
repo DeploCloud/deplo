@@ -408,10 +408,10 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   picked, before the membership read, before the usage stamp, so one comparison covers GraphQL,
   MCP and the deploy hook at once. A new token defaults to 90 days in the editor; nothing sweeps
   an expired row, because the list has to be able to say _why_ a credential stopped.
-- **`teams.mcp_enabled` defaults to FALSE for a new team** (migration 0106; existing teams keep
-  whatever they have). A token is required either way, so this was never what made `/api/mcp`
-  safe, but "may an AI agent act in this company's infrastructure" is a decision to make, not
-  one to inherit from a default.
+- **`teams.mcp_enabled` defaults to TRUE for a new team** (migration 0146, reverting 0106;
+  existing teams keep whatever they have). A token is required either way, so the switch was
+  never what made `/api/mcp` safe - it is the team's kill switch, one click away on the MCP
+  screen.
 - **id prefixes not to confuse:** `prc_` = Project _container_, `prj_` = **App** (the deployable
   app, legacy mint); `environ_` = Environment, `env_` = env-**var** row; `role_` = a team Role;
   `deplo_` = raw bearer secret (sha256 at rest).

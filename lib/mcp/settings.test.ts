@@ -70,7 +70,7 @@ async function revoke(capability: string) {
   );
 }
 
-test("a NEW team starts with MCP off - the kill switch ships closed", async () => {
+test("a NEW team starts with MCP on", async () => {
   // The COLUMN default is the whole test: no creation path writes this field, so what
   // the migration says is what a team created today gets.
   await db.insert(teamsTable).values({
@@ -84,11 +84,9 @@ test("a NEW team starts with MCP off - the kill switch ships closed", async () =
     .select({ enabled: teamsTable.mcpEnabled })
     .from(teamsTable)
     .where(eq(teamsTable.id, "team_fresh"));
-  assert.equal(fresh.enabled, false);
+  assert.equal(fresh.enabled, true);
 
-  // And the read path answers what the ROW says, not what the default is:
-  // the seeded team has it on (see identity-test-helpers), like every team
-  // that already had it before the default moved.
+  // And the read path answers what the ROW says, not what the default is.
   assert.deepEqual(await asUser1(() => getMcpSettings()), { enabled: true });
 });
 

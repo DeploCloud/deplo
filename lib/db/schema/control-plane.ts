@@ -109,7 +109,7 @@ export const teams = pgTable(
     requireTwoFactor: boolean("require_two_factor").notNull().default(false),
     // Whether this team's API tokens may drive it over MCP (`/api/mcp`). Off ⇒ the
     // endpoint refuses the whole request, before any tool runs.
-    mcpEnabled: boolean("mcp_enabled").notNull().default(false),
+    mcpEnabled: boolean("mcp_enabled").notNull().default(true),
     // When the team's default backup destination was seeded (lib/data/destinations.ts
     // `ensureDefaultDestination`).
     backupDefaultSeededAt: isoTimestamptz("backup_default_seeded_at"),

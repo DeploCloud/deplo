@@ -1023,6 +1023,13 @@
       "when": 1788204350273,
       "tag": "0145_takeover_state",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1788204351273,
+      "tag": "0146_mcp_default_on",
+      "breakpoints": true
     }
   ]
 }
