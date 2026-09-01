@@ -201,15 +201,12 @@ export async function listAllTeamsForAdmin(): Promise<Team[]> {
 }
 
 export async function updateTeam(input: {
-  name: string;
-  slug: string;
+  name?: string;
   requireTwoFactor?: boolean;
 }): Promise<Team> {
   const { teamId, userId } = await requireCapability("manage_team");
-  const name = input.name.trim();
-  const slug = slugify(input.slug);
-  if (!name) throw new Error("Team name is required");
-  if (!slug) throw new Error("Slug must contain letters or numbers");
+  const name = input.name?.trim();
+  if (name !== undefined && !name) throw new Error("Team name is required");
   // Self-lockout guard: switching the policy on while the actor has no second
   // factor would refuse their very next request, including the one that would
   // turn it back off. Read live rather than trusting the session's snapshot.
@@ -234,20 +231,14 @@ export async function updateTeam(input: {
       .limit(1);
     const t = rows[0];
     if (!t) throw new Error("No team");
-    const dup = await tx
-      .select({ id: teamsTable.id })
-      .from(teamsTable)
-      .where(eq(teamsTable.slug, slug))
-      .limit(1);
-    if (dup[0] && dup[0].id !== t.id)
-      throw new Error("That slug is already in use");
+    const nextName = name ?? t.name;
     const requireTwoFactor = input.requireTwoFactor ?? t.requireTwoFactor;
     await tx
       .update(teamsTable)
-      .set({ name, slug, requireTwoFactor })
+      .set({ name: nextName, requireTwoFactor })
       .where(eq(teamsTable.id, t.id));
     return {
-      team: rowToTeam({ ...t, name, slug, requireTwoFactor }),
+      team: rowToTeam({ ...t, name: nextName, requireTwoFactor }),
       policyChanged: requireTwoFactor !== t.requireTwoFactor,
     };
   });

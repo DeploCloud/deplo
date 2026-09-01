@@ -5441,9 +5441,8 @@ input UpdateSourceInput {
 }
 
 input UpdateTeamInput {
-  name: String!
+  name: String
   requireTwoFactor: Boolean
-  slug: String!
 }
 
 input UpdateTokenInput {

@@ -93,6 +93,9 @@ export const teams = pgTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    // Derived from the name at creation and then FROZEN: it is what the API's
+    // `X-Deplo-Team` header accepts instead of the id, so a rename would break
+    // every caller already sending the old one.
     slug: text("slug").notNull(),
     plan: text("plan").notNull(),
     // The team's ABSOLUTE owner - the user who originally created the team (the

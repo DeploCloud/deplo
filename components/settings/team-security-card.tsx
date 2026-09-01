@@ -16,15 +16,11 @@ import { gqlAction } from "@/lib/graphql-client";
  * either this team's work is behind a second factor or it is not.
  */
 export function TeamSecurityCard({
-  name,
-  slug,
   requireTwoFactor,
   canManage,
   without,
   total,
 }: {
-  name: string;
-  slug: string;
   requireTwoFactor: boolean;
   canManage: boolean;
   /** Members of this team with no second factor yet. */
@@ -42,7 +38,7 @@ export function TeamSecurityCard({
     startTransition(async () => {
       const res = await gqlAction(
         `mutation ($input: UpdateTeamInput!) { updateTeam(input: $input) { id } }`,
-        { input: { name, slug, requireTwoFactor: next } },
+        { input: { requireTwoFactor: next } },
       );
       if (res.ok) {
         toast.success(

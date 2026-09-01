@@ -74,10 +74,10 @@ export const TeamMembershipRef = builder
 
 const UpdateTeamInputType = builder.inputType("UpdateTeamInput", {
   fields: (t) => ({
-    name: t.string({ required: true }),
-    slug: t.string({ required: true }),
-    // Optional so a plain rename never silently rewrites the security policy:
-    // omitted means "leave it as it is", not "turn it off".
+    // Both optional: omitted means "leave it as it is". A rename must not
+    // rewrite the security policy, and a policy toggle must not echo the name
+    // back and clobber a rename made elsewhere.
+    name: t.string({ required: false }),
     requireTwoFactor: t.boolean({ required: false }),
   }),
 });
@@ -119,8 +119,7 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: UpdateTeamInputType, required: true }) },
     resolve: (_r, { input }) =>
       updateTeam({
-        name: input.name,
-        slug: input.slug,
+        name: input.name ?? undefined,
         requireTwoFactor: input.requireTwoFactor ?? undefined,
       }),
   }),

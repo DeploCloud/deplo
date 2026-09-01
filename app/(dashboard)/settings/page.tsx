@@ -82,7 +82,6 @@ export default async function SettingsGeneralPage() {
             <CardContent className="space-y-4">
               <TeamForm
                 name={team.name}
-                slug={team.slug}
                 avatarUrl={team.avatarUrl}
                 canManage={canManageTeam}
               />
@@ -90,8 +89,6 @@ export default async function SettingsGeneralPage() {
           </Card>
 
           <TeamSecurityCard
-            name={team.name}
-            slug={team.slug}
             requireTwoFactor={settings.requireTwoFactor ?? false}
             canManage={canManageTeam}
             without={twoFactor.without}

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FieldLabel } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { AvatarPicker } from "@/components/shared/avatar-picker";
@@ -13,27 +12,24 @@ import { gqlAction } from "@/lib/graphql-client";
 
 export function TeamForm({
   name: initialName,
-  slug: initialSlug,
   avatarUrl,
   canManage = true,
 }: {
   name: string;
-  slug: string;
   avatarUrl: string | null;
   canManage?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
   const [name, setName] = React.useState(initialName);
-  const [slug, setSlug] = React.useState(initialSlug);
 
-  const dirty = name.trim() !== initialName || slug.trim() !== initialSlug;
+  const dirty = name.trim() !== initialName;
 
   function save() {
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: UpdateTeamInput!) { updateTeam(input: $input) { id } }`,
-        { input: { name, slug } },
+        { input: { name } },
       );
       if (res.ok) {
         toast.success("Team updated");
@@ -78,42 +74,18 @@ export function TeamForm({
           {pictureText}
         </div>
       )}
-      {/* Stacked: the card is half a page wide now, and two inputs in 480px
-          is two half-inputs. */}
-      <div className="grid gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="team-name">Team name</Label>
-          <Input
-            id="team-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={!canManage}
-          />
-        </div>
-        <div className="space-y-2">
-          <FieldLabel
-            htmlFor="team-slug"
-            info="URL-safe id used in links and to seed the names of installed app containers. Lowercase letters, numbers and hyphens."
-            docs="team.overview"
-          >
-            Slug
-          </FieldLabel>
-          <Input
-            id="team-slug"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            className="font-mono text-sm"
-            disabled={!canManage}
-          />
-        </div>
+      <div className="space-y-2">
+        <Label htmlFor="team-name">Team name</Label>
+        <Input
+          id="team-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={!canManage}
+        />
       </div>
       {canManage && (
         <div className="flex justify-end">
-          <Button
-            size="sm"
-            onClick={save}
-            disabled={!dirty || !name.trim() || !slug.trim()}
-          >
+          <Button size="sm" onClick={save} disabled={!dirty || !name.trim()}>
             Save changes
           </Button>
         </div>
