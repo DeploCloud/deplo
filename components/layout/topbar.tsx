@@ -25,7 +25,6 @@ import type { PublicUser, TeamIdentity, TeamSummary } from "@/lib/types";
 
 export function Topbar({
   user,
-  gravatar,
   team,
   teams,
   breadcrumb: graph,
@@ -33,8 +32,6 @@ export function Topbar({
   isAdmin = false,
 }: {
   user: PublicUser;
-  /** Their Gravatar address, or null where the instance keeps it off. */
-  gravatar?: string | null;
   team: TeamIdentity;
   teams: TeamSummary[];
   /** Team snapshot the breadcrumb navigates over (folders/apps/projects). */
@@ -130,7 +127,7 @@ export function Topbar({
          */}
         <MigrationChip canOpen={capabilities.includes("create_projects")} />
         <ThemeToggle />
-        <UserMenu user={user} gravatar={gravatar} />
+        <UserMenu user={user} />
       </div>
     </header>
   );

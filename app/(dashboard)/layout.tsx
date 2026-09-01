@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { avatarUrlFor } from "@/lib/avatar";
 import { getTeamIdentity, listMyTeams } from "@/lib/data/teams";
 import {
   reachableCapabilities,
@@ -66,11 +65,6 @@ export default async function DashboardLayout({
       capabilities={capabilities}
       isAdmin={isAdmin}
       hasPasskey={await userHasPasskey(user.id)}
-      gravatar={await avatarUrlFor({
-        userId: null,
-        image: "gravatar",
-        email: user.email,
-      })}
     >
       {children}
     </AppShell>
