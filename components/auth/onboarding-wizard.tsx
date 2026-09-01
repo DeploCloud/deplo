@@ -59,6 +59,8 @@ const COMPLETE_SETUP = /* GraphQL */ `
 const INTRO_HOLD_MS = 2200;
 const INTRO_OUT_MS = 700;
 const INTRO_SEEN = "deplo.onboarding-intro";
+/** Longest name the greeting will show before it truncates. */
+const NAME_MAX = 10;
 
 type Phase = "boot" | "intro" | "intro-out" | "steps";
 
@@ -85,10 +87,12 @@ function introAlreadyPlayed(): boolean {
 function GreetingTail({ name }: { name: string }) {
   const box = React.useRef<HTMLSpanElement>(null);
   const measured = React.useRef<HTMLSpanElement>(null);
-  // The first name only: the tail cannot wrap, and a full name overflows the
-  // column on a phone.
+  // The first name, hard-capped: the tail cannot wrap, so an unbounded name
+  // would push the title past the column and off a phone.
   const first = name.trim().split(/\s+/)[0] ?? "";
-  const text = first ? `, ${first}` : ".";
+  const shown =
+    first.length > NAME_MAX ? `${first.slice(0, NAME_MAX)}...` : first;
+  const text = shown ? `, ${shown}` : ".";
 
   React.useLayoutEffect(() => {
     if (box.current && measured.current)
@@ -178,8 +182,18 @@ export function OnboardingWizard({ version }: { version: string }) {
 
   return (
     <>
-      {/* The mark leaves over the step rather than before it: both run on the
-        same beat, so the screen never sits empty between them. */}
+      {phase !== "steps" && (
+        <div
+          className={cn(
+            "deplo-aurora pointer-events-none fixed inset-x-0 bottom-0 z-10 h-[55vh] overflow-hidden",
+            phase === "intro" ? "animate-aurora-in" : "animate-aurora-out",
+          )}
+        >
+          <span className="deplo-blob" />
+          <span className="deplo-blob" />
+          <span className="deplo-blob" />
+        </div>
+      )}
       {phase !== "steps" && (
         <div className="pointer-events-none fixed inset-0 z-20 flex items-center justify-center">
           <DeploLogo
@@ -190,7 +204,7 @@ export function OnboardingWizard({ version }: { version: string }) {
           />
         </div>
       )}
-      {phase !== "intro" && (
+      {phase === "steps" && (
         <div className="w-full max-w-sm">
           <div
             key={step}
@@ -436,7 +450,7 @@ export function OnboardingWizard({ version }: { version: string }) {
           </ol>
         </div>
       )}
-      {phase !== "intro" && (
+      {phase === "steps" && (
         <div className="animate-soft-in fixed inset-x-0 bottom-4 flex items-center justify-center gap-3 text-xs text-muted-foreground">
           <span>deplo v{version}</span>
           <span className="h-3 w-px bg-border" />

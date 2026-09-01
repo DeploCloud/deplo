@@ -757,11 +757,113 @@ label:hover .deplo-gear,
   animation: deplo-soft-out 0.16s ease-in both;
 }
 
+/* The intro's aurora: three blobs drifting under the mark, gone by the time
+ * the first step arrives. */
+@keyframes deplo-aurora-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes deplo-aurora-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes deplo-blob-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(12%, -8%, 0) scale(1.18);
+  }
+}
+
+@keyframes deplo-blob-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate3d(-14%, -5%, 0) scale(0.9);
+  }
+}
+
+@keyframes deplo-blob-drift-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(0.95);
+  }
+  50% {
+    transform: translate3d(-10%, -11%, 0) scale(1.2);
+  }
+}
+
+.animate-aurora-in {
+  animation: deplo-aurora-in 1.2s ease-out both;
+}
+
+.animate-aurora-out {
+  animation: deplo-aurora-out 0.7s ease-in both;
+}
+
+/* Masked, or clipping the blobs draws a hard band across the screen. */
+.deplo-aurora {
+  -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 95%);
+  mask-image: linear-gradient(to top, #000 10%, transparent 95%);
+}
+
+.deplo-blob {
+  position: absolute;
+  border-radius: 9999px;
+  opacity: 0.38;
+  filter: blur(90px);
+  will-change: transform;
+}
+
+.deplo-blob:nth-child(1) {
+  bottom: -34%;
+  left: -8%;
+  width: 46vw;
+  height: 46vw;
+  background: var(--info);
+  animation: deplo-blob-drift-a 16s ease-in-out infinite;
+}
+
+.deplo-blob:nth-child(2) {
+  bottom: -42%;
+  left: 26%;
+  width: 52vw;
+  height: 52vw;
+  background: var(--violet);
+  animation: deplo-blob-drift-b 21s ease-in-out infinite;
+}
+
+.deplo-blob:nth-child(3) {
+  right: -10%;
+  bottom: -32%;
+  width: 44vw;
+  height: 44vw;
+  background: var(--chart-3);
+  animation: deplo-blob-drift-c 18s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-intro-in,
   .animate-intro-out,
   .animate-soft-in,
-  .animate-soft-out {
+  .animate-soft-out,
+  .animate-aurora-in,
+  .animate-aurora-out,
+  .deplo-blob {
     animation: none;
   }
 }
