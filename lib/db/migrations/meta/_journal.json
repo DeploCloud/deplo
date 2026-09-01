@@ -1009,6 +1009,13 @@
       "when": 1788204348273,
       "tag": "0143_app_published_ports",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1788204349273,
+      "tag": "0144_git_connection_scopes",
+      "breakpoints": true
     }
   ]
 }

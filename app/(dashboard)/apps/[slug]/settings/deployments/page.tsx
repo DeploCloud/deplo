@@ -3,17 +3,21 @@ import { Rocket } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
-import { listGithubInstallations } from "@/lib/data/github";
+import { installationAccess, listGithubInstallations } from "@/lib/data/github";
 import {
   appWebhookStatus,
   listGitConnections,
 } from "@/lib/data/git-connections";
 import { providerFor } from "@/lib/git/providers";
+import { requiredAccess } from "@/lib/git/provider-access";
+import { repoCloneRefusal } from "@/lib/git/repo-access";
+import { hasCapability } from "@/lib/membership";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
 import { RollbackSettingsForm } from "@/components/apps/settings/rollback-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import { appBuildsItsOwnImage } from "@/lib/utils";
+import type { GitProviderId } from "@/lib/types";
 
 export const metadata = { title: "Deployment" };
 
@@ -44,6 +48,19 @@ export default async function AppDeploymentSettingsPage(
     providerTriggers && project.source !== "github" && project.autoDeploy
       ? await appWebhookStatus(project.repo)
       : null;
+
+  // What the host has not allowed, before a deploy discovers it in a build log.
+  // Both halves are live reads that fail open: an unreachable provider says
+  // nothing rather than accusing one.
+  const [repoAccess, cloneRefusal, canManageGit] = await Promise.all([
+    project.repo?.installationId
+      ? installationAccess(project.repo.installationId, {
+          previews: project.previewEnabled,
+        })
+      : null,
+    project.repo ? repoCloneRefusal(project.repo) : null,
+    hasCapability("manage_git"),
+  ]);
 
   // Whether this app accrues rollbacks at all - the SAME predicate the data layer
   // gates on, so the card cannot offer a setting the action would refuse.
@@ -85,6 +102,14 @@ export default async function AppDeploymentSettingsPage(
           installations={installations}
           connections={connections}
           webhook={webhook}
+          repoAccess={repoAccess}
+          cloneRefusal={cloneRefusal}
+          canManageGit={canManageGit}
+          connectionAccess={
+            project.repo?.connectionId
+              ? requiredAccess(project.repo.provider as GitProviderId)
+              : []
+          }
           deployHookEnabled={project.deployHookEnabled}
           composeUpArgs={project.composeUpArgs}
           // The link's shape, never its token: the real URL is fetched only when someone with

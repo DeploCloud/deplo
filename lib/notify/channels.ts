@@ -283,6 +283,7 @@ const WARN = new Set<AlertKey>([
   "certificate_expiring",
   "domain_dns_drift",
   "teardown_abandoned",
+  "git_access_missing",
 ]);
 
 function embedColor(key: AlertKey): number {

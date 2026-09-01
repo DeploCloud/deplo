@@ -2,9 +2,10 @@ import "server-only";
 
 import { and, eq, inArray } from "drizzle-orm";
 
-import { readAppCapabilities } from "../github/app";
+import { readAppAccess } from "../github/app";
 import { getDb } from "../db/client";
 import {
+  apps as appsTable,
   githubApps as githubAppsTable,
   githubInstallation as githubInstallationTable,
 } from "../db/schema/control-plane";
@@ -25,6 +26,7 @@ import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import type { GithubApp, GithubInstallation } from "../types";
 import type { ManifestConversion } from "../github/manifest";
+import type { AccessRequirement } from "../git/provider-access";
 
 /**
  * `github_apps` + `github_installation` are RELATIONAL as of cut-set (e)
@@ -157,24 +159,91 @@ export async function createGithubApp(
   return app;
 }
 
+/** What one connected App is missing, and where its owner fixes it. */
+export interface GithubAppAccessDTO {
+  missing: AccessRequirement[];
+  settingsUrl: string;
+}
+
 /**
- * Whether each connected GitHub App can drive pull request previews, keyed by App
- * id. Read LIVE from GitHub (never stored) because the operator fixes it on
- * github.com, and a cached "needs update" badge would outlive the fix.
+ * What each connected GitHub App is missing, keyed by App id. Read LIVE from
+ * GitHub (never stored) because the operator fixes it on github.com, and a cached
+ * "needs update" badge would outlive the fix. An App GitHub would not answer for
+ * simply gets no entry - and so no accusation.
+ *
+ * `previews` adds the pull-request half: the team uses previews somewhere, so an
+ * App that cannot drive them is worth naming. Without it only the core half is
+ * reported, and nobody reads about a feature they never turned on.
  */
-export async function githubAppsPreviewReadiness(): Promise<
-  Record<string, { ready: boolean; settingsUrl: string }>
-> {
+export async function githubAppsAccess(
+  opts: { previews?: boolean } = {},
+): Promise<Record<string, GithubAppAccessDTO>> {
   const apps = await listGithubApps();
-  const out: Record<string, { ready: boolean; settingsUrl: string }> = {};
+  const out: Record<string, GithubAppAccessDTO> = {};
   await Promise.all(
     apps.map(async (a) => {
-      const caps = await readAppCapabilities(a.id);
-      if (caps)
-        out[a.id] = { ready: caps.previewReady, settingsUrl: caps.settingsUrl };
+      const access = await readAppAccess(a.id);
+      if (!access) return;
+      out[a.id] = {
+        missing: [
+          ...access.missingCore,
+          ...(opts.previews ? access.missingPreviews : []),
+        ],
+        settingsUrl: access.settingsUrl,
+      };
     }),
   );
   return out;
+}
+
+/**
+ * What the App behind ONE installation is missing, for an app's Deploy source
+ * card. Scoped to the active team so an installation id from elsewhere reads as
+ * "nothing to say" rather than leaking another team's setup.
+ */
+export async function installationAccess(
+  installationId: string,
+  opts: { previews?: boolean } = {},
+): Promise<GithubAppAccessDTO | null> {
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .select({ appId: githubInstallationTable.appId })
+    .from(githubInstallationTable)
+    .innerJoin(
+      githubAppsTable,
+      eq(githubAppsTable.id, githubInstallationTable.appId),
+    )
+    .where(
+      and(
+        eq(githubInstallationTable.id, installationId),
+        eq(githubAppsTable.teamId, teamId),
+      ),
+    )
+    .limit(1);
+  const appDbId = rows[0]?.appId;
+  if (!appDbId) return null;
+  const access = await readAppAccess(appDbId);
+  if (!access) return null;
+  return {
+    missing: [
+      ...access.missingCore,
+      ...(opts.previews ? access.missingPreviews : []),
+    ],
+    settingsUrl: access.settingsUrl,
+  };
+}
+
+/** Whether the active team uses pull request previews on any app. */
+export async function teamUsesPreviews(): Promise<boolean> {
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .select({ id: appsTable.id })
+    .from(appsTable)
+    .where(
+      and(eq(appsTable.teamId, teamId), eq(appsTable.previewEnabled, true)),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** True once the active team has at least one App connected. */

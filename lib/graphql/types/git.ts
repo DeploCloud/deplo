@@ -11,6 +11,7 @@ import {
 } from "@/lib/data/git-connections";
 import { assertUser } from "@/lib/auth";
 import { PROVIDERS, tokenHelpUrl, type RepoSummary } from "@/lib/git/providers";
+import { tokenScopesLine } from "@/lib/git/provider-access";
 import type { GitProviderId } from "@/lib/types";
 
 /**
@@ -124,7 +125,7 @@ builder.queryFields((t) => ({
         label: PROVIDERS[id].label,
         defaultBaseUrl: PROVIDERS[id].defaultBaseUrl,
         defaultUsername: PROVIDERS[id].defaultUsername,
-        tokenScopes: PROVIDERS[id].tokenScopes,
+        tokenScopes: tokenScopesLine(id),
         hasApi: PROVIDERS[id].api != null,
       })),
   }),

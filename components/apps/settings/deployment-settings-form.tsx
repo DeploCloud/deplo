@@ -67,11 +67,13 @@ import {
   type SettingsServer,
 } from "@/components/apps/settings/settings-shared";
 import { CopyButton } from "@/components/shared/copy-button";
+import { GitAccessNotice } from "@/components/shared/git-access-notice";
 import {
   hasBlockingErrors,
   type LintDiagnostic,
 } from "@/lib/deploy/compose-lint";
 import type { GithubInstallationDTO } from "@/lib/data/github";
+import type { AccessRequirement } from "@/lib/git/provider-access";
 import type {
   GitConnectionDTO,
   GitWebhookStatus,
@@ -166,6 +168,10 @@ export function DeploymentSettingsForm({
   installations,
   connections,
   webhook,
+  repoAccess,
+  cloneRefusal,
+  connectionAccess,
+  canManageGit,
   framework,
   frameworkOverride: initialFrameworkOverride,
   deployHookEnabled,
@@ -201,6 +207,16 @@ export function DeploymentSettingsForm({
   /** Live push-webhook state for a connection-backed repo, or null when the
    *  question doesn't apply (GitHub, a bare URL, auto-deploy off). */
   webhook: GitWebhookStatus | null;
+  /** What the GitHub App behind this repo has not allowed. Null when there is no
+   *  App, or when GitHub could not be asked. */
+  repoAccess: { missing: AccessRequirement[]; settingsUrl: string } | null;
+  /** Why this repository will not clone, in the provider's own terms. */
+  cloneRefusal: string | null;
+  /** What a connection's token has to cover. Shown only once the provider has
+   *  actually refused something, since none of these hosts reports its scopes. */
+  connectionAccess: AccessRequirement[];
+  /** Only whoever can change the connection is sent to the provider to fix it. */
+  canManageGit: boolean;
   /** Whether the app's deploy hook answers at all (Advanced settings). */
   deployHookEnabled: boolean;
   /**
@@ -733,9 +749,34 @@ export function DeploymentSettingsForm({
               />
             )}
 
+            {/* Named before a deploy discovers it in a build log. Both describe
+                the SAVED source, so they step aside while another tab is open. */}
+            {usesGithubApp && repoAccess && repoAccess.missing.length > 0 && (
+              <GitAccessNotice
+                heading="Deplo is missing access on GitHub"
+                items={repoAccess.missing}
+                fix={
+                  canManageGit
+                    ? {
+                        href: repoAccess.settingsUrl,
+                        label: "Update on GitHub",
+                      }
+                    : null
+                }
+              />
+            )}
+            {(usesGithubApp || usesGitUrl) && cloneRefusal && (
+              <GitAccessNotice
+                heading="This repository will not clone"
+                note={cloneRefusal}
+              />
+            )}
+
             {/* The one case auto-registration cannot cover: a token without the
                 webhook scope. Rather than leaving auto-deploy quietly dead, show
-                the address to paste and the provider's own reason. */}
+                the address to paste, the provider's own reason, and what the
+                token needs - none of these hosts reports its own scopes, so the
+                checklist waits for a real refusal rather than nagging. */}
             {usesGitUrl && webhook?.applicable && !webhook.installed && (
               <div className="rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
                 <p className="text-xs font-medium">
@@ -745,6 +786,19 @@ export function DeploymentSettingsForm({
                   {webhook.error ||
                     "Add it in your repository's webhook settings so a push deploys."}
                 </p>
+                {connectionAccess.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {connectionAccess.map((r) => (
+                      <li key={r.key} className="text-xs">
+                        <span className="font-medium">{r.label}</span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          - {r.unlocks}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {webhook.url && (
                   <div className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
                     <code className="min-w-0 flex-1 font-mono text-xs leading-relaxed break-all">

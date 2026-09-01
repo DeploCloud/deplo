@@ -31,6 +31,7 @@ import {
   type GithubPullRequestSummary,
 } from "../github/app";
 import { githubFullName } from "../github/repo-id";
+import type { AccessRequirement } from "../git/provider-access";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -98,6 +99,8 @@ export interface AppPreviewsView {
   branch: string;
   /** Deep link to this GitHub App's permissions page, when one is knowable. */
   githubSettingsUrl: string | null;
+  /** What the App is missing, named as GitHub names it. Empty when nothing is. */
+  githubMissingAccess: AccessRequirement[];
   enabled: boolean;
   baseDomain: string | null;
   maxActive: number;
@@ -174,6 +177,7 @@ export const listAppPreviews = cache(
 
     let unavailable: PreviewsUnavailable | null = null;
     let githubSettingsUrl: string | null = null;
+    let githubMissingAccess: AccessRequirement[] = [];
     if (app.source !== "github" || !app.repo) {
       unavailable = "not-github";
     } else if (!app.repo.installationId) {
@@ -183,6 +187,7 @@ export const listAppPreviews = cache(
       // otherwise, and a user staring at an empty list deserves to know why.
       const ready = await githubAppPreviewReadiness(app.repo.installationId);
       githubSettingsUrl = ready.settingsUrl;
+      githubMissingAccess = ready.missing;
       if (!ready.ready) unavailable = "app-needs-update";
       else if (!settings.enabled) unavailable = "disabled";
     }
@@ -198,6 +203,7 @@ export const listAppPreviews = cache(
       unavailable,
       branch: app.repo?.branch || "main",
       githubSettingsUrl,
+      githubMissingAccess,
       enabled: settings.enabled,
       baseDomain: settings.baseDomain,
       maxActive: settings.maxActive,
@@ -220,20 +226,27 @@ export const listAppPreviews = cache(
  * live (never stored) because the operator fixes it on github.com, not here, and a
  * stale "needs update" badge would be worse than none.
  */
-async function githubAppPreviewReadiness(
-  installationId: string,
-): Promise<{ ready: boolean; settingsUrl: string | null }> {
+async function githubAppPreviewReadiness(installationId: string): Promise<{
+  ready: boolean;
+  settingsUrl: string | null;
+  missing: AccessRequirement[];
+}> {
+  const unknown = { ready: true, settingsUrl: null, missing: [] };
   const rows = await getDb()
     .select({ appId: githubInstallationTable.appId })
     .from(githubInstallationTable)
     .where(eq(githubInstallationTable.id, installationId))
     .limit(1);
   const appDbId = rows[0]?.appId;
-  if (!appDbId) return { ready: true, settingsUrl: null };
-  const { readAppCapabilities } = await import("../github/app");
-  const caps = await readAppCapabilities(appDbId);
-  if (!caps) return { ready: true, settingsUrl: null };
-  return { ready: caps.previewReady, settingsUrl: caps.settingsUrl };
+  if (!appDbId) return unknown;
+  const { readAppAccess } = await import("../github/app");
+  const access = await readAppAccess(appDbId);
+  if (!access) return unknown;
+  return {
+    ready: access.previewReady,
+    settingsUrl: access.settingsUrl,
+    missing: [...access.missingCore, ...access.missingPreviews],
+  };
 }
 
 /** The open pull requests of an app's repo, for the "Deploy a pull request"

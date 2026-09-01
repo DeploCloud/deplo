@@ -3,6 +3,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 
 import { signState, verifyState } from "@/lib/crypto";
+import { githubManifestAccess } from "@/lib/git/provider-access";
 import { safeReturnPath } from "@/lib/utils";
 
 /**
@@ -37,6 +38,9 @@ export function manifestCreateUrl(org?: string | null): string {
 export function buildManifest(publicUrl: string): AppManifest {
   const base = publicUrl.replace(/\/+$/, "");
   const suffix = randomBytes(3).toString("hex");
+  // The same list the access check diffs against, so an App is never created
+  // missing something Deplo will then warn about.
+  const access = githubManifestAccess();
   return {
     // App names are globally unique on GitHub; a short random suffix avoids
     // collisions across instances.
@@ -48,12 +52,8 @@ export function buildManifest(publicUrl: string): AppManifest {
     setup_url: `${base}/api/github/setup`,
     setup_on_update: true,
     public: false,
-    default_permissions: {
-      contents: "read",
-      metadata: "read",
-      pull_requests: "write",
-    },
-    default_events: ["push", "pull_request"],
+    default_permissions: access.permissions,
+    default_events: access.events,
   };
 }
 

@@ -4,13 +4,21 @@ import { and, eq, isNotNull, lt, notExists, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
+  apps as appsTable,
   gitConnections as gitConnectionsTable,
+  githubApps as githubAppsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { oauthClient, oauthConsent, verification } from "../db/schema/auth";
 import { decryptSecret } from "../crypto";
 import { sweepRateLimits } from "../security";
 import { probeCredential } from "../data/git-connections";
+import { readAppAccess } from "../github/app";
+import {
+  grantedFromScopes,
+  missingAccess,
+  type AccessRequirement,
+} from "../git/provider-access";
 import { sweepDomainDns } from "../data/domains";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo } from "../data/updates";
@@ -36,6 +44,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);
   await settle("git tokens", checkGitConnections);
+  await settle("github app access", checkGithubAppAccess);
   // Housekeeping rather than a check: closed rate-limit windows are already
   // treated as absent, this just stops a year of guessed addresses accumulating
   // as dead rows.
@@ -172,6 +181,21 @@ async function checkGitConnections(): Promise<void> {
       .set(patch)
       .where(eq(gitConnectionsTable.id, row.id));
 
+    // Independent of health: a token can be perfectly valid and still be missing
+    // a scope, which is the failure nobody sees coming.
+    raiseMissingAccess(
+      row.teamId,
+      `gitconn:${row.id}`,
+      `The ${row.label} git connection is missing access`,
+      missingAccess(
+        row.provider as GitProviderId,
+        grantedFromScopes(
+          row.provider as GitProviderId,
+          patch.tokenScopes ?? row.tokenScopes,
+        ),
+      ),
+    );
+
     const expiringSoon =
       patch.health === "ok" &&
       patch.tokenExpiresAt != null &&
@@ -199,6 +223,73 @@ async function checkGitConnections(): Promise<void> {
       path: "/settings/git",
     });
   }
+}
+
+/**
+ * What each connected GitHub App is allowed to do, asked of GitHub. The pull
+ * request half is only raised for a team that uses previews somewhere - nobody
+ * needs telling about a feature they never turned on.
+ */
+async function checkGithubAppAccess(): Promise<void> {
+  const db = getDb();
+  const apps = await db
+    .select({
+      id: githubAppsTable.id,
+      teamId: githubAppsTable.teamId,
+      name: githubAppsTable.name,
+    })
+    .from(githubAppsTable);
+  if (apps.length === 0) return;
+  const previewTeams = new Set(
+    (
+      await db
+        .selectDistinct({ teamId: appsTable.teamId })
+        .from(appsTable)
+        .where(eq(appsTable.previewEnabled, true))
+    ).map((r) => r.teamId),
+  );
+  for (const app of apps) {
+    // Null is an unreachable GitHub, not a stripped App: say nothing.
+    const access = await readAppAccess(app.id);
+    if (!access) continue;
+    raiseMissingAccess(
+      app.teamId,
+      `ghapp:${app.id}`,
+      `The ${app.name} GitHub App is missing access`,
+      [
+        ...access.missingCore,
+        ...(previewTeams.has(app.teamId) ? access.missingPreviews : []),
+      ],
+    );
+  }
+}
+
+/** One alert for both halves, so the two can never word the same gap differently. */
+function raiseMissingAccess(
+  teamId: string,
+  dedupeId: string,
+  title: string,
+  missing: AccessRequirement[],
+): void {
+  if (missing.length === 0) return;
+  dispatchAlert({
+    teamId,
+    key: "git_access_missing",
+    // The state is WHAT is missing, so a second permission disappearing re-fires
+    // instead of hiding behind the first.
+    dedupe: {
+      id: dedupeId,
+      state: missing
+        .map((r) => r.key)
+        .sort()
+        .join(","),
+    },
+    title,
+    body: `Deplo cannot ${missing.map((r) => r.unlocks).join(", ")}. Allow ${missing
+      .map((r) => r.label)
+      .join(", ")} and it will work again.`,
+    path: "/settings/git",
+  });
 }
 
 /** Warn this far ahead of a git token expiring. */

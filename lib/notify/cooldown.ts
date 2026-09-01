@@ -51,6 +51,9 @@ const COOLDOWN_MS: Partial<Record<AlertKey, number>> = {
   // release re-fires immediately instead of waiting out the week.
   deplo_update_available: 7 * 24 * 60 * 60_000,
   certificate_expiring: 24 * 60 * 60_000,
+  // Somebody has to open a provider's settings page to fix this; nagging every
+  // half hour would only train people to mute it.
+  git_access_missing: 24 * 60 * 60_000,
   domain_dns_drift: 24 * 60 * 60_000,
   failed_logins: 15 * 60_000,
 };

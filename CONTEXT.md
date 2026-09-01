@@ -509,6 +509,18 @@ UI: the Deploy Source chips do not grow, the choice lives in a dropdown inside t
 _Avoid_: integration, provider account, credential (too broad - a **registry** has credentials
 too), "GitLab app" (there is no registered application; it is a token).
 
+**Provider access**:
+What a git host allows Deplo to do, in that host's OWN words - GitHub's permissions and
+subscribed events, GitLab's token scopes - as opposed to a **Capability**, which is what a
+member may do inside Deplo. One list per provider (`lib/git/provider-access.ts`) is what the
+GitHub App manifest asks for, what the check diffs against, and what the connect dialog prints,
+so the three cannot drift. Read LIVE and never stored for a **GitHub installation**; for a
+**Git connection** it rides `token_scopes`, re-derived by the same probe that sets `health`.
+A provider that does not report its scopes (Bitbucket, Gitea) yields a CHECKLIST after a real
+refusal, never a list of what is "missing" - absence of an answer is not an accusation.
+_Avoid_: permission / scope on their own (they are one provider's word for it, use the
+provider's own label in UI copy), capability (that is Deplo's, and it is a different thing).
+
 **Deploy hook**:
 The per-app URL that starts a **Deployment** from outside Deplo - a CI job, a script, any
 sender that cannot speak GraphQL - `POST /api/apps/<id>/deploy-hook/<token>`. It carries

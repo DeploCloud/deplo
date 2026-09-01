@@ -46,10 +46,11 @@ import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { GitProviderMark } from "@/components/shared/brand-icons";
 import { useGithubOwnerConnect } from "@/components/apps/github-connect-button";
 import { GitGraphic } from "@/components/settings/git-graphic";
+import { GitAccessNotice } from "@/components/shared/git-access-notice";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
-import type { GithubAppDTO } from "@/lib/data/github";
+import type { GithubAppAccessDTO, GithubAppDTO } from "@/lib/data/github";
 
 export interface GitProviderChoice {
   id: string;
@@ -61,8 +62,8 @@ export interface GitProviderChoice {
   tokenHelpUrl: string;
 }
 
-/** Whether an App can drive pull request previews, and where to fix it. */
-type PreviewReadiness = Record<string, { ready: boolean; settingsUrl: string }>;
+/** What each connected App is not allowed to do, and where its owner fixes it. */
+type AppAccess = Record<string, GithubAppAccessDTO>;
 
 /**
  * The whole Git settings page: one header, one grid of connected hosts, one empty
@@ -72,7 +73,7 @@ export function GitPanel({
   githubApps,
   connections,
   providers,
-  previewReadiness,
+  appAccess,
   next,
   isInstanceAdmin,
 }: {
@@ -80,7 +81,7 @@ export function GitPanel({
   connections: GitConnectionDTO[];
   /** The provider catalogue, passed down rather than fetched: it is static. */
   providers: GitProviderChoice[];
-  previewReadiness?: PreviewReadiness;
+  appAccess?: AppAccess;
   /**
    * Where to send the browser once a provider is connected: the page that linked
    * here (`?next=`), already validated server-side.
@@ -159,7 +160,7 @@ export function GitPanel({
             <GithubAppCard
               key={app.id}
               app={app}
-              readiness={previewReadiness?.[app.id]}
+              access={appAccess?.[app.id]}
               onRemove={() => setDeletingApp(app)}
             />
           ))}
@@ -375,11 +376,11 @@ function HostCard({
 
 function GithubAppCard({
   app,
-  readiness,
+  access,
   onRemove,
 }: {
   app: GithubAppDTO;
-  readiness?: { ready: boolean; settingsUrl: string };
+  access?: GithubAppAccessDTO;
   onRemove: () => void;
 }) {
   return (
@@ -395,28 +396,15 @@ function GithubAppCard({
         </DropdownMenuItem>
       }
     >
-      {/* A missing readiness entry means GitHub could not be asked - no badge,
-          no accusation. */}
-      {readiness && !readiness.ready && (
-        <div className="mt-3 rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
-          <p className="text-xs font-medium">
-            This App cannot see pull requests yet
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Pull request previews need the pull request event and permission to
-            comment. GitHub only lets you change that on its own settings page.
-          </p>
-          <Button asChild size="sm" className="mt-2">
-            <a
-              href={readiness.settingsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Update on GitHub
-              <ExternalLink className="size-3.5" />
-            </a>
-          </Button>
-        </div>
+      {/* A missing entry means GitHub could not be asked - no badge, no
+          accusation. */}
+      {access && access.missing.length > 0 && (
+        <GitAccessNotice
+          className="mt-3"
+          heading="Deplo is missing access on GitHub"
+          items={access.missing}
+          fix={{ href: access.settingsUrl, label: "Update on GitHub" }}
+        />
       )}
 
       {app.installations.length > 0 && (
@@ -497,6 +485,14 @@ function ConnectionCard({
             Replace the token
           </Button>
         </div>
+      ) : conn.missingAccess.length > 0 ? (
+        <GitAccessNotice
+          className="mt-3"
+          heading={`This token is missing access on ${conn.label}`}
+          items={conn.missingAccess}
+          note="Mint a replacement token with these ticked, then swap it in here."
+          fix={{ label: "Replace the token", onClick: onEdit }}
+        />
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Badge variant="secondary" className="gap-1.5">

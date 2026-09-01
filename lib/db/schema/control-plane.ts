@@ -2460,6 +2460,10 @@ export const gitConnections = pgTable(
     healthError: text("health_error").notNull().default(""),
     // Only when the provider tells us (GitLab does, Gitea does not).
     tokenExpiresAt: isoTimestamptz("token_expires_at"),
+    // Space-separated scopes the provider reports for this token. Empty when it
+    // reports none, which is NOT the same as "the token has none": a missing-access
+    // warning is only ever raised from a non-empty value.
+    tokenScopes: text("token_scopes").notNull().default(""),
     lastCheckedAt: isoTimestamptz("last_checked_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
     createdBy: text("created_by").notNull(),

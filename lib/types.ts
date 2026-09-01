@@ -1773,6 +1773,7 @@ export type AlertKey =
   | "deployment_succeeded"
   | "deployment_interrupted"
   | "git_connection_failing"
+  | "git_access_missing"
   // Apps
   | "app_crash_loop"
   // Cron jobs
@@ -1823,6 +1824,7 @@ export const ALL_ALERTS: AlertKey[] = [
   "deployment_succeeded",
   "deployment_interrupted",
   "git_connection_failing",
+  "git_access_missing",
   "app_crash_loop",
   "cron_job_failed",
   "cron_job_succeeded",

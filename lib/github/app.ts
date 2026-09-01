@@ -13,6 +13,11 @@ import {
   assembleGithubInstallation,
 } from "../data/infra-rows";
 import { decryptSecret } from "../crypto";
+import {
+  githubGranted,
+  missingAccess,
+  type AccessRequirement,
+} from "../git/provider-access";
 import { requireActiveTeamId, requireTeamWide } from "../membership";
 import type { GithubApp, GithubInstallation } from "../types";
 
@@ -417,39 +422,37 @@ export async function installationCloneUrl(
 /* ------------------------------------------------------------------ */
 
 /**
- * What a connected GitHub App can actually do - read live from GitHub, never
- * stored, because the operator fixes it on github.com and a cached answer would go
- * stale the moment they did.
+ * What a connected GitHub App is actually allowed to do - read live from GitHub,
+ * never stored, because the operator fixes it on github.com and a cached answer
+ * would go stale the moment they did.
  */
-export interface GithubAppCapabilities {
-  events: string[];
-  permissions: Record<string, string>;
-  /** Deliveries for `pull_request` arrive at all. */
-  hasPullRequestEvent: boolean;
-  /** Deplo may post/update the preview comment. */
-  canWritePullRequests: boolean;
-  /** Both of the above - the gate the Pull requests page reads. */
+export interface GithubAppAccess {
+  /** What GitHub reports, diffed against `PROVIDER_ACCESS.github`. */
+  missingCore: AccessRequirement[];
+  /** Only reported for a repo that uses pull request previews. */
+  missingPreviews: AccessRequirement[];
+  /** Nothing missing on either half - the gate the Pull requests page reads. */
   previewReady: boolean;
   /** Deep link to THIS App's permissions page (not its public page). */
   settingsUrl: string;
   ownerLogin: string;
 }
 
-interface CachedCapabilities {
-  value: GithubAppCapabilities;
+interface CachedAccess {
+  value: GithubAppAccess;
   expiresAt: number;
 }
-const capabilitiesCache = new Map<string, CachedCapabilities>();
-const CAPABILITIES_TTL_MS = 60_000;
+const accessCache = new Map<string, CachedAccess>();
+const ACCESS_TTL_MS = 60_000;
 
 /**
  * The App's declared events + permissions, cached for a minute so an RSC render
  * that asks once per app doesn't spend a round-trip each time.
  */
-export async function readAppCapabilities(
+export async function readAppAccess(
   appDbId: string,
-): Promise<GithubAppCapabilities | null> {
-  const cached = capabilitiesCache.get(appDbId);
+): Promise<GithubAppAccess | null> {
+  const cached = accessCache.get(appDbId);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   try {
     const rows = await getDb()
@@ -484,20 +487,21 @@ export async function readAppCapabilities(
       json.owner?.type === "Organization" && ownerLogin
         ? `https://github.com/organizations/${ownerLogin}/settings/apps/${slug}/permissions`
         : `https://github.com/settings/apps/${slug}/permissions`;
-    const hasPullRequestEvent = events.includes("pull_request");
-    const canWritePullRequests = permissions.pull_requests === "write";
-    const value: GithubAppCapabilities = {
-      events,
-      permissions,
-      hasPullRequestEvent,
-      canWritePullRequests,
-      previewReady: hasPullRequestEvent && canWritePullRequests,
+    const granted = githubGranted(permissions, events);
+    const missingCore = missingAccess("github", granted);
+    const missingPreviews = missingAccess("github", granted, {
+      previews: true,
+    }).filter((r) => r.feature === "previews");
+    const value: GithubAppAccess = {
+      missingCore,
+      missingPreviews,
+      previewReady: missingCore.length === 0 && missingPreviews.length === 0,
       settingsUrl,
       ownerLogin,
     };
-    capabilitiesCache.set(appDbId, {
+    accessCache.set(appDbId, {
       value,
-      expiresAt: Date.now() + CAPABILITIES_TTL_MS,
+      expiresAt: Date.now() + ACCESS_TTL_MS,
     });
     return value;
   } catch {

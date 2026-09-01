@@ -34,6 +34,9 @@ export interface GitAccount {
   avatarUrl: string;
   /** ISO expiry when the provider reports one (GitLab does, Gitea does not). */
   expiresAt: string | null;
+  /** Scopes the provider reports for this token, or null when it reports none.
+   *  Null is "we do not know", never "the token has nothing". */
+  scopes: string[] | null;
 }
 
 /** A registered webhook, reduced to what ensure/remove need. */
@@ -100,8 +103,6 @@ export interface GitProviderAdapter {
   defaultUsername: string;
   /** The page that mints a token: absolute, or a path relative to baseUrl. */
   tokenHelpPath: string;
-  /** The exact scopes to tick there, as one short line of UI copy. */
-  tokenScopes: string;
   api: GitProviderApi | null;
 }
 
@@ -254,15 +255,17 @@ const gitlab: GitProviderApi = {
     );
     // Best-effort: only a personal access token can read its own metadata, and a
     // project/group access token 404s here. A missing expiry is not an error.
-    const self = await json<{ expires_at?: string | null }>(
-      c,
-      "/api/v4/personal_access_tokens/self",
-      { auth: glAuth(c) },
-    ).catch(() => null);
+    const self = await json<{
+      expires_at?: string | null;
+      scopes?: string[];
+    }>(c, "/api/v4/personal_access_tokens/self", { auth: glAuth(c) }).catch(
+      () => null,
+    );
     return {
       login: me.username,
       avatarUrl: me.avatar_url ?? "",
       expiresAt: self?.expires_at ? `${self.expires_at}T00:00:00.000Z` : null,
+      scopes: self?.scopes ?? null,
     };
   },
 
@@ -424,6 +427,7 @@ const gitea: GitProviderApi = {
       login: me.login,
       avatarUrl: me.avatar_url ?? "",
       expiresAt: null, // Gitea tokens do not expire.
+      scopes: null, // and it does not report what they cover.
     };
   },
 
@@ -578,6 +582,7 @@ const bitbucket: GitProviderApi = {
         login: me.username || me.nickname || "",
         avatarUrl: me.links?.avatar?.href ?? "",
         expiresAt: null,
+        scopes: null,
       };
     }
     // A token scoped to repositories only cannot read /2.0/user. Prove it works
@@ -585,7 +590,7 @@ const bitbucket: GitProviderApi = {
     await call(c, "/2.0/repositories?role=member&pagelen=1", {
       auth: bbAuth(c),
     });
-    return { login: c.username, avatarUrl: "", expiresAt: null };
+    return { login: c.username, avatarUrl: "", expiresAt: null, scopes: null };
   },
 
   async listRepos(c) {
@@ -774,7 +779,6 @@ export const PROVIDERS: Record<GitProviderId, GitProviderAdapter> = {
     // Any username works with a GitLab token; "oauth2" is the documented one.
     defaultUsername: "oauth2",
     tokenHelpPath: "/-/user_settings/personal_access_tokens",
-    tokenScopes: "api, read_repository",
     api: gitlab,
   },
   bitbucket: {
@@ -787,7 +791,6 @@ export const PROVIDERS: Record<GitProviderId, GitProviderAdapter> = {
     // is why the field stays editable.
     defaultUsername: "x-token-auth",
     tokenHelpPath: "/account/settings/app-passwords/",
-    tokenScopes: "Repositories: Read, Webhooks: Read and write",
     api: bitbucket,
   },
   gitea: {
@@ -796,7 +799,6 @@ export const PROVIDERS: Record<GitProviderId, GitProviderAdapter> = {
     // Gitea wants the real account name alongside the token.
     defaultUsername: "",
     tokenHelpPath: "/user/settings/applications",
-    tokenScopes: "read:repository, write:repository",
     api: gitea,
   },
   git: {
@@ -804,7 +806,6 @@ export const PROVIDERS: Record<GitProviderId, GitProviderAdapter> = {
     defaultBaseUrl: null,
     defaultUsername: "",
     tokenHelpPath: "",
-    tokenScopes: "",
     // No API: a plain git server offers nothing to list, browse or register a
     // webhook on. The connection carries credentials and nothing else.
     api: null,

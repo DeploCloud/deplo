@@ -1,7 +1,12 @@
 import { isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
-import { githubAppsPreviewReadiness, listGithubApps } from "@/lib/data/github";
+import {
+  githubAppsAccess,
+  listGithubApps,
+  teamUsesPreviews,
+} from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
 import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers";
+import { tokenScopesLine } from "@/lib/git/provider-access";
 import type { GitProviderId } from "@/lib/types";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { safeReturnPath } from "@/lib/utils";
@@ -26,9 +31,12 @@ export default async function SettingsGitPage(props: {
       />
     );
   const githubApps = await listGithubApps();
-  // Whether each App can drive pull request previews. Read live; an App that
-  // cannot be checked simply gets no entry and no warning.
-  const previewReadiness = await githubAppsPreviewReadiness();
+  // What each App is not allowed to do. Read live; an App that cannot be checked
+  // simply gets no entry and no warning. The pull request half is only reported
+  // to a team that actually uses previews.
+  const appAccess = await githubAppsAccess({
+    previews: await teamUsesPreviews(),
+  });
   const connections = await listGitConnections();
   // The provider catalogue is static, so it is passed down rather than fetched:
   // one fewer round trip before the connect dialog can render.
@@ -37,7 +45,7 @@ export default async function SettingsGitPage(props: {
     label: PROVIDERS[id].label,
     defaultBaseUrl: PROVIDERS[id].defaultBaseUrl,
     defaultUsername: PROVIDERS[id].defaultUsername,
-    tokenScopes: PROVIDERS[id].tokenScopes,
+    tokenScopes: tokenScopesLine(id),
     hasApi: PROVIDERS[id].api != null,
     tokenHelpUrl: tokenHelpUrl(id, PROVIDERS[id].defaultBaseUrl ?? ""),
   }));
@@ -49,7 +57,7 @@ export default async function SettingsGitPage(props: {
       githubApps={githubApps}
       connections={connections}
       providers={providers}
-      previewReadiness={previewReadiness}
+      appAccess={appAccess}
       next={next}
       isInstanceAdmin={await isInstanceAdmin()}
     />

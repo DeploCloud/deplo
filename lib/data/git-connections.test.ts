@@ -24,6 +24,8 @@ import { resolveCloneUrl, redactCloneUrl } from "../git/clone-url";
 import { updateAppSource } from "./apps";
 import { loadAppGraph } from "./app-graph-load";
 import { gitConnections as gitConnectionsTable } from "../db/schema/control-plane";
+import { encryptSecret } from "../crypto";
+import { nowIso } from "../ids";
 import {
   __setDnsLookupForTest,
   __resetDnsLookupForTest,
@@ -405,4 +407,55 @@ test("an ordinary public address still connects, and is not flagged", async () =
   const created = await asTeamA(() => connectTo("git.acme.com"));
   assert.equal(created.baseUrl, "https://git.acme.com");
   assert.equal(created.allowPrivateEndpoint, false);
+});
+
+/**
+ * The scopes a provider reports are stored, and the card reads what is MISSING
+ * from them. Inserted directly: reaching a real GitLab is what this suite avoids.
+ */
+async function seedGitlab(tokenScopes: string): Promise<void> {
+  await db.insert(gitConnectionsTable).values({
+    id: "gitc_scopes",
+    teamId: TEAM_A,
+    provider: "gitlab",
+    label: "Acme GitLab",
+    baseUrl: "https://gitlab.acme.com",
+    allowPrivateEndpoint: false,
+    username: "oauth2",
+    tokenEnc: encryptSecret("t"),
+    webhookSecretEnc: encryptSecret("w"),
+    webhookToken: "wht_scopes",
+    accountLogin: "acme",
+    avatarUrl: "",
+    health: "ok",
+    healthError: "",
+    tokenExpiresAt: null,
+    tokenScopes,
+    lastCheckedAt: nowIso(),
+    createdAt: nowIso(),
+    createdBy: USER_1,
+  });
+}
+
+test("a token short of a scope says which one, in GitLab's own word", async () => {
+  await seedGitlab("read_repository");
+  const [conn] = await asTeamA(() => listGitConnections());
+  assert.deepEqual(
+    conn!.missingAccess.map((r) => r.label),
+    ["api"],
+  );
+  // Health is orthogonal: the token works, it just cannot do everything.
+  assert.equal(conn!.health, "ok");
+});
+
+test("a provider that reports no scopes is never accused", async () => {
+  await seedGitlab("");
+  const [conn] = await asTeamA(() => listGitConnections());
+  assert.deepEqual(conn!.missingAccess, []);
+});
+
+test("GitLab's api scope covers the read one it implies", async () => {
+  await seedGitlab("api");
+  const [conn] = await asTeamA(() => listGitConnections());
+  assert.deepEqual(conn!.missingAccess, []);
 });

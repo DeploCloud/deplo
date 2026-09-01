@@ -249,6 +249,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "gitlab bitbucket gitea token expired revoked repository",
     defaultOn: true,
   },
+  git_access_missing: {
+    label: "Git provider is missing access",
+    description: "A git host no longer allows something Deplo needs.",
+    keywords:
+      "github app permission scope grant clone webhook pull request revoked",
+    defaultOn: true,
+  },
   domain_dns_drift: {
     label: "Domain points elsewhere",
     description: "A domain no longer points at the server that serves it.",
@@ -276,6 +283,7 @@ export const ALERT_CATEGORIES: {
       "deployment_succeeded",
       "deployment_interrupted",
       "git_connection_failing",
+      "git_access_missing",
     ],
   },
   {

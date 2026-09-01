@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ExternalLink, GitPullRequest } from "lucide-react";
+import { GitPullRequest } from "lucide-react";
 
 import { getAppBySlug } from "@/lib/data/apps";
 import { listAppPreviews } from "@/lib/data/previews";
@@ -8,6 +8,7 @@ import { hasCapability } from "@/lib/membership";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
+import { GitAccessNotice } from "@/components/shared/git-access-notice";
 import { Button } from "@/components/ui/button";
 import { DeployPullRequestDialog } from "@/components/apps/previews/deploy-pull-request-dialog";
 import { PreviewsTable } from "@/components/apps/previews/previews-table";
@@ -24,9 +25,12 @@ export default async function AppPullRequestsPage(
   const { slug } = await props.params;
   const app = await getAppBySlug(slug);
   if (!app) notFound();
-  const [view, canDeploy] = await Promise.all([
+  const [view, canDeploy, canManageGit] = await Promise.all([
     listAppPreviews(app.id),
     hasCapability("manage_previews"),
+    // Everyone is told WHY previews cannot run; only whoever can change the App
+    // on GitHub is sent there.
+    hasCapability("manage_git"),
   ]);
 
   const deployButton =
@@ -90,34 +94,16 @@ export default async function AppPullRequestsPage(
       )}
 
       {view.unavailable === "app-needs-update" && (
-        <div className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-4">
-          <p className="text-sm font-medium">
-            Your GitHub App cannot see pull requests yet
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Deplo needs the pull request event and permission to comment before
-            it can build a preview when someone opens a pull request. It takes
-            one click on GitHub. You can still deploy a pull request by hand
-            from this page in the meantime.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {view.githubSettingsUrl && (
-              <Button asChild size="sm">
-                <a
-                  href={view.githubSettingsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Update on GitHub
-                  <ExternalLink className="size-3.5" />
-                </a>
-              </Button>
-            )}
-            <Button asChild variant="outline" size="sm">
-              <Link href="/settings/git">Git settings</Link>
-            </Button>
-          </div>
-        </div>
+        <GitAccessNotice
+          heading="Deplo is missing access on GitHub"
+          items={view.githubMissingAccess}
+          note="You can still deploy a pull request by hand from this page in the meantime."
+          fix={
+            canManageGit && view.githubSettingsUrl
+              ? { href: view.githubSettingsUrl, label: "Update on GitHub" }
+              : null
+          }
+        />
       )}
 
       {view.unavailable === "disabled" && (

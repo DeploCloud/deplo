@@ -29,6 +29,11 @@ import {
   type GitCredential,
   type RepoSummary,
 } from "../git/providers";
+import {
+  grantedFromScopes,
+  missingAccess,
+  type AccessRequirement,
+} from "../git/provider-access";
 import { recordActivity } from "./activity";
 import type { GitConnection, GitProviderId, GitRepo } from "../types";
 import { randomBytes } from "node:crypto";
@@ -45,6 +50,12 @@ export interface GitConnectionDTO extends GitConnection {
   appCount: number;
   /** Whether this provider can list repositories and register webhooks. */
   hasApi: boolean;
+  /**
+   * What the provider says this token may NOT do, of what Deplo needs. Empty for
+   * a provider that does not report its scopes - a checklist is honest there, an
+   * accusation is not.
+   */
+  missingAccess: AccessRequirement[];
 }
 
 function toDTO(
@@ -68,6 +79,13 @@ function toDTO(
     createdAt: row.createdAt,
     appCount,
     hasApi: providerFor(row.provider).api != null,
+    missingAccess: missingAccess(
+      row.provider as GitProviderId,
+      grantedFromScopes(row.provider as GitProviderId, row.tokenScopes),
+      // A connection is not an app: previews are a GitHub feature, so only the
+      // core half is ever reported here.
+      { previews: false },
+    ),
   };
 }
 
@@ -275,6 +293,7 @@ export async function connectGitProvider(
     health: "ok",
     healthError: "",
     tokenExpiresAt: account?.expiresAt ?? null,
+    tokenScopes: (account?.scopes ?? []).join(" "),
     lastCheckedAt: nowIso(),
     createdAt: nowIso(),
     createdBy: user.id,
@@ -309,17 +328,18 @@ export async function updateGitConnection(
 
   const username = input.username?.trim() || current.username;
   const token = input.token?.trim() || current.token;
-  if (
-    adapter.api &&
-    (token !== current.token || username !== current.username)
-  ) {
-    await adapter.api.whoami({ ...current, username, token });
-  }
+  // A replacement token can carry different scopes, so the answer is kept rather
+  // than discarded: the old token's scopes must not describe the new one.
+  const account =
+    adapter.api && (token !== current.token || username !== current.username)
+      ? await adapter.api.whoami({ ...current, username, token })
+      : null;
   const patch: Partial<typeof gitConnectionsTable.$inferInsert> = {
     username,
     health: "ok",
     healthError: "",
     lastCheckedAt: nowIso(),
+    ...(account ? { tokenScopes: (account.scopes ?? []).join(" ") } : {}),
     ...(input.label?.trim() ? { label: input.label.trim() } : {}),
     ...(token !== current.token ? { tokenEnc: encryptSecret(token) } : {}),
   };
@@ -457,6 +477,7 @@ export async function probeCredential(
       accountLogin: account.login,
       avatarUrl: account.avatarUrl,
       tokenExpiresAt: account.expiresAt,
+      tokenScopes: (account.scopes ?? []).join(" "),
       lastCheckedAt: nowIso(),
     };
   } catch (e) {
