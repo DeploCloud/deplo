@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { OtpInput } from "@/components/ui/otp-input";
 import { AlertCircle, Fingerprint, Loader2 } from "lucide-react";
 import { useStepSwap } from "@/components/apps/wizard/wizard-card";
+import { Collapse } from "@/components/ui/field-error";
 import {
   getPasskeyAssertion,
   passkeyError,
@@ -168,11 +169,13 @@ export default function LoginPage() {
     setError(null);
   }
 
-  const banner = error && (
-    <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-      <AlertCircle className="size-4 shrink-0" />
-      {error}
-    </div>
+  const banner = (
+    <Collapse open={Boolean(error)}>
+      <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <AlertCircle className="size-4 shrink-0" />
+        {error}
+      </div>
+    </Collapse>
   );
 
   const title = (heading: string, description: React.ReactNode) => (
@@ -198,6 +201,7 @@ export default function LoginPage() {
               <DocsLink topic="team.twoFactor" />
             </>,
           )}
+          {banner}
           <form
             // POST, even though JS always intercepts this: if the page has not hydrated yet (or
             // its bundle failed to load) the browser submits natively, and a GET would put the
@@ -209,7 +213,6 @@ export default function LoginPage() {
             }}
             className="space-y-4"
           >
-            {banner}
             {useRecovery ? (
               <div className="space-y-2">
                 <Label htmlFor="code">Recovery code</Label>
@@ -274,11 +277,11 @@ export default function LoginPage() {
       ) : (
         <>
           {title("Welcome back.", "Sign in to continue.")}
+          {banner}
           {/**
            * `method="post"` is load-bearing SECURITY, not a formality.
            */}
           <form method="post" onSubmit={onSubmit} className="space-y-4">
-            {banner}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

@@ -19,6 +19,7 @@ import {
   TeamStep,
 } from "@/components/auth/wizard-steps";
 import { useStepSwap } from "@/components/apps/wizard/wizard-card";
+import { Collapse } from "@/components/ui/field-error";
 import { gql } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +60,7 @@ export function RegisterWizard({
   token,
   mode,
   teamNames,
+  gravatar = false,
 }: {
   token: string;
   /** How this link decides the team: own_team asks for a name; existing_teams
@@ -66,6 +68,8 @@ export function RegisterWizard({
   mode: "own_team" | "existing_teams";
   /** For existing_teams: the names of the teams the registrant will join. */
   teamNames: string[];
+  /** Whether the instance offers Gravatar as a picture source. */
+  gravatar?: boolean;
 }) {
   const router = useRouter();
   const ownTeam = mode === "own_team";
@@ -116,16 +120,17 @@ export function RegisterWizard({
             key={step}
             className={cn(leaving ? "animate-soft-out" : "animate-soft-in")}
           >
-            {error && (
+            <Collapse open={Boolean(error)}>
               <div className="mb-5 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="size-4 shrink-0" />
                 {error}
               </div>
-            )}
+            </Collapse>
             {step === "account" ? (
               <AccountStep
                 draft={account}
                 onChange={setAccount}
+                gravatar={gravatar}
                 description="Create your account."
                 note={
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">

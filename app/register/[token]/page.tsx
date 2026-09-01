@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getRegistrationLinkInfo } from "@/lib/data/members";
+import { gravatarEnabled } from "@/lib/avatar";
 import { AuthChrome } from "@/components/auth/auth-chrome";
+import { InvalidLinkGraphic } from "@/components/auth/invalid-link-graphic";
 import { Button } from "@/components/ui/button";
 import { RegisterWizard } from "./register-wizard";
 
@@ -21,6 +23,7 @@ export default async function RegisterPage(props: {
             token={token}
             mode={info.mode}
             teamNames={info.teamNames}
+            gravatar={await gravatarEnabled()}
           />
         ) : (
           // No intro in front of this one: a dead link should not cost two
@@ -30,12 +33,14 @@ export default async function RegisterPage(props: {
           <>
             <AuthChrome />
             <div className="animate-soft-in w-full max-w-sm text-center">
+              <InvalidLinkGraphic className="mx-auto mb-4" />
               <h1 className="text-xl font-semibold sm:text-2xl">
                 Link not valid
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 This registration link has expired, been revoked, or already
-                been used.
+                been used. A link lasts 24 hours and works only once, so whoever
+                invited you can send a fresh one.
               </p>
               <Button asChild variant="outline" className="mt-6 w-full">
                 <Link href="/login">Go to sign in</Link>

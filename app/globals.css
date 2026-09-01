@@ -819,6 +819,42 @@ html body[data-scroll-locked] {
   animation: deplo-blob-drift-c 18s ease-in-out infinite;
 }
 
+/* The dead registration link: the chain comes apart ONCE and stays apart, so
+ * every animation here is finite and lands on the drawn position. */
+@keyframes deplo-unlink-a {
+  from {
+    transform: translate(-1.6px, 1.6px);
+  }
+}
+
+@keyframes deplo-unlink-b {
+  from {
+    transform: translate(1.6px, -1.6px);
+  }
+}
+
+@keyframes deplo-unlink-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.deplo-unlink-a {
+  animation: deplo-unlink-a 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+
+.deplo-unlink-b {
+  animation: deplo-unlink-b 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+
+.deplo-unlink-spark {
+  animation: deplo-unlink-fade 0.4s ease-out 0.6s both;
+}
+
+.deplo-unlink-track {
+  animation: deplo-unlink-fade 0.5s ease-out 0.85s both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-intro-in,
   .animate-intro-out,
@@ -826,7 +862,11 @@ html body[data-scroll-locked] {
   .animate-soft-out,
   .animate-aurora-in,
   .animate-aurora-out,
-  .deplo-blob {
+  .deplo-blob,
+  .deplo-unlink-a,
+  .deplo-unlink-b,
+  .deplo-unlink-spark,
+  .deplo-unlink-track {
     animation: none;
   }
 }

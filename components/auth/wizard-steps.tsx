@@ -4,9 +4,13 @@ import * as React from "react";
 import { ArrowLeft, Loader2, Pencil, Rocket } from "lucide-react";
 
 import { AvatarPicker } from "@/components/shared/avatar-picker";
-import { avatarPreviewUrl } from "@/lib/apps/avatar-shared";
+import {
+  avatarChoiceFromValue,
+  avatarPreviewUrl,
+} from "@/lib/apps/avatar-shared";
 import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
+import { FieldError, invalidField } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordField } from "@/components/ui/password-field";
@@ -143,12 +147,15 @@ export function AccountStep({
   note,
   submitLabel,
   pending = false,
+  gravatar = false,
   onSubmit,
   children,
 }: {
   draft: AccountDraft;
   onChange: (next: AccountDraft) => void;
   description: React.ReactNode;
+  /** Whether the instance offers Gravatar as a picture source. */
+  gravatar?: boolean;
   /** The one-line reassurance under the fields. */
   note: React.ReactNode;
   submitLabel: string;
@@ -158,7 +165,14 @@ export function AccountStep({
   children?: React.ReactNode;
 }) {
   const handle = draftHandle(draft);
-  const handleError = handle ? validateUsername(handle) : null;
+  const bad = handle ? validateUsername(handle) : null;
+  // Untouched, the handle is the name's doing, so the name carries the complaint.
+  const handleError = draft.handleEdited ? bad : null;
+  const nameError = draft.handleEdited ? null : bad;
+  const mismatch =
+    draft.confirm !== "" && draft.confirm !== draft.password
+      ? "Those passwords do not match"
+      : null;
   const set = <K extends keyof AccountDraft>(k: K, v: AccountDraft[K]) =>
     onChange({ ...draft, [k]: v });
 
@@ -175,7 +189,7 @@ export function AccountStep({
           quiet
           label="Add a profile picture"
           hasImage={Boolean(draft.image)}
-          sources={{ avatarUrl: avatarPreviewUrl(draft.image) }}
+          sources={{ choice: avatarChoiceFromValue(draft.image), gravatar }}
           onSave={async (next) => {
             set("image", next);
             return { ok: true };
@@ -207,32 +221,41 @@ export function AccountStep({
       {children}
       <div className="space-y-2">
         <Label htmlFor="name">Your name</Label>
-        <Input
-          id="name"
-          value={draft.name}
-          onChange={(e) => set("name", e.target.value)}
-          autoComplete="name"
-          placeholder="Ada Lovelace"
-          required
-          maxLength={80}
-          autoFocus
-        />
+        <div>
+          <Input
+            id="name"
+            value={draft.name}
+            onChange={(e) => set("name", e.target.value)}
+            autoComplete="name"
+            placeholder="Ada Lovelace"
+            required
+            maxLength={80}
+            autoFocus
+            aria-invalid={Boolean(nameError)}
+            className={cn(nameError && invalidField)}
+          />
+          <FieldError>{nameError}</FieldError>
+        </div>
         {draft.handleEdited ? (
-          <div className="relative">
-            <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm text-muted-foreground">
-              @
-            </span>
-            <Input
-              id="username"
-              className="ps-7"
-              value={draft.handle}
-              onChange={(e) => set("handle", e.target.value)}
-              autoComplete="username"
-              minLength={USERNAME_MIN}
-              maxLength={USERNAME_MAX}
-              aria-label="Handle"
-              autoFocus
-            />
+          <div>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm text-muted-foreground">
+                @
+              </span>
+              <Input
+                id="username"
+                value={draft.handle}
+                onChange={(e) => set("handle", e.target.value)}
+                autoComplete="username"
+                minLength={USERNAME_MIN}
+                maxLength={USERNAME_MAX}
+                aria-label="Handle"
+                autoFocus
+                aria-invalid={Boolean(handleError)}
+                className={cn("ps-7", handleError && invalidField)}
+              />
+            </div>
+            <FieldError>{handleError}</FieldError>
           </div>
         ) : (
           <button
@@ -243,9 +266,6 @@ export function AccountStep({
             @{handle || "your-handle"}
             <Pencil className="size-3" />
           </button>
-        )}
-        {handleError && (
-          <p className="text-xs text-destructive">{handleError}</p>
         )}
       </div>
       <div className="space-y-2">
@@ -268,19 +288,19 @@ export function AccountStep({
       />
       <div className="space-y-2">
         <Label htmlFor="confirm">Confirm password</Label>
-        <Input
-          id="confirm"
-          type="password"
-          value={draft.confirm}
-          onChange={(e) => set("confirm", e.target.value)}
-          autoComplete="new-password"
-          required
-        />
-        {draft.confirm !== "" && draft.confirm !== draft.password && (
-          <p className="text-xs text-destructive">
-            Those passwords do not match
-          </p>
-        )}
+        <div>
+          <Input
+            id="confirm"
+            type="password"
+            value={draft.confirm}
+            onChange={(e) => set("confirm", e.target.value)}
+            autoComplete="new-password"
+            required
+            aria-invalid={Boolean(mismatch)}
+            className={cn(mismatch && invalidField)}
+          />
+          <FieldError>{mismatch}</FieldError>
+        </div>
       </div>
       {note}
       <Button

@@ -17,6 +17,7 @@ import {
   TeamStep,
 } from "@/components/auth/wizard-steps";
 import { useStepSwap } from "@/components/apps/wizard/wizard-card";
+import { Collapse } from "@/components/ui/field-error";
 import { gql } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +55,12 @@ const STEPS = [
   { id: "team", label: "Your team" },
 ];
 
-export function OnboardingWizard() {
+export function OnboardingWizard({
+  gravatar = false,
+}: {
+  /** Whether the instance offers Gravatar as a picture source. */
+  gravatar?: boolean;
+}) {
   const router = useRouter();
   const { phase, markSeen } = useLogoIntro(INTRO_SEEN);
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
@@ -96,16 +102,17 @@ export function OnboardingWizard() {
             key={step}
             className={cn(leaving ? "animate-soft-out" : "animate-soft-in")}
           >
-            {error && (
+            <Collapse open={Boolean(error)}>
               <div className="mb-5 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="size-4 shrink-0" />
                 {error}
               </div>
-            )}
+            </Collapse>
             {step === "account" ? (
               <AccountStep
                 draft={account}
                 onChange={setAccount}
+                gravatar={gravatar}
                 description="Create the account that runs this instance."
                 note={
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">
