@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ShieldCheck, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /** One card. */
 export interface SidebarTip {
@@ -13,10 +14,26 @@ export interface SidebarTip {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
+  /** Neutral unless the card is about something going wrong. */
+  tone?: SidebarTipTone;
   /** At most one, always secondary. */
   cta?: { label: string; href: string };
   when: (ctx: SidebarTipContext) => boolean;
 }
+
+export type SidebarTipTone =
+  "default" | "info" | "success" | "warning" | "destructive";
+
+const TONE: Record<SidebarTipTone, { card: string; icon: string }> = {
+  default: { card: "border-border bg-card", icon: "" },
+  info: { card: "border-info/40 bg-info/10", icon: "text-info" },
+  success: { card: "border-success/40 bg-success/10", icon: "text-success" },
+  warning: { card: "border-warning/40 bg-warning/10", icon: "text-warning" },
+  destructive: {
+    card: "border-destructive/40 bg-destructive/10",
+    icon: "text-destructive",
+  },
+};
 
 export interface SidebarTipContext {
   hasSecondFactor: boolean;
@@ -88,9 +105,10 @@ export function SidebarTips(ctx: SidebarTipContext) {
   }
 
   const Icon = tip.icon;
+  const tone = TONE[tip.tone ?? "default"];
 
   return (
-    <div className="relative rounded-lg border border-border bg-card p-3">
+    <div className={cn("relative rounded-lg border p-3", tone.card)}>
       <button
         type="button"
         onClick={() => dismiss(tip.id)}
@@ -100,7 +118,7 @@ export function SidebarTips(ctx: SidebarTipContext) {
         <X className="size-3.5" />
       </button>
       <div className="flex items-center gap-2 pr-6">
-        <Icon className="size-4 shrink-0" />
+        <Icon className={cn("size-4 shrink-0", tone.icon)} />
         <span className="text-sm font-medium">{tip.title}</span>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{tip.description}</p>
