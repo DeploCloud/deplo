@@ -86,6 +86,9 @@ export async function listDeployments(filter?: {
      *  Decided HERE, never in the UI: whether an image is still on the host is a
      *  server fact, and a client re-deriving it would drift from the gate. */
     canRollback: boolean;
+    /** A migration is still writing this row's app: every action on it is refused
+     *  until the run ends, so a cross-app list has to close them. */
+    appMigrating: boolean;
   })[]
 > {
   const teamId = await requireActiveTeamId();
@@ -98,6 +101,7 @@ export async function listDeployments(filter?: {
       name: appsTable.name,
       slug: appsTable.slug,
       logo: appsTable.logo,
+      migrationRunId: appsTable.migrationRunId,
       serverId: appsTable.serverId,
       // Rollback eligibility: the retention depth, plus the four columns that say
       // whether this app builds an image of its own at all (see rollbackTargetIds).
@@ -198,6 +202,7 @@ export async function listDeployments(filter?: {
         ...dep,
         creatorUser: authorOf(dep.creatorUserId, creators),
         canRollback: rollbackable.has(dep.id),
+        appMigrating: Boolean(p?.migrationRunId),
         serviceName: p?.name ?? "",
         appSlug: p?.slug ?? "",
         appLogo: p?.logo ?? null,
