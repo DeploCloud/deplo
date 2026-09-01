@@ -19,7 +19,7 @@ import {
 import { createLocalAccountIssuer } from "better-auth";
 import { hashPassword, passwordNeedsRehash, verifyPassword } from "./crypto";
 import { avatarUrlFor } from "./avatar";
-import { AVATAR_COLORS } from "./avatar-colors";
+import { monogramColor } from "./avatar-colors";
 import type { Capability, PublicUser, Role, Team, User } from "./types";
 import { capabilitiesForRole, cleanCapabilities } from "./membership-shared";
 import {
@@ -157,8 +157,9 @@ async function insertUserCore(
     throw new Error("That username is taken");
   if (dup[0]) throw new Error("An account with this email already exists");
 
-  const n = (await tx.select({ n: count() }).from(usersTable))[0]!.n;
-  const avatarColor = AVATAR_COLORS[n % AVATAR_COLORS.length];
+  // Derived from the name, exactly like a team's mark: the letters and the
+  // colour then change together on a rename.
+  const avatarColor = monogramColor(input.name);
 
   const now = new Date().toISOString();
   const user: User = {

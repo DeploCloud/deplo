@@ -34,6 +34,7 @@ import {
   USER_1,
 } from "./data/identity-test-helpers";
 import { capabilitiesForRole } from "./membership-shared";
+import { monogramColor } from "./avatar-colors";
 
 /**
  * Auth cut-set (b) tests against pglite (relational-store PLAN Step 3):
@@ -481,6 +482,14 @@ test("first-run setup: a hand-edited handle wins over the derived one", async ()
     FIRST_RUN,
   );
   assert.equal(user.username, "ada");
+});
+
+test("first-run setup: the monogram colour follows the name", async () => {
+  const { user } = await createAccountWithTeam(WIZARD, FIRST_RUN);
+  assert.equal(user.avatarColor, monogramColor(WIZARD.name));
+  // Not the palette's first entry by accident: a different name, a different
+  // colour, which is what the round-robin it replaced could not promise.
+  assert.notEqual(monogramColor("Ada Lovelace"), monogramColor("Grace Hopper"));
 });
 
 test("first-run setup: both pictures are stored", async () => {

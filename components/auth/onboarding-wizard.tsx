@@ -25,7 +25,7 @@ import { docsUrl } from "@/lib/docs";
 import { gql } from "@/lib/graphql-client";
 import { DISCORD_URL, GITHUB_URL } from "@/lib/links";
 import { passwordMeetsPolicy } from "@/lib/password-policy";
-import { AVATAR_COLORS } from "@/lib/avatar-colors";
+import { monogramColor } from "@/lib/avatar-colors";
 import { normalizeUsername, validateUsername } from "@/lib/username";
 import { cn } from "@/lib/utils";
 
@@ -241,9 +241,8 @@ export function OnboardingWizard({ version }: { version: string }) {
                       <UserAvatar
                         name={name}
                         username={shownHandle}
-                        // The colour the first account is about to be given, so the
-                        // mark here is the mark they end up with.
-                        avatarColor={AVATAR_COLORS[0]}
+                        // The same derivation the account will be stored with.
+                        avatarColor={monogramColor(name)}
                         avatarUrl={image}
                         size="3xl"
                       />
