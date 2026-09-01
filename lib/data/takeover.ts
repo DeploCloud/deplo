@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/migrate/take-over-your-vps
+// https://deplo.build/docs/guides/take-over-your-vps
 
 import { cache } from "react";
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -45,7 +45,7 @@ const NEXT: Record<TakeoverState, readonly TakeoverState[]> = {
   pending: ["ready", "cancelled"],
   ready: ["done", "cancelled"],
   done: ["removing"],
-  removing: ["removed", "done"],
+  removing: ["removed"],
   removed: [],
   cancelled: [],
 };
