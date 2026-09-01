@@ -26,11 +26,18 @@
 # Re-running on a machine that already has Deplo updates it in place: it takes a
 # pre-update dump of the panel's database first, and rolls the image back if the
 # new version does not answer. Secrets are never rotated.
+#
+# On a machine that already runs Dokploy or Coolify the install is a TAKEOVER, or
+# it is nothing: two panels cannot share 80 and 443. Deplo installs on temporary
+# ports, the migration happens in the browser, and this window takes the ports
+# when the operator says so. Set DEPLO_TAKEOVER=dokploy|coolify to consent without
+# being asked; --yes deliberately does not.
 set -Eeuo pipefail
 
 DEPLO_DIR="/opt/deplo"
 ENV_FILE="$DEPLO_DIR/.env"
 STATE_FILE="$DEPLO_DIR/.install-state"
+INSTALLER_URL="https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh"
 BACKUP_DIR="$DEPLO_DIR/backups"
 DEFAULT_ACME_EMAIL="admin@example.com"
 
@@ -301,7 +308,9 @@ usage() {
   printf '   --help\n\n'
   printf ' %bEnvironment%b  DEPLO_DOMAIN, ACME_EMAIL, DEPLO_VERSION,\n' "$C_B" "$C_OFF"
   printf '               DEPLO_SKIP_NET_CHECKS=1 (no outbound probes, no public-IP lookup),\n'
-  printf '               DEPLO_TRACE=0 (transcript without the command trace)\n\n'
+  printf '               DEPLO_TRACE=0 (transcript without the command trace),\n'
+  printf '               DEPLO_TAKEOVER=dokploy|coolify (replace that panel without being asked),\n'
+  printf '               DEPLO_TAKEOVER_WAIT=<seconds> (how long this window waits, default 7200)\n\n'
 }
 
 # --- flags --------------------------------------------------------------------
@@ -405,6 +414,54 @@ port_holder() {
       | sed -n 's/.*users:((\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
   fi
   printf '%s' "$who"
+}
+
+# --- the platform already on this machine --------------------------------------
+# Deplo cannot share ports 80 and 443 with another panel, so on a machine that has
+# one the install is a TAKEOVER or it is nothing. Only these two are migratable;
+# anything else holding the ports is still a hard stop.
+# A RUNNING control-plane container is the evidence, never a directory: a box that
+# once had Dokploy keeps /etc/dokploy forever, and one measured here was reported
+# as a Dokploy machine while Coolify was the thing actually holding the ports.
+# Dokploy runs its panel as a swarm task (`dokploy.1.<id>`), hence the anchors.
+detect_foreign_platform() {
+  local names
+  names="$(docker ps --format '{{.Names}}' 2>/dev/null || true)"
+  if printf '%s\n' "$names" | grep -qE '^dokploy(-traefik$|-postgres\.|\.)'; then
+    printf 'dokploy'; return 0
+  fi
+  if printf '%s\n' "$names" | grep -qE '^coolify(-proxy|-db|-realtime)?$'; then
+    printf 'coolify'; return 0
+  fi
+  printf ''
+}
+
+platform_label() {
+  case "$1" in dokploy) printf 'Dokploy' ;; coolify) printf 'Coolify' ;; *) printf '%s' "$1" ;; esac
+}
+
+# Where its own dashboard answers, which is what the migration wizard reads.
+platform_panel_port() {
+  case "$1" in coolify) printf '8000' ;; *) printf '3000' ;; esac
+}
+
+# Its Traefik's certificate store, inherited at the cutover so the domains that
+# already point here keep answering HTTPS without asking Let's Encrypt again.
+platform_acme_file() {
+  case "$1" in
+    dokploy) printf '/etc/dokploy/traefik/dynamic/acme.json' ;;
+    coolify) printf '/data/coolify/proxy/acme.json' ;;
+    *) printf '' ;;
+  esac
+}
+
+# The first of these that nothing is listening on. Empty when they are all taken.
+first_free_port() {
+  local p
+  for p in "$@"; do
+    port_in_use "$p" || { printf '%s' "$p"; return 0; }
+  done
+  printf ''
 }
 
 resolve_a() {
@@ -576,7 +633,84 @@ ours_holds_port() {
   docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null \
     | grep -E '^(deplo-traefik|deplo-deplo-1) ' | grep -q ":$1->"
 }
-for p in 80 443 3000; do
+
+# A takeover already in flight keeps the ports it chose; a fresh one asks first.
+# `done` is not "still a takeover": the ports are Deplo's and this is an update.
+TAKEOVER=""
+TAKEOVER_STATE="$(state_get takeover || true)"
+case "$TAKEOVER_STATE" in
+  pending | ready) TAKEOVER="$(state_get takeover_platform || true)" ;;
+esac
+
+if [ -z "$TAKEOVER" ] && [ "$MODE" = install ]; then
+  FOREIGN="$(detect_foreign_platform)"
+  if [ -n "$FOREIGN" ]; then
+    FOREIGN_LABEL="$(platform_label "$FOREIGN")"
+    blank
+    warn "$FOREIGN_LABEL is already running on this machine."
+    note "Deplo can only install here by taking its place: it brings your projects"
+    note "across, then removes $FOREIGN_LABEL. Two panels cannot share 80 and 443."
+    note "Nothing is touched until you have looked at what came over."
+    if [ "$CHECK_ONLY" = true ]; then
+      # Report on the install that WOULD happen, temporary ports and all -
+      # nothing here changes anything, and a check that measured the wrong ports
+      # would fail the machine over a conflict the real install never has.
+      TAKEOVER="$FOREIGN"
+      pf_warn "This install would be a takeover of $FOREIGN_LABEL." \
+        "Deplo would wait on a free port until you finished the migration."
+    elif [ "${DEPLO_TAKEOVER:-}" = "$FOREIGN" ]; then
+      TAKEOVER="$FOREIGN"
+      ok "Taking over from $FOREIGN_LABEL (DEPLO_TAKEOVER=$FOREIGN)"
+    else
+      # --yes deliberately does NOT answer this one: removing somebody else's
+      # platform is not a default to take on their behalf.
+      ANSWER="$(ask "Migrate off $FOREIGN_LABEL and let Deplo replace it? [y/N]" || true)"
+      case "$ANSWER" in
+        y | Y | yes | YES | s | S | si | SI)
+          TAKEOVER="$FOREIGN"
+          ;;
+        *)
+          blank
+          err "Nothing was installed - $FOREIGN_LABEL is still yours."
+          note "To take it over later, re-run this and answer yes, or set"
+          note "  DEPLO_TAKEOVER=$FOREIGN"
+          exit 1
+          ;;
+      esac
+    fi
+  fi
+fi
+
+# Where the panel and the proxy answer. Everything downstream reads these, so the
+# cutover is this script run again with the real ones.
+PANEL_PORT=3000
+HTTP_PORT=80
+HTTPS_PORT=443
+
+# A port this install already chose, when it is still free or already ours - so a
+# re-run does not walk the panel down the list every time it is called.
+kept_port() {
+  local kept; kept="$(state_get "$1" || true)"
+  [ -n "$kept" ] || return 1
+  ours_holds_port "$kept" && { printf '%s' "$kept"; return 0; }
+  port_in_use "$kept" && return 1
+  printf '%s' "$kept"
+}
+
+if [ -n "$TAKEOVER" ]; then
+  # The other panel keeps what it has; Deplo waits its turn somewhere free.
+  PANEL_PORT="$(kept_port takeover_panel_port || first_free_port 3000 3001 3002 3003)"
+  HTTP_PORT="$(kept_port takeover_http_port || first_free_port 8080 8081 8090)"
+  HTTPS_PORT="$(kept_port takeover_https_port || first_free_port 8443 8444 9443)"
+  if [ -z "$PANEL_PORT" ] || [ -z "$HTTP_PORT" ] || [ -z "$HTTPS_PORT" ]; then
+    pf_fail "No free port left for Deplo to wait on." \
+      "Free one of 3000-3003, 8080-8090 or 8443-9443 and re-run."
+    PANEL_PORT="${PANEL_PORT:-3001}"; HTTP_PORT="${HTTP_PORT:-8080}"; HTTPS_PORT="${HTTPS_PORT:-8443}"
+  fi
+  ok "Deplo waits on :$PANEL_PORT until the takeover" "proxy on $HTTP_PORT/$HTTPS_PORT"
+fi
+
+for p in $HTTP_PORT $HTTPS_PORT $PANEL_PORT; do
   PORT_STATE=0
   port_in_use "$p" || PORT_STATE=$?
   case "$PORT_STATE" in
@@ -588,7 +722,7 @@ for p in 80 443 3000; do
       else
         HOLDER="$(port_holder "$p")"
         pf_fail "Port $p is already in use${HOLDER:+ by $HOLDER}." \
-          "Deplo needs 80 and 443 for Traefik and 3000 for the dashboard. Free it and re-run."
+          "Deplo needs $HTTP_PORT and $HTTPS_PORT for Traefik and $PANEL_PORT for the dashboard. Free it and re-run."
       fi
       ;;
   esac
@@ -617,7 +751,7 @@ if [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ]; then
 fi
 if [ -n "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "$SERVER_IP" ]; then
   ok "Address: $SERVER_IP on this network, $PUBLIC_IP from the internet"
-  is_private_ip "$SERVER_IP" && note "This host is behind NAT - forward 80, 443 and 3000 to $SERVER_IP."
+  is_private_ip "$SERVER_IP" && note "This host is behind NAT - forward $HTTP_PORT, $HTTPS_PORT and $PANEL_PORT to $SERVER_IP."
 else
   ok "Address: $SERVER_IP"
 fi
@@ -919,6 +1053,24 @@ trace_on
 HOST_NAME="$(hostname 2>/dev/null || cat /proc/sys/kernel/hostname 2>/dev/null || echo "")"
 ok "Workspace ready" "secrets in $ENV_FILE"
 
+# The takeover, now that there is a directory to remember it in. The copy of this
+# script is what makes every "re-run it" instruction below true, including from a
+# terminal that has since been closed.
+if [ -n "$TAKEOVER" ]; then
+  [ -n "$TAKEOVER_STATE" ] || TAKEOVER_STATE=pending
+  state_set takeover "$TAKEOVER_STATE"
+  state_set takeover_platform "$TAKEOVER"
+  state_set takeover_panel_port "$PANEL_PORT"
+  state_set takeover_http_port "$HTTP_PORT"
+  state_set takeover_https_port "$HTTPS_PORT"
+  if [ -f "${BASH_SOURCE[0]:-}" ]; then
+    install -m 0700 "${BASH_SOURCE[0]}" "$DEPLO_DIR/install.sh" 2>/dev/null || true
+  elif [ ! -f "$DEPLO_DIR/install.sh" ]; then
+    curl -fsSL "$INSTALLER_URL" -o "$DEPLO_DIR/install.sh" 2>&9 \
+      && chmod 700 "$DEPLO_DIR/install.sh" || true
+  fi
+fi
+
 # Resolve how the dashboard is exposed.
 DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
 ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
@@ -930,7 +1082,7 @@ ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
 # port left unpublished here can never be published from the panel afterwards.
 # The only way back would be an SSH session, which is the trip Deplo exists to
 # remove. Settings, Deplo shows it as the panel's IP address.
-DEPLO_EXPOSE="$(printf '    ports:\n      - "3000:3000"')"
+DEPLO_EXPOSE="$(printf '    ports:\n      - "%s:3000"' "$PANEL_PORT")"
 
 # The panel's own route is a Traefik FILE-provider config, not labels on this
 # container - and that difference is the whole point. A container's compose file
@@ -960,7 +1112,7 @@ if is_real_domain "$DEPLO_DOMAIN"; then
   TRAEFIK_FILE_PROVIDER="$(printf '      - --providers.file.directory=/deplo-dynamic\n      - --providers.file.watch=true')"
 else
   USE_DOMAIN=false
-  PUBLIC_URL="http://$SERVER_IP:3000"
+  PUBLIC_URL="http://$SERVER_IP:$PANEL_PORT"
   TRAEFIK_CONFIG_MOUNT=""
   TRAEFIK_PANEL_CONFIG=""
   TRAEFIK_FILE_PROVIDER=""
@@ -975,6 +1127,8 @@ phase "Reverse proxy"
 # Traefik <=3.3 cannot negotiate, breaking the docker provider on every poll.
 # container_name is what the agent identifies OUR proxy by - without it Deplo
 # refuses to manage this stack and the panel's own settings go read-only.
+# One renderer, called again by the takeover when the real ports come free.
+write_traefik_compose() {
 cat > "$DEPLO_DIR/traefik/docker-compose.yml" <<YAML
 services:
   traefik:
@@ -1006,8 +1160,8 @@ $TRAEFIK_FILE_PROVIDER
       - --certificatesresolvers.letsencrypt.acme.email=\${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
     ports:
-      - "80:80"
-      - "443:443"
+      - "$HTTP_PORT:80"
+      - "$HTTPS_PORT:443"
     volumes:
       - /opt/deplo/acme:/acme
     networks:
@@ -1048,8 +1202,11 @@ YAML
 # Blank lines from an empty block above are harmless YAML, but strip them so the
 # file an operator opens on the host reads like one somebody wrote.
 sed -i '/^$/d' "$DEPLO_DIR/traefik/docker-compose.yml"
-TRAEFIK_NOTE="80/443, for deployed apps"
-[ "$USE_DOMAIN" = true ] && TRAEFIK_NOTE="80/443, Let's Encrypt for $DEPLO_DOMAIN"
+}
+
+write_traefik_compose
+TRAEFIK_NOTE="$HTTP_PORT/$HTTPS_PORT, for deployed apps"
+[ "$USE_DOMAIN" = true ] && TRAEFIK_NOTE="$HTTP_PORT/$HTTPS_PORT, Let's Encrypt for $DEPLO_DOMAIN"
 spin_start "Starting Traefik and its socket proxy"
 docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null
 spin_ok "Traefik running" "$TRAEFIK_NOTE"
@@ -1102,6 +1259,8 @@ if [ "$MODE" = update ]; then
 fi
 
 # Compose-substituted vars are escaped (\${...}); shell-computed values inline.
+# Same reason as the proxy's: the takeover re-renders this with :3000 back.
+write_panel_compose() {
 cat > "$DEPLO_DIR/docker-compose.yml" <<EOF
 services:
   postgres:
@@ -1140,6 +1299,9 @@ services:
       - DEPLO_SERVER_IP=$SERVER_IP
       - DEPLO_HOST_BOOTSTRAP_TOKEN=\${DEPLO_HOST_BOOTSTRAP_TOKEN}
       - DEPLO_HOST_NAME=$HOST_NAME
+      # Empty on an ordinary install. The panel seeds its takeover state from
+      # this once, then owns it - so the cutover clearing it changes nothing.
+      - DEPLO_TAKEOVER=$TAKEOVER
       - DEPLO_DATABASE_URL=postgres://deplo:\${DEPLO_DB_PASSWORD}@postgres:5432/deplo
       - DEPLO_ACME_EMAIL=\${ACME_EMAIL}
     # NO docker.sock. The panel is the one container on this host reachable from
@@ -1165,6 +1327,9 @@ networks:
   deplo-internal:
     internal: true
 EOF
+}
+
+write_panel_compose
 
 # Pull the control-plane image first so a bad version tag (or, on an update, the
 # newest image) fails clearly instead of a cryptic compose error. The image is
@@ -1183,7 +1348,7 @@ spin_run "Starting Postgres and the Deplo control plane" \
 # here yet and the certificate may not have issued, while :3000 answers from the
 # moment the panel is up. The URL is used only to bootstrap; afterwards the panel
 # dials the agent, not the other way round.
-AGENT_BOOTSTRAP_URL="http://$SERVER_IP:3000"
+AGENT_BOOTSTRAP_URL="http://$SERVER_IP:$PANEL_PORT"
 
 wait_for_panel() {
   local tries="$1" i=0
@@ -1272,6 +1437,352 @@ if ! enroll_this_host; then
 fi
 
 # ==============================================================================
+# 5b. The takeover: wait for the wizard, then take the ports
+# ==============================================================================
+#
+# The browser does the migration; this window does the part only root on the host
+# can do - stopping the other platform, moving the ports, and restarting Docker so
+# the address pools written during the install finally apply.
+
+TAKEOVER_API="$AGENT_BOOTSTRAP_URL/api/takeover"
+
+# The panel's own answer, or empty when it cannot be asked.
+takeover_get() {
+  curl -fsS --max-time 6 -H "Authorization: Bearer $HOST_TOKEN" "$TAKEOVER_API" </dev/null 2>&9 || true
+}
+
+takeover_field() {
+  printf '%s' "$1" | sed -n "s/.*\"$2\":[[:space:]]*\"\{0,1\}\([^,\"}]*\)\"\{0,1\}.*/\1/p" | head -n1
+}
+
+takeover_post() {
+  curl -fsS --max-time 20 -X POST -H "Authorization: Bearer $HOST_TOKEN" \
+    -H 'Content-Type: application/json' -d "{\"state\":\"$1\"}" "$TAKEOVER_API" >&9 2>&9 || true
+}
+
+# A route dropped into the other platform's Traefik, which both watch and reload
+# on their own. Additive, and taken away again at the cutover.
+takeover_side_door() {
+  local dir="" entry="" host="deplo-setup.$SERVER_IP.sslip.io"
+  # Their entrypoints are NOT called the same thing, and a router pinned to no
+  # entrypoint at all binds to :443 too - where Dokploy's would order a
+  # certificate for a name nobody is going to visit over https.
+  case "$TAKEOVER" in
+    dokploy) dir=/etc/dokploy/traefik/dynamic; entry=web ;;
+    coolify) dir=/data/coolify/proxy/dynamic; entry=http ;;
+  esac
+  if [ -z "$dir" ] || [ ! -d "$dir" ]; then
+    printf 'not available - %s has no dynamic config directory here' "$FOREIGN_LABEL"
+    return 0
+  fi
+  cat > "$dir/deplo-setup.yml" <<YAML
+http:
+  routers:
+    deplo-setup:
+      rule: Host(\`$host\`)
+      entryPoints:
+        - $entry
+      service: deplo-setup
+  services:
+    deplo-setup:
+      loadBalancer:
+        servers:
+          - url: http://$SERVER_IP:$PANEL_PORT
+YAML
+  printf 'http://%s' "$host"
+}
+
+takeover_side_door_remove() {
+  rm -f /etc/dokploy/traefik/dynamic/deplo-setup.yml \
+        /data/coolify/proxy/dynamic/deplo-setup.yml 2>/dev/null || true
+}
+
+# Every way into the panel, in the order they cost the operator something.
+takeover_unreachable_advice() {
+  blank
+  warn "Nothing has opened $PUBLIC_URL yet."
+  note "If it will not load, the port is probably closed by your provider's firewall."
+  note "Two ways in that do not need it open:"
+  note "  1. Through $FOREIGN_LABEL's own proxy on port 80:"
+  note "     $(takeover_side_door)"
+  note "  2. From your own machine, over SSH:"
+  note "     ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP"
+  note "     then open http://localhost:$PANEL_PORT"
+}
+
+# Everything the other platform put on this machine, by container name.
+foreign_containers() {
+  docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^$TAKEOVER" || true
+}
+
+# Stop it for good: `--restart=no` FIRST, or the docker restart below brings the
+# whole platform back up underneath Deplo.
+foreign_stop() {
+  local names
+  names="$(foreign_containers)"
+  [ -n "$names" ] || return 0
+  # shellcheck disable=SC2086
+  docker update --restart=no $names >&9 2>&9 || true
+  # shellcheck disable=SC2086
+  docker stop $names >&9 2>&9 || true
+}
+
+foreign_start() {
+  local names
+  names="$(foreign_containers)"
+  [ -n "$names" ] || return 0
+  # shellcheck disable=SC2086
+  docker update --restart=unless-stopped $names >&9 2>&9 || true
+  # shellcheck disable=SC2086
+  docker start $names >&9 2>&9 || true
+}
+
+# The certificates the domains pointing here already have. Best effort by design:
+# Traefik asks Let's Encrypt for anything it does not find, so a store we cannot
+# read costs a re-issue, never a broken install.
+inherit_acme() {
+  local src
+  src="$(platform_acme_file "$TAKEOVER")"
+  if [ -z "$src" ] || [ ! -s "$src" ]; then
+    skip "No certificate store to inherit from $FOREIGN_LABEL"
+    return 0
+  fi
+  local dst="$DEPLO_DIR/acme/acme.json"
+  [ -s "$dst" ] && cp "$dst" "$dst.deplo-bak" 2>/dev/null
+  # Deplo's resolver is called `letsencrypt`; theirs may not be. One key, renamed,
+  # and nothing written unless it really holds certificates.
+  if command -v python3 >/dev/null 2>&1 && python3 -c '
+import json, sys
+src, dst = sys.argv[1], sys.argv[2]
+with open(src) as f:
+    d = json.load(f)
+if not isinstance(d, dict) or not d:
+    raise SystemExit(1)
+key = "letsencrypt" if "letsencrypt" in d else sorted(d)[0]
+body = d[key]
+if not isinstance(body, dict) or not body.get("Certificates"):
+    raise SystemExit(1)
+with open(dst, "w") as f:
+    json.dump({"letsencrypt": body}, f)' "$src" "$dst" 2>&9; then
+    chmod 600 "$dst"
+    ok "Certificates inherited from $FOREIGN_LABEL" "no re-issue needed"
+  else
+    warn "Could not read $FOREIGN_LABEL's certificate store - Traefik will ask for new ones."
+  fi
+}
+
+# The pools were written during the install but NOT applied, because containers
+# were running (see configure_docker_address_pools). This is the window.
+apply_address_pools() {
+  grep -q '"default-address-pools"' /etc/docker/daemon.json 2>/dev/null || return 0
+  spin_start "Restarting Docker so its address pools apply"
+  systemctl restart docker >&9 2>&9 || true
+  local i=0
+  until docker info >/dev/null 2>&1; do
+    i=$((i + 1))
+    [ "$i" -ge 30 ] && break
+    sleep 1
+  done
+  spin_ok "Docker restarted" "this host is no longer capped at ~31 networks"
+}
+
+# Recompute everything the published ports decide. Called with the real ports at
+# the cutover, and with the temporary ones again if it has to be rolled back.
+takeover_apply_ports() {
+  PANEL_PORT="$1"
+  HTTP_PORT="$2"
+  HTTPS_PORT="$3"
+  [ "$USE_DOMAIN" = true ] || PUBLIC_URL="http://$SERVER_IP:$PANEL_PORT"
+  DEPLO_EXPOSE="$(printf '    ports:\n      - "%s:3000"' "$PANEL_PORT")"
+  AGENT_BOOTSTRAP_URL="http://$SERVER_IP:$PANEL_PORT"
+  TAKEOVER_API="$AGENT_BOOTSTRAP_URL/api/takeover"
+  write_traefik_compose
+  write_panel_compose
+  docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
+  docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
+}
+
+takeover_cutover() {
+  blank
+  phase "Taking over from $FOREIGN_LABEL"
+
+  spin_start "Stopping $FOREIGN_LABEL"
+  foreign_stop
+  takeover_side_door_remove
+  spin_ok "$FOREIGN_LABEL stopped" "nothing of it was removed"
+
+  inherit_acme
+
+  local OLD_PANEL="$PANEL_PORT" OLD_HTTP="$HTTP_PORT" OLD_HTTPS="$HTTPS_PORT"
+  spin_start "Moving Deplo onto 80, 443 and 3000"
+  takeover_apply_ports 3000 80 443
+  spin_ok "Ports moved" "Traefik on 80/443, the dashboard on 3000"
+
+  apply_address_pools
+  # The restart takes the panel down with everything else; it comes back on its
+  # own policy, and this is what proves it did.
+  docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
+
+  spin_start "Waiting for the dashboard on its own ports"
+  if wait_for_panel 60; then
+    spin_ok "Deplo answers on $PUBLIC_URL"
+    state_set takeover "done"
+    state_set takeover_panel_port "$PANEL_PORT"
+    state_set takeover_http_port "$HTTP_PORT"
+    state_set takeover_https_port "$HTTPS_PORT"
+    takeover_post "done"
+    return 0
+  fi
+  spin_err "Deplo did not answer on $PUBLIC_URL after the move"
+
+  # Back to where this started. Nothing of the other platform was removed, so
+  # putting the ports back IS the whole rollback.
+  warn "Putting the ports back and starting $FOREIGN_LABEL again."
+  takeover_apply_ports "$OLD_PANEL" "$OLD_HTTP" "$OLD_HTTPS"
+  foreign_start
+  err "The takeover was rolled back. $FOREIGN_LABEL is running again."
+  note "Logs: docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
+  note "Transcript: $UI_LOG"
+  return 1
+}
+
+# Everything of the other platform, gone. Only ever from `removing`, which is a
+# button in the panel behind a typed confirmation.
+foreign_remove() {
+  blank
+  phase "Removing $FOREIGN_LABEL"
+  local names
+  names="$(foreign_containers)"
+  if [ -n "$names" ]; then
+    # shellcheck disable=SC2086
+    spin_run "Removing its containers" docker rm -f -v $names || true
+  fi
+  spin_start "Removing what it left behind"
+  docker volume ls -q 2>/dev/null | grep -E "^$TAKEOVER" | xargs -r docker volume rm -f >&9 2>&9 || true
+  docker network ls --format '{{.Name}}' 2>/dev/null | grep -E "^$TAKEOVER" | xargs -r docker network rm >&9 2>&9 || true
+  docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -E "^(ghcr\.io/)?$TAKEOVER" | xargs -r docker rmi -f >&9 2>&9 || true
+  case "$TAKEOVER" in
+    dokploy) rm -rf /etc/dokploy ;;
+    coolify) rm -rf /data/coolify ;;
+  esac
+  spin_ok "$FOREIGN_LABEL removed" "its containers, volumes, networks, images and directory"
+  state_set takeover "removed"
+  takeover_post "removed"
+}
+
+# Backing out. The panel has already started the other platform's services again
+# and undone what it created; this takes Deplo off the machine.
+takeover_uninstall() {
+  note "Taking Deplo back off this machine - $FOREIGN_LABEL keeps everything."
+  docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" down -v >&9 2>&9 || true
+  docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" down >&9 2>&9 || true
+  docker network rm deplo >&9 2>&9 || true
+  if [ -x /usr/local/bin/deplo-agent ]; then
+    systemctl disable --now deplo-agent >&9 2>&9 || true
+    rm -f /usr/local/bin/deplo-agent
+    rm -rf /var/lib/deplo-agent
+  fi
+  foreign_start
+  rm -rf "$DEPLO_DIR"
+  blank
+  ok "Deplo is gone. $FOREIGN_LABEL is running again."
+  note "Transcript: $UI_LOG"
+}
+
+# How long this window is willing to sit there. The migration itself is unbounded;
+# this is only how long we keep asking.
+TAKEOVER_POLL_S=5
+TAKEOVER_WAIT_MAX_S="${DEPLO_TAKEOVER_WAIT:-7200}"
+
+# After the ports move: the operator deploys their apps by hand and asks for the
+# removal when they are satisfied. Deplo never deploys anything for them.
+takeover_after_cutover() {
+  local waited=0 state
+  blank
+  printf ' %bNext%b\n' "$C_B" "$C_OFF"
+  printf '   1  Open %b%s%b - the ports are Deplo'"'"'s now.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
+  printf '   2  Deploy your apps yourself, one at a time, and check each one.\n'
+  printf '   3  When you are happy, remove %s from the dashboard.\n\n' "$FOREIGN_LABEL"
+  note "$FOREIGN_LABEL is stopped but still on the disk, volumes and all - that is your way back."
+  note "In no hurry? Close this window and re-run $DEPLO_DIR/install.sh to remove it later."
+
+  spin_start "Waiting in case you ask for $FOREIGN_LABEL to be removed"
+  while [ "$waited" -lt "$TAKEOVER_WAIT_MAX_S" ]; do
+    state="$(takeover_field "$(takeover_get)" state)"
+    case "$state" in
+      removing)
+        spin_kill
+        foreign_remove
+        return 0
+        ;;
+      removed)
+        spin_kill
+        ok "$FOREIGN_LABEL is already removed"
+        return 0
+        ;;
+    esac
+    sleep "$TAKEOVER_POLL_S"
+    waited=$((waited + TAKEOVER_POLL_S))
+  done
+  spin_kill
+  ok "$FOREIGN_LABEL is stopped and still on the disk"
+  note "Remove it whenever you like: re-run $DEPLO_DIR/install.sh and ask from the dashboard."
+  return 0
+}
+
+takeover_wait() {
+  local waited=0 said_unreachable=0 body state
+  blank
+  printf ' %bNext%b\n' "$C_B" "$C_OFF"
+  printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
+  printf '   2  Bring your projects over from %s.\n' "$FOREIGN_LABEL"
+  printf '   3  Leave this window open - it takes the ports when you say so.\n\n'
+  note "Closing this window is safe: re-run $DEPLO_DIR/install.sh to pick it back up."
+
+  spin_start "Waiting for the migration"
+  while [ "$waited" -lt "$TAKEOVER_WAIT_MAX_S" ]; do
+    body="$(takeover_get)"
+    state="$(takeover_field "$body" state)"
+    case "$state" in
+      ready)
+        spin_kill
+        takeover_cutover || return 1
+        takeover_after_cutover
+        return 0
+        ;;
+      cancelled)
+        spin_kill
+        blank
+        warn "The migration was cancelled from the dashboard."
+        takeover_side_door_remove
+        takeover_uninstall
+        return 1
+        ;;
+      done | removing | removed)
+        # Somebody else carried it past this point - a second window, or a re-run.
+        spin_kill
+        ok "The takeover is already past this point"
+        return 0
+        ;;
+    esac
+    # A panel nobody has ever opened is usually a closed port, not a slow operator.
+    if [ "$said_unreachable" = 0 ] && [ "$waited" -ge 90 ] &&
+      [ "$(takeover_field "$body" seenExternalRequest)" = false ]; then
+      spin_kill
+      takeover_unreachable_advice
+      said_unreachable=1
+      spin_start "Waiting for the migration"
+    fi
+    sleep "$TAKEOVER_POLL_S"
+    waited=$((waited + TAKEOVER_POLL_S))
+  done
+  spin_kill
+  warn "Nothing happened for $((TAKEOVER_WAIT_MAX_S / 60)) minutes, so this window is done waiting."
+  note "The migration is not lost - re-run $DEPLO_DIR/install.sh when you are ready."
+  return 0
+}
+
+# ==============================================================================
 # 6. Summary
 # ==============================================================================
 TOTAL=$(( SECONDS - UI_T0 ))
@@ -1281,17 +1792,32 @@ else
   card_open "Deplo installed in ${TOTAL}s"
 fi
 card_kv "Dashboard" "$PUBLIC_URL"
-[ "$USE_DOMAIN" = true ] && card_kv "Fallback" "http://$SERVER_IP:3000"
+[ "$USE_DOMAIN" = true ] && card_kv "Fallback" "http://$SERVER_IP:$PANEL_PORT"
 card_kv "Version" "$VERSION_LABEL"
 card_kv "Data dir" "$DEPLO_DIR"
 card_kv "Database" "Postgres, private network only"
 if [ "$USE_DOMAIN" = true ]; then
-  card_kv "Proxy" "Traefik, ports 80/443, automatic HTTPS"
+  card_kv "Proxy" "Traefik, ports $HTTP_PORT/$HTTPS_PORT, automatic HTTPS"
 else
-  card_kv "Proxy" "Traefik, ports 80/443, for deployed apps"
+  card_kv "Proxy" "Traefik, ports $HTTP_PORT/$HTTPS_PORT, for deployed apps"
 fi
 [ "$HOST_ENROLLED" = true ] && card_kv "Server" "${HOST_NAME:-$SERVER_IP}, this machine"
 card_close
+
+# A takeover writes its own "Next" - the ordinary one would tell somebody to go
+# and deploy an app on a machine whose ports still belong to another panel.
+if [ -n "$TAKEOVER" ]; then
+  FOREIGN_LABEL="$(platform_label "$TAKEOVER")"
+  case "$TAKEOVER_STATE" in
+    ready)
+      if takeover_cutover; then takeover_after_cutover; fi
+      ;;
+    *) takeover_wait || true ;;
+  esac
+  [ "$UI_LOG" = /dev/null ] || note "Transcript: $UI_LOG"
+  printf '\n'
+  exit 0
+fi
 
 printf ' %bNext%b\n' "$C_B" "$C_OFF"
 if [ "$MODE" != update ]; then
