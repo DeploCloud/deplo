@@ -481,11 +481,21 @@ function configSource(entry: unknown): string {
 const PANEL_ROUTER = "deplo-panel";
 
 /**
+ * The router that keeps the panel reachable when its domain does not: a generated
+ * nip.io host that resolves to this server with no DNS to set up. It replaces the
+ * open `<ip>:3000` port that used to be the way back in.
+ */
+const PANEL_FALLBACK_ROUTER = "deplo-panel-fallback";
+
+/**
  * How this host publishes the Deplo panel.
  */
 export type PanelRoute = {
   /** The host the panel answers on. */
   domain: string;
+  /** The generated host it ALSO answers on, or null when it is already {@link
+   *  domain}. See {@link PANEL_FALLBACK_ROUTER}. */
+  fallbackDomain: string | null;
   /** https on :443, or plain http on :80. */
   https: boolean;
   /** The ACME resolver its certificate is ordered from. Null = none, and
@@ -549,20 +559,27 @@ export function panelRoute(currentYaml: string): PanelRoute | null {
   )?.loadBalancer?.servers?.[0]?.url;
   if (!router || typeof target !== "string" || !target) return null;
 
-  const rule =
-    typeof router.rule === "string"
-      ? router.rule.match(/^Host\(`([^`]+)`\)$/)
-      : null;
-  if (!rule) return null;
+  const domain = ruleHost(router.rule);
+  if (!domain) return null;
   const resolver = router.tls?.certResolver;
   return {
-    domain: rule[1],
+    domain,
+    fallbackDomain: ruleHost(
+      (http?.routers?.[PANEL_FALLBACK_ROUTER] as { rule?: unknown } | undefined)
+        ?.rule,
+    ),
     // The presence of `tls` IS the answer: a router without it terminates
     // nothing, which is what plain http means here.
     https: router.tls !== undefined && router.tls !== null,
     certResolver: typeof resolver === "string" && resolver ? resolver : null,
     target,
   };
+}
+
+/** The single host a ``Host(`x`)`` rule names, or null for anything else. */
+function ruleHost(rule: unknown): string | null {
+  if (typeof rule !== "string") return null;
+  return rule.match(/^Host\(`([^`]+)`\)$/)?.[1] ?? null;
 }
 
 /**
@@ -591,6 +608,12 @@ export function withPanelRoute(
     route.domain,
     "A domain is required to publish the Deplo panel",
   );
+  const fallbackDomain = route.fallbackDomain
+    ? assertRoutableHost(
+        route.fallbackDomain,
+        "The panel's backup address cannot be empty",
+      )
+    : null;
   const target = route.target.trim();
   if (!target)
     throw new Error(
@@ -603,7 +626,7 @@ export function withPanelRoute(
     PANEL_CONFIG,
     PANEL_FILE,
     "the panel's own route",
-    panelFile(currentContent, { ...route, domain, target }),
+    panelFile(currentContent, { ...route, domain, fallbackDomain, target }),
   );
   return dump(doc);
 }
@@ -614,24 +637,32 @@ export function withPanelRoute(
  * the rest - an operator who added a middleware to it keeps it.
  */
 function panelFile(current: unknown, route: PanelRoute): string {
+  const router = (host: string) => ({
+    rule: `Host(\`${host}\`)`,
+    entryPoints: [route.https ? "websecure" : "web"],
+    service: PANEL_ROUTER,
+    priority: PANEL_PRIORITY,
+    // No `tls` key at all on http - its absence is what makes the route plain.
+    ...(route.https
+      ? { tls: route.certResolver ? { certResolver: route.certResolver } : {} }
+      : {}),
+  });
   const write = (doc: Document) => {
     doc.setIn(
       ["http", "routers", PANEL_ROUTER],
-      doc.createNode({
-        rule: `Host(\`${route.domain}\`)`,
-        entryPoints: [route.https ? "websecure" : "web"],
-        service: PANEL_ROUTER,
-        priority: PANEL_PRIORITY,
-        // No `tls` key at all on http - its absence is what makes the route plain.
-        ...(route.https
-          ? {
-              tls: route.certResolver
-                ? { certResolver: route.certResolver }
-                : {},
-            }
-          : {}),
-      }),
+      doc.createNode(router(route.domain)),
     );
+    // Two routers, one service. Dropped rather than left stale when the panel's
+    // own address IS the generated host: two identical rules at one priority is
+    // a conflict Traefik resolves by picking one.
+    if (route.fallbackDomain && route.fallbackDomain !== route.domain) {
+      doc.setIn(
+        ["http", "routers", PANEL_FALLBACK_ROUTER],
+        doc.createNode(router(route.fallbackDomain)),
+      );
+    } else {
+      doc.deleteIn(["http", "routers", PANEL_FALLBACK_ROUTER]);
+    }
     doc.setIn(
       ["http", "services", PANEL_ROUTER],
       doc.createNode({

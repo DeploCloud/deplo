@@ -258,8 +258,8 @@ Do this before moving to the next server - that is the whole point of going one 
 7. **If the release added a NEW path alongside an old one, diff the two on a real host**: same
    machine, same second, both paths, compare the numbers field by field.
 
-Only then move on. Agent 0 gets the same list, plus: the control plane is still serving `:3000` and
-the dashboard renders.
+Only then move on. Agent 0 gets the same list, plus: the control plane still answers on its own
+address and the dashboard renders.
 
 ### Why step 7 exists
 

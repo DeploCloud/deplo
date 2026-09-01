@@ -35,7 +35,7 @@ type Impact = {
   hostChanges: boolean;
   schemeChanges: boolean;
   losesHttps: boolean;
-  panelIpUrl: string | null;
+  panelFallbackUrl: string | null;
   passkeys: number;
   passkeyPeople: number;
   sessions: number;
@@ -92,7 +92,7 @@ const IMPACT_QUERY = /* GraphQL */ `
       hostChanges
       schemeChanges
       losesHttps
-      panelIpUrl
+      panelFallbackUrl
       passkeys
       passkeyPeople
       sessions
@@ -279,13 +279,13 @@ export function PanelAddressDialog({
             )}
 
             {/* Last line, always: the one address this change cannot break. */}
-            {impact?.panelIpUrl && (
+            {impact?.panelFallbackUrl && (
               <p className="flex items-start gap-2.5 rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">
                 <LifeBuoy className="mt-0.5 size-4 shrink-0" />
                 <span>
                   You can always get back in at{" "}
                   <span className="font-mono break-all text-foreground">
-                    {impact.panelIpUrl}
+                    {impact.panelFallbackUrl}
                   </span>
                 </span>
               </p>

@@ -77,6 +77,17 @@ test("with no proxy header at all, only the configured host counts as https", ()
   assert.doesNotMatch(other.csp, /upgrade-insecure-requests/);
 });
 
+test("the generated host gets no HSTS, so its certificate warning stays skippable", () => {
+  // HSTS is what takes "Proceed anyway" away from a browser, and no public CA
+  // issues for nip.io - together that is a panel nobody can open.
+  const { csp, hsts } = headersFor("https://deplo-cb007109.nip.io/login", {
+    host: "deplo-cb007109.nip.io",
+    "x-forwarded-proto": "https",
+  });
+  assert.equal(hsts, null);
+  assert.match(csp, /upgrade-insecure-requests/, "still an https page");
+});
+
 test("HSTS is remembered for months, so it never carries preload or subdomains", () => {
   // Both were traps.
   const { hsts } = headersFor("http://deplo.example.com/login", {

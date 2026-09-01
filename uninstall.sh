@@ -452,7 +452,9 @@ phase "Control plane"
 if [ "$AGENT_ONLY" = true ]; then
   if [ -f "$CP_COMPOSE" ]; then
     warn "--agent-only: the control plane in $DEPLO_DIR stays. Its Traefik does not -"
-    note "the panel keeps answering on :3000, and re-running install.sh brings :80/:443 back."
+    note "which is the only thing serving it, so the panel stops answering until you"
+    note "re-run install.sh. Until then it is reachable over an SSH tunnel:"
+    note "  ssh -L 3000:localhost:3000 root@this-host, then open http://localhost:3000"
   else
     skip "No Deplo control plane on this host"
   fi

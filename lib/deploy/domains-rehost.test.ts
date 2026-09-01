@@ -8,6 +8,8 @@ import {
   rehostEmbeddedNip,
   rehostBlueprintHosts,
   nipEmbeddedIp,
+  panelFallbackHost,
+  instanceHost,
 } from "./domains";
 
 /**
@@ -20,6 +22,32 @@ const REMOTE = "152.89.254.133";
 // The 8-char hex of each IP, the trailing nip.io label that does the routing.
 const MASTER_HEX = "5f87d0d0";
 const REMOTE_HEX = "9859fe85";
+
+test("the panel's own generated host carries this server's IP", () => {
+  // KEEP IN SYNC with install.sh, which mints the same name in shell before the
+  // panel is up. A different shape here and the router serves an address the
+  // panel does not know it has.
+  assert.equal(panelFallbackHost("1.2.3.4"), "deplo-01020304.nip.io");
+  assert.equal(panelFallbackHost(MASTER), `deplo-${MASTER_HEX}.nip.io`);
+  assert.equal(nipEmbeddedIp(panelFallbackHost(REMOTE)), REMOTE);
+});
+
+test("the instance reads its own IP back out of its generated address", () => {
+  // After this change DEPLO_PUBLIC_URL usually IS a nip.io host, and NIC
+  // detection picks whichever interface comes first on a multi-homed box.
+  const prevIp = process.env.DEPLO_SERVER_IP;
+  const prevUrl = process.env.DEPLO_PUBLIC_URL;
+  delete process.env.DEPLO_SERVER_IP;
+  process.env.DEPLO_PUBLIC_URL = `https://${panelFallbackHost(REMOTE)}`;
+  try {
+    assert.equal(instanceHost(), REMOTE);
+  } finally {
+    if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;
+    else process.env.DEPLO_SERVER_IP = prevIp;
+    if (prevUrl === undefined) delete process.env.DEPLO_PUBLIC_URL;
+    else process.env.DEPLO_PUBLIC_URL = prevUrl;
+  }
+});
 
 test("ipToHex encodes an IPv4 as 8 zero-padded hex chars", () => {
   assert.equal(ipToHex(MASTER), MASTER_HEX);

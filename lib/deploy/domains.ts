@@ -89,6 +89,11 @@ export function instanceHost(): string {
     try {
       const host = new URL(pub).hostname;
       if (isIpv4(host)) return host;
+      // The panel's own address is normally a generated nip.io host, which
+      // CARRIES this server's IP - reading it back beats NIC detection, which
+      // picks whichever interface comes first on a multi-homed box.
+      const embedded = nipEmbeddedIp(host);
+      if (embedded) return embedded;
       // A hostname-valued DEPLO_PUBLIC_URL (e.g. https://deplo.example.com)
       // cannot be encoded as the trailing hex label of a nip.io host - fall
       // through to NIC detection rather than generating a host with no A record.
@@ -298,6 +303,15 @@ const NIP_HEXIP_EMBEDDED_RE = /-([0-9a-f]{8})\.nip\.io/gi;
 export function nipEmbeddedIp(name: string): string | null {
   const m = NIP_HEXIP_RE.exec(name.trim());
   return m ? hexToIp(m[1]) : null;
+}
+
+/**
+ * The address the panel itself answers on when nobody gave it a domain, and the
+ * one it keeps answering on afterwards. `nipDomain` cannot mint it: with no words
+ * it emits a double hyphen.
+ */
+export function panelFallbackHost(ip = instanceHost()): string {
+  return `deplo-${ipToHex(ip)}.nip.io`;
 }
 
 /** Replace the embedded IP of a nip.io hostname (no-op for other names). */

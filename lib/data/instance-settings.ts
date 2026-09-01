@@ -2,6 +2,8 @@ import "server-only";
 
 // https://deplo.build/docs/operations/instance-administration
 
+import { get as httpGet } from "node:http";
+import { get as httpsGet } from "node:https";
 import { cache } from "react";
 import {
   and,
@@ -55,6 +57,7 @@ import {
   instanceHost,
   isDeploHostServer,
   isIpv4,
+  panelFallbackHost,
 } from "../deploy/domains";
 import { DEPLO_VERSION } from "../version";
 import { serverLabel } from "../utils";
@@ -87,11 +90,11 @@ export type InstanceSettings = {
   /** The stored override, or null when nothing has been set here. */
   storedPanelUrl: string | null;
   /**
-   * The address this panel also answers on, straight on the machine it runs on:
-   * `http://<server ip>:3000`. Null only when Deplo cannot work out an address of
-   * its own that anyone else could reach.
+   * The generated address this panel also answers on, over https, whatever its
+   * domain is doing: `https://deplo-<hexip>.nip.io`. Null only when Deplo cannot
+   * work out an address of its own that anyone else could reach.
    */
-  panelIpUrl: string | null;
+  panelFallbackUrl: string | null;
   /** The IPv4 an A record for the panel's domain should point at. */
   deploHostIp: string | null;
   /** How far back the log viewer's time range may reach, in days. */
@@ -114,8 +117,14 @@ export type InstanceSettings = {
 export type PanelHttps = {
   /** The host the panel's route answers on. Null when there is no route of ours. */
   domain: string | null;
+  /** The generated host it also answers on, or null when it is already the one
+   *  above. */
+  fallbackDomain: string | null;
   /** Whether the panel is served over https at all. */
   enabled: boolean;
+  /** Whether a browser accepts the certificate that address serves. False on the
+   *  generated host, which no public CA issues for. Null when it could not be read. */
+  certificateTrusted: boolean | null;
   /** The resolver its certificate is ordered from, named as this host names it.
    *  Null when https is off, or when the host orders from nobody. */
   provider: string | null;
@@ -304,11 +313,6 @@ function reachableHostIp(host: { ip?: string } | null): string | null {
   return candidate.startsWith("127.") ? null : candidate;
 }
 
-/** Where the panel listens on its own machine. The installer publishes this port. */
-function panelPort(): string {
-  return process.env.PORT?.trim() || "3000";
-}
-
 export async function getInstanceSettings(): Promise<InstanceSettings> {
   await requireInstanceAdmin();
   const { panelUrl, logMaxDays } = await loadSettings();
@@ -320,7 +324,7 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
 
   return {
     panelUrl: panelUrl ?? (await instancePublicBaseUrl()),
-    panelIpUrl: hostIp ? `http://${hostIp}:${panelPort()}` : null,
+    panelFallbackUrl: hostIp ? `https://${panelFallbackHost(hostIp)}` : null,
     deploHostIp: hostIp,
     panelUrlSource: panelUrl
       ? "stored"
@@ -418,9 +422,9 @@ const HOST_RE = /^[a-z0-9.-]+(:\d{1,5})?$/i;
 
 /**
  * "deplo.example.com" → "https://deplo.example.com". A bare host gets HTTPS,
- * because that is what a panel on a domain should be and what the certificate will
- * be issued for; an explicit `http://` is kept (a bare IP with no proxy in front
- * of it is a real, if temporary, way to run this).
+ * because that is what a panel on a domain should be and what the certificate
+ * will be issued for. An explicit `http://` is kept: it is the advanced opt-out
+ * for a panel no certificate can be issued for.
  */
 export function normalizePanelUrl(input: string): string {
   const raw = input.trim();
@@ -441,6 +445,12 @@ export function normalizePanelUrl(input: string): string {
     throw new Error("The panel address is a host, without a path after it");
   if (!HOST_RE.test(parsed.host))
     throw new Error(`"${parsed.host}" is not a valid hostname`);
+  // No certificate authority issues for a bare address, and the panel is not
+  // served without one. Deplo generates a hostname rather than offering this.
+  if (isIpv4(parsed.hostname))
+    throw new Error(
+      "The panel address is a domain name, not an IP address. Deplo generates one for you if you have none.",
+    );
   return `${parsed.protocol}//${parsed.host}`;
 }
 
@@ -463,7 +473,7 @@ export type PanelAddressImpact = {
   /** https -> http specifically: the browser remembers the old HSTS either way. */
   losesHttps: boolean;
   /** The address that keeps working through all of it, when there is one. */
-  panelIpUrl: string | null;
+  panelFallbackUrl: string | null;
   /** Passkeys welded to the address as it is now, and how many accounts hold them. */
   passkeys: number;
   passkeyPeople: number;
@@ -497,7 +507,7 @@ export async function getPanelAddressImpact(
     hostChanges: hostOf(url) !== hostOf(currentUrl),
     schemeChanges: schemeOf(url) !== schemeOf(currentUrl),
     losesHttps: schemeOf(currentUrl) === "https:" && schemeOf(url) === "http:",
-    panelIpUrl: null,
+    panelFallbackUrl: null,
     passkeys: 0,
     passkeyPeople: 0,
     sessions: 0,
@@ -512,7 +522,9 @@ export async function getPanelAddressImpact(
   };
   const host = await deploHostServer();
   const hostIp = reachableHostIp(host);
-  base.panelIpUrl = hostIp ? `http://${hostIp}:${panelPort()}` : null;
+  base.panelFallbackUrl = hostIp
+    ? `https://${panelFallbackHost(hostIp)}`
+    : null;
   // Same address, nothing to warn about. Counting anyway would put a wall of
   // red in front of a save that changes nothing.
   if (!base.hostChanges && !base.schemeChanges) return base;
@@ -637,23 +649,20 @@ async function passkeysBoundToThisAddress(): Promise<number> {
 async function probePanel(url: string): Promise<PanelReachability> {
   await requireInstanceAdmin();
   try {
-    const res = await fetch(`${url}/api/health`, {
-      // Redirects are FOLLOWED: an http address in front of a proxy that sends everything
-      // to https is the normal case, and refusing to follow would report a working panel
-      // as unreachable.
-      redirect: "follow",
-      cache: "no-store",
-      signal: AbortSignal.timeout(6_000),
-    });
-    if (!res.ok)
+    const res = await getTolerant(`${url}/api/health`);
+    if (res.status < 200 || res.status >= 300)
       return {
         url,
         ok: false,
         error: `${url} answered ${res.status}, it does not reach Deplo yet`,
       };
-    const body = (await res.json().catch(() => null)) as {
-      ok?: boolean;
-    } | null;
+    const body = (() => {
+      try {
+        return JSON.parse(res.body) as { ok?: boolean };
+      } catch {
+        return null;
+      }
+    })();
     if (!body?.ok)
       return {
         url,
@@ -667,6 +676,62 @@ async function probePanel(url: string): Promise<PanelReachability> {
   }
 }
 
+/**
+ * GET an address, tolerating a certificate no CA signed. This dials the panel's
+ * OWN address, where the question is whether it answers, not whether it is
+ * authentic - and the generated host serves Traefik's self-signed certificate,
+ * which `fetch` refuses outright. Redirects are FOLLOWED: a plain-http address in
+ * front of a proxy that sends everything to https is the normal case.
+ */
+function getTolerant(
+  url: string,
+  redirectsLeft = 3,
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const get = target.protocol === "https:" ? httpsGet : httpGet;
+    const req = get(
+      target,
+      { rejectUnauthorized: false, timeout: 6_000 },
+      (res) => {
+        const location = res.headers.location;
+        const status = res.statusCode ?? 0;
+        if (status >= 300 && status < 400 && location) {
+          res.resume();
+          if (redirectsLeft <= 0)
+            return reject(new Error("too many redirects"));
+          resolve(
+            getTolerant(new URL(location, target).href, redirectsLeft - 1),
+          );
+          return;
+        }
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => {
+          body += chunk;
+        });
+        res.on("end", () => resolve({ status, body }));
+      },
+    );
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("timed out")));
+  });
+}
+
+/**
+ * Whether a browser accepts the certificate the panel's address serves. Null when
+ * the answer could not be read at all, which is not the same as "not trusted".
+ */
+async function panelCertificateTrusted(url: string): Promise<boolean | null> {
+  try {
+    const { controlPlaneCert } = await import("../agent/bootstrap");
+    const cert = await controlPlaneCert(url);
+    return cert.fingerprint ? !cert.insecure : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* The panel's own route                                               */
 /* ------------------------------------------------------------------ */
@@ -675,7 +740,13 @@ async function probePanel(url: string): Promise<PanelReachability> {
  * Read the panel's route off the host that serves it.
  */
 async function readPanelHttps(): Promise<PanelHttps> {
-  const none = { domain: null, enabled: false, provider: null };
+  const none = {
+    domain: null,
+    fallbackDomain: null,
+    enabled: false,
+    provider: null,
+    certificateTrusted: null,
+  };
   const host = await deploHostServer();
   if (!host)
     return {
@@ -699,16 +770,21 @@ async function readPanelHttps(): Promise<PanelHttps> {
       const reason = noRouteReason(url);
       if (reason !== null) return { ...none, unavailable: reason };
       return {
+        ...none,
         domain: new URL(url).hostname,
         enabled: url.startsWith("https://"),
-        provider: null,
+        certificateTrusted: await panelCertificateTrusted(url),
         unavailable: null,
       };
     }
     return {
       domain: route.domain,
+      fallbackDomain: route.fallbackDomain,
       enabled: route.https,
       provider: route.https ? route.certResolver : null,
+      certificateTrusted: route.https
+        ? await panelCertificateTrusted(await instancePublicBaseUrl())
+        : null,
       unavailable: null,
     };
   } catch (e) {
@@ -733,7 +809,7 @@ export function noRouteReason(url: string): string | null {
   const routable = host.includes(".") && !isIpv4(host);
   return routable
     ? null
-    : "This panel is served straight on port 3000, without a proxy in front of it. Give it a domain address above first.";
+    : "This panel is not served through a proxy Deplo manages. Give it a domain address above first.";
 }
 
 export async function getPanelHttps(): Promise<PanelHttps> {
@@ -775,6 +851,7 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
 
     const next: PanelRoute = {
       ...current,
+      fallbackDomain: current.fallbackDomain ?? panelFallbackHost(),
       https: enabled,
       // Read off the host rather than assumed, and null is fine: a proxy that
       // orders from nobody still terminates TLS with a certificate the operator
@@ -825,6 +902,7 @@ async function adoptPanelRoute(currentYaml: string): Promise<PanelRoute> {
 
   return {
     domain: new URL(url).hostname,
+    fallbackDomain: panelFallbackHost(),
     // What it is being served as RIGHT NOW, so the caller's own
     // `current.https === enabled` check still means what it says.
     https: url.startsWith("https://"),
@@ -903,6 +981,10 @@ async function movePanelRoute(url: string): Promise<void> {
       to: {
         ...current,
         domain,
+        // Seeded here, not only by the installer: a panel that WAS the generated
+        // host loses it the moment a domain is set, which is exactly when the way
+        // back in matters.
+        fallbackDomain: current.fallbackDomain ?? panelFallbackHost(),
         https,
         certResolver: https ? stackCertResolver(currentYaml) : null,
       },

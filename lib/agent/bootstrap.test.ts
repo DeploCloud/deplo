@@ -6,6 +6,7 @@ process.env.DEPLO_SECRET = "test-secret-for-bootstrap-aaaaaaaaaaaaaaaa";
 import {
   mintBootstrap,
   installCommand,
+  uninstallCommand,
   findServerForToken,
   signResponse,
   verifyResponse,
@@ -69,6 +70,33 @@ test("installCommand embeds the token + url, and the fingerprint only over HTTPS
   });
   assert.doesNotMatch(noFp, /'abcd'/);
   assert.match(noFp, /'http:\/\/10\.0\.0\.5:3000'/);
+});
+
+test("curl skips verification only when the panel's own certificate does not", () => {
+  // The generated nip.io address serves a certificate no public CA signed, so a
+  // command without -k fetches nothing. Printing it on an instance with a real
+  // certificate would teach people to skip verification for no reason.
+  const base = {
+    baseUrl: "https://deplo.example.com",
+    rawToken: "t",
+    fingerprint: "f",
+  };
+  assert.match(installCommand(base), /curl -fsSL '/);
+  assert.match(installCommand({ ...base, insecure: true }), /curl -fsSLk '/);
+  assert.match(
+    uninstallCommand({ baseUrl: base.baseUrl, insecure: true }),
+    /curl -fsSLk '/,
+  );
+  assert.match(uninstallCommand({ baseUrl: base.baseUrl }), /curl -fsSL '/);
+});
+
+test("a certificate that could not be read at all does not print -k", async () => {
+  // Unknown is not untrusted: a panel behind a proxy that dropped one connection
+  // would otherwise start teaching people to skip verification.
+  const { controlPlaneCert } = await import("./bootstrap");
+  const cert = await controlPlaneCert("http://10.255.255.1:3000");
+  assert.equal(cert.insecure, false);
+  assert.equal(cert.fingerprint, "");
 });
 
 test("the role rides as an env prefix INSIDE the elevated shell", () => {

@@ -37,8 +37,8 @@ const SECURE_PREFIX = "__Secure-";
 
 /**
  * Offer every Better Auth cookie under BOTH the plain and the `__Secure-` name. A
- * Deplo answers on two addresses at once: its panel address, usually https, and
- * its server's own `http://<ip>:3000`, the way back in when the domain breaks.
+ * Deplo answers on more than one address: its panel address, its generated backup
+ * host, and `http://127.0.0.1:3000` on the machine itself.
  */
 export function withBothCookieNames(cookie: string): string {
   if (!cookie.includes(AUTH_COOKIE_PREFIX)) return cookie;

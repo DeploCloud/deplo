@@ -41,9 +41,10 @@ emerged while building Part B and are recorded here:
   agent's key is never on the wire. Cross-language verified (Node mints, Go serves) by the Part B
   e2e (`scripts/agent-part-b-e2e.mts`).
 - **Bootstrap trust degrades safely without TLS.** P2/P3 want the agent to verify the control
-  plane by cert fingerprint before sending the token, but the control plane is plain HTTP on
-  :3000 unless a domain is configured (Traefik adds TLS only then). So: over **HTTPS** the agent
-  pins the fingerprint (P3, unchanged); over **plain HTTP** (the bare-IP case) the one-time token
+  plane by cert fingerprint before sending the token, but the bootstrap can still be plain HTTP:
+  agent 0 is enrolled over `http://127.0.0.1:3000` by the installer, before any certificate
+  exists. So: over **HTTPS** the agent pins the fingerprint (P3, unchanged), including the
+  self-signed one a generated `nip.io` panel address serves; over **plain HTTP** the one-time token
   doubles as a shared secret - the control plane **HMAC-signs the bootstrap response with the
   token**, and the agent refuses a response whose HMAC it cannot reproduce, so a network attacker
   who never had the token cannot forge the CA it hands back. The `Server` row stores only the

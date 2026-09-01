@@ -11,6 +11,7 @@ import {
   resumableMigration,
 } from "@/lib/data/migration-import";
 import { canExposePorts } from "@/lib/membership";
+import { panelFallbackHost } from "@/lib/deploy/domains";
 import { MigrationWizard } from "@/components/settings/migrations/migration-wizard";
 import { TakeoverActions } from "@/components/takeover/takeover-actions";
 import { TakeoverPreflight } from "@/components/takeover/takeover-preflight";
@@ -118,5 +119,5 @@ function takeoverSourceUrl(platform: "dokploy" | "coolify"): string {
 function finalPanelUrl(): string {
   const pub = process.env.DEPLO_PUBLIC_URL?.trim() ?? "";
   if (pub.startsWith("https://")) return pub;
-  return `http://${process.env.DEPLO_SERVER_IP?.trim() || "127.0.0.1"}:3000`;
+  return `https://${panelFallbackHost()}`;
 }

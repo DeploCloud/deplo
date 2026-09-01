@@ -66,9 +66,9 @@ have somewhere to deploy the moment it finishes:
 curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
 ```
 
-The dashboard always answers on `http://<server-ip>:3000`. That address is the way back in
-when a domain, a certificate or the proxy is what broke. Pass a domain to route it through
-Traefik with HTTPS as well:
+The dashboard is always served over HTTPS, on a real hostname. With no domain the
+installer generates `deplo-<hex>.nip.io`, which resolves to the server with no DNS to set
+up. Pass a domain to use your own instead:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | \
@@ -206,7 +206,7 @@ The installer takes four more, passed in front of the command and written once i
 
 | Variable            | Purpose                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `DEPLO_DOMAIN`      | Domain the panel is served on. Unset means `http://<ip>:3000` only.                                           |
+| `DEPLO_DOMAIN`      | Domain the panel is served on. Unset means a generated `deplo-<hex>.nip.io`.                                  |
 | `ACME_EMAIL`        | Let's Encrypt registration email for that host's Traefik. The container's own variable is `DEPLO_ACME_EMAIL`. |
 | `DEPLO_DB_PASSWORD` | Postgres password. Generated if unset.                                                                        |
 | `DEPLO_VERSION`     | Image tag to pull. Defaults to `latest`.                                                                      |

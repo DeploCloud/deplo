@@ -106,7 +106,9 @@ export function wwwCounterpart(host: string): string | null {
   return apex ? `www.${h}` : null;
 }
 
-function isWildcardDnsHost(host: string): boolean {
+/** A host on public wildcard DNS: it resolves without a record, and no public
+ *  certificate authority issues for it. */
+export function isWildcardDnsHost(host: string): boolean {
   return WILDCARD_DNS_SUFFIXES.some((s) => host.endsWith(s));
 }
 

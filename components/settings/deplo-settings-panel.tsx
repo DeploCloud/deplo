@@ -12,6 +12,7 @@ import {
   Loader2,
   Pencil,
   Server as ServerIcon,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   TriangleAlert,
@@ -19,7 +20,13 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +43,7 @@ import {
   UnderlineTabsList,
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
-import { InfoTip } from "@/components/ui/info-tip";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
 import { RevealChip } from "@/components/shared/reveal-chip";
@@ -76,13 +83,14 @@ type CertificateAccount = {
 type PanelHttps = {
   domain: string | null;
   enabled: boolean;
+  certificateTrusted: boolean | null;
   unavailable: string | null;
 };
 
 const ACCOUNT_FIELDS =
   "serverId serverName email unavailable customCertificates expiresInDays";
 
-const PANEL_HTTPS_FIELDS = "domain enabled unavailable";
+const PANEL_HTTPS_FIELDS = "domain enabled certificateTrusted unavailable";
 
 const TABS = ["general", "advanced", "updates"] as const;
 type TabId = (typeof TABS)[number];
@@ -170,6 +178,11 @@ export function DeploSettingsPanel({
               expectedAgentVersion={fleet.expected}
               hosts={hosts}
             />
+          </div>
+          {/* Last: the most consequential switch on the page, same reason the
+              ownership card sits at the bottom of General. */}
+          <div className="lg:col-span-2">
+            <PanelHttpCard />
           </div>
         </div>
       </TabsContent>
@@ -296,9 +309,9 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
 
         <PanelDnsBlock dns={dns} serverIp={settings.deploHostIp} />
 
-        <PanelHttpsRow />
-        <PanelIpAddressRow
-          url={settings.panelIpUrl}
+        <PanelServingRow />
+        <PanelFallbackRow
+          url={settings.panelFallbackUrl}
           panelUrl={settings.panelUrl}
         />
       </CardContent>
@@ -401,9 +414,9 @@ function PanelDnsBlock({
 }
 
 /**
- * The address the panel also answers on, on the machine itself.
+ * The generated address the panel also answers on, whatever its domain is doing.
  */
-function PanelIpAddressRow({
+function PanelFallbackRow({
   url,
   panelUrl,
 }: {
@@ -419,10 +432,10 @@ function PanelIpAddressRow({
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-sm font-medium">
           <LifeBuoy className="size-4 text-muted-foreground" />
-          IP address
+          Backup address
           <Badge variant="muted">Always on</Badge>
           <InfoTip
-            content="Deplo answers here as well, straight on the server. It is served over plain http, so use the address above day to day."
+            content="Deplo generates this address from the server's own IP, so it resolves here with no DNS to set up. Use the address above day to day."
             docs="panel.address"
           />
         </div>
@@ -437,8 +450,8 @@ function PanelIpAddressRow({
           revealed={revealed}
           onToggle={() => setRevealed((v) => !v)}
           labels={{
-            reveal: "Reveal the IP address",
-            hide: "Hide the IP address",
+            reveal: "Reveal the backup address",
+            hide: "Hide the backup address",
           }}
         />
         <CopyButton value={url} />
@@ -447,123 +460,191 @@ function PanelIpAddressRow({
   );
 }
 
-/**
- * How the panel itself is served, on the card about the panel's own address -
- * because it is a fact about that address, not about the fleet's certificates
- * below.
- */
-function PanelHttpsRow() {
-  const router = useRouter();
+/** Read the panel's own route off the host that serves it. */
+function usePanelHttps(): {
+  cert: PanelHttps | null;
+  loading: boolean;
+  setCert: (c: PanelHttps | null) => void;
+} {
   const [cert, setCert] = React.useState<PanelHttps | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [confirming, setConfirming] = React.useState<boolean | null>(null);
-
-  const load = React.useCallback(async () => {
-    const res = await gqlAction<{ panelHttps: PanelHttps }>(
-      `mutation PanelHttps { panelHttps { ${PANEL_HTTPS_FIELDS} } }`,
-    );
-    setLoading(false);
-    if (res.ok) setCert(res.data?.panelHttps ?? null);
-  }, []);
 
   React.useEffect(() => {
     // Opening the page IS the read: same scoped exemption as the accounts below.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+    void (async () => {
+      const res = await gqlAction<{ panelHttps: PanelHttps }>(
+        `mutation PanelHttps { panelHttps { ${PANEL_HTTPS_FIELDS} } }`,
+      );
+      setLoading(false);
+      if (res.ok) setCert(res.data?.panelHttps ?? null);
+    })();
+  }, []);
 
-  async function toggle(enabled: boolean) {
-    const res = await gqlAction<{ setPanelHttps: PanelHttps }>(
-      `mutation SetPanelHttps($enabled: Boolean!) {
-        setPanelHttps(enabled: $enabled) { ${PANEL_HTTPS_FIELDS} }
-      }`,
-      { enabled },
-    );
-    if (!res.ok) return res;
-    setCert(res.data?.setPanelHttps ?? null);
-    // The scheme moved the STORED address with it, and that address is what
-    // the card above renders: without this it would keep showing the old one.
-    router.refresh();
-    return res;
-  }
+  return { cert, loading, setCert };
+}
 
-  // The real box, not a guessed height: everything but the switch's state is
-  // known before the read returns, so the row settles in place instead of
+/**
+ * How the panel is served, on the card about the panel's own address. A fact,
+ * not a switch: the one case for plain http lives under Advanced.
+ */
+function PanelServingRow() {
+  const { cert, loading } = usePanelHttps();
+
+  // The real box, not a guessed height, so the row settles in place instead of
   // growing out of a bar that was never the same size as it.
   if (loading)
     return (
-      <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-        <div className="min-w-0">
-          <HttpsLabel />
-        </div>
-        <span className="h-5 w-9 shrink-0 animate-pulse rounded-full bg-muted" />
+      <div className="rounded-lg border border-border p-3">
+        <HttpsLabel />
+        <span className="mt-2 block h-4 w-64 animate-pulse rounded bg-muted" />
       </div>
     );
   if (!cert) return null;
 
+  const untrusted = cert.enabled && cert.certificateTrusted === false;
   return (
-    <>
-      <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-        <div className="min-w-0">
-          <HttpsLabel />
-          {cert.unavailable ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {cert.unavailable}
-            </p>
-          ) : cert.enabled ? null : (
-            <p className="mt-1 text-sm text-[var(--warning)]">
-              Anyone signing in sends their password unencrypted.
-            </p>
-          )}
-        </div>
-        <Switch
-          checked={cert.enabled}
-          disabled={!!cert.unavailable}
-          onCheckedChange={setConfirming}
-          aria-label="Serve the panel over HTTPS"
+    <div className="rounded-lg border border-border p-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <ShieldCheck className="size-4 text-muted-foreground" />
+        HTTPS
+        {cert.enabled ? (
+          untrusted ? (
+            <Badge variant="warning">Self-signed</Badge>
+          ) : (
+            <Badge variant="muted">Always on</Badge>
+          )
+        ) : (
+          <Badge variant="destructive">Off</Badge>
+        )}
+        <InfoTip
+          content="The panel is served over HTTPS and nothing else. Plain http is an advanced opt-out for an address no certificate can be issued for."
+          docs="panel.https"
         />
       </div>
+      {cert.unavailable ? (
+        <p className="mt-1 text-sm text-muted-foreground">{cert.unavailable}</p>
+      ) : !cert.enabled ? (
+        <p className="mt-1 text-sm text-[var(--warning)]">
+          Anyone signing in sends their password unencrypted. Turn HTTPS back on
+          under Advanced.
+        </p>
+      ) : untrusted ? (
+        <p className="mt-1 text-sm text-muted-foreground">
+          The browser does not recognise this certificate. Set your own domain
+          above to get one it does.
+        </p>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">
+          Let&apos;s Encrypt issues the certificate, and renews it on its own.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The one way to serve the panel over plain http, under Advanced because the one
+ * case for it is an address no certificate can be issued for.
+ */
+function PanelHttpCard() {
+  const router = useRouter();
+  const { cert, loading, setCert } = usePanelHttps();
+  const [confirming, setConfirming] = React.useState(false);
+
+  async function turnOff() {
+    const res = await gqlAction<{ setPanelHttps: PanelHttps }>(
+      `mutation SetPanelHttps($enabled: Boolean!) {
+        setPanelHttps(enabled: $enabled) { ${PANEL_HTTPS_FIELDS} }
+      }`,
+      { enabled: !cert?.enabled },
+    );
+    if (!res.ok) return res;
+    setCert(res.data?.setPanelHttps ?? null);
+    // The scheme moved the STORED address with it, and that address is what the
+    // General tab renders: without this it would keep showing the old one.
+    router.refresh();
+    return res;
+  }
+
+  const enabled = cert?.enabled ?? true;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ShieldAlert className="size-4 text-muted-foreground" />
+          Serve the panel over plain HTTP
+        </CardTitle>
+        <CardDescription>
+          For a panel on an internal network, where no certificate can be
+          issued.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        <div className="flex items-center justify-between gap-4">
+          <FieldLabel
+            htmlFor="panel-http"
+            info="Every password and every session cookie then crosses the network in clear, and passkeys stop working entirely. Leave it on HTTPS unless the address genuinely cannot be issued a certificate."
+            docs="panel.https"
+          >
+            Turn HTTPS off
+          </FieldLabel>
+          <Switch
+            id="panel-http"
+            checked={!enabled}
+            disabled={loading || !cert || !!cert.unavailable}
+            onCheckedChange={() => setConfirming(true)}
+            aria-label="Serve the panel over plain HTTP"
+          />
+        </div>
+        {cert?.unavailable ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            {cert.unavailable}
+          </p>
+        ) : null}
+      </CardContent>
 
       {/**
-       * The SAME confirm the address field opens, because this is the same move: the
-       * scheme is half of an origin, so turning https off takes every passkey with it
-       * exactly as a new hostname would.
+       * The SAME confirm the address field opens, because this is the same move:
+       * the scheme is half of an origin, so turning https off takes every passkey
+       * with it exactly as a new hostname would.
        */}
-      {confirming !== null && (
+      {confirming && cert?.domain && (
         <PanelAddressDialog
           open
-          onOpenChange={(o) => !o && setConfirming(null)}
-          url={`${confirming ? "https" : "http"}://${cert.domain}`}
+          onOpenChange={(o) => !o && setConfirming(false)}
+          url={`${enabled ? "http" : "https"}://${cert.domain}`}
           title={
-            confirming
-              ? `Serve the panel at https://${cert.domain}?`
-              : `Serve the panel at http://${cert.domain}?`
+            enabled
+              ? `Serve the panel at http://${cert.domain}?`
+              : `Serve the panel at https://${cert.domain}?`
           }
-          confirmLabel={confirming ? "Turn HTTPS on" : "Turn HTTPS off"}
+          confirmLabel={enabled ? "Turn HTTPS off" : "Turn HTTPS on"}
           successMessage={
-            confirming
-              ? "The panel is now served over https"
-              : "The panel is now served over http"
+            enabled
+              ? "The panel is now served over http"
+              : "The panel is now served over https"
           }
           notes={[
-            confirming
+            enabled
               ? {
-                  severity: "manual" as const,
-                  text: "The address has to reach this server from the internet for the certificate to be issued",
+                  severity: "critical" as const,
+                  text: "Anyone signing in sends their password unencrypted, and that is on you",
                 }
               : {
-                  severity: "critical" as const,
-                  text: "Anyone signing in sends their password unencrypted",
+                  severity: "manual" as const,
+                  text: "The address has to reach this server from the internet for the certificate to be issued",
                 },
             {
               severity: "minor" as const,
               text: "The proxy restarts: sites on this server are unreachable for a few seconds",
             },
           ]}
-          onConfirm={() => toggle(confirming)}
+          onConfirm={turnOff}
         />
       )}
-    </>
+    </Card>
   );
 }
 
@@ -575,7 +656,7 @@ function HttpsLabel() {
       <ShieldCheck className="size-4 text-muted-foreground" />
       HTTPS
       <InfoTip
-        content="Turn this off when the address cannot get a certificate: it does not resolve publicly yet, port 80 is closed, or the server is on an internal network. You can turn it back on once it can."
+        content="The panel is served over HTTPS and nothing else. Plain http is an advanced opt-out for an address no certificate can be issued for."
         docs="panel.https"
       />
     </div>

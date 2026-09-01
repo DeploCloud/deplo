@@ -20,11 +20,8 @@ services:
       - DEPLO_SECRET=${DEPLO_SECRET:?set DEPLO_SECRET}
       - DEPLO_PUBLIC_URL=https://${DEPLO_DOMAIN:?set DEPLO_DOMAIN}
       - DEPLO_DATABASE_URL=postgres://deplo:${DEPLO_DB_PASSWORD:?set DEPLO_DB_PASSWORD}@postgres:5432/deplo
-    # Published even though Traefik serves the domain: http://<server-ip>:3000 is
-    # the panel's IP address, the way back in when its domain stopped working.
-    # Nothing can add this port later without recreating the container by hand.
-    ports:
-      - "3000:3000"
+    # NOT published on the host: the panel answers over HTTPS through Traefik and
+    # nowhere else. An open port here is a login page with no TLS in front of it.
     # NO docker.sock, the same rule install.sh states: the panel is the one
     # container here reachable from the internet, and that mount is root on the
     # box for whoever reaches it. Nothing needs it any more - the last live line

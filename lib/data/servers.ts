@@ -35,7 +35,7 @@ import {
   storedBootstrapFor,
   installCommand,
   uninstallCommand,
-  controlPlaneCertFingerprint,
+  controlPlaneCert,
   findServerForToken,
   signBootstrapCsr,
   DEFAULT_AGENT_PORT,
@@ -320,7 +320,7 @@ export async function addServer(
   const baseUrl = await instancePublicBaseUrl();
   // Best-effort: read the control plane's own TLS fingerprint to pin in the
   // command (P3). Empty over plain HTTP - the agent then uses the HMAC path.
-  const fingerprint = await controlPlaneCertFingerprint(baseUrl);
+  const { fingerprint, insecure } = await controlPlaneCert(baseUrl);
 
   const importOnly = input.importOnly ?? false;
   if (importOnly) await assertImportHostIsNew(host);
@@ -385,6 +385,7 @@ export async function addServer(
       baseUrl,
       rawToken,
       fingerprint,
+      insecure,
       storageOnly: server.storageOnly,
       buildOnly: server.buildOnly,
       importOnly: server.importOnly,
@@ -495,7 +496,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
 
   const { rawToken, stored } = mintBootstrap();
   const baseUrl = await instancePublicBaseUrl();
-  const fingerprint = await controlPlaneCertFingerprint(baseUrl);
+  const { fingerprint, insecure } = await controlPlaneCert(baseUrl);
   await getDb()
     .update(serversTable)
     .set({
@@ -524,6 +525,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
       baseUrl,
       rawToken,
       fingerprint,
+      insecure,
       storageOnly: fresh.storageOnly,
       buildOnly: fresh.buildOnly,
       // The role has to ride along or the re-copied command installs a DIFFERENT
@@ -553,6 +555,13 @@ async function publicBaseUrl(): Promise<string> {
   return instancePublicBaseUrl();
 }
 
+/** The uninstall one-liner, with `-k` when the panel's certificate needs it. */
+async function hostUninstallCommand(): Promise<string> {
+  const baseUrl = await publicBaseUrl();
+  const { insecure } = await controlPlaneCert(baseUrl);
+  return uninstallCommand({ baseUrl, insecure });
+}
+
 /**
  * The paste-on-the-host command that takes Deplo's agent back off a machine.
  * Exists because the row that needs it is exactly the row Deplo cannot act on: an
@@ -560,7 +569,7 @@ async function publicBaseUrl(): Promise<string> {
  */
 export async function agentUninstallCommand(): Promise<string> {
   await requireActiveTeamId();
-  return uninstallCommand({ baseUrl: await publicBaseUrl() });
+  return hostUninstallCommand();
 }
 
 /** Format a blocked-by list for an error message: at most `max` names, then a count. */
@@ -714,7 +723,7 @@ async function removeServerRow(
       : null;
 
   return {
-    uninstallCommand: uninstallCommand({ baseUrl: await publicBaseUrl() }),
+    uninstallCommand: await hostUninstallCommand(),
     warning,
   };
 }
@@ -761,7 +770,7 @@ export async function uninstallMigrationSource(
 ): Promise<ServerUninstall> {
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
-  const command = uninstallCommand({ baseUrl: await publicBaseUrl() });
+  const command = await hostUninstallCommand();
 
   // Scoped to the one role that asked for it. An ordinary server's removal is a
   // deliberate, unchanged flow (ADR-0011); widening this is a product decision,

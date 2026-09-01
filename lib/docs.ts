@@ -189,7 +189,8 @@ export const DOCS = {
   "instance.users": "operations/instance-administration#users",
   "instance.owner": "operations/instance-administration#instance-owner",
   "panel.address": "operations/panel-address-and-certificates",
-  "panel.https": "operations/panel-address-and-certificates#turn-on-https",
+  "panel.https":
+    "operations/panel-address-and-certificates#https-is-not-optional",
   "panel.certEmail":
     "operations/panel-address-and-certificates#the-certificate-account-email",
   "upgrade.overview": "operations/upgrade",

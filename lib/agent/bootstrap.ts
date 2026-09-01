@@ -60,6 +60,9 @@ export function installCommand(opts: {
   rawToken: string;
   /** sha256 cert fingerprint of the control plane's TLS cert, or "" for HTTP. */
   fingerprint: string;
+  /** True when curl cannot verify the panel's certificate, so the command has to
+   *  say so. The bootstrap itself is unaffected: it pins {@link fingerprint}. */
+  insecure?: boolean;
   /**
    * A server that only HOLDS BACKUPS: no Docker, no Traefik, no address pools, and
    * a systemd unit with no `docker` group (which would otherwise refuse to start
@@ -79,8 +82,15 @@ export function installCommand(opts: {
    */
   importOnly?: boolean;
 }): string {
-  const { baseUrl, rawToken, fingerprint, storageOnly, buildOnly, importOnly } =
-    opts;
+  const {
+    baseUrl,
+    rawToken,
+    fingerprint,
+    insecure,
+    storageOnly,
+    buildOnly,
+    importOnly,
+  } = opts;
   // Order: <token> <control-plane-url> [fingerprint]. The script forwards them
   // to the agent's --bootstrap-* flags. Single-quoted so the shell treats them
   // as literals (the token is base64url, the url/fingerprint are constrained).
@@ -95,15 +105,27 @@ export function installCommand(opts: {
       : buildOnly
         ? "DEPLO_BUILD_ONLY=1 "
         : "";
-  return `curl -fsSL '${baseUrl}/install-agent.sh' | sudo ${env}bash -s -- '${rawToken}' '${baseUrl}'${fp}`;
+  return `curl -${curlFlags(insecure)} '${baseUrl}/install-agent.sh' | sudo ${env}bash -s -- '${rawToken}' '${baseUrl}'${fp}`;
 }
 
 /**
  * Build the paste-on-the-server UNINSTALL command - the counterpart to {@link
  * installCommand}, handed to the operator when they remove a server.
  */
-export function uninstallCommand(opts: { baseUrl: string }): string {
-  return `curl -fsSL '${opts.baseUrl}/uninstall.sh' | sudo bash -s -- --yes --agent-only`;
+export function uninstallCommand(opts: {
+  baseUrl: string;
+  insecure?: boolean;
+}): string {
+  return `curl -${curlFlags(opts.insecure)} '${opts.baseUrl}/uninstall.sh' | sudo bash -s -- --yes --agent-only`;
+}
+
+/**
+ * `-k` only when the panel's own certificate does not verify - the generated
+ * nip.io address, which no public CA issues for. Printing it always would teach
+ * people to skip verification on an instance that has a real certificate.
+ */
+function curlFlags(insecure?: boolean): string {
+  return insecure ? "fsSLk" : "fsSL";
 }
 
 /**
@@ -115,27 +137,35 @@ export function uninstallCommand(opts: { baseUrl: string }): string {
  * fingerprint"), so a command minted without one is a command that cannot work,
  * handed over with a green "the agent is calling home".
  */
-export async function controlPlaneCertFingerprint(
+export async function controlPlaneCert(
   baseUrl: string,
-): Promise<string> {
+): Promise<ControlPlaneCert> {
+  const none = { fingerprint: "", insecure: false };
   let url: URL;
   try {
     url = new URL(baseUrl);
   } catch {
-    return "";
+    return none;
   }
-  if (url.protocol !== "https:") return "";
+  if (url.protocol !== "https:") return none;
   // Nothing to dial: the instance does not know its own address yet, which is a
   // different problem from a cert that cannot be read, and has its own answer.
-  if (baseUrl.replace(/\/+$/, "") === PUBLIC_URL_PLACEHOLDER) return "";
+  if (baseUrl.replace(/\/+$/, "") === PUBLIC_URL_PLACEHOLDER) return none;
   // Once more before giving up: this dials Deplo's own public address, which can
   // sit behind a proxy that drops one connection in a while.
-  const fingerprint =
-    (await readCertFingerprint(url)) || (await readCertFingerprint(url));
+  const first = await readCert(url);
+  const cert = first.fingerprint ? first : await readCert(url);
   // Nothing is dialable from a test worker, and every server a test registers
   // would otherwise fail on an address that does not exist.
-  if (!isTestEnv()) assertPinnableFingerprint(url, fingerprint);
-  return fingerprint;
+  if (!isTestEnv()) assertPinnableFingerprint(url, cert.fingerprint);
+  return cert;
+}
+
+/** {@link controlPlaneCert}, when only the pin is wanted. */
+export async function controlPlaneCertFingerprint(
+  baseUrl: string,
+): Promise<string> {
+  return (await controlPlaneCert(baseUrl)).fingerprint;
 }
 
 /**
@@ -151,34 +181,46 @@ export function assertPinnableFingerprint(url: URL, fingerprint: string): void {
   );
 }
 
-function readCertFingerprint(url: URL): Promise<string> {
+/** What one handshake with the panel's own address tells us. */
+export type ControlPlaneCert = {
+  /** sha256 of the presented certificate, or "" when it could not be read. */
+  fingerprint: string;
+  /** True only when a certificate was READ and a stock CA bundle rejected it, as
+   *  on the generated nip.io host. A handshake that failed outright leaves this
+   *  false: unknown must not print `-k` at somebody. */
+  insecure: boolean;
+};
+
+function readCert(url: URL): Promise<ControlPlaneCert> {
   const port = url.port ? Number(url.port) : 443;
-  return new Promise<string>((resolve) => {
+  return new Promise<ControlPlaneCert>((resolve) => {
     const sock = tlsConnect(
       {
         host: url.hostname,
         port,
         servername: url.hostname,
-        // We only want to READ the presented cert's fingerprint; we are not
-        // authenticating here (the agent does the pinning). Don't fail on an
-        // unknown CA (self-signed-on-IP is explicitly supported, P3).
+        // We only want to READ the presented cert; we are not authenticating
+        // here (the agent does the pinning). Don't fail on an unknown CA
+        // (self-signed-on-IP is explicitly supported, P3) - `authorized` still
+        // reports what a stock client would have decided.
         rejectUnauthorized: false,
         timeout: 5_000,
       },
       () => {
         const cert = sock.getPeerCertificate();
+        const authorized = sock.authorized;
         sock.end();
-        if (cert && cert.fingerprint256) {
-          resolve(cert.fingerprint256.replace(/:/g, "").toLowerCase());
-        } else {
-          resolve("");
-        }
+        const fingerprint = cert?.fingerprint256
+          ? cert.fingerprint256.replace(/:/g, "").toLowerCase()
+          : "";
+        resolve({ fingerprint, insecure: !!fingerprint && !authorized });
       },
     );
-    sock.on("error", () => resolve(""));
+    const nothing = { fingerprint: "", insecure: false };
+    sock.on("error", () => resolve(nothing));
     sock.on("timeout", () => {
       sock.destroy();
-      resolve("");
+      resolve(nothing);
     });
   });
 }

@@ -694,6 +694,14 @@ configs:
             priority: 2
             tls:
               certResolver: letsencrypt
+          deplo-panel-fallback:
+            rule: Host(\`deplo-cb007109.nip.io\`)
+            entryPoints:
+              - websecure
+            service: deplo-panel
+            priority: 2
+            tls:
+              certResolver: letsencrypt
         services:
           deplo-panel:
             loadBalancer:
@@ -707,6 +715,7 @@ networks:
 
 const PANEL_ROUTE = {
   domain: "deplo.example.com",
+  fallbackDomain: "deplo-cb007109.nip.io",
   https: true,
   certResolver: "letsencrypt",
   target: "http://deplo:3000",
@@ -877,6 +886,66 @@ test("moving the panel's address rewrites only the rule", () => {
     "where the panel lives is not the operator's to retype",
   );
   assert.equal(route?.certResolver, "letsencrypt");
+});
+
+test("the installer's two-router file survives a panel edit byte for byte", () => {
+  // The KEEP IN SYNC contract with install.sh: re-rendering what it wrote must
+  // reproduce it, or the first edit from the panel leaves an operator reading a
+  // diff nobody asked for. The dynamic-config file, not the whole stack: the
+  // top-level `configs` key is re-appended, which moves it below `networks`.
+  const config = (yaml_: string) =>
+    (parse(yaml_) as Doc & { configs: Record<string, { content: string }> })
+      .configs["deplo-panel"].content;
+  const out = withPanelRoute(
+    INSTALLED_WITH_PANEL,
+    panelRoute(INSTALLED_WITH_PANEL)!,
+  );
+  assert.equal(config(out), config(INSTALLED_WITH_PANEL));
+});
+
+test("the generated host keeps answering when the domain moves", () => {
+  // The reason it exists: it replaced the open <ip>:3000 as the way back in, so
+  // a panel whose domain, DNS or certificate broke is still reachable.
+  const moved = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...panelRoute(INSTALLED_WITH_PANEL)!,
+    domain: "new.example.com",
+  });
+  assert.equal(panelRoute(moved)?.fallbackDomain, PANEL_ROUTE.fallbackDomain);
+  const routers = panelFileOf(moved).http.routers;
+  assert.equal(routers["deplo-panel"].rule, "Host(`new.example.com`)");
+  assert.equal(
+    routers["deplo-panel-fallback"].rule,
+    "Host(`deplo-cb007109.nip.io`)",
+  );
+  assert.equal(
+    routers["deplo-panel-fallback"].service,
+    "deplo-panel",
+    "two routers, one service",
+  );
+});
+
+test("the fallback follows the panel onto plain http", () => {
+  const off = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    https: false,
+    certResolver: null,
+  });
+  const fallback = panelFileOf(off).http.routers["deplo-panel-fallback"];
+  assert.deepEqual(fallback.entryPoints, ["web"]);
+  assert.equal(fallback.tls, undefined);
+});
+
+test("a panel that IS the generated host gets one router, not two identical ones", () => {
+  // Two rules matching the same Host at the same priority is a conflict Traefik
+  // resolves by picking one, so the duplicate is dropped rather than written.
+  const out = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    domain: PANEL_ROUTE.fallbackDomain,
+  });
+  const routers = panelFileOf(out).http.routers;
+  assert.equal(routers["deplo-panel"].rule, "Host(`deplo-cb007109.nip.io`)");
+  assert.equal(routers["deplo-panel-fallback"], undefined);
+  assert.equal(panelRoute(out)?.fallbackDomain, null);
 });
 
 test("the panel's target is read live, never assumed", () => {

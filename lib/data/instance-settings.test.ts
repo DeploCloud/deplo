@@ -74,12 +74,27 @@ test("a bare domain is stored as an https URL", () => {
     normalizePanelUrl("  deplo.example.com/  "),
     "https://deplo.example.com",
   );
-  // An explicit http stays http: a bare IP with no proxy in front of it is a
-  // real, if temporary, way to run this.
+  // An explicit http stays http: it is the advanced opt-out, for an address no
+  // certificate can be issued for.
   assert.equal(
-    normalizePanelUrl("http://10.0.0.4:3000"),
-    "http://10.0.0.4:3000",
+    normalizePanelUrl("http://deplo.internal"),
+    "http://deplo.internal",
   );
+});
+
+test("an IP address is not a panel address, in either scheme", () => {
+  // No certificate authority issues for a bare address, and the panel is not
+  // served without one. Deplo generates a hostname rather than offering this.
+  for (const bad of [
+    "10.0.0.4",
+    "http://10.0.0.4:3000",
+    "https://198.51.100.7",
+  ])
+    assert.throws(
+      () => normalizePanelUrl(bad),
+      /domain name, not an IP address/,
+      `must refuse ${bad}`,
+    );
 });
 
 test("anything that could escape a shell, or carry credentials, is refused", () => {
@@ -292,7 +307,10 @@ test("a Deplo whose own host is not added as a server says so, rather than faili
   // have added it yet. That is an answer with a fix in it, not an error.
   const cert = await asUser(ADMIN, () => getPanelHttps());
   assert.equal(cert.domain, null);
+  assert.equal(cert.fallbackDomain, null);
   assert.equal(cert.enabled, false);
+  // Null, not false: nothing was dialled, and unknown is not untrusted.
+  assert.equal(cert.certificateTrusted, null);
   assert.match(cert.unavailable ?? "", /not added here yet/i);
   await assert.rejects(
     () => asUser(ADMIN, () => setPanelHttps(true)),
@@ -310,6 +328,7 @@ test("storing an address still works when there is no route of ours to move", as
 
 const ROUTE = {
   domain: "old.example.com",
+  fallbackDomain: "deplo-cb007109.nip.io",
   https: true,
   certResolver: "letsencrypt",
   target: "http://deplo:3000",
@@ -442,9 +461,12 @@ test("the panel's DNS check classifies the address the instance answers on", asy
     assert.equal((await at([])).status, "pending");
     assert.equal((await at([])).host, "panel.example.com");
 
-    // A bare address needs no record, so there is nothing to check.
-    await asUser(ADMIN, () => setPanelUrl(`http://${HOST_IP}:3000`));
-    assert.equal((await at([HOST_IP])).status, "unknown");
+    // A bare address needs no record, so there is nothing to check. Only a
+    // pre-change install still has one: it cannot be set here any more.
+    await asUser(ADMIN, () => setPanelUrl(null));
+    await withPanelUrl(`http://${HOST_IP}:3000`, async () => {
+      assert.equal((await at([HOST_IP])).status, "unknown");
+    });
   } finally {
     __resetDnsResolve4ForTest();
     if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;

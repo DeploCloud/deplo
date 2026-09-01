@@ -4,10 +4,11 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
 #
-# The dashboard ALWAYS answers on the server's IP at port 3000
-# (http://<ip>:3000) - that address is the way back in when a domain, a
-# certificate or the proxy is what broke. Pass a real domain to route it through
-# Traefik with automatic Let's Encrypt HTTPS as well:
+# The dashboard is ALWAYS served over HTTPS by Traefik, on a real hostname. Give
+# it a domain and it uses that; give it nothing and this script generates
+# deplo-<hex>.nip.io, which resolves to this server with no DNS to set up. Port
+# 3000 is published on 127.0.0.1 only, so the way back in when the proxy itself is
+# what broke is an SSH tunnel, never the open internet.
 #   curl -fsSL .../install.sh | DEPLO_DOMAIN=deplo.example.com ACME_EMAIL=you@example.com bash
 #
 # Flags (after `bash -s --`, or on a downloaded copy):
@@ -39,7 +40,6 @@ ENV_FILE="$DEPLO_DIR/.env"
 STATE_FILE="$DEPLO_DIR/.install-state"
 INSTALLER_URL="https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh"
 BACKUP_DIR="$DEPLO_DIR/backups"
-DEFAULT_ACME_EMAIL="admin@example.com"
 
 # ==== Deplo terminal UI ===================================== KEEP IN SYNC ====
 # One renderer for install.sh, install-agent.sh and uninstall.sh. It degrades on
@@ -366,6 +366,19 @@ is_real_domain() {
   esac
 }
 
+# The 8-char hex of an IPv4, the label nip.io routes on: 1.2.3.4 -> 01020304.
+# KEEP IN SYNC with `ipToHex` in lib/deploy/domains.ts.
+ip_hex() {
+  local IFS=.
+  case "$1" in "" | *[!0-9.]*) return 1 ;; esac
+  # shellcheck disable=SC2086
+  set -- $1
+  [ $# -eq 4 ] || return 1
+  # `10#0$n` so a zero-padded or empty octet is not read as octal, which under
+  # `set -e` would end the install on an arithmetic error.
+  printf '%02x%02x%02x%02x' "$((10#0$1))" "$((10#0$2))" "$((10#0$3))" "$((10#0$4))"
+}
+
 is_private_ip() {
   case "$1" in
     10.*|127.*|169.254.*|192.168.*|100.6[4-9].*|100.[7-9][0-9].*|100.1[0-1][0-9].*|100.12[0-7].*) return 0 ;;
@@ -636,7 +649,8 @@ else
 fi
 
 # Ports ------------------------------------------------------------------------
-# 80/443 belong to Traefik and 3000 to the panel. Somebody else's nginx on :80 is
+# 80/443 belong to Traefik, and 3000 to the panel on loopback - a bind that still
+# collides with anything else holding that port. Somebody else's nginx on :80 is
 # the single most common way an install ends up half-working.
 ours_holds_port() {
   docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null \
@@ -758,12 +772,19 @@ PUBLIC_IP=""
 if [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ]; then
   PUBLIC_IP="$(detect_public_ip || true)"
 fi
+TARGET_IP="${PUBLIC_IP:-$SERVER_IP}"
 if [ -n "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "$SERVER_IP" ]; then
   ok "Address: $SERVER_IP on this network, $PUBLIC_IP from the internet"
-  is_private_ip "$SERVER_IP" && note "This host is behind NAT - forward $HTTP_PORT, $HTTPS_PORT and $PANEL_PORT to $SERVER_IP."
+  is_private_ip "$SERVER_IP" && note "This host is behind NAT - forward $HTTP_PORT and $HTTPS_PORT to $SERVER_IP."
 else
   ok "Address: $SERVER_IP"
 fi
+
+# The dashboard's own address when nobody gives it a domain. nip.io is public
+# wildcard DNS: a host whose last label before .nip.io is an IPv4 in hex resolves
+# to that IP, with nothing to set up. Same shape lib/deploy/domains.ts mints for
+# apps, so the panel and the apps on it read alike.
+FALLBACK_HOST="deplo-$(ip_hex "$TARGET_IP" || ip_hex 127.0.0.1).nip.io"
 
 # The domain, before Let's Encrypt is asked for anything -------------------------
 # A certificate ordered for a name that does not point here fails the HTTP-01
@@ -773,28 +794,49 @@ if [ "$MODE" = update ] && [ -z "${DEPLO_DOMAIN:-}" ] && [ -f "$ENV_FILE" ]; the
 fi
 
 if [ "$MODE" = install ] && [ -z "${DEPLO_DOMAIN:-}" ]; then
-  ANSWER="$(ask "Domain for the dashboard (Enter to use http://$SERVER_IP:3000):" || true)"
+  ANSWER="$(ask "Domain for the dashboard (Enter for https://$FALLBACK_HOST):" || true)"
   [ -n "$ANSWER" ] && DEPLO_DOMAIN="$ANSWER"
+fi
+
+# A bare address reads as a domain to the lexical check below, and no certificate
+# authority issues for one. The generated host is the better answer.
+if [ -n "${DEPLO_DOMAIN:-}" ] && ip_hex "${DEPLO_DOMAIN}" >/dev/null 2>&1; then
+  pf_warn "'$DEPLO_DOMAIN' is an IP address, not a domain, so the dashboard stays on https://$FALLBACK_HOST."
+  DEPLO_DOMAIN=""
 fi
 
 if is_real_domain "${DEPLO_DOMAIN:-}"; then
   DOMAIN_IPS="$(resolve_a "$DEPLO_DOMAIN" | tr '\n' ' ' | sed 's/ *$//' || true)"
-  TARGET_IP="${PUBLIC_IP:-$SERVER_IP}"
   if [ -z "$DOMAIN_IPS" ]; then
     pf_warn "$DEPLO_DOMAIN does not resolve yet." \
-      "Point its A record at $TARGET_IP. The panel still answers on http://$SERVER_IP:3000 meanwhile."
+      "Point its A record at $TARGET_IP. The dashboard answers on https://$FALLBACK_HOST meanwhile."
   elif printf '%s' " $DOMAIN_IPS " | grep -q " $TARGET_IP "; then
     ok "$DEPLO_DOMAIN $G_ARROW $TARGET_IP"
   else
     pf_warn "$DEPLO_DOMAIN resolves to $DOMAIN_IPS, not $TARGET_IP." \
       "Let's Encrypt will fail the HTTP-01 challenge until the A record points here."
   fi
-  [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ] || can_reach "https://acme-v02.api.letsencrypt.org/directory" \
-    || pf_warn "Cannot reach Let's Encrypt." "Certificates will not issue until this host has outbound HTTPS to acme-v02.api.letsencrypt.org."
-elif [ -n "${DEPLO_DOMAIN:-}" ]; then
-  pf_warn "'$DEPLO_DOMAIN' is not a routable domain - the dashboard will stay on http://$SERVER_IP:3000."
-  DEPLO_DOMAIN=""
+else
+  if [ -n "${DEPLO_DOMAIN:-}" ]; then
+    pf_warn "'$DEPLO_DOMAIN' is not a routable domain, so the dashboard stays on https://$FALLBACK_HOST."
+    DEPLO_DOMAIN=""
+  fi
+  # The generated host is only an address if this network resolves it. Some
+  # resolvers drop answers pointing into a private range (DNS rebind protection),
+  # which is exactly what a nip.io host for a LAN address is.
+  if [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ]; then
+    case " $(resolve_a "$FALLBACK_HOST" | tr '\n' ' ') " in
+      *" $TARGET_IP "*) ok "$FALLBACK_HOST $G_ARROW $TARGET_IP" ;;
+      *) pf_warn "$FALLBACK_HOST does not resolve from this host." \
+           "nip.io needs public DNS. If this network blocks it, re-run with --domain <your domain>." ;;
+    esac
+  fi
 fi
+
+# Out of the branch: the panel is served over HTTPS either way now, so a
+# certificate is ordered either way.
+[ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ] || can_reach "https://acme-v02.api.letsencrypt.org/directory" \
+  || pf_warn "Cannot reach Let's Encrypt." "Certificates will not issue until this host has outbound HTTPS to acme-v02.api.letsencrypt.org."
 
 blank
 if [ "$PF_FAIL" -gt 0 ]; then
@@ -1008,10 +1050,16 @@ docker network inspect deplo >/dev/null 2>&1 || docker network create deplo >&9 
 touch "$DEPLO_DIR/acme/acme.json"
 chmod 600 "$DEPLO_DIR/acme/acme.json"
 
-# Let's Encrypt sends expiry notices here, so admin@<domain> beats a placeholder
-# nobody reads. Changeable from the panel afterwards, and never asked for.
-if [ -z "${ACME_EMAIL:-}" ] && is_real_domain "${DEPLO_DOMAIN:-}"; then
-  ACME_EMAIL="admin@$DEPLO_DOMAIN"
+# Let's Encrypt sends expiry notices here, so admin@<the panel's own host> beats
+# a placeholder nobody reads - and beats admin@example.com, which Let's Encrypt
+# refuses as a contact, taking ACME registration and every certificate on this
+# host with it. Changeable from the panel afterwards, and never asked for.
+if [ -z "${ACME_EMAIL:-}" ]; then
+  if is_real_domain "${DEPLO_DOMAIN:-}"; then
+    ACME_EMAIL="admin@$DEPLO_DOMAIN"
+  else
+    ACME_EMAIL="admin@$FALLBACK_HOST"
+  fi
 fi
 
 # Generate secrets once; reuse them on subsequent runs (so updates never rotate).
@@ -1021,7 +1069,7 @@ if [ ! -f "$ENV_FILE" ]; then
   {
     echo "DEPLO_VERSION=$DEPLO_VERSION"
     echo "DEPLO_DOMAIN=${DEPLO_DOMAIN:-}"
-    echo "ACME_EMAIL=${ACME_EMAIL:-$DEFAULT_ACME_EMAIL}"
+    echo "ACME_EMAIL=$ACME_EMAIL"
     echo "DEPLO_SECRET=$(openssl rand -base64 48 | tr -d '\n')"
     echo "DEPLO_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=\n')"
   } > "$ENV_FILE"
@@ -1030,7 +1078,7 @@ fi
 trace_on
 
 # A domain (or an ACME address) supplied on a re-run is an EDIT, not a no-op: it
-# is the documented way to move a panel from :3000 onto HTTPS, and silently
+# is the documented way to move the panel onto a domain you own, and silently
 # keeping the old value would make the flag a lie.
 env_put() {
   local key="$1" val="$2" tmp
@@ -1084,14 +1132,13 @@ fi
 DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
 ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
 
-# The panel ALWAYS publishes :3000 on the host, domain or no domain, and this is
-# not an oversight to tidy up later: http://$SERVER_IP:3000 is the way back into
-# a panel whose domain stopped working - DNS moved, the certificate expired, the
-# proxy is down - and Deplo cannot rewrite this file once it is running, so a
-# port left unpublished here can never be published from the panel afterwards.
-# The only way back would be an SSH session, which is the trip Deplo exists to
-# remove. Settings, Deplo shows it as the panel's IP address.
-DEPLO_EXPOSE="$(printf '    ports:\n      - "%s:3000"' "$PANEL_PORT")"
+# The panel publishes :3000 on 127.0.0.1 ONLY. Never on the server's address: an
+# open port is a login page on the internet with no TLS in front of it, and every
+# password and session cookie it takes crosses the wire in clear. Traefik serves
+# the panel over HTTPS on the host below instead, always. Loopback stays because
+# two things need it: this installer bootstraps the server agent through it, and
+# an SSH tunnel is the way back in when the proxy itself is what broke.
+DEPLO_EXPOSE="$(printf '    ports:\n      - "127.0.0.1:%s:3000"' "$PANEL_PORT")"
 
 # The panel's own route is a Traefik FILE-provider config, not labels on this
 # container - and that difference is the whole point. A container's compose file
@@ -1101,31 +1148,54 @@ DEPLO_EXPOSE="$(printf '    ports:\n      - "%s:3000"' "$PANEL_PORT")"
 # allowed to write - it is how custom certificates are installed.
 #
 # KEEP IN SYNC with `withPanelRoute` in lib/deploy/traefik-stack.ts, which reads
-# and rewrites exactly this shape. `priority: 1` keeps this Host-only router a
-# true fallback so any more-specific PathPrefix router on the same host (an app's
-# path override, or the reserved /plugins/<slug> route) outranks it - Traefik
-# would otherwise default it to its rule-string length and shadow them.
+# and rewrites exactly this shape: it replaces the `deplo-panel` router and
+# service in place and leaves the rest of the file alone, which is what keeps the
+# fallback router below alive across an edit from the panel. `priority: 2` keeps a
+# Host-only router a true fallback so any more-specific PathPrefix router on the
+# same host (an app's path override, or the reserved /plugins/<slug> route)
+# outranks it - Traefik would otherwise default it to its rule-string length and
+# shadow them. Traefik reaches the panel over the `deplo` network at the service's
+# own name: `deplo` is the PLATFORM's network - Traefik and the panel, nothing
+# else - since apps moved to one per Environment (ADR-0028).
 if is_real_domain "$DEPLO_DOMAIN"; then
   USE_DOMAIN=true
-  PUBLIC_URL="https://$DEPLO_DOMAIN"
-  # Traefik reaches the panel over the `deplo` network at the service's own name
-  # and the route lives in the file below; the published port above is the panel's
-  # IP address, not how the domain is served. `deplo` is the PLATFORM's network -
-  # Traefik and the panel, nothing else - since apps moved to one per Environment
-  # (ADR-0028).
-  TRAEFIK_CONFIG_MOUNT="$(printf '    configs:\n      - source: deplo-panel\n        target: /deplo-dynamic/deplo-panel.yml\n        mode: 256')"
-  # Unquoted scalars on purpose: this is byte-for-byte what `withPanelRoute`
-  # re-renders, so the first edit from the panel produces no spurious diff in the
-  # file an operator may be reading on the host.
-  TRAEFIK_PANEL_CONFIG="$(printf 'configs:\n  deplo-panel:\n    content: |\n      http:\n        routers:\n          deplo-panel:\n            rule: Host(`%s`)\n            entryPoints:\n              - websecure\n            service: deplo-panel\n            priority: 2\n            tls:\n              certResolver: letsencrypt\n        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true' "$DEPLO_DOMAIN")"
-  TRAEFIK_FILE_PROVIDER="$(printf '      - --providers.file.directory=/deplo-dynamic\n      - --providers.file.watch=true')"
+  PANEL_HOST="$DEPLO_DOMAIN"
 else
   USE_DOMAIN=false
-  PUBLIC_URL="http://$SERVER_IP:$PANEL_PORT"
-  TRAEFIK_CONFIG_MOUNT=""
-  TRAEFIK_PANEL_CONFIG=""
-  TRAEFIK_FILE_PROVIDER=""
+  PANEL_HOST="$FALLBACK_HOST"
 fi
+
+# Traefik terminates on 443; before a takeover moves the ports it is somewhere
+# else, and an address that left the port out would name the panel this one is
+# replacing.
+panel_url() {
+  case "$HTTPS_PORT" in
+    443) printf 'https://%s' "$PANEL_HOST" ;;
+    *) printf 'https://%s:%s' "$PANEL_HOST" "$HTTPS_PORT" ;;
+  esac
+}
+PUBLIC_URL="$(panel_url)"
+
+# One router per host, both onto the one service. Unquoted scalars on purpose:
+# this is byte-for-byte what `withPanelRoute` re-renders, so the first edit from
+# the panel produces no spurious diff in the file an operator may be reading on
+# the host.
+panel_router() { # $1 router name, $2 host
+  printf '          %s:\n            rule: Host(`%s`)\n            entryPoints:\n              - websecure\n            service: deplo-panel\n            priority: 2\n            tls:\n              certResolver: letsencrypt\n' "$1" "$2"
+}
+
+TRAEFIK_CONFIG_MOUNT="$(printf '    configs:\n      - source: deplo-panel\n        target: /deplo-dynamic/deplo-panel.yml\n        mode: 256')"
+TRAEFIK_FILE_PROVIDER="$(printf '      - --providers.file.directory=/deplo-dynamic\n      - --providers.file.watch=true')"
+# The generated host stays routed underneath the domain: it is the address that
+# still answers when the domain, its DNS or its certificate is what broke, and it
+# needs no proxy of its own to do it. Only when the panel IS that host is there
+# one router, because two identical rules at one priority is a conflict.
+TRAEFIK_PANEL_CONFIG="$(
+  printf 'configs:\n  deplo-panel:\n    content: |\n      http:\n        routers:\n'
+  panel_router deplo-panel "$PANEL_HOST"
+  [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || panel_router deplo-panel-fallback "$FALLBACK_HOST"
+  printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true'
+)"
 
 # ==============================================================================
 # 3. Traefik (always up; routes deployed apps, and the panel in domain mode)
@@ -1214,8 +1284,7 @@ sed -i '/^$/d' "$DEPLO_DIR/traefik/docker-compose.yml"
 }
 
 write_traefik_compose
-TRAEFIK_NOTE="$HTTP_PORT/$HTTPS_PORT, for deployed apps"
-[ "$USE_DOMAIN" = true ] && TRAEFIK_NOTE="$HTTP_PORT/$HTTPS_PORT, Let's Encrypt for $DEPLO_DOMAIN"
+TRAEFIK_NOTE="$HTTP_PORT/$HTTPS_PORT, Let's Encrypt for $PANEL_HOST"
 spin_start "Starting Traefik and its socket proxy"
 docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null
 spin_ok "Traefik running" "$TRAEFIK_NOTE"
@@ -1268,7 +1337,8 @@ if [ "$MODE" = update ]; then
 fi
 
 # Compose-substituted vars are escaped (\${...}); shell-computed values inline.
-# Same reason as the proxy's: the takeover re-renders this with :3000 back.
+# Same reason as the proxy's: the takeover re-renders this when the real ports
+# come free.
 write_panel_compose() {
 cat > "$DEPLO_DIR/docker-compose.yml" <<EOF
 services:
@@ -1357,11 +1427,12 @@ fi
 spin_run "Starting Postgres and the Deplo control plane" \
   docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
 
-# Always over the IP address, never the domain: in domain mode DNS may not point
-# here yet and the certificate may not have issued, while :3000 answers from the
-# moment the panel is up. The URL is used only to bootstrap; afterwards the panel
-# dials the agent, not the other way round.
-AGENT_BOOTSTRAP_URL="http://$SERVER_IP:$PANEL_PORT"
+# Over loopback, never the domain: DNS may not point here yet and the certificate
+# may not have issued, while 127.0.0.1 answers from the moment the panel is up.
+# Plain http is fine on it - the bootstrap is HMAC-signed by the token and the
+# packet never leaves the host. Used only to bootstrap; afterwards the panel dials
+# the agent, not the other way round.
+AGENT_BOOTSTRAP_URL="http://127.0.0.1:$PANEL_PORT"
 
 wait_for_panel() {
   local tries="$1" i=0
@@ -1476,18 +1547,22 @@ takeover_post() {
 # A route dropped into the other platform's Traefik, which both watch and reload
 # on their own. Additive, and taken away again at the cutover.
 takeover_side_door() {
-  local dir="" entry="" host="deplo-setup.$SERVER_IP.sslip.io"
+  local dir="" entry="" proxy="" host="deplo-setup.$SERVER_IP.sslip.io"
   # Their entrypoints are NOT called the same thing, and a router pinned to no
   # entrypoint at all binds to :443 too - where Dokploy's would order a
   # certificate for a name nobody is going to visit over https.
   case "$TAKEOVER" in
-    dokploy) dir=/etc/dokploy/traefik/dynamic; entry=web ;;
-    coolify) dir=/data/coolify/proxy/dynamic; entry=http ;;
+    dokploy) dir=/etc/dokploy/traefik/dynamic; entry=web; proxy=dokploy-traefik ;;
+    coolify) dir=/data/coolify/proxy/dynamic; entry=http; proxy=coolify-proxy ;;
   esac
   if [ -z "$dir" ] || [ ! -d "$dir" ]; then
     printf 'not available - %s has no dynamic config directory here' "$FOREIGN_LABEL"
     return 0
   fi
+  # The panel is published on loopback only, which a container cannot reach. Put
+  # their proxy on the platform network and let it resolve the panel by name, the
+  # same way ours does.
+  docker network connect deplo "$proxy" >&9 2>&9 || true
   cat > "$dir/deplo-setup.yml" <<YAML
 http:
   routers:
@@ -1500,7 +1575,7 @@ http:
     deplo-setup:
       loadBalancer:
         servers:
-          - url: http://$SERVER_IP:$PANEL_PORT
+          - url: http://deplo:3000
 YAML
   printf 'http://%s' "$host"
 }
@@ -1508,14 +1583,17 @@ YAML
 takeover_side_door_remove() {
   rm -f /etc/dokploy/traefik/dynamic/deplo-setup.yml \
         /data/coolify/proxy/dynamic/deplo-setup.yml 2>/dev/null || true
+  docker network disconnect deplo dokploy-traefik >&9 2>&9 || true
+  docker network disconnect deplo coolify-proxy >&9 2>&9 || true
 }
 
 # Every way into the panel, in the order they cost the operator something.
 takeover_unreachable_advice() {
   blank
   warn "Nothing has opened $PUBLIC_URL yet."
-  note "If it will not load, the port is probably closed by your provider's firewall."
-  note "Two ways in that do not need it open:"
+  note "Until the ports move, Deplo answers on $HTTPS_PORT with a certificate it signed"
+  note "itself, so the browser warns once. If that port will not load at all, it is"
+  note "probably closed by your provider's firewall. Two ways in that do not need it:"
   note "  1. Through $FOREIGN_LABEL's own proxy on port 80:"
   note "     $(takeover_side_door)"
   note "  2. From your own machine, over SSH:"
@@ -1633,9 +1711,11 @@ takeover_apply_ports() {
   PANEL_PORT="$1"
   HTTP_PORT="$2"
   HTTPS_PORT="$3"
-  [ "$USE_DOMAIN" = true ] || PUBLIC_URL="http://$SERVER_IP:$PANEL_PORT"
-  DEPLO_EXPOSE="$(printf '    ports:\n      - "%s:3000"' "$PANEL_PORT")"
-  AGENT_BOOTSTRAP_URL="http://$SERVER_IP:$PANEL_PORT"
+  # `panel_url` covers both cases: with a domain, the address still has to carry
+  # the temporary HTTPS port until the real one comes free.
+  PUBLIC_URL="$(panel_url)"
+  DEPLO_EXPOSE="$(printf '    ports:\n      - "127.0.0.1:%s:3000"' "$PANEL_PORT")"
+  AGENT_BOOTSTRAP_URL="http://127.0.0.1:$PANEL_PORT"
   TAKEOVER_API="$AGENT_BOOTSTRAP_URL/api/takeover"
   write_traefik_compose
   write_panel_compose
@@ -1714,9 +1794,9 @@ takeover_cutover() {
   inherit_acme
 
   local OLD_PANEL="$PANEL_PORT" OLD_HTTP="$HTTP_PORT" OLD_HTTPS="$HTTPS_PORT"
-  spin_start "Moving Deplo onto 80, 443 and 3000"
+  spin_start "Moving Deplo onto 80 and 443"
   takeover_apply_ports 3000 80 443
-  spin_ok "Ports moved" "Traefik on 80/443, the dashboard on 3000"
+  spin_ok "Ports moved" "Traefik on 80/443, the dashboard behind it"
 
   apply_address_pools
   # The restart takes both stacks down with it, and on the way back a leftover of
@@ -1987,15 +2067,11 @@ else
   card_open "Deplo installed in ${TOTAL}s"
 fi
 card_kv "Dashboard" "$PUBLIC_URL"
-[ "$USE_DOMAIN" = true ] && card_kv "Fallback" "http://$SERVER_IP:$PANEL_PORT"
+[ "$USE_DOMAIN" = true ] && card_kv "Backup address" "https://$FALLBACK_HOST"
 card_kv "Version" "$VERSION_LABEL"
 card_kv "Data dir" "$DEPLO_DIR"
 card_kv "Database" "Postgres, private network only"
-if [ "$USE_DOMAIN" = true ]; then
-  card_kv "Proxy" "Traefik, ports $HTTP_PORT/$HTTPS_PORT, automatic HTTPS"
-else
-  card_kv "Proxy" "Traefik, ports $HTTP_PORT/$HTTPS_PORT, for deployed apps"
-fi
+card_kv "Proxy" "Traefik, ports $HTTP_PORT/$HTTPS_PORT, automatic HTTPS"
 [ "$HOST_ENROLLED" = true ] && card_kv "Server" "${HOST_NAME:-$SERVER_IP}, this machine"
 card_close
 
@@ -2024,10 +2100,14 @@ else
 fi
 
 if [ "$USE_DOMAIN" = true ]; then
-  note "Point $DEPLO_DOMAIN at ${PUBLIC_IP:-$SERVER_IP}; the certificate issues on the first request."
+  note "Point $DEPLO_DOMAIN at $TARGET_IP; the certificate issues on the first request."
+  note "$FALLBACK_HOST answers too, so the panel stays reachable while its DNS moves."
 else
-  note "To serve the dashboard over HTTPS on a domain, re-run with --domain <your domain>."
+  note "$FALLBACK_HOST already resolves to this server, so there is no DNS to set up."
+  note "The browser warns about the certificate: no authority issues one for a nip.io"
+  note "address. To use your own domain, re-run with --domain <your domain>."
 fi
+note "Locked out? ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP, then open http://localhost:$PANEL_PORT"
 note "GitHub must be able to reach $PUBLIC_URL for callbacks and webhooks."
 [ "$UI_LOG" = /dev/null ] || note "Transcript: $UI_LOG"
 printf '\n'

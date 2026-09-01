@@ -45,10 +45,10 @@ const InstanceSettingsRef = builder
           "`stored` (set here), `environment` (DEPLO_PUBLIC_URL, set at install time) or `request` (derived from the browser's own host, which is a guess).",
       }),
       storedPanelUrl: t.exposeString("storedPanelUrl", { nullable: true }),
-      panelIpUrl: t.exposeString("panelIpUrl", {
+      panelFallbackUrl: t.exposeString("panelFallbackUrl", {
         nullable: true,
         description:
-          "The address the panel also answers on, straight on the machine it runs on (http://<server ip>:3000). Always on and not a setting: it is the way back in when the panel's domain, certificate or proxy stops working. Null only when Deplo cannot work out an address of its own that anyone else could reach.",
+          "The generated address the panel also answers on, over https (https://deplo-<hexip>.nip.io). Always on and not a setting: it is the way back in when the panel's domain, its DNS or its certificate stops working, and it resolves to this server with nothing to set up. Null only when Deplo cannot work out an address of its own that anyone else could reach.",
       }),
       deploHostIp: t.exposeString("deploHostIp", {
         nullable: true,
@@ -78,7 +78,7 @@ const PanelAddressImpactRef = builder
         description:
           "https to http. Browsers that already loaded the panel over https keep refusing plain http on that hostname until the HSTS they remember expires.",
       }),
-      panelIpUrl: t.exposeString("panelIpUrl", { nullable: true }),
+      panelFallbackUrl: t.exposeString("panelFallbackUrl", { nullable: true }),
       passkeys: t.exposeInt("passkeys"),
       passkeyPeople: t.exposeInt("passkeyPeople"),
       sessions: t.exposeInt("sessions"),
@@ -105,9 +105,19 @@ const PanelHttpsRef = builder.objectRef<PanelHttps>("PanelHttps").implement({
       description:
         "The host the panel's route answers on, as the proxy has it.",
     }),
+    fallbackDomain: t.exposeString("fallbackDomain", {
+      nullable: true,
+      description:
+        "The generated host the panel also answers on, or null when that IS the address above.",
+    }),
     enabled: t.exposeBoolean("enabled", {
       description:
-        "Whether the panel is served over https. False means plain http on :80, for a panel whose address cannot get a certificate.",
+        "Whether the panel is served over https. False means plain http on :80, and it is an advanced opt-out: the only case for it is a panel no certificate can be issued for, on a network Let's Encrypt cannot reach.",
+    }),
+    certificateTrusted: t.exposeBoolean("certificateTrusted", {
+      nullable: true,
+      description:
+        "Whether a browser accepts the certificate this address serves. False on the generated host, which no public certificate authority issues for, so the browser warns once. Null when it could not be read, which is not the same as untrusted.",
     }),
     provider: t.exposeString("provider", {
       nullable: true,

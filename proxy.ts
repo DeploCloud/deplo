@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { templatesApiBase } from "@/templates/api-base";
 import { GRAVATAR_ORIGINS } from "@/lib/apps/avatar-shared";
+import { isWildcardDnsHost } from "@/lib/www-redirect";
 
 /**
  * Deplo proxy (Next.js 16 replacement for middleware). Real verification happens
@@ -33,6 +34,12 @@ function requestIsHttps(request: NextRequest): boolean {
   } catch {
     return false;
   }
+}
+
+/** The host this request was made to, lower-cased and without its port. */
+function hostOf(request: NextRequest): string {
+  const raw = request.headers.get("host") ?? request.nextUrl.host;
+  return raw.replace(/:\d+$/, "").toLowerCase();
 }
 
 function generateNonce(): string {
@@ -127,8 +134,10 @@ export function proxy(request: NextRequest) {
   // Private panel: never let any page enter a search index (belt-and-suspenders
   // with app/robots.ts and the `robots` metadata in app/layout.tsx).
   response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
-  // Six months, and deliberately WITHOUT `includeSubDomains; preload`.
-  if (isHttps) {
+  // Six months, and deliberately WITHOUT `includeSubDomains; preload`. Never on
+  // the generated host: no public CA issues for it, and HSTS is what takes the
+  // browser's "Proceed anyway" away from a certificate warning.
+  if (isHttps && !isWildcardDnsHost(hostOf(request))) {
     response.headers.set("Strict-Transport-Security", "max-age=15552000");
   }
   return response;
