@@ -1908,7 +1908,7 @@ takeover_after_cutover() {
 }
 
 takeover_wait() {
-  local waited=0 said_unreachable=0 body state
+  local waited=0 said_unreachable=0 mute=0 said_mute=0 body state
   blank
   printf ' %bNext%b\n' "$C_B" "$C_OFF"
   printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
@@ -1942,13 +1942,31 @@ takeover_wait() {
         return 0
         ;;
     esac
-    # A panel nobody has ever opened is usually a closed port, not a slow operator.
-    if [ "$said_unreachable" = 0 ] && [ "$waited" -ge 90 ] &&
-      [ "$(takeover_field "$body" seenExternalRequest)" = false ]; then
-      spin_kill
-      takeover_unreachable_advice
-      said_unreachable=1
-      spin_start "Waiting for the migration"
+    # An EMPTY answer is the panel not talking to this window at all, which is a
+    # different problem from a slow operator and has to say so - otherwise the
+    # only symptom is a spinner that never stops.
+    if [ -z "$body" ]; then
+      mute=$((mute + TAKEOVER_POLL_S))
+      if [ "$said_mute" = 0 ] && [ "$mute" -ge 90 ]; then
+        spin_kill
+        blank
+        warn "The dashboard is not answering this window."
+        note "It may still be starting. If this stays, its logs are:"
+        note "  docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
+        note "Re-run $DEPLO_DIR/install.sh once it is up."
+        said_mute=1
+        spin_start "Waiting for the migration"
+      fi
+    else
+      mute=0
+      # A panel nobody has ever opened is usually a closed port, not a slow operator.
+      if [ "$said_unreachable" = 0 ] && [ "$waited" -ge 90 ] &&
+        [ "$(takeover_field "$body" seenExternalRequest)" = false ]; then
+        spin_kill
+        takeover_unreachable_advice
+        said_unreachable=1
+        spin_start "Waiting for the migration"
+      fi
     fi
     sleep "$TAKEOVER_POLL_S"
     waited=$((waited + TAKEOVER_POLL_S))
