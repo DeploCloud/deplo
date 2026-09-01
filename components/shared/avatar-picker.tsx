@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AtSign, Camera, Upload } from "lucide-react";
+import { AtSign, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -228,29 +228,15 @@ export function AvatarPicker({
         }}
         aria-label={label}
         className={cn(
-          "group relative col-start-1 row-start-1 cursor-pointer rounded-full transition outline-none",
-          "focus-visible:ring-2 focus-visible:ring-ring",
+          // No badge and no veil: the picture dims on hover, the way every tile
+          // inside the dialog does.
+          "col-start-1 row-start-1 cursor-pointer rounded-full transition outline-none",
+          "hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring",
           dragging && "ring-2 ring-ring",
-          busy && "cursor-not-allowed opacity-60",
+          busy && "cursor-not-allowed opacity-60 hover:opacity-60",
         )}
       >
         {preview}
-        {/* The affordance: the picture is a control, which nothing about a round
-          image says on its own until you are already hovering it. */}
-        <span
-          className={cn(
-            "absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 transition",
-            !busy && "group-hover:opacity-100 group-focus-visible:opacity-100",
-            dragging && "opacity-100",
-          )}
-        >
-          <Camera className="size-4 text-foreground" />
-        </span>
-        {/* Always on: without it a round picture is just a picture until the
-          pointer happens to land on it, and a touch screen never hovers. */}
-        <span className="absolute right-0 bottom-0 flex size-7 items-center justify-center rounded-full border border-border bg-secondary text-secondary-foreground">
-          <Camera className="size-3.5" />
-        </span>
       </button>
       {hasImage && !sources && (
         <Button
@@ -433,11 +419,13 @@ function AvatarSourceDialog({
         onDrop={onDrop}
       >
         <DialogHeader>
-          <DialogTitle>Profile picture</DialogTitle>
+          <DialogTitle>
+            {sources.simple ? "Team picture" : "Profile picture"}
+          </DialogTitle>
           <DialogDescription>
-            {onInitials
-              ? "Two letters. Yours, with the volume up."
-              : "Pick a pack, then a picture - or upload your own."}
+            {sources.simple
+              ? "Stands before the team's name everywhere it appears. Pick one, or upload your own."
+              : "Stands next to your name everywhere in Deplo. Pick one, or upload your own."}
           </DialogDescription>
         </DialogHeader>
         {sources.simple ? (
