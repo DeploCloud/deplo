@@ -194,60 +194,52 @@ export async function cancelTakeover(
       "The ports are already Deplo's, so there is nothing to hand back.",
     );
 
-  const outcome = current.runId
-    ? await restartSourceServices(current.runId, apiKey)
-    : { restarted: 0, left: [] as string[] };
+  const outcome = await restartStoppedSources(apiKey);
   await advance("cancelled");
   return outcome;
 }
 
 /**
- * Start again exactly what the data phase stopped over there - `stoppedAt` is
- * written only by a stop that happened, so a service the operator had already
- * taken down themselves is left alone.
+ * Start again exactly what this Deplo stopped over there. Driven by `stoppedAt`
+ * rather than by a run id: a stop that happened is the only thing to undo, and
+ * the operator can back out long before a run id has been written anywhere.
+ * A service they had stopped themselves carries no stamp and is left alone.
  */
-async function restartSourceServices(
-  runId: string,
+async function restartStoppedSources(
   apiKey?: string,
 ): Promise<{ restarted: number; left: string[] }> {
-  const [run] = await getDb()
-    .select({
-      sourceUrl: runsTable.sourceUrl,
-      platform: runsTable.platform,
-      apiKeyEnc: runsTable.apiKeyEnc,
-      allowPrivate: runsTable.allowPrivate,
-    })
-    .from(runsTable)
-    .where(eq(runsTable.id, runId));
-  if (!run) return { restarted: 0, left: [] };
-
-  const key = run.apiKeyEnc
-    ? decryptSecretOrThrow(run.apiKeyEnc, "the panel's API token")
-    : (apiKey ?? "");
-  if (!isMigrationPlatform(run.platform) || !key)
-    return { restarted: 0, left: ["no API token to sign in with"] };
-
   const stopped = await getDb()
     .select({
+      runId: targetsTable.runId,
       serviceId: targetsTable.serviceId,
       kind: targetsTable.stoppedKind,
       name: targetsTable.projectName,
+      sourceUrl: runsTable.sourceUrl,
+      platform: runsTable.platform,
+      apiKeyEnc: runsTable.apiKeyEnc,
     })
     .from(targetsTable)
-    .where(
-      and(eq(targetsTable.runId, runId), isNotNull(targetsTable.stoppedAt)),
-    );
+    .innerJoin(runsTable, eq(runsTable.id, targetsTable.runId))
+    .where(isNotNull(targetsTable.stoppedAt));
 
-  const client = sourceClient({
-    kind: run.platform,
-    baseUrl: run.sourceUrl,
-    apiKey: key,
-  });
   let restarted = 0;
   const left: string[] = [];
   for (const t of stopped) {
+    // The token is wiped when a run ends, so most of these need the one the
+    // operator hands over again.
+    const key = t.apiKeyEnc
+      ? decryptSecretOrThrow(t.apiKeyEnc, "the panel's API token")
+      : (apiKey ?? "");
+    if (!isMigrationPlatform(t.platform) || !key) {
+      left.push(`${t.name}: no API token to sign in with`);
+      continue;
+    }
     try {
-      await client.startService(t.kind ?? "application", t.serviceId);
+      await sourceClient({
+        kind: t.platform,
+        baseUrl: t.sourceUrl,
+        apiKey: key,
+      }).startService(t.kind ?? "application", t.serviceId);
       restarted++;
     } catch (e) {
       left.push(

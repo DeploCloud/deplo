@@ -11,6 +11,10 @@ import {
   TEAM_A,
 } from "./identity-test-helpers";
 import {
+  __resetMigrationFetchForTest,
+  __setMigrationFetchForTest,
+} from "../migration/transport";
+import {
   cancelTakeover,
   ensureTakeoverFromEnv,
   markTakeoverProgress,
@@ -47,6 +51,7 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(TRUNCATE_IDENTITY);
   await db.execute("delete from instance_settings;");
+  await db.execute("delete from migration_runs;");
   await seedIdentity(db, {
     users: [
       { id: ADMIN, teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
@@ -181,4 +186,62 @@ test("backing out with no run to undo still ends the takeover", async () => {
   const res = await asUser(ADMIN, () => cancelTakeover());
   assert.deepEqual(res, { restarted: 0, left: [] });
   assert.equal((await read())?.state, "cancelled");
+});
+
+/** A run that stopped one service over there, the way the data phase records it. */
+async function seedStoppedTarget(): Promise<void> {
+  await db.execute(
+    `insert into migration_runs
+       (id, team_id, source_url, platform, actor, status, created, skipped, failed,
+        manual, started_at, total_steps, done_steps, phase)
+     values ('run_t1', '${TEAM_A}', 'http://panel.test:3000', 'dokploy', 'Tester',
+             'done', 1, 0, 0, 0, now(), 1, 1, 'done');`,
+  );
+  await db.execute(
+    `insert into migration_run_targets
+       (id, run_id, project_id, project_name, service_id, state, stopped_kind, stopped_at)
+     values ('tgt_1', 'run_t1', 'p1', 'netcase', 'svc_1', 'done', 'compose', now());`,
+  );
+}
+
+test("backing out before the ports were even asked for still restarts what was stopped", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+  await seedPending();
+  await seedStoppedTarget();
+
+  // The takeover's own runId is written by requestTakeover, which a cancel at
+  // this point has not reached - so the undo has to find the stop itself.
+  assert.equal((await read())?.runId, null);
+
+  const calls: string[] = [];
+  __setMigrationFetchForTest(async (url) => {
+    calls.push(String(url));
+    return new Response("true", { status: 200 });
+  });
+
+  const res = await asUser(ADMIN, () => cancelTakeover("the-token"));
+  assert.deepEqual(res, { restarted: 1, left: [] });
+  assert.deepEqual(calls, ["http://panel.test:3000/api/compose.start"]);
+  assert.equal((await read())?.state, "cancelled");
+});
+
+test("a stop that will not undo is named, not swallowed", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+  await seedPending();
+  await seedStoppedTarget();
+  __setMigrationFetchForTest(async () => new Response("nope", { status: 500 }));
+
+  const res = await asUser(ADMIN, () => cancelTakeover("the-token"));
+  assert.equal(res.restarted, 0);
+  assert.equal(res.left.length, 1);
+  assert.match(res.left[0], /^netcase: /);
+  // The takeover still ends: leaving it open would strand the machine.
+  assert.equal((await read())?.state, "cancelled");
+});
+
+test("with no token there is nothing to sign in with, and it says so", async () => {
+  await seedPending();
+  await seedStoppedTarget();
+  const res = await asUser(ADMIN, () => cancelTakeover());
+  assert.deepEqual(res.left, ["netcase: no API token to sign in with"]);
 });
