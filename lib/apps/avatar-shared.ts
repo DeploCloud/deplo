@@ -85,7 +85,9 @@ export const AVATAR_PACKS = [
   { style: "planets", preset: "electric", label: "Planets Electric" },
   { style: "glass", preset: "default", label: "Glass Default" },
   { style: "pixelbot", preset: "terminal", label: "Pixelbot Terminal" },
-  { style: "initials", preset: "electric", label: "Initials Electric" },
+  // The one pack whose row varies the PRESET and not the seed: the letters are
+  // the person, so there is nothing else in it to vary.
+  { style: "initials", preset: "default", label: "Initials" },
 ] as const satisfies readonly {
   style: AvatarStyle;
   preset: string;
