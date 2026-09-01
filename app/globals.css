@@ -644,43 +644,6 @@ html body[data-scroll-locked] {
   animation: deplo-step-out-down 0.16s ease-in both;
 }
 
-/* A gear turns once when you point at it - at the icon itself, or anywhere on
-   the control it sits in, which is what the pointer is actually aiming at. The
-   contexts are listed rather than a bare descendant selector: `*:hover .gear`
-   matches through every ancestor up to <body>, so the icon would spin on any
-   pointer movement on the page. */
-@keyframes deplo-gear-turn {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.deplo-gear {
-  transform-origin: 50% 50%;
-}
-
-.deplo-gear:hover,
-button:hover .deplo-gear,
-a:hover .deplo-gear,
-label:hover .deplo-gear,
-[role="button"]:hover .deplo-gear,
-[role="menuitem"]:hover .deplo-gear,
-[role="tab"]:hover .deplo-gear {
-  animation: deplo-gear-turn 0.45s ease-in-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .deplo-gear:hover,
-  button:hover .deplo-gear,
-  a:hover .deplo-gear,
-  label:hover .deplo-gear,
-  [role="button"]:hover .deplo-gear,
-  [role="menuitem"]:hover .deplo-gear,
-  [role="tab"]:hover .deplo-gear {
-    animation: none;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .animate-step-in-up,
   .animate-step-in-down,
@@ -3137,28 +3100,6 @@ label:hover .deplo-gear,
   animation-name: deplo-confetti-cannon;
   animation-duration: var(--deplo-confetti-t);
   animation-delay: calc(var(--i) * 16ms);
-}
-
-/* The robot glyph on "N agents connected" (components/settings/mcp/robot-graphic.tsx).
-   Still while the page sits, awake when the row is pointed at or focused - a
-   header that animates on its own is noise, one that answers the pointer is an
-   invitation. Reuses the wizard's own blip so the small robot and the large one
-   move the same way. */
-.deplo-robot-mark-blip {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.group:hover .deplo-robot-mark-blip,
-.group:focus-visible .deplo-robot-mark-blip {
-  animation: deplo-robot-blip 1.4s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .group:hover .deplo-robot-mark-blip,
-  .group:focus-visible .deplo-robot-mark-blip {
-    animation: none;
-  }
 }
 
 /* The connect wizard's robot is drawn in the SELECTED agent's colour, so the

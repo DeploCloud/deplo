@@ -152,7 +152,7 @@ export function Sidebar({
                 aria-label="Settings"
                 className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
               >
-                <Settings className="deplo-gear size-4 shrink-0 group-hover:text-foreground" />
+                <Settings className="size-4 shrink-0 group-hover:text-foreground" />
                 {!collapsed && "Settings"}
               </Link>
             </TooltipTrigger>

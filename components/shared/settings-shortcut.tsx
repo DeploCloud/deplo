@@ -23,7 +23,7 @@ export function SettingsShortcut({
     <SimpleTooltip content={label}>
       <Button variant="ghost" size="icon-sm" asChild className={className}>
         <Link href={href} aria-label={label}>
-          <Settings className="deplo-gear size-4" />
+          <Settings className="size-4" />
         </Link>
       </Button>
     </SimpleTooltip>

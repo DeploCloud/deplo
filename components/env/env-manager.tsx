@@ -464,7 +464,7 @@ function SharedRowActions({
         <SimpleTooltip content="Manage this shared variable">
           <Button variant="ghost" size="icon-sm" asChild aria-label="Manage">
             <Link href={`/variables?tab=shared&edit=${row.id}`}>
-              <Settings className="deplo-gear size-4" />
+              <Settings className="size-4" />
             </Link>
           </Button>
         </SimpleTooltip>

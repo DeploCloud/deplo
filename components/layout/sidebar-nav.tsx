@@ -10,7 +10,6 @@ import {
   appNav,
   appSettingsNav,
   canSee,
-  isGearIcon,
   sidebarMenuFor,
   databaseNav,
   databaseSettingsNav,
@@ -264,14 +263,7 @@ export function SidebarNav({
                         collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
                       )}
                     >
-                      {showIcon && (
-                        <Icon
-                          className={cn(
-                            "size-4 shrink-0",
-                            isGearIcon(item.icon) && "deplo-gear",
-                          )}
-                        />
-                      )}
+                      {showIcon && <Icon className="size-4 shrink-0" />}
                       {!collapsed && item.label}
                     </span>
                   </TooltipTrigger>
@@ -390,7 +382,6 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
     <Icon
       className={cn(
         "size-4 shrink-0",
-        isGearIcon(item.icon) && "deplo-gear",
         active
           ? "text-foreground"
           : "text-muted-foreground group-hover:text-foreground",

@@ -295,7 +295,7 @@ export function AddMemberDialog({
                         Register someone who isn&apos;t on Deplo yet
                       </span>
                     </span>
-                    <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                    <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
                   </button>
                 </div>
               )}

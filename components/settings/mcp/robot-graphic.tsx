@@ -21,13 +21,7 @@ export function RobotMark({ className }: { className?: string }) {
         strokeWidth="1.8"
         strokeLinecap="round"
       />
-      <circle
-        cx="12"
-        cy="2.6"
-        r="1.5"
-        fill="currentColor"
-        className="deplo-robot-mark-blip"
-      />
+      <circle cx="12" cy="2.6" r="1.5" fill="currentColor" />
       <rect
         x="4"
         y="6"
