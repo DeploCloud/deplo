@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import {
   AVATAR_ACCEPT_ATTR,
   AVATAR_IMAGE_TYPES,
-  avatarChoiceFromUrl,
+  type AvatarChoice,
   GRAVATAR_VALUE,
   INITIALS_VALUE,
   MAX_AVATAR_STRING_LEN,
@@ -36,8 +36,9 @@ import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 /** A person picks a source; a team has only its own file (`sources` omitted),
  *  and clicking the picture goes straight to the file dialog. */
 export type AvatarSources = {
-  /** What is in use now, as the resolved URL the caller already renders. */
-  avatarUrl: string | null;
+  /** What is in use now - `avatarChoiceFromUrl` where the picture is saved,
+   *  `avatarChoiceFromValue` where a form still holds the raw value. */
+  choice: AvatarChoice;
   /** Seeds the face offered first - their user id. Absent during onboarding,
    *  where the account has no id yet. */
   defaultSeed?: string | null;
@@ -233,6 +234,7 @@ function FaceTile({
         disabled && "cursor-not-allowed opacity-60",
       )}
     >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={pixelbotPath(seed)} alt="" className="size-12 rounded-full" />
     </button>
   );
@@ -253,7 +255,7 @@ function AvatarSourceDialog({
   onPick: (value: string) => void;
   onUpload: () => void;
 }) {
-  const choice = avatarChoiceFromUrl(sources.avatarUrl);
+  const { choice } = sources;
   const seeds = [
     ...(sources.defaultSeed ? [sources.defaultSeed] : []),
     ...PIXELBOT_PRESETS,

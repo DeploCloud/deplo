@@ -15,6 +15,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { AvatarPicker } from "@/components/shared/avatar-picker";
+import { avatarChoiceFromUrl } from "@/lib/apps/avatar-shared";
 import { AccountGraphic } from "@/components/settings/account-graphic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,7 +127,7 @@ function ProfileCard({
           label="Change your picture"
           hasImage={Boolean(user.avatarUrl?.startsWith("data:"))}
           sources={{
-            avatarUrl: user.avatarUrl,
+            choice: avatarChoiceFromUrl(user.avatarUrl),
             defaultSeed: user.id,
             gravatar,
           }}

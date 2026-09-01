@@ -133,6 +133,18 @@ export type AvatarChoice =
   | { kind: "gravatar" }
   | { kind: "initials" };
 
+/** The same answer from the RAW stored value - what a form holds before it is
+ *  saved, where the URL does not exist yet. */
+export function avatarChoiceFromValue(
+  value: string | null | undefined,
+): AvatarChoice {
+  const seed = pixelbotSeed(value);
+  if (seed) return { kind: "generated", seed };
+  if (value === GRAVATAR_VALUE) return { kind: "gravatar" };
+  if (value && isValidAvatarValue(value)) return { kind: "uploaded" };
+  return { kind: "initials" };
+}
+
 export function avatarChoiceFromUrl(
   url: string | null | undefined,
 ): AvatarChoice {

@@ -8,6 +8,12 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { sha256Hex } from "../crypto";
 import {
+  avatarChoiceFromUrl,
+  avatarChoiceFromValue,
+  avatarPreviewUrl,
+  PIXELBOT_PRESETS,
+} from "../apps/avatar-shared";
+import {
   seedIdentity,
   TRUNCATE_IDENTITY,
   TEAM_A,
@@ -211,6 +217,29 @@ test("a seed that is not a plain word is refused, in and out of the URL", async 
       `must refuse ${bad}`,
     );
   }
+});
+
+test("the picker reads back the source it just wrote", () => {
+  // What rings the tile in use: the picker only ever sees the resolved URL.
+  for (const seed of PIXELBOT_PRESETS) {
+    const url = avatarPreviewUrl(`pixelbot:${seed}`);
+    assert.equal(url, `/api/avatar/${seed}.svg`);
+    assert.deepEqual(avatarChoiceFromUrl(url), { kind: "generated", seed });
+  }
+  assert.deepEqual(avatarChoiceFromUrl(null), { kind: "initials" });
+  assert.deepEqual(avatarChoiceFromUrl(PICTURE), { kind: "uploaded" });
+  assert.deepEqual(avatarChoiceFromUrl("https://gravatar.com/avatar/abc?s=1"), {
+    kind: "gravatar",
+  });
+
+  // The wizard holds the raw value instead: same answer, no account yet.
+  assert.deepEqual(avatarChoiceFromValue("pixelbot:bolt"), {
+    kind: "generated",
+    seed: "bolt",
+  });
+  assert.deepEqual(avatarChoiceFromValue("gravatar"), { kind: "gravatar" });
+  assert.deepEqual(avatarChoiceFromValue(PICTURE), { kind: "uploaded" });
+  assert.deepEqual(avatarChoiceFromValue(null), { kind: "initials" });
 });
 
 /* ------------------------------------------------------------------ */

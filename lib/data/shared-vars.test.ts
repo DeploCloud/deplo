@@ -411,8 +411,9 @@ test("authorship: create stamps both columns, an edit only touches updatedBy", a
   });
   assert.ok(
     avatarUrl === null ||
+      /^\/api\/avatar\/[A-Za-z0-9_-]+\.svg$/.test(avatarUrl) ||
       /^https:\/\/gravatar\.com\/avatar\/[0-9a-f]{64}\?/.test(avatarUrl),
-    `avatarUrl is a derived gravatar URL or nothing, got ${avatarUrl}`,
+    `avatarUrl is a generated face or a derived gravatar URL, got ${avatarUrl}`,
   );
   assert.ok(
     !JSON.stringify(edited!.updatedBy).includes("@"),
