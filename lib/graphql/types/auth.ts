@@ -19,7 +19,12 @@ import {
   getRegistrationLinkInfo,
   getRegistrationLinkAssignments,
 } from "@/lib/data/members";
-import { normalizeUsername, validateUsername } from "@/lib/username";
+import {
+  normalizeUsername,
+  USERNAME_MAX,
+  USERNAME_MIN,
+  validateUsername,
+} from "@/lib/username";
 import { MAX_AVATAR_STRING_LEN } from "@/lib/apps/avatar-shared";
 import { rateLimit } from "@/lib/security";
 import { noteFailedLogin } from "@/lib/notify/security";
@@ -136,7 +141,11 @@ const loginSchema = z.object({
 const setupSchema = z.object({
   // Optional: the wizard derives the handle from the name and only sends one
   // that was edited by hand.
-  username: z.string().min(3, "Username is too short").max(32).nullish(),
+  username: z
+    .string()
+    .min(USERNAME_MIN, "Username is too short")
+    .max(USERNAME_MAX)
+    .nullish(),
   teamName: z.string().min(1, "Team name is required").max(80),
   name: z.string().trim().min(1, "Your name is required").max(80),
   email: z.string().email("Enter a valid email"),
@@ -150,7 +159,7 @@ const setupSchema = z.object({
 
 const registerSchema = z.object({
   token: z.string().min(8).max(200),
-  username: z.string().min(3).max(32),
+  username: z.string().min(USERNAME_MIN).max(USERNAME_MAX),
   name: z.string().trim().min(1, "Name is required").max(80),
   email: z.string().email(),
   password: z.string().min(8).max(200),

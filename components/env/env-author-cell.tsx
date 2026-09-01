@@ -20,7 +20,6 @@ export function EnvAuthorCell({ author }: { author: VarAuthor | null }) {
         <UserAvatar
           name={author.name}
           username={author.username}
-          avatarColor={author.avatarColor}
           avatarUrl={author.avatarUrl}
           size="sm"
         />

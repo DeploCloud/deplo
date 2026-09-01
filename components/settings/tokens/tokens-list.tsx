@@ -190,7 +190,6 @@ export function TokensList({
                     <span className="flex items-center gap-1.5">
                       <UserAvatar
                         username={t.createdByUsername}
-                        avatarColor={t.createdByAvatarColor}
                         avatarUrl={t.createdByAvatarUrl}
                         size="sm"
                       />

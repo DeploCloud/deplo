@@ -247,7 +247,6 @@ export function AddMemberDialog({
                     <UserAvatar
                       name={u.name}
                       username={u.username}
-                      avatarColor={u.avatarColor}
                       avatarUrl={u.avatarUrl}
                       size="lg"
                     />
@@ -308,7 +307,6 @@ export function AddMemberDialog({
                   <UserAvatar
                     name={picked.name}
                     username={picked.username}
-                    avatarColor={picked.avatarColor}
                     avatarUrl={picked.avatarUrl}
                     size="lg"
                   />

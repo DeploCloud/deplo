@@ -139,7 +139,6 @@ function PersonCard({
           name={person.name}
           username={person.email}
           avatarUrl={person.avatarUrl}
-          avatarColor={person.avatarColor}
           size="lg"
         />
         <div className="min-w-0 flex-1">

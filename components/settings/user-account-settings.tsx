@@ -353,7 +353,6 @@ export function UserAccountSettings({
           <UserAvatar
             name={user.name}
             username={user.username}
-            avatarColor={user.avatarColor}
             avatarUrl={user.avatarUrl}
             size="xl"
             className="shrink-0"

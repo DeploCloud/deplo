@@ -105,7 +105,6 @@ export function InstanceOwnerCard({
                 renderLeading={(c) => (
                   <UserAvatar
                     username={c.username}
-                    avatarColor={c.avatarColor}
                     avatarUrl={c.avatarUrl}
                     size="sm"
                   />
@@ -114,7 +113,6 @@ export function InstanceOwnerCard({
                   <span className="flex items-center gap-2">
                     <UserAvatar
                       username={c.username}
-                      avatarColor={c.avatarColor}
                       avatarUrl={c.avatarUrl}
                       size="sm"
                     />

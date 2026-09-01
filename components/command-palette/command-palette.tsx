@@ -152,7 +152,7 @@ interface Hit {
   logo?:
     | { kind: "app"; logo: string | null }
     | { kind: "database"; logo: string | null; type: DatabaseType }
-    | { kind: "person"; name: string; avatarUrl: string | null; color: string }
+    | { kind: "person"; name: string; avatarUrl: string | null }
     | { kind: "team"; name: string; avatarUrl: string | null };
   icon?: React.ComponentType<{ className?: string }>;
 }
@@ -247,7 +247,6 @@ function toHits(data: SearchData): Hit[] {
         kind: "person" as const,
         name: m.name,
         avatarUrl: m.avatarUrl,
-        color: m.avatarColor,
       },
     })),
     ...s.roles.map((r) => ({
@@ -990,7 +989,6 @@ function HitRow({
         <UserAvatar
           name={hit.logo.name}
           avatarUrl={hit.logo.avatarUrl}
-          avatarColor={hit.logo.color}
           size="sm"
         />
       ) : hit.logo?.kind === "team" ? (

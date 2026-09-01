@@ -201,7 +201,6 @@ function ActivityMarker({
       <UserAvatar
         name={item.actorUser.name}
         username={item.actorUser.username}
-        avatarColor={item.actorUser.avatarColor}
         avatarUrl={item.actorUser.avatarUrl}
         size={size}
         className={cn("relative shrink-0", rail)}

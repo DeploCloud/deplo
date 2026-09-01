@@ -709,7 +709,6 @@ function FacetOptionRow({
         <UserAvatar
           name={opt.author.name}
           username={opt.author.username}
-          avatarColor={opt.author.avatarColor}
           avatarUrl={opt.author.avatarUrl}
           size="sm"
           className="shrink-0"

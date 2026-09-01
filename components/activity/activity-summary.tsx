@@ -98,7 +98,6 @@ export function ActivitySummary({
                 <UserAvatar
                   name={row.author.name}
                   username={row.author.username}
-                  avatarColor={row.author.avatarColor}
                   avatarUrl={row.author.avatarUrl}
                   size="sm"
                   className="shrink-0"

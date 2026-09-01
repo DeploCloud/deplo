@@ -25,8 +25,12 @@ import { docsUrl } from "@/lib/docs";
 import { gql } from "@/lib/graphql-client";
 import { DISCORD_URL, GITHUB_URL } from "@/lib/links";
 import { passwordMeetsPolicy } from "@/lib/password-policy";
-import { monogramColor } from "@/lib/avatar-colors";
-import { normalizeUsername, validateUsername } from "@/lib/username";
+import {
+  normalizeUsername,
+  USERNAME_MAX,
+  USERNAME_MIN,
+  validateUsername,
+} from "@/lib/username";
 import { cn } from "@/lib/utils";
 
 const COMPLETE_SETUP = /* GraphQL */ `
@@ -242,7 +246,6 @@ export function OnboardingWizard({ version }: { version: string }) {
                         name={name}
                         username={shownHandle}
                         // The same derivation the account will be stored with.
-                        avatarColor={monogramColor(name)}
                         avatarUrl={image}
                         size="3xl"
                       />
@@ -286,8 +289,8 @@ export function OnboardingWizard({ version }: { version: string }) {
                         value={handle}
                         onChange={(e) => setHandle(e.target.value)}
                         autoComplete="username"
-                        minLength={3}
-                        maxLength={32}
+                        minLength={USERNAME_MIN}
+                        maxLength={USERNAME_MAX}
                         aria-label="Handle"
                         autoFocus
                       />

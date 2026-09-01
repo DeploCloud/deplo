@@ -422,7 +422,6 @@ export function TokenEditor({
                     {token!.createdByUsername && (
                       <UserAvatar
                         username={token!.createdByUsername}
-                        avatarColor={token!.createdByAvatarColor}
                         avatarUrl={token!.createdByAvatarUrl}
                         size="sm"
                       />

@@ -128,7 +128,6 @@ function MemberCard({
         <UserAvatar
           name={member.name}
           username={member.username}
-          avatarColor={member.avatarColor}
           avatarUrl={member.avatarUrl}
           size="lg"
         />

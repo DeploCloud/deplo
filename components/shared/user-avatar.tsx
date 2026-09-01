@@ -3,8 +3,7 @@
 import * as React from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { monogramColor } from "@/lib/avatar-colors";
-import { cn, readableTextColor } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 /**
  * The one way a person or a team is drawn before their name.
@@ -45,15 +44,11 @@ export function avatarInitials(
 function Mark({
   src,
   initials,
-  background,
   size,
   className,
 }: {
   src: string | null | undefined;
   initials: string;
-  /** Hex fill for the monogram. Undefined only for somebody with no stored
-   *  colour - a person being imported who has no deplo account yet. */
-  background?: string;
   size: AvatarSize;
   className?: string;
 }) {
@@ -81,16 +76,8 @@ function Mark({
         className={cn(
           "font-medium",
           pending && "animate-pulse",
-          !pending && !background && "bg-foreground text-background",
+          !pending && "bg-secondary text-secondary-foreground",
         )}
-        style={
-          background && !pending
-            ? {
-                backgroundColor: background,
-                color: readableTextColor(background),
-              }
-            : undefined
-        }
       >
         {pending ? null : initials}
       </AvatarFallback>
@@ -105,16 +92,12 @@ function Mark({
 export function UserAvatar({
   name,
   username,
-  avatarColor,
   avatarUrl,
   size = "lg",
   className,
 }: {
   name?: string | null;
   username?: string | null;
-  /** The monogram's fill. Omitted (an imported person, say) ⇒ the
-   *  neutral mark, since they have no deplo account to have a colour on yet. */
-  avatarColor?: string | null;
   avatarUrl?: string | null;
   size?: AvatarSize;
   className?: string;
@@ -123,18 +106,13 @@ export function UserAvatar({
     <Mark
       src={avatarUrl}
       initials={avatarInitials(name, username)}
-      background={avatarColor ?? undefined}
       size={size}
       className={className}
     />
   );
 }
 
-/**
- * A team. Its monogram colour is DERIVED from the name rather than stored: a
- * team's mark is cosmetic and referenced nowhere else, so a column would only buy
- * a colour picker in Settings that nobody asked for.
- */
+/** A team. */
 export function TeamAvatar({
   name,
   avatarUrl,
@@ -150,7 +128,6 @@ export function TeamAvatar({
     <Mark
       src={avatarUrl}
       initials={avatarInitials(name)}
-      background={monogramColor(name)}
       size={size}
       className={className}
     />

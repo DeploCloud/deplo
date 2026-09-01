@@ -1,11 +1,11 @@
 /**
  * Pure username helpers (no `server-only`) so they're usable in the data layer,
  * the migration, and client-side validation alike. A username is the instance-
- * wide public handle: lowercase, `[a-z0-9_-]`, 3-32 chars, unique.
+ * wide public handle: lowercase, `[a-z0-9_-]`, 3-16 chars, unique.
  */
 
 export const USERNAME_MIN = 3;
-export const USERNAME_MAX = 32;
+export const USERNAME_MAX = 16;
 const VALID = /^[a-z0-9_-]+$/;
 
 /** Lowercase + strip to the allowed charset (does not enforce length). */

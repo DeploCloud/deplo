@@ -44,7 +44,6 @@ export function DeploymentCreator({
       <UserAvatar
         name={creatorUser?.name ?? creator}
         username={creatorUser?.username}
-        avatarColor={creatorUser?.avatarColor}
         avatarUrl={creatorUser?.avatarUrl}
         size={size}
       />

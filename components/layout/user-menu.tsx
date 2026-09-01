@@ -58,7 +58,6 @@ export function UserMenu({ user }: { user: PublicUser }) {
           <UserAvatar
             name={user.name}
             username={user.username}
-            avatarColor={user.avatarColor}
             avatarUrl={user.avatarUrl}
             size="lg"
           />
@@ -69,7 +68,6 @@ export function UserMenu({ user }: { user: PublicUser }) {
           <UserAvatar
             name={user.name}
             username={user.username}
-            avatarColor={user.avatarColor}
             avatarUrl={user.avatarUrl}
             size="xl"
           />

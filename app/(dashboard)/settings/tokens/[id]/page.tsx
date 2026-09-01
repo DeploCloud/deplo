@@ -70,7 +70,6 @@ export default async function TokenPage(
                   {" by "}
                   <UserAvatar
                     username={token.createdByUsername}
-                    avatarColor={token.createdByAvatarColor}
                     avatarUrl={token.createdByAvatarUrl}
                     size="xs"
                     className="inline-block align-text-bottom"

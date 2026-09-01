@@ -345,7 +345,6 @@ export function ShareFolderDialog({
                   <UserAvatar
                     name={g.name}
                     username={g.username}
-                    avatarColor={g.avatarColor}
                     avatarUrl={g.avatarUrl}
                     size="lg"
                   />
@@ -429,7 +428,6 @@ export function ShareFolderDialog({
                       <UserAvatar
                         name={c.name}
                         username={c.username}
-                        avatarColor={c.avatarColor}
                         avatarUrl={c.avatarUrl}
                         size="lg"
                       />
@@ -454,7 +452,6 @@ export function ShareFolderDialog({
                     <UserAvatar
                       name={picked.name}
                       username={picked.username}
-                      avatarColor={picked.avatarColor}
                       avatarUrl={picked.avatarUrl}
                       size="lg"
                     />

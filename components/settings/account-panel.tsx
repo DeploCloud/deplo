@@ -126,7 +126,6 @@ function ProfileCard({ user }: { user: PublicUser }) {
             <UserAvatar
               name={user.name}
               username={user.username}
-              avatarColor={user.avatarColor}
               avatarUrl={user.avatarUrl}
               size="3xl"
             />

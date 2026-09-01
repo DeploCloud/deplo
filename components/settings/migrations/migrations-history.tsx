@@ -80,7 +80,6 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
                     <UserAvatar
                       name={r.actor}
                       username={r.actorUsername}
-                      avatarColor={r.actorAvatarColor}
                       avatarUrl={r.actorAvatarUrl}
                       size="xs"
                     />

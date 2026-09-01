@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { PasswordField } from "@/components/ui/password-field";
 import { passwordMeetsPolicy } from "@/lib/password-policy";
+import { USERNAME_MAX, USERNAME_MIN } from "@/lib/username";
 import { gqlAction } from "@/lib/graphql-client";
 import { DocsLink } from "@/components/ui/docs-link";
 
@@ -142,8 +143,8 @@ export function RegisterForm({
               onChange={set("username")}
               placeholder="ada"
               autoFocus
-              minLength={3}
-              maxLength={32}
+              minLength={USERNAME_MIN}
+              maxLength={USERNAME_MAX}
             />
           </div>
           {ownTeam && (
