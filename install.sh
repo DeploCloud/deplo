@@ -1589,12 +1589,20 @@ with open(dst, "w") as f:
 apply_address_pools() {
   grep -q '"default-address-pools"' /etc/docker/daemon.json 2>/dev/null || return 0
   spin_start "Restarting Docker so its address pools apply"
+  # A daemon restart starts every `restart: always` container again, including one
+  # the migration deliberately stopped to read its volume. Note them down first and
+  # put them back the way they were.
+  local was_down; was_down="$(docker ps -aq --filter status=exited --filter status=created 2>/dev/null || true)"
   systemctl restart docker >&9 2>&9 || true
   local i=0
   until docker info >/dev/null 2>&1; do
     i=$((i + 1))
     [ "$i" -ge 30 ] && break
     sleep 1
+  done
+  local c
+  for c in $was_down; do
+    docker ps -q --no-trunc | grep -q "^$c" && docker stop "$c" >&9 2>&9 || true
   done
   spin_ok "Docker restarted" "this host is no longer capped at ~31 networks"
 }
@@ -1661,24 +1669,96 @@ takeover_cutover() {
 
 # Everything of the other platform, gone. Only ever from `removing`, which is a
 # button in the panel behind a typed confirmation.
+#
+# Every target is found by a POSITIVE signal, never by a name pattern: the wrong
+# answer here deletes the apps Deplo has just brought across.
+platform_dir() {
+  case "$1" in
+    dokploy) printf '/etc/dokploy' ;;
+    coolify) printf '/data/coolify' ;;
+    *) printf '' ;;
+  esac
+}
+
+# A container is the other platform's when it says so, or when the compose file
+# it was started from lives inside the directory this removal is deleting.
+foreign_workloads() {
+  local dir c wd managed
+  dir="$(platform_dir "$TAKEOVER")"
+  [ -n "$dir" ] || return 0
+  for c in $(docker ps -aq 2>/dev/null); do
+    managed="$(docker inspect "$c" --format '{{index .Config.Labels "'"$TAKEOVER"'.managed"}}' 2>/dev/null || true)"
+    [ "$managed" = "true" ] && { printf '%s\n' "$c"; continue; }
+    wd="$(docker inspect "$c" --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)"
+    case "$wd" in "$dir"/*) printf '%s\n' "$c" ;; esac
+  done
+}
+
+# The named volumes those containers actually mount, and the networks they are
+# actually on - read off the containers rather than guessed from their names.
+# Anything Deplo owns is filtered out even so.
+foreign_volumes_of() {
+  local c
+  for c in "$@"; do
+    docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' 2>/dev/null || true
+  done | grep -vE '^(deplo|$)' | sort -u
+}
+
+foreign_networks_of() {
+  local c
+  for c in "$@"; do
+    docker inspect "$c" --format '{{range $n, $v := .NetworkSettings.Networks}}{{println $n}}{{end}}' 2>/dev/null || true
+  done | grep -vE '^(bridge|host|none|deplo|deplo-.*|.*_deplo.*|$)$' | sort -u
+}
+
 foreign_remove() {
   blank
   phase "Removing $FOREIGN_LABEL"
-  local names
-  names="$(foreign_containers)"
-  if [ -n "$names" ]; then
+
+  local core workloads all vols nets svcs
+  core="$(foreign_containers)"
+  workloads="$(foreign_workloads)"
+  all="$(printf '%s\n%s\n' "$core" "$workloads" | grep -v '^$' | sort -u)"
+
+  # Read what they hold BEFORE they are gone; an id no longer exists afterwards.
+  # shellcheck disable=SC2086
+  vols="$(foreign_volumes_of $all)"
+  # shellcheck disable=SC2086
+  nets="$(foreign_networks_of $all)"
+
+  if [ -n "$all" ]; then
+    step "Removing $(printf '%s\n' "$all" | wc -l | tr -d ' ') container(s) it ran"
     # shellcheck disable=SC2086
-    spin_run "Removing its containers" docker rm -f -v $names || true
+    docker rm -f $all >&9 2>&9 || true
   fi
+
+  # Dokploy deploys applications as SWARM SERVICES, which are not containers and
+  # survive every `docker rm`. A Dokploy host has a swarm because Dokploy made it
+  # one, so everything in it is its.
+  if [ "$TAKEOVER" = dokploy ]; then
+    svcs="$(docker service ls --format '{{.Name}}' 2>/dev/null || true)"
+    if [ -n "$svcs" ]; then
+      step "Removing $(printf '%s\n' "$svcs" | wc -l | tr -d ' ') swarm service(s)"
+      # shellcheck disable=SC2086
+      docker service rm $svcs >&9 2>&9 || true
+    fi
+  fi
+
   spin_start "Removing what it left behind"
-  docker volume ls -q 2>/dev/null | grep -E "^$TAKEOVER" | xargs -r docker volume rm -f >&9 2>&9 || true
-  docker network ls --format '{{.Name}}' 2>/dev/null | grep -E "^$TAKEOVER" | xargs -r docker network rm >&9 2>&9 || true
-  docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -E "^(ghcr\.io/)?$TAKEOVER" | xargs -r docker rmi -f >&9 2>&9 || true
-  case "$TAKEOVER" in
-    dokploy) rm -rf /etc/dokploy ;;
-    coolify) rm -rf /data/coolify ;;
-  esac
-  spin_ok "$FOREIGN_LABEL removed" "its containers, volumes, networks, images and directory"
+  if [ -n "$vols" ]; then
+    # shellcheck disable=SC2086
+    docker volume rm -f $vols >&9 2>&9 || true
+  fi
+  if [ -n "$nets" ]; then
+    # shellcheck disable=SC2086
+    docker network rm $nets >&9 2>&9 || true
+  fi
+  # Only the platform's OWN images: a workload's image may be the very one Deplo
+  # just deployed from, and `docker rmi` on an image in use is a refusal anyway.
+  docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
+    | grep -E "^(ghcr\.io/)?(coollabsio|dokploy)/" | xargs -r docker rmi -f >&9 2>&9 || true
+  rm -rf "$(platform_dir "$TAKEOVER")"
+  spin_ok "$FOREIGN_LABEL removed" "containers, volumes, networks, images and its directory"
   state_set takeover "removed"
   takeover_post "removed"
 }
