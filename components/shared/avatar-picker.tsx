@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Camera } from "lucide-react";
+import { AtSign, Camera, Upload, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +23,7 @@ import {
   MAX_AVATAR_STRING_LEN,
   PIXELBOT_PREFIX,
   PIXELBOT_PRESETS,
+  type PixelbotPreset,
   pixelbotPath,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
@@ -39,9 +40,12 @@ export type AvatarSources = {
   /** What is in use now - `avatarChoiceFromUrl` where the picture is saved,
    *  `avatarChoiceFromValue` where a form still holds the raw value. */
   choice: AvatarChoice;
-  /** Seeds the face offered first - their user id. Absent during onboarding,
-   *  where the account has no id yet. */
-  defaultSeed?: string | null;
+  /** Seeds every generated face: their user id, or the handle they are typing
+   *  during onboarding. What they preview is what gets saved. */
+  seed: string;
+  /** The monogram itself, so "Use my initials" shows what it would look like
+   *  rather than describing it. The caller's own `<UserAvatar>` with no picture. */
+  monogram?: React.ReactNode;
   /** Whether the instance allows Gravatar at all. */
   gravatar?: boolean;
 };
@@ -208,14 +212,18 @@ export function AvatarPicker({
   );
 }
 
-/** One face in the grid. The SVG comes from `/api/avatar`, so the renderer never
- *  reaches the browser. */
+/** One look in the grid: the SAME face, in one of the style's presets. The SVG
+ *  comes from `/api/avatar`, so the renderer never reaches the browser. */
 function FaceTile({
+  preset,
+  label,
   seed,
   selected,
   disabled,
   onClick,
 }: {
+  preset: PixelbotPreset;
+  label: string;
   seed: string;
   selected: boolean;
   disabled?: boolean;
@@ -227,15 +235,60 @@ function FaceTile({
       disabled={disabled}
       onClick={onClick}
       aria-pressed={selected}
+      aria-label={label}
+      title={label}
       className={cn(
         "rounded-full transition outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring",
-        selected ? "ring-2 ring-primary" : "hover:opacity-80",
+        selected
+          ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          : "hover:opacity-80",
         disabled && "cursor-not-allowed opacity-60",
       )}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={pixelbotPath(seed)} alt="" className="size-12 rounded-full" />
+      <img
+        src={pixelbotPath(preset, seed)}
+        alt=""
+        className="size-12 rounded-full"
+      />
+    </button>
+  );
+}
+
+/** Where a picture comes from when it is not a generated face. */
+function SourceCard({
+  visual,
+  label,
+  selected,
+  disabled,
+  onClick,
+}: {
+  visual: React.ReactNode;
+  label: string;
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        "flex items-center gap-3 rounded-xl border p-3 text-left text-sm font-medium transition-colors outline-none",
+        "focus-visible:ring-2 focus-visible:ring-ring",
+        selected
+          ? "border-primary bg-accent"
+          : "border-border bg-card hover:bg-accent",
+        disabled && "cursor-not-allowed opacity-60",
+      )}
+    >
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-secondary text-secondary-foreground">
+        {visual}
+      </span>
+      <span className="min-w-0 truncate">{label}</span>
     </button>
   );
 }
@@ -255,11 +308,7 @@ function AvatarSourceDialog({
   onPick: (value: string) => void;
   onUpload: () => void;
 }) {
-  const { choice } = sources;
-  const seeds = [
-    ...(sources.defaultSeed ? [sources.defaultSeed] : []),
-    ...PIXELBOT_PRESETS,
-  ];
+  const { choice, seed } = sources;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -267,44 +316,53 @@ function AvatarSourceDialog({
         <DialogHeader>
           <DialogTitle>Profile picture</DialogTitle>
           <DialogDescription>
-            Pick a face, upload your own, or wear your initials.
+            Pick a face, upload your own, or keep your initials.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap justify-center gap-2">
-          {seeds.map((seed) => (
+        <div className="flex flex-wrap justify-center gap-3">
+          {PIXELBOT_PRESETS.map((preset) => (
             <FaceTile
-              key={seed}
+              key={preset.id}
+              preset={preset.id}
+              label={preset.label}
               seed={seed}
               disabled={busy}
-              selected={choice.kind === "generated" && choice.seed === seed}
-              onClick={() => onPick(`${PIXELBOT_PREFIX}${seed}`)}
+              selected={
+                choice.kind === "generated" && choice.preset === preset.id
+              }
+              onClick={() => onPick(`${PIXELBOT_PREFIX}${preset.id}:${seed}`)}
             />
           ))}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant={choice.kind === "uploaded" ? "secondary" : "outline"}
+        <div
+          className={cn(
+            "grid gap-2",
+            sources.gravatar ? "sm:grid-cols-3" : "sm:grid-cols-2",
+          )}
+        >
+          <SourceCard
+            visual={<Upload className="size-4" />}
+            label="Upload a picture"
+            selected={choice.kind === "uploaded"}
             disabled={busy}
             onClick={onUpload}
-          >
-            Upload a picture
-          </Button>
+          />
           {sources.gravatar ? (
-            <Button
-              variant={choice.kind === "gravatar" ? "secondary" : "outline"}
+            <SourceCard
+              visual={<AtSign className="size-4" />}
+              label="Use Gravatar"
+              selected={choice.kind === "gravatar"}
               disabled={busy}
               onClick={() => onPick(GRAVATAR_VALUE)}
-            >
-              Use Gravatar
-            </Button>
+            />
           ) : null}
-          <Button
-            variant={choice.kind === "initials" ? "secondary" : "outline"}
+          <SourceCard
+            visual={sources.monogram ?? <UserRound className="size-4" />}
+            label="Use my initials"
+            selected={choice.kind === "initials"}
             disabled={busy}
             onClick={() => onPick(INITIALS_VALUE)}
-          >
-            Use my initials
-          </Button>
+          />
         </div>
       </DialogContent>
     </Dialog>

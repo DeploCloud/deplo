@@ -156,7 +156,7 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
 test("with the instance switch off, no Gravatar address is emitted anywhere", async () => {
   await as(OWNER, () => setGravatarEnabled(false));
   const url = (await memberRow(MEMBER)).avatarUrl;
-  assert.equal(url, `/api/avatar/${MEMBER}.svg`);
+  assert.equal(url, `/api/avatar/default/${MEMBER}.svg`);
   assert.ok(!url!.includes("gravatar"), "no address may be emitted");
 
   // An UPLOADED picture is unaffected - the switch is about talking to
@@ -169,7 +169,7 @@ test("nothing chosen and no Gravatar leaves a generated face, seeded per person"
   await as(OWNER, () => setGravatarEnabled(false));
   assert.equal(
     (await memberRow(MEMBER)).avatarUrl,
-    `/api/avatar/${MEMBER}.svg`,
+    `/api/avatar/default/${MEMBER}.svg`,
   );
   assert.notEqual(
     (await memberRow(OWNER)).avatarUrl,
@@ -178,9 +178,12 @@ test("nothing chosen and no Gravatar leaves a generated face, seeded per person"
 });
 
 test("a preset face is stored as a marker and served from this instance", async () => {
-  await as(MEMBER, () => updateMyAvatar("pixelbot:bolt"));
+  await as(MEMBER, () => updateMyAvatar("pixelbot:terminal:zoe"));
   // Beats Gravatar, which is still on: an explicit pick outranks a fallback.
-  assert.equal((await memberRow(MEMBER)).avatarUrl, "/api/avatar/bolt.svg");
+  assert.equal(
+    (await memberRow(MEMBER)).avatarUrl,
+    "/api/avatar/terminal/zoe.svg",
+  );
 });
 
 test("initials is a choice, so the monogram survives an enabled Gravatar", async () => {
@@ -198,7 +201,7 @@ test("choosing Gravatar falls back to a face when the instance turns it off", as
   await as(OWNER, () => setGravatarEnabled(false));
   assert.equal(
     (await memberRow(MEMBER)).avatarUrl,
-    `/api/avatar/${MEMBER}.svg`,
+    `/api/avatar/default/${MEMBER}.svg`,
     "their pick is off instance-wide, so nothing about them leaves the box",
   );
 });
@@ -206,9 +209,11 @@ test("choosing Gravatar falls back to a face when the instance turns it off", as
 test("a seed that is not a plain word is refused, in and out of the URL", async () => {
   for (const bad of [
     "pixelbot:../../etc/passwd",
-    "pixelbot:a b",
+    "pixelbot:terminal:a b",
+    "pixelbot:terminal",
+    "pixelbot:nosuchpreset:zoe",
     "pixelbot:",
-    `pixelbot:${"a".repeat(65)}`,
+    `pixelbot:terminal:${"a".repeat(65)}`,
     "pixelbot:evil.com/x",
   ]) {
     await assert.rejects(
@@ -221,10 +226,14 @@ test("a seed that is not a plain word is refused, in and out of the URL", async 
 
 test("the picker reads back the source it just wrote", () => {
   // What rings the tile in use: the picker only ever sees the resolved URL.
-  for (const seed of PIXELBOT_PRESETS) {
-    const url = avatarPreviewUrl(`pixelbot:${seed}`);
-    assert.equal(url, `/api/avatar/${seed}.svg`);
-    assert.deepEqual(avatarChoiceFromUrl(url), { kind: "generated", seed });
+  for (const { id } of PIXELBOT_PRESETS) {
+    const url = avatarPreviewUrl(`pixelbot:${id}:zoe`);
+    assert.equal(url, `/api/avatar/${id}/zoe.svg`);
+    assert.deepEqual(avatarChoiceFromUrl(url), {
+      kind: "generated",
+      preset: id,
+      seed: "zoe",
+    });
   }
   assert.deepEqual(avatarChoiceFromUrl(null), { kind: "initials" });
   assert.deepEqual(avatarChoiceFromUrl(PICTURE), { kind: "uploaded" });
@@ -233,9 +242,10 @@ test("the picker reads back the source it just wrote", () => {
   });
 
   // The wizard holds the raw value instead: same answer, no account yet.
-  assert.deepEqual(avatarChoiceFromValue("pixelbot:bolt"), {
+  assert.deepEqual(avatarChoiceFromValue("pixelbot:cool:zoe"), {
     kind: "generated",
-    seed: "bolt",
+    preset: "cool",
+    seed: "zoe",
   });
   assert.deepEqual(avatarChoiceFromValue("gravatar"), { kind: "gravatar" });
   assert.deepEqual(avatarChoiceFromValue(PICTURE), { kind: "uploaded" });

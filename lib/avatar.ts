@@ -7,12 +7,13 @@ import { getDb } from "./db/client";
 import { instanceSettings } from "./db/schema/control-plane";
 import { sha256Hex } from "./crypto";
 import {
+  DEFAULT_PIXELBOT_PRESET,
   GRAVATAR_ORIGINS,
   GRAVATAR_VALUE,
   INITIALS_VALUE,
   isValidAvatarValue,
+  pixelbotParts,
   pixelbotPath,
-  pixelbotSeed,
 } from "./apps/avatar-shared";
 
 /**
@@ -69,9 +70,11 @@ export async function avatarResolver(): Promise<
   const gravatar = await gravatarEnabled();
   return (row) => {
     const value = row.image?.trim();
-    const generated = row.userId ? pixelbotPath(row.userId) : null;
-    const seed = pixelbotSeed(value);
-    if (seed) return pixelbotPath(seed);
+    const generated = row.userId
+      ? pixelbotPath(DEFAULT_PIXELBOT_PRESET, row.userId)
+      : null;
+    const parts = pixelbotParts(value);
+    if (parts) return pixelbotPath(parts.preset, parts.seed);
     if (value === INITIALS_VALUE) return null;
     if (value && value !== GRAVATAR_VALUE && isValidAvatarValue(value))
       return value;

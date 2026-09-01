@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Field, fieldControl, invalidField } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PasswordField } from "@/components/ui/password-field";
+import { PasswordField, RevealInput } from "@/components/ui/password-field";
 import { passwordMeetsPolicy } from "@/lib/password-policy";
 import {
   normalizeUsername,
@@ -167,6 +167,7 @@ export function AccountStep({
   children?: React.ReactNode;
 }) {
   const handle = draftHandle(draft);
+  const pictureChoice = avatarChoiceFromValue(draft.image);
   const bad = handle ? validateUsername(handle) : null;
   // Untouched, the handle is the name's doing, so the name carries the complaint.
   const handleError = draft.handleEdited ? bad : null;
@@ -191,7 +192,22 @@ export function AccountStep({
           quiet
           label="Add a profile picture"
           hasImage={Boolean(draft.image)}
-          sources={{ choice: avatarChoiceFromValue(draft.image), gravatar }}
+          sources={{
+            choice: pictureChoice,
+            seed:
+              pictureChoice.kind === "generated"
+                ? pictureChoice.seed
+                : handle || "deplo",
+            gravatar,
+            monogram: (
+              <UserAvatar
+                name={draft.name}
+                username={handle}
+                avatarUrl={null}
+                size="md"
+              />
+            ),
+          }}
           onSave={async (next) => {
             set("image", next);
             return { ok: true };
@@ -293,9 +309,8 @@ export function AccountStep({
       <div className="space-y-2">
         <Label htmlFor="confirm">Confirm password</Label>
         <Field error={mismatch}>
-          <Input
+          <RevealInput
             id="confirm"
-            type="password"
             value={draft.confirm}
             onChange={(e) => set("confirm", e.target.value)}
             autoComplete="new-password"

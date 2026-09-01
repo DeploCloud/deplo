@@ -20,6 +20,7 @@ import { AccountGraphic } from "@/components/settings/account-graphic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RevealInput } from "@/components/ui/password-field";
 import { Label } from "@/components/ui/label";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
@@ -84,6 +85,7 @@ function ProfileCard({
   gravatar: boolean;
 }) {
   const router = useRouter();
+  const choice = avatarChoiceFromUrl(user.avatarUrl);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState(user.name);
   const [handle, setHandle] = React.useState(user.username);
@@ -127,8 +129,10 @@ function ProfileCard({
           label="Change your picture"
           hasImage={Boolean(user.avatarUrl?.startsWith("data:"))}
           sources={{
-            choice: avatarChoiceFromUrl(user.avatarUrl),
-            defaultSeed: user.id,
+            choice,
+            // Their own face keeps its seed, so the grid shows the looks of the
+            // face they wear, not of a stranger's.
+            seed: choice.kind === "generated" ? choice.seed : user.id,
             gravatar,
             monogram: (
               <UserAvatar
@@ -274,9 +278,8 @@ function EmailCard({ user }: { user: PublicUser }) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="acct-email-pw">Current password</Label>
-            <Input
+            <RevealInput
               id="acct-email-pw"
-              type="password"
               autoComplete="current-password"
               placeholder="The one you sign in with"
               value={password}
