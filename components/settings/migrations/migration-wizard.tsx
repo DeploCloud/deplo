@@ -198,6 +198,12 @@ const SWITCH_TEAM = /* GraphQL */ `
   }
 `;
 
+const HAND_OVER_SOURCES = /* GraphQL */ `
+  mutation HandOverMigrationSources($fromTeamId: String!) {
+    handOverMigrationSources(fromTeamId: $fromTeamId)
+  }
+`;
+
 /**
  * Sent on the way out of an unfinished wizard - from a click on the sidebar and
  * from the tab closing alike, which is why it is fired as a bare `fetch` with
@@ -436,6 +442,20 @@ export function MigrationWizard({
   const [retargetError, setRetargetError] = React.useState<string | null>(null);
   /** Whether this tab has already decided which run to open on. */
   const restored = React.useRef(false);
+  /**
+   * The team this tab switched to, which LEADS the prop: the page's own read of it
+   * lands a refresh later, and what a migration is for cannot briefly be the team
+   * it just left. Dropped the moment the prop moves - by that refresh, or by
+   * somebody switching team in the topbar, which this must never outlive.
+   */
+  const [landed, setLanded] = React.useState<{
+    from: string;
+    to: string;
+  } | null>(null);
+  // Adjusting state during the render, which is what React prescribes for state
+  // that a prop invalidates - no effect, no second paint.
+  if (landed && landed.from !== teamId) setLanded(null);
+  const targetTeamId = landed?.to ?? teamId;
 
   const [invites, setInvites] = React.useState<Invite[] | null>(null);
   const [inviting, setInviting] = React.useState(false);
@@ -525,18 +545,30 @@ export function MigrationWizard({
    * here" and the domain notes are answers about a team, the ticks are not.
    */
   const retargetTeam = React.useCallback(
-    /** Null when the team is already switched - creating one switches into it. */
-    async (nextTeamId: string | null) => {
+    async (nextTeamId: string) => {
+      const from = targetTeamId;
       setRetargeting(true);
       setRetargetError(null);
       // This tab has already chosen its screen. Without this, landing in a team
       // that has a report nobody closed would swap the plan for that old run.
       restored.current = true;
-      if (nextTeamId) {
-        const switched = await gqlAction(SWITCH_TEAM, { teamId: nextTeamId });
-        if (!switched.ok) {
+      // Idempotent when the team is already active: creating one switches into
+      // it, and picking the current team is how a failed re-read is retried.
+      const switched = await gqlAction(SWITCH_TEAM, { teamId: nextTeamId });
+      if (!switched.ok) {
+        setRetargeting(false);
+        setRetargetError(switched.error);
+        return;
+      }
+      setLanded({ from, to: nextTeamId });
+      if (from !== nextTeamId) {
+        // The machines Deplo installed to read the panel are granted to ONE team,
+        // and every lookup that reads one is team-scoped: left behind, the run
+        // refuses to start and their agents are stranded.
+        const moved = await gqlAction(HAND_OVER_SOURCES, { fromTeamId: from });
+        if (!moved.ok) {
           setRetargeting(false);
-          toast.error(switched.error);
+          setRetargetError(moved.error);
           return;
         }
       }
@@ -561,7 +593,7 @@ export function MigrationWizard({
       setPlacements((prev) => ({ ...defaults.placements, ...prev }));
       setServerMap((prev) => ({ ...defaults.servers, ...prev }));
     },
-    [connectInput, router, servers],
+    [connectInput, router, servers, targetTeamId],
   );
 
   /* ---- the move itself ---------------------------------------------- */
@@ -645,6 +677,7 @@ export function MigrationWizard({
     setApiKey("");
     setForcedKind(null);
     setScanError(null);
+    setRetargetError(null);
     setLogOpen(false);
     setStep("connect");
     router.refresh();
@@ -744,7 +777,7 @@ export function MigrationWizard({
       {
         input: {
           mode: "existing_teams",
-          teamAssignments: [{ teamId, role: "member" }],
+          teamAssignments: [{ teamId: targetTeamId, role: "member" }],
         },
       },
       (d) => d.mintRegistrationLink,
@@ -1068,7 +1101,7 @@ export function MigrationWizard({
                   <ReviewStep
                     kind={kind}
                     plan={plan}
-                    teamId={teamId}
+                    teamId={targetTeamId}
                     teamName={teamName}
                     teamAvatarUrl={teamAvatarUrl}
                     targetTeams={targetTeams}

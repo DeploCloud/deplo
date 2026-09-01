@@ -35,9 +35,9 @@ export function CreateTeamDialog({
    * caller is mid-flow with state a navigation would throw away - the migration
    * wizard holds a scan and an API key that exist only in its tab. */
   redirect?: boolean;
-  /** Fired after the team exists and is active - for a caller that has to react
-   *  to landing in a different team. */
-  onCreated?: () => void;
+  /** Fired with the new team's id once it exists and is active - for a caller
+   *  that has to react to landing in a different team. */
+  onCreated?: (teamId: string) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -64,7 +64,7 @@ export function CreateTeamDialog({
         // every read on the page behind this dialog is now about a different
         // team and has to run again.
         router.refresh();
-        onCreated?.();
+        if (res.data) onCreated?.(res.data.id);
       } else {
         toast.error(res.error);
       }

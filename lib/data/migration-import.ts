@@ -396,6 +396,69 @@ export async function listMigrationTargetTeams(): Promise<
 }
 
 /**
+ * Hand the machines Deplo installed to READ the panel to the team the migration
+ * now lands in. A source is granted to exactly one team at registration, and
+ * every lookup that reads it - the plan's machines, the data copy, the uninstall -
+ * is team-scoped, so a source left behind blocks the run and strands its agent.
+ */
+export async function handOverMigrationSources(
+  fromTeamId: string,
+): Promise<number> {
+  const { teamId } = await assertImportGate();
+  if (fromTeamId === teamId) return 0;
+  // Prove the mover could use those machines BEFORE, not only where they land.
+  if (!(await holdsTeamWideCapability(fromTeamId, "create_projects")))
+    throw new Error("You cannot move a migration source out of that team.");
+  // A run in flight is reading their disks right now; they are not yours to move.
+  if (await activeMigrationForTeam(fromTeamId))
+    throw new Error(
+      "A migration is running in the team you are moving away from, so the machines it reads stay there.",
+    );
+  const rows = await getDb()
+    .select({ id: serversTable.id })
+    .from(serversTable)
+    .innerJoin(serverTeamsTable, eq(serverTeamsTable.serverId, serversTable.id))
+    .where(
+      and(
+        eq(serversTable.importOnly, true),
+        eq(serverTeamsTable.teamId, fromTeamId),
+        // One already on the way out belongs to the reaper, which reads the grant
+        // it was queued with.
+        isNull(serversTable.uninstallNextAt),
+      ),
+    );
+  if (rows.length === 0) return 0;
+  const ids = rows.map((r) => r.id);
+  await getDb()
+    .update(serverTeamsTable)
+    .set({ teamId })
+    .where(
+      and(
+        inArray(serverTeamsTable.serverId, ids),
+        eq(serverTeamsTable.teamId, fromTeamId),
+      ),
+    );
+  // Both trails: one team's machines left it, and they are another's now.
+  const actor = (await getCurrentUser())?.name ?? "a migration";
+  const what = ids.length === 1 ? "machine" : "machines";
+  await recordActivity(
+    "server",
+    `Moved ${ids.length} migration source ${what} to another team`,
+    actor,
+    null,
+    fromTeamId,
+  );
+  await recordActivity(
+    "server",
+    `Took over ${ids.length} migration source ${what} from another team`,
+    actor,
+    null,
+    teamId,
+  );
+  return ids.length;
+}
+
+/**
  * Turn the typed address + key into a credential, refusing an address deplo must
  * not dial. Same shape as `connectGitProvider`: the private-address escape hatch
  * asserts instance admin AT the decision, never inherits it from a caller.

@@ -314,8 +314,7 @@ export function ReviewStep({
   retargeting: boolean;
   /** Why the last re-read failed - the plan below answers about another team. */
   retargetError: string | null;
-  /** Null when the team is already switched, as creating one does. */
-  onRetarget: (teamId: string | null) => void;
+  onRetarget: (teamId: string) => void;
   chosen: Set<string>;
   setChosen: (v: Set<string>) => void;
   servers: ServerChoice[];
@@ -498,7 +497,7 @@ export function ReviewStep({
           open={newTeamOpen}
           onOpenChange={setNewTeamOpen}
           redirect={false}
-          onCreated={() => onRetarget(null)}
+          onCreated={(id) => onRetarget(id)}
         />
       )}
 

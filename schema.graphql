@@ -2973,6 +2973,11 @@ type Mutation {
   generateAvailableDbPort(serverId: ID): Int
 
   """
+  Point a migration at another team: the machines Deplo installed its agent on to READ the panel are granted to the team it now lands in. Called right after switching, since every lookup that reads a source is team-scoped. Refused while a run is in flight in the team being left. Returns how many machines moved.
+  """
+  handOverMigrationSources(fromTeamId: String!): Int
+
+  """
   Bulk-import a .env-style blob. Every line lands as plain, so a key that already exists as a secret is skipped rather than downgraded.
   """
   importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): EnvImportResult

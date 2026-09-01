@@ -72,6 +72,7 @@ import {
   setMigrationMachineAddress,
   drainMigrationSourceUninstalls,
   finishMigration,
+  handOverMigrationSources,
   importMigrationMembers,
   listMigrationTargetTeams,
   sweepFinishedMigrationMarks,
@@ -2818,3 +2819,86 @@ test("the teams offered are the ones that person may migrate INTO", async () => 
     [TEAM_A],
   );
 });
+
+test("a change of target team takes the panel's machines with it", async () => {
+  await inBothTeams("mem_1_b", USER_1, ["view", "create_projects"]);
+  // The machine Deplo installed its agent on to READ the panel: registered while
+  // team A was active, and granted to team A alone.
+  const { server: source } = await asOwner(() =>
+    addServer({
+      name: "dokploy-host",
+      host: "203.0.113.77",
+      importOnly: true,
+    }),
+  );
+
+  const moved = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    handOverMigrationSources(TEAM_A),
+  );
+
+  assert.equal(moved, 1);
+  const grants = await db.execute(
+    `select team_id from server_teams where server_id = '${source.id}'`,
+  );
+  // Moved, not shared: team A abandoning its wizard would otherwise take the
+  // agent off a machine team B is still reading.
+  assert.deepEqual(
+    grants.rows.map((r) => r.team_id),
+    [TEAM_B],
+  );
+  // The ordinary host the suite seeds is not a migration source and never moves.
+  const untouched = await db.execute(
+    `select count(*)::int as n from server_teams where server_id = '${SERVER_1}' and team_id = '${TEAM_B}'`,
+  );
+  assert.equal(untouched.rows[0].n, 0);
+});
+
+test("a machine cannot be taken out of a team you may not migrate in", async () => {
+  // USER_2 sees team A but may not migrate there any more, and may in team B.
+  await db.execute(
+    `delete from membership_capabilities where membership_id = 'mem_${USER_2}' and capability = 'create_projects'`,
+  );
+  await inBothTeams("mem_2_b", USER_2, ["view", "create_projects"]);
+  const { server: source } = await asOwner(() =>
+    addServer({
+      name: "dokploy-host",
+      host: "203.0.113.78",
+      importOnly: true,
+    }),
+  );
+
+  await assert.rejects(
+    runWithIdentity({ userId: USER_2, teamId: TEAM_B }, () =>
+      handOverMigrationSources(TEAM_A),
+    ),
+    /cannot move a migration source out of that team/,
+  );
+  const grants = await db.execute(
+    `select team_id from server_teams where server_id = '${source.id}'`,
+  );
+  assert.deepEqual(
+    grants.rows.map((r) => r.team_id),
+    [TEAM_A],
+  );
+});
+
+/** Give a seeded team-A user a membership in team B as well. */
+async function inBothTeams(
+  membershipId: string,
+  userId: string,
+  capabilities: string[],
+): Promise<void> {
+  await db.insert(membershipsTable).values({
+    id: membershipId,
+    userId,
+    teamId: TEAM_B,
+    role: "member",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  await db.insert(membershipCapsTable).values(
+    capabilities.map((capability) => ({
+      membershipId,
+      capability: capability as "view",
+    })),
+  );
+}

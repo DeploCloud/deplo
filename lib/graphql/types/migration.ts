@@ -19,6 +19,7 @@ import {
   type MigrationPlan,
   finishMigration,
   getMigrationRun,
+  handOverMigrationSources,
   importMigrationMembers,
   importMigrationProject,
   type ImportItemDTO,
@@ -824,6 +825,14 @@ builder.mutationFields((t) => ({
       "Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and the source is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.",
     args: { runId: t.arg.string({ required: true }) },
     resolve: (_r, { runId }) => revertMigration(runId),
+  }),
+  handOverMigrationSources: t.field({
+    type: "Int",
+    authScopes: { capability: "create_projects" },
+    description:
+      "Point a migration at another team: the machines Deplo installed its agent on to READ the panel are granted to the team it now lands in. Called right after switching, since every lookup that reads a source is team-scoped. Refused while a run is in flight in the team being left. Returns how many machines moved.",
+    args: { fromTeamId: t.arg.string({ required: true }) },
+    resolve: (_r, { fromTeamId }) => handOverMigrationSources(fromTeamId),
   }),
   abandonMigration: t.field({
     type: "Int",
