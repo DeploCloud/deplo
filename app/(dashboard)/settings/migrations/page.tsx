@@ -8,6 +8,7 @@ import { getTeamIdentity } from "@/lib/data/teams";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import {
   listMigrationRuns,
+  listMigrationTargetTeams,
   resumableMigration,
 } from "@/lib/data/migration-import";
 import { PageHeader } from "@/components/shared/page-header";
@@ -31,23 +32,34 @@ export default async function SettingsMigrationsPage() {
       />
     );
 
-  const [team, servers, buildServers, runs, resumable, admin, mayExposePorts] =
-    await Promise.all([
-      getTeamIdentity(),
-      listServerChoices(),
-      // A second, wider list: a build-only host cannot RUN anything, which is
-      // exactly why it belongs in the other column.
-      listBuildServerChoices(),
-      listMigrationRuns(),
-      // The run to open on, if any: the team's one in flight, or one this person has not
-      // closed the report of.
-      resumableMigration(),
-      isInstanceAdmin(),
-      // A migrated database keeps the host port it had over there, and that is a
-      // published port like any other - so the review only offers to sort one out
-      // for somebody who could publish it.
-      canExposePorts(),
-    ]);
+  const [
+    team,
+    targetTeams,
+    servers,
+    buildServers,
+    runs,
+    resumable,
+    admin,
+    mayExposePorts,
+  ] = await Promise.all([
+    getTeamIdentity(),
+    // Where else this migration could land: the other teams this person may
+    // create projects in, offered on the review step.
+    listMigrationTargetTeams(),
+    listServerChoices(),
+    // A second, wider list: a build-only host cannot RUN anything, which is
+    // exactly why it belongs in the other column.
+    listBuildServerChoices(),
+    listMigrationRuns(),
+    // The run to open on, if any: the team's one in flight, or one this person has not
+    // closed the report of.
+    resumableMigration(),
+    isInstanceAdmin(),
+    // A migrated database keeps the host port it had over there, and that is a
+    // published port like any other - so the review only offers to sort one out
+    // for somebody who could publish it.
+    canExposePorts(),
+  ]);
 
   return (
     <div className="space-y-3">
@@ -65,6 +77,7 @@ export default async function SettingsMigrationsPage() {
         teamId={team.id}
         teamName={team.name}
         teamAvatarUrl={team.avatarUrl}
+        targetTeams={targetTeams}
         servers={servers}
         buildServers={buildServers}
         runs={runs}

@@ -141,6 +141,13 @@ export interface RevertResult {
   failed: string[];
 }
 
+/** A team the migration could land in - the viewer may create projects in each. */
+export interface TargetTeam {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 /** A server a picker offers. `isDeploHost` marks the machine Deplo itself runs on. */
 export interface ServerChoice {
   id: string;

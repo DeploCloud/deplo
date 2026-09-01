@@ -42,6 +42,10 @@ import {
   USER_1,
 } from "./identity-test-helpers";
 import {
+  memberships as membershipsTable,
+  membershipCapabilities as membershipCapsTable,
+} from "../db/schema/control-plane";
+import {
   seedApp,
   seedServer,
   SERVER_1,
@@ -69,6 +73,7 @@ import {
   drainMigrationSourceUninstalls,
   finishMigration,
   importMigrationMembers,
+  listMigrationTargetTeams,
   sweepFinishedMigrationMarks,
   undoMigration,
   getMigrationRun,
@@ -2767,5 +2772,49 @@ test("a member is listed by their own name, not by their address", async () => {
   assert.deepEqual(
     plan.members.map((m) => `${m.name}/${m.sourceRole}`),
     ["Ada Lovelace/admin", "grace/member"],
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Where it lands                                                      */
+/* ------------------------------------------------------------------ */
+
+test("the teams offered are the ones that person may migrate INTO", async () => {
+  // Both users are in team B as well; only one may create projects there. The
+  // review offers a team it could then be refused in - and switching into it
+  // would leave the wizard on "outside your access", scan and all.
+  await db.insert(membershipsTable).values([
+    {
+      id: "mem_1_b",
+      userId: USER_1,
+      teamId: TEAM_B,
+      role: "member",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: "mem_3_b",
+      userId: USER_3,
+      teamId: TEAM_B,
+      role: "member",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+  await db.insert(membershipCapsTable).values([
+    { membershipId: "mem_1_b", capability: "view" },
+    { membershipId: "mem_1_b", capability: "create_projects" },
+    { membershipId: "mem_3_b", capability: "view" },
+  ]);
+
+  assert.deepEqual(
+    (await asOwner(() => listMigrationTargetTeams())).map((t) => t.id),
+    [TEAM_A, TEAM_B],
+  );
+  assert.deepEqual(
+    (
+      await runWithIdentity({ userId: USER_3, teamId: TEAM_A }, () =>
+        listMigrationTargetTeams(),
+      )
+    ).map((t) => t.id),
+    [TEAM_A],
   );
 });

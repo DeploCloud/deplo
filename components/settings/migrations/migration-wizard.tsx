@@ -57,6 +57,7 @@ import {
   type Placement,
   type Plan,
   type ServerChoice,
+  type TargetTeam,
 } from "./types";
 
 /**
@@ -191,6 +192,12 @@ const STOP = /* GraphQL */ `
   }
 `;
 
+const SWITCH_TEAM = /* GraphQL */ `
+  mutation SwitchTeam($teamId: String!) {
+    switchTeam(teamId: $teamId)
+  }
+`;
+
 /**
  * Sent on the way out of an unfinished wizard - from a click on the sidebar and
  * from the tab closing alike, which is why it is fired as a bare `fetch` with
@@ -262,6 +269,44 @@ function asActive(run: ImportRun): ActiveMigration {
   };
 }
 
+/**
+ * Where each service lands unless somebody says otherwise: the Deplo server that IS
+ * the machine it runs on, matched by address. Staying put is what moving twenty-five
+ * services means by "import"; re-picking the host on each is a chore, not a choice.
+ */
+function landingDefaults(
+  scanned: Plan,
+  servers: ServerChoice[],
+): { placements: Record<string, Placement>; servers: Record<string, string> } {
+  const home = (servers.find((s) => s.isDeploHost) ?? servers[0])?.id;
+  if (!home) return { placements: {}, servers: {} };
+  const runnable = new Set(servers.map((s) => s.id));
+  const byMachine = new Map(
+    scanned.servers.map((m) => [
+      m.sourceId,
+      m.deploServerId && runnable.has(m.deploServerId) ? m.deploServerId : home,
+    ]),
+  );
+  const landingFor = (sourceServerId: string) =>
+    byMachine.get(sourceServerId) ?? home;
+  return {
+    placements: Object.fromEntries(
+      scanned.projects.flatMap((p) =>
+        importableOf(p).map((svc) => [
+          svc.sourceId,
+          { serverId: landingFor(svc.sourceServerId), buildServerId: null },
+        ]),
+      ),
+    ),
+    // Only where its apps LAND: where the data is READ from is derived
+    // server-side from the machine's address, never from this map.
+    servers: Object.fromEntries([
+      [OWN_HOST, landingFor(OWN_HOST)],
+      ...scanned.servers.map((s) => [s.sourceId, landingFor(s.sourceId)]),
+    ]),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -270,6 +315,7 @@ export function MigrationWizard({
   teamId,
   teamName,
   teamAvatarUrl,
+  targetTeams,
   servers,
   buildServers,
   isInstanceAdmin,
@@ -279,6 +325,8 @@ export function MigrationWizard({
   teamId: string;
   teamName: string;
   teamAvatarUrl: string | null;
+  /** Every team this migration could land in, this one included. */
+  targetTeams: TargetTeam[];
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   isInstanceAdmin: boolean;
@@ -343,6 +391,9 @@ export function MigrationWizard({
   const [adoptedId, setAdoptedId] = React.useState<string | null>(null);
   const [logOpen, setLogOpen] = React.useState(false);
 
+  /** A team change is in flight, plan and all - see `retargetTeam`. */
+  const [retargeting, setRetargeting] = React.useState(false);
+
   const [invites, setInvites] = React.useState<Invite[] | null>(null);
   const [inviting, setInviting] = React.useState(false);
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
@@ -406,48 +457,53 @@ export function MigrationWizard({
         ),
       ),
     );
-    // A service lands on the Deplo server that IS the Dokploy machine it runs on,
-    // whenever the scan matched one by address - staying put is what somebody moving
-    // twenty-five services means by "import", and re-picking the host on twenty-five
-    // dropdowns is not a choice, it is a chore.
-    const home = (servers.find((s) => s.isDeploHost) ?? servers[0])?.id;
-    const runnable = new Set(servers.map((s) => s.id));
-    const byMachine = new Map(
-      scanned.servers.map((m) => [
-        m.sourceId,
-        m.deploServerId && runnable.has(m.deploServerId)
-          ? m.deploServerId
-          : home,
-      ]),
-    );
-    const landingFor = (sourceServerId: string) =>
-      byMachine.get(sourceServerId) ?? home;
-    if (home) {
-      setPlacements(
-        Object.fromEntries(
-          scanned.projects.flatMap((p) =>
-            importableOf(p).map((svc) => [
-              svc.sourceId,
-              { serverId: landingFor(svc.sourceServerId), buildServerId: null },
-            ]),
-          ),
-        ),
-      );
-      // The same default for a service whose placement was never touched: which of our
-      // servers its apps LAND on. It is only that - where the data is READ from is
-      // derived server-side from the machine's address, never from this map.
-      setServerMap(
-        Object.fromEntries([
-          [OWN_HOST, landingFor(OWN_HOST)],
-          ...scanned.servers.map((s) => [s.sourceId, landingFor(s.sourceId)]),
-        ]),
-      );
-    }
+    const defaults = landingDefaults(scanned, servers);
+    setPlacements(defaults.placements);
+    setServerMap(defaults.servers);
     // Straight on to Install, which is where "can Deplo reach every machine
     // behind this" gets answered - and which ends itself either way, so nobody
     // whose machines are already ours has a screen to click through.
     setStep("install");
   }
+
+  /**
+   * Land somewhere else. The import runs as this person in whatever team is active,
+   * so the target IS the active team - and the plan is read again under it: "already
+   * here" and the domain notes are answers about a team, the ticks are not.
+   */
+  const retargetTeam = React.useCallback(
+    /** Null when the team is already switched - creating one switches into it. */
+    async (nextTeamId: string | null) => {
+      setRetargeting(true);
+      if (nextTeamId) {
+        const switched = await gqlAction(SWITCH_TEAM, { teamId: nextTeamId });
+        if (!switched.ok) {
+          setRetargeting(false);
+          toast.error(switched.error);
+          return;
+        }
+      }
+      router.refresh();
+      const again = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
+        SCAN,
+        { input: connectInput },
+        (d) => d.scanMigrationSource,
+      );
+      setRetargeting(false);
+      if (!again.ok) {
+        toast.error(again.error);
+        return;
+      }
+      if (!again.data) return;
+      setPlan(again.data);
+      const defaults = landingDefaults(again.data, servers);
+      // What was already chosen wins: a service the source has grown since the
+      // first scan gets a default, nobody's review gets thrown away.
+      setPlacements((prev) => ({ ...defaults.placements, ...prev }));
+      setServerMap((prev) => ({ ...defaults.servers, ...prev }));
+    },
+    [connectInput, router, servers],
+  );
 
   /* ---- the move itself ---------------------------------------------- */
 
@@ -953,8 +1009,12 @@ export function MigrationWizard({
                   <ReviewStep
                     kind={kind}
                     plan={plan}
+                    teamId={teamId}
                     teamName={teamName}
                     teamAvatarUrl={teamAvatarUrl}
+                    targetTeams={targetTeams}
+                    retargeting={retargeting}
+                    onRetarget={(id) => void retargetTeam(id)}
                     chosen={chosen}
                     setChosen={setChosen}
                     servers={servers}

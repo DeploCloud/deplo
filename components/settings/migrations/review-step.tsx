@@ -1,15 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { Layers, Server as ServerIcon, TriangleAlert } from "lucide-react";
+import {
+  Layers,
+  Loader2,
+  Server as ServerIcon,
+  TriangleAlert,
+} from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { TeamTargetGraphic } from "./team-target-graphic";
+import { TargetTeamDialog } from "./target-team-dialog";
 import { MigrationTree, type PortConflict } from "./migration-tree";
 import { StepShell } from "./step-shell";
 import { copyFor, type SourceKind, stepDocs } from "./sources";
@@ -19,6 +26,7 @@ import {
   type Plan,
   type PortCheck,
   type ServerChoice,
+  type TargetTeam,
 } from "./types";
 
 const PORTS_IN_USE = /* GraphQL */ `
@@ -275,8 +283,12 @@ function usePortConflicts({
 export function ReviewStep({
   kind,
   plan,
+  teamId,
   teamName,
   teamAvatarUrl,
+  targetTeams,
+  retargeting,
+  onRetarget,
   chosen,
   setChosen,
   servers,
@@ -292,8 +304,15 @@ export function ReviewStep({
   kind: SourceKind | null;
   plan: Plan;
   /** The active team, named in the card at the top: everything lands there. */
+  teamId: string;
   teamName: string;
   teamAvatarUrl: string | null;
+  /** Where else it could land - every team this person may create projects in. */
+  targetTeams: TargetTeam[];
+  /** A team change is in flight: the plan is being read again under it. */
+  retargeting: boolean;
+  /** Null when the team is already switched, as creating one does. */
+  onRetarget: (teamId: string | null) => void;
   chosen: Set<string>;
   setChosen: (v: Set<string>) => void;
   servers: ServerChoice[];
@@ -309,6 +328,7 @@ export function ReviewStep({
   onStart: () => void;
 }) {
   const [newTeamOpen, setNewTeamOpen] = React.useState(false);
+  const [pickTeamOpen, setPickTeamOpen] = React.useState(false);
   const ports = usePortConflicts({
     plan,
     placements,
@@ -366,23 +386,31 @@ export function ReviewStep({
           description={`That ${copyFor(kind).name} has no projects, or the token cannot see them.`}
         />
       ) : (
-        <MigrationTree
-          projects={plan.projects}
-          chosen={chosen}
-          onChange={setChosen}
-          servers={servers}
-          buildServers={buildServers}
-          placements={placements}
-          onPlacementsChange={setPlacements}
-          portConflicts={ports.conflicts}
-          showPorts={canExposePorts}
-          allChosen={allChosen}
-          onToggleAll={() =>
-            setChosen(
-              allChosen ? new Set() : new Set(pickable.map((s) => s.sourceId)),
-            )
-          }
-        />
+        <div
+          className={cn(
+            retargeting && "pointer-events-none opacity-50 transition-opacity",
+          )}
+        >
+          <MigrationTree
+            projects={plan.projects}
+            chosen={chosen}
+            onChange={setChosen}
+            servers={servers}
+            buildServers={buildServers}
+            placements={placements}
+            onPlacementsChange={setPlacements}
+            portConflicts={ports.conflicts}
+            showPorts={canExposePorts}
+            allChosen={allChosen}
+            onToggleAll={() =>
+              setChosen(
+                allChosen
+                  ? new Set()
+                  : new Set(pickable.map((s) => s.sourceId)),
+              )
+            }
+          />
+        </div>
       )}
 
       {/**
@@ -399,13 +427,24 @@ export function ReviewStep({
               <TeamAvatar name={teamName} avatarUrl={teamAvatarUrl} size="sm" />
               {teamName}
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Apps, databases and the variables that go with them.
-            </p>
+            {retargeting ? (
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                Re-checking what is already there
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Apps, databases and the variables that go with them.
+              </p>
+            )}
           </div>
-          {isInstanceAdmin && (
-            <Button variant="secondary" onClick={() => setNewTeamOpen(true)}>
-              Create a new team
+          {(targetTeams.length > 1 || isInstanceAdmin) && (
+            <Button
+              variant="secondary"
+              disabled={retargeting}
+              onClick={() => setPickTeamOpen(true)}
+            >
+              Select another
             </Button>
           )}
         </div>
@@ -429,6 +468,16 @@ export function ReviewStep({
           </div>
         )}
       </div>
+      <TargetTeamDialog
+        open={pickTeamOpen}
+        onOpenChange={setPickTeamOpen}
+        teams={targetTeams}
+        activeId={teamId}
+        canCreate={isInstanceAdmin}
+        onSelect={(id) => onRetarget(id)}
+        onCreate={() => setNewTeamOpen(true)}
+      />
+
       {isInstanceAdmin && (
         // `redirect={false}`: creating a team switches you into it, and the
         // dialog's usual trip to the overview would throw away the scan, the
@@ -437,6 +486,7 @@ export function ReviewStep({
           open={newTeamOpen}
           onOpenChange={setNewTeamOpen}
           redirect={false}
+          onCreated={() => onRetarget(null)}
         />
       )}
 
@@ -446,7 +496,12 @@ export function ReviewStep({
         </Button>
         <Button
           onClick={onStart}
-          disabled={chosen.size === 0 || servers.length === 0 || ports.blocked}
+          disabled={
+            chosen.size === 0 ||
+            servers.length === 0 ||
+            ports.blocked ||
+            retargeting
+          }
         >
           Move it over
         </Button>

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/tabs";
 import { MigrationWizard } from "./migration-wizard";
 import { MigrationsHistory } from "./migrations-history";
-import type { ImportRun, ServerChoice } from "./types";
+import type { ImportRun, ServerChoice, TargetTeam } from "./types";
 
 /**
  * The two halves of the migrations page: bringing a platform over, and what has
@@ -26,6 +26,7 @@ export function MigrationsTabs({
   teamId,
   teamName,
   teamAvatarUrl,
+  targetTeams,
   servers,
   buildServers,
   runs,
@@ -36,6 +37,8 @@ export function MigrationsTabs({
   teamId: string;
   teamName: string;
   teamAvatarUrl: string | null;
+  /** Every team the migration could land in, the active one included. */
+  targetTeams: TargetTeam[];
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   runs: ImportRun[];
@@ -95,6 +98,7 @@ export function MigrationsTabs({
           teamId={teamId}
           teamName={teamName}
           teamAvatarUrl={teamAvatarUrl}
+          targetTeams={targetTeams}
           servers={servers}
           buildServers={buildServers}
           isInstanceAdmin={isInstanceAdmin}

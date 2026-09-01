@@ -39,10 +39,12 @@ import {
   canExposePorts,
   canMountHostVolumes,
   hasCapability,
+  holdsTeamWideCapability,
   requireActiveTeamId,
   requireCapability,
   requireInstanceAdmin,
   requireTeamWide,
+  teamsForUser,
 } from "../membership";
 import { assertSafeOutboundUrl } from "../outbound-url";
 import {
@@ -372,6 +374,25 @@ export async function assertImportGate(): Promise<{ teamId: string }> {
   await requireTeamWide("import from another platform");
   const { teamId } = await requireCapability("create_projects");
   return { teamId };
+}
+
+/**
+ * The teams a migration may land in: the viewer's own, minus the ones where they
+ * do not hold `create_projects` across the WHOLE team - the same bar this page
+ * itself is gated on, so switching into one never lands on "outside your access".
+ */
+export async function listMigrationTargetTeams(): Promise<
+  { id: string; name: string; avatarUrl: string | null }[]
+> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const teams = await teamsForUser(user.id);
+  const allowed = await Promise.all(
+    teams.map((t) => holdsTeamWideCapability(t.id, "create_projects")),
+  );
+  return teams
+    .filter((_, i) => allowed[i])
+    .map((t) => ({ id: t.id, name: t.name, avatarUrl: t.avatarUrl }));
 }
 
 /**
