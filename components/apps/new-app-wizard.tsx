@@ -629,7 +629,7 @@ export function NewAppWizard({
         );
         if (dep.ok && dep.data) {
           toast.success("Deployment started");
-          router.push(`/apps/${app.slug}/deployments/${dep.data.id}?created=1`);
+          router.push(`/apps/${app.slug}/deployments/${dep.data.id}`);
         } else {
           // The archive is stored; only the deploy kick-off failed.
           if (!dep.ok) toast.error(dep.error);
@@ -648,7 +648,7 @@ export function NewAppWizard({
       );
       router.push(
         firstDeploymentId
-          ? `/apps/${app.slug}/deployments/${firstDeploymentId}?created=1`
+          ? `/apps/${app.slug}/deployments/${firstDeploymentId}`
           : `/apps/${app.slug}`,
       );
     });
