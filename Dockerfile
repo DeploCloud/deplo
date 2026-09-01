@@ -76,7 +76,7 @@ RUN curl -sSL https://nixpacks.com/install.sh | bash \
  && nixpacks --version
 
 RUN addgroup -g 1001 -S nodejs \
- && adduser -S Deplo -u 1001 \
+ && adduser -S deplo -u 1001 \
  && mkdir -p /data && chown deplo:nodejs /data
 
 COPY --from=builder /app/.next/standalone ./
