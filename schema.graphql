@@ -923,6 +923,26 @@ type ContainerMetricsSample {
   ts: Float
 }
 
+input CreateAppFromTemplateInput {
+  """
+  Request the first deployment. Defaults to false; a token also needs deploy_apps.
+  """
+  deploy: Boolean
+  environmentId: String
+  folderId: String
+
+  """The new App name. Omitted uses the template name."""
+  name: String
+  projectId: String
+  serverId: String
+
+  """The catalog template slug from templateVariants."""
+  templateSlug: String!
+
+  """The variant slug. Omitted uses the "default" variant."""
+  variantSlug: String
+}
+
 input CreateAppInput {
   autoDeploy: Boolean
   autoDomain: String
@@ -2774,6 +2794,7 @@ type Mutation {
   """
   connectGitProvider(input: ConnectGitProviderInput!): GitConnection
   createApp(input: CreateAppInput!): App
+  createAppFromTemplate(input: CreateAppFromTemplateInput!): App
 
   """Create a backup schedule. Returns true."""
   createBackup(input: CreateBackupInput!): Boolean
@@ -4315,6 +4336,17 @@ type Query {
   """Every role of the active team - defaults first, then the team's own."""
   teamRoles: [TeamRole!]
 
+  """List the compact deployable variants in the public template catalog."""
+  templateVariants(
+    """Filter by the category slug."""
+    category: String
+
+    """
+    Keep variants whose template, variant, category or description matches.
+    """
+    q: String
+  ): [TemplateVariantSummary!]
+
   """
   Check the upstream repository for a newer Deplo release; cached for an hour.
   """
@@ -5337,6 +5369,17 @@ type TeamRole {
   Where in the team this role reaches. Null means the whole of it, which is every role until one is limited. A scoped role also loses every capability that only means something team-wide.
   """
   scope: RoleScope
+}
+
+"""A compact, deployable variant from the public template catalog."""
+type TemplateVariantSummary {
+  category: String
+  docsUrl: String
+  name: String
+  shortDescription: String
+  templateSlug: String
+  variantName: String
+  variantSlug: String
 }
 
 """
