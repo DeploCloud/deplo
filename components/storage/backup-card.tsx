@@ -14,7 +14,8 @@ import {
 } from "@/components/storage/backup-actions";
 import { BackupTarget, targetHref } from "@/components/storage/backup-target";
 import { OverlayLink } from "@/components/shared/overlay-link";
-import { formatBytes, timeAgo } from "@/lib/utils";
+import { formatBytes } from "@/lib/utils";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 const OUTCOME: Record<string, string> = {
   success: "Succeeded",
@@ -97,7 +98,14 @@ export function BackupCard({
                 <StatusDot status={backup.lastStatus} />
                 <span>
                   {OUTCOME[backup.lastStatus] ?? backup.lastStatus}
-                  {backup.lastRunAt ? ` ${timeAgo(backup.lastRunAt)}` : ""}
+                  {backup.lastRunAt ? (
+                    <>
+                      {" "}
+                      <TimeAgo at={backup.lastRunAt} />
+                    </>
+                  ) : (
+                    ""
+                  )}
                 </span>
                 {/* Only next to a success: the newest artifact's size beside
                   "Failed" would read as the size of the run that failed. */}

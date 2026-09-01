@@ -12,8 +12,9 @@ import { getToken, listScopeTree } from "@/lib/data/tokens";
 import { PageHeader } from "@/components/shared/page-header";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
-import { timeAgo } from "@/lib/utils";
+
 import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 export async function generateMetadata(
   props: PageProps<"/settings/tokens/[id]">,
@@ -64,7 +65,7 @@ export default async function TokenPage(
             <>
               <code className="font-mono">{`${token.prefix}${"•".repeat(8)}`}</code>
               {" · created "}
-              {timeAgo(token.createdAt)}
+              <TimeAgo at={token.createdAt} />
               {token.createdByUsername ? (
                 <>
                   {" by "}
@@ -81,9 +82,13 @@ export default async function TokenPage(
                 ""
               )}
               {" · "}
-              {token.lastUsedAt
-                ? `last used ${timeAgo(token.lastUsedAt)}`
-                : "never used"}
+              {token.lastUsedAt ? (
+                <>
+                  last used <TimeAgo at={token.lastUsedAt} />
+                </>
+              ) : (
+                "never used"
+              )}
             </>
           }
         />

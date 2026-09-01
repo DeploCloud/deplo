@@ -43,15 +43,11 @@ import {
 } from "@/components/apps/app-live-status";
 import { AppStatusDot } from "@/components/apps/app-status-dot";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
-import {
-  appTypeLabel,
-  cn,
-  repoCredentialMissing,
-  timeAgoShort,
-} from "@/lib/utils";
+import { appTypeLabel, cn, repoCredentialMissing } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppSummary } from "@/lib/data/apps";
 import type { AppStatus, Capability } from "@/lib/types";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 /**
  * The menu-primitive set used to render the card's action list once and reuse it
@@ -629,7 +625,7 @@ export function AppCard({
           {dep ? (
             <div className="hidden items-center gap-2 text-xs text-muted-foreground md:flex">
               <span className="whitespace-nowrap">
-                {timeAgoShort(dep.createdAt)}
+                <TimeAgo at={dep.createdAt} short />
               </span>
               {/* Branch only for a git deploy - compose/image/upload have none. */}
               {project.repo && (
@@ -700,7 +696,9 @@ export function AppCard({
                 </span>
               </div>
               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="shrink-0">{timeAgoShort(dep.createdAt)}</span>
+                <span className="shrink-0">
+                  <TimeAgo at={dep.createdAt} short />
+                </span>
                 {project.repo ? (
                   // Git deploy: real branch + repo on the same line.
                   <>

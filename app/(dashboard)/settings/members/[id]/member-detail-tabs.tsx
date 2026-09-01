@@ -47,7 +47,7 @@ import {
   sameCapabilities,
 } from "@/lib/membership-shared";
 import { ALL_CAPABILITIES, type Activity, type Capability } from "@/lib/types";
-import { timeAgo } from "@/lib/utils";
+
 import {
   ActivityTimeline,
   toActivityItem,
@@ -57,6 +57,7 @@ import type { TeamRoleDTO } from "@/lib/data/roles";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
 import type { UserTeamAccessDTO } from "@/lib/data/user-access";
 import { titleClass } from "@/components/shared/page-header";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 /**
  * Everything about one member OF THIS TEAM, in one place: their role, where they
@@ -308,7 +309,7 @@ export function MemberDetailTabs({
               {member.name && member.name !== member.username
                 ? `${member.name} · `
                 : ""}
-              joined {timeAgo(member.createdAt)}
+              joined <TimeAgo at={member.createdAt} />
             </p>
           </div>
           {/* The account is instance-wide, so it is edited where every account

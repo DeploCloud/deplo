@@ -37,6 +37,7 @@ import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
 import { scopeLabel } from "@/components/settings/tokens/scope-label";
 import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
 import type { ApiTokenDTO } from "@/lib/data/tokens";
+import { useNow } from "@/components/shared/time-ago";
 
 /**
  * Your API tokens, and the ones that can act in the active team.
@@ -54,6 +55,7 @@ export function TokensList({
   activeTeamId: string;
   canManage: boolean;
 }) {
+  useNow();
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<ApiTokenDTO | null>(null);
   // A revoked token leaves the table on the click: the row is gone server-side

@@ -8,13 +8,14 @@ import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
 import { MONTH_SHORT } from "@/lib/activity-filter";
-import { cn, gitProfileUrl, timeAgoShort } from "@/lib/utils";
+import { cn, gitProfileUrl } from "@/lib/utils";
 import type {
   Activity,
   ActivityType,
   DatabaseType,
   VarAuthor,
 } from "@/lib/types";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 /** One row of the trail, trimmed to what the timeline draws. */
 export interface ActivityItem {
@@ -273,7 +274,7 @@ export function ActivityRow({
         // The server and the browser render this a moment apart.
         suppressHydrationWarning
       >
-        {timeAgoShort(item.createdAt)}
+        <TimeAgo at={item.createdAt} short />
       </time>
       {(many || !stampAtEnd) && (
         <span className="text-xs text-muted-foreground">

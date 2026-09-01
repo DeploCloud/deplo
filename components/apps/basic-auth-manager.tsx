@@ -47,9 +47,10 @@ import {
 } from "@/components/shared/pending-create";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
-import { timeAgo } from "@/lib/utils";
+
 import { generatePassword } from "@/lib/password-policy";
 import type { BasicAuthUserDTO } from "@/lib/data/basic-auth";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 /**
  * One credential as the shared variables toolbar sees it. `key` is that
@@ -334,11 +335,10 @@ function MetaRow({
         {label}
       </span>
       <EnvAuthorCell author={author} />
-      <SimpleTooltip content={new Date(at).toLocaleString()}>
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-          {timeAgo(at)}
-        </span>
-      </SimpleTooltip>
+      <TimeAgo
+        at={at}
+        className="ml-auto shrink-0 text-xs text-muted-foreground"
+      />
     </div>
   );
 }

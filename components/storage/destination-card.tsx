@@ -28,6 +28,7 @@ import {
   type DestinationCardView,
 } from "@/components/storage/destination-actions";
 import { cn, timeAgo } from "@/lib/utils";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 export function DestinationCard({
   dest,
@@ -135,7 +136,7 @@ export function DestinationCard({
             <Row label={isServer ? "Measured" : "Tested"}>
               <span className="flex min-w-0 items-center gap-1">
                 <span className="truncate">
-                  {dest.lastTestAt ? timeAgo(dest.lastTestAt) : "Never"}
+                  {dest.lastTestAt ? <TimeAgo at={dest.lastTestAt} /> : "Never"}
                 </span>
                 {canManage && (
                   <SimpleTooltip content="Test this destination and measure it again">
@@ -155,7 +156,9 @@ export function DestinationCard({
                 )}
               </span>
             </Row>
-            <Row label="Added">{timeAgo(dest.createdAt)}</Row>
+            <Row label="Added">
+              <TimeAgo at={dest.createdAt} />
+            </Row>
           </dl>
 
           {/**

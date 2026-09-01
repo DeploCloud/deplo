@@ -22,8 +22,9 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { DeviceMark } from "@/components/shared/device-brand";
 import { titleClass } from "@/components/shared/page-header";
 import { gqlAction } from "@/lib/graphql-client";
-import { timeAgo } from "@/lib/utils";
+
 import type { UserSessionDTO } from "@/lib/data/sessions";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 /**
  * Every device signed in to this account, with a way to end any of them. The one
@@ -171,10 +172,10 @@ export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
                     {s.ipAddress ?? "Unknown"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {timeAgo(s.lastSeenAt)}
+                    <TimeAgo at={s.lastSeenAt} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {timeAgo(s.createdAt)}
+                    <TimeAgo at={s.createdAt} />
                   </TableCell>
                   <TableCell className="text-right">
                     <ConfirmAction
@@ -216,7 +217,7 @@ function ThisDevice({ session }: { session: UserSessionDTO }) {
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
           {session.ipAddress ? `${session.ipAddress} · ` : ""}
-          signed in {timeAgo(session.createdAt)}
+          signed in <TimeAgo at={session.createdAt} />
         </p>
       </div>
     </div>

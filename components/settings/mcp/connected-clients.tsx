@@ -13,6 +13,7 @@ import { RobotGraphic } from "./robot-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { McpConnectionDTO } from "@/lib/data/mcp-clients";
+import { useNow } from "@/components/shared/time-ago";
 
 /**
  * Everything that can act in this team over MCP. Two kinds in one list, because
@@ -26,6 +27,7 @@ export function ConnectedClients({
   connections: McpConnectionDTO[];
   canManage: boolean;
 }) {
+  useNow();
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<McpConnectionDTO | null>(null);
   // The client leaves the list on the click - its credential is already gone by

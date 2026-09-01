@@ -41,8 +41,9 @@ import { Switch } from "@/components/ui/switch";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
 import { gqlAction } from "@/lib/graphql-client";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { UserDetailDTO } from "@/lib/data/members";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 /* ------------------------------------------------------------------ */
 /* Instance-wide user editor (shared)                                  */
@@ -415,7 +416,7 @@ export function UserAccountSettings({
             <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3">
               <Meta
                 label="Joined"
-                value={createdAt ? timeAgo(createdAt) : "—"}
+                value={createdAt ? <TimeAgo at={createdAt} /> : "—"}
               />
               <Meta label="Teams" value={String(teamCount)} />
               <Meta label="Sign-in" value={suspended ? "Blocked" : "Allowed"} />
@@ -872,7 +873,7 @@ function TextLine({ box, bar }: { box: string; bar: string }) {
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>

@@ -27,12 +27,12 @@ import {
   githubPullRequestUrl,
   gitProfileUrl,
   repoCommitUrl,
-  timeAgo,
 } from "@/lib/utils";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
 import { RollbackButton } from "@/components/apps/rollback-deployment";
 import { FirstDeployCelebration } from "@/components/apps/first-deploy-celebration";
+import { TimeAgo } from "@/components/shared/time-ago";
 
 export const metadata = { title: "Deployment" };
 
@@ -133,7 +133,9 @@ export default async function DeploymentDetailPage(
                 and "by" lost its space against the name whenever the avatar in
                 between was not rendered. */}
             <span className="flex items-center gap-1.5 text-sm">
-              <span>{timeAgo(deployment.createdAt)} by</span>
+              <span>
+                <TimeAgo at={deployment.createdAt} /> by
+              </span>
               <DeploymentCreator
                 creator={deployment.creator}
                 creatorUser={deployment.creatorUser}
