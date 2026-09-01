@@ -9,6 +9,7 @@ import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
   registrationLinks as registrationLinksTable,
+  teams as teamsTable,
   users as usersTable,
   instanceSettings as instanceSettingsTable,
 } from "./db/schema/control-plane";
@@ -16,7 +17,12 @@ import { account as accountTable } from "./db/schema/auth";
 import { eq } from "drizzle-orm";
 import { verifyPassword } from "./crypto";
 import { runWithIdentity } from "./auth/request-context";
-import { createAccountWithTeam, createAccountWithTeams, login } from "./auth";
+import {
+  completeSetup,
+  createAccountWithTeam,
+  createAccountWithTeams,
+  login,
+} from "./auth";
 import { consumeRegistrationLink } from "./data/members";
 import { changePassword } from "./data/account";
 import {
@@ -450,4 +456,50 @@ test("first-run setup: a second owner claim after one succeeds is refused", asyn
     /already been completed/,
   );
   assert.equal((await db.select().from(usersTable)).length, 1);
+});
+
+/** A one-pixel PNG, shaped the way the picker stores one. */
+const PICTURE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
+
+const WIZARD = {
+  teamName: "Acme",
+  name: "Ada Lovelace",
+  email: "ada@acme.io",
+  password: "Passw0rd!1",
+};
+
+const FIRST_RUN = { isInstanceAdmin: true, isInstanceOwner: true };
+
+test("first-run setup: the handle is derived from the name", async () => {
+  const { user } = await createAccountWithTeam(WIZARD, FIRST_RUN);
+  assert.equal(user.username, "ada-lovelace");
+});
+
+test("first-run setup: a hand-edited handle wins over the derived one", async () => {
+  const { user } = await createAccountWithTeam(
+    { ...WIZARD, username: "ada" },
+    FIRST_RUN,
+  );
+  assert.equal(user.username, "ada");
+});
+
+test("first-run setup: both pictures are stored", async () => {
+  await createAccountWithTeam(
+    { ...WIZARD, image: PICTURE, teamImage: PICTURE },
+    FIRST_RUN,
+  );
+  const [row] = await db.select().from(usersTable);
+  assert.equal(row!.image, PICTURE);
+  const [team] = await db.select().from(teamsTable);
+  assert.equal(team!.image, PICTURE);
+});
+
+test("first-run setup: a picture that is not an image data-URI is refused", async () => {
+  const res = await completeSetup({
+    ...WIZARD,
+    image: "https://elsewhere.example/ada.png",
+  });
+  assert.equal(res.ok, false);
+  assert.match(res.error ?? "", /profile picture/);
+  assert.equal((await db.select().from(usersTable)).length, 0);
 });

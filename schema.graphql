@@ -2762,7 +2762,7 @@ type Mutation {
   clearAppBuildCache(id: String!): App
 
   """First-run setup: create the first account + team. Signs in."""
-  completeSetup(email: String!, name: String!, password: String!, teamName: String!, username: String!): AuthPayload
+  completeSetup(email: String!, image: String, name: String!, password: String!, teamImage: String, teamName: String!, username: String): AuthPayload
 
   """
   Finish enrolment with the first code from the authenticator app. Turns two-factor on.

@@ -33,6 +33,7 @@ import {
 } from "@/lib/overview-links";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { PageHeader } from "@/components/shared/page-header";
+import { WelcomeCelebration } from "@/components/shared/welcome-celebration";
 import { NetworkSweepNotice } from "@/components/shared/network-sweep-notice";
 import { networkSweepFailures } from "@/lib/deploy/network-migration";
 import {
@@ -47,6 +48,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     folder: folderParam,
     project: projectParam,
     env: envParam,
+    welcome,
   } = await props.searchParams;
   const query = (Array.isArray(q) ? q[0] : q)?.toLowerCase() ?? "";
   const viewRaw = Array.isArray(viewParam) ? viewParam[0] : viewParam;
@@ -250,6 +252,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <WelcomeCelebration show={welcome === "1"} />
       {/* Drop a code archive anywhere here and it opens the wizard on Upload
           with the file already in hand. */}
       {canDeploy && (

@@ -25,6 +25,7 @@ export function AvatarPicker({
   hasImage,
   onSave,
   disabled,
+  quiet = false,
   label = "Change picture",
   children,
 }: {
@@ -35,6 +36,9 @@ export function AvatarPicker({
   hasImage: boolean;
   onSave: (image: string | null) => Promise<{ ok: boolean; error?: string }>;
   disabled?: boolean;
+  /** Held, not saved: skip the toast and the refresh - onboarding picks a
+   *  picture for an account that does not exist yet. */
+  quiet?: boolean;
   label?: string;
   /** What sits beside the picture. Remove lands under the picture itself. */
   children?: React.ReactNode;
@@ -50,6 +54,7 @@ export function AvatarPicker({
     startTransition(async () => {
       const res = await onSave(image);
       if (res.ok) {
+        if (quiet) return;
         toast.success(image ? "Picture updated" : "Picture removed");
         router.refresh();
       } else {

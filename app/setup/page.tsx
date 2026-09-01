@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { isSetupNeeded } from "@/lib/auth";
-import { DeploLogo } from "@/components/logo";
-import { SetupForm } from "@/components/auth/setup-form";
+import { OnboardingWizard } from "@/components/auth/onboarding-wizard";
 
 export const metadata = { title: "Set up Deplo" };
 
@@ -10,17 +9,11 @@ export default async function SetupPage() {
   if (!(await isSetupNeeded())) redirect("/login");
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center px-4">
+    <div className="relative grid min-h-dvh place-items-center px-4 py-10">
       <div className="deplo-grid-bg pointer-events-none absolute inset-0 opacity-[0.35]" />
-      <div className="relative z-10 w-full max-w-md">
-        <div className="mb-8 flex justify-center">
-          <DeploLogo className="text-base" />
-        </div>
-        <SetupForm />
+      <div className="relative z-10 flex w-full justify-center">
+        <OnboardingWizard />
       </div>
-      <p className="relative z-10 mt-8 text-center text-xs text-muted-foreground">
-        Deplo - self-hosted deployments with Docker &amp; Traefik
-      </p>
     </div>
   );
 }

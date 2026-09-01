@@ -22,7 +22,12 @@ import { avatarUrlFor } from "./avatar";
 import { AVATAR_COLORS } from "./avatar-colors";
 import type { Capability, PublicUser, Role, Team, User } from "./types";
 import { capabilitiesForRole, cleanCapabilities } from "./membership-shared";
-import { normalizeUsername, validateUsername } from "./username";
+import {
+  normalizeUsername,
+  uniqueUsername,
+  validateUsername,
+} from "./username";
+import { isValidAvatarValue } from "./apps/avatar-shared";
 import { newId } from "./ids";
 import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
@@ -129,7 +134,13 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
  */
 async function insertUserCore(
   tx: DbTx,
-  input: { username: string; name: string; email: string; password: string },
+  input: {
+    username: string;
+    name: string;
+    email: string;
+    password: string;
+    image?: string | null;
+  },
   opts: { isInstanceAdmin?: boolean; userRole?: string } = {},
 ): Promise<User> {
   const dup = await tx
@@ -170,6 +181,7 @@ async function insertUserCore(
     isInstanceAdmin: user.isInstanceAdmin ?? false,
     suspended: false,
     avatarColor: user.avatarColor,
+    image: input.image ?? null,
     createdAt: user.createdAt,
     updatedAt: now,
   });
@@ -193,11 +205,14 @@ async function insertUserCore(
  */
 export async function createAccountWithTeam(
   input: {
-    username: string;
+    /** Omitted by first-run setup, which derives the handle from the name. */
+    username?: string | null;
     name: string;
     email: string;
     password: string;
     teamName: string;
+    image?: string | null;
+    teamImage?: string | null;
   },
   opts: {
     guard?: (tx: DbTx) => Promise<void>;
@@ -205,7 +220,9 @@ export async function createAccountWithTeam(
     isInstanceOwner?: boolean;
   } = {},
 ): Promise<{ user: User; team: Team }> {
-  const username = normalizeUsername(input.username);
+  const username = input.username?.trim()
+    ? normalizeUsername(input.username)
+    : uniqueUsername(input.name, new Set());
   const usernameError = validateUsername(username);
   if (usernameError) throw new Error(usernameError);
 
@@ -223,6 +240,14 @@ export async function createAccountWithTeam(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "team";
 
+  // Data-URIs straight off a form: the same gate `updateMyAvatar` applies.
+  const image = input.image?.trim() || null;
+  if (image && !isValidAvatarValue(image))
+    throw new Error("Unsupported profile picture");
+  const teamImage = input.teamImage?.trim() || null;
+  if (teamImage && !isValidAvatarValue(teamImage))
+    throw new Error("Unsupported team picture");
+
   assertPasswordPolicy(input.password);
   await assertPasswordNotPwned(input.password);
 
@@ -236,7 +261,7 @@ export async function createAccountWithTeam(
 
     const user = await insertUserCore(
       tx,
-      { username, name, email, password: input.password },
+      { username, name, email, password: input.password, image },
       { isInstanceAdmin: opts.isInstanceAdmin, userRole: "owner" },
     );
 
@@ -279,7 +304,7 @@ export async function createAccountWithTeam(
       plan: "pro",
       // The registrant is the founder (absolute owner / "crown") of their team.
       founderUserId: user.id,
-      avatarUrl: null,
+      avatarUrl: teamImage,
       createdAt: now,
     };
     const membershipId = `mbr_${randomBytes(8).toString("hex")}`;
@@ -293,6 +318,7 @@ export async function createAccountWithTeam(
       slug: team.slug,
       plan: team.plan,
       founderUserId: team.founderUserId,
+      image: teamImage,
       createdAt: team.createdAt,
     });
     await tx.insert(membershipsTable).values({
@@ -804,11 +830,13 @@ export async function verifyPasskeyLogin(
  * the owner in.
  */
 export async function completeSetup(input: {
-  username: string;
+  username?: string | null;
   teamName: string;
   name: string;
   email: string;
   password: string;
+  image?: string | null;
+  teamImage?: string | null;
 }): Promise<{ ok: boolean; error?: string }> {
   const existing = (await getDb().select({ n: count() }).from(usersTable))[0]!
     .n;
@@ -826,6 +854,8 @@ export async function completeSetup(input: {
         email: input.email,
         password: input.password,
         teamName: input.teamName.trim() || "Workspace",
+        image: input.image,
+        teamImage: input.teamImage,
       },
       { isInstanceAdmin: true, isInstanceOwner: true },
     ));

@@ -20,6 +20,7 @@ import {
   getRegistrationLinkAssignments,
 } from "@/lib/data/members";
 import { normalizeUsername, validateUsername } from "@/lib/username";
+import { MAX_AVATAR_STRING_LEN } from "@/lib/apps/avatar-shared";
 import { rateLimit } from "@/lib/security";
 import { noteFailedLogin } from "@/lib/notify/security";
 import { sha256Hex } from "@/lib/crypto";
@@ -133,14 +134,18 @@ const loginSchema = z.object({
 });
 
 const setupSchema = z.object({
-  username: z.string().min(3, "Username is required").max(32),
-  teamName: z.string().min(1, "Workspace name is required").max(80),
+  // Optional: the wizard derives the handle from the name and only sends one
+  // that was edited by hand.
+  username: z.string().min(3, "Username is too short").max(32).nullish(),
+  teamName: z.string().min(1, "Team name is required").max(80),
   name: z.string().trim().min(1, "Your name is required").max(80),
   email: z.string().email("Enter a valid email"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
     .max(200),
+  image: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
+  teamImage: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
 });
 
 const registerSchema = z.object({
@@ -278,11 +283,13 @@ builder.mutationFields((t) => ({
     type: AuthPayloadRef,
     description: "First-run setup: create the first account + team. Signs in.",
     args: {
-      username: t.arg.string({ required: true }),
+      username: t.arg.string(),
       teamName: t.arg.string({ required: true }),
       name: t.arg.string({ required: true }),
       email: t.arg.string({ required: true }),
       password: t.arg.string({ required: true }),
+      image: t.arg.string(),
+      teamImage: t.arg.string(),
     },
     resolve: async (_r, args) => {
       const parsed = setupSchema.safeParse(args);
