@@ -176,6 +176,43 @@ export function initialsFallbackUrl(
   return facePath("initials", "default", avatarSeedFromName(...parts));
 }
 
+/** One tile of a pack's row. */
+export type AvatarTile = {
+  style: AvatarStyle;
+  preset: string;
+  seed: string;
+  label: string;
+  /** True for the tile that means "nothing stored": the derived picture. */
+  derived: boolean;
+};
+
+/**
+ * The four pictures a pack offers. The initials pack varies the PALETTE on one
+ * seed - the letters are the name, there is nothing else in it to vary - and
+ * every other pack varies the seed on one palette.
+ */
+export function packRow(
+  pack: { style: AvatarStyle; preset: string; label: string },
+  ownSeed: string,
+  letters: string,
+): AvatarTile[] {
+  if (pack.style === "initials")
+    return INITIALS_PRESETS.map(({ id, label }) => ({
+      style: "initials",
+      preset: id,
+      seed: letters,
+      label,
+      derived: id === "default",
+    }));
+  return rowSeeds(ownSeed).map((seed) => ({
+    style: pack.style,
+    preset: pack.preset,
+    seed,
+    label: `${pack.label}, ${seed === ownSeed ? "yours" : seed}`,
+    derived: false,
+  }));
+}
+
 /** What a seed may look like: it lands in a URL path and in a render. For the
  *  initials style the seed IS the letters, which is why it may be two of them. */
 const AVATAR_SEED_RE = /^[A-Za-z0-9_?-]{1,64}$/;

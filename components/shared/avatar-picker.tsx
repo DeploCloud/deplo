@@ -25,6 +25,7 @@ import {
   GRAVATAR_VALUE,
   INITIALS_PRESETS,
   MAX_AVATAR_STRING_LEN,
+  packRow,
   rowSeeds,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
@@ -410,9 +411,6 @@ function AvatarSourceDialog({
       ? (AVATAR_PACKS.find((p) => p.style === worn.style) ?? DEFAULT_PACK)
       : DEFAULT_PACK,
   );
-  const [onInitials, setOnInitials] = React.useState(
-    worn?.style === "initials",
-  );
   // The chips show the pack, not a particular picture, so the caller rolls one
   // per pack on the way in. Before the first roll, a plain rotation.
   const chipSeeds =
@@ -436,49 +434,32 @@ function AvatarSourceDialog({
               : "Stands next to your name everywhere in Deplo. Pick one, or upload your own."}
           </DialogDescription>
         </DialogHeader>
-        {onInitials ? (
-          // The one row that varies the palette instead of the seed - the letters
-          // ARE the name - and the only one a team is offered.
-          <div className="grid grid-cols-4 gap-2">
-            {INITIALS_PRESETS.map(({ id, label }) => (
-              <FaceTile
-                key={id}
-                src={facePath("initials", id, letters)}
-                label={label}
-                disabled={busy}
-                // The first one is what storing NOTHING already draws, for a
-                // person and a team alike.
-                selected={
-                  id === "default"
-                    ? choice.kind === "initials"
-                    : worn?.style === "initials" && worn.preset === id
-                }
-                onClick={() =>
-                  onPick(id === "default" ? null : `initials:${id}:${letters}`)
-                }
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-4 gap-2">
-            {seeds.map((rowSeed) => (
-              <FaceTile
-                key={rowSeed}
-                src={facePath(pack.style, pack.preset, rowSeed)}
-                label={`${pack.label}, ${rowSeed === seed ? "yours" : rowSeed}`}
-                disabled={busy}
-                selected={
-                  worn?.style === pack.style &&
-                  worn.preset === pack.preset &&
-                  worn.seed === rowSeed
-                }
-                onClick={() =>
-                  onPick(`${pack.style}:${pack.preset}:${rowSeed}`)
-                }
-              />
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-4 gap-2">
+          {packRow(pack, seed, letters).map((tile) => (
+            <FaceTile
+              key={`${tile.preset}:${tile.seed}`}
+              src={facePath(tile.style, tile.preset, tile.seed)}
+              label={tile.label}
+              disabled={busy}
+              // The derived tile is what storing NOTHING already draws, for a
+              // person and a team alike.
+              selected={
+                tile.derived
+                  ? choice.kind === "initials"
+                  : worn?.style === tile.style &&
+                    worn.preset === tile.preset &&
+                    worn.seed === tile.seed
+              }
+              onClick={() =>
+                onPick(
+                  tile.derived
+                    ? null
+                    : `${tile.style}:${tile.preset}:${tile.seed}`,
+                )
+              }
+            />
+          ))}
+        </div>
         {sources.simple ? null : (
           <div className="flex justify-center gap-2">
             {AVATAR_PACKS.map((p, i) => (

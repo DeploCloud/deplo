@@ -16,6 +16,7 @@ import {
   AVATAR_ROW,
   EXAMPLE_SEEDS,
   INITIALS_PRESETS,
+  packRow,
   rowSeeds,
 } from "../apps/avatar-shared";
 import {
@@ -300,6 +301,34 @@ test("a name with no picture falls back to its letters, drawn by DiceBear", () =
     initialsFallbackUrl("", null),
     "/api/avatar/initials/default/deplo.svg",
   );
+});
+
+test("the initials pack varies the palette, every other one the seed", () => {
+  // The bug this pins: the letters ARE the name, so a row of four SEEDS there
+  // draws four strangers instead of four palettes.
+  const initials = packRow(
+    { style: "initials", preset: "default", label: "Initials" },
+    "usr_abc",
+    "AL",
+  );
+  assert.equal(initials.length, AVATAR_ROW);
+  assert.deepEqual(
+    initials.map((t) => t.preset),
+    INITIALS_PRESETS.map((p) => p.id),
+  );
+  assert.equal(new Set(initials.map((t) => t.seed)).size, 1, "one seed only");
+  assert.equal(initials.filter((t) => t.derived).length, 1);
+
+  const faces = packRow(
+    { style: "pixelbot", preset: "terminal", label: "Pixelbot Terminal" },
+    "usr_abc",
+    "AL",
+  );
+  assert.equal(faces.length, AVATAR_ROW);
+  assert.equal(new Set(faces.map((t) => t.preset)).size, 1, "one palette only");
+  assert.equal(new Set(faces.map((t) => t.seed)).size, AVATAR_ROW);
+  assert.equal(faces[0]!.seed, "usr_abc", "their own leads");
+  assert.equal(faces.filter((t) => t.derived).length, 0);
 });
 
 test("every pack offers the same four pictures, and never one twice", () => {
