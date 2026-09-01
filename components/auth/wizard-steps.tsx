@@ -194,10 +194,7 @@ export function AccountStep({
           hasImage={Boolean(draft.image)}
           sources={{
             choice: pictureChoice,
-            seed:
-              pictureChoice.kind === "generated"
-                ? pictureChoice.seed
-                : handle || "deplo",
+            seed: handle || "deplo",
             gravatar,
             monogram: (
               <UserAvatar

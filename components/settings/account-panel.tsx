@@ -130,9 +130,9 @@ function ProfileCard({
           hasImage={Boolean(user.avatarUrl?.startsWith("data:"))}
           sources={{
             choice,
-            // Their own face keeps its seed, so the grid shows the looks of the
-            // face they wear, not of a stranger's.
-            seed: choice.kind === "generated" ? choice.seed : user.id,
+            // Always their own id: seeding off what they last picked would
+            // reshuffle the row under the click that picked it.
+            seed: user.id,
             gravatar,
             monogram: (
               <UserAvatar

@@ -84,6 +84,25 @@ export function AvatarPicker({
   const [picked, setPicked] = React.useState<File | null>(null);
   const [choosing, setChoosing] = React.useState(false);
   const [previews, setPreviews] = React.useState<string[] | null>(null);
+  const seed = sources?.seed;
+  const look =
+    sources?.choice.kind === "generated"
+      ? sources.choice.preset
+      : DEFAULT_PIXELBOT_PRESET;
+  React.useEffect(() => {
+    if (!seed) return;
+    const rolled = rollPreviewSeeds(seed);
+    setPreviews(rolled);
+    // Fetched now, not on the click: the dialog would otherwise open onto
+    // fifteen empty circles and fill them in one by one.
+    for (const url of [
+      ...PIXELBOT_PRESETS.map(({ id }, i) => pixelbotPath(id, rolled[i]!)),
+      ...pixelbotRowSeeds(seed).map((s) => pixelbotPath(look, s)),
+    ]) {
+      const img = new window.Image();
+      img.src = url;
+    }
+  }, [seed, look]);
   const busy = pending || disabled;
 
   function commit(image: string | null) {
@@ -117,14 +136,9 @@ export function AvatarPicker({
       <button
         type="button"
         disabled={busy}
-        onClick={() => {
-          if (!sources) {
-            inputRef.current?.click();
-            return;
-          }
-          setPreviews(rollPreviewSeeds(sources.seed));
-          setChoosing(true);
-        }}
+        onClick={() =>
+          sources ? setChoosing(true) : inputRef.current?.click()
+        }
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -259,7 +273,9 @@ function FaceTile({
       <img
         src={pixelbotPath(preset, seed)}
         alt=""
-        className="block w-full rounded-full"
+        draggable={false}
+        // The face is opaque, so this only ever shows while it is still coming.
+        className="block w-full rounded-full bg-muted"
       />
     </button>
   );
@@ -312,7 +328,9 @@ function PresetChip({
       <img
         src={pixelbotPath(preset, seed)}
         alt=""
-        className="block w-full rounded-full"
+        draggable={false}
+        // The face is opaque, so this only ever shows while it is still coming.
+        className="block w-full rounded-full bg-muted"
       />
     </button>
   );
