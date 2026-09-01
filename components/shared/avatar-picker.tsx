@@ -21,6 +21,7 @@ import {
   GRAVATAR_VALUE,
   INITIALS_VALUE,
   MAX_AVATAR_STRING_LEN,
+  DEFAULT_PIXELBOT_PRESET,
   PIXELBOT_PREFIX,
   PIXELBOT_PRESETS,
   type PixelbotPreset,
@@ -82,6 +83,7 @@ export function AvatarPicker({
   const [dragging, setDragging] = React.useState(false);
   const [picked, setPicked] = React.useState<File | null>(null);
   const [choosing, setChoosing] = React.useState(false);
+  const [previews, setPreviews] = React.useState<string[] | null>(null);
   const busy = pending || disabled;
 
   function commit(image: string | null) {
@@ -115,9 +117,14 @@ export function AvatarPicker({
       <button
         type="button"
         disabled={busy}
-        onClick={() =>
-          sources ? setChoosing(true) : inputRef.current?.click()
-        }
+        onClick={() => {
+          if (!sources) {
+            inputRef.current?.click();
+            return;
+          }
+          setPreviews(rollPreviewSeeds(sources.seed));
+          setChoosing(true);
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -174,6 +181,7 @@ export function AvatarPicker({
           onOpenChange={setChoosing}
           sources={sources}
           busy={Boolean(busy)}
+          previews={previews}
           onPick={(value) => {
             setChoosing(false);
             commit(value);
@@ -251,8 +259,60 @@ function FaceTile({
       <img
         src={pixelbotPath(preset, seed)}
         alt=""
-        className="size-11 rounded-full"
+        className="size-12 rounded-full"
       />
+    </button>
+  );
+}
+
+/** One face per look, drawn when the dialog is opened - never during a render,
+ *  which is why it takes the click and not a `useMemo`. */
+function rollPreviewSeeds(seed: string): string[] {
+  const seeds = pixelbotRowSeeds(seed);
+  return PIXELBOT_PRESETS.map(
+    () => seeds[Math.floor(Math.random() * seeds.length)]!,
+  );
+}
+
+/** One look in the selector: a single face previews the palette, so opening the
+ *  dialog costs nine renders and not nine times six. */
+function PresetChip({
+  preset,
+  label,
+  seed,
+  selected,
+  disabled,
+  onClick,
+}: {
+  preset: PixelbotPreset;
+  label: string;
+  seed: string;
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        "flex items-center gap-2 rounded-full border py-1 pr-3 pl-1 text-xs font-medium transition-colors outline-none",
+        "focus-visible:ring-2 focus-visible:ring-ring",
+        selected
+          ? "border-primary bg-accent"
+          : "border-border bg-card hover:bg-accent",
+        disabled && "cursor-not-allowed opacity-60",
+      )}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={pixelbotPath(preset, seed)}
+        alt=""
+        className="size-7 rounded-full"
+      />
+      {label}
     </button>
   );
 }
@@ -299,6 +359,7 @@ function AvatarSourceDialog({
   onOpenChange,
   sources,
   busy,
+  previews,
   onPick,
   onUpload,
 }: {
@@ -306,11 +367,21 @@ function AvatarSourceDialog({
   onOpenChange: (open: boolean) => void;
   sources: AvatarSources;
   busy: boolean;
+  /** One preview face per look, rolled by the caller on open. */
+  previews: string[] | null;
   onPick: (value: string) => void;
   onUpload: () => void;
 }) {
   const { choice } = sources;
   const rowSeeds = pixelbotRowSeeds(sources.seed);
+  const [look, setLook] = React.useState<PixelbotPreset>(
+    choice.kind === "generated" ? choice.preset : DEFAULT_PIXELBOT_PRESET,
+  );
+  // The chips show the palette, not a particular face, so the caller rolls one
+  // face per look on the way in. Before the first open, a plain rotation.
+  const chipSeeds =
+    previews ?? PIXELBOT_PRESETS.map((_, i) => rowSeeds[i % rowSeeds.length]!);
+  const lookLabel = PIXELBOT_PRESETS.find((p) => p.id === look)!.label;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -318,35 +389,37 @@ function AvatarSourceDialog({
         <DialogHeader>
           <DialogTitle>Profile picture</DialogTitle>
           <DialogDescription>
-            Pick a face, upload your own, or keep your initials.
+            Pick a look, then a face - or upload your own.
           </DialogDescription>
         </DialogHeader>
-        <div className="-mr-2 max-h-[50vh] space-y-3 overflow-y-auto pr-2">
-          {PIXELBOT_PRESETS.map((preset) => (
-            <div key={preset.id}>
-              <p className="mb-1.5 text-xs text-muted-foreground">
-                {preset.label}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {rowSeeds.map((rowSeed) => (
-                  <FaceTile
-                    key={rowSeed}
-                    preset={preset.id}
-                    label={`${preset.label}, face ${rowSeed}`}
-                    seed={rowSeed}
-                    disabled={busy}
-                    selected={
-                      choice.kind === "generated" &&
-                      choice.preset === preset.id &&
-                      choice.seed === rowSeed
-                    }
-                    onClick={() =>
-                      onPick(`${PIXELBOT_PREFIX}${preset.id}:${rowSeed}`)
-                    }
-                  />
-                ))}
-              </div>
-            </div>
+        <div className="flex flex-wrap gap-2">
+          {PIXELBOT_PRESETS.map(({ id, label }, i) => (
+            <PresetChip
+              key={id}
+              preset={id}
+              label={label}
+              seed={chipSeeds[i]!}
+              disabled={busy}
+              selected={id === look}
+              onClick={() => setLook(id)}
+            />
+          ))}
+        </div>
+        <div className="flex flex-wrap justify-center gap-3 rounded-xl border border-border bg-card p-3">
+          {rowSeeds.map((rowSeed) => (
+            <FaceTile
+              key={rowSeed}
+              preset={look}
+              label={`${lookLabel} face`}
+              seed={rowSeed}
+              disabled={busy}
+              selected={
+                choice.kind === "generated" &&
+                choice.preset === look &&
+                choice.seed === rowSeed
+              }
+              onClick={() => onPick(`${PIXELBOT_PREFIX}${look}:${rowSeed}`)}
+            />
           ))}
         </div>
         <div
