@@ -96,7 +96,6 @@ import {
   mapBuildSettings,
   mapDatabase,
   mapDomains,
-  migratedEnvType,
   mapLogo,
   mapMounts,
   mapResources,
@@ -2607,12 +2606,7 @@ async function importAppService(
     rows,
     new Map([...home.shared].map(([k, v]) => [k, v.value] as const)),
   );
-  // Classified AFTER the resolution, so a reference is typed on its real value.
-  // A variable that looks like a credential comes across write-only.
-  const env = rows.map((e) => ({
-    ...e,
-    type: migratedEnvType(e.key, e.value),
-  }));
+  const env = rows.map((e) => ({ ...e, type: "plain" as const }));
   const aliased = refs.filter(
     (r) => r.whole && r.key !== r.sharedKey && home.shared.has(r.sharedKey),
   );
@@ -2636,9 +2630,7 @@ async function importAppService(
         ", ",
       )} still read a shared variable {panel} did not answer with the value behind. Put the real values in under Variables.`,
     );
-  // The databases this same import renamed. Done HERE, before the app is created,
-  // because a secret-typed variable is frozen the moment it exists - and a
-  // connection string is exactly the variable that arrives as a secret.
+  // The databases this same import renamed, before the app is created.
   const renamed = renameDatabaseHosts(env, home.dbHosts);
   if (renamed.length > 0)
     notes.push(
@@ -2647,19 +2639,6 @@ async function importAppService(
       } the one Deplo gave it.`,
     );
 
-  // A value the panel would not answer for arrives EMPTY and has its own note.
-  // Counted here too, the line reads as a clean import until you reach that one.
-  const secrets = env
-    .filter((e) => e.type === "secret" && e.value.trim() !== "")
-    .map((e) => e.key);
-  if (secrets.length > 0)
-    notes.push(
-      `${secrets.length} variable(s) arrived as secrets, because they look like credentials: ${secrets
-        .slice(0, 8)
-        .join(
-          ", ",
-        )}${secrets.length > 8 ? ` and ${secrets.length - 8} more` : ""}. A secret is write-only here - change any of them to a plain value under Variables.`,
-    );
   if (argEntries.length > 0)
     notes.push(
       `${argEntries.length} build argument(s) became environment variables - that is how Deplo passes values to a build.`,
@@ -3003,18 +2982,9 @@ async function importAppService(
   }
   if (linkRefused.length > 0) {
     // `setAppEnv` is a whole-set replace, so it takes the FULL set back.
-    await setAppEnv(
-      created.id,
-      [
-        ...env,
-        ...linkRefused.map((e) => ({
-          ...e,
-          type: migratedEnvType(e.key, e.value),
-        })),
-      ],
-      undefined,
-      { overwriteSecrets: true },
-    );
+    await setAppEnv(created.id, [...env, ...linkRefused], undefined, {
+      overwriteSecrets: true,
+    });
     notes.push(
       `${linkRefused
         .map((e) => e.key)
@@ -3829,12 +3799,6 @@ async function importSharedVars(
   // it are linked to the row that IS here.
   const already = await visibleSharedVarIdsByKey(opts.teamId);
 
-  // Said once at the end, exactly as a service's own variables say it: a secret
-  // here is write-only with no reveal path, so which values just became
-  // unreadable is the one thing a person has to be told while they still have
-  // them open on the other platform.
-  const secrets: string[] = [];
-
   for (const { key, value } of entries) {
     if (index.has(key)) continue;
     const here = already.get(key);
@@ -3851,14 +3815,11 @@ async function importSharedVars(
       });
       continue;
     }
-    const type = migratedEnvType(key, value);
     try {
       const varId = await saveSharedVar({
         key,
         value,
-        // Write-only when it looks like a credential, exactly as a service's
-        // own variables are - see the service import.
-        type,
+        type: "plain",
         teamIds: opts.teamWide ? [opts.teamId] : [],
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
@@ -3867,7 +3828,6 @@ async function importSharedVars(
         appIds: undefined,
       });
       index.set(key, { varId, value });
-      if (type === "secret" && value.trim() !== "") secrets.push(key);
       await opts.report.add({
         path: opts.label,
         sourceKind: "shared-var",
@@ -3890,20 +3850,6 @@ async function importSharedVars(
       });
     }
   }
-
-  if (secrets.length > 0)
-    await opts.report.add({
-      path: opts.label,
-      sourceKind: "shared-var",
-      sourceName: opts.label,
-      outcome: "manual",
-      targetKind: "shared-var",
-      message: `${secrets.length} shared variable(s) arrived as secrets, because they look like credentials: ${secrets
-        .slice(0, 8)
-        .join(", ")}${
-        secrets.length > 8 ? ` and ${secrets.length - 8} more` : ""
-      }. A secret is write-only here - change any of them to a plain value under Variables.`,
-    });
 }
 
 /* ------------------------------------------------------------------ */

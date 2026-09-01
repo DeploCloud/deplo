@@ -269,10 +269,9 @@ const APPLICATIONS: Record<string, unknown> = {
       // Names Dokploy's throwaway host - an address that stops existing the
       // moment the app moves.
       "OLD_ADDRESS=https://blink-web-abc.traefik.me/health\n" +
-      // The same address again, arriving write-only: it carries a credential.
+      // The same address again, carrying a credential in the userinfo.
       "OLD_ADDRESS_URL=https://hooker:pw@blink-web-abc.traefik.me/hook\n" +
-      // A value the panel would not hand over. It arrives empty, and its own
-      // note says so - the secrets line must not count it as one that landed.
+      // A value the panel would not hand over: it arrives empty, with its own note.
       "LEGACY_TOKEN=\n",
     buildArgs: "NEXT_PUBLIC_SITE=https://blink.acme.test\n",
     memoryLimit: "512m",
@@ -668,12 +667,10 @@ test("a variable that names the old address is moved to the new one", async () =
   // ...while the one naming the throwaway address now names what it became.
   const old = vars.find((v) => v.key === "OLD_ADDRESS")!;
   assert.equal(decryptSecret(old.valueEnc), `https://${rehosted.name}/health`);
-  // And a WRITE-ONLY one is not left behind: it is the import correcting its own
-  // write, so the frozen-secret rule has nothing to protect here.
-  const secret = vars.find((v) => v.key === "OLD_ADDRESS_URL")!;
-  assert.equal(secret.type, "secret");
+  const withCred = vars.find((v) => v.key === "OLD_ADDRESS_URL")!;
+  assert.equal(withCred.type, "plain");
   assert.equal(
-    decryptSecret(secret.valueEnc),
+    decryptSecret(withCred.valueEnc),
     `https://hooker:pw@${rehosted.name}/hook`,
   );
   const run = await asOwner(() => getMigrationRun(runId));
@@ -847,8 +844,8 @@ test("a project lands complete: project, environment, apps, variables", async ()
   assert.equal(api.source, "docker-image");
   assert.equal(api.dockerImage, "ghcr.io/acme/api:1.4.2");
 
-  // Env vars, with the build arg folded in. A connection string arrives
-  // write-only; the plain ones stay readable, `NEXT_PUBLIC_*` included.
+  // Env vars, with the build arg folded in. The source panel has no secrets, so
+  // every one of them lands plain and readable.
   const env = await db
     .select()
     .from(envVarsTable)
@@ -863,19 +860,12 @@ test("a project lands complete: project, environment, apps, variables", async ()
     "OLD_ADDRESS_URL",
     "QUEUE_DSN",
   ]);
-  assert.equal(byKey.get("DATABASE_URL")!.type, "secret");
-  assert.equal(byKey.get("NEXT_PUBLIC_SITE")!.type, "plain");
-  assert.equal(byKey.get("NODE_ENV")!.type, "plain");
-
-  // The one that arrived with no value is still a secret ROW, but the note that
-  // counts what landed leaves it out: another line already says it came empty.
-  assert.equal(byKey.get("LEGACY_TOKEN")!.type, "secret");
-  const said = (await asOwner(() => getMigrationRun(runId)))!.items
-    .filter((i) => i.sourceId === "dok-app-web")
-    .map((i) => i.message ?? "")
-    .find((m) => m.includes("arrived as secrets"))!;
-  assert.match(said, /^3 variable\(s\) arrived as secrets/);
-  assert.doesNotMatch(said, /LEGACY_TOKEN/);
+  for (const e of byKey.values()) assert.equal(e.type, "plain", e.key);
+  assert.ok(
+    !(await asOwner(() => getMigrationRun(runId)))!.items.some((i) =>
+      (i.message ?? "").includes("arrived as secrets"),
+    ),
+  );
 
   // The database could not be created against a host with no agent, and that is
   // a REPORT row carrying the host's own words - not a failed import.
@@ -1324,8 +1314,8 @@ test("a project's and an environment's own variables become shared variables", a
     "ENV_LEVEL",
     "SHARED_TOKEN",
   ]);
-  // A name that says credential arrives write-only; anything else stays readable.
-  assert.equal(shared.find((s) => s.key === "SHARED_TOKEN")!.type, "secret");
+  // The source panel has no secrets, so a shared variable stays readable too.
+  assert.equal(shared.find((s) => s.key === "SHARED_TOKEN")!.type, "plain");
   assert.equal(shared.find((s) => s.key === "ENV_LEVEL")!.type, "plain");
 });
 
