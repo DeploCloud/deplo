@@ -535,7 +535,7 @@ html body[data-scroll-locked] {
 }
 
 .animate-fade-in {
-  animation: deplo-fade-in 0.2s ease-out both;
+  animation: deplo-fade-in 0.2s ease-out backwards;
 }
 
 /* A deploy PHASE opening in the build phase bar. `min-width` is what gives a new
@@ -552,6 +552,8 @@ html body[data-scroll-locked] {
   }
 }
 
+/* The one entrance that keeps a forwards fill: it ends at a min-width the
+ * element does not otherwise have, so releasing it would collapse the row. */
 .animate-phase-in {
   animation: deplo-phase-in 0.2s ease-out both;
 }
@@ -582,11 +584,11 @@ html body[data-scroll-locked] {
 }
 
 .animate-slide-in-right {
-  animation: deplo-slide-in-right 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: deplo-slide-in-right 0.24s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .animate-slide-in-left {
-  animation: deplo-slide-in-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: deplo-slide-in-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 /* The new-app wizard's step swap: the card leaves in the direction of travel and
@@ -629,11 +631,11 @@ html body[data-scroll-locked] {
 }
 
 .animate-step-in-up {
-  animation: deplo-step-in-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: deplo-step-in-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .animate-step-in-down {
-  animation: deplo-step-in-down 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: deplo-step-in-down 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .animate-step-out-up {
@@ -713,7 +715,7 @@ html body[data-scroll-locked] {
 /* One curve for the whole intro: it decelerates the whole way, so the mark
  * grows and then leaves without a pop at either end. */
 .animate-intro-in {
-  animation: deplo-intro-in 0.8s cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: deplo-intro-in 0.8s cubic-bezier(0.32, 0.72, 0, 1) backwards;
 }
 
 .animate-intro-out {
@@ -721,7 +723,7 @@ html body[data-scroll-locked] {
 }
 
 .animate-soft-in {
-  animation: deplo-soft-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: deplo-soft-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 /* 0.16s is not a taste: it is `OUT_MS` in components/apps/wizard/wizard-card.tsx. */
@@ -730,13 +732,15 @@ html body[data-scroll-locked] {
 }
 
 .animate-blur-in {
-  animation: deplo-blur-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: deplo-blur-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 /* A form's rows arrive one beat after another. 45ms is deliberately under the
- * threshold where it reads as a list being drawn: it reads as depth. */
+ * threshold where it reads as a list being drawn: it reads as depth.
+ * `backwards`, never `both`: a forwards fill keeps `filter: blur(0)` on the row
+ * for good, and a filtered layer re-rasterizes the input on every keystroke. */
 .deplo-stagger > * {
-  animation: deplo-soft-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: deplo-soft-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .deplo-stagger > :nth-child(2) {
@@ -827,7 +831,7 @@ html body[data-scroll-locked] {
 }
 
 .animate-aurora-in {
-  animation: deplo-aurora-in 0.9s ease-out both;
+  animation: deplo-aurora-in 0.9s ease-out backwards;
 }
 
 .animate-aurora-out {
